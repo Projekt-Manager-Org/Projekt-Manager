@@ -403,6 +403,15 @@ jobs:
   # `build-and-push` job below does the same build for real (and
   # actually publishes), so running both would just double-build
   # the same layers. See ADR-0011 for the split rationale.
+  #
+  # Scans BOTH app and backup images at PR time (#219). The backup
+  # image's `FROM ghcr.io/.../projekt-manager:${APP_IMAGE_TAG}` would
+  # normally resolve through GHCR — but at PR time that tag does not
+  # exist yet (`build-and-push` runs only on push/dispatch). We export
+  # the app image as an OCI layout and alias the GHCR reference to it
+  # via buildx `build-contexts`, so the backup build resolves locally.
+  # Closes the "image-byte CVE surfaces only post-merge" gap that put
+  # `main` red in #218.
   # ---------------------------------------------------------------
   docker:
     needs: changes
@@ -522,11 +531,67 @@ jobs:
       # one becomes operationally tolerable, the entry goes in
       # .trivyignore with owner/reason/exp ≤90d — same machinery as
       # the rest of the allowlist.
-      - name: Trivy — image vuln scan (HIGH/CRITICAL)
+      - name: Trivy — app image vuln scan (HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: projekt-manager-app:ci
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          trivyignores: .trivyignore
+
+      # Export the app image as an OCI layout so the backup build
+      # below can resolve `FROM ghcr.io/.../projekt-manager:<tag>`
+      # without the tag existing on GHCR (the registry copy only
+      # exists post-merge). buildx re-uses every layer from the
+      # previous app build via the shared gha cache, so this adds
+      # only the tar-export cost (~5–10s on warm cache).
+      - name: Export app image as OCI layout (for backup build context)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: Dockerfile
+          outputs: type=oci,dest=/tmp/app-image-oci.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # buildx's `oci-layout://` named-context source reads a
+      # directory, not a tarball, so unpack before the next build.
+      - name: Extract OCI layout
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/app-oci
+          tar -xf /tmp/app-image-oci.tar -C /tmp/app-oci
+
+      # Build the backup image at PR time so its CVE surface is
+      # gated before merge (#219). The `FROM` reference in
+      # Dockerfile.backup is intercepted by buildx's `build-contexts`
+      # and resolved to the OCI layout exported above — no GHCR
+      # round-trip and no Dockerfile.backup change. APP_IMAGE_TAG=oci
+      # is a sentinel matching the suffix in `build-contexts` so the
+      # `FROM` resolves; it is never pushed anywhere. Separate gha
+      # cache scope mirrors `build-and-push` so the backup image's
+      # layer cache stays isolated from the app image's.
+      - name: Build backup image (FROM aliased to OCI layout)
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: Dockerfile.backup
+          push: false
+          load: true
+          tags: projekt-manager-backup:ci
+          build-args: |
+            APP_IMAGE_TAG=oci
+          build-contexts: |
+            ghcr.io/projekt-manager-org/projekt-manager:oci=oci-layout:///tmp/app-oci
+          cache-from: type=gha,scope=backup
+          cache-to: type=gha,mode=max,scope=backup
+
+      - name: Trivy — backup image vuln scan (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: projekt-manager-backup:ci
           severity: HIGH,CRITICAL
           exit-code: '1'
           trivyignores: .trivyignore
