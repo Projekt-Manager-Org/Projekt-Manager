@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:22.22.3-alpine AS build
+FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS build
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # Stage 2: Production
-FROM node:22.22.3-alpine
+FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f
 
 WORKDIR /app
 
