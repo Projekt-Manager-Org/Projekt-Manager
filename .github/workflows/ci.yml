@@ -6,13 +6,14 @@ on:
   pull_request:
     branches: [main, 'iteration/**']
   # GitHub merge queue fires `merge_group` events on a synthetic train
-  # branch built from `main` + queued PRs. The `main` Ruleset requires
-  # `check`, `lint`, and `docker` to pass on these events — without
-  # listening for `merge_group` here, the queue creates the train, no
-  # workflow fires, required checks never report, and the queue
-  # silently waits until `check_response_timeout_minutes` (60 by
-  # default) then rejects the PR. Mandatory companion to the
-  # merge-queue rule in the Ruleset.
+  # branch built from `main` + queued PRs. The queue is currently OFF
+  # (see docs/ops/dep-management.md §5 for the evaluation + cost
+  # model); this listener is a no-op until/unless the `merge_queue`
+  # rule is re-added to the `main protection` Ruleset. Kept in place
+  # because removing it would mean a future re-enable also needs a
+  # workflow edit, and forgetting that edit makes the queue silently
+  # time out (PRs sit `CLEAN` for 60 min then get rejected with no
+  # actionable signal — see #214 history).
   merge_group:
   # Manual escape hatch for building/publishing images on a feature
   # branch so it can be deployed to the VPS via scripts/deploy.sh
