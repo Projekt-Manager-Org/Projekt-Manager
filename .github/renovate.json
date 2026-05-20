@@ -5,7 +5,7 @@
     ":dependencyDashboard",
     ":semanticCommits"
   ],
-  "timezone": "Europe/Sofia",
+  "timezone": "Europe/Berlin",
   "schedule": ["before 9am on monday"],
   "prHourlyLimit": 4,
   "prConcurrentLimit": 10,
