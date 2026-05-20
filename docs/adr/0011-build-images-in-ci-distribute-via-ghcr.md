@@ -58,7 +58,7 @@ Flow:
    - **PR discovery** — `gh api repos/.../commits/${GITHUB_SHA}/pulls` must return the PR's head SHA. Direct pushes to `main` (hot-fix) return empty → fallback.
    - **Tree equality** — `tree(merge-sha) == tree(pr-tip)`. Squash merges preserve trees; merge-commit / rebase strategies (also enabled on the repo) may pull in `main` and diverge → fallback.
    - **Source image present on GHCR** — `docker manifest inspect ghcr.io/.../sha-<pr-tip>` must succeed. Renovate auto-merge or dispatch skipped entirely → fallback.
-3. Happy path: `docker pull` both images, re-tag as `sha-<merge-sha>` + `main`, push. ~30s. No rebuild, no rescan, no smoke — the bytes are identical to what was validated during dispatch.
+3. Happy path: `docker buildx imagetools create -t <new-tag> <src-tag>` for both images, creating `sha-<merge-sha>` + `main` from the dispatched `sha-<pr-tip>`. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke — the artifact is bit-for-bit identical to what was validated during dispatch.
 4. Fallback: call the same composite the dispatch ran. ~5 min on main's (cold-ish) cache scope. Operators see a `::warning::` in the run log explaining which guard failed.
 
 PR-tip discovery is via GitHub's merge metadata (`gh api .../commits/<sha>/pulls`) and not via a PR label. A label channel would persist past a force-push-then-merge and could promote stale bytes; using the API ties discovery to the actual merge.
