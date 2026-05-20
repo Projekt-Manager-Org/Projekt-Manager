@@ -824,10 +824,17 @@ jobs:
             echo "owner=${owner}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Promote — pull + re-tag + push
+      # buildx is needed for `imagetools create` below. Composite
+      # action sets it up in the rebuild path; for the promote path
+      # we set it up here so the cheap-promote happy path doesn't
+      # carry an unrelated dependency on the composite.
+      - name: Set up Docker Buildx
+        if: steps.resolve.outputs.fallback == 'false'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Promote — registry-level re-tag (preserves index + attestations)
         if: steps.resolve.outputs.fallback == 'false'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_TIP: ${{ steps.resolve.outputs.pr_tip }}
           OWNER: ${{ steps.resolve.outputs.owner }}
         run: |
@@ -847,11 +854,22 @@ jobs:
             echo "  source: ${src}"
             echo "  -> ${sha_dst}"
             echo "  -> ${slug_dst}"
-            docker pull "${src}"
-            docker tag "${src}" "${sha_dst}"
-            docker tag "${src}" "${slug_dst}"
-            docker push "${sha_dst}"
-            docker push "${slug_dst}"
+            # `docker buildx imagetools create` copies the manifest
+            # at the registry level — no pull, no local Docker
+            # daemon involvement. Preserves the OCI image-index
+            # wrapper (mediaType `application/vnd.oci.image.index.v1+json`)
+            # and the buildx-generated provenance/SBOM attestation
+            # manifests, which `docker pull + tag + push` would
+            # silently drop (the daemon only handles platform-
+            # specific manifests, not index + attestation tuples).
+            # Regression observed on the first promote run in #226
+            # — sha-<merge> ended up as schema-2 with the
+            # attestation manifest gone; bytes ran fine but a future
+            # `cosign verify` or SLSA-verify gate would fail.
+            docker buildx imagetools create \
+              -t "${sha_dst}" \
+              -t "${slug_dst}" \
+              "${src}"
             echo "::endgroup::"
           done
 
