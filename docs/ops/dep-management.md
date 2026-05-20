@@ -40,26 +40,28 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
      - **Restrict deletions** + **Block force pushes** — prevent `main` loss / history rewrite.
      - **Require linear history** — repo policy is squash-merge only.
      - **Require a pull request before merging** — required approvals: 0 (solo dev; raise when a second human joins).
-     - **Require status checks to pass:** add `check` and `docker` (job names — Rulesets match job-level checks, same as classic).
-       - **`check`** is the always-on gate: OSV-Scanner (lockfile vulns), Trivy filesystem-secret + IaC scans, allowlist schema, lint, format, type-check, shellcheck, theme-token hygiene, env-drift, audit-write-path check, MinIO + integration tests, build.
+     - **Require status checks to pass:** add `lint`, `check`, and `docker` (job names — Rulesets match job-level checks, same as classic).
+       - **`lint`** is the static-analysis pillar: lockfile-pin drift, allowlist schema, OSV-Scanner (lockfile vulns), Trivy filesystem-secret + IaC scans, lint, shellcheck, format, theme-token hygiene, type-check, env-drift, audit-write-path check, build. No DB, no MinIO — runs in parallel with the test pillar.
+       - **`check`** is a 5-line aggregator that gates on the sharded `check-shard` matrix (`needs: check-shard`, fails if any shard failed). Stable required-check name across shard-count changes — only the matrix array in `ci.yml` moves when shards are added/removed; the Ruleset never has to be re-edited. The actual tests live in `check-shard` (postgres service + MinIO + integration tests, partitioned by `--shard=N/M`).
        - **`docker`** is path-filtered (Dockerfile / docker-compose / package-lock / patches / tsconfig / workflow changes) and pull-request-only. On non-image PRs the `if:` evaluates false → GitHub reports the job as **skipped**, which [counts as a successful required check](https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution) — adding `docker` as required does NOT block non-image PRs. On image-affecting PRs, `docker` runs and the image-vuln scan blocks merge on HIGH/CRITICAL findings.
+       - Do **NOT** add `check-shard`: matrix jobs surface as `check-shard (1)` / `check-shard (2)`, names that change when shard count changes — the aggregator `check` exists precisely so the Ruleset isn't entangled with the matrix shape.
        - Do **NOT** add `build-and-push`: it only fires on `push` / `workflow_dispatch` events; its post-merge image-scan-then-push step is the deploy-time safety net, not a PR gate.
        - Do **NOT** tick the sub-option "Require branches to be up to date before merging" — the merge queue (step 5) replaces it. Ticking both reintroduces the rebase cycle the queue is designed to eliminate.
 
-   Without both `check` and `docker` as required contexts, Renovate's auto-merge bypasses the safety net this ADR adds; without `docker`, image-vuln gating becomes informational-only on PRs (the post-merge `build-and-push` scan is still the backstop). The full gating rationale is in [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational).
+   Without `lint`, `check`, and `docker` all as required contexts, Renovate's auto-merge bypasses the safety net this ADR adds; without `docker`, image-vuln gating becomes informational-only on PRs (the post-merge `build-and-push` scan is still the backstop). The full gating rationale is in [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational).
 
    **After saving the Ruleset**, delete the classic branch protection rule for `main` (Settings → Branches → ⋯ → Delete on the classic rule). Two protection layers are avoidable maintenance burden; the Ruleset is the supported path forward.
 
 5. **Enable the merge queue rule on the same Ruleset.** Edit the `main protection` Ruleset → tick **Require merge queue**.
    - **Merge method:** Change from the default **Merge** to **Squash and merge**. Mandatory — the default `Merge` creates merge commits and conflicts with the `Require linear history` rule from step 4; the queue silently refuses to start a merge group in that state (PRs sit `CLEAN` forever, no `merge_group` workflow runs appear). Verify with `gh api repos/{owner}/{repo}/rulesets/{id} --jq '.rules[] | select(.type=="merge_queue") | .parameters.merge_method'` returning `"SQUASH"`.
    - **Merge limits:** min group 1, max group 5, build concurrency 5, max wait 5 min — defaults suit this repo's volume.
-   - **Required status checks for the merge queue:** `check`, `docker` (same as the PR-level gate; the queue re-runs them against the synthetic merge state).
+   - **Required status checks for the merge queue:** `lint`, `check`, `docker` (same as the PR-level gate; the queue re-runs them against the synthetic merge state).
    - **Workflow prerequisite (`.github/workflows/ci.yml`):** `on:` must include `merge_group:`. The queue fires `merge_group` events on a synthetic train branch (`refs/heads/gh-readonly-queue/main/pr-N-sha`); without this listener no required check fires on those events, and PRs sit `CLEAN` until `check_response_timeout_minutes` (60) then get rejected with no actionable signal. Verify with `grep -A1 '^on:' .github/workflows/ci.yml`.
    - **`docker` job's `if:` must include `merge_group`.** Branch protection treats a skipped required check as success — the merge queue does NOT. If the `docker` job stays `pull_request`-only it gets skipped on `merge_group`, the queue waits the full `check_response_timeout_minutes`, then rejects the PR. The fix is `if: (needs.changes.outputs.docker == 'true' && github.event_name == 'pull_request') || github.event_name == 'merge_group'` — path-filtered at PR time (skipped on docs-only PRs), runs unconditionally on `merge_group` so the required context reports SUCCESS. Cost: ~3 min per queue cycle on PRs that don't touch container-relevant files; acceptable trade for a working queue.
 
    Why: without a queue, "Require branches to be up to date" (the `strict` flag) serialises merges — every merge knocks all other open PRs BEHIND `main`, costing a manual rebase + full re-CI cycle. Renovate also refuses auto-rebase once a PR's last commit is human-authored ("Edited/Blocked" warning), so every wrangler-rebase poisons further auto-rebase on that PR. With ≥3 routine PRs in flight (a normal Monday after the Renovate window) the wrangler loses an hour to rebase clicks.
 
-   The queue replaces that cycle: GitHub batches green PRs into a synthetic merge train, runs `check` + `docker` against the would-be-merged state, squash-merges in order. The strict-equivalent safety guarantee (merged code was tested against the post-merge tip) is preserved without per-merge rebase tax.
+   The queue replaces that cycle: GitHub batches green PRs into a synthetic merge train, runs `lint` + `check` + `docker` against the would-be-merged state, squash-merges in order. The strict-equivalent safety guarantee (merged code was tested against the post-merge tip) is preserved without per-merge rebase tax.
    - **Daily use.** The PR merge button changes from "Squash and merge" to **"Merge when ready"**. Click it on a green PR; the PR joins the queue and merges itself once the queue-CI is green. Renovate's `platformAutomerge: true` queues auto-merge-flagged PRs automatically — no config change needed.
    - **Observability.** Repo → **Pull requests** → **Merge queue** tab shows the current train, positions, and per-PR queue-build status.
    - **Failure recovery.** A queued PR that fails the merge-state build returns to the operator with a failed `merge-queue` status check. Fix the branch and re-add via "Merge when ready"; the rest of the queue keeps moving.
@@ -129,7 +131,7 @@ reason = "@vlzware: esbuild dev-server only; prod build invokes the bundler API,
 CVE-2026-12345 exp:2026-08-16
 ```
 
-Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing — the same script gates the CI `check` job.
+Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing — the same script gates the CI `lint` job.
 
 ## Abandonment-flag verdicts
 
