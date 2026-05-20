@@ -3,9 +3,11 @@
 Pull-based deploy over WireGuard per ADR-0012. CI builds and pushes the image to GHCR; the operator pulls it onto the VPS.
 
 ```
-push to main/iteration/** -> CI (lint, types, tests, build) -> GHCR image (sha-<commit>, <branch-slug>)
-                                                                  |
-operator (over WireGuard):                                        v
+operator dispatch on PR -> CI build-and-push -> GHCR (sha-<pr-tip>, <branch-slug>)
+                                                  |
+PR merge to main         -> CI promote        -> GHCR (sha-<merge-sha>, main)
+                                                  |
+operator (over WireGuard):                        v
   ssh vps -> sudo -u deploy /opt/projekt-manager/scripts/deploy.sh [ref]
     -> git fetch + checkout SHA
     -> decrypt secrets.env.age (age passphrase prompt)
@@ -13,6 +15,8 @@ operator (over WireGuard):                                        v
     -> smoke test /api/health (60s timeout)
     -> drill-key reload prompt (when /run/drill-key/identity is empty)
 ```
+
+The merge-time `promote` job re-tags the dispatched artifact instead of rebuilding (~30s, no rescan, no smoke — the bytes were validated end-to-end during dispatch). If `workflow_dispatch` was skipped (Renovate auto-merge, direct push to main, force-push that invalidated the dispatched SHA), `promote` falls through to a full rebuild via the same composite action — ~5 min, with a `::warning::` in the run log naming the failed guard. See ADR-0011 §"Build once, promote on merge" for the full topology.
 
 Have `~/secrets/age-backup.key` open on the operator workstation before invoking the deploy — when the backup container was recreated by the deploy, the script will prompt to paste the age private identity into the container's tmpfs (AC-175). See [backup/drills.md](backup/drills.md) for the threat model.
 

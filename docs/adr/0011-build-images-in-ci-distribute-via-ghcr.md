@@ -39,10 +39,35 @@ Build the production `app` image in GitHub Actions, push to GitHub Container Reg
 
 **CI pipeline:**
 
-- New `build-and-push` job in `.github/workflows/ci.yml`, runs on every push to `main` and `iteration/**`. Not path-filtered — a TypeScript change changes image contents without touching `Dockerfile`, so path filtering would ship stale images.
+- Build/scan/smoke/push lives in a composite action `.github/actions/build-scan-push` — single source of truth for the rebuild path. Two callers in `.github/workflows/ci.yml`:
+  - `build-and-push` job — runs on `workflow_dispatch` (operator feature-branch dispatch) and on `push` to `iteration/**`. Calls the composite directly.
+  - `promote` job — runs on `push: main`. Tries promote-on-merge (see next section); falls through to the same composite on guard failure.
+- Not path-filtered — a TypeScript change changes image contents without touching `Dockerfile`, so path filtering would ship stale images.
 - `docker/login-action` authenticates to GHCR with the built-in `GITHUB_TOKEN` (no separate secret).
 - `docker/build-push-action` with `cache-from: type=gha, cache-to: type=gha,mode=max` — warm builds ~10–15s.
-- Job declares `packages: write` (default is `contents: read`).
+- Jobs declare `packages: write` (default is `contents: read`); `promote` additionally declares `pull-requests: read` for the PR-discovery API call.
+
+**Build once, promote on merge:**
+
+Industry pattern (Vercel, Netlify, Cloudflare Pages, AWS CodePipeline, Heroku): build the artifact once during the PR/preview phase, then promote it to production by re-tagging — do not rebuild on merge. Named practice: **immutable artifact + tag promotion**. Aligns forward-looking with SLSA Level 2/3 single-build provenance.
+
+Flow:
+
+1. Operator opens PR, fires `workflow_dispatch` on the PR branch. `build-and-push` runs the composite: app + backup built, Trivy-scanned, smoke-tested end-to-end, pushed to GHCR as `sha-<pr-tip>` + `<branch-slug>`. Operator deploys to VPS for validation.
+2. PR merges to `main` (squash by convention). `promote` fires on `push: main`. Three guards:
+   - **PR discovery** — `gh api repos/.../commits/${GITHUB_SHA}/pulls` must return the PR's head SHA. Direct pushes to `main` (hot-fix) return empty → fallback.
+   - **Tree equality** — `tree(merge-sha) == tree(pr-tip)`. Squash merges preserve trees; merge-commit / rebase strategies (also enabled on the repo) may pull in `main` and diverge → fallback.
+   - **Source image present on GHCR** — `docker manifest inspect ghcr.io/.../sha-<pr-tip>` must succeed. Renovate auto-merge or dispatch skipped entirely → fallback.
+3. Happy path: `docker pull` both images, re-tag as `sha-<merge-sha>` + `main`, push. ~30s. No rebuild, no rescan, no smoke — the bytes are identical to what was validated during dispatch.
+4. Fallback: call the same composite the dispatch ran. ~5 min on main's (cold-ish) cache scope. Operators see a `::warning::` in the run log explaining which guard failed.
+
+PR-tip discovery is via GitHub's merge metadata (`gh api .../commits/<sha>/pulls`) and not via a PR label. A label channel would persist past a force-push-then-merge and could promote stale bytes; using the API ties discovery to the actual merge.
+
+Trade-offs accepted:
+
+- **Smoke runs only on dispatch.** Promote re-tags identical bytes; the smoke that ran against those bytes is the smoke for the artifact. A runner-environment difference between dispatch and merge runners is theoretically possible but the bytes are the same.
+- **Trivy DB binds to dispatch time.** CVEs published between dispatch and merge slip past until the daily `security-scheduled.yml` catches them. Dispatch-to-merge is typically minutes to hours.
+- **GHCR tag count.** New `sha-<pr-tip>` tags accumulate per dispatched PR in addition to `sha-<merge-sha>` per merge. ~2× under existing retention.
 
 **Tagging:**
 

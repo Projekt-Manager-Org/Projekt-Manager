@@ -684,25 +684,23 @@ jobs:
           trivyignores: .trivyignore
 
   # ---------------------------------------------------------------
-  # Build and push the production app image to GHCR on every push
-  # to main/iteration branches. See ADR-0011 for the rationale
-  # (short version: 2 vCPU / 4 GB VPS cannot host both the running
-  # stack and a build peak without risking OOM during deploys).
-  #
-  # Runs on every push regardless of which files changed — a pure
-  # TypeScript commit still changes the image because `COPY . .`
-  # bakes `src/**` in, so path-filtering would silently ship stale
-  # images. GHA layer cache keeps no-op commits in the ~10-15s
-  # range.
+  # Build, scan, smoke, and push the production images to GHCR.
+  # Single source of truth lives in .github/actions/build-scan-push —
+  # this job is the entry point for `workflow_dispatch` (operator
+  # feature-branch dispatch) and for direct pushes to iteration
+  # branches. Pushes to `main` go through `promote` below instead;
+  # `promote` re-tags the dispatched artifact rather than rebuilding,
+  # and falls through to this same composite action if the promote
+  # guards fail. See ADR-0011 §"Build once, promote on merge" and
+  # #221 for the topology rationale.
   #
   # Gated on `check` + `lint` so we never publish an image from a
   # commit that fails tests, lint, type-check, or static analysis.
   # ---------------------------------------------------------------
   build-and-push:
-    # `push` covers main/iteration auto-builds (the original gate);
-    # `workflow_dispatch` covers operator-triggered feature-branch
-    # builds for VPS testing (see the trigger block above).
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref != 'refs/heads/main')
     needs: [check, lint]
     runs-on: ubuntu-latest
     permissions:
@@ -711,430 +709,173 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # Compute both tags we want to push in one place so the diff
-      # is obvious if we ever change the scheme. The SHA tag is the
-      # immutable rollback target used by scripts/deploy.sh; the
-      # branch-slug tag is the moving "latest on this branch"
-      # pointer kept as a human-friendly fallback (scripts/deploy.sh
-      # always resolves to a SHA, so it is not on the hot path).
-      # See ADR-0012 for the manual pull-based deploy flow.
+      # Compute the SHA tag and branch slug for the composite. The
+      # SHA tag is the immutable rollback target used by
+      # scripts/deploy.sh; the branch-slug tag is the moving
+      # "latest on this branch" pointer kept as a human-friendly
+      # fallback. See ADR-0012 for the manual pull-based deploy flow.
       - name: Compute image tags
         id: tags
         run: |
           set -euo pipefail
-          sha_tag="sha-${GITHUB_SHA}"
           # Slugify the branch name for Docker tag legality:
           # lowercase, replace '/' with '-', strip anything not in
           # [a-z0-9._-].
           branch_slug=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]/' '[:lower:]-' | sed 's/[^a-z0-9._-]/-/g')
-          # GHCR rejects uppercase in the repository path, so lowercase
-          # the owner (the org name `Projekt-Manager-Org` is mixed-case).
-          owner="${GITHUB_REPOSITORY_OWNER,,}"
           {
-            # App image tags.
-            echo "app_tags<<APP_TAGS_EOF"
-            echo "ghcr.io/${owner}/projekt-manager:${sha_tag}"
-            echo "ghcr.io/${owner}/projekt-manager:${branch_slug}"
-            echo "APP_TAGS_EOF"
-            # Backup image tags — parallel scheme, same SHA + slug.
-            echo "backup_tags<<BACKUP_TAGS_EOF"
-            echo "ghcr.io/${owner}/projekt-manager-backup:${sha_tag}"
-            echo "ghcr.io/${owner}/projekt-manager-backup:${branch_slug}"
-            echo "BACKUP_TAGS_EOF"
-            # Expose the slug-tag so the backup build step can pass it
-            # to Dockerfile.backup's APP_IMAGE_TAG build-arg: the
-            # backup image's FROM line pulls from the app tag we just
-            # pushed in this same workflow run, so they must agree.
-            echo "app_image_tag=${sha_tag}"
+            echo "sha_tag=sha-${GITHUB_SHA}"
+            echo "branch_slug=${branch_slug}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      - uses: ./.github/actions/build-scan-push
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          sha_tag: ${{ steps.tags.outputs.sha_tag }}
+          branch_slug_tag: ${{ steps.tags.outputs.branch_slug }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_actor: ${{ github.actor }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+  # ---------------------------------------------------------------
+  # Promote on merge to main: pull the dispatched `sha-<pr-tip>`
+  # images, re-tag as `sha-<merge-sha>` + `main`, push. No rebuild,
+  # no rescan, no smoke — the bytes are identical to what was
+  # validated during `workflow_dispatch` on the PR.
+  #
+  # Three guards gate the happy path; any failure falls through to
+  # the rebuild composite (same code path the dispatch ran):
+  #   1. Merge SHA must trace back to a merged PR (gh api).
+  #   2. tree(merge-sha) must equal tree(pr-tip) — guards against
+  #      non-squash merges (the repo enables merge-commit + rebase
+  #      alongside squash; either could pull in main and diverge).
+  #   3. `sha-<pr-tip>` image must exist on GHCR — guards against
+  #      Renovate auto-merge / force-push-then-merge / dispatch
+  #      simply skipped.
+  #
+  # See ADR-0011 §"Build once, promote on merge" and #221.
+  # ---------------------------------------------------------------
+  promote:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [check, lint]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # gh api repos/.../commits/<sha>/pulls needs this scope on
+      # private repos. Read-only — the promote path never writes
+      # to PR data.
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # Build → scan → push. Two build-push-action invocations share
-      # the gha cache, so the second one re-uses every layer and adds
-      # ~5s. The split exists to keep a failing image scan from
-      # publishing the bad tag to GHCR — `scripts/deploy.sh <sha>`
-      # resolves images by SHA tag, so a published-then-fails-scan
-      # sequence would leave a draw-able bad image behind.
-      - name: Build app image (load locally for scan)
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: Dockerfile
-          push: false
-          load: true
-          tags: projekt-manager-app:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Backstop Trivy image scan on the locally-loaded image before
-      # publishing (ADR-0027 §Decision.2). The PR-time `docker` job
-      # already scans the image before merge; this catches edge cases
-      # — TS-only commits that change the baked-in code without
-      # tripping the docker job's path filter, workflow_dispatch
-      # builds on feature branches, and direct-push-to-main bypasses
-      # that skipped the PR flow entirely. No `ignore-unfixed`: same
-      # rationale as the `docker` job's scan.
-      - name: Trivy — image vuln scan (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: projekt-manager-app:ci
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          trivyignores: .trivyignore
-
-      - name: Push app image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          tags: ${{ steps.tags.outputs.app_tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Backup image — see ADR-0020 §Decision (Layer 2 encrypted
-      # backups) and Dockerfile.backup. Built and pushed to GHCR under
-      # the same tagging scheme as the app image so scripts/deploy.sh
-      # can resolve both images by the same commit SHA. Sequential on
-      # purpose: Dockerfile.backup's `FROM ghcr.io/...:${APP_IMAGE_TAG}`
-      # references the just-pushed app image, so the app push must
-      # complete first. Separate gha cache scope keeps the backup
-      # image's layer cache from invalidating the app image's cache.
-      #
-      # Build → scan → push mirrors the app image flow (same R6 rationale):
-      # the backup image adds `postgresql17*`, `age`, `bash`, `findmnt`
-      # apk layers on top of node-alpine, each with its own CVE surface
-      # — leaving it unscanned was pre-existing tech debt.
-      - name: Build backup image (load locally for scan)
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: Dockerfile.backup
-          push: false
-          load: true
-          tags: projekt-manager-backup:ci
-          build-args: |
-            APP_IMAGE_TAG=${{ steps.tags.outputs.app_image_tag }}
-          cache-from: type=gha,scope=backup
-          cache-to: type=gha,mode=max,scope=backup
-
-      - name: Trivy — backup image vuln scan (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: projekt-manager-backup:ci
-          severity: HIGH,CRITICAL
-          exit-code: '1'
-          trivyignores: .trivyignore
-
-      - name: Push backup image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          file: Dockerfile.backup
-          push: true
-          tags: ${{ steps.tags.outputs.backup_tags }}
-          build-args: |
-            APP_IMAGE_TAG=${{ steps.tags.outputs.app_image_tag }}
-          cache-from: type=gha,scope=backup
-          cache-to: type=gha,mode=max,scope=backup
-
-      # `age` on the runner is needed by the smoke step below to mint a
-      # per-run binary `age` keypair before `docker compose up`. The app
-      # boot probe (assertBinaryIdentityLoaded — ADR-0024) refuses to
-      # start without a tmpfs-loaded identity matching
-      # BINARY_AGE_RECIPIENT; the recipient is interpolated into the app
-      # container's env at compose-parse time, so it must exist before
-      # the stack comes up. Same install as the `check-shard` job.
-      - name: Install age (smoke prerequisite)
-        run: sudo apt-get update && sudo apt-get install -y age
-
-      # ---------------------------------------------------------------
-      # Runtime smoke test — catch bugs that "does it compile?" misses.
-      #
-      # History (pre-#199): iteration 7 landed with six distinct
-      # runtime defects that all passed `npm ci && npm test && docker
-      # build`. Each one fired only when the container actually booted
-      # and ran its real code path on a real DB:
-      #   - dcron EPERM on setpgid (needed init:true) — gone with #199
-      #     (croner does not fork; container runs non-root)
-      #   - shared env schema required STORAGE_* (unused by backup-runner)
-      #   - listen_addresses='' literal quotes in execve
-      #   - pg Pool defaulting to a role that doesn't exist
-      #   - /var/run tmpfs shadowing /run/drill-key
-      #   - seed fixture readFileSync at module load (since fixed to an
-      #     inlined JSON import so the specific ENOENT can't recur)
-      #
-      # Cheap defence: boot the full stack with the in-stack MinIO
-      # standing in as the R2 target. Confirm the scheduler logged
-      # its registered-jobs lines (catches a schedule-registration
-      # regression in scheduleSubcommand), then run one `node
-      # backup-runner.js run` cycle end to end. MinIO is S3-compatible
-      # for every call the uploader makes (HeadBucket / PutObject /
-      # GetObject / ListObjectsV2), so this exercises the real
-      # pipeline including the startup R2 HeadBucket probe and the
-      # ephemeral-pg spawn under the postgres UID. An env-schema
-      # error, spawn-quoting crash, peer-auth failure, missing
-      # binary, or schedule-registration regression all surface here
-      # before the image is picked up by a real deploy. Runtime cost
-      # is ~60–90s on GHA's hosted runners.
-      # ---------------------------------------------------------------
-      - name: Runtime smoke test
+      - name: Resolve PR-tip + verify guards
+        id: resolve
         env:
-          # `build-and-push` already pushed both images under the SHA
-          # tag; the smoke step pulls them back through docker compose's
-          # normal path so the compose config is exercised too, not just
-          # the images.
-          APP_IMAGE_TAG: ${{ steps.tags.outputs.app_image_tag }}
-          # Placeholder secrets — the stack must start and one
-          # `node backup-runner.js run` cycle must complete before any
-          # of these matter to anything outside the compose network.
-          POSTGRES_PASSWORD: smoke
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: smoke123
-          # Capability-restricted MinIO app user (#45 / ADR-0022) —
-          # `:?`-gated in the minio overlay because the app must NEVER
-          # run as root. storage-init provisions this user.
-          MINIO_APP_ACCESS_KEY: pmappsmoke
-          MINIO_APP_SECRET_KEY: pmappsmokesecret
-          # Object-storage env consumed by the app. The minio overlay
-          # overrides STORAGE_ENDPOINT / STORAGE_PUBLIC_ENDPOINT /
-          # STORAGE_REGION for the in-compose target; the base file's
-          # `:?` gates need values at parse time so we set them too.
-          # STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY mirror MINIO_APP_*
-          # (the user the app actually runs as).
-          STORAGE_ENDPOINT: http://storage:9000
-          STORAGE_REGION: us-east-1
-          STORAGE_BUCKET: projekt-manager
-          STORAGE_ACCESS_KEY: pmappsmoke
-          STORAGE_SECRET_KEY: pmappsmokesecret
-          CLOUDFLARE_API_TOKEN: smoke
-          # R2 target points at the in-stack MinIO. The backup
-          # container's schedule subcommand (backup-runner.ts) runs
-          # an authenticated HeadBucket probe on startup and exits
-          # non-zero on any failure — an unreachable endpoint or a
-          # missing bucket would crash the container into a restart
-          # loop before any tick could be exercised. A reachable,
-          # authenticated target lets the probe, the schedule
-          # registration, and the upload pipeline run end to end.
-          R2_ACCESS_KEY_ID: minioadmin
-          R2_SECRET_ACCESS_KEY: smoke123
-          R2_ENDPOINT: http://storage:9000
-          R2_BUCKET: projekt-manager-backup-smoke
-          R2_REGION: auto
-          # Throwaway age recipient — must be a real Bech32-valid key so
-          # `age` accepts it during encrypt. The private half is discarded:
-          # smoke only exercises the forward path (encrypt + upload), never
-          # decryption, so nothing in the smoke can read what it wrote.
-          AGE_RECIPIENT: age15nf2qq4znfwup9khgjk0rdgp5wg9vx33fngc727m3zdkctq29djqyr9su6
-          # App-side env vars normally sourced from .env on the VPS.
-          DOMAIN: smoke.invalid
-          WG_BIND_IP: 127.0.0.1
-          # COMPOSE_FILE makes every plain `docker compose` call below
-          # implicitly load BOTH the prod base file AND the MinIO mirror
-          # overlay. The base file alone has no `storage` / `storage-init`
-          # services (prod talks to B2); the smoke test stands MinIO in
-          # for B2. `:` is the file separator in COMPOSE_FILE on POSIX.
-          COMPOSE_FILE: docker-compose.yml:docker-compose.minio.yml
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          cleanup() {
-            echo "::group::Smoke teardown"
-            docker compose --profile backup logs backup --tail=80 || true
-            docker compose --profile backup logs app --tail=40 || true
-            docker compose --profile backup down -v --remove-orphans || true
+          merge_sha="${GITHUB_SHA}"
+          echo "merge SHA: $merge_sha"
+
+          # Guard 1: merge SHA must be a PR merge. Direct pushes to
+          # main (hot-fix, manual force-push) return an empty array.
+          pr_head=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${merge_sha}/pulls" \
+                    --jq '.[0].head.sha // empty')
+          if [ -z "$pr_head" ]; then
+            echo "::warning::No PR found for merge SHA ${merge_sha} — falling back to rebuild"
+            echo "fallback=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "PR-tip SHA: $pr_head"
+
+          # Guard 2: tree equality. Squash merges preserve tree;
+          # merge-commit / rebase merges that incorporated main can
+          # produce a merge-commit tree that differs from the PR-tip
+          # tree, in which case the `sha-<pr-tip>` image bytes do
+          # NOT match what HEAD contains.
+          merge_tree=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${merge_sha}" --jq '.commit.tree.sha')
+          pr_tree=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${pr_head}" --jq '.commit.tree.sha')
+          echo "merge tree:  $merge_tree"
+          echo "PR-tip tree: $pr_tree"
+          if [ "$merge_tree" != "$pr_tree" ]; then
+            echo "::warning::Tree mismatch (non-squash merge or main divergence) — falling back to rebuild"
+            echo "fallback=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Guard 3: source tag must exist on GHCR. dispatch may have
+          # been skipped entirely (Renovate auto-merge, direct push,
+          # operator forgot), or fired against an earlier PR-tip SHA
+          # that was force-pushed away before merge. `docker manifest
+          # inspect` is a lightweight HEAD-equivalent — no pull.
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for img in projekt-manager projekt-manager-backup; do
+            ref="ghcr.io/${owner}/${img}:sha-${pr_head}"
+            if ! docker manifest inspect "$ref" > /dev/null 2>&1; then
+              echo "::warning::Source image ${ref} not found on GHCR — falling back to rebuild"
+              echo "fallback=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          # All three guards passed.
+          {
+            echo "fallback=false"
+            echo "pr_tip=${pr_head}"
+            echo "owner=${owner}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Promote — pull + re-tag + push
+        if: steps.resolve.outputs.fallback == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TIP: ${{ steps.resolve.outputs.pr_tip }}
+          OWNER: ${{ steps.resolve.outputs.owner }}
+        run: |
+          set -euo pipefail
+          merge_sha="${GITHUB_SHA}"
+          # GITHUB_REF_NAME on push:main is `main` — no slugification
+          # needed; included for parity with build-and-push and to
+          # tolerate future changes to the target branch name.
+          branch_slug=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]/' '[:lower:]-' | sed 's/[^a-z0-9._-]/-/g')
+
+          for img in projekt-manager projekt-manager-backup; do
+            src="ghcr.io/${OWNER}/${img}:sha-${PR_TIP}"
+            sha_dst="ghcr.io/${OWNER}/${img}:sha-${merge_sha}"
+            slug_dst="ghcr.io/${OWNER}/${img}:${branch_slug}"
+
+            echo "::group::Promote ${img}"
+            echo "  source: ${src}"
+            echo "  -> ${sha_dst}"
+            echo "  -> ${slug_dst}"
+            docker pull "${src}"
+            docker tag "${src}" "${sha_dst}"
+            docker tag "${src}" "${slug_dst}"
+            docker push "${sha_dst}"
+            docker push "${slug_dst}"
             echo "::endgroup::"
-          }
-          trap cleanup EXIT
-
-          # Per-run binary `age` keypair (ADR-0024). The boot probe
-          # (assertBinaryIdentityLoaded) refuses to start the app
-          # without a tmpfs-loaded identity matching
-          # BINARY_AGE_RECIPIENT, which compose interpolates into the
-          # app container's env at parse time — so the recipient must
-          # exist BEFORE `docker compose up`. Mirrors the per-fork
-          # keypair pattern in src/test/integration-setup.ts and
-          # playwright.config.ts; the private half is loaded into the
-          # app's tmpfs further down (after compose up but before the
-          # boot probe runs — see "Load binary identity" group).
-          BINARY_IDENTITY=$(age-keygen 2>/dev/null)
-          BINARY_RECIPIENT=$(printf '%s' "$BINARY_IDENTITY" | age-keygen -y)
-          export BINARY_AGE_RECIPIENT="$BINARY_RECIPIENT"
-
-          echo "::group::Compose up (app stack, no backup yet)"
-          # Explicit service list — caddy is skipped because it tries
-          # to provision a TLS cert against the fake DOMAIN/token and
-          # would otherwise dominate the log with ACME retries. Backup
-          # is deferred until the R2 bucket exists on MinIO, otherwise
-          # the schedule subcommand's startup HeadBucket probe would
-          # 404 and the container would restart-loop. COMPOSE_FILE in
-          # env: above picks up the minio overlay automatically.
-          docker compose up -d db storage storage-init app
-          echo "::endgroup::"
-
-          echo "::group::Load binary identity via load-binary-key (operator path)"
-          # Invoke the actual operator script — not a tee bypass — so
-          # regressions in the script's runtime environment (missing
-          # bash, missing age-keygen, broken tmpfs-invariant check,
-          # etc.) surface here instead of on first real deploy. The
-          # script reads stdin via `read -r -s -d $'\004'`, which
-          # accepts EOF as a terminator, so piping the identity works
-          # without a literal Ctrl-D byte. No `-t` because GHA has no
-          # TTY; `read -s` is a no-op on non-TTY stdin and the rest of
-          # the script is TTY-agnostic.
-          #
-          # The probe sits behind ~5s of pre-probe boot work (migrate +
-          # bootstrapAdminIfEmpty + validateWorkflowStates +
-          # assertStorageBucketSafe), so a 1s polling exec lands
-          # comfortably ahead. If the app already crashed once before
-          # we land, the next restart re-creates the tmpfs (PID 1 exit
-          # kills the namespace), so we keep retrying until the
-          # loader script actually succeeds AND its write survives.
-          loaded=0
-          last_out=""
-          for i in $(seq 1 30); do
-            if last_out=$(printf '%s' "$BINARY_IDENTITY" | \
-                          docker exec -i projekt-manager-app-1 \
-                          load-binary-key 2>&1); then
-              echo "  $last_out"
-              echo "  loaded via load-binary-key (attempt $i)"
-              loaded=1
-              break
-            fi
-            sleep 1
           done
-          if [ "$loaded" != "1" ]; then
-            echo "::error::load-binary-key did not succeed within 30s"
-            printf '%s\n' "$last_out" >&2
-            exit 1
-          fi
-          echo "::endgroup::"
 
-          echo "::group::Wait for app readiness (up to 90s)"
-          # Single source of truth in scripts/smoke-app-health.sh — same
-          # probe deploy and sync-restore use. Per-attempt failure reasons
-          # (HTTP status+body, fetch error) print inline so a smoke that
-          # fails because storage went down doesn't look identical to one
-          # that fails because Fastify never bound :3000.
-          if ! ./scripts/smoke-app-health.sh projekt-manager-app-1 90; then
-            echo "::error::App did not become ready"
-            exit 1
-          fi
-          echo "::endgroup::"
+      # Fallback path: any guard failure flips fallback=true. Run
+      # the same composite the dispatch path uses, against the
+      # merge SHA. Cache scope is main's (cold relative to the
+      # dispatch's feature-branch scope), so expect wall-clock
+      # comparable to a fresh main build.
+      - name: Compute tags for fallback rebuild
+        if: steps.resolve.outputs.fallback == 'true'
+        id: fallback_tags
+        run: |
+          set -euo pipefail
+          branch_slug=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]/' '[:lower:]-' | sed 's/[^a-z0-9._-]/-/g')
+          {
+            echo "sha_tag=sha-${GITHUB_SHA}"
+            echo "branch_slug=${branch_slug}"
+          } >> "$GITHUB_OUTPUT"
 
-          echo "::group::Create R2 smoke bucket on MinIO"
-          # One-off mc container attached to the compose network,
-          # reusing the storage-init service definition so no network-
-          # name lookup is needed. --no-deps skips depends_on resolution
-          # (storage is already up); -T disables TTY for cleaner logs.
-          docker compose run --rm --no-deps -T \
-            --entrypoint /bin/sh \
-            storage-init \
-            -c "mc alias set local http://storage:9000 \"\$MINIO_ROOT_USER\" \"\$MINIO_ROOT_PASSWORD\" && mc mb --ignore-existing local/${R2_BUCKET}"
-          echo "::endgroup::"
-
-          echo "::group::Bring up backup container"
-          docker compose --profile backup up -d backup
-          echo "::endgroup::"
-
-          echo "::group::Backup container stable? (up to 20s)"
-          # Poll briefly so we don't race the startup R2 probe — the
-          # probe runs early in scheduleSubcommand and the container
-          # reports 'running' before the probe has had a chance to
-          # crash it. A stable container in this window passed the
-          # probe and registered the croner schedule.
-          for i in $(seq 1 10); do
-            running=$(docker inspect projekt-manager-backup-1 --format '{{.State.Running}}' 2>/dev/null || echo false)
-            restarts=$(docker inspect projekt-manager-backup-1 --format '{{.RestartCount}}' 2>/dev/null || echo 0)
-            echo "  attempt $i: running=$running restarts=$restarts"
-            if [ "$running" = "true" ] && [ "$restarts" = "0" ]; then
-              sleep 2
-              continue
-            fi
-            break
-          done
-          if [ "$running" != "true" ] || [ "$restarts" -gt 0 ]; then
-            echo "::error::Backup container is not healthy (running=$running restarts=$restarts)"
-            exit 1
-          fi
-          echo "::endgroup::"
-
-          echo "::group::Scheduler registered all four cron jobs?"
-          # scheduleSubcommand logs one "registered <name> next=..." line
-          # per croner job at boot. Confirming all four are present
-          # catches a regression where a job's cron expression is
-          # malformed (croner throws at construction → only the earlier
-          # jobs ever registered), or where buildScheduleJobs returned
-          # fewer than four entries. The unit tests in
-          # backup-runner-schedule.test.ts cover the wiring at the
-          # function level; this smoke proves the wiring survives an
-          # actual container boot.
-          backup_logs=$(docker logs projekt-manager-backup-1 2>&1)
-          echo "$backup_logs"
-          for name in backup-weekday backup-weekend drill-weekday drill-weekend; do
-            if ! printf '%s' "$backup_logs" | grep -q "schedule: registered ${name} next="; then
-              echo "::error::scheduler did not log a 'registered ${name}' line at boot"
-              exit 1
-            fi
-          done
-          echo "  all four croner jobs registered — smoke OK"
-          echo "::endgroup::"
-
-          echo "::group::Run one backup cycle"
-          # Full pipeline: env parse, pg_dump, ephemeral-pg verify,
-          # age encrypt, PutObject to MinIO. Expected rc=0 — MinIO
-          # is S3-compatible for every call the uploader makes. A
-          # non-zero rc here is a real runtime defect the image-build
-          # phase did not catch.
-          #
-          # NOTE: this is a SEPARATE node process from the scheduler
-          # in PID 1; the manual `run` subcommand is not serialised
-          # against an in-flight scheduled tick (croner's protect: true
-          # only covers intra-process). Acceptable here because the
-          # smoke clock is unlikely to land on the schedule's tick
-          # window during the ~5-min run.
-          set +e
-          backup_out=$(docker exec projekt-manager-backup-1 \
-            node /app/dist/server/backup-runner.js run 2>&1)
-          backup_rc=$?
-          set -e
-          echo "$backup_out"
-          echo "  exit code: $backup_rc"
-          if [ "$backup_rc" != "0" ]; then
-            echo "::error::backup-runner run failed end-to-end against MinIO — see output above"
-            exit 1
-          fi
-          echo "  backup-runner run completed end-to-end — smoke OK"
-          echo "::endgroup::"
-
-          echo "::group::Drill-key tmpfs reachable?"
-          # Catches the /var/run tmpfs shadowing /run/drill-key bug by
-          # confirming the script can at least reach the write path
-          # (sends an empty paste — load-drill-key rejects with a
-          # clear "empty input" message, which proves the tmpfs-invariant
-          # check passed).
-          set +e
-          dk_out=$(echo | docker exec -i projekt-manager-backup-1 /usr/local/bin/load-drill-key 2>&1)
-          dk_rc=$?
-          set -e
-          echo "$dk_out"
-          if echo "$dk_out" | grep -q "not a tmpfs mount"; then
-            echo "::error::load-drill-key reports /run/drill-key is not tmpfs — the /var/run tmpfs is shadowing it again"
-            exit 1
-          fi
-          if echo "$dk_out" | grep -q "No such file or directory"; then
-            echo "::error::load-drill-key cannot reach /run/drill-key/identity — mount topology regressed"
-            exit 1
-          fi
-          echo "  drill-key tmpfs path is reachable — smoke OK"
-          echo "::endgroup::"
+      - name: Fallback — full build + scan + smoke + push
+        if: steps.resolve.outputs.fallback == 'true'
+        uses: ./.github/actions/build-scan-push
+        with:
+          sha_tag: ${{ steps.fallback_tags.outputs.sha_tag }}
+          branch_slug_tag: ${{ steps.fallback_tags.outputs.branch_slug }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_actor: ${{ github.actor }}
