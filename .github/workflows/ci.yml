@@ -6,12 +6,14 @@ on:
   pull_request:
     branches: [main, 'iteration/**']
   # GitHub merge queue fires `merge_group` events on a synthetic train
-  # branch built from `main` + queued PRs. The `main` Ruleset requires
-  # `check` and `docker` to pass on these events — without listening
-  # for `merge_group` here, the queue creates the train, no workflow
-  # fires, required checks never report, and the queue silently waits
-  # until `check_response_timeout_minutes` (60 by default) then rejects
-  # the PR. Mandatory companion to the merge-queue rule in the Ruleset.
+  # branch built from `main` + queued PRs. The queue is currently OFF
+  # (see docs/ops/dep-management.md §5 for the evaluation + cost
+  # model); this listener is a no-op until/unless the `merge_queue`
+  # rule is re-added to the `main protection` Ruleset. Kept in place
+  # because removing it would mean a future re-enable also needs a
+  # workflow edit, and forgetting that edit makes the queue silently
+  # time out (PRs sit `CLEAN` for 60 min then get rejected with no
+  # actionable signal — see #214 history).
   merge_group:
   # Manual escape hatch for building/publishing images on a feature
   # branch so it can be deployed to the VPS via scripts/deploy.sh
@@ -37,28 +39,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  # ---------------------------------------------------------------
+  # Static-analysis pillar. Runs in parallel with `check-shard`
+  # below — both are required gates, but they share no runner state.
+  # No postgres service, no MinIO; only the npm cache + the static
+  # checkers. Build also lives here because it has no DB/MinIO
+  # dependency and we want the test shards' critical path to be
+  # tests only.
+  # ---------------------------------------------------------------
+  lint:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          # POSTGRES_DB defaults to POSTGRES_USER, so omitting it yields
-          # a `pm` database. Vitest integration tests don't use it
-          # directly — `src/test/integration-setup.ts` creates per-fork
-          # `projekt_manager_test_<pid>` databases on demand from the
-          # `pm` superuser. The base DB only needs to be reachable for
-          # connection-string parsing and pool warm-up.
-          POSTGRES_USER: pm
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U pm -d pm"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -101,12 +91,10 @@ jobs:
       - run: npm ci
 
       # ripgrep — needed by scripts/check-theme-tokens.sh; without it
-      # the check silently no-ops. age — needed by src/test/integration-
-      # setup.ts, which generates a per-fork binary identity via
-      # `age-keygen` before vitest's integration suite runs (ADR-0024).
-      # Neither is preinstalled on ubuntu-latest.
+      # the check silently no-ops. age is NOT installed here — only
+      # `check-shard` runs the integration suite that requires it.
       - name: Install apt prerequisites
-        run: sudo apt-get update && sudo apt-get install -y ripgrep age
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
 
       # Allowlist schema gate (ADR-0027 §Negative; runbook §Allowlist).
       # Scanners enforce only the advisory ID; owner/reason/expiry are
@@ -122,7 +110,7 @@ jobs:
       # OSV-Scanner (ADR-0027 §Decision.2) — replaces `npm audit`. OSV.dev
       # ingests GHSA, so OSV is a strict superset of npm audit for npm
       # advisories AND covers transitive OS-level CVEs the registry index
-      # does not surface. Inline-in-the-`check`-job CLI install instead of
+      # does not surface. Inline-in-the-job CLI install instead of
       # google/osv-scanner-action because that action only ships reusable
       # workflows (separate jobs) and a composite Docker action documented
       # as "not intended to be used directly" — neither fits an inline step.
@@ -161,12 +149,12 @@ jobs:
         # osv-scanner.toml with the documented owner/reason/expiry schema.
         run: osv-scanner scan source --lockfile=./package-lock.json --config=./osv-scanner.toml
 
-      # Trivy source-tree scans land in `check` (not in `docker`) so they
+      # Trivy source-tree scans land in `lint` (not in `docker`) so they
       # run on every PR regardless of which paths changed. The `docker`
       # job below is path-filtered and pull-request-only — leaving secret
       # + IaC scans there would skip them on every TS-only / docs / e2e
       # PR (the majority class), making the gate informational rather
-      # than blocking. Branch protection requires `check`; `docker`
+      # than blocking. Branch protection requires `lint`; `docker`
       # provides only the image-vuln scan + compose validation.
       #
       # Allowlist: .trivyignore (entries gated by check-allowlist-schema
@@ -247,6 +235,74 @@ jobs:
       - name: Audit single-write-path check (mutate() bypass)
         run: bash scripts/check-audit-mutations.sh
 
+      # Build also lives in `lint` (not in `check-shard`) so it doesn't
+      # pad the test shards' critical path. `npm run build` is
+      # `tsc --noEmit && vite build && build:server` — the tsc step
+      # duplicates the Type check above, accepted ~5s of dup for the
+      # cleaner job graph. No DB/MinIO needed.
+      - name: Build
+        run: npm run build
+
+  # ---------------------------------------------------------------
+  # Test pillar — sharded across 2 runners to halve the wall-clock.
+  # Each shard owns its own postgres service + MinIO; per-fork DB
+  # isolation in src/test/integration-setup.ts already prevents
+  # cross-fork collisions WITHIN a shard, and cross-shard collisions
+  # are impossible because each shard runs on its own runner (= its
+  # own postgres / MinIO instances).
+  #
+  # The aggregator job below (`check`) is the stable required-check
+  # name the Ruleset depends on — shard-count changes only touch its
+  # `needs:` list, never the Ruleset.
+  # ---------------------------------------------------------------
+  check-shard:
+    runs-on: ubuntu-latest
+
+    strategy:
+      # All shards run even if one fails — operator gets the full
+      # failure picture in one pass instead of a fail-fast cascade
+      # where the second shard never reports.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          # POSTGRES_DB defaults to POSTGRES_USER, so omitting it yields
+          # a `pm` database. Vitest integration tests don't use it
+          # directly — `src/test/integration-setup.ts` creates per-fork
+          # `projekt_manager_test_<pid>` databases on demand from the
+          # `pm` superuser. The base DB only needs to be reachable for
+          # connection-string parsing and pool warm-up.
+          POSTGRES_USER: pm
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pm -d pm"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # age — needed by src/test/integration-setup.ts, which generates a
+      # per-fork binary identity via `age-keygen` before vitest's
+      # integration suite runs (ADR-0024). Not preinstalled on
+      # ubuntu-latest. ripgrep lives in `lint` only (theme-token check).
+      - name: Install apt prerequisites
+        run: sudo apt-get update && sudo apt-get install -y age
+
       # MinIO runs as a step (not a service container) because GitHub service
       # containers do not support overriding `command`, and minio/minio needs
       # `server /data` as its argv. Versions are pinned to match
@@ -325,8 +381,13 @@ jobs:
             minio/mc:RELEASE.2025-08-13T08-35-41Z \
             /init-storage.sh
 
-      - name: Unit and component tests
-        run: npm run test:coverage
+      # `--shard=N/M` partitions the file list across runners. Vitest's
+      # built-in sharder is path-hash stable across runs so a flake is
+      # reproducible on the same shard. Coverage per shard is produced
+      # but not uploaded — there is no coverage gate today; wire an
+      # aggregator (e.g. Codecov action) when one becomes load-bearing.
+      - name: Unit and component tests (shard ${{ matrix.shard }}/2)
+        run: npm run test:coverage -- --shard=${{ matrix.shard }}/2
         env:
           DATABASE_URL: postgresql://pm:postgres@localhost:5432/pm
           # Storage env vars are required by src/server/__tests__/storage.test.ts
@@ -348,8 +409,26 @@ jobs:
           # MinIO accepts any region; us-east-1 is the SDK default.
           STORAGE_REGION: us-east-1
 
-      - name: Build
-        run: npm run build
+  # ---------------------------------------------------------------
+  # Aggregator — the stable required-check name the Ruleset depends
+  # on. `needs: check-shard` collapses the matrix into one result;
+  # `if: !cancelled()` keeps this job running on shard failure so the
+  # gate FAILS instead of being SKIPPED (branch protection treats
+  # skipped required checks as success, which would silently let a
+  # failing shard through). Shard-count changes only touch the
+  # `matrix.shard:` array above, never the Ruleset.
+  # ---------------------------------------------------------------
+  check:
+    needs: check-shard
+    runs-on: ubuntu-latest
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Verify all shards passed
+        run: |
+          if [ "${{ needs.check-shard.result }}" != "success" ]; then
+            echo "::error::check-shard reported ${{ needs.check-shard.result }} — gating PR"
+            exit 1
+          fi
 
   # ---------------------------------------------------------------
   # Detect whether container-relevant files changed in this PR/push.
@@ -398,11 +477,14 @@ jobs:
               - '.github/workflows/ci.yml'
 
   # ---------------------------------------------------------------
-  # Docker validation — only runs when container-relevant files
-  # changed, and only on pull requests. On push (merge) events the
-  # `build-and-push` job below does the same build for real (and
-  # actually publishes), so running both would just double-build
-  # the same layers. See ADR-0011 for the split rationale.
+  # Docker validation — runs when container-relevant files changed
+  # (PR), unconditionally on merge_group (Ruleset requirement), and
+  # unconditionally on workflow_dispatch so operator feature-branch
+  # tests see the PR-time signal too — otherwise the docker-bytes
+  # gate is only visible at publish time via build-and-push. On push
+  # (merge) events `build-and-push` does the same build for real
+  # (and actually publishes), so we skip here to avoid double-build.
+  # See ADR-0011 for the split rationale.
   #
   # Scans BOTH app and backup images at PR time (#219). The backup
   # image's `FROM ghcr.io/.../projekt-manager:${APP_IMAGE_TAG}` would
@@ -420,8 +502,13 @@ jobs:
     # required check as "not yet met" and waits until the response
     # timeout expires (60 min default), then rejects the PR with no
     # actionable signal. So run the job unconditionally on `merge_group`;
-    # the path filter only applies on `pull_request`.
-    if: (needs.changes.outputs.docker == 'true' && github.event_name == 'pull_request') || github.event_name == 'merge_group'
+    # the path filter only applies on `pull_request`. `workflow_dispatch`
+    # gets the same unconditional treatment so the operator's feature-
+    # branch test cycle sees the same docker signal a real PR would.
+    if: |
+      (needs.changes.outputs.docker == 'true' && github.event_name == 'pull_request') ||
+      github.event_name == 'merge_group' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -520,10 +607,10 @@ jobs:
 
       # Trivy image-vuln scan against the locally-built image
       # (ADR-0027 §Decision.2). Filesystem-secret + IaC scans live in
-      # the `check` job above so they run on every PR; this job is
+      # the `lint` job above so they run on every PR; this job is
       # path-filtered and would skip them on the majority of PRs.
       # Allowlist: .trivyignore (entries gated by the schema check in
-      # `check`; empty baseline). HIGH/CRITICAL only — image scans
+      # `lint`; empty baseline). HIGH/CRITICAL only — image scans
       # otherwise drown in LOW-severity OS-package noise.
       #
       # No `ignore-unfixed`: per the project's refuse-or-block-never-
@@ -608,15 +695,15 @@ jobs:
   # images. GHA layer cache keeps no-op commits in the ~10-15s
   # range.
   #
-  # Gated on `check` so we never publish an image from a commit
-  # that fails tests, lint, or type-check.
+  # Gated on `check` + `lint` so we never publish an image from a
+  # commit that fails tests, lint, type-check, or static analysis.
   # ---------------------------------------------------------------
   build-and-push:
     # `push` covers main/iteration auto-builds (the original gate);
     # `workflow_dispatch` covers operator-triggered feature-branch
     # builds for VPS testing (see the trigger block above).
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    needs: check
+    needs: [check, lint]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -768,7 +855,7 @@ jobs:
       # start without a tmpfs-loaded identity matching
       # BINARY_AGE_RECIPIENT; the recipient is interpolated into the app
       # container's env at compose-parse time, so it must exist before
-      # the stack comes up. Same install as the `check` job.
+      # the stack comes up. Same install as the `check-shard` job.
       - name: Install age (smoke prerequisite)
         run: sudo apt-get update && sudo apt-get install -y age
 
