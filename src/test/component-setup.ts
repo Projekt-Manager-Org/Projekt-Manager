@@ -18,6 +18,17 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
+// `__APP_GIT_SHA__` is baked into the client bundle by vite's `define`
+// at build time (see vite.config.ts). Vitest runs through its own
+// config (vitest.config.ts) and does NOT see vite.config.ts's define,
+// so the identifier resolves as a normal global lookup at test
+// runtime. Default to empty string here so the Footer renders without
+// the chip; tests that pin chip behaviour override with
+// `vi.stubGlobal('__APP_GIT_SHA__', '...')`.
+if (typeof (globalThis as { __APP_GIT_SHA__?: string }).__APP_GIT_SHA__ === 'undefined') {
+  (globalThis as unknown as { __APP_GIT_SHA__: string }).__APP_GIT_SHA__ = '';
+}
+
 if (typeof globalThis.EventSource === 'undefined') {
   class EventSourceStub {
     url: string;

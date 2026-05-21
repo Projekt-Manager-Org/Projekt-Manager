@@ -2,7 +2,41 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
 import { build as esbuildBuild } from 'esbuild';
+import { execSync } from 'child_process';
 import path from 'path';
+
+/**
+ * Resolve the git short-SHA baked into the client bundle for the footer
+ * version chip. Precedence:
+ *   1. `$GIT_SHA` env (CI passes the commit SHA via the build-scan-push
+ *      composite; Dockerfile forwards the build-arg into the build env).
+ *   2. `git rev-parse --short=7 HEAD` for local `npm run build` outside
+ *      a container.
+ *   3. Empty string when neither is available (shallow CI checkout
+ *      without git, container build without a .git directory, etc.) —
+ *      the Footer renders nothing on the left in this case.
+ *
+ * Truncated to 7 chars here so `__APP_GIT_SHA__` is the display-ready
+ * value; the Footer trims defensively but the canonical truncation is
+ * here.
+ *
+ * Note (ADR-0011 build-once-promote): this is the build-time commit
+ * SHA. Under build-once-promote it identifies the PR-tip bytes that
+ * were built and scanned, not the merge-commit SHA — that is the
+ * correct identity for the immutable image artifact.
+ */
+function resolveGitSha(): string {
+  const fromEnv = process.env.GIT_SHA;
+  if (fromEnv && fromEnv.length > 0) return fromEnv.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short=7 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+      .slice(0, 7);
+  } catch {
+    return '';
+  }
+}
 
 /**
  * Strip data-testid attributes from JSX during production builds.
@@ -104,6 +138,13 @@ function buildServiceWorker(): Plugin {
 
 export default defineConfig({
   plugins: [react(), stripTestAttributes(), buildServiceWorker()],
+  // `JSON.stringify` so Vite inlines the value as a string literal at
+  // every `__APP_GIT_SHA__` reference (not an identifier). Resolved at
+  // config-load time so the SHA is captured once per build, not per
+  // module transform.
+  define: {
+    __APP_GIT_SHA__: JSON.stringify(resolveGitSha()),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

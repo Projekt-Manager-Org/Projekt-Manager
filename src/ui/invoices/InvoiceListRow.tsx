@@ -28,7 +28,7 @@
  * project), which is the per-project block's responsibility.
  */
 
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { STRINGS } from '@/config/strings';
 import { buildInvoiceDownloadFilename, type Invoice } from '@/domain/invoice';
 import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
@@ -82,6 +82,7 @@ interface Props {
 
 export function InvoiceListRow({ invoice, originalNumber }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const canWrite = usePermission('invoice:write');
   const fetchList = useInvoiceListStore((s) => s.fetch);
   const deleteDraft = useInvoiceStore((s) => s.deleteDraft);
@@ -92,9 +93,15 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
 
   // Deep link: the `editDraft` param tells `InvoiceSection` to open its
   // modal form on this draft, so the user lands in the editor rather
-  // than on the bare project page expecting a second click.
+  // than on the bare project page expecting a second click. We pass the
+  // originating list URL via router state so the editor's `Abbrechen`
+  // returns the user to the same filtered list rather than stranding
+  // them on the project page.
+  const returnTo = `${location.pathname}${location.search}`;
   const navigateToDraftEditor = () =>
-    navigate(`/projects/${invoice.projectId}?editDraft=${invoice.id}`);
+    navigate(`/projects/${invoice.projectId}?editDraft=${invoice.id}`, {
+      state: { returnTo },
+    });
   const navigateToDetail = () => navigate(`/rechnungen/${invoice.id}`);
   // Drafts open in the per-project block (the only place a draft is
   // editable). Issued / cancelled / Storno rows open in the per-invoice

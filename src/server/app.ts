@@ -29,6 +29,8 @@ import { eventsRoutes } from './routes/events.js';
 import { invoiceRoutes } from './routes/invoices.js';
 import { companyProfileRoutes } from './routes/company-profile.js';
 import { configureSseBus } from './sse/bus.js';
+import { emitAuditChanged } from './sse/emitters.js';
+import { onAuditCommitted } from './services/audit-publisher.js';
 import { registerNotificationPublisher } from './services/notification-publisher.js';
 import { noopPushDispatcher, type PushDispatcher } from './services/PushDispatcher.js';
 import { WebPushDispatcher } from './services/WebPushDispatcher.js';
@@ -260,6 +262,17 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     // a throwing subscriber surfaces through that logger rather than
     // being swallowed (AC-183).
     registerNotificationPublisher({ db: opts.db, dispatcher: pickPushDispatcher(vapid) });
+
+    // Fan every committed audit row to the SSE bus as `audit_changed`
+    // so the per-project ActivityFeed (and any future audit consumer)
+    // refreshes on every mutation — not just the ones that bump the
+    // parent project's `updatedAt`. The notification publisher is the
+    // first subscriber and remains independent; the audit publisher
+    // uses a Set for fan-out, so adding this second subscriber cannot
+    // interfere with that path (architecture.md §11.13, ADR-0021).
+    onAuditCommitted(() => {
+      emitAuditChanged();
+    });
   }
 
   return app;

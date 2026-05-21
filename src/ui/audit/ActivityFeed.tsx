@@ -20,10 +20,12 @@
  * `src/state/auditStore.ts` for the factory rationale.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { createAuditStore } from '@/state/auditStore';
 import type { AuditListParams } from '@/domain/audit';
 import { STRINGS } from '@/config/strings';
+import { AUDIT_CHANGED } from '@/config/sseEvents';
+import { onSseEvent } from '@/sse/client';
 import { ActivityFeedRow } from './ActivityFeedRow';
 import { ActivityFeedRowTable } from './ActivityFeedRowTable';
 import styles from './ActivityFeed.module.css';
@@ -106,6 +108,27 @@ export function ActivityFeed({
     // a new object literal on each render would refetch every paint.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey, fetchList]);
+
+  // Keep the latest filters in a ref so the SSE handler always reads
+  // them without retriggering the subscription on every filter change.
+  // The filterKey-driven effect above remains the authoritative path
+  // for filter changes; this ref only feeds the realtime refresh.
+  const filtersRef = useRef(filters);
+  useEffect(() => {
+    filtersRef.current = filters;
+  });
+
+  useEffect(() => {
+    // Subscribe to `audit_changed` (api.md §14.2.13). The audit
+    // publisher dispatches per-row post-commit (ADR-0021), so a tx
+    // with N rows produces N frames — the store's `fetchSeq` guard
+    // collapses concurrent refetches into one rendered result, which
+    // is the correct trade-off for an unfiltered invalidation hint.
+    const unsubscribe = onSseEvent(AUDIT_CHANGED, () => {
+      void fetchList(filtersRef.current);
+    });
+    return unsubscribe;
+  }, [fetchList]);
 
   const hasMore = entries.length < total;
   const showLoader = loading && entries.length === 0;

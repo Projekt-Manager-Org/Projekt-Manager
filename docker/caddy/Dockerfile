@@ -29,8 +29,7 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 #
 # UID 1000 is chosen so Docker's empty-named-volume initialization stamps
 # caddy_data and caddy_config with caddy:caddy ownership on a fresh `compose
-# up`. Pre-existing deploys with root-owned volumes need a one-time host-side
-# chown — documented in docs/ops/server-setup.md § Caddy non-root migration.
+# up`.
 RUN addgroup -S -g 1000 caddy \
  && adduser  -S -D -H -u 1000 -G caddy -s /sbin/nologin caddy \
  && setcap   cap_net_bind_service=+ep /usr/bin/caddy \

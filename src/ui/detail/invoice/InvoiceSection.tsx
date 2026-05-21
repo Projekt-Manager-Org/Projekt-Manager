@@ -29,7 +29,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { STRINGS } from '@/config/strings';
 import type { WorkflowState } from '@/config/stateConfig';
 import type { Invoice } from '@/domain/invoice';
@@ -119,6 +119,8 @@ export function InvoiceSection({ projectId, projectStatus }: Props) {
   // param is stripped on `onClose` so the form doesn't reappear after
   // the user dismisses it.
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const urlEditDraftId = searchParams.get('editDraft');
   const urlEditDraft = useMemo(() => {
     if (!urlEditDraftId || !invoices) return null;
@@ -346,6 +348,21 @@ export function InvoiceSection({ projectId, projectStatus }: Props) {
               const next = new URLSearchParams(searchParams);
               next.delete('editDraft');
               setSearchParams(next, { replace: true });
+            }
+            // If the user reached the editor by clicking a draft on the
+            // filtered /rechnungen list, return them there. The prefix
+            // check is a strict allow-list — router state can't easily
+            // be tampered with, but the guard keeps the surface honest.
+            const state: unknown = location.state;
+            const returnTo =
+              state &&
+              typeof state === 'object' &&
+              'returnTo' in state &&
+              typeof (state as { returnTo: unknown }).returnTo === 'string'
+                ? (state as { returnTo: string }).returnTo
+                : null;
+            if (returnTo && returnTo.startsWith('/rechnungen')) {
+              navigate(returnTo);
             }
           }}
         />

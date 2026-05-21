@@ -7,7 +7,12 @@
  * transaction has already resolved.
  */
 
-import { INVOICE_CHANGED, PROJECT_CHANGED, STORAGE_USAGE_CHANGED } from '../../config/sseEvents.js';
+import {
+  AUDIT_CHANGED,
+  INVOICE_CHANGED,
+  PROJECT_CHANGED,
+  STORAGE_USAGE_CHANGED,
+} from '../../config/sseEvents.js';
 import { broadcast } from './bus.js';
 
 /**
@@ -35,4 +40,17 @@ export function emitProjectChanged(): void {
  */
 export function emitInvoiceChanged(): void {
   broadcast(INVOICE_CHANGED);
+}
+
+/**
+ * Broadcast `audit_changed` (api.md §14.2.13). Fired post-commit per
+ * audit-log row (ADR-0021 / architecture.md §11.13 — the audit
+ * publisher dispatches once per committed row, after the originating
+ * tx commits, so a rollback leaks no event). One frame per row is
+ * deliberate: the ActivityFeed's client-side `fetchSeq` guard
+ * collapses concurrent refetches, so a transaction that writes N
+ * rows lands N invalidation hints and exactly one refetch.
+ */
+export function emitAuditChanged(): void {
+  broadcast(AUDIT_CHANGED);
 }

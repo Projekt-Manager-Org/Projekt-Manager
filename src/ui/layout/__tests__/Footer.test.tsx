@@ -79,6 +79,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   useAuthStore.setState({ authUser: null, authError: null, sessionChecked: true });
+  // Drop any per-test override of `__APP_GIT_SHA__` so the next test
+  // starts from the default (component-setup.ts) value.
+  vi.unstubAllGlobals();
 });
 
 describe('Footer storage badge — permission gating (AC-271)', () => {
@@ -181,6 +184,40 @@ describe('Footer storage badge — label and value (AC-271)', () => {
     await useStorageUsageStore.getState().refresh();
 
     await vi.waitFor(() => expect(badge.textContent).toContain('5.00 MB'));
+  });
+});
+
+describe('Footer version chip — build-time git SHA', () => {
+  it('renders the chip with `v` prefix + 7-char SHA when __APP_GIT_SHA__ is set', () => {
+    vi.stubGlobal('__APP_GIT_SHA__', 'abc1234');
+    setAuthRoles(['worker']); // worker hides the storage badge — keeps the assertion clean
+
+    render(<Footer />);
+
+    const chip = screen.getByTestId('footer-app-version');
+    expect(chip).toBeInTheDocument();
+    expect(chip.textContent).toBe('vabc1234');
+  });
+
+  it('truncates a full 40-char SHA to 7 chars for display', () => {
+    // Belt-and-braces against a future bake-in that ships a full SHA
+    // (vite truncates today, but the Footer should not depend on that
+    // upstream invariant for the displayed form).
+    vi.stubGlobal('__APP_GIT_SHA__', 'd468579abcdef0123456789abcdef0123456789a');
+    setAuthRoles(['worker']);
+
+    render(<Footer />);
+
+    expect(screen.getByTestId('footer-app-version').textContent).toBe('vd468579');
+  });
+
+  it('renders no chip when __APP_GIT_SHA__ is empty (dev / non-git build)', () => {
+    vi.stubGlobal('__APP_GIT_SHA__', '');
+    setAuthRoles(['worker']);
+
+    render(<Footer />);
+
+    expect(screen.queryByTestId('footer-app-version')).not.toBeInTheDocument();
   });
 });
 
