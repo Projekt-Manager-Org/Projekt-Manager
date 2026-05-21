@@ -160,8 +160,23 @@ Pinned versions (ADR-0009):
    ```
 
 3. Hold versions:
+
    ```bash
    sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   ```
+
+4. Raise UDP socket buffers for HTTP/3:
+
+   Caddy's HTTP/3 listener (quic-go) wants ~7 MiB of UDP receive/send buffer; Ubuntu's default `net.core.rmem_max` is ~208 KiB. UDP buffer limits are a host kernel knob shared across all network namespaces, so this has to happen on the host even though Caddy runs in a container. Without it Caddy boots fine but logs `failed to sufficiently increase receive buffer size` on every start and HTTP/3 throughput is capped well below line rate. See [quic-go UDP-Buffer-Sizes](https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes).
+
+   ```bash
+   sudo tee /etc/sysctl.d/99-projekt-manager-quic.conf >/dev/null <<'EOF'
+   # HTTP/3 UDP buffers for Caddy (quic-go).
+   # See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
+   net.core.rmem_max = 7500000
+   net.core.wmem_max = 7500000
+   EOF
+   sudo sysctl --system
    ```
 
 **Verify:**
@@ -171,6 +186,7 @@ docker --version              # 29.5.0
 docker compose version        # v5.1.3
 apt-mark showhold             # all five listed
 sudo -u deploy docker ps      # empty table, not "permission denied"
+sysctl net.core.rmem_max      # 7500000
 ```
 
 **Upgrades:** follow lockstep procedure in ADR-0009. Unhold, install new version on non-prod first, smoke test, then VPS.
