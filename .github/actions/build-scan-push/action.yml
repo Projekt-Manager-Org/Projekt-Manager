@@ -59,6 +59,13 @@ runs:
     # publishing the bad tag to GHCR — `scripts/deploy.sh <sha>`
     # resolves images by SHA tag, so a published-then-fails-scan
     # sequence would leave a draw-able bad image behind.
+    #
+    # `cache-to` carries `ignore-error=true` on every site below:
+    # the GHA cache backend returns transient 502s under load (the
+    # "Unicorn!" page), and treating cache-export as load-bearing
+    # converts that into a hard build failure even though the image
+    # bytes were already assembled. The cache is best-effort; missing
+    # it costs ~30s on the next cold build, nothing else.
     - name: Build app image (load locally for scan)
       uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
       with:
@@ -74,7 +81,7 @@ runs:
         build-args: |
           GIT_SHA=${{ github.sha }}
         cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-to: type=gha,mode=max,ignore-error=true
 
     # Backstop Trivy image scan on the locally-loaded image before
     # publishing (ADR-0027 §Decision.2). The PR-time `docker` job
@@ -106,7 +113,7 @@ runs:
         build-args: |
           GIT_SHA=${{ github.sha }}
         cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-to: type=gha,mode=max,ignore-error=true
 
     # Backup image — see ADR-0020 §Decision (Layer 2 encrypted
     # backups) and Dockerfile.backup. Built and pushed to GHCR under
@@ -132,7 +139,7 @@ runs:
         build-args: |
           APP_IMAGE_TAG=${{ inputs.sha_tag }}
         cache-from: type=gha,scope=backup
-        cache-to: type=gha,mode=max,scope=backup
+        cache-to: type=gha,mode=max,scope=backup,ignore-error=true
 
     - name: Trivy — backup image vuln scan (HIGH/CRITICAL)
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -153,7 +160,7 @@ runs:
         build-args: |
           APP_IMAGE_TAG=${{ inputs.sha_tag }}
         cache-from: type=gha,scope=backup
-        cache-to: type=gha,mode=max,scope=backup
+        cache-to: type=gha,mode=max,scope=backup,ignore-error=true
 
     # `age` on the runner is needed by the smoke step below to mint a
     # per-run binary `age` keypair before `docker compose up`. The app
