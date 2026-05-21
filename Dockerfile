@@ -8,6 +8,17 @@ COPY patches ./patches
 RUN npm ci
 
 COPY . .
+
+# Build-time commit SHA, forwarded into `npm run build` so vite's
+# `define` can bake it into the client bundle for the footer version
+# chip. CI passes `--build-arg GIT_SHA=<sha>`; local `docker build`
+# without the arg falls through to vite's git rev-parse, and if that
+# also fails (no .git in the build context) vite emits an empty string
+# and the chip stays hidden. Runtime image needs nothing — once baked
+# into dist/, the SHA is part of the JS chunk bytes.
+ARG GIT_SHA=""
+ENV GIT_SHA=$GIT_SHA
+
 RUN npm run build
 RUN npm prune --omit=dev
 

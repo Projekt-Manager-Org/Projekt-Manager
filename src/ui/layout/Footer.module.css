@@ -18,6 +18,16 @@
   text-align: center;
 }
 
+.version {
+  /* Build-time git short-SHA chip. Monospace + muted so it reads as
+     operator metadata rather than UI content; same font-size as the
+     footer baseline (inherited) keeps the row visually quiet. */
+  grid-column: 1;
+  justify-self: start;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--color-text-muted);
+}
+
 .storageBadge {
   grid-column: 3;
   justify-self: end;
