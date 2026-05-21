@@ -169,6 +169,18 @@
       "packageNameTemplate": "minio/{{depName}}",
       "datasourceTemplate": "docker",
       "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "description": "PostgreSQL major in Alpine apk pins (`postgresqlN`, `postgresqlN-client`, `postgresqlN-contrib`) inside Dockerfile.backup. Renovate's Docker manager bumps the `db` image tag in docker-compose/CI but does not see apk package names. Without this regex a server bump leaves the backup client major behind — pg_dump/pg_restore older→newer is the unsupported direction. extractVersion filters Docker tags to integer-only so we track the major line, matching what the apk package name encodes.",
+      "managerFilePatterns": ["/^Dockerfile\\.backup$/"],
+      "matchStrings": [
+        "postgresql(?<currentValue>\\d+)(?:-client|-contrib)?"
+      ],
+      "depNameTemplate": "postgres",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "loose",
+      "extractVersionTemplate": "^(?<version>\\d+)$"
     }
   ]
 }
