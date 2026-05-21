@@ -436,39 +436,3 @@ curl -v --resolve "${DOMAIN}:443:10.213.17.1" "https://${DOMAIN}/api/health"
 curl --connect-timeout 5 "https://<server-public-ip>/api/health"
 # expect: timeout (443 not bound on public interface)
 ```
-
-## Upgrade Notes
-
-One-time host-side operations required when upgrading an existing deploy across specific releases. Fresh installs skip these.
-
-### Caddy non-root migration (PR #196)
-
-Caddy now runs as UID 1000 inside the container (Trivy DS-0002 / rootless web-server hardening — see `docker/caddy/Dockerfile`). On a fresh `docker compose up`, Docker initialises an empty named volume with the image-side ownership, so `caddy_data` and `caddy_config` land owned by `caddy:caddy` automatically. Pre-existing volumes from a prior root-running Caddy keep their original `root:root` ownership and must be chown'd once, otherwise Caddy boots and immediately restart-loops on `permission denied` writes to `/data/caddy/...`.
-
-**Where this fits in the deploy flow:** `scripts/deploy.sh` runs `docker compose pull` then `docker compose up -d` as a single sequence ([manual-deploy.md §Deploy flow](manual-deploy.md#deploy-flow)) — there is no natural seam between them, so an unmodified `deploy.sh` invocation will hit the permission error before the operator can react. Run this migration **once, before the first `deploy.sh` invocation of the new image**, then deploy normally afterwards.
-
-```bash
-ssh vps
-cd /opt/projekt-manager
-sudo -u deploy docker compose stop caddy
-sudo -u deploy docker run --rm \
-  -v projekt-manager_caddy_data:/data \
-  alpine chown -R 1000:1000 /data
-sudo -u deploy docker run --rm \
-  -v projekt-manager_caddy_config:/config \
-  alpine chown -R 1000:1000 /config
-# Caddy stays stopped here — the next `deploy.sh` will recreate it
-# with the new image against the now-chown'd volumes.
-
-sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
-```
-
-**Verify** (after `deploy.sh` reports success):
-
-```bash
-docker exec projekt-manager-caddy-1 id                          # uid=1000(caddy)
-docker inspect -f '{{.RestartCount}}' projekt-manager-caddy-1   # 0 (no restart loop)
-docker logs --since 1m projekt-manager-caddy-1 2>&1 | grep -i permission   # no output
-```
-
-**Rollback** is safe even after a partial migration: reverting `docker/caddy/Dockerfile` and re-running `deploy.sh` brings Caddy back as root, and root can still read the UID-1000-owned files on the volumes (no second chown needed).
