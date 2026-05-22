@@ -435,6 +435,11 @@ export function buildBusinessEnvelope(now: Date): Envelope {
       phone: spec.phone ?? null,
       email: spec.email ?? null,
       address: spec.address ?? null,
+      // The seed business envelope ships every customer without a USt-IdNr.
+      // Reverse-charge invoices (§13b — RE-0001 in the invoice seed) carry
+      // a recipient-side `ustId` override on the issued snapshot instead;
+      // see `src/server/seed/invoices.ts` for the override site.
+      ustId: null,
       notes: spec.notes ?? null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -501,9 +506,23 @@ export function buildBusinessEnvelope(now: Date): Envelope {
   return {
     schema_version: SCHEMA_VERSION,
     exported_at: nowIso,
+    // Issue #230: users / company_profile / invoices / invoice_sequence
+    // are part of the envelope contract but are NOT seeded through this
+    // builder. Users land directly via `loadUsers` (sessions table is
+    // FK-coupled to users, so they must exist before this envelope is
+    // imported); company_profile is reinserted by `seed.ts` after the
+    // TRUNCATE CASCADE wipes the singleton; invoices and invoice_sequence
+    // are minted end-to-end through `loadInvoices` (real draft→issue
+    // cycle, real PDFs, real audit rows). The envelope contract requires
+    // these slots to be present for shape, so empty arrays satisfy the
+    // type without claiming ownership of the seed for those tables.
+    users: [],
+    company_profile: [],
     customers: Array.from(customerById.values()),
     projects: Array.from(projectById.values()),
     project_workers: assignments,
+    invoices: [],
+    invoice_sequence: [],
     // Seed business data has no attachments — the seed only mints
     // text rows. The envelope shape requires the field, so an empty
     // array is the right shape (issue #163 / data-model.md §5.8).
