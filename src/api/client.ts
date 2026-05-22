@@ -99,6 +99,17 @@ interface RequestOptions {
    * shape. Transport-level cancellation; no UI side effects here.
    */
   signal?: AbortSignal;
+  /**
+   * Optional bearer token. When set, the request carries
+   * `Authorization: Bearer <token>` and the server's import-token-aware
+   * middleware will accept the call without a session cookie. Used by
+   * the takeout-zip restore orchestrator on the override-with-users
+   * path, after the operator's session has CASCADEd away with the
+   * imported user set (issue #230). The session cookie is still sent
+   * (`credentials: 'same-origin'`); the server treats the header as
+   * authoritative on routes that opt into the token-aware middleware.
+   */
+  authToken?: string;
 }
 
 /**
@@ -113,6 +124,9 @@ export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promis
   const headers: Record<string, string> = {};
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
+  }
+  if (opts.authToken !== undefined) {
+    headers['Authorization'] = `Bearer ${opts.authToken}`;
   }
 
   let res: Response;
@@ -731,22 +745,31 @@ export const attachmentApi = {
       restore?: { id: string; createdBy: string; createdAt: string };
     },
     signal?: AbortSignal,
+    authToken?: string,
   ) =>
     apiCall<AttachmentInitResponse>(`/api/projects/${projectId}/attachments/init`, {
       method: 'POST',
       body: input,
       signal,
+      authToken,
     }),
 
-  completeUpload: (projectId: string, attachmentId: string, signal?: AbortSignal) =>
+  completeUpload: (
+    projectId: string,
+    attachmentId: string,
+    signal?: AbortSignal,
+    authToken?: string,
+  ) =>
     apiCall<Attachment>(`/api/projects/${projectId}/attachments/${attachmentId}/complete`, {
       method: 'POST',
       signal,
+      authToken,
     }),
 
-  delete: (projectId: string, attachmentId: string) =>
+  delete: (projectId: string, attachmentId: string, authToken?: string) =>
     apiCall<null>(`/api/projects/${projectId}/attachments/${attachmentId}`, {
       method: 'DELETE',
+      authToken,
     }),
 
   listTrash: (projectId: string) =>

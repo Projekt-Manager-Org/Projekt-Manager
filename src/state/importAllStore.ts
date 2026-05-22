@@ -66,6 +66,17 @@ export interface ImportInitResult {
 export interface ImportTextLegResult {
   ok: boolean;
   message?: string;
+  /**
+   * Issue #230: when override wipes users, the operator's session
+   * CASCADEd away mid-transaction. The server signals this via
+   * `sessionInvalidated: true` and ships a short-lived `importToken`
+   * for the binary leg to use in place of the dead session. The
+   * orchestrator carries the token forward on every per-attachment
+   * call. Both fields default to safe values on the empty-target
+   * path (no wipe, no token needed).
+   */
+  sessionInvalidated: boolean;
+  importToken: string | null;
 }
 
 /**
@@ -86,9 +97,24 @@ async function postTextLeg(
     confirmationPhrase,
   });
   if (!res.ok) {
-    return { ok: false, message: res.error.message };
+    return { ok: false, message: res.error.message, sessionInvalidated: false, importToken: null };
   }
-  return { ok: true };
+  // The commit path returns `ImportResult`, not the dry-run preview;
+  // the `would_write` discriminator is absent. Narrow defensively.
+  const data = res.data;
+  if ('would_write' in data) {
+    return {
+      ok: false,
+      message: 'Unexpected dry-run preview on commit path',
+      sessionInvalidated: false,
+      importToken: null,
+    };
+  }
+  return {
+    ok: true,
+    sessionInvalidated: data.sessionInvalidated,
+    importToken: data.importToken,
+  };
 }
 
 /**
@@ -121,25 +147,31 @@ async function importInit(
   projectId: string,
   payload: ImportInitPayload,
   restore: ImportRestoreBlock,
+  authToken?: string,
 ): Promise<ImportInitResult> {
-  const res = await attachmentApi.initUpload(projectId, {
-    fileName: payload.fileName,
-    mimeType: payload.mimeType,
-    sizeBytes: payload.sizeBytes,
-    label: payload.label,
-    hasThumbnail: payload.hasThumbnail,
-    dekMaterial: payload.dekMaterial,
-    ciphertextSizeBytes: payload.ciphertextSizeBytes,
-    ciphertextContentMd5: payload.ciphertextContentMd5,
-    ...(payload.thumbDekMaterial !== undefined
-      ? {
-          thumbDekMaterial: payload.thumbDekMaterial,
-          ciphertextThumbSizeBytes: payload.ciphertextThumbSizeBytes!,
-          ciphertextThumbContentMd5: payload.ciphertextThumbContentMd5!,
-        }
-      : {}),
-    restore,
-  });
+  const res = await attachmentApi.initUpload(
+    projectId,
+    {
+      fileName: payload.fileName,
+      mimeType: payload.mimeType,
+      sizeBytes: payload.sizeBytes,
+      label: payload.label,
+      hasThumbnail: payload.hasThumbnail,
+      dekMaterial: payload.dekMaterial,
+      ciphertextSizeBytes: payload.ciphertextSizeBytes,
+      ciphertextContentMd5: payload.ciphertextContentMd5,
+      ...(payload.thumbDekMaterial !== undefined
+        ? {
+            thumbDekMaterial: payload.thumbDekMaterial,
+            ciphertextThumbSizeBytes: payload.ciphertextThumbSizeBytes!,
+            ciphertextThumbContentMd5: payload.ciphertextThumbContentMd5!,
+          }
+        : {}),
+      restore,
+    },
+    undefined,
+    authToken,
+  );
   if (!res.ok) {
     throw new Error(res.error.message || 'init failed');
   }
@@ -168,8 +200,9 @@ async function importInit(
 async function importComplete(
   projectId: string,
   attachmentId: string,
+  authToken?: string,
 ): Promise<{ id: string; status: 'ready' }> {
-  const res = await attachmentApi.completeUpload(projectId, attachmentId);
+  const res = await attachmentApi.completeUpload(projectId, attachmentId, undefined, authToken);
   if (!res.ok) {
     throw new Error(res.error.message || 'complete failed');
   }
@@ -183,8 +216,12 @@ async function importComplete(
  * walk doesn't differentiate failure from success (the orphan reaper
  * handles eventual cleanup either way).
  */
-async function importDelete(projectId: string, attachmentId: string): Promise<void> {
-  await attachmentApi.delete(projectId, attachmentId);
+async function importDelete(
+  projectId: string,
+  attachmentId: string,
+  authToken?: string,
+): Promise<void> {
+  await attachmentApi.delete(projectId, attachmentId, authToken);
 }
 
 /**

@@ -201,20 +201,24 @@ async function prepareAttachment(input: PrepareAttachmentInput): Promise<Prepare
 }
 
 /**
- * Adapter from the state-layer `importAllApi.importInit` to the
- * orchestrator's plain-promise contract. A non-OK result propagates
- * as a thrown error so the orchestrator's per-file failure branch
- * records it.
+ * Adapter factory from the state-layer `importAllApi.importInit` to
+ * the orchestrator's plain-promise contract. `getAuthToken` returns
+ * the most recent `importToken` (issue #230); empty string / undefined
+ * means use the session cookie. A non-OK result propagates as a
+ * thrown error so the orchestrator's per-file failure branch records
+ * it.
  */
-async function initAttachment(
-  entry: ImportEnvelopeAttachment,
-  restore: RestoreBlock,
-  payload?: NonNullable<PrepareAttachmentResult>['initPayload'],
-): Promise<InitAttachmentResult> {
-  if (!payload) {
-    throw new Error('initAttachment: prepared payload missing');
-  }
-  return importAllApi.importInit(entry.projectId, payload, restore);
+function makeInitAttachment(getAuthToken: () => string | undefined) {
+  return async function initAttachment(
+    entry: ImportEnvelopeAttachment,
+    restore: RestoreBlock,
+    payload?: NonNullable<PrepareAttachmentResult>['initPayload'],
+  ): Promise<InitAttachmentResult> {
+    if (!payload) {
+      throw new Error('initAttachment: prepared payload missing');
+    }
+    return importAllApi.importInit(entry.projectId, payload, restore, getAuthToken());
+  };
 }
 
 /**
@@ -423,6 +427,16 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
     let filesDone = 0;
     let bytesDone = 0;
 
+    // Issue #230 — captured at text-leg time, consumed by every
+    // subsequent per-attachment call. When the import wipes users
+    // (`sessionInvalidated: true` on the response), the operator's
+    // session row CASCADEd away with their `users` row; the bearer
+    // token here lets the binary leg continue against the dead
+    // session. Empty-target / non-invalidating paths leave it null
+    // and the per-attachment calls fall back to the still-valid
+    // session cookie.
+    let bearerImportToken: string | null = null;
+
     void (async () => {
       try {
         const result: ImportAllResult = await importAllFromZip({
@@ -431,16 +445,21 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
           // structural validators that `pickFile` already ran.
           parsed: bag,
           pinnedSchemaVersion: SCHEMA_VERSION,
-          postTextLeg: async (envelopeWithoutAttachments: Omit<ImportEnvelope, 'attachments'>) =>
-            importAllApi.postTextLeg(
-              // The runner's local `ImportEnvelope` shape mirrors
-              // `Envelope` minus the unused fields the adapter
-              // doesn't read.
-              envelopeWithoutAttachments as never,
-              phrase,
-            ),
+          postTextLeg: async (envelopeWithoutAttachments: Omit<ImportEnvelope, 'attachments'>) => {
+            // The runner's local `ImportEnvelope` shape mirrors
+            // `Envelope` minus the unused fields the adapter
+            // doesn't read.
+            const res = await importAllApi.postTextLeg(envelopeWithoutAttachments as never, phrase);
+            if (res.ok) {
+              bearerImportToken = res.importToken;
+            }
+            // Narrow back to the orchestrator's
+            // `{ ok, message? }` contract — it never reads the
+            // bearer token (auth is the runner's concern).
+            return { ok: res.ok, message: res.message };
+          },
           prepareAttachment,
-          initAttachment,
+          initAttachment: makeInitAttachment(() => bearerImportToken ?? undefined),
           putCiphertext,
           completeAttachment: async (id: string) => {
             // Resolve the projectId from the entry list — the
@@ -450,12 +469,12 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
             if (!entry) {
               throw new Error(`completeAttachment: unknown attachment id ${id}`);
             }
-            return importAllApi.importComplete(entry.projectId, id);
+            return importAllApi.importComplete(entry.projectId, id, bearerImportToken ?? undefined);
           },
           deleteAttachment: async (id: string) => {
             const entry = (envelope.attachments ?? []).find((a) => a.id === id);
             if (!entry) return;
-            await importAllApi.importDelete(entry.projectId, id);
+            await importAllApi.importDelete(entry.projectId, id, bearerImportToken ?? undefined);
           },
           signal: ctrl.signal,
           onProgress: (event) => {
