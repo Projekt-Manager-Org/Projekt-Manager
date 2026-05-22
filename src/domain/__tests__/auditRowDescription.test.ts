@@ -193,4 +193,105 @@ describe('describeAuditRow', () => {
     });
     expect(out).toBe('supplier:add');
   });
+
+  // -------------------------------------------------------------------
+  // data_import / import_restored — single deployment-event row whose
+  // payload carries the per-slot row counts. Renders inline so the
+  // operator sees the breakdown without expanding the JSON drawer
+  // (whose dump shows English column keys).
+  // -------------------------------------------------------------------
+  describe('data_import / import_restored', () => {
+    it('renders a multi-slot import as a comma-separated German list', () => {
+      const out = describeAuditRow({
+        action: 'import_restored',
+        entityType: 'data_import',
+        payload: {
+          counts: {
+            users: 3,
+            company_profile: 1,
+            customers: 5,
+            projects: 7,
+            project_workers: 2,
+            invoices: 12,
+            invoice_sequence: 2,
+            attachments: 0,
+          },
+        },
+      });
+      expect(out).toBe(
+        'Daten importiert: 3 Benutzer, Firmenprofil, 5 Kunden, 7 Projekte, 2 Zuweisungen, 12 Rechnungen, 2 Rechnungs-Sequenzen',
+      );
+    });
+
+    it('uses German singular forms when a slot has exactly one row', () => {
+      const out = describeAuditRow({
+        action: 'import_restored',
+        entityType: 'data_import',
+        payload: {
+          counts: {
+            users: 1,
+            company_profile: 0,
+            customers: 1,
+            projects: 1,
+            project_workers: 1,
+            invoices: 1,
+            invoice_sequence: 1,
+            attachments: 0,
+          },
+        },
+      });
+      expect(out).toBe(
+        'Daten importiert: 1 Benutzer, 1 Kunde, 1 Projekt, 1 Zuweisung, 1 Rechnung, 1 Rechnungs-Sequenz',
+      );
+    });
+
+    it('omits zero-count slots from the rendered list', () => {
+      const out = describeAuditRow({
+        action: 'import_restored',
+        entityType: 'data_import',
+        payload: {
+          counts: {
+            users: 2,
+            company_profile: 0,
+            customers: 0,
+            projects: 0,
+            project_workers: 0,
+            invoices: 0,
+            invoice_sequence: 0,
+            attachments: 0,
+          },
+        },
+      });
+      expect(out).toBe('Daten importiert: 2 Benutzer');
+    });
+
+    it('falls back to the bare prefix when counts are missing or all zero', () => {
+      // Defense: an envelope that imported nothing (or a hand-edited
+      // audit row without counts) still renders something meaningful.
+      const noCounts = describeAuditRow({
+        action: 'import_restored',
+        entityType: 'data_import',
+        payload: null,
+      });
+      expect(noCounts).toBe('Daten importiert');
+
+      const allZero = describeAuditRow({
+        action: 'import_restored',
+        entityType: 'data_import',
+        payload: {
+          counts: {
+            users: 0,
+            company_profile: 0,
+            customers: 0,
+            projects: 0,
+            project_workers: 0,
+            invoices: 0,
+            invoice_sequence: 0,
+            attachments: 0,
+          },
+        },
+      });
+      expect(allZero).toBe('Daten importiert: keine Datensätze');
+    });
+  });
 });

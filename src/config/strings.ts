@@ -701,6 +701,30 @@ export const STRINGS = {
     entityInvoice: 'Rechnung',
     entityCompanyProfile: 'Firmenprofil',
     entityDataImport: 'Import',
+    /**
+     * Per-slot count labels for the `data_import` audit row. The
+     * `describeAuditRow` helper composes a single line —
+     * `"Daten importiert: 3 Benutzer, 5 Kunden, …"` — from the
+     * `payload.counts` map the server writes (one slot per envelope
+     * table; see [api.md §14.2.4](../docs/spec/api.md#1424-unified-data-exchange) "Single import audit row").
+     * Plural-aware so n=1 reads correctly in German. `company_profile`
+     * is always 0 or 1 (singleton); 1 renders as the bare entity name.
+     * `attachments` is always 0 in the text-leg path (per-attachment
+     * audit happens under the standard `attachment:add` flow) and is
+     * omitted from the rendered list.
+     */
+    dataImportCountUsers: (n: number) => (n === 1 ? '1 Benutzer' : `${n} Benutzer`),
+    dataImportCountCompanyProfile: 'Firmenprofil',
+    dataImportCountCustomers: (n: number) => (n === 1 ? '1 Kunde' : `${n} Kunden`),
+    dataImportCountProjects: (n: number) => (n === 1 ? '1 Projekt' : `${n} Projekte`),
+    dataImportCountProjectWorkers: (n: number) => (n === 1 ? '1 Zuweisung' : `${n} Zuweisungen`),
+    dataImportCountInvoices: (n: number) => (n === 1 ? '1 Rechnung' : `${n} Rechnungen`),
+    dataImportCountInvoiceSequence: (n: number) =>
+      n === 1 ? '1 Rechnungs-Sequenz' : `${n} Rechnungs-Sequenzen`,
+    /** Defensive — all slots empty (shouldn't reach in normal use). */
+    dataImportCountsEmpty: 'keine Datensätze',
+    /** Description prefix — "Daten importiert: <parts>". */
+    dataImportDescriptionPrefix: 'Daten importiert',
     /** Before/after panel labels in the payload drawer. */
     drawerBefore: 'Vorher',
     drawerAfter: 'Nachher',
