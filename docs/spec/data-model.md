@@ -217,7 +217,9 @@ Design notes:
 
 ### 5.8 Export Envelope
 
-The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `3`. Canonical TypeScript types live in `src/domain/dataExchange.ts` (`Envelope`, `EnvelopeUser`, `EnvelopeCompanyProfile`, `EnvelopeCustomer`, `EnvelopeProject`, `EnvelopeAssignment`, `EnvelopeInvoice`, `EnvelopeInvoiceSequence`, `EnvelopeAttachment`); the wire shape below is normative — server and UI both bind against it.
+The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `3`. The wire shape below is normative — server and UI both bind against it.
+
+Layer 1 is portability, not cross-trust-boundary transport. The envelope is plaintext; moving it across hosts means encrypting it first (`age` is the obvious choice — same recipient pattern as [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). The `passwordHash` field rides verbatim per the rationale below; the encryption is the operational guard.
 
 ```typescript
 interface ExportEnvelope {
