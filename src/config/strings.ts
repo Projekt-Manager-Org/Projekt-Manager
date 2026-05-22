@@ -21,6 +21,7 @@ export const STRINGS = {
     sessionExpired: 'Sitzung abgelaufen.',
     sessionExpiredLogin: 'Sitzung abgelaufen. Bitte erneut anmelden.',
     notPermitted: 'Keine Berechtigung.',
+    importTokenInvalid: 'Import-Token ungültig oder abgelaufen.',
   },
 
   errors: {

@@ -11,11 +11,29 @@
  * The route shape is pinned by AC-221's structural check — do not add
  * a 9th route on `/api/projects/:id/attachments/**` without updating
  * the spec + AC first.
+ *
+ * Auth wiring (issue #230 fixup):
+ *   - The binary-leg routes the takeout-zip restore orchestrator hits
+ *     (`init`, `complete`, `DELETE`) accept either a session cookie OR
+ *     an `Authorization: Bearer <importToken>` header. The header wins
+ *     when both are present, because the cookie is known to be dead
+ *     post-`users`-TRUNCATE (see `importTokenStore.ts`).
+ *   - All other routes (listing, Papierkorb, download-url, bulk-fetch)
+ *     remain session-only — defense in depth against a token that
+ *     leaks outside the binary-leg flow.
+ *
+ * Auth is wired per-route rather than via a plugin-wide
+ * `app.addHook('preHandler', ...)` so the two middlewares can coexist
+ * without one accidentally swallowing the other.
  */
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import {
+  createAuthMiddleware,
+  createAuthMiddlewareWithImportToken,
+  requirePermission,
+} from '../middleware/auth.js';
 import { AttachmentService, type DownloadVariant } from '../services/AttachmentService.js';
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
@@ -23,6 +41,7 @@ import { getEnv } from '../config/env.js';
 export function attachmentRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
     const authenticate = createAuthMiddleware(db);
+    const authenticateWithImportToken = createAuthMiddlewareWithImportToken(db);
     const env = getEnv();
     const storage = createStorageClient({
       endpoint: env.STORAGE_ENDPOINT!,
@@ -44,8 +63,6 @@ export function attachmentRoutes(db: Database) {
       binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
     });
 
-    app.addHook('preHandler', authenticate);
-
     // ---------------------------------------------------------------
     // GET /api/projects/:id/attachments — list (status=ready only)
     // ---------------------------------------------------------------
@@ -59,7 +76,7 @@ export function attachmentRoutes(db: Database) {
             properties: { id: { type: 'string', format: 'uuid' } },
           },
         },
-        preHandler: requirePermission('attachment:read'),
+        preHandler: [authenticate, requirePermission('attachment:read')],
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };
@@ -70,6 +87,9 @@ export function attachmentRoutes(db: Database) {
 
     // ---------------------------------------------------------------
     // POST /api/projects/:id/attachments/init — create pending row
+    //
+    // Binary-leg endpoint: accepts session cookie OR
+    // `Authorization: Bearer <importToken>` (issue #230 fixup).
     //
     // ADR-0024: the body carries the ciphertext-bound triplet
     // (`dekMaterial`, `ciphertextSizeBytes`, `ciphertextContentMd5`)
@@ -144,7 +164,7 @@ export function attachmentRoutes(db: Database) {
             },
           },
         },
-        preHandler: requirePermission('attachment:write'),
+        preHandler: [authenticateWithImportToken, requirePermission('attachment:write')],
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };
@@ -194,6 +214,9 @@ export function attachmentRoutes(db: Database) {
 
     // ---------------------------------------------------------------
     // POST /api/projects/:id/attachments/:attId/complete — finalize
+    //
+    // Binary-leg endpoint: accepts session cookie OR
+    // `Authorization: Bearer <importToken>` (issue #230 fixup).
     // ---------------------------------------------------------------
     app.post(
       '/api/projects/:id/attachments/:attId/complete',
@@ -208,7 +231,7 @@ export function attachmentRoutes(db: Database) {
             },
           },
         },
-        preHandler: requirePermission('attachment:write'),
+        preHandler: [authenticateWithImportToken, requirePermission('attachment:write')],
       },
       async (request, reply) => {
         const { id, attId } = request.params as { id: string; attId: string };
@@ -221,6 +244,10 @@ export function attachmentRoutes(db: Database) {
     // DELETE /api/projects/:id/attachments/:attId — soft-hide
     // (ADR-0022; the row moves to status='hidden' and is recoverable
     // via the Papierkorb restore endpoint until lifecycle reap.)
+    //
+    // Binary-leg endpoint: the orchestrator's rollback walk DELETEs
+    // each committed attachment on a fatal failure. Accepts session
+    // cookie OR `Authorization: Bearer <importToken>` (issue #230 fixup).
     // ---------------------------------------------------------------
     app.delete(
       '/api/projects/:id/attachments/:attId',
@@ -235,7 +262,7 @@ export function attachmentRoutes(db: Database) {
             },
           },
         },
-        preHandler: requirePermission('attachment:hide'),
+        preHandler: [authenticateWithImportToken, requirePermission('attachment:hide')],
       },
       async (request, reply) => {
         const { id, attId } = request.params as { id: string; attId: string };
@@ -259,7 +286,7 @@ export function attachmentRoutes(db: Database) {
             properties: { id: { type: 'string', format: 'uuid' } },
           },
         },
-        preHandler: requirePermission('attachment:trash'),
+        preHandler: [authenticate, requirePermission('attachment:trash')],
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };
@@ -287,7 +314,7 @@ export function attachmentRoutes(db: Database) {
             },
           },
         },
-        preHandler: requirePermission('attachment:trash'),
+        preHandler: [authenticate, requirePermission('attachment:trash')],
       },
       async (request, reply) => {
         const { id, attId } = request.params as { id: string; attId: string };
@@ -329,7 +356,7 @@ export function attachmentRoutes(db: Database) {
             },
           },
         },
-        preHandler: requirePermission('attachment:read'),
+        preHandler: [authenticate, requirePermission('attachment:read')],
       },
       async (request, reply) => {
         const { id, attId } = request.params as { id: string; attId: string };
@@ -369,7 +396,7 @@ export function attachmentRoutes(db: Database) {
             },
           },
         },
-        preHandler: requirePermission('attachment:read'),
+        preHandler: [authenticate, requirePermission('attachment:read')],
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };

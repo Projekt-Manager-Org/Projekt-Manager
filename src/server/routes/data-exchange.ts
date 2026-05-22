@@ -195,7 +195,7 @@ export function dataExchangeRoutes(db: Database) {
           override: query.override === 'true',
           confirmationPhrase: typeof rawPhrase === 'string' ? rawPhrase : null,
         };
-        const result = await importService.import(envelope, opts, request.log);
+        const result = await importService.import(envelope, opts, request.log, request.user!);
         return reply.code(200).send(result);
       },
     );

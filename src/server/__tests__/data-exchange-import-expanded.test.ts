@@ -390,6 +390,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
           schema_version: number;
           summary: Record<string, number>;
           sessionInvalidated: boolean;
+          importToken: string | null;
         };
         expect(body.schema_version).toBe(SCHEMA_VERSION);
         expect(body.summary.users).toBe(env.users.length);
@@ -399,8 +400,10 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         expect(body.summary.project_workers).toBe(env.project_workers.length);
         expect(body.summary.invoices).toBe(env.invoices.length);
         expect(body.summary.invoice_sequence).toBe(env.invoice_sequence.length);
-        // Empty-target path: no wipe ran, sessions untouched.
+        // Empty-target path: no wipe ran, sessions untouched. No token
+        // minted because the session is still alive (issue #230 fixup).
         expect(body.sessionInvalidated).toBe(false);
+        expect(body.importToken).toBeNull();
 
         // Direct-DB cross-check: the expected rows landed alongside the
         // seeded users that survived the (selective) wipe.
@@ -454,9 +457,19 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         const result = res.json() as {
           sessionInvalidated: boolean;
           summary: { users: number };
+          importToken: string | null;
         };
         expect(result.sessionInvalidated).toBe(true);
         expect(result.summary.users).toBe(env.users.length);
+        // Issue #230 fixup: when the override wiped the operator's
+        // session, the response carries a short-lived bearer token so
+        // the binary-leg orchestrator can continue past the dead cookie.
+        // Shape contract: non-empty base64url string (~43 chars from 32
+        // random bytes). The dedicated `import-token.test.ts` exercises
+        // the token's verify / expire / revoke / scope semantics; here
+        // we pin the wire-shape contract.
+        expect(typeof result.importToken).toBe('string');
+        expect(result.importToken!.length).toBeGreaterThan(40);
 
         // Sessions cascade-deleted with users.
         const sessionsAfter = await db.select().from(sessions);

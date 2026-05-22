@@ -64,6 +64,28 @@ import type { AttachmentStorageClient } from '../storage/client.js';
 import { bestEffortHideStorageKeys } from './AttachmentService.js';
 import type { ServiceLogger } from './Logger.js';
 import { emitProjectChanged } from '../sse/emitters.js';
+import type { AuthUser } from '../middleware/auth.js';
+import { mintImportToken } from './importTokenStore.js';
+import type { Permission } from '../../config/permissions.js';
+
+/**
+ * Permission set granted to the import-token bearer credential. Pinned
+ * here because both `ImportService.import()` and the import-token tests
+ * reference the exact same set — drift between the two would let the
+ * binary-leg orchestrator hold a token that 403s on its own endpoint.
+ *
+ * Scope rationale: the binary leg needs `attachment:write` (init +
+ * complete), `attachment:hide` (DELETE rollback), and `attachment:read`
+ * (descriptor reads not currently used by the orchestrator but covered
+ * defensively in case the flow evolves). NOT a generic owner credential
+ * — every other endpoint rejects Bearer tokens by virtue of their
+ * cookie-only auth middleware.
+ */
+const IMPORT_TOKEN_PERMISSIONS: readonly Permission[] = [
+  'attachment:write',
+  'attachment:hide',
+  'attachment:read',
+];
 
 /**
  * Within-envelope structural checks — uniqueness of keys that become DB
@@ -515,10 +537,24 @@ export class ImportService {
     return new Set(ids.filter((id) => envelopeIds.has(id)));
   }
 
+  /**
+   * `caller` carries the operator's auth identity. Threaded through so
+   * the commit path can mint an import-token bound to the operator's
+   * user-id when the override wipes the session (issue #230 fixup).
+   *
+   * Pass `null` only when the caller has no operator identity — the
+   * seed path is the sole legitimate user (it runs at boot, before any
+   * session exists). Empty-target imports without override never invalidate
+   * the session, so the `null` caller is harmless on the seed branch.
+   *
+   * Dry-run ignores `caller` — the preview path is read-only and never
+   * mints a token.
+   */
   async import(
     envelope: Envelope,
     opts: ImportOptions,
     log?: ServiceLogger,
+    caller?: AuthUser | null,
   ): Promise<ImportResult | DryRunPreview> {
     if (envelope.schema_version !== SCHEMA_VERSION) {
       throw schemaVersionMismatch(SCHEMA_VERSION, envelope.schema_version);
@@ -844,6 +880,27 @@ export class ImportService {
       await bestEffortHideStorageKeys(this.storage, keysToHide, log);
     }
 
+    // Issue #230 fixup: when the override TRUNCATE cascaded into
+    // `sessions`, the operator's session is dead. Mint a short-lived
+    // bearer token so the binary-leg orchestrator (per-attachment
+    // init + PUT + complete + rollback DELETE) can continue past the
+    // dead cookie. Bound to the operator's user-id; the imported
+    // envelope round-trips that id, so the same id resolves on the
+    // freshly-inserted row.
+    //
+    // Token is only minted when:
+    //   - `sessionInvalidated` is `true` (otherwise the session is fine
+    //     and no Bearer fallback is needed), AND
+    //   - `caller` was provided (the seed path is the lone null-caller
+    //     case and never invalidates a session).
+    //
+    // On every other path `importToken` is `null` — the field is part
+    // of the wire contract regardless.
+    const importToken =
+      sessionInvalidated && caller !== undefined && caller !== null
+        ? mintImportToken(caller.id, IMPORT_TOKEN_PERMISSIONS)
+        : null;
+
     return {
       schema_version: SCHEMA_VERSION,
       summary: {
@@ -856,6 +913,7 @@ export class ImportService {
         invoice_sequence: envelope.invoice_sequence.length,
       },
       sessionInvalidated,
+      importToken,
     };
   }
 }
