@@ -90,14 +90,35 @@ function isoNow(): string {
 }
 
 /**
+ * Build a singleton company_profile row for the fixture envelopes.
+ * Issue #230: `company_profile` must be exactly one row (singleton —
+ * data-model.md §5.17). Tests that don't care about the profile's
+ * contents still need to ship the singleton so the envelope validates.
+ */
+function buildFixtureCompanyProfile(suffix: string): Record<string, unknown> {
+  return {
+    id: uuid(`cp-${suffix}`, 1),
+    companyName: `Fixture Maler ${suffix}`,
+    address: { street: 'Fixturestr. 1', zip: '10115', city: 'Berlin' },
+    taxId: '111/222/33333',
+    ustId: 'DE123456789',
+    iban: 'DE12 1000 0000 1234 5678 90',
+    accentColor: null,
+    footerText: null,
+    logoBinaryDescriptorId: null,
+    defaultTaxMode: 'standard',
+    updatedAt: '2026-01-03T00:00:00.000Z',
+    updatedBy: null,
+  };
+}
+
+/**
  * Build an envelope for the empty-DB import path. Fresh IDs so the test
  * can verify ID preservation after export→import→export.
  *
- * Issue #230 (v3): the four new slots default to empty arrays in this
- * helper. Tests that exercise the new content paths populate them
- * directly (see `data-exchange-expanded.test.ts`); legacy tests that
- * only care about customers/projects/workers don't need to mint
- * user/profile/invoice rows.
+ * Issue #230 (v3): `users` defaults to an empty array (these legacy tests
+ * don't care about user content), but `company_profile` carries the
+ * singleton — the importer rejects anything other than exactly one row.
  */
 function buildFreshEnvelope(): ExportEnvelope {
   const customerId = uuid('cust', 1);
@@ -106,7 +127,7 @@ function buildFreshEnvelope(): ExportEnvelope {
     schema_version: CURRENT_SCHEMA_VERSION,
     exported_at: isoNow(),
     users: [],
-    company_profile: [],
+    company_profile: [buildFixtureCompanyProfile('fresh')],
     customers: [
       {
         id: customerId,
@@ -160,7 +181,7 @@ function buildOverrideEnvelope(): ExportEnvelope {
     schema_version: CURRENT_SCHEMA_VERSION,
     exported_at: isoNow(),
     users: [],
-    company_profile: [],
+    company_profile: [buildFixtureCompanyProfile('override')],
     customers: [
       {
         id: c1,

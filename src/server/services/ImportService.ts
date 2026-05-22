@@ -9,9 +9,9 @@
  * state: `users`, `company_profile`, `invoices`, `invoice_sequence` join
  * the existing `customers`, `projects`, `project_workers`. Refs
  * (`createdBy`, `updatedBy`, `project_workers.userId`, etc.) resolve
- * against `envelope.users` rather than the target `users` table — with
- * users in the envelope, the happy path always resolves internally;
- * MISSING_USER_REFS now signals a hand-edited or partial envelope.
+ * strictly against `envelope.users` — the target table is wiped or empty
+ * at insert time, so the envelope is the sole authoritative source.
+ * MISSING_USER_REFS signals a hand-edited or partial envelope.
  *
  * Invoices have a self-FK (`cancellationOf` → `invoices.id` for Storno
  * rows); the importer inserts originals first, then Stornos, in two
@@ -20,7 +20,7 @@
  * re-slices on its own — a hand-edited envelope may reorder.
  */
 
-import { inArray, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import {
   auditLog,
   companyProfile,
@@ -96,17 +96,18 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     usernames.add(u.username);
   }
 
-  // Singleton: company_profile MUST be at most one row. The target table
+  // Singleton: company_profile MUST be exactly one row. The target table
   // enforces a singleton invariant via UNIQUE on a boolean discriminator
-  // + CHECK; an envelope with two rows would fail the INSERT with 23505.
-  // The empty arm is permitted: the seed's `loadBusiness` legitimately
-  // ships `company_profile: []` because the singleton is restored by
-  // `seed.ts` AFTER the business envelope lands (see seed.ts comments
-  // around the TRUNCATE CASCADE). Exports always carry exactly one row.
-  if (envelope.company_profile.length > 1) {
+  // + CHECK; an envelope with two rows would fail the INSERT with 23505,
+  // and an envelope with zero rows means the importing instance has no
+  // restored profile when invoice issuance reads it. Every well-formed
+  // envelope (issue #230) carries the singleton — the seed assembles it
+  // through `buildBusinessEnvelope`, and `/api/export` always emits the
+  // single seeded row.
+  if (envelope.company_profile.length !== 1) {
     issues.push({
       path: 'company_profile',
-      message: `expected at most one company_profile row, got ${envelope.company_profile.length}`,
+      message: `expected exactly one company_profile row, got ${envelope.company_profile.length}`,
     });
   }
 
@@ -499,39 +500,19 @@ export class ImportService {
   ) {}
 
   /**
-   * Resolve which of `ids` are present in `envelope.users` OR in the
-   * target's `users` table.
+   * Resolve which of `ids` are present in `envelope.users`.
    *
-   * Issue #230 reframe: the primary check is against the envelope's user
-   * set — with users in the envelope on the external POST /api/import
-   * path, the target's `users` is wiped (override) or empty (fresh
-   * install) at insert time, so `envelope.users` is the authoritative
-   * source. The fallback to target.users covers the seed's split-load
-   * pattern (`loadUsers` populates target.users directly; `loadBusiness`
-   * then calls ImportService with `users: []` in the envelope but real
-   * project_workers.userId references — see seed/business.ts comments).
-   *
-   * Union semantics here are deliberate, not a back-door — a hand-edited
-   * envelope with refs missing from BOTH envelope.users and target.users
-   * still surfaces MISSING_USER_REFS, which is the right "partial
-   * source" signal per issue #230.
+   * Issue #230: refs (`createdBy`, `updatedBy`, `project_workers.userId`,
+   * etc.) resolve strictly against the envelope's user set. The target's
+   * `users` table is wiped (override) or empty (fresh install) at insert
+   * time anyway, so `envelope.users` is the only authoritative source.
+   * A ref absent from `envelope.users` is a hand-edited or partial
+   * envelope and surfaces MISSING_USER_REFS.
    */
-  private async fetchPresentUserIds(envelope: Envelope, ids: string[]): Promise<Set<string>> {
+  private resolvePresentUserIds(envelope: Envelope, ids: string[]): Set<string> {
     if (ids.length === 0) return new Set();
     const envelopeIds = new Set(envelope.users.map((u) => u.id));
-    const unresolvedAgainstEnvelope = ids.filter((id) => !envelopeIds.has(id));
-    const present = new Set(ids.filter((id) => envelopeIds.has(id)));
-    if (unresolvedAgainstEnvelope.length > 0) {
-      // Fallback round-trip to target.users covers the seed path; in the
-      // external POST /api/import happy path this query returns no rows
-      // because `envelope.users` already covered every ref.
-      const rows = await this.db
-        .select({ id: users.id })
-        .from(users)
-        .where(inArray(users.id, unresolvedAgainstEnvelope));
-      for (const r of rows) present.add(r.id);
-    }
-    return present;
+    return new Set(ids.filter((id) => envelopeIds.has(id)));
   }
 
   async import(
@@ -552,7 +533,7 @@ export class ImportService {
       // answers "what would happen if I committed right now", and a
       // repeatable-read read-only transaction is the closest match to that
       // semantic without contending with concurrent writers.
-      const presentIds = await this.fetchPresentUserIds(envelope, uniqueReferencedIds);
+      const presentIds = this.resolvePresentUserIds(envelope, uniqueReferencedIds);
       const missingUserPayload = deriveMissingUserRefsPayload(userRefs, presentIds);
       const targetNonEmpty = await this.db.transaction(
         async (tx) => {
@@ -611,7 +592,7 @@ export class ImportService {
       throw validationError(STRINGS.errors.invalidInput, validationIssues);
     }
 
-    const presentUserIds = await this.fetchPresentUserIds(envelope, uniqueReferencedIds);
+    const presentUserIds = this.resolvePresentUserIds(envelope, uniqueReferencedIds);
     const missingUserPayload = deriveMissingUserRefsPayload(userRefs, presentUserIds);
     if (missingUserPayload !== null) {
       throw missingUserRefs(missingUserPayload);

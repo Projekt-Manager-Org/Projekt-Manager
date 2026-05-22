@@ -338,10 +338,11 @@ function buildOverrideEnvelope(): Record<string, unknown> {
   // would still re-collide with the seed snapshot if the seed is
   // re-applied after a previous override.
   //
-  // Issue #230 (v3): the four new top-level slots default to empty
-  // arrays — this test pins the project_changed signal, not the
-  // import surface itself; the empty slots take the cheap path
-  // through ImportService.
+  // Issue #230 (v3): `company_profile` ships the singleton — the
+  // importer rejects anything other than exactly one row. `users` is
+  // empty (the override path wipes target.users and lands no replacements;
+  // sibling tests reseed after the test). The empty-slot path through
+  // ImportService is still cheap.
   const nonce = Math.floor(Math.random() * 1_000_000);
   const customerId = uuidWithPrefix('cus', nonce % 9999);
   const projectId = uuidWithPrefix('pro', nonce % 9999);
@@ -349,7 +350,22 @@ function buildOverrideEnvelope(): Record<string, unknown> {
     schema_version: CURRENT_SCHEMA_VERSION,
     exported_at: new Date().toISOString(),
     users: [],
-    company_profile: [],
+    company_profile: [
+      {
+        id: uuidWithPrefix('cp', nonce % 9999),
+        companyName: 'Fixture Maler GmbH',
+        address: { street: 'Fixturestr. 1', zip: '10115', city: 'Berlin' },
+        taxId: '111/222/33333',
+        ustId: 'DE123456789',
+        iban: 'DE12 1000 0000 1234 5678 90',
+        accentColor: null,
+        footerText: null,
+        logoBinaryDescriptorId: null,
+        defaultTaxMode: 'standard',
+        updatedAt: '2026-01-03T00:00:00.000Z',
+        updatedBy: null,
+      },
+    ],
     customers: [
       {
         id: customerId,

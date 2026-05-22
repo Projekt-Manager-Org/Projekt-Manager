@@ -12,19 +12,17 @@
  *   - Invoice two-pass: a Storno → original chain restores cleanly in
  *     either input ordering (the importer slices, so the exporter's
  *     `(cancellation_of NULLS FIRST, id)` order is *not* trusted).
- *   - MISSING_USER_REFS reframe: refs resolve against envelope.users +
- *     target.users (target fallback covers the seed split-load pattern);
- *     a ref absent from BOTH still surfaces the error.
+ *   - MISSING_USER_REFS strict semantic: refs resolve ONLY against
+ *     envelope.users (target.users is wiped or empty at insert time);
+ *     a ref absent from envelope.users surfaces the error.
  *   - Per-entity-type audit rows emitted on commit (one per non-empty
  *     entity-typed slot) with the documented shape.
  *   - SCHEMA_VERSION = 3 is a hard cut — a v2-stamped envelope rejects.
  *
  * Test fixtures are built in-test rather than via the seed or
- * `/api/export` because the seed split-load (users via `loadUsers`,
- * business via ImportService with `users: []`) does NOT shape a usable
- * end-to-end v3 envelope. The roundtrip AT-77 analog uses the seed +
- * export but skips fields that legitimately change between two snapshots
- * (`exported_at`).
+ * `/api/export` so the cases can vary independently. The roundtrip AT-77
+ * analog uses the seed + export but skips fields that legitimately change
+ * between two snapshots (`exported_at`).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -524,11 +522,12 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // MISSING_USER_REFS reframe. With `users` in the envelope, refs are
-  // checked against `envelope.users` (primary) with a fallback to the
-  // target `users` table (to support the seed split-load pattern).
+  // MISSING_USER_REFS strict semantic. Refs resolve only against
+  // `envelope.users` — the target's `users` table is wiped (override) or
+  // empty (fresh) at insert time, so a ref absent from the envelope
+  // signals a hand-edited or partial source.
   // -------------------------------------------------------------------
-  describe('MISSING_USER_REFS reframe — refs resolve against envelope.users', () => {
+  describe('MISSING_USER_REFS strict semantic — refs resolve ONLY against envelope.users', () => {
     it('succeeds when project_workers.userId is in envelope.users', async () => {
       await wipeBusinessDataExceptUsers();
       try {
@@ -544,15 +543,14 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
       }
     });
 
-    it('raises 422 MISSING_USER_REFS when a project_workers.userId is absent from envelope.users AND target.users', async () => {
+    it('raises 422 MISSING_USER_REFS when a project_workers.userId is absent from envelope.users', async () => {
       await wipeBusinessDataExceptUsers();
       try {
         const env = buildExpandedEnvelope();
         // Replace the worker's userId with UUID_ZERO — not in
         // envelope.users (the envelope's two users have prefix-derived
-        // UUIDs), and not in target.users (seeded users have random
-        // UUIDs distinct from UUID_ZERO). The union check surfaces the
-        // missing reference.
+        // UUIDs). Target.users is irrelevant under the strict-envelope
+        // semantic — the envelope is the sole authoritative source.
         env.project_workers[0]!.userId = UUID_ZERO;
 
         const res = await authPost(ownerToken, '/api/import', asPayload(env));
@@ -563,6 +561,49 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         };
         expect(body.code).toBe('MISSING_USER_REFS');
         expect(body.details?.missingUserIds).toContain(UUID_ZERO);
+      } finally {
+        await reseedAndRelogin();
+      }
+    });
+
+    it('raises 422 MISSING_USER_REFS even when the ref happens to match a seeded target.users row', async () => {
+      // Pins the strict semantic: the target.users fallback no longer
+      // applies. We strip envelope.users entirely and reuse a seeded
+      // user id (the seeded `inhaber` survives `wipeBusinessDataExceptUsers`),
+      // confirming that the importer does NOT consult target.users.
+      await wipeBusinessDataExceptUsers();
+      try {
+        const seededInhaber = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.username, 'inhaber'));
+        const seededId = seededInhaber[0]!.id;
+
+        const env = buildExpandedEnvelope();
+        // Drop envelope.users so the ref CAN ONLY be resolved against
+        // target.users — under the strict semantic that path is dead.
+        // Also clear createdBy/updatedBy on the rows that pointed at
+        // envelope.users so the only remaining ref is the assignment.
+        env.users = [];
+        env.customers[0]!.createdBy = null;
+        env.customers[0]!.updatedBy = null;
+        env.projects[0]!.createdBy = null;
+        env.projects[0]!.updatedBy = null;
+        env.invoices[0]!.createdBy = null;
+        env.invoices[0]!.updatedBy = null;
+        env.invoices[1]!.createdBy = null;
+        env.invoices[1]!.updatedBy = null;
+        env.company_profile[0]!.updatedBy = null;
+        env.project_workers[0]!.userId = seededId;
+
+        const res = await authPost(ownerToken, '/api/import', asPayload(env));
+        expect(res.statusCode).toBe(422);
+        const body = res.json() as {
+          code: string;
+          details?: { missingUserIds?: string[] };
+        };
+        expect(body.code).toBe('MISSING_USER_REFS');
+        expect(body.details?.missingUserIds).toContain(seededId);
       } finally {
         await reseedAndRelogin();
       }
