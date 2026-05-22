@@ -20,10 +20,19 @@
  *     `IMPORT_TOKEN_INVALID`.
  *   - Revoke: explicit revoke takes effect immediately.
  *   - Scope (positive): the token is accepted on every binary-leg
- *     endpoint (`init`, `complete`, `DELETE`).
- *   - Scope (negative): the token is NOT accepted on a non-binary-leg
- *     endpoint (`GET /api/users`) — those routes wire the cookie-only
- *     middleware and never look at `Authorization`.
+ *     endpoint — the test walks init → upload → complete → DELETE
+ *     under the same Bearer.
+ *   - Multi-use within TTL: the same token admits a second init call
+ *     (per AC-314 — TTL is the bound, not a use counter).
+ *   - User deactivated mid-import: a token whose user is flipped to
+ *     `active = false` mid-flight rejects on the next call with
+ *     IMPORT_TOKEN_INVALID. This is the entire reason the bearer
+ *     path does a DB roundtrip per call.
+ *   - Scope (negative): on a non-binary-leg endpoint
+ *     (`GET /api/users`), the response is byte-equivalent
+ *     (status + code) whether the request carries no auth, a valid
+ *     Bearer, or a bogus Bearer — the standard auth middleware does
+ *     not consult `Authorization`.
  *   - Empty-target import: no token issued (session is still alive).
  *   - Dry-run: no token issued (read-only path).
  *   - Header trumps session: a request carrying both a stale cookie
@@ -52,6 +61,8 @@ import {
   IMPORT_TOKEN_TTL_MS,
   _resetImportTokenStoreForTests,
 } from '../services/importTokenStore.js';
+import { createStorageClient } from '../storage/client.js';
+import { getEnv } from '../config/env.js';
 
 const year = new Date().getFullYear();
 
@@ -195,6 +206,42 @@ async function injectInitWithBearer(
     url: `/api/projects/${projectId}/attachments/init`,
     headers: { authorization: `Bearer ${token}`, ...extraHeaders },
     payload: body,
+  });
+}
+
+/**
+ * Helper: POST `/api/projects/:id/attachments/:attId/complete` with a
+ * Bearer token. Used to verify the complete route honours
+ * `attachment:write` on the import-token capability set (AC-313).
+ */
+async function injectCompleteWithBearer(projectId: string, attId: string, token: string) {
+  return getApp().inject({
+    method: 'POST',
+    url: `/api/projects/${projectId}/attachments/${attId}/complete`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+}
+
+/**
+ * Helper: DELETE `/api/projects/:id/attachments/:attId` with a Bearer
+ * token. Used to verify the delete (soft-hide) route honours
+ * `attachment:hide` on the import-token capability set (AC-313).
+ */
+async function injectDeleteWithBearer(projectId: string, attId: string, token: string) {
+  return getApp().inject({
+    method: 'DELETE',
+    url: `/api/projects/${projectId}/attachments/${attId}`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+}
+
+function storage() {
+  const env = getEnv();
+  return createStorageClient({
+    endpoint: env.STORAGE_ENDPOINT!,
+    bucket: env.STORAGE_BUCKET,
+    accessKey: env.STORAGE_ACCESS_KEY!,
+    secretKey: env.STORAGE_SECRET_KEY!,
   });
 }
 
@@ -407,8 +454,8 @@ describe('Import-token (issue #230 fixup)', () => {
   // carrying only a Bearer (no cookie) gets the standard
   // `UNAUTHENTICATED` 401 instead of admission.
   // -------------------------------------------------------------------
-  describe('scope — non-binary-leg endpoints reject Bearer tokens', () => {
-    it('GET /api/users with only Bearer header (no session cookie) returns 401 UNAUTHENTICATED', async () => {
+  describe('scope — non-binary-leg endpoints ignore the Bearer header', () => {
+    it('GET /api/users returns the SAME response with and without a valid Bearer (header not consulted)', async () => {
       try {
         const importRes = await authPost(
           ownerToken,
@@ -419,18 +466,189 @@ describe('Import-token (issue #230 fixup)', () => {
         const { importToken } = importRes.json() as { importToken: string };
         expect(importToken).toBeTruthy();
 
-        const res = await getApp().inject({
+        // No auth at all — baseline 401.
+        const noAuth = await getApp().inject({
+          method: 'GET',
+          url: '/api/users',
+        });
+        expect(noAuth.statusCode).toBe(401);
+        const noAuthCode = noAuth.json().code as string;
+        expect(['UNAUTHENTICATED', 'SESSION_EXPIRED']).toContain(noAuthCode);
+
+        // Valid Bearer, no cookie — the load-bearing assertion: the
+        // standard auth middleware does NOT consult the Authorization
+        // header on `/api/users`, so the response is byte-equivalent
+        // (status + code) to the no-auth case. A future regression
+        // wiring `createAuthMiddlewareWithImportToken` to this route
+        // would either admit the call (200) or surface
+        // `IMPORT_TOKEN_INVALID`; the equality assertion catches both
+        // drifts.
+        const withValidBearer = await getApp().inject({
           method: 'GET',
           url: '/api/users',
           headers: { authorization: `Bearer ${importToken}` },
         });
-        // Standard auth middleware doesn't look at `Authorization`, so
-        // a request with no cookie is just unauthenticated. We accept
-        // either UNAUTHENTICATED or SESSION_EXPIRED — both indicate
-        // the Bearer branch was not consulted (the load-bearing
-        // property). The code MUST NOT be 200.
-        expect(res.statusCode).toBe(401);
-        expect(res.json().code).not.toBe('IMPORT_TOKEN_INVALID');
+        expect(withValidBearer.statusCode).toBe(noAuth.statusCode);
+        expect(withValidBearer.json().code).toBe(noAuthCode);
+
+        // Bogus Bearer — same expectation. If the route consulted the
+        // header at all, this would surface IMPORT_TOKEN_INVALID.
+        const withBogusBearer = await getApp().inject({
+          method: 'GET',
+          url: '/api/users',
+          headers: { authorization: 'Bearer not-a-real-token-just-noise' },
+        });
+        expect(withBogusBearer.statusCode).toBe(noAuth.statusCode);
+        expect(withBogusBearer.json().code).toBe(noAuthCode);
+      } finally {
+        await seed(db, { force: true });
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Bearer admits the FULL binary-leg trio — not just `init`. The file
+  // header advertises coverage for init / complete / DELETE; this case
+  // walks the full chain so a scope regression that drops
+  // `attachment:write` or `attachment:hide` from
+  // `IMPORT_TOKEN_PERMISSIONS` surfaces here, not in production.
+  // -------------------------------------------------------------------
+  describe('scope — Bearer admits init, complete, AND DELETE on the binary leg', () => {
+    it('walks init → upload → complete → DELETE all under Bearer auth', async () => {
+      try {
+        const importRes = await authPost(
+          ownerToken,
+          '/api/import?override=true',
+          buildOverrideEnvelope(),
+        );
+        expect(importRes.statusCode).toBe(200);
+        const { importToken } = importRes.json() as { importToken: string };
+        expect(importToken).toBeTruthy();
+
+        const projectId = '55555555-5555-4555-8555-555555555555';
+
+        // 1) init under Bearer
+        const initRes = await injectInitWithBearer(
+          projectId,
+          importToken,
+          binaryInitBody({
+            fileName: 'restored.pdf',
+            sizeBytes: 100,
+            label: 'sonstiges',
+            ciphertextSizeBytes: 116,
+          }),
+        );
+        expect(initRes.statusCode).toBe(201);
+        const initBody = initRes.json();
+        const attId = initBody.attachment.id as string;
+        const originalKey = initBody.attachment.originalKey as string;
+
+        // 2) PUT the ciphertext directly via the storage helper. The
+        //    presigned URL path is exercised under the standard auth
+        //    flow elsewhere; here we want to land bytes against the
+        //    declared `ciphertextSizeBytes` (116) so `complete` does
+        //    not 409 on size mismatch.
+        await storage().upload(originalKey, Buffer.alloc(116, 0xff), 'application/octet-stream');
+
+        // 3) complete under Bearer — same token, second call
+        const completeRes = await injectCompleteWithBearer(projectId, attId, importToken);
+        expect(completeRes.statusCode).toBe(200);
+        expect(completeRes.json().status).toBe('ready');
+
+        // 4) DELETE under Bearer — same token, third call
+        const deleteRes = await injectDeleteWithBearer(projectId, attId, importToken);
+        // 204 is the documented soft-hide response.
+        expect([200, 204]).toContain(deleteRes.statusCode);
+      } finally {
+        await seed(db, { force: true });
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Multi-use within TTL. A single import drives N init + N complete +
+  // possibly DELETE-rollback calls under the same token (per AC-314
+  // "multi-use within that window"). A regression turning the token
+  // single-use would only surface on a full restore in production.
+  // -------------------------------------------------------------------
+  describe('multi-use within TTL', () => {
+    it('accepts the same token on two init calls (no single-use ceiling)', async () => {
+      try {
+        const importRes = await authPost(
+          ownerToken,
+          '/api/import?override=true',
+          buildOverrideEnvelope(),
+        );
+        expect(importRes.statusCode).toBe(200);
+        const { importToken } = importRes.json() as { importToken: string };
+        expect(importToken).toBeTruthy();
+
+        const projectId = '55555555-5555-4555-8555-555555555555';
+
+        const init1 = await injectInitWithBearer(
+          projectId,
+          importToken,
+          binaryInitBody({ fileName: 'a.pdf', sizeBytes: 100, label: 'sonstiges' }),
+        );
+        expect(init1.statusCode).toBe(201);
+
+        const init2 = await injectInitWithBearer(
+          projectId,
+          importToken,
+          binaryInitBody({ fileName: 'b.pdf', sizeBytes: 200, label: 'sonstiges' }),
+        );
+        expect(init2.statusCode).toBe(201);
+      } finally {
+        await seed(db, { force: true });
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // User deactivated mid-import — the freshness check on every bearer-
+  // path call (per the `auth.ts` design comment: caching `users.active`
+  // inside the token would let a deactivated user keep restoring for
+  // the rest of the 5-min TTL). This is the entire reason the Bearer
+  // path does a DB roundtrip per call. Untested before this commit.
+  // -------------------------------------------------------------------
+  describe('user deactivated mid-import — token rejects on next call', () => {
+    it('returns 401 IMPORT_TOKEN_INVALID after the token-bearer user is deactivated', async () => {
+      try {
+        const importRes = await authPost(
+          ownerToken,
+          '/api/import?override=true',
+          buildOverrideEnvelope(),
+        );
+        expect(importRes.statusCode).toBe(200);
+        const { importToken } = importRes.json() as { importToken: string };
+        expect(importToken).toBeTruthy();
+
+        // Sanity: the token works pre-deactivation.
+        const projectId = '55555555-5555-4555-8555-555555555555';
+        const initOk = await injectInitWithBearer(
+          projectId,
+          importToken,
+          binaryInitBody({ fileName: 'before.pdf', sizeBytes: 100, label: 'sonstiges' }),
+        );
+        expect(initOk.statusCode).toBe(201);
+
+        // Deactivate the token's user (the imported owner) directly in
+        // the DB — simulates an admin flipping the active flag while
+        // an import is in flight. The fresh DB lookup on the next
+        // bearer call must surface IMPORT_TOKEN_INVALID rather than
+        // admit the request against a stale cached user row.
+        await db.execute(sql`UPDATE users SET active = false WHERE id = ${SEEDED_INHABER_UUID}`);
+
+        const initRejected = await injectInitWithBearer(
+          projectId,
+          importToken,
+          binaryInitBody({ fileName: 'after.pdf', sizeBytes: 100, label: 'sonstiges' }),
+        );
+        expect(initRejected.statusCode).toBe(401);
+        expect(initRejected.json().code).toBe('IMPORT_TOKEN_INVALID');
       } finally {
         await seed(db, { force: true });
         ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
