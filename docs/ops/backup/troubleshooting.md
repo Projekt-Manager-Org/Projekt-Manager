@@ -52,12 +52,12 @@ If you cannot restore the most recent green-labelled backup to a scratch DB per 
 Next steps:
 
 1. Step back one day and retry.
-2. If every available dump fails, prepare for full reconstruction from Layer 1 business-data export ([api.md §14.2.4](../../spec/api.md#1424-unified-data-exchange)) plus a fresh admin bootstrap (see the "First-login ritual" phase in [server-setup.md](../server-setup.md)).
+2. If every available dump fails, prepare for full reconstruction from Layer 1 business-data export ([api.md §14.2.4](../../spec/api.md#1424-unified-data-exchange)) onto a fresh admin bootstrap (see the "First-login ritual" phase in [server-setup.md](../server-setup.md)). The bootstrap-admin user is overwritten by the imported user set during the restore.
 
-This reconstruction loses users, sessions, and audit FKs — it is worst-case recovery, not a replacement for Layer 2.
+Issue #230 expanded the Layer 1 envelope to round-trip users, the company-profile singleton, invoices, and the invoice-number sequence. Reconstruction loses only what stays out of the envelope by design: sessions (ephemeral), push subscriptions (device-tied), trigger-maintained storage counters, Layer 2 metadata, notification rules (shipped with code), and the per-instance audit chain (the importing instance's chain starts at the import event). Operator-meaningful business state is preserved.
 
 ## Owner / escalation contact
 
-The project is currently single-operator. The owner (Vladimir) is the escalation contact for every failure class above. If the owner is unavailable and the outage blocks business operations, the fallback plan is the Layer 1 business-data export ([ADR-0018](../../adr/0018-data-persistence-and-recovery-layered-strategy.md)) restored onto a fresh bootstrap — partial recovery, no users/sessions/audit, but projects and customers survive.
+The project is currently single-operator. The owner (Vladimir) is the escalation contact for every failure class above. If the owner is unavailable and the outage blocks business operations, the fallback plan is the Layer 1 business-data export ([ADR-0018](../../adr/0018-data-persistence-and-recovery-layered-strategy.md)) restored onto a fresh bootstrap — sessions and per-instance audit history are lost, but every user-meaningful business row (users, customers, projects, invoices, company profile) round-trips per issue #230.
 
 Review this section at every staffing change.
