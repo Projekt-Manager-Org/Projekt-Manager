@@ -51,6 +51,31 @@ import type { Permission } from '../../config/permissions.js';
 
 export const IMPORT_TOKEN_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Permission set granted to the import-token bearer credential. Exactly
+ * what the binary leg needs:
+ *   - `attachment:write` — init + complete
+ *   - `attachment:hide`  — rollback DELETE
+ *   - `data:restore`     — the restore-mode init AND-gate (AC-255) on
+ *                          `POST /api/projects/:id/attachments/init`
+ *                          when the body carries a `restore` block;
+ *                          satisfied at the service layer via
+ *                          `request.importTokenPermissions` so the
+ *                          token's scope bounds the credential
+ *                          end-to-end (not the operator's full role
+ *                          set).
+ *
+ * Pinned here because both the mint site (`ImportService.import`) and
+ * the test suite (`import-token.test.ts`) reference the exact same set;
+ * drift would let the binary-leg orchestrator hold a token that 403s on
+ * its own endpoint.
+ */
+export const IMPORT_TOKEN_PERMISSIONS: readonly Permission[] = [
+  'attachment:write',
+  'attachment:hide',
+  'data:restore',
+];
+
 export interface ImportTokenRecord {
   userId: string;
   permissions: readonly Permission[];

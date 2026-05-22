@@ -65,23 +65,7 @@ import { bestEffortHideStorageKeys } from './AttachmentService.js';
 import type { ServiceLogger } from './Logger.js';
 import { emitProjectChanged } from '../sse/emitters.js';
 import type { AuthUser } from '../middleware/auth.js';
-import { mintImportToken } from './importTokenStore.js';
-import type { Permission } from '../../config/permissions.js';
-
-/**
- * Permission set granted to the import-token bearer credential. Pinned
- * here because both `ImportService.import()` and the import-token tests
- * reference the exact same set — drift between the two would let the
- * binary-leg orchestrator hold a token that 403s on its own endpoint.
- *
- * Scope rationale: the binary leg needs `attachment:write` (init +
- * complete) and `attachment:hide` (DELETE rollback). Nothing else —
- * the orchestrator never reads attachments via this token, so granting
- * `attachment:read` would widen the credential's blast radius for no
- * concrete use. NOT a generic owner credential — every other endpoint
- * rejects Bearer tokens by virtue of their cookie-only auth middleware.
- */
-const IMPORT_TOKEN_PERMISSIONS: readonly Permission[] = ['attachment:write', 'attachment:hide'];
+import { mintImportToken, IMPORT_TOKEN_PERMISSIONS } from './importTokenStore.js';
 
 /**
  * Within-envelope structural checks — uniqueness of keys that become DB
@@ -573,6 +557,32 @@ export class ImportService {
     log?: ServiceLogger,
     caller?: AuthUser | null,
   ): Promise<ImportResult | DryRunPreview> {
+    // Forensic trail for failed attempts. The success-case audit row at the
+    // end of the commit transaction rolls back on any mid-tx throw (FK
+    // violation, OOM, confirmation-phrase mismatch, etc.), so a series of
+    // failed attempts would otherwise be invisible. The server log lives
+    // outside the tx and survives the rollback. Dry-run and commit are both
+    // logged so failed-validation telemetry is uniform across paths.
+    const batchId = randomUUID();
+    log?.info(
+      {
+        batchId,
+        dryRun: opts.dryRun === true,
+        override: opts.override === true,
+        callerUserId: caller?.id ?? null,
+        plannedCounts: {
+          users: envelope.users.length,
+          company_profile: envelope.company_profile.length,
+          customers: envelope.customers.length,
+          projects: envelope.projects.length,
+          project_workers: envelope.project_workers.length,
+          invoices: envelope.invoices.length,
+          invoice_sequence: envelope.invoice_sequence.length,
+        },
+      },
+      'data_import.attempt.start',
+    );
+
     if (envelope.schema_version !== SCHEMA_VERSION) {
       throw schemaVersionMismatch(SCHEMA_VERSION, envelope.schema_version);
     }
@@ -883,7 +893,7 @@ export class ImportService {
         actorId: null,
         actorReason: 'data_import',
         entityType: 'data_import',
-        entityId: randomUUID(),
+        entityId: batchId,
         // German operator-facing label; the activity feed renders it
         // verbatim (data-model.md §5.10). Concrete row count gives the
         // operator something useful, not a UUID.

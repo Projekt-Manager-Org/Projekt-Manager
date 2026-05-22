@@ -33,6 +33,15 @@ export interface AuthUser {
   email: string | null;
   themePreference: ThemePreference;
   pushMuted: boolean;
+  /**
+   * Set only when the request authenticated via `Authorization: Bearer
+   * <importToken>` on a token-aware route (`createAuthMiddlewareWithImportToken`).
+   * Carries the token's declared scope; service-layer gates that would
+   * otherwise consult `roles` honour this set instead, so the credential's
+   * effective capability is bounded by the token end-to-end (AC-315).
+   * Undefined for cookie-authenticated callers.
+   */
+  importTokenPermissions?: readonly Permission[];
 }
 
 declare module 'fastify' {
@@ -170,6 +179,7 @@ export function createAuthMiddlewareWithImportToken(db: Database) {
         // `repositories/session.ts`'s `findSession` join.
         themePreference: userRow.themePreference as ThemePreference,
         pushMuted: userRow.pushMuted,
+        importTokenPermissions: record.permissions,
       };
       request.importTokenPermissions = record.permissions;
       return;
@@ -226,18 +236,18 @@ export function requirePermission(...permissions: Permission[]) {
       reply.code(err.statusCode).send(err.toResponse());
       return;
     }
-    // Two paths to a permission:
-    //   - Bearer auth on a token-aware route: `request.importTokenPermissions`
-    //     is the authoritative capability set; the token's scope is the
-    //     credential's blast radius. Roles are NOT consulted on this path —
-    //     a future regression that wires the token-aware middleware on a
-    //     route whose role set is broader than the token's must still be
-    //     bounded by the token.
-    //   - Cookie auth: `importTokenPermissions` is undefined; permission
-    //     resolves through the user's roles.
-    // Route-wiring keeps these orthogonal in practice — the bearer-aware
-    // middleware only runs on the attachment binary-leg routes, and other
-    // routes use the cookie-only middleware.
+    // Decision matrix for granting a permission:
+    //
+    //                       | route-level (this fn)           | service-level
+    // ----------------------+---------------------------------+----------------------------
+    //   Bearer auth         | importTokenPermissions.some(p)  | caller.importTokenPermissions.includes(p)
+    //   Cookie auth         | hasPermission(roles, p)         | hasPermission(caller.roles, p)
+    //
+    // Roles are NOT consulted on the Bearer path at either level — a future
+    // regression that wires the token-aware middleware on a route whose role
+    // set is broader than the token's must still be bounded by the token.
+    // `request.user.importTokenPermissions` carries the same value into the
+    // service layer (AC-315).
     const grantedByToken =
       request.importTokenPermissions !== undefined &&
       permissions.some((p) => request.importTokenPermissions!.includes(p));
