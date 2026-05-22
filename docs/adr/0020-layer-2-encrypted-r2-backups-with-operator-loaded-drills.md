@@ -55,11 +55,9 @@ age's passphrase mode instead of asymmetric. Ruled out: passphrase-based age nee
 
 Full restore drill from CI on a schedule. Ruled out: CI would need persistent decrypt-key access, which becomes the whole-history compromise vector — the exact threat encryption is meant to mitigate. Operator-loaded tmpfs isolates the decrypt path to a trusted enclave.
 
-### Dumping users and sessions via app-level export instead of pg_dump
+### Dumping the full DB via app-level export instead of pg_dump
 
-Extend the Layer 1 envelope so one artifact captures everything. Ruled out: Layer 1 is deliberately portability-first, not DR — users and sessions are excluded by design (see [ADR-0018 §Decision](0018-data-persistence-and-recovery-layered-strategy.md#decision) and [ADR-0019](0019-worker-data-scoping-repository-layer-predicate.md)). The two layers are complementary; merging re-introduces the confusion ADR-0018 removed.
-
-> **2026-05-22 — partially reconsidered.** Layer 1's content set expanded to all user-meaningful business state under issue [#230](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/230) — `users` (with `passwordHash`), `company_profile`, `invoices`, and `invoice_sequence` now round-trip alongside the existing customers / projects / project_workers / attachments. See the 2026-05-22 update at the top of [ADR-0018](0018-data-persistence-and-recovery-layered-strategy.md). The original "users and sessions excluded" framing of this alternative no longer holds — users are now exchanged. Sessions still are not (ephemeral, instance-bound) and `pg_dump` retains everything Layer 1 still omits: sessions, schema, indices, derived rows, audit_log, the rest of the instance-bound surface. **Layer 2's cadence, encryption, and drill mechanics are unchanged** — this ADR's decision still stands; the expanded Layer 1 partly overlaps the Layer 2 row set but does not replace it. The complementarity remains: Layer 1 is portability, Layer 2 is DR.
+Extend the Layer 1 envelope so one artifact captures everything. Ruled out: Layer 1 is portability-first, not DR. It carries the user-meaningful business state (including `users` and `passwordHash` — see [ADR-0018 §Decision](0018-data-persistence-and-recovery-layered-strategy.md#decision)) but deliberately omits the instance-bound surface — `sessions`, `audit_log`, schema, indices, derived rows. Layer 2's `pg_dump` retains all of it. The two layers are complementary; merging re-introduces the confusion ADR-0018 removed.
 
 ### GFS-style rotation (7 daily, 4 weekly, 12 monthly)
 

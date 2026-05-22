@@ -58,6 +58,6 @@ The Layer 1 envelope round-trips users, the company-profile singleton, invoices,
 
 ## Owner / escalation contact
 
-The project is currently single-operator. The owner (Vladimir) is the escalation contact for every failure class above. If the owner is unavailable and the outage blocks business operations, the fallback plan is the Layer 1 business-data export ([ADR-0018](../../adr/0018-data-persistence-and-recovery-layered-strategy.md)) restored onto a fresh bootstrap — sessions and per-instance audit history are lost, but every user-meaningful business row (users, customers, projects, invoices, company profile) round-trips.
+The project is currently single-operator. The owner (Vladimir) is the escalation contact for every failure class above. If the owner is unavailable and the outage blocks business operations, follow the Layer 1 fallback procedure documented under "Escalation threshold" above.
 
 Review this section at every staffing change.
