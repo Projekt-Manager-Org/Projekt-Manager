@@ -83,9 +83,13 @@ interface EnvelopeAttachment {
 interface Envelope {
   schema_version: number;
   exported_at: string;
+  users: unknown[];
+  company_profile: unknown[];
   customers: unknown[];
   projects: unknown[];
   project_workers: unknown[];
+  invoices: unknown[];
+  invoice_sequence: unknown[];
   attachments?: EnvelopeAttachment[];
 }
 
@@ -135,9 +139,13 @@ function buildEnvelope(attachments: EnvelopeAttachment[] = []): Envelope {
   return {
     schema_version: PINNED_SCHEMA_VERSION,
     exported_at: '2026-05-04T08:00:00.000Z',
+    users: [],
+    company_profile: [],
     customers: [],
     projects: [],
     project_workers: [],
+    invoices: [],
+    invoice_sequence: [],
     attachments,
   };
 }

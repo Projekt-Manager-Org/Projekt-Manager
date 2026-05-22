@@ -102,9 +102,20 @@ export interface ImportEnvelopeAttachment {
 export interface ImportEnvelope {
   schema_version: number;
   exported_at: string;
+  /**
+   * Issue #230: the envelope round-trips every user-meaningful business
+   * table. The orchestrator only needs row counts (for the preflight
+   * readout) and the attachments slot (for the binary leg), so the
+   * other slots are typed as `unknown[]` — the server's `/api/import`
+   * is the authoritative validator for each row's shape.
+   */
+  users: unknown[];
+  company_profile: unknown[];
   customers: unknown[];
   projects: unknown[];
   project_workers: unknown[];
+  invoices: unknown[];
+  invoice_sequence: unknown[];
   /**
    * Attachments — present in the takeout zip's `data.json`. Stripped
    * before the text-leg POST (`/api/import` rejects the key per
@@ -399,6 +410,12 @@ function validateEnvelopeShape(value: unknown): asserts value is ImportEnvelope 
   if (typeof e.exported_at !== 'string') {
     throw new Error('importAllFromZip: data.json.exported_at missing or not a string');
   }
+  if (!Array.isArray(e.users)) {
+    throw new Error('importAllFromZip: data.json.users missing or not an array');
+  }
+  if (!Array.isArray(e.company_profile)) {
+    throw new Error('importAllFromZip: data.json.company_profile missing or not an array');
+  }
   if (!Array.isArray(e.customers)) {
     throw new Error('importAllFromZip: data.json.customers missing or not an array');
   }
@@ -407,6 +424,12 @@ function validateEnvelopeShape(value: unknown): asserts value is ImportEnvelope 
   }
   if (!Array.isArray(e.project_workers)) {
     throw new Error('importAllFromZip: data.json.project_workers missing or not an array');
+  }
+  if (!Array.isArray(e.invoices)) {
+    throw new Error('importAllFromZip: data.json.invoices missing or not an array');
+  }
+  if (!Array.isArray(e.invoice_sequence)) {
+    throw new Error('importAllFromZip: data.json.invoice_sequence missing or not an array');
   }
   if (e.attachments !== undefined && !Array.isArray(e.attachments)) {
     throw new Error('importAllFromZip: data.json.attachments must be an array when present');
