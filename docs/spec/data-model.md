@@ -217,16 +217,81 @@ Design notes:
 
 ### 5.8 Export Envelope
 
-The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `2`.
+The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `3`. Canonical TypeScript types live in `src/domain/dataExchange.ts` (`Envelope`, `EnvelopeUser`, `EnvelopeCompanyProfile`, `EnvelopeCustomer`, `EnvelopeProject`, `EnvelopeAssignment`, `EnvelopeInvoice`, `EnvelopeInvoiceSequence`, `EnvelopeAttachment`); the wire shape below is normative — server and UI both bind against it.
 
 ```typescript
 interface ExportEnvelope {
-  schema_version: 2; // monotonic integer; imports reject any mismatch
+  schema_version: 3; // monotonic integer; imports reject any mismatch
   exported_at: string; // ISO 8601 — informational only, not used for import semantics
-  customers: Customer[]; // every row, all fields from §5.6
-  projects: Project[]; // every row, all fields from §5.1, including archived (deleted = true)
+  users: EnvelopeUser[]; // every row, including inactive accounts (see below)
+  company_profile: EnvelopeCompanyProfile[]; // singleton-array, length === 1 (see below)
+  customers: EnvelopeCustomer[]; // every row, all fields from §5.6 (including `ustId`)
+  projects: EnvelopeProject[]; // every row, all fields from §5.1, including archived (deleted = true)
   project_workers: { projectId: string; userId: string }[]; // every row of the join
+  invoices: EnvelopeInvoice[]; // every row, ordered (cancellation_of NULLS FIRST, id) — see below
+  invoice_sequence: EnvelopeInvoiceSequence[]; // every (year, kind) row
   attachments: EnvelopeAttachment[]; // every row with status = 'ready' — metadata-only descriptor (see below)
+}
+
+interface EnvelopeUser {
+  id: string; // UUID — preserved on restore
+  username: string; // unique
+  displayName: string;
+  passwordHash: string; // salted hash from §5.3; ships verbatim (see below)
+  roles: string[]; // closed set per the role matrix in api.md §14.3
+  email: string | null;
+  active: boolean;
+  themePreference: 'light' | 'dark' | 'system'; // §5.7
+  pushMuted: boolean; // §5.3 / §5.12
+  createdAt: string; // ISO 8601 — preserved on restore
+  updatedAt: string; // ISO 8601 — preserved on restore
+  lastLoginAt: string | null; // ISO 8601 — preserved on restore (mutates on login, see roundtrip AC-141)
+  createdBy: string | null; // UserAccount.id — no FK at DB level (§5.3 design notes)
+  updatedBy: string | null; // UserAccount.id — no FK at DB level (§5.3 design notes)
+}
+
+interface EnvelopeCompanyProfile {
+  id: string; // UUID — preserved on restore
+  companyName: string;
+  address: { street: string; zip: string; city: string }; // all three components present on the wire; empty strings on the baseline-seeded row
+  taxId: string;
+  ustId: string | null;
+  iban: string | null;
+  accentColor: string | null;
+  footerText: string | null;
+  logoBinaryDescriptorId: string | null; // references an `attachments[]` row carried by the takeout-zip binary leg
+  defaultTaxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge'; // §5.15 TaxMode
+  updatedAt: string; // ISO 8601 — preserved on restore
+  updatedBy: string | null; // UserAccount.id reference
+}
+
+interface EnvelopeInvoice {
+  id: string; // UUID — preserved on restore
+  projectId: string; // FK target restored from `projects[]`
+  status: 'draft' | 'issued' | 'cancelled'; // §5.15 InvoiceStatus
+  number: string | null; // null while draft; matches ^(RE|ST)-\d{4}-\d{4,}$ once issued
+  issueDate: string | null; // ISO 8601 date — set at issuance
+  performanceDate: string | null; // ISO 8601 date — Leistungsdatum per §14 UStG
+  taxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge'; // §5.15
+  profile: 'zugferd-en16931'; // §5.15 InvoiceProfile (v1)
+  issuer: InvoiceIssuerSnapshot; // §5.15 — frozen at issuance
+  recipient: InvoiceRecipientSnapshot; // §5.15 — frozen at issuance
+  lines: InvoiceLine[]; // §5.15 — frozen at issuance
+  totals: InvoiceTotals; // §5.15 — frozen at issuance
+  cancellationOf: string | null; // self-FK; non-null only on Storno rows (see below)
+  cancellationReason: string | null;
+  renderedPdfBinaryDescriptorId: string | null; // references an `attachments[]` row carried by the takeout-zip binary leg
+  createdAt: string; // ISO 8601 — preserved on restore
+  updatedAt: string; // ISO 8601 — preserved on restore
+  createdBy: string | null; // UserAccount.id reference
+  updatedBy: string | null; // UserAccount.id reference
+}
+
+interface EnvelopeInvoiceSequence {
+  year: number; // calendar year, composite key with `kind`
+  kind: 'invoice' | 'storno'; // §5.16 InvoiceSequenceKind
+  nextValue: number; // bigint on the DB side; serialized as JSON number (well within JS-safe range at expected scale)
+  updatedAt: string; // ISO 8601 — preserved on restore
 }
 
 interface EnvelopeAttachment {
@@ -244,12 +309,17 @@ interface EnvelopeAttachment {
 
 Design notes:
 
-- **Row-level fidelity for text rows.** Customers, projects, and project-worker assignments carry all persisted fields including `id`, `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, and `deleted`. Imports preserve IDs exactly (see [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision)).
+- **Row-level fidelity across the text rows.** Every text-row slot — users, company_profile, customers, projects, project_workers, invoices, invoice_sequence — carries all persisted fields including `id`, `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, archive flags, and any frozen snapshot blocks. Imports preserve IDs exactly (see [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision)).
 - **Archived rows are included.** Projects with `deleted = true` round-trip with their archive state intact (see [§6.9](#69-soft-deletes)).
-- **Users and sessions are not included.** Admin bootstrap ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)) handles fresh installs; seed-time loading of users uses a direct-DB helper, while seed-time business-data loading goes through the import code path (see [§7](#7-seed-data-specification)).
+- **Users round-trip verbatim — including `passwordHash`.** Every row in the `users` table ships, active and inactive alike. `passwordHash` is the salted hash from [§5.3](#53-user-entity) and rides as-is: a fresh-install import reproduces the operator's user set without an out-of-band password-reset pass. The hash is no more PII-sensitive than the addresses and invoice line items already in the artifact ([ADR-0018 update 2026-05-22](../adr/0018-data-persistence-and-recovery-layered-strategy.md), issue #230 threat-model note); excluding it would break the round-trip. `lastLoginAt` is preserved but its value is the source's last-login moment — a login between consecutive exports advances it (see [AC-141](verification.md#1514-data-exchange)).
+- **`company_profile` is a singleton in an array shape.** The slot is always length `1` — the row is pre-seeded by the baseline migration and the schema enforces a singleton CHECK + UNIQUE ([§5.17](#517-company-profile-entity)). The array shape is for uniformity with the other slots; the importer validates `length === 1`.
+- **`customers.ustId` round-trips.** The field was schema-added with invoicing ([§5.6](#56-customer-entity), [AC-306](verification.md#1511-customer-management)) but the envelope did not carry it pre-#230. It now ships and round-trips like every other customer field.
+- **`invoices` ordering is load-bearing — `(cancellation_of NULLS FIRST, id)`.** The export orders the slot so non-Storno rows (null `cancellationOf`) precede Storno rows (non-null `cancellationOf`); within each group, ordering is by `id`. The importer inserts in two passes — originals first, Stornos second — to satisfy the self-FK without a deferrable constraint ([§6.6](#66-referential-integrity), [api.md §14.2.4](api.md#1424-unified-data-exchange)). The ordering is part of the wire contract; a re-export must reproduce it.
+- **`invoice_sequence` restores next-number allocation state.** Every `(year, kind)` row round-trips so allocation continues from the imported peak rather than restarting at 1 on the importing instance. Required by the gapless invariant ([§5.16](#516-invoice-sequence-entity)) — restoring `invoices` without `invoice_sequence` would let a fresh issue collide with a restored number.
 - **Attachments: metadata-only descriptor.** Only rows with `status = 'ready'` are exported; `pending` rows (uncommitted uploads) and `hidden` rows (in the Papierkorb pending lifecycle reap, see [§5.13](#513-attachment) state machine) are excluded. The envelope carries the per-row metadata fields needed to restore identity and reach the right project on import; it does NOT carry crypto fields (`wrappedDek`, `wrappedThumbDek`, `wrappedDekVersion`), opaque storage keys (`originalKey`, `thumbKey`), or ciphertext sizes (`ciphertextSizeBytes`, `ciphertextThumbSizeBytes`) — those are not consumable on the importing instance and were dead weight under the new shape. The wrapped envelopes were also load-bearing for confidentiality on the exporting instance and are deliberately kept off the takeout artifact.
-- **Restore mechanics are client-driven.** Bytes live in object storage (Layer 3 per [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md)) and ride alongside the envelope as plaintext entries inside the takeout zip ([ui/daten.md §8.11.1](ui/daten.md#8111-export)). On import, the browser orchestrator re-uploads each plaintext file through the existing `init` (with `restore` block) → presigned PUT → `complete` pipeline against the importing instance. Fresh DEKs are minted in the browser; the importing instance wraps them under its own `BINARY_AGE_RECIPIENT`. No key material crosses the takeout boundary; no plaintext bytes cross the importing instance's app server.
-- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `2`.
+- **Restore mechanics are client-driven (binary leg).** Bytes live in object storage (Layer 3 per [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md)) and ride alongside the envelope as plaintext entries inside the takeout zip ([ui/daten.md §8.11.1](ui/daten.md#8111-export)). On import, the browser orchestrator re-uploads each plaintext file through the existing `init` (with `restore` block) → presigned PUT → `complete` pipeline against the importing instance. Fresh DEKs are minted in the browser; the importing instance wraps them under its own `BINARY_AGE_RECIPIENT`. No key material crosses the takeout boundary; no plaintext bytes cross the importing instance's app server.
+- **Ephemeral, derived, device-tied, and instance-bound rows stay out.** `sessions` (ephemeral tokens), `push_subscriptions` (per-device endpoints), `project_storage_usage` (trigger-maintained derived state), `meta_backup_status` (Layer 2 instance metadata), `notification_rule` (config tied to the closed event catalog per [ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)), and `audit_log` (per-instance chain of custody) are excluded by design. The principle is pinned in [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision).
+- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `3` (bumped from `2` for issue [#230](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/230); pre-#230 envelopes are rejected outright with `SCHEMA_VERSION_MISMATCH`).
 
 ### 5.9 Backup Status Entity
 

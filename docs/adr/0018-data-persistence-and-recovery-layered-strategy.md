@@ -1,8 +1,10 @@
 # ADR-0018: Data persistence and recovery — layered strategy
 
 - **Status:** Accepted
-- **Date:** 2026-04-15 (Layer 3 status update 2026-04-29)
+- **Date:** 2026-04-15 (Layer 3 status update 2026-04-29; Layer 1 content set expanded 2026-05-22)
 - **Confidence:** High
+
+> **2026-05-22 update — Layer 1 content set expanded.** The envelope now carries all user-meaningful business state (issue [#230](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/230)): `users`, `company_profile`, `invoices`, and `invoice_sequence` join the existing `customers` / `projects` / `project_workers` / `attachments`. `customers.ustId` (pre-existing schema drift) now round-trips. `SCHEMA_VERSION` bumped from `2` to `3`; pre-#230 envelopes are rejected outright via `SCHEMA_VERSION_MISMATCH`. The **layer-separation invariant is unchanged** — Layer 1 is still not DR; Layer 2 ([ADR-0020](0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)) remains the cadence-driven durability layer. The "Users excluded" bullet in **Decision** below is superseded by the expanded content set described in [data-model.md §5.8](../spec/data-model.md#58-export-envelope) and [api.md §14.2.4](../spec/api.md#1424-unified-data-exchange).
 
 > **2026-04-29 update — Layer 3 is operational.** Binary attachments ship on Backblaze B2 per [ADR-0022](0022-binary-storage-b2-compliance-object-lock.md) (versioning + Compliance Object Lock + capability split). The "aspirational … gated on that work" framing in **Context** and **Consequences §Negative** below is preserved as-of-decision for context but no longer reflects reality. End-to-end encryption of B2 binaries remains open future work — see [DATA.md § Layer 3](../../DATA.md#layer-3--binary-attachments-provider-enforced-durability).
 
@@ -28,11 +30,11 @@ Further constraints:
 
 Treat persistence and recovery as **three independent layers**, each with its own scope, tooling, and restore verification:
 
-| Layer                         | Captures                                        | Trigger                                 | Restore                                                          | Verification                                                          |
-| ----------------------------- | ----------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------- |
-| **Business data (app-level)** | Customers, projects, assignments, archived rows | Human via UI (`data:export` permission) | Unified import endpoint (`data:restore`), restore-only semantics | CI roundtrip: seed → export → wipe → import → export → byte-compare   |
-| **Full DB state**             | Everything in PostgreSQL                        | Scheduled `pg_dump` on the VPS          | `pg_restore`                                                     | Scheduled job restores into ephemeral DB, asserts schema + row counts |
-| **Binary attachments**        | Uploaded files                                  | Continuous, storage-provider-owned      | Provider restore mechanics                                       | Provider durability SLA + documented deployment requirements          |
+| Layer                         | Captures                                                                                                                                     | Trigger                                 | Restore                                                          | Verification                                                          |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **Business data (app-level)** | Users, company profile, customers, projects, assignments, invoices, invoice-sequence counters, attachment metadata (archive state preserved) | Human via UI (`data:export` permission) | Unified import endpoint (`data:restore`), restore-only semantics | CI roundtrip: seed → export → wipe → import → export → byte-compare   |
+| **Full DB state**             | Everything in PostgreSQL                                                                                                                     | Scheduled `pg_dump` on the VPS          | `pg_restore`                                                     | Scheduled job restores into ephemeral DB, asserts schema + row counts |
+| **Binary attachments**        | Uploaded files                                                                                                                               | Continuous, storage-provider-owned      | Provider restore mechanics                                       | Provider durability SLA + documented deployment requirements          |
 
 Business-data layer specifics:
 
@@ -40,10 +42,10 @@ Business-data layer specifics:
 - **Restore-only** import: empty target → proceed; non-empty → refuse unless an explicit override flag is set (dev ergonomics). IDs preserved. All-or-nothing single transaction.
 - **Strict schema versioning**: export writes a monotonic `schema_version`; import rejects any mismatch. **No data-format migration code.** Cross-version imports, if ever needed, get a one-off script at that moment.
 - **Dry-run mode** on import: full validation and preview, no writes.
-- **Users excluded.** Admin bootstrap (ADR-0010) handles user creation on fresh installs. Test seeding uses a direct-DB helper confined to the test layer.
+- **Content set — all user-meaningful business state.** The envelope carries `users` (including `passwordHash`), `company_profile` (singleton), `customers`, `projects`, `project_workers`, `invoices`, `invoice_sequence`, and `attachments` (metadata-only descriptors — bytes ride the takeout zip per the bullet below). Ephemeral / derived / device-tied / instance-bound tables stay out: `sessions`, `push_subscriptions`, `project_storage_usage`, `meta_backup_status`, `notification_rule`, `audit_log`. Admin bootstrap ([ADR-0010](0010-first-run-admin-bootstrap.md)) remains the fresh-install path when no envelope is loaded; test seeding still uses a direct-DB helper confined to the test layer.
 - **Attachments — metadata-only descriptor on the envelope; bytes round-trip via the takeout zip.** The attachments slot on the export envelope carries identity + reachability fields only (`id`, `projectId`, `kind`, `label`, `fileName`, `mimeType`, `sizeBytes`, `createdAt`, `createdBy`); the wrapped-DEK envelopes, the version discriminator, opaque storage keys, and ciphertext sizes do NOT ride the envelope. Plaintext bytes ride alongside as zip entries in the [Export](../spec/ui/daten.md#8111-export) takeout artifact and are restored by the browser orchestrator running the standard `init` (with `restore` block) + presigned PUT + `complete` pipeline against the importing instance — keeping the VPS out of the bulk-plaintext data path per [ADR-0024](0024-binary-attachment-e2e-encryption.md). The text-leg `/api/import` never inserts attachment rows.
 
-The three layers are **complementary, not substitutes.** App-level export is not DR (omits users, sessions, schema state). `pg_dump` is not portability (encodes postgres internals). Binary durability belongs to storage.
+The three layers are **complementary, not substitutes.** App-level export is not DR (omits sessions, schema state, indices, derived/instance-bound rows; round-trip is via the application's validators, not a byte-exact snapshot). `pg_dump` is not portability (encodes postgres internals). Binary durability belongs to storage.
 
 ## Alternatives Considered
 
@@ -90,7 +92,8 @@ Versioned export with translation code bridging old formats. Ruled out: speculat
 
 - [Kickoff](../project/kickoff.md) — line 72 (automated DB backup as goal), line 80 (backup-system expansion as non-goal)
 - [ADR-0008](0008-vpn-first-network-access.md) — VPN-first threat model
-- [ADR-0010](0010-first-run-admin-bootstrap.md) — how users are created on fresh installs (why users are excluded from business-data export)
+- [ADR-0010](0010-first-run-admin-bootstrap.md) — how the first user is created on fresh installs absent a loaded envelope
+- Issue [#230](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/230) — Layer 1 content set expanded to all user-meaningful business state (see top-of-doc 2026-05-22 update)
 - [ADR-0017](0017-soft-delete-as-board-archive.md) — archived rows are business data and must round-trip
 - Issue [#90](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/90) — seed.ts replacement and the "export all" open question
 - Issue [#46](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/46) — DB-level backup + monitoring (second-layer tracker)
