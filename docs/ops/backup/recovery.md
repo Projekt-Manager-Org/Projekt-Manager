@@ -29,7 +29,7 @@ AWS_DEFAULT_REGION=auto \
 ## 2. Download
 
 ```bash
-TS='2026-04-17T02-00-12Z'   # replace with the selected timestamp
+TS='2026-04-17T02:00:12.345Z'   # replace with the selected timestamp — must match a key from §1's daily/ listing exactly (colons, three-digit ms)
 mkdir -p ~/restore && cd ~/restore
 
 AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" \
