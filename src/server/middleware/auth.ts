@@ -141,7 +141,14 @@ export function createAuthMiddlewareWithImportToken(db: Database) {
       // Load the user row so downstream audit + repo writes have the
       // operator's real `roles` / `displayName`. After the override-
       // import the imported envelope's row carries the same `id`, so
-      // this resolves to the freshly-inserted user.
+      // this resolves to the freshly-inserted user. The DB roundtrip
+      // is deliberate, not an optimization target: it is also the
+      // freshness check for `users.active`. Caching the row inside
+      // the token record would mean a user deactivated mid-import
+      // could continue restoring attachments for the rest of the TTL;
+      // the per-call lookup keeps the active-revocation effective on
+      // the very next call. At VPS scale (~tens of attachments per
+      // import) the roundtrip cost is irrelevant.
       const userRow = await findUserById(db, record.userId);
       if (!userRow || !userRow.active) {
         // Token's userId no longer resolves (or was deactivated post-
