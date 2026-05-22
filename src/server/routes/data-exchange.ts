@@ -25,6 +25,14 @@ import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
  * is text-only post-fix; a body carrying an `attachments` key MUST be
  * rejected with `422 VALIDATION_ERROR` and no writes occur.
  *
+ * Issue #230: `users`, `company_profile`, `invoices`, `invoice_sequence`
+ * are required alongside the pre-existing customers / projects /
+ * project_workers. SCHEMA_VERSION = 3 is a hard cut — pre-#230 envelopes
+ * fail at the service layer with SCHEMA_VERSION_MISMATCH; the body
+ * schema additionally enforces the new keys are present so a hand-edited
+ * v3-stamped envelope missing them fails fast at the route layer with
+ * 422 instead of bubbling a type error from the service.
+ *
  * Listing `attachments` under `properties` with `not: {}` (a schema that
  * fails for every value) is the load-bearing trick: Fastify's ajv
  * defaults to `removeAdditional: true`, so a bare
@@ -39,13 +47,27 @@ import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
  */
 const ENVELOPE_BODY_SCHEMA = {
   type: 'object',
-  required: ['schema_version', 'exported_at', 'customers', 'projects', 'project_workers'],
+  required: [
+    'schema_version',
+    'exported_at',
+    'users',
+    'company_profile',
+    'customers',
+    'projects',
+    'project_workers',
+    'invoices',
+    'invoice_sequence',
+  ],
   properties: {
     schema_version: { type: 'integer' },
     exported_at: { type: 'string' },
+    users: { type: 'array' },
+    company_profile: { type: 'array' },
     customers: { type: 'array' },
     projects: { type: 'array' },
     project_workers: { type: 'array' },
+    invoices: { type: 'array' },
+    invoice_sequence: { type: 'array' },
     // AC-253: any `attachments` payload rejects with 422 — the legacy
     // shape silently inserted attachment rows whose wrapped DEKs were
     // unwrappable on the importing instance.

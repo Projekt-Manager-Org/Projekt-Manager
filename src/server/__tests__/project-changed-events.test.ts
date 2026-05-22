@@ -82,6 +82,7 @@ import {
   EXPECTED_RESTORE_PHRASE,
 } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
+import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
 import { createStorageClient } from '../storage/client.js';
 import { ProjectCrudService } from '../services/ProjectCrudService.js';
@@ -317,7 +318,7 @@ async function seededWorkerIdAny(ownerToken: string): Promise<string> {
  * branches reuse this envelope: the override test runs it against a
  * non-empty target; the empty-target test wipes the tables first.
  */
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 function uuidWithPrefix(prefix: string, i: number): string {
   const hex = Array.from(prefix)
@@ -336,12 +337,19 @@ function buildOverrideEnvelope(): Record<string, unknown> {
   // run's rows are gone before these land — but a deterministic ID
   // would still re-collide with the seed snapshot if the seed is
   // re-applied after a previous override.
+  //
+  // Issue #230 (v3): the four new top-level slots default to empty
+  // arrays — this test pins the project_changed signal, not the
+  // import surface itself; the empty slots take the cheap path
+  // through ImportService.
   const nonce = Math.floor(Math.random() * 1_000_000);
   const customerId = uuidWithPrefix('cus', nonce % 9999);
   const projectId = uuidWithPrefix('pro', nonce % 9999);
   return {
     schema_version: CURRENT_SCHEMA_VERSION,
     exported_at: new Date().toISOString(),
+    users: [],
+    company_profile: [],
     customers: [
       {
         id: customerId,
@@ -349,6 +357,7 @@ function buildOverrideEnvelope(): Record<string, unknown> {
         phone: null,
         email: null,
         address: null,
+        ustId: null,
         notes: null,
         createdAt: '2026-02-01T00:00:00.000Z',
         updatedAt: '2026-02-01T00:00:00.000Z',
@@ -376,6 +385,8 @@ function buildOverrideEnvelope(): Record<string, unknown> {
       },
     ],
     project_workers: [],
+    invoices: [],
+    invoice_sequence: [],
     confirmation_phrase: EXPECTED_RESTORE_PHRASE,
   };
 }
@@ -716,6 +727,13 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
         expect(countProjectChanged(conn)).toBe(1);
       } finally {
         bus.unsubscribe(conn);
+        // Issue #230: override wipes users → sessions cascade → the
+        // operator's token is invalidated. Re-seed and re-login so the
+        // sibling empty-target test below (which calls `authPost`) does
+        // not 401. Pre-#230 this wasn't needed because override only
+        // touched customers/projects/etc.
+        await seed(db, { force: true });
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
       }
     });
   });

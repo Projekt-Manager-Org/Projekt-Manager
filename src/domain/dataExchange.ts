@@ -323,4 +323,15 @@ export interface ImportResult {
     invoices: number;
     invoice_sequence: number;
   };
+  /**
+   * `true` when the import wiped-and-replaced an existing `users` set
+   * (override=true into a non-empty target). The wipe cascades to
+   * `sessions` via `ON DELETE CASCADE`, so the operator's session token
+   * is gone before this response reaches the client. The UI uses this
+   * flag to redirect to login cleanly rather than hitting a 401 on the
+   * next call. `false` in every other code path (dry-run never reaches
+   * the commit; empty-target inserts into empty tables; envelopes
+   * without users — once another path produces one — would not wipe).
+   */
+  sessionInvalidated: boolean;
 }

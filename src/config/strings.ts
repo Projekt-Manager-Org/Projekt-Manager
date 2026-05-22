@@ -40,7 +40,12 @@ export const STRINGS = {
     restoreConfirmationMismatch:
       'Bestätigung fehlt oder stimmt nicht. Bitte den angezeigten Text exakt eingeben.',
     missingUserRefs:
-      'Die Datei verweist auf Benutzer, die in der Zieldatenbank nicht vorhanden sind.',
+      // Issue #230: with `users` in the envelope, the happy path always
+      // resolves refs internally. Surfacing this error now means the
+      // envelope was hand-edited or partially exported — the right
+      // remediation is to re-export from a complete source, not to
+      // restore Layer 2.
+      'Eine oder mehrere Benutzer-IDs in der Envelope sind unbekannt. Bitte aus einer vollständigen Quelle erneut exportieren.',
     // Invoice domain (ADR-0026 / api.md §14.4)
     invoiceFrozen:
       'Diese Rechnung ist bereits ausgestellt und kann nicht mehr geändert oder gelöscht werden.',
