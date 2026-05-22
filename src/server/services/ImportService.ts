@@ -186,6 +186,12 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
   // number IS NOT NULL`; many drafts may share a null number per project.
   const invoiceIds = new Set<string>();
   const invoiceNumbers = new Set<string>();
+  // Track each invoice id's own cancellationOf so the cancellation-target
+  // check below can reject Storno-of-Storno chains (the de facto domain
+  // is "originals get cancelled" — chains never appear in real usage and
+  // the two-pass insert in `import()` only handles a single Storno
+  // layer per id).
+  const invoiceCancellationOf = new Map<string, string | null>();
   for (let i = 0; i < envelope.invoices.length; i++) {
     const inv = envelope.invoices[i]!;
     if (invoiceIds.has(inv.id)) {
@@ -195,6 +201,7 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
       });
     }
     invoiceIds.add(inv.id);
+    invoiceCancellationOf.set(inv.id, inv.cancellationOf);
     if (inv.number !== null) {
       if (invoiceNumbers.has(inv.number)) {
         issues.push({
@@ -275,11 +282,25 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
         message: `projectId ${inv.projectId} not present in envelope.projects`,
       });
     }
-    if (inv.cancellationOf !== null && !invoiceIds.has(inv.cancellationOf)) {
-      issues.push({
-        path: `invoices[${i}].cancellationOf`,
-        message: `cancellationOf ${inv.cancellationOf} not present in envelope.invoices`,
-      });
+    if (inv.cancellationOf !== null) {
+      if (!invoiceIds.has(inv.cancellationOf)) {
+        issues.push({
+          path: `invoices[${i}].cancellationOf`,
+          message: `cancellationOf ${inv.cancellationOf} not present in envelope.invoices`,
+        });
+      } else if (invoiceCancellationOf.get(inv.cancellationOf) !== null) {
+        // ST→ST: this row's cancellation target is itself a Storno. The
+        // two-pass insert partitions on `cancellationOf IS NULL` and
+        // does not topologically order Stornos; under arbitrary
+        // envelope ordering a chain Storno→Storno would FK-violate at
+        // pass 2. Real issuance never produces chains (a Storno is
+        // terminal), so reject the envelope rather than complicate
+        // the importer.
+        issues.push({
+          path: `invoices[${i}].cancellationOf`,
+          message: `cancellationOf ${inv.cancellationOf} is itself a Storno (chains not permitted)`,
+        });
+      }
     }
   }
 
@@ -665,16 +686,25 @@ export class ImportService {
       // VPN-first deployment (ADR-0008) rules out concurrent restores in
       // practice, so the default READ COMMITTED isolation is sufficient —
       // TRUNCATE takes ACCESS EXCLUSIVE anyway.
-      const presenceResult = await tx.execute<{ present: boolean }>(
-        sql`SELECT (
-          EXISTS (SELECT 1 FROM customers)
-          OR EXISTS (SELECT 1 FROM projects)
-          OR EXISTS (SELECT 1 FROM project_workers)
-          OR EXISTS (SELECT 1 FROM invoices)
-          OR EXISTS (SELECT 1 FROM attachments)
-        ) AS present`,
+      //
+      // `usersExisted` is sampled separately because the session-invalidation
+      // flag (AC-310) is keyed on pre-wipe `users` presence — an empty-users
+      // override path performs no CASCADE on `sessions` and must return
+      // `sessionInvalidated: false`. Folding it into the same SELECT keeps
+      // the probe a single round trip.
+      const presenceResult = await tx.execute<{ present: boolean; users_existed: boolean }>(
+        sql`SELECT
+          (
+            EXISTS (SELECT 1 FROM customers)
+            OR EXISTS (SELECT 1 FROM projects)
+            OR EXISTS (SELECT 1 FROM project_workers)
+            OR EXISTS (SELECT 1 FROM invoices)
+            OR EXISTS (SELECT 1 FROM attachments)
+          ) AS present,
+          EXISTS (SELECT 1 FROM users) AS users_existed`,
       );
       const hasExisting = presenceResult.rows[0]?.present === true;
+      const usersExisted = presenceResult.rows[0]?.users_existed === true;
 
       if (hasExisting && !opts.override) {
         throw targetNotEmpty();
@@ -733,10 +763,14 @@ export class ImportService {
             users
           RESTART IDENTITY CASCADE`,
         );
-        // The wipe cascaded to `sessions` (ON DELETE CASCADE on users).
-        // Flag the result so the client can redirect to login cleanly
-        // rather than hitting a 401 on the next request.
-        sessionInvalidated = true;
+        // The wipe cascaded to `sessions` (ON DELETE CASCADE on users)
+        // only when a `users` row existed pre-wipe. On the empty-users
+        // path (no rows to CASCADE — fresh install before the
+        // ADR-0010 bootstrap, or a deliberately user-less state), no
+        // session is dropped; `sessionInvalidated` stays false and no
+        // import token is needed (AC-310). The caller's still-valid
+        // session cookie carries the binary leg.
+        sessionInvalidated = usersExisted;
       }
 
       // Insert order — pinned by issue #230:

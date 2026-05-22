@@ -532,6 +532,56 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         await reseedAndRelogin();
       }
     });
+
+    it('rejects a Storno-of-Storno chain as VALIDATION_ERROR (envelope-level guard)', async () => {
+      // A Storno whose `cancellationOf` targets another Storno would
+      // FK-violate the importer's two-pass insert under arbitrary
+      // envelope ordering. Real issuance never produces chains (a
+      // Storno is terminal), so the envelope-level validator rejects
+      // the chain instead of complicating the two-pass insert. The
+      // schema CHECK does NOT block this — it only requires
+      // `cancellationOf IS NOT NULL ↔ number LIKE 'ST-%'`.
+      await wipeBusinessDataExceptUsers();
+      try {
+        const env = buildExpandedEnvelope();
+        const original = env.invoices[0]!;
+        const firstStorno = env.invoices[1]!;
+        // Build a third invoice — a Storno of the first Storno.
+        const secondStornoId = uuid('inv3', 3);
+        env.invoices = [
+          original,
+          firstStorno,
+          {
+            ...firstStorno,
+            id: secondStornoId,
+            number: 'ST-2026-0002',
+            issueDate: '2026-01-25',
+            cancellationOf: firstStorno.id,
+            cancellationReason: 'Chain test',
+          },
+        ];
+        env.invoice_sequence = env.invoice_sequence.map((s) =>
+          s.kind === 'storno' ? { ...s, nextValue: 3 } : s,
+        );
+
+        const res = await authPost(ownerToken, '/api/import', asPayload(env));
+        expect(res.statusCode).toBe(422);
+        const body = res.json() as { code: string; details?: { issues?: unknown[] } };
+        expect(body.code).toBe('VALIDATION_ERROR');
+        // The details payload should name the offending path so an
+        // operator inspecting the rejection can find the chain.
+        expect(JSON.stringify(body.details)).toMatch(/cancellationOf/);
+        expect(JSON.stringify(body.details)).toMatch(/chain|Storno/);
+
+        // No partial state: the original invoices count is 0 (we wiped
+        // before the test) and the rejected envelope didn't insert
+        // anything.
+        const dbInvoices = await db.select().from(invoices);
+        expect(dbInvoices.length).toBe(0);
+      } finally {
+        await reseedAndRelogin();
+      }
+    });
   });
 
   // -------------------------------------------------------------------
