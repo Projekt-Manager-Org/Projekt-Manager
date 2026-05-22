@@ -75,17 +75,13 @@ import type { Permission } from '../../config/permissions.js';
  * binary-leg orchestrator hold a token that 403s on its own endpoint.
  *
  * Scope rationale: the binary leg needs `attachment:write` (init +
- * complete), `attachment:hide` (DELETE rollback), and `attachment:read`
- * (descriptor reads not currently used by the orchestrator but covered
- * defensively in case the flow evolves). NOT a generic owner credential
- * — every other endpoint rejects Bearer tokens by virtue of their
- * cookie-only auth middleware.
+ * complete) and `attachment:hide` (DELETE rollback). Nothing else —
+ * the orchestrator never reads attachments via this token, so granting
+ * `attachment:read` would widen the credential's blast radius for no
+ * concrete use. NOT a generic owner credential — every other endpoint
+ * rejects Bearer tokens by virtue of their cookie-only auth middleware.
  */
-const IMPORT_TOKEN_PERMISSIONS: readonly Permission[] = [
-  'attachment:write',
-  'attachment:hide',
-  'attachment:read',
-];
+const IMPORT_TOKEN_PERMISSIONS: readonly Permission[] = ['attachment:write', 'attachment:hide'];
 
 /**
  * Within-envelope structural checks — uniqueness of keys that become DB
@@ -854,9 +850,13 @@ export class ImportService {
       //
       // The row is written inside the outer transaction so the audit +
       // writes commit together (parity with ADR-0021). The
-      // `actorKind='system'` + `actorReason='data:import'` shape matches
+      // `actorKind='system'` + `actorReason='data_import'` shape matches
       // the existing bootstrap pattern (`bootstrap.ts`); the row stays
       // findable via `(actor_kind='system', action='import_restored')`.
+      // The reason string is the entity_type literal — NOT a permission
+      // key like the older `'data:export'` / `'data:restore'`; no
+      // `data:import` permission exists, and using a colon-shape here
+      // misleads readers into expecting one.
       //
       // `attachments` is included in `counts` with value 0 for shape
       // uniformity — the text leg never inserts attachment rows (AC-253);
@@ -881,7 +881,7 @@ export class ImportService {
       await tx.insert(auditLog).values({
         actorKind: 'system',
         actorId: null,
-        actorReason: 'data:import',
+        actorReason: 'data_import',
         entityType: 'data_import',
         entityId: randomUUID(),
         // German operator-facing label; the activity feed renders it

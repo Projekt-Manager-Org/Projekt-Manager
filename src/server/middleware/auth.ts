@@ -226,15 +226,24 @@ export function requirePermission(...permissions: Permission[]) {
       reply.code(err.statusCode).send(err.toResponse());
       return;
     }
-    // Role-based check (cookie auth + standard session) OR
-    // import-token-based check (Bearer auth on binary-leg routes). Either
-    // path satisfies the permission — they're orthogonal: a request
-    // authenticated via Bearer never has roles inspected, and a request
-    // authenticated via cookie never carries `importTokenPermissions`.
-    const grantedByRole = permissions.some((p) => hasPermission(request.user!.roles, p));
+    // Two paths to a permission:
+    //   - Bearer auth on a token-aware route: `request.importTokenPermissions`
+    //     is the authoritative capability set; the token's scope is the
+    //     credential's blast radius. Roles are NOT consulted on this path —
+    //     a future regression that wires the token-aware middleware on a
+    //     route whose role set is broader than the token's must still be
+    //     bounded by the token.
+    //   - Cookie auth: `importTokenPermissions` is undefined; permission
+    //     resolves through the user's roles.
+    // Route-wiring keeps these orthogonal in practice — the bearer-aware
+    // middleware only runs on the attachment binary-leg routes, and other
+    // routes use the cookie-only middleware.
     const grantedByToken =
       request.importTokenPermissions !== undefined &&
       permissions.some((p) => request.importTokenPermissions!.includes(p));
+    const grantedByRole =
+      request.importTokenPermissions === undefined &&
+      permissions.some((p) => hasPermission(request.user!.roles, p));
     if (!grantedByRole && !grantedByToken) {
       const err = notPermitted();
       reply.code(err.statusCode).send(err.toResponse());

@@ -676,7 +676,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   // Single-row import audit. On a successful commit one audit row lands
   // with `entity_type='data_import'`, `actor_kind='system'`,
-  // `actor_reason='data:import'`, `action='import_restored'`,
+  // `actor_reason='data_import'`, `action='import_restored'`,
   // `entity_id=<synthetic batch UUID>`, `entity_label='Import: <N>
   // Datensätze'`, and `payload.counts` carrying the per-slot row counts
   // (every slot key, zero where empty).
@@ -690,12 +690,12 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
   describe('single-row import audit', () => {
     it('emits exactly one audit row per import with entity_type=data_import and the per-slot counts payload', async () => {
       await wipeBusinessDataExceptUsers();
-      // Also clear pre-existing data:import audit rows from the seed
+      // Also clear pre-existing data_import audit rows from the seed
       // pass (`loadBusiness` runs through ImportService and emits its
       // own audit row). Without this, the assertion below picks up
       // both the seed's row AND the test's row.
       await db.execute(
-        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data:import'`,
+        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
       );
       try {
         const env = buildExpandedEnvelope();
@@ -708,7 +708,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
           .where(
             and(
               eq(auditLog.actorKind, 'system'),
-              eq(auditLog.actorReason, 'data:import'),
+              eq(auditLog.actorReason, 'data_import'),
               eq(auditLog.action, 'import_restored'),
             ),
           );
@@ -719,7 +719,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         expect(row.entityType).toBe('data_import');
         expect(row.actorKind).toBe('system');
         expect(row.actorId).toBeNull();
-        expect(row.actorReason).toBe('data:import');
+        expect(row.actorReason).toBe('data_import');
         expect(row.action).toBe('import_restored');
         expect(row.ancestorEntityType).toBeNull();
         expect(row.ancestorEntityId).toBeNull();
@@ -760,19 +760,19 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
       await wipeBusinessDataExceptUsers();
       // Clear seed import row so the assertion below is unambiguous.
       await db.execute(
-        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data:import'`,
+        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
       );
       try {
         const env = buildExpandedEnvelope();
         const res = await authPost(ownerToken, '/api/import', asPayload(env));
         expect(res.statusCode).toBe(200);
 
-        // Every audit row with actor_reason='data:import' MUST be
+        // Every audit row with actor_reason='data_import' MUST be
         // entity_type='data_import' — no per-slot rows.
         const rows = await db
           .select()
           .from(auditLog)
-          .where(eq(auditLog.actorReason, 'data:import'));
+          .where(eq(auditLog.actorReason, 'data_import'));
         expect(rows.length).toBe(1);
         expect(rows.every((r) => r.entityType === 'data_import')).toBe(true);
 
@@ -790,7 +790,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
           const perSlot = await db
             .select()
             .from(auditLog)
-            .where(and(eq(auditLog.actorReason, 'data:import'), eq(auditLog.entityType, et)));
+            .where(and(eq(auditLog.actorReason, 'data_import'), eq(auditLog.entityType, et)));
           expect(perSlot.length).toBe(0);
         }
       } finally {

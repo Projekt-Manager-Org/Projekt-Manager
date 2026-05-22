@@ -34,7 +34,7 @@
  *   possibly DELETE-rollback calls per import; single-use would break the
  *   flow).
  * - Permission set is enumerated per token (not a generic owner
- *   credential): `attachment:read`, `attachment:write`, `attachment:hide`.
+ *   credential): `attachment:write` and `attachment:hide`.
  * - Tied to operator identity via `userId` so the request can attribute
  *   audit writes correctly post-TRUNCATE (the envelope round-trips the
  *   operator's row; the same id resolves on the imported user).
@@ -61,9 +61,16 @@ const STORE = new Map<string, ImportTokenRecord>();
 
 /**
  * Mint a fresh token. Stores `{userId, permissions, expiresAt: now+5min}`
- * keyed by the token and returns the token string.
+ * keyed by the token and returns the token string. Evicts every prior
+ * live token for the same `userId` — the single-operator topology only
+ * supports one import at a time, so leftover tokens from an
+ * abandoned/failed run would be a dangling credential the TTL alone
+ * carries for up to 5 min.
  */
 export function mintImportToken(userId: string, permissions: readonly Permission[]): string {
+  for (const [key, value] of STORE.entries()) {
+    if (value.userId === userId) STORE.delete(key);
+  }
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + IMPORT_TOKEN_TTL_MS);
   STORE.set(token, { userId, permissions, expiresAt });
