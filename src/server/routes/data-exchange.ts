@@ -170,6 +170,15 @@ export function dataExchangeRoutes(db: Database) {
     app.post(
       '/api/import',
       {
+        // The v3 envelope carries the full Layer 1 business-data set
+        // (users with passwordHash, customers, projects, invoices with
+        // frozen JSONB snapshots, …). Realistic envelopes are
+        // routinely several MB; Fastify's 1 MiB default would 413
+        // legitimate restores. 50 MiB is the working ceiling — large
+        // enough for a multi-year invoice history, small enough that a
+        // hostile payload cannot exhaust the request buffer before the
+        // route schema rejects it.
+        bodyLimit: 50 * 1024 * 1024,
         schema: {
           querystring: {
             type: 'object',
