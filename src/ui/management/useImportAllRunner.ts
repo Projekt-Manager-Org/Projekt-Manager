@@ -56,7 +56,13 @@ import {
   type RestoreBlock,
 } from './importAllFromZip';
 
-export type DialogPhase = ParsingPhase | PreflightPhase | ProgressPhase | SummaryPhase | ErrorPhase;
+export type DialogPhase =
+  | ParsingPhase
+  | PreflightPhase
+  | ProgressPhase
+  | SummaryPhase
+  | ErrorPhase
+  | TokenInvalidPhase;
 
 export interface ParsingPhase {
   kind: 'parsing';
@@ -88,10 +94,32 @@ export interface SummaryPhase {
   committedCount: number;
   totalAttachments: number;
   failures: ImportFailure[];
+  /**
+   * Set when the text-leg reported `sessionInvalidated: true` — i.e. the
+   * override path wiped users and the operator's session row CASCADEd
+   * away. The dialog's close handler reads this to trigger a global
+   * session-expired redirect rather than leaving the UI in a state
+   * where the next API call will get bounced anyway.
+   */
+  sessionInvalidated: boolean;
 }
 
 export interface ErrorPhase {
   kind: 'error';
+  message: string;
+}
+
+/**
+ * Dedicated phase for the mid-import bearer-token rejection (server
+ * returned `IMPORT_TOKEN_INVALID` on a binary-leg call — token revoked,
+ * expired, or the user was deactivated). At this point the operator's
+ * session is gone (it was CASCADEd by the user-wipe override) and the
+ * only auth they had — the bearer — is dead. Recovery requires
+ * re-login; the dialog's close handler triggers the global
+ * session-expired redirect.
+ */
+export interface TokenInvalidPhase {
+  kind: 'token-invalid';
   message: string;
 }
 
@@ -427,8 +455,8 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
     let filesDone = 0;
     let bytesDone = 0;
 
-    // Issue #230 — captured at text-leg time, consumed by every
-    // subsequent per-attachment call. When the import wipes users
+    // Captured at text-leg time, consumed by every subsequent
+    // per-attachment call. When the import wipes users
     // (`sessionInvalidated: true` on the response), the operator's
     // session row CASCADEd away with their `users` row; the bearer
     // token here lets the binary leg continue against the dead
@@ -436,6 +464,7 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
     // and the per-attachment calls fall back to the still-valid
     // session cookie.
     let bearerImportToken: string | null = null;
+    let wasSessionInvalidated = false;
 
     void (async () => {
       try {
@@ -452,6 +481,7 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
             const res = await importAllApi.postTextLeg(envelopeWithoutAttachments as never, phrase);
             if (res.ok) {
               bearerImportToken = res.importToken;
+              wasSessionInvalidated = res.sessionInvalidated;
             }
             // Narrow back to the orchestrator's
             // `{ ok, message? }` contract — it never reads the
@@ -508,6 +538,7 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
           committedCount: result.committedCount,
           totalAttachments: result.totalAttachments,
           failures: result.failures,
+          sessionInvalidated: wasSessionInvalidated,
         });
         // Post-import: every committed attachment moved counters
         // (pending → ready). One refresh after the orchestrator
@@ -518,15 +549,29 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
         }
       } catch (err) {
         if (ctrl.signal.aborted) return;
-        console.warn('[import] orchestrator failed', err);
-        setPhase({
-          kind: 'error',
-          message:
-            err instanceof Error
-              ? `${STRINGS.dataExchange.importError} ${err.message}`
-              : STRINGS.dataExchange.importError,
-        });
+        // Token-invalid escalates to a dedicated phase so the
+        // operator gets a re-auth prompt instead of an opaque
+        // "import failed" message followed by N identical per-entry
+        // failures.
+        const errCode = (err as { code?: unknown } | null)?.code;
+        if (errCode === 'IMPORT_TOKEN_INVALID') {
+          console.warn('[import] bearer token invalid mid-import', err);
+          setPhase({
+            kind: 'token-invalid',
+            message: STRINGS.auth.importTokenInvalid,
+          });
+        } else {
+          console.warn('[import] orchestrator failed', err);
+          setPhase({
+            kind: 'error',
+            message:
+              err instanceof Error
+                ? `${STRINGS.dataExchange.importError} ${err.message}`
+                : STRINGS.dataExchange.importError,
+          });
+        }
       } finally {
+        bearerImportToken = null;
         if (abortRef.current === ctrl) abortRef.current = null;
       }
     })();

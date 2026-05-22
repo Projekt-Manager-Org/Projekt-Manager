@@ -25,6 +25,10 @@ export interface ApiError {
  */
 export type ErrorCategory =
   | 'authentication' // INVALID_CREDENTIALS, UNAUTHENTICATED, SESSION_EXPIRED
+  | 'import_token_invalid' // IMPORT_TOKEN_INVALID (distinct so the orchestrator can
+  //                          escalate to a fatal-token phase without triggering the
+  //                          global session-expired redirect that would unmount the
+  //                          dialog mid-message)
   | 'authorization' // NOT_PERMITTED
   | 'validation' // VALIDATION_ERROR
   | 'not_found' // NOT_FOUND
@@ -69,6 +73,8 @@ function classifyCode(code: string): ErrorCategory {
     case 'UNAUTHENTICATED':
     case 'SESSION_EXPIRED':
       return 'authentication';
+    case 'IMPORT_TOKEN_INVALID':
+      return 'import_token_invalid';
     case 'NOT_PERMITTED':
       return 'authorization';
     case 'VALIDATION_ERROR':
@@ -173,6 +179,7 @@ export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promis
     else if (category === 'server_error') fallbackMessage = STRINGS.errors.serverError;
     else if (sessionExpired) fallbackMessage = STRINGS.auth.sessionExpired;
     else if (category === 'authorization') fallbackMessage = STRINGS.auth.notPermitted;
+    else if (category === 'import_token_invalid') fallbackMessage = STRINGS.auth.importTokenInvalid;
 
     return {
       ok: false,

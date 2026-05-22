@@ -16,6 +16,7 @@ import type {
   ProgressPhase,
   SummaryPhase,
   ErrorPhase,
+  TokenInvalidPhase,
 } from './useImportAllRunner';
 import styles from './VollstaendigerImportDialog.module.css';
 
@@ -342,6 +343,38 @@ export function ErrorView(props: ErrorViewProps) {
           data-testid="import-all-error-close"
         >
           {STRINGS.dataExchange.importSummaryClose}
+        </button>
+      }
+    />
+  );
+}
+
+export interface TokenInvalidViewProps {
+  phase: TokenInvalidPhase;
+  dialogRef: RefObject<HTMLDivElement | null>;
+  initialFocusRef: RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}
+
+export function TokenInvalidView(props: TokenInvalidViewProps) {
+  const { dialogRef, initialFocusRef, onClose } = props;
+  return (
+    <DialogShell
+      dialogRef={dialogRef}
+      testId="import-all-token-invalid"
+      titleId="import-all-token-invalid-title"
+      bodyId="import-all-token-invalid-body"
+      title={STRINGS.dataExchange.importTokenInvalidTitle}
+      body={<div className={styles.readoutLine}>{STRINGS.dataExchange.importTokenInvalidBody}</div>}
+      actions={
+        <button
+          ref={initialFocusRef}
+          type="button"
+          className={`${styles.button} ${styles.confirm}`}
+          onClick={onClose}
+          data-testid="import-all-token-invalid-close"
+        >
+          {STRINGS.dataExchange.importTokenInvalidClose}
         </button>
       }
     />

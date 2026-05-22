@@ -17,9 +17,23 @@
  * would be cargo-culted.
  */
 
-import { attachmentApi, dataApi } from '@/api/client';
+import { attachmentApi, dataApi, type ApiError } from '@/api/client';
 import type { Envelope, ImportResult, DryRunPreview } from '@/domain/dataExchange';
 import type { AttachmentLabel } from '@/domain/types';
+
+/**
+ * Throw shape used by the binary-leg wrappers. The orchestrator's
+ * per-entry catch reads `.code` to decide whether to treat the failure
+ * as fatal (e.g., `IMPORT_TOKEN_INVALID` short-circuits the whole run)
+ * vs. record it as a per-attachment skip. Plain `Error` with an
+ * attached `code` field keeps the surface narrow — no new class to
+ * import on the consumer side.
+ */
+function failureFromApiError(err: ApiError, fallback: string): Error & { code: string } {
+  const out = new Error(err.message || fallback) as Error & { code: string };
+  out.code = err.code;
+  return out;
+}
 
 /**
  * Restore-block subset of an envelope row. Mirrors
@@ -173,7 +187,7 @@ async function importInit(
     authToken,
   );
   if (!res.ok) {
-    throw new Error(res.error.message || 'init failed');
+    throw failureFromApiError(res.error, 'init failed');
   }
   const data = res.data;
   return {
@@ -204,7 +218,7 @@ async function importComplete(
 ): Promise<{ id: string; status: 'ready' }> {
   const res = await attachmentApi.completeUpload(projectId, attachmentId, undefined, authToken);
   if (!res.ok) {
-    throw new Error(res.error.message || 'complete failed');
+    throw failureFromApiError(res.error, 'complete failed');
   }
   return { id: res.data.id, status: 'ready' };
 }

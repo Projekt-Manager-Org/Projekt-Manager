@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
+import { handleSessionExpired } from '@/state/sessionExpired';
 import { useDialogA11y } from '@/ui/common/useDialogA11y';
 import { useImportAllRunner } from './useImportAllRunner';
 import {
@@ -35,6 +36,7 @@ import {
   PreflightView,
   ProgressView,
   SummaryView,
+  TokenInvalidView,
 } from './VollstaendigerImportDialog.views';
 
 interface VollstaendigerImportDialogProps {
@@ -68,14 +70,26 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
 
   const handleClose = useCallback(() => {
     cancel();
+    // On the override-with-users path the server returned
+    // `sessionInvalidated: true` (the user-wipe CASCADEd the session
+    // row). On the token-invalid phase the bearer itself was
+    // rejected — same end state, operator must re-auth. Trigger the
+    // global session-expired redirect on close so the next API call
+    // doesn't get a surprise 401.
+    const needsReauth =
+      (phase.kind === 'summary' && phase.sessionInvalidated) || phase.kind === 'token-invalid';
     onClose();
-  }, [cancel, onClose]);
+    if (needsReauth) {
+      handleSessionExpired();
+    }
+  }, [cancel, onClose, phase]);
 
   const escapeAllowed =
     phase.kind === 'parsing' ||
     phase.kind === 'preflight' ||
     phase.kind === 'summary' ||
-    phase.kind === 'error';
+    phase.kind === 'error' ||
+    phase.kind === 'token-invalid';
   useDialogA11y({
     isOpen: true,
     dialogRef,
@@ -118,6 +132,17 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
   if (phase.kind === 'summary') {
     return (
       <SummaryView
+        phase={phase}
+        dialogRef={dialogRef}
+        initialFocusRef={initialFocusButtonRef}
+        onClose={handleClose}
+      />
+    );
+  }
+
+  if (phase.kind === 'token-invalid') {
+    return (
+      <TokenInvalidView
         phase={phase}
         dialogRef={dialogRef}
         initialFocusRef={initialFocusButtonRef}
