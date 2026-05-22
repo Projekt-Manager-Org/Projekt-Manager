@@ -249,3 +249,30 @@ describe('importAllApi — error code preservation', () => {
     expect((caught as Error & { code?: string }).code).toBe('VALIDATION_ERROR');
   });
 });
+
+// -------------------------------------------------------------------
+// importDelete swallow contract. The orchestrator's rollback walk
+// runs `Promise.allSettled` over the committed list and does NOT
+// inspect individual rejections — the orphan reaper handles eventual
+// cleanup either way. The wrapper deliberately swallows API
+// rejections so a regression that started re-throwing would change
+// rollback semantics (one bad DELETE would short-circuit the rest).
+// -------------------------------------------------------------------
+describe('importAllApi — importDelete swallow contract', () => {
+  it('does NOT throw on IMPORT_TOKEN_INVALID; rollback walk continues', async () => {
+    deleteMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'IMPORT_TOKEN_INVALID', message: 'Import-Token ungültig oder abgelaufen.' },
+      category: 'import_token_invalid',
+      sessionExpired: false,
+    });
+
+    // Direct call — if a regression re-threw, this would reject and the
+    // assertion below would never run. We resolve to undefined per the
+    // wrapper's contract.
+    await expect(
+      importAllApi.importDelete('proj-1', 'att-1', 'dead-token'),
+    ).resolves.toBeUndefined();
+    expect(deleteMock).toHaveBeenCalledTimes(1);
+  });
+});

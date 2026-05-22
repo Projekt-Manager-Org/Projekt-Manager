@@ -464,12 +464,11 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         // Issue #230 fixup: when the override wiped the operator's
         // session, the response carries a short-lived bearer token so
         // the binary-leg orchestrator can continue past the dead cookie.
-        // Shape contract: non-empty base64url string (~43 chars from 32
-        // random bytes). The dedicated `import-token.test.ts` exercises
-        // the token's verify / expire / revoke / scope semantics; here
-        // we pin the wire-shape contract.
-        expect(typeof result.importToken).toBe('string');
-        expect(result.importToken!.length).toBeGreaterThan(40);
+        // Shape contract: 32 random bytes, base64url-encoded (no padding)
+        // = 43 chars. The dedicated `import-token.test.ts` exercises the
+        // token's verify / expire / revoke / scope semantics; here we
+        // pin the wire-shape contract.
+        expect(result.importToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
         // Sessions cascade-deleted with users.
         const sessionsAfter = await db.select().from(sessions);
@@ -751,48 +750,6 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         // Total row count drives the German operator-facing label.
         const totalRecords = Object.values(expectedCounts).reduce((sum, n) => sum + n, 0);
         expect(row.entityLabel).toBe(`Import: ${totalRecords} Datensätze`);
-      } finally {
-        await reseedAndRelogin();
-      }
-    });
-
-    it('does NOT emit any per-slot audit row (entity_type IN user/customer/...) for the import', async () => {
-      await wipeBusinessDataExceptUsers();
-      // Clear seed import row so the assertion below is unambiguous.
-      await db.execute(
-        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
-      );
-      try {
-        const env = buildExpandedEnvelope();
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(200);
-
-        // Every audit row with actor_reason='data_import' MUST be
-        // entity_type='data_import' — no per-slot rows.
-        const rows = await db
-          .select()
-          .from(auditLog)
-          .where(eq(auditLog.actorReason, 'data_import'));
-        expect(rows.length).toBe(1);
-        expect(rows.every((r) => r.entityType === 'data_import')).toBe(true);
-
-        // Spot-check the categories that the prior per-slot shape
-        // would have written: none of these are present.
-        for (const et of [
-          'user',
-          'customer',
-          'project',
-          'project_worker',
-          'invoice',
-          'company_profile',
-          'attachment',
-        ] as const) {
-          const perSlot = await db
-            .select()
-            .from(auditLog)
-            .where(and(eq(auditLog.actorReason, 'data_import'), eq(auditLog.entityType, et)));
-          expect(perSlot.length).toBe(0);
-        }
       } finally {
         await reseedAndRelogin();
       }

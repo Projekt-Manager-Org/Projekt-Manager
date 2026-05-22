@@ -58,8 +58,10 @@ import { createDatabase, type Database } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type pg from 'pg';
 import {
+  IMPORT_TOKEN_PERMISSIONS,
   IMPORT_TOKEN_TTL_MS,
   _resetImportTokenStoreForTests,
+  mintImportToken,
 } from '../services/importTokenStore.js';
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
@@ -298,7 +300,6 @@ describe('Import-token (issue #230 fixup)', () => {
           importToken: string;
         };
         expect(body.sessionInvalidated).toBe(true);
-        expect(typeof body.importToken).toBe('string');
         // 32 random bytes, base64url-encoded (no padding) = 43 chars.
         expect(body.importToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
       } finally {
@@ -792,6 +793,255 @@ describe('Import-token (issue #230 fixup)', () => {
       });
       expect(res.statusCode).toBe(401);
       expect(res.json().code).toBe('IMPORT_TOKEN_INVALID');
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // TTL across the FULL binary-leg trio. The existing expiry case walks
+  // only `init`. A regression that re-validated tokens differently on
+  // `complete` or `DELETE` (e.g. cached the lookup on init and skipped
+  // re-verification on the follow-ups) would slip through that case.
+  // Pin the shared-token assertion across all three routes.
+  // -------------------------------------------------------------------
+  describe('expiry — token rejects on EVERY binary-leg route past TTL', () => {
+    it('complete AND DELETE both return 401 IMPORT_TOKEN_INVALID under an evicted token', async () => {
+      try {
+        const importRes = await authPost(
+          ownerToken,
+          '/api/import?override=true',
+          buildOverrideEnvelope(),
+        );
+        expect(importRes.statusCode).toBe(200);
+        const { importToken } = importRes.json() as { importToken: string };
+        expect(importToken).toBeTruthy();
+
+        // Evict under fake timers, then drop back to real timers before
+        // the inject calls (see the init expiry case for why fake timers
+        // and the inject path don't mix).
+        const { verifyImportToken } = await import('../services/importTokenStore.js');
+        vi.useFakeTimers({ now: Date.now() + IMPORT_TOKEN_TTL_MS + 1_000 });
+        expect(verifyImportToken(importToken)).toBeNull();
+        vi.useRealTimers();
+
+        const projectId = '55555555-5555-4555-8555-555555555555';
+        // The attId never matters — auth fails before the row lookup.
+        const attId = '66666666-6666-4666-8666-666666666666';
+
+        const completeRes = await injectCompleteWithBearer(projectId, attId, importToken);
+        expect(completeRes.statusCode).toBe(401);
+        expect(completeRes.json().code).toBe('IMPORT_TOKEN_INVALID');
+
+        const deleteRes = await injectDeleteWithBearer(projectId, attId, importToken);
+        expect(deleteRes.statusCode).toBe(401);
+        expect(deleteRes.json().code).toBe('IMPORT_TOKEN_INVALID');
+      } finally {
+        await seed(db, { force: true });
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Multi-attachment loop under one Bearer. The existing single-file
+  // trio test pins init → upload → complete → DELETE on ONE attachment;
+  // the production restore drives N attachments in a row. A regression
+  // turning the token single-use after `complete` would only surface in
+  // production. This walks two attachments end-to-end under one token.
+  // -------------------------------------------------------------------
+  describe('multi-attachment loop under one Bearer (realistic shape)', () => {
+    it('walks init A → complete A → init B → complete B all under the same token', async () => {
+      try {
+        const importRes = await authPost(
+          ownerToken,
+          '/api/import?override=true',
+          buildOverrideEnvelope(),
+        );
+        expect(importRes.statusCode).toBe(200);
+        const { importToken } = importRes.json() as { importToken: string };
+        expect(importToken).toBeTruthy();
+
+        const projectId = '55555555-5555-4555-8555-555555555555';
+
+        // Attachment A: init → upload bytes → complete
+        const initA = await injectInitWithBearer(
+          projectId,
+          importToken,
+          binaryInitBody({
+            fileName: 'multi-a.pdf',
+            sizeBytes: 100,
+            label: 'sonstiges',
+            ciphertextSizeBytes: 116,
+          }),
+        );
+        expect(initA.statusCode).toBe(201);
+        const attA = initA.json().attachment.id as string;
+        const keyA = initA.json().attachment.originalKey as string;
+        await storage().upload(keyA, Buffer.alloc(116, 0xaa), 'application/octet-stream');
+        const completeA = await injectCompleteWithBearer(projectId, attA, importToken);
+        expect(completeA.statusCode).toBe(200);
+        expect(completeA.json().status).toBe('ready');
+
+        // Attachment B: same token, fresh init → upload → complete
+        const initB = await injectInitWithBearer(
+          projectId,
+          importToken,
+          binaryInitBody({
+            fileName: 'multi-b.pdf',
+            sizeBytes: 200,
+            label: 'sonstiges',
+            ciphertextSizeBytes: 216,
+          }),
+        );
+        expect(initB.statusCode).toBe(201);
+        const attB = initB.json().attachment.id as string;
+        const keyB = initB.json().attachment.originalKey as string;
+        await storage().upload(keyB, Buffer.alloc(216, 0xbb), 'application/octet-stream');
+        const completeB = await injectCompleteWithBearer(projectId, attB, importToken);
+        expect(completeB.statusCode).toBe(200);
+        expect(completeB.json().status).toBe('ready');
+      } finally {
+        await seed(db, { force: true });
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Concurrent imports from same operator — single-operator topology
+  // assumption pinned. `mintImportToken` evicts every prior token for
+  // the same userId; a regression that allowed two live tokens per user
+  // would leave the first as a dangling credential for the full TTL.
+  // -------------------------------------------------------------------
+  describe('concurrent mint — second mint evicts the first for same userId', () => {
+    it('first token rejects with IMPORT_TOKEN_INVALID; second token admits init', async () => {
+      try {
+        // No import needed — go straight to the store. The seeded
+        // `inhaber` row is already present, so the auth middleware's
+        // DB lookup on the bearer path resolves under the second token.
+        const t1 = mintImportToken(SEEDED_INHABER_UUID, IMPORT_TOKEN_PERMISSIONS);
+        const t2 = mintImportToken(SEEDED_INHABER_UUID, IMPORT_TOKEN_PERMISSIONS);
+        expect(t1).not.toBe(t2);
+
+        const projectId = await seededProjectId(ownerToken);
+
+        // First token: evicted by the second mint — must reject.
+        const rejected = await injectInitWithBearer(
+          projectId,
+          t1,
+          binaryInitBody({ fileName: 'first.pdf', sizeBytes: 100, label: 'sonstiges' }),
+        );
+        expect(rejected.statusCode).toBe(401);
+        expect(rejected.json().code).toBe('IMPORT_TOKEN_INVALID');
+
+        // Second token: still live — must admit.
+        const admitted = await injectInitWithBearer(
+          projectId,
+          t2,
+          binaryInitBody({ fileName: 'second.pdf', sizeBytes: 100, label: 'sonstiges' }),
+        );
+        expect(admitted.statusCode).toBe(201);
+      } finally {
+        await seed(db, { force: true });
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Bearer reject on non-binary-leg routes. The scope test above pins
+  // `/api/users` via the equality framing; these two extend coverage to
+  // higher-value cookie-only targets so a regression wiring the token
+  // middleware on them surfaces with a 201/200 admit instead of the 401
+  // UNAUTHENTICATED we expect.
+  // -------------------------------------------------------------------
+  describe('scope — Bearer header is ignored on /api/import and Papierkorb listing', () => {
+    it('POST /api/import with a valid Bearer (no cookie) returns 401 UNAUTHENTICATED', async () => {
+      // No import-route call — mint directly and confirm the import
+      // route's cookie-only middleware doesn't consult the header.
+      const token = mintImportToken(SEEDED_INHABER_UUID, IMPORT_TOKEN_PERMISSIONS);
+      const res = await getApp().inject({
+        method: 'POST',
+        url: '/api/import',
+        headers: { authorization: `Bearer ${token}` },
+        payload: buildOverrideEnvelope(),
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json().code).toBe('UNAUTHENTICATED');
+    });
+
+    it('GET /api/projects/:id/attachments/trash with a valid Bearer (no cookie) returns 401 UNAUTHENTICATED', async () => {
+      const projectId = await seededProjectId(ownerToken);
+      const token = mintImportToken(SEEDED_INHABER_UUID, IMPORT_TOKEN_PERMISSIONS);
+      const res = await getApp().inject({
+        method: 'GET',
+        url: `/api/projects/${projectId}/attachments/trash`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.json().code).toBe('UNAUTHENTICATED');
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Restore-mode init under Bearer (positive). The takeout-zip restore
+  // sends `init` with a `restore: { id, createdBy, createdAt }` block;
+  // the AC-255 AND-gate requires `data:restore` AND `attachment:write`
+  // on the caller. The token scope carries `data:restore` so this must
+  // pass; a regression dropping `data:restore` from
+  // IMPORT_TOKEN_PERMISSIONS would 403 here.
+  // -------------------------------------------------------------------
+  describe('restore-mode init under Bearer — AC-255 admits with `data:restore` in token scope', () => {
+    it('init with a restore block under Bearer persists the supplied id/createdBy/createdAt', async () => {
+      try {
+        const importRes = await authPost(
+          ownerToken,
+          '/api/import?override=true',
+          buildOverrideEnvelope(),
+        );
+        expect(importRes.statusCode).toBe(200);
+        const { importToken } = importRes.json() as { importToken: string };
+        expect(importToken).toBeTruthy();
+
+        const projectId = '55555555-5555-4555-8555-555555555555';
+        // The envelope round-tripped the operator row under the seeded
+        // inhaber UUID; that user row is the valid `createdBy` reference.
+        const restoreId = '99999999-9999-4999-8999-999999999999';
+        const restoreCreatedAt = '2024-07-04T12:34:56.789Z';
+
+        const body = {
+          ...binaryInitBody({
+            fileName: 'restored-row.pdf',
+            sizeBytes: 100,
+            label: 'sonstiges',
+          }),
+          restore: {
+            id: restoreId,
+            createdBy: SEEDED_INHABER_UUID,
+            createdAt: restoreCreatedAt,
+          },
+        };
+        const res = await injectInitWithBearer(projectId, importToken, body);
+        expect(res.statusCode).toBe(201);
+
+        // Persisted row must carry the supplied identity fields verbatim
+        // (AC-256). Direct-DB read is the load-bearing source of truth.
+        const row = await db.execute<{
+          id: string;
+          created_by: string;
+          created_at: Date;
+        }>(
+          sql`SELECT id::text AS id, created_by::text AS created_by, created_at
+              FROM attachments WHERE id = ${restoreId} LIMIT 1`,
+        );
+        expect(row.rows[0]?.id).toBe(restoreId);
+        expect(row.rows[0]?.created_by).toBe(SEEDED_INHABER_UUID);
+        expect(new Date(row.rows[0]!.created_at).toISOString()).toBe(
+          new Date(restoreCreatedAt).toISOString(),
+        );
+      } finally {
+        await seed(db, { force: true });
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      }
     });
   });
 

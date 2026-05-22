@@ -45,13 +45,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { makeZip } from 'client-zip';
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — module does not exist yet; the failing import IS the red-
-// phase signal per the brief. Once `importAllFromZip.ts` lands, this
-// directive can be removed.
 import { importAllFromZip } from '../importAllFromZip';
+import { SCHEMA_VERSION } from '../../../domain/dataExchange';
 
-const PINNED_SCHEMA_VERSION = 1;
+const PINNED_SCHEMA_VERSION = SCHEMA_VERSION;
 
 interface ManifestEntry {
   zipPath: string;
