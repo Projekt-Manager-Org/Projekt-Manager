@@ -20,6 +20,7 @@
  * re-slices on its own — a hand-edited envelope may reorder.
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import {
   auditLog,
@@ -30,7 +31,6 @@ import {
   projects,
   projectWorkers,
   users,
-  type AuditEntityType,
 } from '../db/schema.js';
 import type { Database } from '../db/connection.js';
 import {
@@ -770,128 +770,60 @@ export class ImportService {
         await tx.insert(invoices).values(invoiceStornos);
       }
 
-      // Per-entity-type import audit rows. One row per non-empty entity
-      // slot, written inside the outer transaction so the audit + writes
-      // commit together (parity with ADR-0021 — every domain state
-      // change has its audit row in the same transaction). The
+      // Single import-audit row. An `/api/import` is a deployment-level
+      // event, not an event attributed to any one entity — the prior
+      // per-slot rows (one each for users / customers / projects / ...)
+      // wrote misattributed activity-feed entries like "user X.displayName
+      // — import_restored" because the audit row's `entity_type=user`
+      // + `entity_id=<first-imported-user.id>` was rendered as a
+      // user-row event. Collapsing to a single row with
+      // `entity_type='data_import'` + a synthetic batch UUID for
+      // `entity_id` removes that misattribution: the activity feed sees
+      // one row per import, labelled "Import: <N> Datensätze", with the
+      // per-slot count map in the payload for forensic detail.
+      //
+      // The row is written inside the outer transaction so the audit +
+      // writes commit together (parity with ADR-0021). The
       // `actorKind='system'` + `actorReason='data:import'` shape matches
-      // the existing bootstrap pattern (`bootstrap.ts`).
+      // the existing bootstrap pattern (`bootstrap.ts`); the row stays
+      // findable via `(actor_kind='system', action='import_restored')`.
       //
-      // entity_id pin: the column is NOT NULL (data-model.md §5.10);
-      // we use the first row's id of the slot as a representative
-      // anchor (deterministic, traceable back to the envelope). For
-      // invoice_sequence (composite-key, no UUID) we mint a synthetic
-      // UUID from the year/kind pair — the audit row's purpose here is
-      // a marker of "import happened", not a foreign key into the
-      // sequence row. For company_profile we use its (singleton) id.
+      // `attachments` is included in `counts` with value 0 for shape
+      // uniformity — the text leg never inserts attachment rows (AC-253);
+      // per-attachment audit on the binary-leg restore is the existing
+      // `attachment:add` flow under AC-219.
       //
-      // Note: no `attachment`-typed audit row is emitted here (per
-      // AC-253 the text leg does not insert attachment rows; the
-      // per-attachment audit rows come from the client orchestrator's
-      // `init`+`complete` calls in the binary leg).
-      // `correlationId` is null — the import is a single batch event;
-      // the route layer doesn't thread the Fastify request id through
-      // the ImportService constructor (would require a signature
-      // change for a system-actor side effect). The audit row is
-      // findable via (actor_kind='system', action='import_restored').
-      const auditCorrelationId: string | null = null;
-      const auditRows: Array<{
-        actorKind: 'system';
-        actorId: null;
-        actorReason: string;
-        entityType: AuditEntityType;
-        entityId: string;
-        entityLabel: string | null;
-        action: string;
-        payload: { count: number };
-        ancestorEntityType: null;
-        ancestorEntityId: null;
-        correlationId: string | null;
-      }> = [];
-      const importAudit = (
-        slot: Array<{ id: string }>,
-        entityType: AuditEntityType,
-        synthEntityId?: string,
-      ): void => {
-        if (slot.length === 0) return;
-        auditRows.push({
-          actorKind: 'system',
-          actorId: null,
-          actorReason: 'data:import',
-          entityType,
-          // `slot[0]!.id` for natural-key slots; `synthEntityId` (a
-          // synthetic UUID) for invoice_sequence whose pkey is the
-          // composite (year, kind).
-          entityId: synthEntityId ?? slot[0]!.id,
-          // German operator-facing label; the audit feed renders it
-          // verbatim in the activity view (data-model.md §5.10).
-          entityLabel: `Import: ${slot.length} Datensätze`,
-          action: 'import_restored',
-          payload: { count: slot.length },
-          ancestorEntityType: null,
-          ancestorEntityId: null,
-          correlationId: auditCorrelationId,
-        });
+      // `correlationId` is null — the route layer doesn't thread the
+      // Fastify request id through the ImportService constructor (would
+      // require a signature change for a system-actor side effect). The
+      // synthetic `entityId` IS the import batch identifier.
+      const counts = {
+        users: userRows.length,
+        company_profile: companyProfileRows.length,
+        customers: customerRows.length,
+        projects: projectRows.length,
+        project_workers: assignmentRows.length,
+        invoices: invoiceOriginals.length + invoiceStornos.length,
+        invoice_sequence: invoiceSequenceRows.length,
+        attachments: 0,
       };
-
-      importAudit(userRows, 'user');
-      importAudit(companyProfileRows, 'company_profile');
-      importAudit(customerRows, 'customer');
-      importAudit(projectRows, 'project');
-      // project_workers composite pkey — use the projectId of the first
-      // row as the anchor (correlates the audit row with the project
-      // it assigned). `slot[0].id` is missing because the assignment row
-      // has no `id`, so we inline a tailored push.
-      if (assignmentRows.length > 0) {
-        auditRows.push({
-          actorKind: 'system',
-          actorId: null,
-          actorReason: 'data:import',
-          entityType: 'project_worker',
-          entityId: assignmentRows[0]!.projectId,
-          entityLabel: `Import: ${assignmentRows.length} Datensätze`,
-          action: 'import_restored',
-          payload: { count: assignmentRows.length },
-          ancestorEntityType: null,
-          ancestorEntityId: null,
-          correlationId: auditCorrelationId,
-        });
-      }
-      // Invoices: one combined audit row across originals + Stornos.
-      // The audit feed cares about "the import wrote N invoice rows",
-      // not the two-pass insert split. invoice_sequence has no native
-      // AuditEntityType (the closed `AUDIT_ENTITY_TYPES` set does not
-      // include the sequence table); rather than mint an off-allowlist
-      // entity_type that the CHECK constraint would reject, we omit
-      // the per-slot row for invoice_sequence. The sequence is a
-      // counter-restore detail subordinate to the invoice rows it
-      // numbers; the per-invoice audit row stands in.
-      const totalInvoiceCount = invoiceOriginals.length + invoiceStornos.length;
-      if (totalInvoiceCount > 0) {
-        // Anchor: prefer an original-row id (most invoices have an
-        // original; the Storno row references it). If only Stornos
-        // exist (unusual but legal — hand-edited envelope), fall back
-        // to the first Storno.
-        const anchorId =
-          invoiceOriginals.length > 0 ? invoiceOriginals[0]!.id : invoiceStornos[0]!.id;
-        auditRows.push({
-          actorKind: 'system',
-          actorId: null,
-          actorReason: 'data:import',
-          entityType: 'invoice',
-          entityId: anchorId,
-          entityLabel: `Import: ${totalInvoiceCount} Datensätze`,
-          action: 'import_restored',
-          payload: { count: totalInvoiceCount },
-          ancestorEntityType: null,
-          ancestorEntityId: null,
-          correlationId: auditCorrelationId,
-        });
-      }
-
-      if (auditRows.length > 0) {
-        await tx.insert(auditLog).values(auditRows);
-      }
+      const totalRecords = Object.values(counts).reduce((sum, n) => sum + n, 0);
+      await tx.insert(auditLog).values({
+        actorKind: 'system',
+        actorId: null,
+        actorReason: 'data:import',
+        entityType: 'data_import',
+        entityId: randomUUID(),
+        // German operator-facing label; the activity feed renders it
+        // verbatim (data-model.md §5.10). Concrete row count gives the
+        // operator something useful, not a UUID.
+        entityLabel: `Import: ${totalRecords} Datensätze`,
+        action: 'import_restored',
+        payload: { counts },
+        ancestorEntityType: null,
+        ancestorEntityId: null,
+        correlationId: null,
+      });
     });
 
     // Post-commit project-list invalidation (AC-276). Both non-dry-run

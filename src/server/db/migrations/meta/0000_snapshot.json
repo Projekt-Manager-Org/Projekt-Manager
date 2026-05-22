@@ -470,11 +470,11 @@
         },
         "audit_log_entity_type_valid": {
           "name": "audit_log_entity_type_valid",
-          "value": "\"audit_log\".\"entity_type\" IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile')"
+          "value": "\"audit_log\".\"entity_type\" IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile', 'data_import')"
         },
         "audit_log_ancestor_type_valid": {
           "name": "audit_log_ancestor_type_valid",
-          "value": "\"audit_log\".\"ancestor_entity_type\" IS NULL\n          OR \"audit_log\".\"ancestor_entity_type\" IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile')"
+          "value": "\"audit_log\".\"ancestor_entity_type\" IS NULL\n          OR \"audit_log\".\"ancestor_entity_type\" IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile', 'data_import')"
         },
         "audit_log_ancestor_pair": {
           "name": "audit_log_ancestor_pair",

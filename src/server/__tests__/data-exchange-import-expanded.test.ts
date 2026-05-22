@@ -611,18 +611,26 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // Per-entity-type audit rows. On a successful commit, one row per
-  // non-empty entity-typed slot lands in audit_log with actor_kind=
-  // 'system', actor_reason='data:import', action='import_restored',
-  // and payload={count: N}.
+  // Single-row import audit. On a successful commit one audit row lands
+  // with `entity_type='data_import'`, `actor_kind='system'`,
+  // `actor_reason='data:import'`, `action='import_restored'`,
+  // `entity_id=<synthetic batch UUID>`, `entity_label='Import: <N>
+  // Datensätze'`, and `payload.counts` carrying the per-slot row counts
+  // (every slot key, zero where empty).
+  //
+  // Rationale: an `/api/import` is a deployment-level event, not an
+  // event attributed to a single user / customer / etc. Per-slot audit
+  // rows misattributed entries in the activity feed; one row per
+  // import + the full counts breakdown in the payload preserves the
+  // forensic detail without the misattribution.
   // -------------------------------------------------------------------
-  describe('per-entity-type import audit rows', () => {
-    it('emits one audit row per non-empty entity slot with the documented shape', async () => {
+  describe('single-row import audit', () => {
+    it('emits exactly one audit row per import with entity_type=data_import and the per-slot counts payload', async () => {
       await wipeBusinessDataExceptUsers();
       // Also clear pre-existing data:import audit rows from the seed
       // pass (`loadBusiness` runs through ImportService and emits its
-      // own audit rows). Without this, the assertion below picks up
-      // both the seed's rows AND the test's rows.
+      // own audit row). Without this, the assertion below picks up
+      // both the seed's row AND the test's row.
       await db.execute(
         sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data:import'`,
       );
@@ -642,46 +650,86 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
             ),
           );
 
-        // One per slot: user / company_profile / customer / project /
-        // project_worker / invoice. invoice_sequence does not have a
-        // native AuditEntityType — its count is subsumed by the
-        // companion 'invoice' row (see ImportService for the choice +
-        // rationale).
-        const entityTypes = rows.map((r) => r.entityType).sort();
-        expect(entityTypes).toEqual(
-          ['company_profile', 'customer', 'invoice', 'project', 'project_worker', 'user'].sort(),
+        // Exactly one row.
+        expect(rows.length).toBe(1);
+        const row = rows[0]!;
+        expect(row.entityType).toBe('data_import');
+        expect(row.actorKind).toBe('system');
+        expect(row.actorId).toBeNull();
+        expect(row.actorReason).toBe('data:import');
+        expect(row.action).toBe('import_restored');
+        expect(row.ancestorEntityType).toBeNull();
+        expect(row.ancestorEntityId).toBeNull();
+        expect(row.correlationId).toBeNull();
+
+        // `entityId` is a synthetic UUID (not a row pkey) — its only
+        // contract is the UUID shape.
+        expect(typeof row.entityId).toBe('string');
+        expect(row.entityId).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
         );
 
-        for (const row of rows) {
-          expect(row.actorKind).toBe('system');
-          expect(row.actorId).toBeNull();
-          expect(row.actorReason).toBe('data:import');
-          expect(row.action).toBe('import_restored');
-          expect(row.payload).toMatchObject({ count: expect.any(Number) });
-          expect((row.payload as { count: number }).count).toBeGreaterThan(0);
-          // German operator-facing entity_label per the pinned choice
-          // in ImportService (rather than null).
-          expect(row.entityLabel).toMatch(/^Import: \d+ Datensätze$/);
-        }
+        // Payload carries the full per-slot counts breakdown — every
+        // slot key, zero where empty. `attachments` is structurally
+        // always 0 in the text leg (AC-253) but the key is present
+        // for shape uniformity.
+        const expectedCounts = {
+          users: env.users.length,
+          company_profile: env.company_profile.length,
+          customers: env.customers.length,
+          projects: env.projects.length,
+          project_workers: env.project_workers.length,
+          invoices: env.invoices.length,
+          invoice_sequence: env.invoice_sequence.length,
+          attachments: 0,
+        };
+        expect(row.payload).toEqual({ counts: expectedCounts });
+
+        // Total row count drives the German operator-facing label.
+        const totalRecords = Object.values(expectedCounts).reduce((sum, n) => sum + n, 0);
+        expect(row.entityLabel).toBe(`Import: ${totalRecords} Datensätze`);
       } finally {
         await reseedAndRelogin();
       }
     });
 
-    it('does NOT emit an attachment-typed audit row (the text leg never inserts attachment rows — AC-253)', async () => {
+    it('does NOT emit any per-slot audit row (entity_type IN user/customer/...) for the import', async () => {
       await wipeBusinessDataExceptUsers();
+      // Clear seed import row so the assertion below is unambiguous.
+      await db.execute(
+        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data:import'`,
+      );
       try {
         const env = buildExpandedEnvelope();
         const res = await authPost(ownerToken, '/api/import', asPayload(env));
         expect(res.statusCode).toBe(200);
 
+        // Every audit row with actor_reason='data:import' MUST be
+        // entity_type='data_import' — no per-slot rows.
         const rows = await db
           .select()
           .from(auditLog)
-          .where(
-            and(eq(auditLog.actorReason, 'data:import'), eq(auditLog.entityType, 'attachment')),
-          );
-        expect(rows.length).toBe(0);
+          .where(eq(auditLog.actorReason, 'data:import'));
+        expect(rows.length).toBe(1);
+        expect(rows.every((r) => r.entityType === 'data_import')).toBe(true);
+
+        // Spot-check the categories that the prior per-slot shape
+        // would have written: none of these are present.
+        for (const et of [
+          'user',
+          'customer',
+          'project',
+          'project_worker',
+          'invoice',
+          'company_profile',
+          'attachment',
+        ] as const) {
+          const perSlot = await db
+            .select()
+            .from(auditLog)
+            .where(and(eq(auditLog.actorReason, 'data:import'), eq(auditLog.entityType, et)));
+          expect(perSlot.length).toBe(0);
+        }
       } finally {
         await reseedAndRelogin();
       }
