@@ -136,21 +136,38 @@ export type BackupRunResult =
 // ---------------------------------------------------------------
 
 /**
- * Business-data and user/session tables covered by the manifest. The PK
- * spec is load-bearing for AC-174 — row ordering inside the checksum is
- * driven by the primary key, and `project_workers` is composite. The
- * order of `pkColumns` is stable so the ORDER BY is deterministic.
+ * Every public table covered by the manifest. The PK spec is load-bearing
+ * for AC-174 — row ordering inside the checksum is driven by the primary
+ * key, and composite PKs (`project_workers`, `invoice_sequence`) carry
+ * their full PK column list. The order of `pkColumns` is stable so the
+ * `ORDER BY` is deterministic.
+ *
+ * The set is exported so a structural-guard test (backup-manifest-
+ * coverage.test.ts) can assert it matches the `public` schema's full
+ * BASE TABLE list at runtime — a new table added to `schema.ts` without
+ * a matching entry here fails CI rather than silently weakening the
+ * Layer 2 integrity claim. Originally only six tables rode the
+ * manifest; issue #230 expanded coverage to every public table now that
+ * Layer 1 round-trips the full business-data set.
  */
-const MANIFEST_TABLES: ReadonlyArray<{
+export const MANIFEST_TABLES: ReadonlyArray<{
   name: string;
   pkColumns: ReadonlyArray<string>;
 }> = [
-  { name: 'users', pkColumns: ['id'] },
-  { name: 'sessions', pkColumns: ['id'] },
+  { name: 'attachments', pkColumns: ['id'] },
+  { name: 'audit_log', pkColumns: ['id'] },
+  { name: 'company_profile', pkColumns: ['id'] },
   { name: 'customers', pkColumns: ['id'] },
-  { name: 'projects', pkColumns: ['id'] },
-  { name: 'project_workers', pkColumns: ['project_id', 'user_id'] },
+  { name: 'invoice_sequence', pkColumns: ['year', 'kind'] },
+  { name: 'invoices', pkColumns: ['id'] },
   { name: 'meta_backup_status', pkColumns: ['singleton'] },
+  { name: 'notification_rule', pkColumns: ['id'] },
+  { name: 'project_storage_usage', pkColumns: ['project_id'] },
+  { name: 'project_workers', pkColumns: ['project_id', 'user_id'] },
+  { name: 'projects', pkColumns: ['id'] },
+  { name: 'push_subscriptions', pkColumns: ['id'] },
+  { name: 'sessions', pkColumns: ['id'] },
+  { name: 'users', pkColumns: ['id'] },
 ];
 
 /**
