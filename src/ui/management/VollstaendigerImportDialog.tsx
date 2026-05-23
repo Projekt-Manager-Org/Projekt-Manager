@@ -27,7 +27,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
-import { handleSessionExpired } from '@/state/sessionExpired';
+import { endSessionExpiredSuppression, handleSessionExpired } from '@/state/sessionExpired';
 import { useDialogA11y } from '@/ui/common/useDialogA11y';
 import { useImportAllRunner } from './useImportAllRunner';
 import {
@@ -78,11 +78,30 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
     // doesn't get a surprise 401.
     const needsReauth =
       (phase.kind === 'summary' && phase.sessionInvalidated) || phase.kind === 'token-invalid';
+    // End suppression BEFORE the explicit redirect — the runner kept
+    // it active across the summary phase to swallow racing 401s from
+    // background fetches (storage-usage refresh, SSE-driven project
+    // list reload). Without ending it first, the synchronous
+    // `handleSessionExpired()` below would be no-op'd. Idempotent at
+    // depth 0, so the non-invalidating paths see it as a noop.
+    if (needsReauth) {
+      endSessionExpiredSuppression();
+    }
     onClose();
     if (needsReauth) {
       handleSessionExpired();
     }
   }, [cancel, onClose, phase]);
+
+  // Safety net — if the operator navigates away while the runner had
+  // suppression active (e.g. tab-close mid-progress on the override
+  // path), drop the suppression so the next page render's
+  // session-expiry handling works normally.
+  useEffect(() => {
+    return () => {
+      endSessionExpiredSuppression();
+    };
+  }, []);
 
   const escapeAllowed =
     phase.kind === 'parsing' ||

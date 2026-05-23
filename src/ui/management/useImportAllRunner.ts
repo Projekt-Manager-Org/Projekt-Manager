@@ -41,6 +41,10 @@ import { encodeDekMaterial, encryptBlob, generateDek } from '@/domain/clientEncr
 import { SCHEMA_VERSION } from '@/domain/dataExchange';
 import { deriveWebpThumbnail } from '@/domain/imagePipeline';
 import { importAllApi } from '@/state/importAllStore';
+import {
+  beginSessionExpiredSuppression,
+  endSessionExpiredSuppression,
+} from '@/state/sessionExpired';
 import { useStorageUsageStore } from '@/state/storageUsageStore';
 import {
   importAllFromZip,
@@ -465,6 +469,14 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
     // session cookie.
     let bearerImportToken: string | null = null;
     let wasSessionInvalidated = false;
+    // Suppression bridges the window between the text-leg wiping
+    // `users` (and cascading the session) and the dialog's close
+    // handler firing the redirect. Without it, the very next
+    // background fetch (projectStore, SSE-driven refresh) sees a 401
+    // and triggers the global session-expired redirect, which
+    // unmounts the dialog before the bearer-authed binary leg can
+    // run — dropping every attachment on the floor.
+    let suppressed = false;
 
     void (async () => {
       try {
@@ -475,13 +487,30 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
           parsed: bag,
           pinnedSchemaVersion: SCHEMA_VERSION,
           postTextLeg: async (envelopeWithoutAttachments: Omit<ImportEnvelope, 'attachments'>) => {
-            // The runner's local `ImportEnvelope` shape mirrors
-            // `Envelope` minus the unused fields the adapter
-            // doesn't read.
+            // Activate suppression BEFORE the POST is sent: the server
+            // publishes `project_changed` SSE events as it commits each
+            // restored project row. Those land on the client mid-flight,
+            // trigger projectStore.fetchProjects, hit `/api/projects`
+            // with the wiped session cookie, and would otherwise fire
+            // handleSessionExpired before the orchestrator's response
+            // handler ever runs. Roll back if the server reports no
+            // invalidation, so non-wipe paths don't silently swallow
+            // unrelated 401s.
+            if (!suppressed) {
+              beginSessionExpiredSuppression();
+              suppressed = true;
+            }
             const res = await importAllApi.postTextLeg(envelopeWithoutAttachments as never, phrase);
             if (res.ok) {
               bearerImportToken = res.importToken;
               wasSessionInvalidated = res.sessionInvalidated;
+              if (!res.sessionInvalidated && suppressed) {
+                endSessionExpiredSuppression();
+                suppressed = false;
+              }
+            } else if (suppressed) {
+              endSessionExpiredSuppression();
+              suppressed = false;
             }
             // Narrow back to the orchestrator's
             // `{ ok, message? }` contract — it never reads the
@@ -572,6 +601,19 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
         }
       } finally {
         bearerImportToken = null;
+        // End suppression here only on the non-invalidating paths
+        // (empty target, early failure before the session was wiped).
+        // When the text leg invalidated the session, hand suppression
+        // off to the dialog — the summary phase is shown to the user,
+        // and any 401-triggering refresh (storage-usage, SSE-driven
+        // fetch) that races during that window would otherwise fire
+        // the global redirect before the user can close the dialog.
+        // The dialog's close path ends suppression and drives the
+        // redirect itself.
+        if (suppressed && !wasSessionInvalidated) {
+          endSessionExpiredSuppression();
+          suppressed = false;
+        }
         if (abortRef.current === ctrl) abortRef.current = null;
       }
     })();
