@@ -487,10 +487,16 @@ describe('AT-102: push dispatch within configured latency budget (AC-194)', () =
 // ---------------------------------------------------------------------
 describe('AT-103: pushMuted suppresses push but retains subscriptions (AC-195)', () => {
   let ownerToken: string;
+  // Office drives the transition (the actor) while owner is the muted
+  // recipient. Separating actor from recipient keeps mute the SOLE reason
+  // owner is not pushed — otherwise actor-exclusion (AC-321) would mask a
+  // broken mute filter, since owner-as-actor would be dropped regardless.
+  let officeToken: string;
 
   beforeAll(async () => {
     await startApp();
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+    officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
   });
 
   afterAll(async () => {
@@ -558,7 +564,8 @@ describe('AT-103: pushMuted suppresses push but retains subscriptions (AC-195)',
         (p) => p.status === 'beauftragt',
       );
       expect(target).toBeDefined();
-      const res = await authPost(ownerToken, `/api/projects/${target!.id}/transition/forward`, {
+      // Office is the actor; owner is the muted recipient.
+      const res = await authPost(officeToken, `/api/projects/${target!.id}/transition/forward`, {
         expectedStatus: 'beauftragt',
       });
       expect(res.statusCode).toBe(200);
@@ -567,7 +574,8 @@ describe('AT-103: pushMuted suppresses push but retains subscriptions (AC-195)',
       const obs = observations.find((o) => o.auditEntryId === transitionAuditId);
       expect(obs).toBeDefined();
       // Owner IS a recipient (dispatch set includes them) but no push
-      // was attempted because pushMuted=true.
+      // was attempted because pushMuted=true — and owner is not the actor,
+      // so mute is the only thing suppressing the push.
       expect(obs!.recipients).toContain(ownerId);
       expect(obs!.pushAttemptedUserIds).not.toContain(ownerId);
     } finally {
@@ -633,7 +641,8 @@ describe('AT-103: pushMuted suppresses push but retains subscriptions (AC-195)',
         (p) => p.status === 'beauftragt',
       );
       expect(target).toBeDefined();
-      const res = await authPost(ownerToken, `/api/projects/${target!.id}/transition/forward`, {
+      // Office is the actor; owner is the (now-unmuted) recipient.
+      const res = await authPost(officeToken, `/api/projects/${target!.id}/transition/forward`, {
         expectedStatus: 'beauftragt',
       });
       expect(res.statusCode).toBe(200);
@@ -643,8 +652,121 @@ describe('AT-103: pushMuted suppresses push but retains subscriptions (AC-195)',
       expect(obs).toBeDefined();
       // With pushMuted=false the push path is restored — the owner's
       // user id appears in pushAttemptedUserIds with no re-subscribe
-      // required.
+      // required. (Owner is the recipient, not the actor, so AC-321
+      // actor-exclusion does not apply.)
       expect(obs!.pushAttemptedUserIds).toContain(ownerId);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------
+// AT-135 / AC-321 — the acting user is excluded from their own push
+// ---------------------------------------------------------------------
+//
+// Notifying a user about an action they just performed is noise. The
+// actor (the audit row's `actorId`) is dropped from the push attempt —
+// a delivery-time filter parallel to mute (AC-195) — while staying in
+// `recipients` so activity-feed inclusion is unaffected. A non-actor
+// recipient on the same event is still pushed.
+describe('AT-135: actor excluded from own-action push (AC-321)', () => {
+  let ownerToken: string;
+  let ownerId: string;
+  let officeId: string;
+  let seededCustomerId: string;
+
+  beforeAll(async () => {
+    await startApp();
+    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+
+    const { db, pool } = createDatabase();
+    try {
+      const rows = await db.execute(
+        sql`SELECT id, username FROM users
+            WHERE username IN (${SEED_USERS.owner.username}, ${SEED_USERS.office.username})`,
+      );
+      const byUsername = new Map<string, string>();
+      for (const row of rows.rows as { id: string; username: string }[]) {
+        byUsername.set(row.username, row.id);
+      }
+      ownerId = byUsername.get(SEED_USERS.owner.username)!;
+      officeId = byUsername.get(SEED_USERS.office.username)!;
+    } finally {
+      await pool.end();
+    }
+
+    const custRes = await authGet(ownerToken, '/api/customers?limit=1');
+    const customers = (custRes.json().customers ?? custRes.json().data) as { id: string }[];
+    expect(customers.length).toBeGreaterThan(0);
+    seededCustomerId = customers[0]!.id;
+
+    // Guarantee owner is un-muted so the assertion below proves
+    // actor-exclusion (AC-321), not mute (AC-195), is what drops the
+    // actor from the push attempt — isolation from the AT-103 block.
+    await authPatch(ownerToken, '/api/auth/me', { pushMuted: false });
+  });
+
+  afterAll(async () => {
+    await stopApp();
+  });
+
+  // Wipe rules so seed defaults do not add recipients.
+  beforeEach(async () => {
+    const { db, pool } = createDatabase();
+    try {
+      await db.execute(sql`DELETE FROM notification_rule`);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  it('drops the actor from the push attempt but keeps them in recipients; a non-actor recipient is still pushed', async () => {
+    const pub = await loadPublisher();
+
+    // Rule targets both owner and office roles. Owner is the actor (drives
+    // the transition) AND a rule recipient; office is a non-actor recipient.
+    const ruleRes = await authPost(ownerToken, '/api/notification-rules', {
+      eventClass: 'project.transition_forward',
+      recipientSpec: { roles: ['owner', 'office'], includeAssignedWorkers: false, userIds: [] },
+      enabled: true,
+    });
+    expect(ruleRes.statusCode).toBe(201);
+
+    const observations: DispatchObservation[] = [];
+    const unsubscribe = pub.onEventDispatched((entry) => observations.push(entry));
+
+    try {
+      // Own fixture project in 'beauftragt' — order-independent, does not
+      // consume the seed's beauftragt distribution.
+      const projRes = await authPost(ownerToken, '/api/projects', {
+        number: `AT135-${Date.now().toString(36)}`,
+        title: 'AT-135 actor-exclusion fixture',
+        customerId: seededCustomerId,
+        status: 'beauftragt',
+      });
+      expect(projRes.statusCode).toBe(201);
+      const projectId = (projRes.json() as { id: string }).id;
+
+      // Owner is the actor.
+      const res = await authPost(ownerToken, `/api/projects/${projectId}/transition/forward`, {
+        expectedStatus: 'beauftragt',
+      });
+      expect(res.statusCode).toBe(200);
+
+      const auditEntryId = await resolveTransitionAuditId(projectId);
+      const obs = observations.find((o) => o.auditEntryId === auditEntryId);
+      expect(obs).toBeDefined();
+
+      // Recipients (activity-feed inclusion) include BOTH the actor and the
+      // non-actor recipient — actor-exclusion does not narrow this set.
+      expect(obs!.recipients).toContain(ownerId);
+      expect(obs!.recipients).toContain(officeId);
+
+      // Push attempt EXCLUDES the actor (owner) and retains the non-actor
+      // recipient (office).
+      expect(obs!.pushAttemptedUserIds).not.toContain(ownerId);
+      expect(obs!.pushAttemptedUserIds).toContain(officeId);
     } finally {
       unsubscribe();
     }

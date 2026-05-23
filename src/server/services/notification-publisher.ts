@@ -175,10 +175,17 @@ async function handleEvent(ctx: {
   const projectId = extractProjectId(eventClass, auditRow);
   const recipientIds = await resolveRecipients(boundDb, matching, projectId);
 
-  // Partition recipients by mute state. Mute is a delivery-time filter
-  // (AC-195) — recipients set stays whole so activity-feed inclusion is
-  // unaffected, but `pushAttemptedUserIds` shrinks to the un-muted set.
-  const pushCandidates = await filterUnmutedUserIds(boundDb, recipientIds);
+  // Partition recipients by mute state, then drop the acting user. Both
+  // are delivery-time filters that leave the `recipients` set — and thus
+  // activity-feed inclusion — whole, shrinking only `pushAttemptedUserIds`:
+  //   - Mute (AC-195): no push for a user who silenced delivery.
+  //   - Actor exclusion (AC-321): no push to the user who performed the
+  //     action; being notified of your own action is noise. System events
+  //     carry no user actor (actorKind = 'system'), so nothing is dropped.
+  const unmuted = await filterUnmutedUserIds(boundDb, recipientIds);
+  const actorUserId = auditRow?.actorKind === 'user' ? auditRow.actorId : null;
+  const pushCandidates =
+    actorUserId === null ? unmuted : unmuted.filter((id) => id !== actorUserId);
 
   // Compose the user-facing payload once per event (AC-211). The
   // service worker reads `title` / `body` / `url`; without these
