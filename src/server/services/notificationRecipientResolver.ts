@@ -43,12 +43,16 @@ export function extractProjectId(
 ): string | null {
   if (!row) return null;
   if (!PROJECT_SCOPED_EVENT_CLASSES.has(eventClass)) return null;
-  // `project` entity rows: entityId IS the projectId. `project_worker`
-  // rows: entityId is the project id per ProjectCrudService convention
-  // (the worker assignment uses project id as entity id so the feed
-  // renders "Projekt X · Mitarbeiter Y zugewiesen" without a second
-  // lookup).
-  return row.entityId;
+  // Where the project id lives on the audit row depends on the entity:
+  //   - `project` rows: entityId IS the projectId.
+  //   - `project_worker` rows: entityId is the project id per the
+  //     ProjectCrudService convention (the worker assignment uses the
+  //     project id as entity id so the feed renders "Projekt X ·
+  //     Mitarbeiter Y zugewiesen" without a second lookup).
+  //   - `attachment` rows: entityId is the ATTACHMENT id; the project id
+  //     lives in the ancestor link (architecture.md §11.12). Use it so
+  //     `includeAssignedWorkers` rules resolve against the right project.
+  return row.entityType === 'attachment' ? row.ancestorEntityId : row.entityId;
 }
 
 export function ruleMatches(rule: NotificationRuleRow, afterStatus: string | null): boolean {

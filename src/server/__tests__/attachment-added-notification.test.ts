@@ -48,7 +48,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
-import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
+import { startApp, stopApp, login, authGet, authPost, authPatch } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import { createStorageClient } from '../storage/client.js';
@@ -86,6 +86,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
   let seededCustomerId: string;
   let ownerId: string;
   let officeId: string;
+  let worker1Id: string;
 
   /** Seq counter to keep fixture project numbers unique within this run. */
   let fixtureCounter = 0;
@@ -201,7 +202,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
     try {
       const userRows = await db.execute(
         sql`SELECT id, username FROM users
-            WHERE username IN (${SEED_USERS.owner.username}, ${SEED_USERS.office.username})`,
+            WHERE username IN (${SEED_USERS.owner.username}, ${SEED_USERS.office.username}, ${SEED_USERS.worker1.username})`,
       );
       const byUsername = new Map<string, string>();
       for (const row of userRows.rows as { id: string; username: string }[]) {
@@ -209,6 +210,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
       }
       ownerId = byUsername.get(SEED_USERS.owner.username)!;
       officeId = byUsername.get(SEED_USERS.office.username)!;
+      worker1Id = byUsername.get(SEED_USERS.worker1.username)!;
     } finally {
       await pool.end();
     }
@@ -301,6 +303,55 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
       enabled: true,
     });
     expect(ruleRes.statusCode).toBe(201);
+  });
+
+  // -------------------------------------------------------------------
+  // Arm 4 — an includeAssignedWorkers rule RESOLVES the assigned worker.
+  //
+  // Arm 2 only proves the flag is admitted at rule-create. This arm
+  // proves dispatch actually resolves the assigned worker as a recipient
+  // — which requires deriving the upload's project id from the audit
+  // row's ANCESTOR link (`attachment` rows carry the attachment id as
+  // entity_id; the project id is in ancestorEntityId). A regression that
+  // reads entity_id as the project id resolves zero workers, so the
+  // recipient assertion below fails closed and silently — exactly the
+  // gap this arm guards.
+  // -------------------------------------------------------------------
+  it('resolves an assigned worker as a recipient under an includeAssignedWorkers rule', async () => {
+    const pub = await loadPublisher();
+
+    // No roles, no userIds — the project_workers join is the ONLY path to
+    // a recipient, so this isolates the project-id resolution.
+    const ruleRes = await authPost(ownerToken, '/api/notification-rules', {
+      eventClass: 'project.attachment_added',
+      recipientSpec: { roles: [], includeAssignedWorkers: true, userIds: [] },
+      enabled: true,
+    });
+    expect(ruleRes.statusCode).toBe(201);
+
+    const observations: DispatchObservation[] = [];
+    const unsubscribe = pub.onEventDispatched((entry) => observations.push(entry));
+
+    try {
+      const projectId = await createFixtureProject();
+      // Assign worker1 to the project — the rule's only recipient source.
+      const assignRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
+        assignedWorkerIds: [worker1Id],
+      });
+      expect(assignRes.statusCode).toBe(200);
+
+      const attachmentId = await stageAndComplete(projectId);
+      const auditEntryId = await resolveAttachmentAddAuditId(attachmentId);
+      expect(auditEntryId).not.toBeNull();
+
+      const matching = observations.filter((o) => o.auditEntryId === auditEntryId);
+      expect(matching).toHaveLength(1);
+      // The assigned worker resolves — proving the project id was read
+      // from the ancestor link, not the attachment entity_id.
+      expect(matching[0]!.recipients).toContain(worker1Id);
+    } finally {
+      unsubscribe();
+    }
   });
 
   // -------------------------------------------------------------------
