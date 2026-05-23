@@ -140,6 +140,52 @@ describe('audit_changed: SSE emission per audit-row commit', () => {
     }
   });
 
+  it('the audit_changed frame is the contentless envelope and carries no audit content', async () => {
+    // AC-320's emission shipped in 31961a7; this arm pins the
+    // previously-untested contentless contract: the `data:` payload is
+    // the bare invalidation envelope `{ "type": "audit_changed" }` and
+    // NO audit content (entity ids, labels, payload diff, actor) rides
+    // the channel. Audit content is `audit:read`-gated and fetched only
+    // via api.md §14.2.8 — AC-319 depends on this stream being
+    // content-free so a caller lacking `audit:read` learns nothing from
+    // it. Expected to PASS (retroactive coverage of a security-relevant
+    // claim).
+    const bus = await loadBus();
+    const customerId = await seededCustomerIdAny(ownerToken);
+
+    const conn = subscribeFake(bus);
+    try {
+      const suffix = crypto.randomUUID().slice(0, 8);
+      const title = `audit_changed contentless ${suffix}`;
+      const res = await authPost(ownerToken, '/api/projects', {
+        number: `AUD-CL-${suffix}`,
+        title,
+        customerId,
+      });
+      expect(res.statusCode).toBe(201);
+      const projectId = res.json().id as string;
+
+      await new Promise<void>((r) => setImmediate(r));
+
+      const stream = conn.chunks.join('');
+
+      // The exact contentless frame (verified-fact bus shape: a
+      // payloadless broadcast emits `data: {"type":"<name>"}`).
+      expect(stream).toContain('event: audit_changed\ndata: {"type":"audit_changed"}');
+
+      // No audit content leaks onto the channel — neither the row's
+      // identifiers/label nor any `{ before, after }` diff envelope keys.
+      expect(stream).not.toContain(projectId);
+      expect(stream).not.toContain(title);
+      expect(stream).not.toContain('"payload"');
+      expect(stream).not.toContain('"entityType"');
+      expect(stream).not.toContain('"actorId"');
+      expect(stream).not.toContain('"entityId"');
+    } finally {
+      bus.unsubscribe(conn);
+    }
+  });
+
   it('emits no audit_changed frame when the originating transaction aborts', async () => {
     const bus = await loadBus();
     const customerId = await seededCustomerIdAny(ownerToken);
