@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { EXPECTED_RESTORE_PHRASE } from '../src/test/seedAssumptions.js';
 import { STORAGE_STATES } from './storage-states';
 import { clickView } from './nav-helpers';
+import { reseedAllStorageStates } from './auth-helpers';
 
 /**
  * E2E — Vollständiger Import (AC-259).
@@ -77,6 +78,14 @@ test.afterAll(async ({ browser }) => {
     data: { ...snapshot, confirmation_phrase: EXPECTED_RESTORE_PHRASE },
   });
   await context.close();
+
+  // The override-import above TRUNCATEs `users`, cascading through
+  // `sessions.user_id` (AC-310) — every session dies, including the shared
+  // storageState cookies the rest of the serial mutating bucket reuses.
+  // Re-mint all role states from a fresh login so specs ordered after this
+  // one don't land on the login screen. (Restored users keep their seed
+  // credentials, so the seed password logs in again.)
+  await reseedAllStorageStates(browser);
 });
 
 interface SeededAttachment {
