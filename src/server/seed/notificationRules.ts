@@ -10,6 +10,7 @@
  *   - project.transition_backward → assigned workers
  *   - project.archived            → owner
  *   - project.assignment_changed  → assigned workers
+ *   - project.attachment_added    → owner + office
  *   - backup.failed               → owner
  *   - disk.threshold_reached      → owner
  *
@@ -20,6 +21,12 @@
  * the matrix where `project:purge` and archive visibility are owner
  * territory. Backup / disk events are infrastructure concerns the owner
  * operates, so the default recipient is owner only.
+ *
+ * New attachments notify owner + office: a file landing on a project is
+ * an inbound document the supervising roles want pushed proactively (a
+ * worker uploads a site photo or a signed form), so it is not missed
+ * between active feed sessions. Unlike the high-frequency transition /
+ * assignment events, an upload is a discrete arrival worth a push.
  *
  * This is a direct-DB INSERT path — the seed hydrates administrative
  * config, not a normal rule edit, so the `audit_log` row would be noise
@@ -71,6 +78,15 @@ const SEED_RULES: readonly SeedRuleSpec[] = [
     recipientSpec: {
       roles: [],
       includeAssignedWorkers: true,
+      userIds: [],
+    },
+  },
+  {
+    eventClass: 'project.attachment_added',
+    stateFilter: null,
+    recipientSpec: {
+      roles: ['owner', 'office'],
+      includeAssignedWorkers: false,
       userIds: [],
     },
   },
