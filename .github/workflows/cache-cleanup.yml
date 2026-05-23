@@ -6,7 +6,7 @@ name: Cache cleanup
 # repo so this is a build-hit-rate concern, not a cost concern.
 #
 # Scope is `refs/pull/<num>/merge` — caches reachable only from this
-# PR. Caches on `main` and iteration branches are not touched.
+# PR. Caches on `main` are not touched.
 
 on:
   pull_request:

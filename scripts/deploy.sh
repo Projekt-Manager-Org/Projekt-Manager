@@ -5,7 +5,7 @@
 # Run on the VPS by the operator over WireGuard, as the `deploy` user:
 #
 #   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh                                  # origin/main (default)
-#   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/iteration/N-name          # track an iteration branch
+#   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/<branch>                  # track a feature branch
 #   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh 3721783abc                       # rollback to a specific SHA
 #
 # The script replaces .github/workflows/deploy.yml. See ADR-0012
