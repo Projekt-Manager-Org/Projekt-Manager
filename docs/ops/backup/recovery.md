@@ -80,7 +80,7 @@ docker exec -i pm-restore-scratch pg_restore \
 
 The manifest is the per-table row count + deterministic checksum computed at backup time ([ADR-0020 §Decision](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#decision), [AC-174](../../spec/verification.md#1522-backup-and-recovery)). Recomputing against the scratch DB and comparing proves the encrypted round-trip end-to-end.
 
-PK ordering is load-bearing — the checksum is order-sensitive. Current schema PKs ([src/server/db/schema.ts](../../../src/server/db/schema.ts)): `users`, `sessions`, `customers`, `projects` use `id`; `project_workers` uses the composite `(project_id, user_id)`; `meta_backup_status` uses `singleton`. Every table in the backup envelope needs an entry in `pk_for` below — an unmapped table is a fatal `UNKNOWN TABLE` finding.
+PK ordering is load-bearing — the checksum is order-sensitive. `pk_for` queries `pg_index` on the restored scratch DB so every manifest table is covered without per-table maintenance; an unknown table (or a table missing from the restored dump) returns empty and is reported as a fatal finding.
 
 The outer `md5(…)` wraps a `COALESCE(string_agg(…), '')` so an empty table hashes to `md5('')` — the fixed constant `d41d8cd98f00b204e9800998ecf8427e`. The query below mirrors [services/backup.ts::computeManifest](../../../src/server/services/backup.ts) exactly; a divergence here would produce false mismatches.
 
@@ -90,19 +90,25 @@ The outer `md5(…)` wraps a `COALESCE(string_agg(…), '')` so an empty table h
 jq -r 'to_entries[] | "\(.key)\t\(.value.rowCount)\t\(.value.checksum)"' "${TS}.manifest.json" \
   > expected.tsv
 
-# ORDER BY must match the per-table PK above; a new table with a different PK
-# needs its row added here and in the manifest generator in lockstep.
+# PK columns for `table`, in declared order, comma-separated. Reads from
+# pg_index on the restored scratch DB so every manifest table is covered
+# automatically.
 pk_for() {
-  case "$1" in
-    users|sessions|customers|projects) echo "id" ;;
-    project_workers)                   echo "project_id, user_id" ;;
-    meta_backup_status)                echo "singleton" ;;
-    *) return 1 ;;
-  esac
+  docker exec pm-restore-scratch psql -U pm -d projekt_manager -tAc "
+    SELECT string_agg(quote_ident(a.attname), ', '
+                      ORDER BY array_position(i.indkey, a.attnum))
+    FROM pg_index i
+    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+    WHERE i.indrelid = '$1'::regclass AND i.indisprimary;
+  "
 }
 
 while IFS=$'\t' read -r table count checksum; do
-  order_by=$(pk_for "$table") || { echo "UNKNOWN TABLE in manifest: ${table} — add a PK mapping and rerun"; continue; }
+  order_by=$(pk_for "$table")
+  if [ -z "$order_by" ]; then
+    echo "MISSING TABLE in restored DB: ${table} — manifest claims this table but the restored dump has no such table (or it has no primary key)"
+    continue
+  fi
   actual_count=$(docker exec pm-restore-scratch psql -U pm -d projekt_manager -tAc \
     "SELECT count(*) FROM ${table};")
   actual_checksum=$(docker exec pm-restore-scratch psql -U pm -d projekt_manager -tAc \

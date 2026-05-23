@@ -7,9 +7,13 @@
  * moment captured at the start of this run — never hardcoded, never
  * module-load-time.
  *
- * Loader split (see data-model.md §7): users go through a direct-DB
- * path; customers / projects / project_workers go through `ImportService`
- * so every seed run exercises the public import contract.
+ * Issue #230: every envelope-resident table flows through `ImportService`
+ * in a single call — users, company_profile, customers, projects, and
+ * project_workers ride the same envelope `POST /api/import` consumes,
+ * so envelope-format drift breaks the seed and the public restore path
+ * together. Invoices are minted afterwards via the real lifecycle
+ * (`loadInvoices`: draft → issue → optional cancel + reissue, allocating
+ * sequences, rendering PDFs, emitting audit rows).
  *
  * The production gate (`NODE_ENV === 'production'`) lives in
  * `src/server/start.ts` — this function is dev/test-only and trusts its
@@ -20,10 +24,10 @@ import { sql } from 'drizzle-orm';
 
 import type { Database } from './db/connection.js';
 import { users } from './db/schema.js';
-import { loadUsers } from './seed/users.js';
 import { loadBusiness } from './seed/business.js';
 import { loadInvoices } from './seed/invoices.js';
 import { loadNotificationRules } from './seed/notificationRules.js';
+import { hashPassword } from './password.js';
 import { SEED_DEFAULT_PASSWORD } from '../test/seedAssumptions.js';
 
 /**
@@ -44,9 +48,7 @@ export async function seed(db: Database, opts: { force?: boolean } = {}): Promis
     }
   }
 
-  // Clear existing data atomically. Preserved verbatim from the
-  // pre-refactor seed — the identical statement is part of AT-87's
-  // implicit contract (tests rely on a truly empty slate).
+  // Clear existing data atomically.
   //
   // Notification rules and push subscriptions are NOT listed in the
   // TRUNCATE: notification_rule has no FK back to any table in the
@@ -55,12 +57,13 @@ export async function seed(db: Database, opts: { force?: boolean } = {}): Promis
   // v1 rule set lands cleanly even when notification_rule had prior
   // rows (force-reseed).
   //
-  // `company_profile` is reseeded after the TRUNCATE: it has a FK
-  // (`updated_by → users.id`), so `TRUNCATE … users CASCADE` empties it
-  // as well. The singleton-row contract (data-model.md §5.17,
-  // ADR-0026) says the row MUST exist before any read — re-insert with
-  // `ON CONFLICT (singleton) DO NOTHING`, mirroring the baseline
-  // migration's seed line.
+  // `company_profile` is not listed explicitly: TRUNCATE CASCADE on
+  // `users` propagates to it via the FK (`updated_by → users.id`),
+  // emptying the singleton along the way. The import path
+  // re-establishes the singleton from `envelope.company_profile` via
+  // `ON CONFLICT (singleton) DO UPDATE`, which handles both the
+  // post-TRUNCATE empty arm and the fresh-install arm where the
+  // baseline migration's placeholder row still exists.
   //
   // `invoice_sequence` is reset so a force-reseed gets clean
   // `RE-YYYY-0001` numbering. The cascade from `projects` already
@@ -76,45 +79,13 @@ export async function seed(db: Database, opts: { force?: boolean } = {}): Promis
   // insert would otherwise leave projects in next year's prefix).
   const now = new Date();
 
-  await loadUsers(db);
-  await loadBusiness(db, { now });
-  await loadNotificationRules(db);
+  // Hash once — bcrypt is expensive, and every seeded user shares the
+  // same plaintext per the spec (data-model.md §7.2). Threaded into
+  // `buildBusinessEnvelope` onto every `users[*].passwordHash` slot.
+  const hashedPassword = await hashPassword(SEED_DEFAULT_PASSWORD);
 
-  // Restore the company_profile singleton row that the TRUNCATE
-  // CASCADE above wiped. The seed ships a COMPLETE profile so the
-  // dev / E2E happy path can issue invoices without manual setup
-  // — the invoice issuance gate (AC-289 / COMPANY_PROFILE_REQUIRED)
-  // expects every mandatory field populated. Owner can still edit
-  // via `PUT /api/company-profile` (ui/daten.md §8.11.4). The
-  // baseline migration's empty defaults remain the production
-  // posture; the seed overrides them for the test fixture.
-  // The INSERT lists only the columns the fixture pins; the UPDATE
-  // clause mirrors the same column set so a re-seed over an existing
-  // row (force re-seed) overwrites exactly what the fixture asserts and
-  // leaves every other column at whatever the row already carried.
-  // `accent_color`, `footer_text`, and `logo_binary_descriptor_id` are
-  // intentionally absent: the fixture does not pin them, and the column
-  // defaults from the baseline migration are the right resting state
-  // (no accent override, no footer text, no logo).
-  await db.execute(sql`
-    INSERT INTO "company_profile"
-      ("company_name", "address", "tax_id", "ust_id", "iban", "default_tax_mode")
-    VALUES (
-      'Maler Berger GmbH',
-      '{"street":"Werkstr. 1","zip":"10115","city":"Berlin"}'::jsonb,
-      '111/222/33333',
-      'DE123456789',
-      'DE12 1000 0000 1234 5678 90',
-      'standard'
-    )
-    ON CONFLICT ("singleton") DO UPDATE SET
-      "company_name" = EXCLUDED."company_name",
-      "address" = EXCLUDED."address",
-      "tax_id" = EXCLUDED."tax_id",
-      "ust_id" = EXCLUDED."ust_id",
-      "iban" = EXCLUDED."iban",
-      "default_tax_mode" = EXCLUDED."default_tax_mode"
-  `);
+  await loadBusiness(db, { now, hashedPassword });
+  await loadNotificationRules(db);
 
   // Invoices land last because issuance pulls live snapshots from
   // `users`, `customers`, `projects`, and the `company_profile`

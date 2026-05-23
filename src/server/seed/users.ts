@@ -1,19 +1,18 @@
 /**
- * Seed users loader — fixture shape validation + direct-DB insert.
+ * Seed users fixture loader — fixture shape validation + id resolution.
  *
- * Users live outside the import envelope contract (data-model.md §5.8 /
- * §7; api.md §14.2.4), so the seed's user pass is a direct-DB path rather
- * than a call through `ImportService`. Parsing (`parseUsersFixture`) is
- * pure and filesystem-free so the unit path that asserts malformed input
- * rejects can feed literals in; `loadUsers` composes parse + hash +
- * insert on the bundled-at-build-time fixture.
+ * Issue #230: users are part of the Layer 1 envelope (data-model.md §5.8;
+ * api.md §14.2.4), so the seed assembles them into the envelope alongside
+ * customers / projects / company_profile and ships everything through
+ * `ImportService` in a single call (see `business.ts`). This module owns
+ * fixture parsing and seeded-id resolution; envelope assembly is in
+ * `business.ts`.
+ *
+ * Parsing (`parseUsersFixture`) is pure and filesystem-free so the AT-88
+ * unit path can feed it literals to assert malformed-input rejection.
  */
 import { z } from 'zod';
 
-import type { Database } from '../db/connection.js';
-import { users } from '../db/schema.js';
-import { hashPassword } from '../password.js';
-import { SEED_DEFAULT_PASSWORD } from '../../test/seedAssumptions.js';
 // JSON import attribute — esbuild (build:server) and vitest both
 // inline the fixture at build time, so there is no runtime fs access
 // and no path-resolution dependency on the source-tree layout. The
@@ -23,19 +22,13 @@ import { SEED_DEFAULT_PASSWORD } from '../../test/seedAssumptions.js';
 // bundle layout; inlining sidesteps that class of bug entirely.
 import rawFixture from '../../../fixtures/seed-users.json' with { type: 'json' };
 
-// Cross-package import rationale: `SEED_DEFAULT_PASSWORD` is the single
-// source of truth for the seeded password (see seedAssumptions.ts header).
-// The dependency direction (server seed → test-layer constant) is
-// accepted because the constant is the assertion contract the tests pin
-// against; the seed producing a different value would be an integrity
-// drift, not a separation-of-concerns issue.
-
 /**
  * Fixture schema. `.strict()` refuses unknown keys so an accidentally
  * committed `passwordHash` / `createdAt` in the JSON fails loudly rather
  * than silently dropping. Roles are validated as a non-empty string array
  * — finer-grained role-value validation is the domain layer's job and is
- * exercised elsewhere; here we only guarantee the shape the INSERT needs.
+ * exercised elsewhere; here we only guarantee the shape the envelope-row
+ * builder needs.
  *
  * The `id` check is deliberately looser than Zod's `.uuid()` — the
  * fixture uses vanity-hex values like `11111111-...-111111111111` that
@@ -74,10 +67,23 @@ export function parseUsersFixture(raw: unknown): SeedUserFixture[] {
 }
 
 /**
+ * Parsed fixture array, cached on first access. Cross-package import
+ * direction (server seed reads the JSON) is fine because the JSON is
+ * inlined at build time — no runtime fs.
+ */
+let _cachedFixture: SeedUserFixture[] | undefined;
+function getCachedFixture(): SeedUserFixture[] {
+  if (!_cachedFixture) {
+    _cachedFixture = parseUsersFixture(rawFixture);
+  }
+  return _cachedFixture;
+}
+
+/**
  * Seeded user IDs keyed by username — single source of truth for ID
  * references across seed modules. `business.ts` calls this to emit
- * `project_workers[].userId` values that resolve against the users
- * `loadUsers` will insert.
+ * `project_workers[].userId` values that resolve against the envelope's
+ * users; `invoices.ts` calls it to look up the owner id.
  *
  * The fixture is inlined at build time (JSON import attribute above),
  * so this is a cheap object lookup with no filesystem access. Lazy
@@ -87,36 +93,18 @@ let _cachedSeededUserIds: Readonly<Record<string, string>> | undefined;
 export function getSeededUserIds(): Readonly<Record<string, string>> {
   if (!_cachedSeededUserIds) {
     _cachedSeededUserIds = Object.freeze(
-      Object.fromEntries(parseUsersFixture(rawFixture).map((u) => [u.username, u.id])),
+      Object.fromEntries(getCachedFixture().map((u) => [u.username, u.id])),
     );
   }
   return _cachedSeededUserIds;
 }
 
 /**
- * Validate the bundled fixture, hash the shared default password once,
- * and insert every row with its fixture-pinned UUID.
- *
- * Direct-DB (not via `ImportService`) because users are outside the
- * envelope contract (data-model.md §5.8). The orchestrator guarantees
- * the table is empty when this runs.
+ * Parsed user records as read from the fixture. Consumed by
+ * `business.ts` to populate `envelope.users` — every field comes from
+ * the fixture except `passwordHash` (hashed once by the orchestrator
+ * and threaded through `buildBusinessEnvelope`).
  */
-export async function loadUsers(db: Database): Promise<void> {
-  const records = parseUsersFixture(rawFixture);
-
-  // Hash once — bcrypt is expensive, and every seeded user shares the
-  // same plaintext per the spec (data-model.md §7.2).
-  const passwordHash = await hashPassword(SEED_DEFAULT_PASSWORD);
-
-  await db.insert(users).values(
-    records.map((r) => ({
-      id: r.id,
-      username: r.username,
-      displayName: r.displayName,
-      passwordHash,
-      roles: r.roles,
-      email: r.email,
-      active: r.active,
-    })),
-  );
+export function getSeededUserRecords(): SeedUserFixture[] {
+  return getCachedFixture();
 }

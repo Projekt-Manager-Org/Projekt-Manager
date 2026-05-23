@@ -45,13 +45,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { makeZip } from 'client-zip';
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — module does not exist yet; the failing import IS the red-
-// phase signal per the brief. Once `importAllFromZip.ts` lands, this
-// directive can be removed.
 import { importAllFromZip } from '../importAllFromZip';
+import { SCHEMA_VERSION } from '../../../domain/dataExchange';
 
-const PINNED_SCHEMA_VERSION = 1;
+const PINNED_SCHEMA_VERSION = SCHEMA_VERSION;
 
 interface ManifestEntry {
   zipPath: string;
@@ -83,9 +80,13 @@ interface EnvelopeAttachment {
 interface Envelope {
   schema_version: number;
   exported_at: string;
+  users: unknown[];
+  company_profile: unknown[];
   customers: unknown[];
   projects: unknown[];
   project_workers: unknown[];
+  invoices: unknown[];
+  invoice_sequence: unknown[];
   attachments?: EnvelopeAttachment[];
 }
 
@@ -135,9 +136,13 @@ function buildEnvelope(attachments: EnvelopeAttachment[] = []): Envelope {
   return {
     schema_version: PINNED_SCHEMA_VERSION,
     exported_at: '2026-05-04T08:00:00.000Z',
+    users: [],
+    company_profile: [],
     customers: [],
     projects: [],
     project_workers: [],
+    invoices: [],
+    invoice_sequence: [],
     attachments,
   };
 }
@@ -481,6 +486,176 @@ describe('AC-261: per-file SHA-256 mismatch in step 5 — rollback walk', () => 
     for (const id of rolledBackIds) {
       expect([a.id, b.id]).toContain(id);
     }
+  });
+});
+
+// ===================================================================
+// IMPORT_TOKEN_INVALID escalation — mid-import bearer rejection is
+// fatal, not a per-entry skip. The orchestrator stops, the rollback
+// walk runs, and the thrown error preserves `.code` so the runner can
+// route to the dedicated re-auth phase.
+//
+// Pre-fix behavior (silently swallowed): every per-entry init failed
+// identically and the operator saw N "Datei fehlgeschlagen" rows with
+// no hint that the cause was a dead token. The PR review flagged this
+// as a Critical — the entire point of the token plumbing is to make
+// the override-with-users path survive the session CASCADE, which
+// only works if a dead token is surfaced as such.
+// ===================================================================
+describe('IMPORT_TOKEN_INVALID — fatal escalation, not per-entry skip', () => {
+  it('aborts the run on init failure with code IMPORT_TOKEN_INVALID; subsequent entries never init', async () => {
+    // createdBy must be non-null — the orchestrator skips entries with
+    // null createdBy as a non-fatal per-entry skip (line 723 guard) which
+    // would mask the fatal-escalation path under test.
+    const op = 'aaaaaaaa-1111-4111-8111-aaaaaaaa1111';
+    const a = { ...entryOf('aaaaaaaa-0000-4000-8000-00000000aaaa', 'a.pdf'), createdBy: op };
+    const b = { ...entryOf('bbbbbbbb-0000-4000-8000-00000000bbbb', 'b.pdf'), createdBy: op };
+    const c = { ...entryOf('cccccccc-0000-4000-8000-00000000cccc', 'c.pdf'), createdBy: op };
+    const envelope = buildEnvelope([a, b, c]);
+
+    const plaintextA = new TextEncoder().encode('AAA-bytes');
+    const plaintextB = new TextEncoder().encode('BBB-bytes');
+    const plaintextC = new TextEncoder().encode('CCC-bytes');
+
+    const zip = await buildZip({
+      envelope,
+      files: [
+        { entry: a, plaintext: plaintextA },
+        { entry: b, plaintext: plaintextB },
+        { entry: c, plaintext: plaintextC },
+      ],
+    });
+
+    const mocks = makeMocks();
+    // First call to init rejects with the token code; subsequent calls
+    // would also fail identically in production. Pin: the second and
+    // third entries' init is never reached because the fatal flag
+    // flipped on entry one.
+    mocks.initAttachment.mockImplementationOnce(async () => {
+      const err = new Error('Import-Token ungültig oder abgelaufen.') as Error & { code: string };
+      err.code = 'IMPORT_TOKEN_INVALID';
+      throw err;
+    });
+
+    let caught: unknown;
+    try {
+      await importAllFromZip({
+        zip,
+        ...mocks,
+        pinnedSchemaVersion: PINNED_SCHEMA_VERSION,
+        // Concurrency=1 makes the assertion clean — under concurrency=4
+        // entries 2/3 may have STARTED before the fatal flag flipped on
+        // entry 1. The escalation contract holds either way (the
+        // `fatalError !== null` guard short-circuits before init); the
+        // tight-sequencing variant is what we pin here for clarity.
+        concurrency: 1,
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    // The runner routes on this exact field to switch into the
+    // re-auth phase rather than the generic error phase.
+    expect((caught as Error & { code?: string }).code).toBe('IMPORT_TOKEN_INVALID');
+
+    // Text-leg ran (token error fires on the binary leg).
+    expect(mocks.postTextLeg).toHaveBeenCalledTimes(1);
+    // Init fired once and rejected fatally; never on entries 2 / 3.
+    expect(mocks.initAttachment).toHaveBeenCalledTimes(1);
+    expect(mocks.putCiphertext).not.toHaveBeenCalled();
+    expect(mocks.completeAttachment).not.toHaveBeenCalled();
+  });
+
+  it('escalates IMPORT_TOKEN_INVALID on complete (not only init)', async () => {
+    // The token may be alive at init but dead by the time `complete`
+    // fires (e.g., another admin deactivated the user mid-run). The
+    // same fatal-escalation branch must trigger on the complete catch
+    // — verified independently so a regression in one branch doesn't
+    // mask the other.
+    const op = 'aaaaaaaa-1111-4111-8111-aaaaaaaa1111';
+    const a = { ...entryOf('aaaaaaaa-0000-4000-8000-00000000aaaa', 'a.pdf'), createdBy: op };
+    const b = { ...entryOf('bbbbbbbb-0000-4000-8000-00000000bbbb', 'b.pdf'), createdBy: op };
+    const envelope = buildEnvelope([a, b]);
+
+    const plaintextA = new TextEncoder().encode('AAA-bytes');
+    const plaintextB = new TextEncoder().encode('BBB-bytes');
+
+    const zip = await buildZip({
+      envelope,
+      files: [
+        { entry: a, plaintext: plaintextA },
+        { entry: b, plaintext: plaintextB },
+      ],
+    });
+
+    const mocks = makeMocks();
+    mocks.completeAttachment.mockImplementationOnce(async () => {
+      const err = new Error('Import-Token ungültig oder abgelaufen.') as Error & { code: string };
+      err.code = 'IMPORT_TOKEN_INVALID';
+      throw err;
+    });
+
+    let caught: unknown;
+    try {
+      await importAllFromZip({
+        zip,
+        ...mocks,
+        pinnedSchemaVersion: PINNED_SCHEMA_VERSION,
+        concurrency: 1,
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect((caught as Error & { code?: string }).code).toBe('IMPORT_TOKEN_INVALID');
+    // Entry 1's init + PUT succeeded; complete rejected fatally; entry
+    // 2 never reached init.
+    expect(mocks.initAttachment).toHaveBeenCalledTimes(1);
+    expect(mocks.completeAttachment).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not escalate non-token errors — those remain per-entry skips', async () => {
+    // Guard against an over-eager regression that escalates every
+    // error code to fatal. Only IMPORT_TOKEN_INVALID is fatal; other
+    // failures (VALIDATION_ERROR, transient 500, etc.) record as
+    // per-attachment skips and let the run continue.
+    const op = 'aaaaaaaa-1111-4111-8111-aaaaaaaa1111';
+    const a = { ...entryOf('aaaaaaaa-0000-4000-8000-00000000aaaa', 'a.pdf'), createdBy: op };
+    const b = { ...entryOf('bbbbbbbb-0000-4000-8000-00000000bbbb', 'b.pdf'), createdBy: op };
+    const envelope = buildEnvelope([a, b]);
+
+    const plaintextA = new TextEncoder().encode('AAA-bytes');
+    const plaintextB = new TextEncoder().encode('BBB-bytes');
+
+    const zip = await buildZip({
+      envelope,
+      files: [
+        { entry: a, plaintext: plaintextA },
+        { entry: b, plaintext: plaintextB },
+      ],
+    });
+
+    const mocks = makeMocks();
+    mocks.initAttachment.mockImplementationOnce(async () => {
+      const err = new Error('Ungültige Eingabe.') as Error & { code: string };
+      err.code = 'VALIDATION_ERROR';
+      throw err;
+    });
+
+    const result = await importAllFromZip({
+      zip,
+      ...mocks,
+      pinnedSchemaVersion: PINNED_SCHEMA_VERSION,
+      concurrency: 1,
+    });
+
+    // Run completed normally — one skip, one success.
+    expect(result.totalAttachments).toBe(2);
+    expect(result.committedCount).toBe(1);
+    expect(result.failures.length).toBe(1);
+    expect(result.failures[0]!.reason).toMatch(/init/);
+    expect(mocks.initAttachment).toHaveBeenCalledTimes(2);
   });
 });
 

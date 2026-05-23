@@ -217,16 +217,83 @@ Design notes:
 
 ### 5.8 Export Envelope
 
-The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `2`.
+The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `3`. The wire shape below is normative — server and UI both bind against it.
+
+Layer 1 is portability, not cross-trust-boundary transport. The envelope is plaintext; moving it across hosts means encrypting it first (`age` is the obvious choice — same recipient pattern as [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). The `passwordHash` field rides verbatim per the rationale below; the encryption is the operational guard.
 
 ```typescript
 interface ExportEnvelope {
-  schema_version: 2; // monotonic integer; imports reject any mismatch
+  schema_version: 3; // monotonic integer; imports reject any mismatch
   exported_at: string; // ISO 8601 — informational only, not used for import semantics
-  customers: Customer[]; // every row, all fields from §5.6
-  projects: Project[]; // every row, all fields from §5.1, including archived (deleted = true)
+  users: EnvelopeUser[]; // every row, including inactive accounts (see below)
+  company_profile: EnvelopeCompanyProfile[]; // singleton-array, length === 1 (see below)
+  customers: EnvelopeCustomer[]; // every row, all fields from §5.6 (including `ustId`)
+  projects: EnvelopeProject[]; // every row, all fields from §5.1, including archived (deleted = true)
   project_workers: { projectId: string; userId: string }[]; // every row of the join
+  invoices: EnvelopeInvoice[]; // every row, ordered (cancellation_of NULLS FIRST, id) — see below
+  invoice_sequence: EnvelopeInvoiceSequence[]; // every (year, kind) row
   attachments: EnvelopeAttachment[]; // every row with status = 'ready' — metadata-only descriptor (see below)
+}
+
+interface EnvelopeUser {
+  id: string; // UUID — preserved on restore
+  username: string; // unique
+  displayName: string;
+  passwordHash: string; // salted hash from §5.3; ships verbatim (see below)
+  roles: string[]; // closed set per the role matrix in api.md §14.3
+  email: string | null;
+  active: boolean;
+  themePreference: 'light' | 'dark' | 'system'; // §5.7
+  pushMuted: boolean; // §5.3 / §5.12
+  createdAt: string; // ISO 8601 — preserved on restore
+  updatedAt: string; // ISO 8601 — preserved on restore
+  lastLoginAt: string | null; // ISO 8601 — preserved on restore (mutates on login, see roundtrip AC-141)
+  createdBy: string | null; // UserAccount.id — no FK at DB level (§5.3 design notes)
+  updatedBy: string | null; // UserAccount.id — no FK at DB level (§5.3 design notes)
+}
+
+interface EnvelopeCompanyProfile {
+  id: string; // UUID — preserved on restore
+  companyName: string;
+  address: { street: string; zip: string; city: string }; // all three components present on the wire; empty strings on the baseline-seeded row
+  taxId: string;
+  ustId: string | null;
+  iban: string | null;
+  accentColor: string | null;
+  footerText: string | null;
+  logoBinaryDescriptorId: string | null; // references an `attachments[]` row carried by the takeout-zip binary leg
+  defaultTaxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge'; // §5.15 TaxMode
+  updatedAt: string; // ISO 8601 — preserved on restore
+  updatedBy: string | null; // UserAccount.id reference
+}
+
+interface EnvelopeInvoice {
+  id: string; // UUID — preserved on restore
+  projectId: string; // FK target restored from `projects[]`
+  status: 'draft' | 'issued' | 'cancelled'; // §5.15 InvoiceStatus
+  number: string | null; // null while draft; matches ^(RE|ST)-\d{4}-\d{4,}$ once issued
+  issueDate: string | null; // ISO 8601 date — set at issuance
+  performanceDate: string | null; // ISO 8601 date — Leistungsdatum per §14 UStG
+  taxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge'; // §5.15
+  profile: 'zugferd-en16931'; // §5.15 InvoiceProfile (v1)
+  issuer: InvoiceIssuerSnapshot; // §5.15 — frozen at issuance
+  recipient: InvoiceRecipientSnapshot; // §5.15 — frozen at issuance
+  lines: InvoiceLine[]; // §5.15 — frozen at issuance
+  totals: InvoiceTotals; // §5.15 — frozen at issuance
+  cancellationOf: string | null; // self-FK; non-null only on Storno rows (see below)
+  cancellationReason: string | null;
+  renderedPdfBinaryDescriptorId: string | null; // references an `attachments[]` row carried by the takeout-zip binary leg
+  createdAt: string; // ISO 8601 — preserved on restore
+  updatedAt: string; // ISO 8601 — preserved on restore
+  createdBy: string | null; // UserAccount.id reference
+  updatedBy: string | null; // UserAccount.id reference
+}
+
+interface EnvelopeInvoiceSequence {
+  year: number; // calendar year, composite key with `kind`
+  kind: 'invoice' | 'storno'; // §5.16 InvoiceSequenceKind
+  nextValue: number; // bigint on the DB side; serialized as JSON number (well within JS-safe range at expected scale)
+  updatedAt: string; // ISO 8601 — preserved on restore
 }
 
 interface EnvelopeAttachment {
@@ -244,12 +311,17 @@ interface EnvelopeAttachment {
 
 Design notes:
 
-- **Row-level fidelity for text rows.** Customers, projects, and project-worker assignments carry all persisted fields including `id`, `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, and `deleted`. Imports preserve IDs exactly (see [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision)).
+- **Row-level fidelity across the text rows.** Every text-row slot — users, company_profile, customers, projects, project_workers, invoices, invoice_sequence — carries all persisted fields including `id`, `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, archive flags, and any frozen snapshot blocks. Imports preserve IDs exactly (see [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision)).
 - **Archived rows are included.** Projects with `deleted = true` round-trip with their archive state intact (see [§6.9](#69-soft-deletes)).
-- **Users and sessions are not included.** Admin bootstrap ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)) handles fresh installs; seed-time loading of users uses a direct-DB helper, while seed-time business-data loading goes through the import code path (see [§7](#7-seed-data-specification)).
+- **Users round-trip verbatim — including `passwordHash`.** Every row in the `users` table ships, active and inactive alike. `passwordHash` is the salted hash from [§5.3](#53-user-entity) and rides as-is: a fresh-install import reproduces the operator's user set without an out-of-band password-reset pass. The hash is no more PII-sensitive than the addresses and invoice line items already in the artifact (see [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md) for the threat model); excluding it would break the round-trip. `lastLoginAt` is preserved but its value is the source's last-login moment — a login between consecutive exports advances it (see [AC-141](verification.md#1514-data-exchange)).
+- **`company_profile` is a singleton in an array shape.** The slot is always length `1` — the row is pre-seeded by the baseline migration and the schema enforces a singleton CHECK + UNIQUE ([§5.17](#517-company-profile-entity)). The array shape is for uniformity with the other slots; the importer validates `length === 1`.
+- **`customers.ustId` round-trips.** The field ships and round-trips like every other customer field ([§5.6](#56-customer-entity), [AC-306](verification.md#1511-customer-management)).
+- **`invoices` ordering is load-bearing — `(cancellation_of NULLS FIRST, id)`.** The export orders the slot so non-Storno rows (null `cancellationOf`) precede Storno rows (non-null `cancellationOf`); within each group, ordering is by `id`. The importer is required to honour the `cancellationOf` self-FK on insert ([§6.6](#66-referential-integrity), [api.md §14.2.4](api.md#1424-unified-data-exchange)); the documented ordering is the wire contract a re-export must reproduce.
+- **`invoice_sequence` restores next-number allocation state.** Every `(year, kind)` row round-trips so allocation continues from the imported peak rather than restarting at 1 on the importing instance. Required by the gapless invariant ([§5.16](#516-invoice-sequence-entity)) — restoring `invoices` without `invoice_sequence` would let a fresh issue collide with a restored number.
 - **Attachments: metadata-only descriptor.** Only rows with `status = 'ready'` are exported; `pending` rows (uncommitted uploads) and `hidden` rows (in the Papierkorb pending lifecycle reap, see [§5.13](#513-attachment) state machine) are excluded. The envelope carries the per-row metadata fields needed to restore identity and reach the right project on import; it does NOT carry crypto fields (`wrappedDek`, `wrappedThumbDek`, `wrappedDekVersion`), opaque storage keys (`originalKey`, `thumbKey`), or ciphertext sizes (`ciphertextSizeBytes`, `ciphertextThumbSizeBytes`) — those are not consumable on the importing instance and were dead weight under the new shape. The wrapped envelopes were also load-bearing for confidentiality on the exporting instance and are deliberately kept off the takeout artifact.
-- **Restore mechanics are client-driven.** Bytes live in object storage (Layer 3 per [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md)) and ride alongside the envelope as plaintext entries inside the takeout zip ([ui/daten.md §8.11.1](ui/daten.md#8111-export)). On import, the browser orchestrator re-uploads each plaintext file through the existing `init` (with `restore` block) → presigned PUT → `complete` pipeline against the importing instance. Fresh DEKs are minted in the browser; the importing instance wraps them under its own `BINARY_AGE_RECIPIENT`. No key material crosses the takeout boundary; no plaintext bytes cross the importing instance's app server.
-- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `2`.
+- **Restore mechanics are client-driven (binary leg).** Bytes live in object storage (Layer 3 per [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md)) and ride alongside the envelope as plaintext entries inside the takeout zip ([ui/daten.md §8.11.1](ui/daten.md#8111-export)). On import, the browser orchestrator re-uploads each plaintext file through the existing `init` (with `restore` block) → presigned PUT → `complete` pipeline against the importing instance. Fresh DEKs are minted in the browser; the importing instance wraps them under its own `BINARY_AGE_RECIPIENT`. No key material crosses the takeout boundary; no plaintext bytes cross the importing instance's app server.
+- **Ephemeral, derived, device-tied, and instance-bound rows stay out.** `sessions` (ephemeral tokens), `push_subscriptions` (per-device endpoints), `project_storage_usage` (trigger-maintained derived state), `meta_backup_status` (Layer 2 instance metadata), `notification_rule` (config tied to the closed event catalog per [ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)), and `audit_log` (per-instance chain of custody) are excluded by design. The principle is pinned in [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision).
+- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `3`; any other value rejects with `SCHEMA_VERSION_MISMATCH`.
 
 ### 5.9 Backup Status Entity
 
@@ -288,7 +360,8 @@ type AuditEntityType =
   | 'project_worker'
   | 'attachment'
   | 'invoice'
-  | 'company_profile';
+  | 'company_profile'
+  | 'data_import'; // synthetic; tags the deployment-level `/api/import` event (no physical table)
 
 interface AuditLogEntry {
   id: string; // UUID
@@ -308,11 +381,11 @@ interface AuditLogEntry {
 Design notes:
 
 - **Append-only from the application.** The application never updates an `audit_log` row and never deletes one through any API, service, or UI path. The retention cleanup job ([§6.10](#610-audit-log-retention)) is the only path that removes rows and operates as infrastructure, not as a domain mutation — it does not itself produce an `audit_log` row.
-- **Scope is domain-entity state changes.** `project`, `customer`, `user`, `project_worker`, and `attachment` are the audited types. Authentication and session events (login, logout, session reap) are security events and surface through the structured logger, not `audit_log` — per [ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md).
+- **Scope is domain-entity state changes.** `project`, `customer`, `user`, `project_worker`, `attachment`, `invoice`, and `company_profile` are the audited domain types. `data_import` is a synthetic type tagging a deployment-level event (one row per `/api/import` commit; [AC-311](verification.md#1514-data-exchange)) — no physical table backs it. Authentication and session events (login, logout, session reap) are security events and surface through the structured logger, not `audit_log` — per [ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md).
 - **Actor kind semantics.**
   - `user` — an authenticated caller performed the mutation. `actorId` references the `UserAccount.id`; `actorReason` is null.
   - `system` — no authenticated caller is present. `actorId` is null; `actorReason` is required and carries a human-readable cue naming the code path (e.g., `"first-run-bootstrap"`). First-run admin bootstrap ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)) is the current domain-entity system-actor path. A system entry with an empty or missing `actorReason` is rejected by the database via a CHECK constraint (defense in depth) — else a system write would be invisible in the activity feed.
-- **Action vocabulary.** `action` is free text so new mutation shapes can record without a schema migration. The current vocabulary is `create`, `update`, `delete`, `archive`, `transition:forward`, `transition:backward`, `purge`, `reactivate`, `deactivate`, `password-reset`, `password-change`, `attachment:add`, `attachment:hide`, `attachment:restore`, `attachment:purge`, `invoice:issue`, `invoice:cancel`. `archive` is the `entityType = 'project'` soft-delete action (see [ADR-0017](../adr/0017-soft-delete-as-board-archive.md)); `delete` and `purge` remain distinct (generic delete for non-project entities, hard-delete on projects respectively). `attachment:add`, `attachment:hide`, and `attachment:restore` live on `entityType = 'attachment'` and correspond to init, user-DELETE (soft-hide per [ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)), and Papierkorb-restore respectively. `attachment:purge` records the system-initiated permanent destruction of a hidden attachment row by the hidden reaper ([§6.12](#612-attachment-hidden-reaper)) — distinct from `attachment:hide`, which is the user-initiated soft-hide that moves the row to the Papierkorb. The orphan reaper ([§6.11](#611-attachment-orphan-reaper)) removes rows / objects without producing audit rows — it operates on housekeeping artifacts that never entered the user-visible domain. A free-text field is chosen over an enum because the vocabulary is expected to grow with new features and an enum would churn the schema; uniqueness and casing are enforced by convention and reviewed at PR time. Each entry in the vocabulary maps to exactly one mutation shape.
+- **Action vocabulary.** `action` is free text so new mutation shapes can record without a schema migration. The current vocabulary is `create`, `update`, `delete`, `archive`, `transition:forward`, `transition:backward`, `purge`, `reactivate`, `deactivate`, `password-reset`, `password-change`, `attachment:add`, `attachment:hide`, `attachment:restore`, `attachment:purge`, `invoice:issue`, `invoice:cancel`, `import_restored`. `archive` is the `entityType = 'project'` soft-delete action (see [ADR-0017](../adr/0017-soft-delete-as-board-archive.md)); `delete` and `purge` remain distinct (generic delete for non-project entities, hard-delete on projects respectively). `attachment:add`, `attachment:hide`, and `attachment:restore` live on `entityType = 'attachment'` and correspond to init, user-DELETE (soft-hide per [ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)), and Papierkorb-restore respectively. `attachment:purge` records the system-initiated permanent destruction of a hidden attachment row by the hidden reaper ([§6.12](#612-attachment-hidden-reaper)) — distinct from `attachment:hide`, which is the user-initiated soft-hide that moves the row to the Papierkorb. `import_restored` lives on `entityType = 'data_import'` and tags one row per `/api/import` commit (deployment-level event; [AC-311](verification.md#1514-data-exchange)). The orphan reaper ([§6.11](#611-attachment-orphan-reaper)) removes rows / objects without producing audit rows — it operates on housekeeping artifacts that never entered the user-visible domain. A free-text field is chosen over an enum because the vocabulary is expected to grow with new features and an enum would churn the schema; uniqueness and casing are enforced by convention and reviewed at PR time. Each entry in the vocabulary maps to exactly one mutation shape.
 - **Payload shape.** `payload` carries the changed fields only, as `{ before, after }` field-keyed objects — not the full row. For a create, `before` is empty and `after` carries the persisted values for every non-server-managed field. For a delete or purge, `after` is empty. For a state transition, `before` and `after` carry `status` and `statusChangedAt`. Full-row snapshots are deliberately excluded (see [ADR-0021 — Alternatives Considered](../adr/0021-audit-log-and-notifications-single-write-path.md#alternatives-considered)).
 - **Entity label snapshot.** `entityLabel` is a nullable text column captured at write time (e.g. a project's `"2026-002 Innenraumgestaltung Weber"`, a customer's `"Firma Weber GmbH"`, a user's `displayName`). Frozen with the audit row so the activity feed stays readable after the target is renamed or purged. Write paths that do not have a natural label (import, retention cleanup) leave it null; the UI falls back to `entityId`. This is display metadata — it is not part of the `{ before, after }` diff contract. For `project_worker` rows specifically, `entityId` is the project's id (not the join-row's composite key) and `entityLabel` is the **worker's** displayName — the feed reads "Jan Nowak wurde zugewiesen" under the owning project's header, so the worker name is the meaningful label, while the project id remains the row's target. Pinned by [AC-188](verification.md#1523-audit-log).
 - **Correlation id.** `correlationId` is a nullable, per-request id set at the route layer and threaded through the service call chain. It groups every audit row produced by one request, enabling a future bulk-undo or one-request trace. Null is valid for entries produced outside a request (bootstrap and other unattended domain-entity writes).

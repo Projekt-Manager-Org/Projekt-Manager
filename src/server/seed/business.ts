@@ -1,16 +1,22 @@
 /**
- * Seed business-data loader — customers, projects, project_workers.
+ * Seed business-envelope builder — users, company_profile, customers,
+ * projects, project_workers.
  *
- * Unlike users, business data flows through the same import path that
- * serves `POST /api/import` (`ImportService.import`). The contract comes
- * from data-model.md §5.8 / §7 and ADR-0018: the seed exercises the
- * import envelope on every run, so format drift breaks the seed and the
- * public restore path together instead of only one or the other.
+ * Issue #230: the Layer 1 envelope covers every user-meaningful table
+ * (data-model.md §5.8, ADR-0018). The seed assembles the whole envelope
+ * in one place and ships it through the same `ImportService.import` path
+ * that serves `POST /api/import`, so envelope-format drift breaks the
+ * seed and the public restore path together instead of only one or the
+ * other. Invoices and `invoice_sequence` stay empty in the envelope —
+ * `loadInvoices` mints them afterwards through the real draft→issue
+ * lifecycle (real PDFs, sequence allocation, audit rows).
  *
- * The transformer (`buildBusinessEnvelope`) is pure and takes `now` as
- * the single reference moment — every relative date (and the project
- * number year prefix) is derived from it. Capturing `now` once fixes the
- * module-load-time `year` smell in the pre-refactor seed.ts.
+ * The transformer (`buildBusinessEnvelope`) is pure and takes `now` plus
+ * a pre-hashed password as the only inputs. `now` is the single
+ * reference moment — every relative date (and the project number year
+ * prefix) is derived from it. `hashedPassword` is bcrypt-hashed once by
+ * the orchestrator (bcrypt is expensive) and threaded onto every
+ * `users[*].passwordHash` slot.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -19,13 +25,15 @@ import { ImportService } from '../services/ImportService.js';
 import {
   SCHEMA_VERSION,
   type Envelope,
+  type EnvelopeCompanyProfile,
   type EnvelopeCustomer,
   type EnvelopeProject,
   type EnvelopeAssignment,
+  type EnvelopeUser,
 } from '../../domain/dataExchange.js';
 
 import { daysFromNow } from './daysFromNow.js';
-import { getSeededUserIds } from './users.js';
+import { getSeededUserIds, getSeededUserRecords } from './users.js';
 
 interface CustomerSpec {
   name: string;
@@ -416,13 +424,62 @@ const ASSIGNMENT_SPECS: readonly AssignmentSpec[] = [
 
 /**
  * Build the in-memory envelope that represents the seed's business data.
- * Pure — given the same `now` the output is byte-equal. Dates are ISO
- * strings because `EnvelopeCustomer` / `EnvelopeProject` declare them
- * that way (`ImportService.toXxxInsert` parses them back to `Date`).
+ * Pure — given the same `(now, hashedPassword)` the output is byte-equal.
+ * Dates are ISO strings because the envelope types declare them that way
+ * (`ImportService.toXxxInsert` parses them back to `Date`).
+ *
+ * `hashedPassword` is the bcrypt hash for `SEED_DEFAULT_PASSWORD`,
+ * computed once by `seed.ts` and threaded onto every user row. Hashing
+ * inline per row would multiply the seed runtime by the user count.
  */
-export function buildBusinessEnvelope(now: Date): Envelope {
+export function buildBusinessEnvelope(now: Date, hashedPassword: string): Envelope {
   const year = now.getFullYear();
   const nowIso = now.toISOString();
+
+  // Users: every fixture row becomes an envelope row. `passwordHash`
+  // comes from the orchestrator (one bcrypt call, reused). Defaults
+  // mirror the schema's column defaults (data-model.md §5.3, §5.7):
+  //   themePreference = 'system', pushMuted = false, lastLoginAt = null.
+  // `createdBy` / `updatedBy` are null — seeded users have no audit
+  // ancestor inside the seed corpus.
+  const userRows: EnvelopeUser[] = getSeededUserRecords().map((u) => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName,
+    passwordHash: hashedPassword,
+    roles: u.roles,
+    email: u.email,
+    active: u.active,
+    themePreference: 'system',
+    pushMuted: false,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    lastLoginAt: null,
+    createdBy: null,
+    updatedBy: null,
+  }));
+
+  // Singleton company_profile (data-model.md §5.17, ADR-0026). The
+  // baseline migration pre-seeds an empty placeholder row; the import
+  // path UPSERTs over it via `ON CONFLICT (singleton)`, so a fresh
+  // install ends up with this fixture's values. `accentColor`,
+  // `footerText`, and `logoBinaryDescriptorId` stay null — the fixture
+  // does not pin them and the schema defaults are the right resting
+  // state.
+  const companyProfileRow: EnvelopeCompanyProfile = {
+    id: randomUUID(),
+    companyName: 'Maler Berger GmbH',
+    address: { street: 'Werkstr. 1', zip: '10115', city: 'Berlin' },
+    taxId: '111/222/33333',
+    ustId: 'DE123456789',
+    iban: 'DE12 1000 0000 1234 5678 90',
+    accentColor: null,
+    footerText: null,
+    logoBinaryDescriptorId: null,
+    defaultTaxMode: 'standard',
+    updatedAt: nowIso,
+    updatedBy: null,
+  };
 
   // Customers first — projects reference customers by id.
   const customerById = new Map<string, EnvelopeCustomer>();
@@ -435,6 +492,11 @@ export function buildBusinessEnvelope(now: Date): Envelope {
       phone: spec.phone ?? null,
       email: spec.email ?? null,
       address: spec.address ?? null,
+      // The seed business envelope ships every customer without a USt-IdNr.
+      // Reverse-charge invoices (§13b — RE-0001 in the invoice seed) carry
+      // a recipient-side `ustId` override on the issued snapshot instead;
+      // see `src/server/seed/invoices.ts` for the override site.
+      ustId: null,
       notes: spec.notes ?? null,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -501,9 +563,20 @@ export function buildBusinessEnvelope(now: Date): Envelope {
   return {
     schema_version: SCHEMA_VERSION,
     exported_at: nowIso,
+    // Issue #230: this builder owns every envelope-resident table
+    // EXCEPT invoices + invoice_sequence. Those stay empty here because
+    // `loadInvoices` runs after the envelope lands and mints them
+    // through the real draft→issue cycle (real PDFs, sequence
+    // allocation, audit rows). Every other slot is populated so the
+    // import is a single ImportService call exercising the full Layer 1
+    // contract.
+    users: userRows,
+    company_profile: [companyProfileRow],
     customers: Array.from(customerById.values()),
     projects: Array.from(projectById.values()),
     project_workers: assignments,
+    invoices: [],
+    invoice_sequence: [],
     // Seed business data has no attachments — the seed only mints
     // text rows. The envelope shape requires the field, so an empty
     // array is the right shape (issue #163 / data-model.md §5.8).
@@ -516,10 +589,17 @@ export function buildBusinessEnvelope(now: Date): Envelope {
  * constructor pattern in `src/server/routes/data-exchange.ts`. The target
  * is guaranteed empty by the orchestrator's TRUNCATE, so the safe path
  * (`override: false`, `confirmationPhrase: null`) succeeds.
+ *
+ * `hashedPassword` is threaded through `buildBusinessEnvelope` onto every
+ * user row — the orchestrator computes it once because bcrypt is
+ * expensive (see `seed.ts`).
  */
-export async function loadBusiness(db: Database, opts: { now?: Date } = {}): Promise<void> {
+export async function loadBusiness(
+  db: Database,
+  opts: { now?: Date; hashedPassword: string },
+): Promise<void> {
   const now = opts.now ?? new Date();
-  const envelope = buildBusinessEnvelope(now);
+  const envelope = buildBusinessEnvelope(now, opts.hashedPassword);
   const importService = new ImportService(db);
   await importService.import(envelope, {
     dryRun: false,

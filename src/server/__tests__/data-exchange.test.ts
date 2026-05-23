@@ -60,13 +60,13 @@ const migrationsFolder = path.resolve(__dirname, '../db/migrations');
  * this constant; the import should then reject the old value the next
  * test run, which is exactly the test's purpose.
  *
- * Bumped to `2` when the takeout-zip restore landed (issue #163): the
- * attachments slot dropped its crypto fields, opaque storage keys, and
- * ciphertext sizes (data-model.md §5.8). Pre-#163 envelopes are not
- * consumable on the importing instance; the SCHEMA_VERSION_MISMATCH
- * arm is the documented refusal path.
+ * Bumped to `3` when the Layer 1 envelope expanded to cover all
+ * user-meaningful business state (issue #230): `users`, `company_profile`,
+ * `invoices`, and `invoice_sequence` joined the prior set. Pre-#230 (v2)
+ * envelopes are not consumable on the importing instance; the
+ * SCHEMA_VERSION_MISMATCH arm is the documented refusal path.
  */
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 const UUID_ZERO = '00000000-0000-0000-0000-000000000000';
 
@@ -90,8 +90,35 @@ function isoNow(): string {
 }
 
 /**
+ * Build a singleton company_profile row for the fixture envelopes.
+ * Issue #230: `company_profile` must be exactly one row (singleton —
+ * data-model.md §5.17). Tests that don't care about the profile's
+ * contents still need to ship the singleton so the envelope validates.
+ */
+function buildFixtureCompanyProfile(suffix: string): Record<string, unknown> {
+  return {
+    id: uuid(`cp-${suffix}`, 1),
+    companyName: `Fixture Maler ${suffix}`,
+    address: { street: 'Fixturestr. 1', zip: '10115', city: 'Berlin' },
+    taxId: '111/222/33333',
+    ustId: 'DE123456789',
+    iban: 'DE12 1000 0000 1234 5678 90',
+    accentColor: null,
+    footerText: null,
+    logoBinaryDescriptorId: null,
+    defaultTaxMode: 'standard',
+    updatedAt: '2026-01-03T00:00:00.000Z',
+    updatedBy: null,
+  };
+}
+
+/**
  * Build an envelope for the empty-DB import path. Fresh IDs so the test
  * can verify ID preservation after export→import→export.
+ *
+ * Issue #230 (v3): `users` defaults to an empty array (these legacy tests
+ * don't care about user content), but `company_profile` carries the
+ * singleton — the importer rejects anything other than exactly one row.
  */
 function buildFreshEnvelope(): ExportEnvelope {
   const customerId = uuid('cust', 1);
@@ -99,6 +126,8 @@ function buildFreshEnvelope(): ExportEnvelope {
   return {
     schema_version: CURRENT_SCHEMA_VERSION,
     exported_at: isoNow(),
+    users: [],
+    company_profile: [buildFixtureCompanyProfile('fresh')],
     customers: [
       {
         id: customerId,
@@ -106,6 +135,7 @@ function buildFreshEnvelope(): ExportEnvelope {
         phone: '0221-9000001',
         email: 'alpha@example.de',
         address: { street: 'Ringstr. 1', zip: '50667', city: 'Köln' },
+        ustId: null,
         notes: null,
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-02T00:00:00.000Z',
@@ -133,6 +163,8 @@ function buildFreshEnvelope(): ExportEnvelope {
       },
     ],
     project_workers: [],
+    invoices: [],
+    invoice_sequence: [],
   };
 }
 
@@ -148,6 +180,8 @@ function buildOverrideEnvelope(): ExportEnvelope {
   return {
     schema_version: CURRENT_SCHEMA_VERSION,
     exported_at: isoNow(),
+    users: [],
+    company_profile: [buildFixtureCompanyProfile('override')],
     customers: [
       {
         id: c1,
@@ -155,6 +189,7 @@ function buildOverrideEnvelope(): ExportEnvelope {
         phone: null,
         email: null,
         address: null,
+        ustId: null,
         notes: null,
         createdAt: '2026-02-01T00:00:00.000Z',
         updatedAt: '2026-02-01T00:00:00.000Z',
@@ -167,6 +202,7 @@ function buildOverrideEnvelope(): ExportEnvelope {
         phone: null,
         email: null,
         address: null,
+        ustId: null,
         notes: null,
         createdAt: '2026-02-02T00:00:00.000Z',
         updatedAt: '2026-02-02T00:00:00.000Z',
@@ -211,6 +247,8 @@ function buildOverrideEnvelope(): ExportEnvelope {
       },
     ],
     project_workers: [],
+    invoices: [],
+    invoice_sequence: [],
   };
 }
 
@@ -218,13 +256,22 @@ function buildOverrideEnvelope(): ExportEnvelope {
  * Shape we assert against. Any field the current export omits makes the
  * corresponding assertion fail loudly — that is the entire point of the
  * row-level-fidelity AC.
+ *
+ * Issue #230 (v3): the four new top-level slots ride alongside the
+ * legacy three. Each is loosely typed (`unknown[]`) here because most
+ * legacy tests only spread/preserve the field rather than reading its
+ * content; tests that exercise the new shapes type the rows locally.
  */
 interface ExportEnvelope {
   schema_version: number;
   exported_at: string;
+  users: unknown[];
+  company_profile: unknown[];
   customers: Array<Record<string, unknown> & { id: string }>;
   projects: Array<Record<string, unknown> & { id: string; deleted: boolean }>;
   project_workers: Array<{ projectId: string; userId: string }>;
+  invoices: unknown[];
+  invoice_sequence: unknown[];
   // Index signature so an envelope is assignable to the authPost payload
   // type Record<string, unknown> without per-call casting.
   [key: string]: unknown;
@@ -448,17 +495,15 @@ describe('Unified Data Exchange', () => {
       expect(archived!.deleted).toBe(true);
     });
 
-    // AC-135 (exclusion): users, sessions, password hashes must not appear
-    // anywhere in the serialized envelope. Grep-style check on the JSON
-    // string catches accidental inclusion via row spread / serializer leak.
-    it('does NOT serialize users, sessions, or password fields', async () => {
+    // AC-135 (exclusion, post-#230): pre-#230 the envelope explicitly
+    // excluded users/sessions/passwordHash; under v3 (issue #230) users
+    // and `passwordHash` ride the envelope verbatim. `sessions` remains
+    // out by design (ephemeral, per-deployment). The positive assertion
+    // for users + passwordHash lives in `data-exchange-export-envelope.test.ts`.
+    it('still excludes sessions from the serialized envelope', async () => {
       const res = await authGet(ownerToken, '/api/export');
       const serialized = res.body;
-      expect(serialized).not.toMatch(/"users"\s*:/);
       expect(serialized).not.toMatch(/"sessions"\s*:/);
-      expect(serialized.toLowerCase()).not.toContain('passwordhash');
-      expect(serialized.toLowerCase()).not.toContain('password_hash');
-      expect(serialized).not.toMatch(/"password"\s*:/);
     });
   });
 
@@ -913,6 +958,11 @@ describe('Unified Data Exchange', () => {
   describe('AC-139: override wipe+restore', () => {
     // AC-139 happy path: seed + override flag + valid envelope →
     // existing rows gone, new rows present, IDs preserved.
+    //
+    // Issue #230: override now wipes `users` too, which cascades to
+    // `sessions` and invalidates the operator's token mid-flight. The
+    // post-import assertions therefore use direct DB queries rather
+    // than /api/export — the latter would 401 with a wiped session.
     it('wipes existing data and imports the new envelope when override=true', async () => {
       const before = await authGet(ownerToken, '/api/export');
       const seeded = before.json() as ExportEnvelope;
@@ -926,16 +976,16 @@ describe('Unified Data Exchange', () => {
         const res = await authPost(ownerToken, '/api/import?override=true', body);
         expect(res.statusCode).toBe(200);
 
-        const after = await authGet(ownerToken, '/api/export');
-        const post = after.json() as ExportEnvelope;
-
-        // Only the new envelope's rows survive.
-        expect(post.customers.length).toBe(env.customers.length);
-        expect(post.projects.length).toBe(env.projects.length);
-        const newCustomerIds = new Set(post.customers.map((c) => c.id));
-        for (const c of env.customers) expect(newCustomerIds.has(c.id)).toBe(true);
-        // No seed survivors.
-        for (const c of seeded.customers) expect(newCustomerIds.has(c.id)).toBe(false);
+        // Direct-DB cross-check — the export route requires auth and
+        // the override wiped sessions.
+        const dbCustomers = await db.execute<{ c: string }>(
+          sql`SELECT count(*)::text AS c FROM customers`,
+        );
+        const dbProjects = await db.execute<{ c: string }>(
+          sql`SELECT count(*)::text AS c FROM projects`,
+        );
+        expect(Number(dbCustomers.rows[0]!.c)).toBe(env.customers.length);
+        expect(Number(dbProjects.rows[0]!.c)).toBe(env.projects.length);
       } finally {
         await reseedAndRelogin();
       }
@@ -1055,34 +1105,40 @@ describe('Unified Data Exchange', () => {
   // `attachments` array — matched against the source by construction.
   // ---------------------------------------------------------------
   describe('AC-141: full roundtrip produces byte-identical content', () => {
-    // AC-141 text-row arm: seed → export1 → wipe → import(stripped) →
-    // export2 → customers/projects/project_workers match exactly. The
-    // seed has no attachments to begin with, so the empty `attachments`
-    // arrays compare equal too.
-    it('exports → imports → re-exports without drift (exported_at excluded)', async () => {
+    // AC-141 text-row arm: seed → export1 → override-import →
+    // re-login → export2 → customers/projects/project_workers match
+    // exactly.
+    //
+    // Issue #230: the export carries users now, and the seeded users
+    // already exist in the target — re-importing without override
+    // collides on users.id. Override is the right semantic for a
+    // self-roundtrip (wipe + replace with the snapshot). The override
+    // wipes sessions so the operator must re-login before the second
+    // export call. A fuller roundtrip pinning every v3 slot lives in
+    // `data-exchange-import-expanded.test.ts` (AT-77 analog).
+    it('exports → imports → re-exports without drift (exported_at + lastLoginAt excluded)', async () => {
       const e1Res = await authGet(ownerToken, '/api/export');
       expect(e1Res.statusCode).toBe(200);
       const e1 = e1Res.json() as ExportEnvelope;
 
       try {
-        await wipeBusinessData();
-
-        // Strip the `attachments` key — mirrors the orchestrator step
-        // in ui/daten.md §8.11.2 / AC-253. Re-posting the envelope
-        // verbatim would now reject with 422 (the fix for the silent-
-        // loss bug); the orchestrator pattern is what the contract
-        // expects.
+        // Strip `attachments` (AC-253) and inject the confirmation
+        // phrase the override branch requires for a non-empty target.
         const { attachments: _attachmentsStripped, ...textLeg } = e1 as ExportEnvelope & {
           attachments?: unknown;
         };
         void _attachmentsStripped;
+        const importBody = { ...textLeg, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
 
         const imp = await authPost(
           ownerToken,
-          '/api/import',
-          textLeg as unknown as Record<string, unknown>,
+          '/api/import?override=true',
+          importBody as unknown as Record<string, unknown>,
         );
         expect(imp.statusCode).toBe(200);
+
+        // Re-login — the override wiped sessions.
+        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
 
         const e2Res = await authGet(ownerToken, '/api/export');
         expect(e2Res.statusCode).toBe(200);
@@ -1154,6 +1210,8 @@ describe('Unified Data Exchange', () => {
     });
 
     // AT-82 — happy path: matching phrase commits the atomic wipe+restore.
+    // Issue #230: post-override the session is wiped — use a direct-DB
+    // assertion rather than /api/export.
     it('accepts override with a matching confirmation_phrase', async () => {
       const env = buildOverrideEnvelope();
       const body = { ...env, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
@@ -1161,11 +1219,10 @@ describe('Unified Data Exchange', () => {
         const res = await authPost(ownerToken, '/api/import?override=true', body);
         expect(res.statusCode).toBe(200);
 
-        const after = await authGet(ownerToken, '/api/export');
-        const post = after.json() as ExportEnvelope;
-        expect(post.customers.length).toBe(env.customers.length);
-        const newIds = new Set(post.customers.map((c) => c.id));
-        for (const c of env.customers) expect(newIds.has(c.id)).toBe(true);
+        const dbCustomers = await db.execute<{ c: string }>(
+          sql`SELECT count(*)::text AS c FROM customers`,
+        );
+        expect(Number(dbCustomers.rows[0]!.c)).toBe(env.customers.length);
       } finally {
         await reseedAndRelogin();
       }
@@ -1194,7 +1251,10 @@ describe('Unified Data Exchange', () => {
     });
 
     // AT-83 — empty-target exempt: override into an empty DB succeeds
-    // without a phrase (there is nothing to wipe).
+    // without a phrase (there is nothing to wipe). Issue #230: even
+    // an empty-target override wipes users (TRUNCATE users CASCADE
+    // sweeps every session including the operator's), so the post-call
+    // assertion uses a direct DB query.
     it('accepts override into empty DB without confirmation_phrase', async () => {
       const env = buildFreshEnvelope();
       try {
@@ -1202,9 +1262,10 @@ describe('Unified Data Exchange', () => {
         const res = await authPost(ownerToken, '/api/import?override=true', env);
         expect(res.statusCode).toBe(200);
 
-        const after = await authGet(ownerToken, '/api/export');
-        const post = after.json() as ExportEnvelope;
-        expect(post.customers.length).toBe(env.customers.length);
+        const dbCustomers = await db.execute<{ c: string }>(
+          sql`SELECT count(*)::text AS c FROM customers`,
+        );
+        expect(Number(dbCustomers.rows[0]!.c)).toBe(env.customers.length);
       } finally {
         await reseedAndRelogin();
       }

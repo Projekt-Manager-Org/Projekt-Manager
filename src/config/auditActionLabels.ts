@@ -53,6 +53,10 @@ export const AUDIT_ACTION_KEYS = [
   'invoice:delete',
   'invoice:issue',
   'invoice:cancel',
+  // Data-import event (issue #230). One row per `/api/import` commit,
+  // entity_type='data_import' with a synthetic batch UUID for entity_id;
+  // payload carries per-slot counts.
+  'import_restored',
 ] as const;
 
 export type AuditActionKey = (typeof AUDIT_ACTION_KEYS)[number];
@@ -91,6 +95,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionKey, string> = {
   'invoice:delete': 'Entwurf gelöscht',
   'invoice:issue': 'Rechnung ausgestellt',
   'invoice:cancel': 'Rechnung storniert',
+  import_restored: 'Daten importiert',
 };
 
 /**

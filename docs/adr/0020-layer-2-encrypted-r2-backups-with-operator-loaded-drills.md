@@ -55,9 +55,9 @@ age's passphrase mode instead of asymmetric. Ruled out: passphrase-based age nee
 
 Full restore drill from CI on a schedule. Ruled out: CI would need persistent decrypt-key access, which becomes the whole-history compromise vector — the exact threat encryption is meant to mitigate. Operator-loaded tmpfs isolates the decrypt path to a trusted enclave.
 
-### Dumping users and sessions via app-level export instead of pg_dump
+### Dumping the full DB via app-level export instead of pg_dump
 
-Extend the Layer 1 envelope so one artifact captures everything. Ruled out: Layer 1 is deliberately portability-first, not DR — users and sessions are excluded by design (see [ADR-0018 §Decision](0018-data-persistence-and-recovery-layered-strategy.md#decision) and [ADR-0019](0019-worker-data-scoping-repository-layer-predicate.md)). The two layers are complementary; merging re-introduces the confusion ADR-0018 removed.
+Extend the Layer 1 envelope so one artifact captures everything. Ruled out: Layer 1 is portability-first, not DR. It carries the user-meaningful business state (including `users` and `passwordHash` — see [ADR-0018 §Decision](0018-data-persistence-and-recovery-layered-strategy.md#decision)) but deliberately omits the instance-bound surface — `sessions`, `audit_log`, schema, indices, derived rows. Layer 2's `pg_dump` retains all of it. The two layers are complementary; merging re-introduces the confusion ADR-0018 removed.
 
 ### GFS-style rotation (7 daily, 4 weekly, 12 monthly)
 

@@ -102,9 +102,20 @@ export interface ImportEnvelopeAttachment {
 export interface ImportEnvelope {
   schema_version: number;
   exported_at: string;
+  /**
+   * Issue #230: the envelope round-trips every user-meaningful business
+   * table. The orchestrator only needs row counts (for the preflight
+   * readout) and the attachments slot (for the binary leg), so the
+   * other slots are typed as `unknown[]` — the server's `/api/import`
+   * is the authoritative validator for each row's shape.
+   */
+  users: unknown[];
+  company_profile: unknown[];
   customers: unknown[];
   projects: unknown[];
   project_workers: unknown[];
+  invoices: unknown[];
+  invoice_sequence: unknown[];
   /**
    * Attachments — present in the takeout zip's `data.json`. Stripped
    * before the text-leg POST (`/api/import` rejects the key per
@@ -327,6 +338,39 @@ export type ProgressEvent =
 const DEFAULT_CONCURRENCY = 4;
 
 /**
+ * Error code raised by the binary-leg wrappers when the import-token
+ * bearer is rejected (revoked / expired / `users.active=false`). The
+ * orchestrator treats this as fatal — every subsequent per-attachment
+ * call would fail identically, and the operator must re-authenticate
+ * before retrying. Keep the literal in sync with `errors.ts`'s
+ * `ErrorCode` union; we don't import server types into UI code.
+ */
+const IMPORT_TOKEN_INVALID_CODE = 'IMPORT_TOKEN_INVALID';
+
+/**
+ * Detect the token-invalid error code on a caught throwable. The
+ * binary-leg wrappers in `state/importAllStore.ts` attach `.code` to
+ * the thrown Error; absence of `.code` (e.g., a generic crypto failure)
+ * falls through as a regular per-entry skip.
+ */
+function isImportTokenInvalidError(err: unknown): boolean {
+  return (
+    err instanceof Error && (err as Error & { code?: unknown }).code === IMPORT_TOKEN_INVALID_CODE
+  );
+}
+
+/**
+ * Sentinel attached to the fatal error so the runner can route it to
+ * the dedicated token-invalid phase rather than the generic error
+ * phase. `Error.message` is operator-facing; this is for routing.
+ */
+export function makeImportTokenInvalidError(message: string): Error {
+  const err = new Error(message) as Error & { code: string };
+  err.code = IMPORT_TOKEN_INVALID_CODE;
+  return err;
+}
+
+/**
  * Hex-lowercase SHA-256. Matches `exportAllAsZip.ts`'s `sha256Hex` byte
  * for byte — both sides agreeing on encoding is the load-bearing
  * property of the per-entry verification.
@@ -399,6 +443,12 @@ function validateEnvelopeShape(value: unknown): asserts value is ImportEnvelope 
   if (typeof e.exported_at !== 'string') {
     throw new Error('importAllFromZip: data.json.exported_at missing or not a string');
   }
+  if (!Array.isArray(e.users)) {
+    throw new Error('importAllFromZip: data.json.users missing or not an array');
+  }
+  if (!Array.isArray(e.company_profile)) {
+    throw new Error('importAllFromZip: data.json.company_profile missing or not an array');
+  }
   if (!Array.isArray(e.customers)) {
     throw new Error('importAllFromZip: data.json.customers missing or not an array');
   }
@@ -407,6 +457,12 @@ function validateEnvelopeShape(value: unknown): asserts value is ImportEnvelope 
   }
   if (!Array.isArray(e.project_workers)) {
     throw new Error('importAllFromZip: data.json.project_workers missing or not an array');
+  }
+  if (!Array.isArray(e.invoices)) {
+    throw new Error('importAllFromZip: data.json.invoices missing or not an array');
+  }
+  if (!Array.isArray(e.invoice_sequence)) {
+    throw new Error('importAllFromZip: data.json.invoice_sequence missing or not an array');
   }
   if (e.attachments !== undefined && !Array.isArray(e.attachments)) {
     throw new Error('importAllFromZip: data.json.attachments must be an array when present');
@@ -725,6 +781,15 @@ export async function importAllFromZip(input: ImportAllInput): Promise<ImportAll
     try {
       initResult = await initFn(entry, restore, prepared?.initPayload);
     } catch (err) {
+      // A token-invalid rejection means every subsequent binary-leg
+      // call would fail identically. Escalate to fatal so the run
+      // stops and the runner can surface a re-auth prompt rather
+      // than letting the dialog fill with N identical per-entry
+      // failures.
+      if (isImportTokenInvalidError(err)) {
+        fatalError = makeImportTokenInvalidError(err instanceof Error ? err.message : String(err));
+        return;
+      }
       const reason = err instanceof Error ? err.message : String(err);
       failures.push({ attachmentId: entry.id, zipPath, reason: `init: ${reason}` });
       onProgress?.({ kind: 'attachment-failed', entry, reason: `init: ${reason}` });
@@ -786,6 +851,10 @@ export async function importAllFromZip(input: ImportAllInput): Promise<ImportAll
     try {
       await completeFn(initResult.id);
     } catch (err) {
+      if (isImportTokenInvalidError(err)) {
+        fatalError = makeImportTokenInvalidError(err instanceof Error ? err.message : String(err));
+        return;
+      }
       const reason = err instanceof Error ? err.message : String(err);
       failures.push({
         attachmentId: entry.id,

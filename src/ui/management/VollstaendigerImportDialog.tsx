@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
+import { endSessionExpiredSuppression, handleSessionExpired } from '@/state/sessionExpired';
 import { useDialogA11y } from '@/ui/common/useDialogA11y';
 import { useImportAllRunner } from './useImportAllRunner';
 import {
@@ -35,6 +36,7 @@ import {
   PreflightView,
   ProgressView,
   SummaryView,
+  TokenInvalidView,
 } from './VollstaendigerImportDialog.views';
 
 interface VollstaendigerImportDialogProps {
@@ -68,14 +70,45 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
 
   const handleClose = useCallback(() => {
     cancel();
+    // On the override-with-users path the server returned
+    // `sessionInvalidated: true` (the user-wipe CASCADEd the session
+    // row). On the token-invalid phase the bearer itself was
+    // rejected — same end state, operator must re-auth. Trigger the
+    // global session-expired redirect on close so the next API call
+    // doesn't get a surprise 401.
+    const needsReauth =
+      (phase.kind === 'summary' && phase.sessionInvalidated) || phase.kind === 'token-invalid';
+    // End suppression BEFORE the explicit redirect — the runner kept
+    // it active across the summary phase to swallow racing 401s from
+    // background fetches (storage-usage refresh, SSE-driven project
+    // list reload). Without ending it first, the synchronous
+    // `handleSessionExpired()` below would be no-op'd. Idempotent at
+    // depth 0, so the non-invalidating paths see it as a noop.
+    if (needsReauth) {
+      endSessionExpiredSuppression();
+    }
     onClose();
-  }, [cancel, onClose]);
+    if (needsReauth) {
+      handleSessionExpired();
+    }
+  }, [cancel, onClose, phase]);
+
+  // Safety net — if the operator navigates away while the runner had
+  // suppression active (e.g. tab-close mid-progress on the override
+  // path), drop the suppression so the next page render's
+  // session-expiry handling works normally.
+  useEffect(() => {
+    return () => {
+      endSessionExpiredSuppression();
+    };
+  }, []);
 
   const escapeAllowed =
     phase.kind === 'parsing' ||
     phase.kind === 'preflight' ||
     phase.kind === 'summary' ||
-    phase.kind === 'error';
+    phase.kind === 'error' ||
+    phase.kind === 'token-invalid';
   useDialogA11y({
     isOpen: true,
     dialogRef,
@@ -118,6 +151,17 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
   if (phase.kind === 'summary') {
     return (
       <SummaryView
+        phase={phase}
+        dialogRef={dialogRef}
+        initialFocusRef={initialFocusButtonRef}
+        onClose={handleClose}
+      />
+    );
+  }
+
+  if (phase.kind === 'token-invalid') {
+    return (
+      <TokenInvalidView
         phase={phase}
         dialogRef={dialogRef}
         initialFocusRef={initialFocusButtonRef}

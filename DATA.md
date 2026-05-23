@@ -10,11 +10,11 @@ The kickoff commits to automated DB backup ([kickoff line 72](docs/project/kicko
 
 Each class of data has different size, portability, and durability properties, so each gets its own tool and its own verification story. The layers are **complementary, not substitutes** — see [ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md) for why.
 
-| Layer                      | Captures                                           | Trigger                    | Off-site                                                                       | Status  |
-| -------------------------- | -------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------ | ------- |
-| **1 — Business data**      | Customers, projects, assignments, archived rows    | Manual UI export / restore | No (file download)                                                             | Shipped |
-| **2 — Full DB state**      | Everything in PostgreSQL (users, sessions, schema) | Scheduled, automatic       | Yes (encrypted with `age`, R2)                                                 | Shipped |
-| **3 — Binary attachments** | Uploaded files (photos, Aufmaß, PDFs, DOCX)        | Continuous (presigned PUT) | Provider-owned (B2 versioning + Object Lock), e2e per-blob (`age`-wrapped DEK) | Shipped |
+| Layer                      | Captures                                                                          | Trigger                    | Off-site                                                                       | Status  |
+| -------------------------- | --------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------ | ------- |
+| **1 — Business data**      | Users, company profile, customers, projects, assignments, invoices, archived rows | Manual UI export / restore | No (file download)                                                             | Shipped |
+| **2 — Full DB state**      | Everything in PostgreSQL (the Layer 1 set plus sessions, audit log, schema)       | Scheduled, automatic       | Yes (encrypted with `age`, R2)                                                 | Shipped |
+| **3 — Binary attachments** | Uploaded files (photos, Aufmaß, PDFs, DOCX)                                       | Continuous (presigned PUT) | Provider-owned (B2 versioning + Object Lock), e2e per-blob (`age`-wrapped DEK) | Shipped |
 
 ---
 
@@ -28,7 +28,9 @@ Human-triggered single-zip export/import via the **Daten** view — `data.json` 
 - **Envelope shape:** [spec data-model.md §5.8](docs/spec/data-model.md#58-export-envelope)
 - **Code:** `src/server/services/{ExportService,ImportService}.ts` (text leg), `src/ui/management/{exportAllAsZip,importAllFromZip}.ts` (browser orchestrators)
 
-Users and sessions are deliberately excluded. Admin bootstrap ([ADR-0010](docs/adr/0010-first-run-admin-bootstrap.md)) handles first-install user creation.
+Sessions are excluded by design (per-instance auth state, not portable). Users (including `passwordHash`) ride verbatim in the envelope so a fresh-install restore reproduces the operator's user set without an out-of-band password-reset pass; rationale and threat-model in [ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md). First-install user creation when no envelope is present is handled by admin bootstrap ([ADR-0010](docs/adr/0010-first-run-admin-bootstrap.md)).
+
+Layer 1 is portability, not cross-trust-boundary transport — the envelope is plaintext. Moving the file across hosts means encrypting it first; ADR-0020's age recipient is the obvious choice.
 
 ---
 

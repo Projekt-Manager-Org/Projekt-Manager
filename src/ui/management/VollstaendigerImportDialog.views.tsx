@@ -16,6 +16,7 @@ import type {
   ProgressPhase,
   SummaryPhase,
   ErrorPhase,
+  TokenInvalidPhase,
 } from './useImportAllRunner';
 import styles from './VollstaendigerImportDialog.module.css';
 
@@ -96,9 +97,13 @@ export function PreflightView(props: PreflightViewProps) {
     onCancel,
     onConfirm,
   } = props;
+  const users = (phase.envelope.users ?? []).length;
+  const companyProfile = (phase.envelope.company_profile ?? []).length;
   const customers = (phase.envelope.customers ?? []).length;
   const projects = (phase.envelope.projects ?? []).length;
   const assignments = (phase.envelope.project_workers ?? []).length;
+  const invoices = (phase.envelope.invoices ?? []).length;
+  const invoiceSequence = (phase.envelope.invoice_sequence ?? []).length;
   return (
     <DialogShell
       dialogRef={dialogRef}
@@ -108,6 +113,14 @@ export function PreflightView(props: PreflightViewProps) {
       title={STRINGS.dataExchange.importPreflightTitle}
       body={
         <>
+          <div className={styles.readoutLine} data-testid="import-all-preflight-user-count">
+            {STRINGS.dataExchange.importPreflightUsers(users)}
+          </div>
+          {companyProfile > 0 && (
+            <div className={styles.readoutLine} data-testid="import-all-preflight-company-profile">
+              {STRINGS.dataExchange.importPreflightCompanyProfile}
+            </div>
+          )}
           <div className={styles.readoutLine} data-testid="import-all-preflight-customer-count">
             {STRINGS.dataExchange.importPreflightCustomers(customers)}
           </div>
@@ -117,6 +130,14 @@ export function PreflightView(props: PreflightViewProps) {
           <div className={styles.readoutLine} data-testid="import-all-preflight-assignment-count">
             {STRINGS.dataExchange.importPreflightAssignments(assignments)}
           </div>
+          <div className={styles.readoutLine} data-testid="import-all-preflight-invoice-count">
+            {STRINGS.dataExchange.importPreflightInvoices(invoices)}
+          </div>
+          {invoiceSequence > 0 && (
+            <div className={styles.readoutLine} data-testid="import-all-preflight-invoice-sequence">
+              {STRINGS.dataExchange.importPreflightInvoiceSequence(invoiceSequence)}
+            </div>
+          )}
           <div className={styles.readoutLine} data-testid="import-all-preflight-attachment-count">
             {STRINGS.dataExchange.importPreflightAttachmentCount(phase.attachmentCount)}
           </div>
@@ -322,6 +343,38 @@ export function ErrorView(props: ErrorViewProps) {
           data-testid="import-all-error-close"
         >
           {STRINGS.dataExchange.importSummaryClose}
+        </button>
+      }
+    />
+  );
+}
+
+export interface TokenInvalidViewProps {
+  phase: TokenInvalidPhase;
+  dialogRef: RefObject<HTMLDivElement | null>;
+  initialFocusRef: RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}
+
+export function TokenInvalidView(props: TokenInvalidViewProps) {
+  const { dialogRef, initialFocusRef, onClose } = props;
+  return (
+    <DialogShell
+      dialogRef={dialogRef}
+      testId="import-all-token-invalid"
+      titleId="import-all-token-invalid-title"
+      bodyId="import-all-token-invalid-body"
+      title={STRINGS.dataExchange.importTokenInvalidTitle}
+      body={<div className={styles.readoutLine}>{STRINGS.dataExchange.importTokenInvalidBody}</div>}
+      actions={
+        <button
+          ref={initialFocusRef}
+          type="button"
+          className={`${styles.button} ${styles.confirm}`}
+          onClick={onClose}
+          data-testid="import-all-token-invalid-close"
+        >
+          {STRINGS.dataExchange.importTokenInvalidClose}
         </button>
       }
     />

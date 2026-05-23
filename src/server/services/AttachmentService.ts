@@ -74,7 +74,7 @@ import {
   isSafeFileName,
   WRAPPED_DEK_CURRENT_VERSION,
 } from '../../domain/attachments.js';
-import { hasPermission } from '../../config/permissions.js';
+import { callerHasPermission } from '../../config/permissions.js';
 import { users } from '../db/schema.js';
 import {
   type AttachmentStorageClient,
@@ -436,7 +436,12 @@ export class AttachmentService {
     // additionally required. A caller missing it gets 403 NOT_PERMITTED
     // and no row is persisted (the rejection happens before the wrap +
     // insert pipeline runs).
-    if (input.restore !== undefined && !hasPermission(caller.roles, 'data:restore')) {
+    //
+    // Bearer-authenticated callers (the import binary leg) are bounded by
+    // the token's declared scope (AC-313 / AC-315) — the token carries
+    // `data:restore` explicitly, so a regression that drops it from the
+    // mint surface fails here, not at the caller's role set.
+    if (input.restore !== undefined && !callerHasPermission(caller, 'data:restore')) {
       throw notPermitted();
     }
 

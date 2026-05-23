@@ -15,8 +15,76 @@
 
 import { STATE_CONFIG_MAP, type WorkflowState } from '@/config/stateConfig';
 import { labelForAuditAction } from '@/config/auditActionLabels';
+import { STRINGS } from '@/config/strings';
 import { isPayloadDiff } from './audit';
 import type { AuditEntityType } from './audit';
+
+/**
+ * Shape of the `payload.counts` map the server writes on the single
+ * `data_import` audit row (`api.md §14.2.4` — "Single import audit
+ * row"). Every slot is required to be present in the payload (zero
+ * when the slot was empty); the renderer below tolerates missing keys
+ * as zero for defense in depth.
+ */
+interface ImportCounts {
+  users?: number;
+  company_profile?: number;
+  customers?: number;
+  projects?: number;
+  project_workers?: number;
+  invoices?: number;
+  invoice_sequence?: number;
+  attachments?: number;
+}
+
+function extractImportCounts(payload: unknown): ImportCounts | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const obj = payload as { counts?: unknown };
+  if (!obj.counts || typeof obj.counts !== 'object') return null;
+  const c = obj.counts as Record<string, unknown>;
+  const out: ImportCounts = {};
+  for (const key of [
+    'users',
+    'company_profile',
+    'customers',
+    'projects',
+    'project_workers',
+    'invoices',
+    'invoice_sequence',
+    'attachments',
+  ] as const) {
+    const v = c[key];
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
+function describeImportRestored(payload: unknown): string {
+  const counts = extractImportCounts(payload);
+  const prefix = STRINGS.audit.dataImportDescriptionPrefix;
+  if (!counts) return prefix;
+
+  const parts: string[] = [];
+  if ((counts.users ?? 0) > 0) parts.push(STRINGS.audit.dataImportCountUsers(counts.users!));
+  if ((counts.company_profile ?? 0) > 0) parts.push(STRINGS.audit.dataImportCountCompanyProfile);
+  if ((counts.customers ?? 0) > 0)
+    parts.push(STRINGS.audit.dataImportCountCustomers(counts.customers!));
+  if ((counts.projects ?? 0) > 0)
+    parts.push(STRINGS.audit.dataImportCountProjects(counts.projects!));
+  if ((counts.project_workers ?? 0) > 0)
+    parts.push(STRINGS.audit.dataImportCountProjectWorkers(counts.project_workers!));
+  if ((counts.invoices ?? 0) > 0)
+    parts.push(STRINGS.audit.dataImportCountInvoices(counts.invoices!));
+  if ((counts.invoice_sequence ?? 0) > 0)
+    parts.push(STRINGS.audit.dataImportCountInvoiceSequence(counts.invoice_sequence!));
+  // `attachments` is always 0 on the text-leg audit (AC-311); we
+  // omit it from the rendered list even when non-zero (defensive).
+
+  if (parts.length === 0) return `${prefix}: ${STRINGS.audit.dataImportCountsEmpty}`;
+  return `${prefix}: ${parts.join(', ')}`;
+}
 
 /**
  * Shape guard for the transition payload written by the server's
@@ -138,6 +206,13 @@ export function describeAuditRow(args: {
   // auditActionLabels.ts already carries the German `"Archiviert"` so
   // the generic fallback below handles this cleanly — we rely on that
   // here instead of duplicating the label.
+
+  // Data-import deployment event — render per-slot counts inline so
+  // the operator sees what landed without expanding the payload
+  // drawer (whose JSON shows English keys).
+  if (entityType === 'data_import' && action === 'import_restored') {
+    return describeImportRestored(payload);
+  }
 
   // Generic fallback — the action label alone, localized via the
   // config-layer mapping. Unknown actions surface their raw string (see

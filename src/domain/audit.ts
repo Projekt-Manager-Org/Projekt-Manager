@@ -17,8 +17,21 @@
  * `src/server/db/schema.ts`). The union is written here rather than
  * imported from the server module to respect the layering rule — the
  * domain layer must not depend on server internals.
+ *
+ * `data_import` is a synthetic type (no physical row) carried by the
+ * single audit entry an `/api/import` commit writes (issue #230). The
+ * domain row stands alone — `entity_id` is a per-import batch UUID,
+ * not a row reference.
  */
-export type AuditEntityType = 'project' | 'customer' | 'user' | 'project_worker' | 'attachment';
+export type AuditEntityType =
+  | 'project'
+  | 'customer'
+  | 'user'
+  | 'project_worker'
+  | 'attachment'
+  | 'invoice'
+  | 'company_profile'
+  | 'data_import';
 
 export type AuditActorKind = 'user' | 'system';
 

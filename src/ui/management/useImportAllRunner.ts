@@ -41,6 +41,10 @@ import { encodeDekMaterial, encryptBlob, generateDek } from '@/domain/clientEncr
 import { SCHEMA_VERSION } from '@/domain/dataExchange';
 import { deriveWebpThumbnail } from '@/domain/imagePipeline';
 import { importAllApi } from '@/state/importAllStore';
+import {
+  beginSessionExpiredSuppression,
+  endSessionExpiredSuppression,
+} from '@/state/sessionExpired';
 import { useStorageUsageStore } from '@/state/storageUsageStore';
 import {
   importAllFromZip,
@@ -56,7 +60,13 @@ import {
   type RestoreBlock,
 } from './importAllFromZip';
 
-export type DialogPhase = ParsingPhase | PreflightPhase | ProgressPhase | SummaryPhase | ErrorPhase;
+export type DialogPhase =
+  | ParsingPhase
+  | PreflightPhase
+  | ProgressPhase
+  | SummaryPhase
+  | ErrorPhase
+  | TokenInvalidPhase;
 
 export interface ParsingPhase {
   kind: 'parsing';
@@ -88,10 +98,32 @@ export interface SummaryPhase {
   committedCount: number;
   totalAttachments: number;
   failures: ImportFailure[];
+  /**
+   * Set when the text-leg reported `sessionInvalidated: true` — i.e. the
+   * override path wiped users and the operator's session row CASCADEd
+   * away. The dialog's close handler reads this to trigger a global
+   * session-expired redirect rather than leaving the UI in a state
+   * where the next API call will get bounced anyway.
+   */
+  sessionInvalidated: boolean;
 }
 
 export interface ErrorPhase {
   kind: 'error';
+  message: string;
+}
+
+/**
+ * Dedicated phase for the mid-import bearer-token rejection (server
+ * returned `IMPORT_TOKEN_INVALID` on a binary-leg call — token revoked,
+ * expired, or the user was deactivated). At this point the operator's
+ * session is gone (it was CASCADEd by the user-wipe override) and the
+ * only auth they had — the bearer — is dead. Recovery requires
+ * re-login; the dialog's close handler triggers the global
+ * session-expired redirect.
+ */
+export interface TokenInvalidPhase {
+  kind: 'token-invalid';
   message: string;
 }
 
@@ -201,20 +233,24 @@ async function prepareAttachment(input: PrepareAttachmentInput): Promise<Prepare
 }
 
 /**
- * Adapter from the state-layer `importAllApi.importInit` to the
- * orchestrator's plain-promise contract. A non-OK result propagates
- * as a thrown error so the orchestrator's per-file failure branch
- * records it.
+ * Adapter factory from the state-layer `importAllApi.importInit` to
+ * the orchestrator's plain-promise contract. `getAuthToken` returns
+ * the most recent `importToken` (issue #230); empty string / undefined
+ * means use the session cookie. A non-OK result propagates as a
+ * thrown error so the orchestrator's per-file failure branch records
+ * it.
  */
-async function initAttachment(
-  entry: ImportEnvelopeAttachment,
-  restore: RestoreBlock,
-  payload?: NonNullable<PrepareAttachmentResult>['initPayload'],
-): Promise<InitAttachmentResult> {
-  if (!payload) {
-    throw new Error('initAttachment: prepared payload missing');
-  }
-  return importAllApi.importInit(entry.projectId, payload, restore);
+function makeInitAttachment(getAuthToken: () => string | undefined) {
+  return async function initAttachment(
+    entry: ImportEnvelopeAttachment,
+    restore: RestoreBlock,
+    payload?: NonNullable<PrepareAttachmentResult>['initPayload'],
+  ): Promise<InitAttachmentResult> {
+    if (!payload) {
+      throw new Error('initAttachment: prepared payload missing');
+    }
+    return importAllApi.importInit(entry.projectId, payload, restore, getAuthToken());
+  };
 }
 
 /**
@@ -423,6 +459,25 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
     let filesDone = 0;
     let bytesDone = 0;
 
+    // Captured at text-leg time, consumed by every subsequent
+    // per-attachment call. When the import wipes users
+    // (`sessionInvalidated: true` on the response), the operator's
+    // session row CASCADEd away with their `users` row; the bearer
+    // token here lets the binary leg continue against the dead
+    // session. Empty-target / non-invalidating paths leave it null
+    // and the per-attachment calls fall back to the still-valid
+    // session cookie.
+    let bearerImportToken: string | null = null;
+    let wasSessionInvalidated = false;
+    // Suppression bridges the window between the text-leg wiping
+    // `users` (and cascading the session) and the dialog's close
+    // handler firing the redirect. Without it, the very next
+    // background fetch (projectStore, SSE-driven refresh) sees a 401
+    // and triggers the global session-expired redirect, which
+    // unmounts the dialog before the bearer-authed binary leg can
+    // run — dropping every attachment on the floor.
+    let suppressed = false;
+
     void (async () => {
       try {
         const result: ImportAllResult = await importAllFromZip({
@@ -431,16 +486,39 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
           // structural validators that `pickFile` already ran.
           parsed: bag,
           pinnedSchemaVersion: SCHEMA_VERSION,
-          postTextLeg: async (envelopeWithoutAttachments: Omit<ImportEnvelope, 'attachments'>) =>
-            importAllApi.postTextLeg(
-              // The runner's local `ImportEnvelope` shape mirrors
-              // `Envelope` minus the unused fields the adapter
-              // doesn't read.
-              envelopeWithoutAttachments as never,
-              phrase,
-            ),
+          postTextLeg: async (envelopeWithoutAttachments: Omit<ImportEnvelope, 'attachments'>) => {
+            // Activate suppression BEFORE the POST is sent: the server
+            // publishes `project_changed` SSE events as it commits each
+            // restored project row. Those land on the client mid-flight,
+            // trigger projectStore.fetchProjects, hit `/api/projects`
+            // with the wiped session cookie, and would otherwise fire
+            // handleSessionExpired before the orchestrator's response
+            // handler ever runs. Roll back if the server reports no
+            // invalidation, so non-wipe paths don't silently swallow
+            // unrelated 401s.
+            if (!suppressed) {
+              beginSessionExpiredSuppression();
+              suppressed = true;
+            }
+            const res = await importAllApi.postTextLeg(envelopeWithoutAttachments as never, phrase);
+            if (res.ok) {
+              bearerImportToken = res.importToken;
+              wasSessionInvalidated = res.sessionInvalidated;
+              if (!res.sessionInvalidated && suppressed) {
+                endSessionExpiredSuppression();
+                suppressed = false;
+              }
+            } else if (suppressed) {
+              endSessionExpiredSuppression();
+              suppressed = false;
+            }
+            // Narrow back to the orchestrator's
+            // `{ ok, message? }` contract — it never reads the
+            // bearer token (auth is the runner's concern).
+            return { ok: res.ok, message: res.message };
+          },
           prepareAttachment,
-          initAttachment,
+          initAttachment: makeInitAttachment(() => bearerImportToken ?? undefined),
           putCiphertext,
           completeAttachment: async (id: string) => {
             // Resolve the projectId from the entry list — the
@@ -450,12 +528,12 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
             if (!entry) {
               throw new Error(`completeAttachment: unknown attachment id ${id}`);
             }
-            return importAllApi.importComplete(entry.projectId, id);
+            return importAllApi.importComplete(entry.projectId, id, bearerImportToken ?? undefined);
           },
           deleteAttachment: async (id: string) => {
             const entry = (envelope.attachments ?? []).find((a) => a.id === id);
             if (!entry) return;
-            await importAllApi.importDelete(entry.projectId, id);
+            await importAllApi.importDelete(entry.projectId, id, bearerImportToken ?? undefined);
           },
           signal: ctrl.signal,
           onProgress: (event) => {
@@ -489,6 +567,7 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
           committedCount: result.committedCount,
           totalAttachments: result.totalAttachments,
           failures: result.failures,
+          sessionInvalidated: wasSessionInvalidated,
         });
         // Post-import: every committed attachment moved counters
         // (pending → ready). One refresh after the orchestrator
@@ -499,15 +578,42 @@ export function useImportAllRunner(input: UseImportAllRunnerInput): UseImportAll
         }
       } catch (err) {
         if (ctrl.signal.aborted) return;
-        console.warn('[import] orchestrator failed', err);
-        setPhase({
-          kind: 'error',
-          message:
-            err instanceof Error
-              ? `${STRINGS.dataExchange.importError} ${err.message}`
-              : STRINGS.dataExchange.importError,
-        });
+        // Token-invalid escalates to a dedicated phase so the
+        // operator gets a re-auth prompt instead of an opaque
+        // "import failed" message followed by N identical per-entry
+        // failures.
+        const errCode = (err as { code?: unknown } | null)?.code;
+        if (errCode === 'IMPORT_TOKEN_INVALID') {
+          console.warn('[import] bearer token invalid mid-import', err);
+          setPhase({
+            kind: 'token-invalid',
+            message: STRINGS.auth.importTokenInvalid,
+          });
+        } else {
+          console.warn('[import] orchestrator failed', err);
+          setPhase({
+            kind: 'error',
+            message:
+              err instanceof Error
+                ? `${STRINGS.dataExchange.importError} ${err.message}`
+                : STRINGS.dataExchange.importError,
+          });
+        }
       } finally {
+        bearerImportToken = null;
+        // End suppression here only on the non-invalidating paths
+        // (empty target, early failure before the session was wiped).
+        // When the text leg invalidated the session, hand suppression
+        // off to the dialog — the summary phase is shown to the user,
+        // and any 401-triggering refresh (storage-usage, SSE-driven
+        // fetch) that races during that window would otherwise fire
+        // the global redirect before the user can close the dialog.
+        // The dialog's close path ends suppression and drives the
+        // redirect itself.
+        if (suppressed && !wasSessionInvalidated) {
+          endSessionExpiredSuppression();
+          suppressed = false;
+        }
         if (abortRef.current === ctrl) abortRef.current = null;
       }
     })();

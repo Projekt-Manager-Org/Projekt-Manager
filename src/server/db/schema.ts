@@ -29,10 +29,24 @@ import {
 // Audit entity types — data-model.md §5.10
 // ---------------------------------------------------------------
 /**
- * The closed set of domain entities that produce `audit_log` rows.
- * Declared here so repositories and services can import the type and
- * so the architecture check (scripts/check-audit-mutations.sh) can
- * derive its audited-tables list from a single source (AC-179).
+ * The closed set of entity types that produce `audit_log` rows.
+ *
+ * Two flavours coexist in this set:
+ *   - **Domain entity types** — `project`, `customer`, `user`,
+ *     `project_worker`, `attachment`, `invoice`, `company_profile`. Each
+ *     row in `audit_log` with one of these `entity_type` values describes
+ *     a state change on the matching physical table; `entity_id` points
+ *     at that row.
+ *   - **Synthetic entity types** — `data_import` (and any future
+ *     deployment-level event class). No physical table backs the
+ *     `entity_id`; the audit row describes a deployment-level event
+ *     (e.g. "an `/api/import` happened") whose granularity is the batch,
+ *     not a single row. `entity_id` carries a synthetic UUID minted at
+ *     write time.
+ *
+ * Repositories and services import the union type; the architecture
+ * check (scripts/check-audit-mutations.sh) reads the table-map below
+ * — only domain types appear there.
  */
 export const AUDIT_ENTITY_TYPES = [
   'project',
@@ -42,20 +56,28 @@ export const AUDIT_ENTITY_TYPES = [
   'attachment',
   'invoice',
   'company_profile',
+  'data_import',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
 /**
- * Maps each `AuditEntityType` to its physical table representation: the
- * SQL table name (used by raw-SQL scanners) and the Drizzle export name
- * (used by builder-call scanners). The architecture check at
- * `scripts/check-audit-mutations.sh` reads this map via
+ * Maps each **domain** `AuditEntityType` to its physical table
+ * representation: the SQL table name (used by raw-SQL scanners) and the
+ * Drizzle export name (used by builder-call scanners). The architecture
+ * check at `scripts/check-audit-mutations.sh` reads this map via
  * `scripts/print-audited-tables.ts` — AC-179 requires the audited-table
  * set to be derived from `AuditEntityType`, not hand-maintained.
  *
- * `Record<AuditEntityType, …>` + `satisfies` forces a tsc error when a
- * new `AuditEntityType` value lands without a corresponding mapping:
- * that is the build-time seam AC-179 Part 2 pins.
+ * Synthetic entity types (e.g. `data_import`) have no physical row
+ * backing the audit entry — they describe deployment-level events. They
+ * are deliberately absent from this map; the `Partial<...>` type below
+ * pins that absence so a new synthetic entity type does not need a
+ * fake table mapping just to satisfy a `Record` constraint. A new
+ * **domain** entity type still must land a mapping here, because the
+ * scanner's audited-table set is the only line of defence against a
+ * raw mutation slipping past the `mutate()` single-write-path; the
+ * absence is checked at runtime in `print-audited-tables.ts` (an empty
+ * set is refused).
  */
 export const AUDIT_ENTITY_TO_TABLE = {
   project: { sqlName: 'projects', drizzleExport: 'projects' },
@@ -65,7 +87,7 @@ export const AUDIT_ENTITY_TO_TABLE = {
   attachment: { sqlName: 'attachments', drizzleExport: 'attachments' },
   invoice: { sqlName: 'invoices', drizzleExport: 'invoices' },
   company_profile: { sqlName: 'company_profile', drizzleExport: 'companyProfile' },
-} as const satisfies Record<AuditEntityType, { sqlName: string; drizzleExport: string }>;
+} as const satisfies Partial<Record<AuditEntityType, { sqlName: string; drizzleExport: string }>>;
 
 // ---------------------------------------------------------------
 // Users (data-model.md §5.3, §5.7)
@@ -328,15 +350,18 @@ export const auditLog = pgTable(
     check('audit_log_actor_kind_valid', sql`${table.actorKind} IN ('user', 'system')`),
     check(
       'audit_log_entity_type_valid',
-      sql`${table.entityType} IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile')`,
+      sql`${table.entityType} IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile', 'data_import')`,
     ),
     // Ancestor type must be one of the same closed set, OR NULL (top-
     // level entities). Kept in lock-step with `audit_log_entity_type_valid`
     // — a new entity type added to `AUDIT_ENTITY_TYPES` lands here too.
+    // `data_import` is a top-level deployment event and never appears as
+    // an ancestor in practice; including it here is for consistency so
+    // the two CHECKs do not drift symbolically.
     check(
       'audit_log_ancestor_type_valid',
       sql`${table.ancestorEntityType} IS NULL
-          OR ${table.ancestorEntityType} IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile')`,
+          OR ${table.ancestorEntityType} IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile', 'data_import')`,
     ),
     // Both ancestor columns must be NULL or both non-NULL — a partial
     // ancestor is meaningless and would break the compound-index lookup.

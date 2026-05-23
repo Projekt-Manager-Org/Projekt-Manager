@@ -42,6 +42,12 @@ function entityTypeLabel(entityType: AuditEntry['entityType']): string {
       return STRINGS.audit.entityProjectWorker;
     case 'attachment':
       return STRINGS.audit.entityAttachment;
+    case 'invoice':
+      return STRINGS.audit.entityInvoice;
+    case 'company_profile':
+      return STRINGS.audit.entityCompanyProfile;
+    case 'data_import':
+      return STRINGS.audit.entityDataImport;
   }
 }
 

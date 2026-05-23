@@ -50,9 +50,9 @@ CREATE TABLE "audit_log" (
 	"payload" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"correlation_id" text,
 	CONSTRAINT "audit_log_actor_kind_valid" CHECK ("audit_log"."actor_kind" IN ('user', 'system')),
-	CONSTRAINT "audit_log_entity_type_valid" CHECK ("audit_log"."entity_type" IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile')),
+	CONSTRAINT "audit_log_entity_type_valid" CHECK ("audit_log"."entity_type" IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile', 'data_import')),
 	CONSTRAINT "audit_log_ancestor_type_valid" CHECK ("audit_log"."ancestor_entity_type" IS NULL
-          OR "audit_log"."ancestor_entity_type" IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile')),
+          OR "audit_log"."ancestor_entity_type" IN ('project', 'customer', 'user', 'project_worker', 'attachment', 'invoice', 'company_profile', 'data_import')),
 	CONSTRAINT "audit_log_ancestor_pair" CHECK (("audit_log"."ancestor_entity_type" IS NULL AND "audit_log"."ancestor_entity_id" IS NULL)
           OR ("audit_log"."ancestor_entity_type" IS NOT NULL AND "audit_log"."ancestor_entity_id" IS NOT NULL)),
 	CONSTRAINT "audit_log_actor_shape" CHECK ((
