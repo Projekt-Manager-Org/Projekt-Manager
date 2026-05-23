@@ -363,6 +363,17 @@ export const STRINGS = {
     storageBadgeLabel: 'Daten:',
     storageBucketReady: 'Sichtbar',
     storageBucketHidden: 'Im Papierkorb',
+
+    /**
+     * App-shell activity dock (ui/index.md §8.1.2, AC-317/318/319). The
+     * collapsible live-feed panel docked above the Footer for `audit:read`
+     * holders. `dockToggle*` are the aria-labels on the collapse/expand
+     * control (its visible affordance is a chevron, so the label carries
+     * the meaning for assistive tech).
+     */
+    activityDockTitle: 'Aktivität',
+    activityDockExpand: 'Aktivität einblenden',
+    activityDockCollapse: 'Aktivität ausblenden',
   },
 
   companyProfile: {

@@ -11,6 +11,7 @@ import { ROUTES, routeByPath, landingPathForUser } from '@/config/routes';
 import { isInsecureConnection } from '@/config/insecureConnection';
 import { Header } from '@/ui/layout/Header';
 import { Footer } from '@/ui/layout/Footer';
+import { ActivityDock } from '@/ui/layout/ActivityDock';
 import { MobileTabBar } from '@/ui/layout/MobileTabBar';
 import { MyProjectsView } from '@/ui/myprojects/MyProjectsView';
 import { KanbanBoard } from '@/ui/kanban/KanbanBoard';
@@ -236,6 +237,11 @@ export function App() {
           )}
           {viewContent}
         </main>
+        {/* App-shell activity dock (AC-317/318/319). Mounted as a shell
+            sibling — not inside the routed `<main>` — so a view switch
+            does not remount it and its collapse state persists across
+            navigation (AC-318). Gated to `audit:read` holders internally. */}
+        <ActivityDock />
         <Footer />
         <MobileTabBar />
         {selectedProject && (

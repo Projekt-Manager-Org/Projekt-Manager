@@ -1,0 +1,62 @@
+/**
+ * App-shell activity dock (ui/index.md §8.1.2). Docked above the Footer.
+ * Collapsed = just the toggle bar; expanded adds a bounded, scrollable
+ * feed panel. Desktop-only — hidden on phones at the same 768px
+ * breakpoint as the Footer (Footer.module.css), where the Aktivität view
+ * is the space-appropriate surface for touch.
+ */
+
+.dock {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-base);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 20px;
+  border: none;
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.toggle:hover {
+  background: var(--color-surface-muted);
+}
+
+.title {
+  font-weight: 600;
+}
+
+.chevron {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.panel {
+  /* Bounded height so the live feed never grows the shell unboundedly;
+     scrolls internally once it exceeds the cap. */
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 8px 20px 12px;
+}
+
+.panelCollapsed {
+  display: none;
+}
+
+/* Hide on phones — parity with the Footer media query (Footer.module.css).
+   Mobile users reach the same history through Verwaltung → Aktivität. */
+@media (max-width: 768px) {
+  .dock {
+    display: none;
+  }
+}
