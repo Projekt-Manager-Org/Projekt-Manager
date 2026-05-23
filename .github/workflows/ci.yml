@@ -24,18 +24,19 @@ on:
   # Mirrors the same pattern used by .github/workflows/e2e.yml.
   workflow_dispatch:
 
-# Dedup overlapping runs on the same branch. Without this, a push to a
-# feature branch with an open PR fires `pull_request` (runs `check`),
-# and a follow-up `gh workflow run` fires `workflow_dispatch` (runs
-# `check` AND `build-and-push`) — paying for `check` twice. The group
-# key normalises across event types: `pull_request.head.ref` is the
-# source branch on PR events, `ref_name` is the short branch name on
-# push/dispatch — both resolve to the same string for the same branch,
-# so the second run cancels the first. Branch protection looks up
-# `check` by name + commit SHA; the surviving run produces the same
-# named status, so PR mergeability is preserved.
+# Cancel only superseded *same-class* runs on a branch; never let one
+# event class cancel another. The PR merge box credits `check`/`lint`
+# ONLY from the `pull_request` run — a `workflow_dispatch` run's checks
+# are never associated with the PR, even on the same SHA, even when green.
+# So the operator's dispatch run (a superset: it also builds+pushes the
+# GHCR image for a feature-branch deploy via `gh workflow run ci.yml`) must
+# not cancel the PR run — doing so left the merge box reporting the
+# cancelled PR checks ("checks failing") while the dispatch run was green
+# (#234). The event-name suffix puts each class in its own lane: a newer
+# push's `pull_request` run still cancels the stale one (the dedup we want),
+# but a dispatch never touches it.
 concurrency:
-  group: ci-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: ci-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
