@@ -206,7 +206,6 @@ export function attachmentRoutes(db: Database) {
             ...(body.restore !== undefined ? { restore: body.restore } : {}),
           },
           request.log,
-          request.id ?? null,
         );
         return reply.code(201).send(result);
       },
@@ -235,7 +234,13 @@ export function attachmentRoutes(db: Database) {
       },
       async (request, reply) => {
         const { id, attId } = request.params as { id: string; attId: string };
-        const attachment = await service.completeUpload(request.user!, id, attId, request.log);
+        const attachment = await service.completeUpload(
+          request.user!,
+          id,
+          attId,
+          request.log,
+          request.id ?? null,
+        );
         return reply.code(200).send(attachment);
       },
     );

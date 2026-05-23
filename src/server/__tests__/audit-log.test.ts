@@ -46,6 +46,8 @@ import {
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
+import { createStorageClient } from '../storage/client.js';
+import { getEnv } from '../config/env.js';
 import { createDatabase } from '../db/connection.js';
 import { bootstrapAdminIfEmpty } from '../bootstrap.js';
 import {
@@ -1164,17 +1166,46 @@ describe('AT-124: ancestor-scoped filter unions project + nested entities', () =
       await lookupPool.end();
     }
 
-    // Attachment init. The architecture-check scan rules `attachment` as
-    // allowlisted under __tests__/; using the real API path keeps the
-    // ancestor-write assertion covering the production `AttachmentService`
-    // mutation rather than a raw-insert stand-in.
+    // Attachment init → stage backing ciphertext → complete. Under the
+    // revised AC-219 the `attachment:add` audit row (the ancestor-linked
+    // attachment row this feed asserts against) is written at COMPLETE,
+    // not init — an init-only upload leaves no audit row. We drive the
+    // full flow so a real `attachment:add` row with its project ancestor
+    // exists. Using the real API path keeps the ancestor-write assertion
+    // covering the production `AttachmentService` mutation rather than a
+    // raw-insert stand-in. (`attachment` is allowlisted under __tests__/
+    // by the architecture check.)
     const initRes = await authPost(
       ownerToken,
       `/api/projects/${projectId}/attachments/init`,
       binaryInitBody({ fileName: 'ancestor.pdf', sizeBytes: 123 }),
     );
     expect(initRes.statusCode).toBe(201);
-    attachmentId = initRes.json().attachment.id as string;
+    const initBody = initRes.json() as { attachment: { id: string; originalKey: string } };
+    attachmentId = initBody.attachment.id;
+
+    // Stage the backing ciphertext object so the complete-time HEAD verify
+    // passes. Size matches the binary fixture's ciphertext default
+    // (50_064); content-type is the `application/octet-stream` sentinel
+    // (ADR-0024).
+    const env = getEnv();
+    const storage = createStorageClient({
+      endpoint: env.STORAGE_ENDPOINT!,
+      bucket: env.STORAGE_BUCKET,
+      accessKey: env.STORAGE_ACCESS_KEY!,
+      secretKey: env.STORAGE_SECRET_KEY!,
+    });
+    await storage.upload(
+      initBody.attachment.originalKey,
+      Buffer.alloc(50_064, 0xff),
+      'application/octet-stream',
+    );
+
+    const completeRes = await authPost(
+      ownerToken,
+      `/api/projects/${projectId}/attachments/${attachmentId}/complete`,
+    );
+    expect(completeRes.statusCode).toBe(200);
   });
 
   afterAll(async () => {

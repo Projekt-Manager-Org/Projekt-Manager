@@ -25,6 +25,7 @@ export const NOTIFICATION_EVENT_CLASSES = [
   'project.transition_backward',
   'project.archived',
   'project.assignment_changed',
+  'project.attachment_added',
   'backup.failed',
   'disk.threshold_reached',
 ] as const;
@@ -41,6 +42,7 @@ export const PROJECT_SCOPED_EVENT_CLASSES: ReadonlySet<NotificationEventClass> =
   'project.transition_backward',
   'project.archived',
   'project.assignment_changed',
+  'project.attachment_added',
 ]);
 
 /** Event classes where `stateFilter` is meaningful (transitions only). */
@@ -75,6 +77,11 @@ const AUDIT_TO_EVENT_MAP = new Map<AuditMapKey, NotificationEventClass>([
   [key({ entityType: 'project', action: 'archive' }), 'project.archived'],
   [key({ entityType: 'project_worker', action: 'create' }), 'project.assignment_changed'],
   [key({ entityType: 'project_worker', action: 'delete' }), 'project.assignment_changed'],
+  // Attachment `complete` (pending → ready) writes the `attachment:add`
+  // row (AC-219); that row is the dispatch trigger for the
+  // `project.attachment_added` event (AC-316). Init writes no row, so an
+  // abandoned upload publishes nothing.
+  [key({ entityType: 'attachment', action: 'attachment:add' }), 'project.attachment_added'],
 ]);
 
 export function eventClassForAudit(k: AuditEventKey): NotificationEventClass | null {
@@ -94,6 +101,7 @@ export const NOTIFICATION_EVENT_LABELS: Record<NotificationEventClass, string> =
   'project.transition_backward': 'Projekt-Statuswechsel zurück',
   'project.archived': 'Projekt archiviert',
   'project.assignment_changed': 'Mitarbeiter-Zuweisung geändert',
+  'project.attachment_added': 'Datei hinzugefügt',
   'backup.failed': 'Backup fehlgeschlagen',
   'disk.threshold_reached': 'Speichergrenze erreicht',
 };

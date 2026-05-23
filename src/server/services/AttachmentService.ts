@@ -13,12 +13,16 @@
  *                 are signed against the *ciphertext* triplet —
  *                 sentinel `application/octet-stream` content-type,
  *                 `ciphertextSizeBytes` length, and
- *                 `ciphertextContentMd5` body hash. Audit row
- *                 (`attachment:add`) via `mutate()`.
+ *                 `ciphertextContentMd5` body hash. No audit row
+ *                 (AC-219) — an upload abandoned before complete leaves
+ *                 no `attachment:add` row (allowlisted single-write-path
+ *                 exception, parity with the orphan reaper).
  *   complete    → HEAD verify both objects against the persisted
  *                 ciphertext sizes + sentinel content-type, flip to
  *                 `status = 'ready'`, persist version-ids (ADR-0022).
- *                 No audit row (AC-219).
+ *                 Writes the authoritative `attachment:add` audit row
+ *                 via `mutate()` (AC-219) — the row co-commits with the
+ *                 state flip.
  *   hide        → see ADR-0022 — DeleteObject (no versionId) writes a
  *                 delete marker; CAS `ready → hidden` + audit row
  *                 commit atomically inside `mutate()`. Storage-first
@@ -96,6 +100,7 @@ import {
   type AttachmentRowWithUploader,
 } from '../repositories/attachment.js';
 import { getProjectRowById } from '../repositories/project.js';
+import { projectAuditLabel } from '../../domain/audit.js';
 import { mutate } from './mutate.js';
 import { emitStorageUsageChanged } from '../sse/emitters.js';
 import {
@@ -368,6 +373,23 @@ function attachmentAuditLabel(row: AttachmentRow): string {
   return row.filename;
 }
 
+/**
+ * Internal sentinel — thrown inside `completeUpload`'s `mutate()` `run`
+ * callback when the `pending → ready` CAS loses its predicate (the row
+ * was reaped or already flipped between the pre-check read and the
+ * UPDATE). Throwing rolls back the audit insert (no `attachment:add` row
+ * for a flip that did not happen — AC-219); the caller catches it and
+ * disambiguates 404 (reaper race) vs 409 (racing client) via a re-read.
+ * A dedicated class keeps it distinct from the genuine domain errors
+ * `mutate()` may surface from inside `run`.
+ */
+class MarkReadyCasLost extends Error {
+  constructor() {
+    super('completeUpload: pending→ready CAS lost');
+    this.name = 'MarkReadyCasLost';
+  }
+}
+
 export class AttachmentService {
   private readonly db: Database;
   private readonly storage: AttachmentStorageClient;
@@ -396,8 +418,9 @@ export class AttachmentService {
 
   /**
    * Init: validate inputs, ensure caller scope, wrap each supplied DEK
-   * against the operator-loaded recipient, write a pending row via
-   * `mutate()`, issue presigned PUT descriptors (one per blob).
+   * against the operator-loaded recipient, write a `pending` row (no
+   * audit row — AC-219; the `attachment:add` row is written at
+   * `complete`), issue presigned PUT descriptors (one per blob).
    *
    * Issue #163 / api.md §14.2.11: when the body carries an optional
    * `restore: { id, createdBy, createdAt }` block, the takeout-zip
@@ -415,7 +438,6 @@ export class AttachmentService {
     projectId: string,
     input: InitUploadInput,
     log: ServiceLogger,
-    correlationId: string | null,
   ): Promise<InitUploadResult> {
     // Project existence check — 404 takes precedence over scope (AC-214
     // + AC-147 pattern).
@@ -577,81 +599,64 @@ export class AttachmentService {
     // server-minted identity (id randomized above, createdBy from
     // session, createdAt from schema default `now()`).
     const persistedCreatedBy = input.restore?.createdBy ?? caller.id;
-    const row = await mutate(
-      this.db,
-      { actorKind: 'user', actorId: caller.id, correlationId: correlationId ?? null },
-      {
-        entityType: 'attachment',
-        action: 'attachment:add',
-        run: async (tx) => {
-          let inserted: AttachmentRow;
-          try {
-            inserted = await createPending(tx, {
-              id: attachmentId,
-              projectId,
-              kind,
-              label: input.label,
-              filename: input.fileName,
-              mimeType: input.mimeType,
-              sizeBytes: input.sizeBytes,
-              originalKey,
-              thumbKey,
-              // Plaintext-thumb-size column kept for legacy tests that
-              // still seed it; the real defence in depth at complete-time
-              // is the ciphertext-side `ciphertextThumbSizeBytes`. Set
-              // null here so a non-thumb row stays clean and a photo
-              // row's thumb column reflects the ciphertext figure
-              // through `ciphertextThumbSizeBytes`.
-              thumbSizeBytes: null,
-              hasThumbnail,
-              ciphertextSizeBytes: input.ciphertextSizeBytes,
-              ciphertextThumbSizeBytes: ciphertextThumbSizeBytes ?? null,
-              wrappedDek: wrappedDekBase64,
-              wrappedThumbDek: wrappedThumbDekBase64,
-              // ADR-0024 envelope-format discriminator. Both wrapped
-              // envelopes on this row are produced by `envelope.wrap()`
-              // above (the same `age` X25519 KEM + ChaCha20-Poly1305
-              // shape) — the version pin is shared. A future v2 change
-              // updates the constant + this site simultaneously.
-              wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,
-              createdBy: persistedCreatedBy,
-              ...(restoreCreatedAt !== undefined ? { createdAt: restoreCreatedAt } : {}),
-            });
-          } catch (err) {
-            // AC-257: an `id` collision under the restore block
-            // surfaces as 409 CONFLICT (not 422). Postgres reports the
-            // PK collision via SQLSTATE 23505 / `attachments_pkey`. The
-            // standard path uses `crypto.randomUUID()` so a collision
-            // here is effectively impossible — but the catch is
-            // harmless on that path and load-bearing on the restore
-            // path.
-            const constraint = extractPgConstraint(err);
-            const sqlState = extractSqlState(err);
-            if (sqlState === '23505' && constraint === 'attachments_pkey') {
-              throw conflict(STRINGS.errors.invalidInput);
-            }
-            throw err;
-          }
-          return {
-            entityId: attachmentId,
-            entityLabel: attachmentAuditLabel(inserted),
-            value: inserted,
-            before: {},
-            after: {
-              projectId,
-              attachmentId,
-              label: input.label,
-              mimeType: input.mimeType,
-              sizeBytes: input.sizeBytes,
-            },
-            // Nested entity: ancestor = project (architecture.md §11.12)
-            // so the per-project activity feed picks this row up.
-            ancestorEntityType: 'project',
-            ancestorEntityId: projectId,
-          };
-        },
-      },
-    );
+    // Init writes the `pending` row WITHOUT an audit row (AC-219). The
+    // authoritative `attachment:add` row is written at `complete` (the
+    // `pending → ready` finalize) — an upload abandoned before complete
+    // leaves no audit entry and never surfaces on the activity feed
+    // (the orphan reaper removes the pending row). The pending-row INSERT
+    // is the allowlisted single-write-path exception in
+    // `scripts/check-audit-mutations.sh` (parity with the orphan
+    // reaper's pending-row carve-out). A plain `db.transaction` is the
+    // right shape here — no `mutate()`, no audit co-commit.
+    let row: AttachmentRow;
+    try {
+      row = await this.db.transaction(async (tx) =>
+        createPending(tx, {
+          id: attachmentId,
+          projectId,
+          kind,
+          label: input.label,
+          filename: input.fileName,
+          mimeType: input.mimeType,
+          sizeBytes: input.sizeBytes,
+          originalKey,
+          thumbKey,
+          // Plaintext-thumb-size column kept for legacy tests that
+          // still seed it; the real defence in depth at complete-time
+          // is the ciphertext-side `ciphertextThumbSizeBytes`. Set
+          // null here so a non-thumb row stays clean and a photo
+          // row's thumb column reflects the ciphertext figure
+          // through `ciphertextThumbSizeBytes`.
+          thumbSizeBytes: null,
+          hasThumbnail,
+          ciphertextSizeBytes: input.ciphertextSizeBytes,
+          ciphertextThumbSizeBytes: ciphertextThumbSizeBytes ?? null,
+          wrappedDek: wrappedDekBase64,
+          wrappedThumbDek: wrappedThumbDekBase64,
+          // ADR-0024 envelope-format discriminator. Both wrapped
+          // envelopes on this row are produced by `envelope.wrap()`
+          // above (the same `age` X25519 KEM + ChaCha20-Poly1305
+          // shape) — the version pin is shared. A future v2 change
+          // updates the constant + this site simultaneously.
+          wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,
+          createdBy: persistedCreatedBy,
+          ...(restoreCreatedAt !== undefined ? { createdAt: restoreCreatedAt } : {}),
+        }),
+      );
+    } catch (err) {
+      // AC-257: an `id` collision under the restore block surfaces as
+      // 409 CONFLICT (not 422). Postgres reports the PK collision via
+      // SQLSTATE 23505 / `attachments_pkey`. The standard path uses
+      // `crypto.randomUUID()` so a collision here is effectively
+      // impossible — but the catch is harmless on that path and
+      // load-bearing on the restore path.
+      const constraint = extractPgConstraint(err);
+      const sqlState = extractSqlState(err);
+      if (sqlState === '23505' && constraint === 'attachments_pkey') {
+        throw conflict(STRINGS.errors.invalidInput);
+      }
+      throw err;
+    }
 
     log.info({ attachmentId: row.id, projectId }, 'attachment_init');
 
@@ -690,13 +695,20 @@ export class AttachmentService {
   /**
    * Complete: HEAD-check both objects, assert size against the row's
    * persisted `ciphertextSizeBytes` + sentinel content-type, flip
-   * `pending` → `ready`. No audit row (AC-219).
+   * `pending` → `ready` through `mutate()`. This finalize writes the
+   * single authoritative `attachment:add` audit row (AC-219) — the row
+   * co-commits with the status flip inside the `mutate()` transaction.
    */
   async completeUpload(
     caller: AuthUser,
     projectId: string,
     attachmentId: string,
     log: ServiceLogger,
+    // Optional trailing arg: complete now writes the `attachment:add`
+    // audit row (AC-219), so it threads the request correlation id into
+    // `mutate()` like the other audited methods. Defaults to null so an
+    // in-process caller (e.g. the AC-270 abort test) can omit it.
+    correlationId: string | null = null,
   ): Promise<Attachment> {
     // Scope check early — spec requires worker on unassigned project to
     // receive 403 even when the attachment id does not exist (AC-214).
@@ -798,16 +810,69 @@ export class AttachmentService {
       }
     }
 
-    // Flip pending → ready via a MutatingDatabase (no audit row, so we
-    // use db.transaction directly — AC-219). A racing reaper between
-    // the HEAD checks and this write surfaces as 404 on the next read,
-    // which matches the client contract. The reaper may delete this
-    // row during the HEAD→markReady gap; a storage object verified by
-    // HEAD but not-yet-marked-ready can remain orphaned for up to one
-    // reaper tick before the next sweep cleans it up.
-    const updated = await this.db.transaction(async (tx) =>
-      markReady(tx, attachmentId, { versionId, thumbVersionId }),
-    );
+    // Flip pending → ready through `mutate()` so the `attachment:add`
+    // audit row co-commits with the state change (AC-219). This is the
+    // attachment's authoritative entry into the project — init writes no
+    // audit row, so an abandoned upload leaves nothing on the feed. The
+    // `markReady` CAS runs inside `mutate()`'s `run` callback; a racing
+    // reaper between the HEAD checks and this write surfaces as 404 on
+    // the next read (the CAS returns null → we re-read to disambiguate
+    // 404 vs 409). A storage object verified by HEAD but not-yet-marked-
+    // ready can remain orphaned for up to one reaper tick.
+    //
+    // `payload.after` carries the owning project's frozen `projectLabel`
+    // (= `projectAuditLabel(project)` = `"<number> <title>"`) so the
+    // `project.attachment_added` push body (AC-211) can name the project
+    // without a second lookup, and `label` / `mimeType` / `sizeBytes`
+    // off the pending row. The `wrappedDek` / `wrappedThumbDek` columns
+    // are stripped at the schema layer (AUDIT_EXCLUDED_FIELDS) — they are
+    // not in `value`/`after` here, and `mutate()` would strip them anyway
+    // (AC-240).
+    let updated: AttachmentRowWithUploader | null = null;
+    await mutate(
+      this.db,
+      { actorKind: 'user', actorId: caller.id, correlationId: correlationId ?? null },
+      {
+        entityType: 'attachment',
+        action: 'attachment:add',
+        run: async (tx) => {
+          const flipped = await markReady(tx, attachmentId, { versionId, thumbVersionId });
+          if (!flipped) {
+            // Lost the CAS — the row was not in `pending` at the moment
+            // of the UPDATE. Either the row disappeared (reaper race —
+            // 404 after re-read) or it is already ready (racing client —
+            // 409). Throw a sentinel so the surrounding `mutate()`
+            // transaction rolls back the audit insert; the caller
+            // disambiguates the status code via a follow-up read below.
+            throw new MarkReadyCasLost();
+          }
+          updated = flipped;
+          return {
+            entityId: attachmentId,
+            entityLabel: attachmentAuditLabel(flipped),
+            value: flipped,
+            before: {},
+            after: {
+              projectId,
+              attachmentId,
+              projectLabel: projectAuditLabel(projectRow),
+              label: flipped.label,
+              mimeType: flipped.mimeType,
+              sizeBytes: flipped.sizeBytes,
+            },
+            // Nested entity: ancestor = project (architecture.md §11.12)
+            // so the per-project activity feed picks this row up and the
+            // push composer resolves `/projects/:id` from the ancestor.
+            ancestorEntityType: 'project',
+            ancestorEntityId: projectId,
+          };
+        },
+      },
+    ).catch((err) => {
+      if (!(err instanceof MarkReadyCasLost)) throw err;
+      // CAS lost — disambiguate 404 (reaper race) vs 409 (racing client).
+      return undefined;
+    });
     if (!updated) {
       // Either the row disappeared between the get + markReady calls
       // (reaper race — 404) or it's already ready (racing client — 409).
@@ -825,7 +890,7 @@ export class AttachmentService {
 
     // Post-commit: pending → ready flips a row's contribution to the
     // counters from 0 to its sizeBytes (data-model.md §5.14). Broadcast
-    // AFTER db.transaction resolves so a tx that aborts emits nothing
+    // AFTER mutate() resolves so a tx that aborts emits nothing
     // (architecture.md §11.13, AC-270).
     emitStorageUsageChanged();
 

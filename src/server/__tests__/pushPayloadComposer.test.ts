@@ -86,6 +86,45 @@ describe('composePushPayload — AC-211', () => {
     expect(out.url).toBe('/projects/project-42');
   });
 
+  it('renders project.attachment_added with the project-label snapshot and an ancestor-resolved url', () => {
+    // AC-211 for this class: the body names the affected project via the
+    // frozen `payload.after.projectLabel` snapshot AND indicates a file
+    // was added; the click target is `/projects/:id` resolved from the
+    // audit row's ANCESTOR link, NOT `entityId` — an `attachment` row's
+    // `entityId` is the attachment, the ancestor is the project. Distinct
+    // ids for entityId vs ancestorEntityId so an entityId-based
+    // regression on the url fails here.
+    const out = composePushPayload(
+      'project.attachment_added',
+      row({
+        entityType: 'attachment',
+        action: 'attachment:add',
+        entityId: 'attachment-77',
+        ancestorEntityType: 'project',
+        ancestorEntityId: 'project-42',
+        entityLabel: 'ancestor.pdf',
+        payload: {
+          after: {
+            projectId: 'project-42',
+            attachmentId: 'attachment-77',
+            projectLabel: '2026-002 Innenraumgestaltung Weber',
+            label: 'rechnung',
+            mimeType: 'application/pdf',
+            sizeBytes: 123,
+          },
+        },
+      }),
+      null,
+    );
+    expect(out.title).toBe('Datei hinzugefügt');
+    expect(out.body).toBe('Neue Datei in 2026-002 Innenraumgestaltung Weber');
+    // Url comes from the ancestor's project id, NOT the attachment id —
+    // the load-bearing distinction for this class. A regression that
+    // resolved the url from `entityId` would land `/projects/attachment-77`.
+    expect(out.url).toBe('/projects/project-42');
+    expect(out.url).not.toBe('/projects/attachment-77');
+  });
+
   it('renders backup.failed system event without an audit row', () => {
     const out = composePushPayload('backup.failed', null, {});
     expect(out.title).toBe('Backup fehlgeschlagen');
