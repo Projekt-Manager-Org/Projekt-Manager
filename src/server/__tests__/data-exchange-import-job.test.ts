@@ -31,20 +31,12 @@
  * sibling file `data-exchange-import-archive.test.ts` — they need a real
  * roundtrip archive (built by the WORKING export job) and are heavier.
  *
- * RED-STATE EXPECTATION: NONE of `/api/import-jobs*` is registered yet —
- * app.ts wires the text-leg `/api/import` and the export-job routes
- * (`/api/export-jobs*`), but there is no `routes/import-jobs.ts` and no
- * `app.register(importJobRoutes(...))`. Every arm therefore fails at the
- * unregistered route (Fastify's default 404 — no import route is wired):
- *   - `POST`  /api/import-jobs        → 404 (expected 201 / 409 / 422)
- *   - `GET`   /api/import-jobs        → 404 (expected 200 `{ job }`)
- *   - `HEAD`  /api/import-jobs/:id/archive → 404
- *   - `PATCH` /api/import-jobs/:id/archive → 404
- *   - `GET`   /api/import-jobs/:id    → 404
- * and the upload-driven arms additionally never reach `running`, so the
- * poll helper reports "never reached terminal". The assertions encode the
- * FINAL intended contract, so they go green once the feature lands — they
- * are NOT pinned to the 404.
+ * STATUS: implemented + green. `routes/import-jobs.ts` is wired in app.ts
+ * (`POST`/`GET` `/api/import-jobs`, `GET` `/:id`, `HEAD`/`PATCH`
+ * `/:id/archive`). This file pins the live contract: create + the
+ * resumable (tus-style) upload protocol, the `data:restore` gate, one
+ * active import job per kind, and the single terminal `data_import` audit
+ * row.
  *
  * Confirmation phrase [C]: `EXPECTED_RESTORE_PHRASE` ('LOESCHEN') —
  * resolved from src/config/dataExchangeConfig.ts (`RESTORE_CONFIRMATION_PHRASE`)
@@ -229,6 +221,12 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
     // place (a NON-EMPTY target) — the override/phrase arms below rely on
     // that; the empty-target arm wipes explicitly.
     await db.execute(sql`DELETE FROM data_exchange_job`);
+    // Cross-arm isolation for AC-332's audit-count arm: the AC-326
+    // upload-completion arms return as soon as the job leaves `pending`,
+    // leaving a detached runner that settles to `failed` and writes one
+    // `data_import` audit row. Clear those here so a straggler cannot land
+    // inside AC-332's before/after window.
+    await db.execute(sql`DELETE FROM audit_log WHERE entity_type = 'data_import'`);
   });
 
   // -------------------------------------------------------------------

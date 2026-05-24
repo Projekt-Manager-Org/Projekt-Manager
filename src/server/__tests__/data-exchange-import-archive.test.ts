@@ -4,7 +4,7 @@
  * import leg (TDD red).
  *
  * Drives the server-side full-account IMPORT job (api.md §14.2.4 "Import
- * job — *" design notes) + data-model.md §5.18 / §6.14. The happy-path
+ * job — *" design notes) + data-model.md §5.18 / §6.15. The happy-path
  * arms produce a REAL archive by running the WORKING export job
  * (`POST /api/export-jobs` → poll `ready` → `GET :id/download`), then
  * upload that archive to an import job over the resumable protocol. This
@@ -45,16 +45,13 @@
  * production KeyEnvelopeService. The post-restore fidelity check runs that
  * decrypt path in reverse against the RESTORED row.
  *
- * RED-STATE EXPECTATION: `/api/import-jobs*` is not registered (no
- * `routes/import-jobs.ts`, no `app.register(importJobRoutes(...))` in
- * app.ts). The EXPORT half is fully wired and green, so each arm builds a
- * real archive successfully, then fails the moment it touches the import
- * job: `POST /api/import-jobs` hits the unregistered route (Fastify's
- * default 404, expected 201), so the upload + processing never run. The
- * AC-334 reaper arm fails at the same `POST` 404; once import lands it
- * further requires the staging reaper to sweep import uploads (today it
- * sweeps only `kind='export'`). The assertions encode the FINAL intended
- * contract, so they go green once the feature lands.
+ * STATUS: implemented + green. `routes/import-jobs.ts` +
+ * `takeout-import-runner.ts` are wired in app.ts, and the staging reaper
+ * sweeps `kind='import'` terminal/abandoned uploads. This file pins the
+ * live contract: validate-before-wipe (zero destructive writes on a
+ * corrupt/tampered/wrong-version archive), restore + server re-encrypt at
+ * byte-equal fidelity, session invalidation + re-auth, and the reaper's
+ * import leg.
  *
  * Confirmation phrase [C]: `EXPECTED_RESTORE_PHRASE` ('LOESCHEN').
  */
@@ -101,12 +98,14 @@ const POLL_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 100;
 
 // ---------------------------------------------------------------------
-// Takeout staging reaper — contract surface (AC-334 / data-model §6.14).
-// The module does not exist yet; resolve it lazily via dynamic import so
-// the FILE loads and every non-reaper arm runs. The reaper arm awaits
-// this resolver and fails on the missing module — the documented red
-// state, mirroring data-exchange-export-job.test.ts's resolver. Shape +
-// the ttlMinutes injection convention match that file exactly.
+// Takeout staging reaper — contract surface (AC-334 / data-model §6.15).
+// The module EXISTS (shipped with the export job, 8f40f1d) but today
+// sweeps only `kind='export'`/`status='ready'`; it is resolved lazily via
+// dynamic import for parity with the export-job test's resolver shape.
+// This arm hits the prior red-state gate first (POST /api/import-jobs is
+// unregistered → 404) and, once that lands, requires the reaper widened to
+// also sweep `kind='import'` uploads on a terminal/abandoned job. Shape +
+// the ttlMinutes injection convention match the export file exactly.
 // ---------------------------------------------------------------------
 type ReaperLogFn = (ctx: Record<string, unknown>, event: string) => void;
 
@@ -286,6 +285,26 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
     );
   }
 
+  /**
+   * The restore wipes `users` partway through the (async) job, CASCADE-
+   * dropping the upload session mid-job (AC-330). For an arm that must poll
+   * to `ready`, the upload token therefore dies before the job finishes.
+   * Mirror the spec's documented re-auth flow: poll the OLD token until it
+   * 401s (the wipe committed), then re-authenticate against the restored
+   * user set and return the fresh token. Falls back to a plain re-login if
+   * no wipe is observed within the window (e.g. a validation failure that
+   * never wipes), so the helper is safe on every path.
+   */
+  async function awaitWipeAndReauth(oldToken: string, jobId: string): Promise<string> {
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const res = await authGet(oldToken, `/api/import-jobs/${jobId}`);
+      if (res.statusCode === 401) break;
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+    return login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+  }
+
   /** Count rows in an importable table (post-wipe assertions, AC-327). */
   async function countRows(table: string): Promise<number> {
     const res = await db.execute(sql.raw(`SELECT COUNT(*)::int AS c FROM ${table}`));
@@ -333,6 +352,11 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
     // arms that seed attachments clean them first.
     await db.execute(sql`DELETE FROM data_exchange_job`);
     await db.execute(sql`DELETE FROM attachments`);
+    // A prior arm's restore wipes `users` (dropping ownerToken's session);
+    // re-authenticate so every arm starts from a live token regardless of
+    // what ran before. The owner round-trips through the archive with its
+    // passwordHash, so login succeeds against the restored user set.
+    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
   });
 
   // -------------------------------------------------------------------
@@ -367,9 +391,9 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // Upload it to an import job over the seeded (non-empty) target with
       // override + phrase, and drive to terminal.
       const jobId = await uploadArchiveToNewJob(ownerToken, archive);
-      // The wipe drops the operator's session (users wiped); re-auth — the
-      // account round-trips through the archive with its passwordHash.
-      const reauth = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      // The restore wipes `users` mid-job (dropping the upload session). Wait
+      // for that (old cookie → 401), then re-auth and poll to ready (AC-330).
+      const reauth = await awaitWipeAndReauth(ownerToken, jobId);
       const terminal = await pollImportTerminal(reauth, jobId);
       expect(terminal.status).toBe('ready');
 
@@ -423,16 +447,18 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const seeded = await seedReadyAttachment({ plaintext, fileName: 'rechnung.pdf' });
       const archive = await buildExportArchive(ownerToken);
 
-      // First import.
+      // First import. Wait for the mid-job wipe, then re-auth before polling.
       const job1 = await uploadArchiveToNewJob(ownerToken, archive);
-      let token = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      let token = await awaitWipeAndReauth(ownerToken, job1);
       expect((await pollImportTerminal(token, job1)).status).toBe('ready');
 
-      // Second import of the SAME archive — per-attachment restore is
-      // idempotent on `id` (an already-present row is skipped), so the row
-      // count for that id stays exactly 1 (AC-328).
+      // Second import of the SAME archive. Each override import wipes
+      // `attachments` then rebuilds from the archive, so the row count for
+      // that id stays exactly 1 — operation-level idempotency (a re-run is a
+      // deterministic full replace). The wipe prevents duplication, not a
+      // per-row skip (AC-328).
       const job2 = await uploadArchiveToNewJob(token, archive);
-      token = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      token = await awaitWipeAndReauth(token, job2);
       expect((await pollImportTerminal(token, job2)).status).toBe('ready');
 
       const dup = (
@@ -450,7 +476,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const archive = await buildExportArchive(ownerToken);
 
       const jobId = await uploadArchiveToNewJob(ownerToken, archive);
-      const token = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      const token = await awaitWipeAndReauth(ownerToken, jobId);
       expect((await pollImportTerminal(token, jobId)).status).toBe('ready');
 
       const proj = (await db.execute(sql`SELECT id FROM projects WHERE id = ${projectId}`))
@@ -597,7 +623,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
 
   // -------------------------------------------------------------------
   // AC-334 / AT-148 — the staging reaper sweeps an abandoned/terminal
-  // IMPORT upload too (not just ready export artifacts). data-model §6.14:
+  // IMPORT upload too (not just ready export artifacts). data-model §6.15:
   // it sweeps an import job's uploaded archive once the job is terminal
   // (ready/failed) or its upload was abandoned, deletes the staged FILE,
   // and nulls archiveRef.
@@ -613,7 +639,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       await seedReadyAttachment({ plaintext: crypto.randomBytes(256), fileName: 'd.pdf' });
       const archive = await buildExportArchive(ownerToken);
       const jobId = await uploadArchiveToNewJob(ownerToken, archive);
-      const reauth = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      const reauth = await awaitWipeAndReauth(ownerToken, jobId);
       const terminal = await pollImportTerminal(reauth, jobId);
       // A terminal import job retains its uploaded archive on the VPS
       // staging path until the reaper sweeps it.
@@ -637,7 +663,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       });
 
       // The reaper deletes the staged file and nulls archiveRef; the row
-      // persists as operational metadata (data-model.md §6.14).
+      // persists as operational metadata (data-model.md §6.15).
       const row = (
         await db.execute(sql`SELECT archive_ref FROM data_exchange_job WHERE id = ${jobId}`)
       ).rows as { archive_ref: string | null }[];

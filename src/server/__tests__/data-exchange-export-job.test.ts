@@ -126,12 +126,12 @@ function countJobChanged(conn: SubscribedFake): number {
 }
 
 // ---------------------------------------------------------------------
-// Takeout staging reaper — contract surface (AC-334 / data-model §6.14).
-// The module does not exist yet; resolve it lazily via dynamic import so
-// the FILE loads and every non-reaper arm runs. The reaper arm awaits
-// this resolver and fails on the missing module — the documented red
-// state, mirroring attachments-reaper.test.ts's `runAttachmentOrphanReaper`
-// resolver.
+// Takeout staging reaper — contract surface (AC-334 / data-model §6.15).
+// Resolved lazily via dynamic import (parity with the orphan/hidden reaper
+// tests' `runAttachmentOrphanReaper` resolver shape) so the FILE loads even
+// when only a subset of arms run. The module ships with this export job and
+// sweeps `ready` export artifacts; the import leg widens it to `import`
+// uploads (see data-exchange-import-archive.test.ts).
 //
 // Shape parallels the orphan / hidden reapers: invoked directly (no
 // scheduler plumbing) with an injectable `now`, a TTL, a storage client
