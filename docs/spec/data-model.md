@@ -841,7 +841,7 @@ Timestamp ownership rules are defined in section 5.5. Additionally, `statusChang
 - Rationale anchors in §147 AO (10-year retention of business records) and GoBD (immutability of issued documents). A correction is a fresh `draft → issued` cycle producing a new sibling row, not an edit. See [ADR-0026 §State machine](../adr/0026-invoices-immutability-and-zugferd.md#state-machine).
 - Object-storage retention on the rendered PDF/A-3 ([architecture.md §11.14](architecture.md#1114-invoice-domain)) is the storage-layer backstop on the artifact bytes; this principle is the row-side counterpart.
 
-### 6.14 Takeout Staging Reaper
+### 6.15 Takeout Staging Reaper
 
 - A scheduled job removes staged full-account takeout archives from the VPS-local staging path ([§5.18](#518-data-exchange-job-entity) `archiveRef`) older than the takeout staging TTL **[C]** ([architecture.md §12.2](architecture.md#122-company-configurable-settings)). It sweeps two cases: a `ready` export job's downloadable artifact (the operator had the TTL window to download it) and an import job's uploaded archive once the job is terminal (`ready` / `failed`) or its upload was abandoned. Rationale: plaintext archives stage on the VPS, never on B2 ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)); without a sweep they accumulate on a finite disk.
 - The reaper deletes the staged **file** only; the `data_exchange_job` row persists (it is operational metadata, [§5.18](#518-data-exchange-job-entity)) and its `archiveRef` is set to null, so a later download resolves to `404 NOT_FOUND` ([api.md §14.2.4](api.md#1424-unified-data-exchange) "Export job — download (Range)", [verification.md AC-324](verification.md#1514-data-exchange) / [AC-334](verification.md#1514-data-exchange)).
