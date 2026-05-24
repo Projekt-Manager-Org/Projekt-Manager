@@ -266,6 +266,8 @@ The `ProjectCrudService.purgeProject` and `CustomerService.deleteCustomer` paths
 
 Coverage rationale: `project_changed` fires on every consumer-observable mutation reachable through the service layer — `projects` row writes ([data-model.md §5.1](data-model.md#51-project)), `project_workers` join writes via `updateProject` (the join is part of the project read surface), and the bulk-restore path (`ImportService.import` override). The signal covers every change visible on the project list, the per-project detail, the Kanban board, and the Calendar bars. Out-of-band SQL writes do not emit (same v1 limitation as `storage_usage_changed`, see "Known v1 limitation" below).
 
+**Emitter of `audit_changed`.** The notification publisher's post-commit `onAuditCommitted` hook ([§11.11](#1111-notification-publisher-and-dispatch), [ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md)) broadcasts one `audit_changed` per committed `audit_log` row, after the originating mutation's transaction commits. Because every audited domain mutation routes through the single-write-path helper ([api.md §14.2.8](api.md#1428-audit-log)), this one coarse signal covers every activity-feed surface without a per-call-site emitter — a transaction that rolls back writes no audit row and so emits nothing. Consumers (the project-detail activity feed, the global Aktivität view, and the activity dock — [ui/index.md §8.1.2](ui/index.md#812-authenticated-state)) refetch [api.md §14.2.8](api.md#1428-audit-log). The wire payload stays contentless (`{ "type": "audit_changed" }`); audit content rides only the `audit:read`-gated read endpoint, never the broadcast (see **Broadcast posture** below).
+
 **Failure isolation.** A throwing subscriber writer (closed socket, slow consumer) does not affect other subscribers — the bus catches per-subscriber failures, logs structured operational output, and removes the failing subscriber. Same posture as [§11.11](#1111-notification-publisher-and-dispatch)'s post-commit handlers; an emission failure never rolls back the originating mutation, which has already committed.
 
 **Heartbeat.** Each connection writes a `:` keepalive comment line at the configurable heartbeat interval **[C]** ([§12.2](#122-company-configurable-settings); default 25 seconds, bounded 1 s … 600 s) to defeat reverse-proxy and browser idle disconnects. Independent per connection; not coordinated across the subscriber set.
@@ -278,7 +280,7 @@ Coverage rationale: `project_changed` fires on every consumer-observable mutatio
 
 **Known v1 limitation.** Out-of-band SQL writes (admin shell, future migrations, direct trigger-driven mutations not routed through the service layer) do not emit. The PostgreSQL `LISTEN`/`NOTIFY` upgrade path is recorded in [ADR-0025](../adr/0025-realtime-ui-invalidation-via-sse.md) — when the gap becomes load-bearing, triggers `NOTIFY` and the Node process holds a persistent `LISTEN` connection that fans out to the same SSE subscribers.
 
-**Verification.** Bus failure isolation, per-emitter delivery, channel shape, heartbeat, and reconnect are pinned by [§15.28](verification.md#1528-realtime-events).
+**Verification.** Bus failure isolation, per-emitter delivery (`audit_changed` by [AC-320](verification.md#1528-realtime-events)), channel shape, heartbeat, and reconnect are pinned by [§15.28](verification.md#1528-realtime-events); the activity dock's live behavior, gating, and responsive posture by [§15.32](verification.md#1532-activity-dock).
 
 ### 11.14 Invoice Domain
 

@@ -3,9 +3,14 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { EXPECTED_RESTORE_PHRASE } from '../src/test/seedAssumptions.js';
+import {
+  EXPECTED_RESTORE_PHRASE,
+  SEED_DEFAULT_PASSWORD,
+  SEED_USERS,
+} from '../src/test/seedAssumptions.js';
 import { STORAGE_STATES } from './storage-states';
 import { clickView } from './nav-helpers';
+import { reseedAllStorageStates } from './auth-helpers';
 
 /**
  * E2E — Vollständiger Import (AC-259).
@@ -14,15 +19,20 @@ import { clickView } from './nav-helpers';
  *
  *   seed dataset (with photo + binary attachments)
  *     → Vollständiger Export (AC-249 / AC-250 / AC-252)
- *     → wipe via /api/import?override=true (AC-254)
- *     → Vollständiger Import (AC-260)
+ *     → Vollständiger Import (AC-260): the takeout import dispatches its
+ *       text leg with override=true, so this single action wipes-and-
+ *       restores the whole importable set in one transaction (AC-254) —
+ *       there is no separate pre-wipe step. The wipe TRUNCATEs `users`,
+ *       cascading the operator's session (AC-310); the run continues on
+ *       the minted importToken and lands on the login screen on close.
+ *     → re-auth as owner (the seed password round-trips through the zip)
  *     → restored rows match source by (id, createdBy, createdAt)
  *     → download-URL plaintext byte-equals seed plaintext (AC-241)
  *     → photo thumbnails render via /encrypted-storage/.../thumbnail (AC-243)
  *
- * The dialog (`VollstaendigerImportDialog.tsx`) does NOT exist yet —
- * the test fails at the locator step. That's the intended red-phase
- * shape; do NOT stub the UI.
+ * The dialog (`VollstaendigerImportDialog.tsx`) and its runner
+ * (`useImportAllRunner` + `importAllFromZip`) are implemented; this spec
+ * is the load-bearing integration pin for the override roundtrip.
  *
  * testids introduced by this spec (the UI implementation must match,
  * mirroring the export-side naming on `daten-vollstaendiger-export.spec.ts`):
@@ -77,6 +87,14 @@ test.afterAll(async ({ browser }) => {
     data: { ...snapshot, confirmation_phrase: EXPECTED_RESTORE_PHRASE },
   });
   await context.close();
+
+  // The override-import above TRUNCATEs `users`, cascading through
+  // `sessions.user_id` (AC-310) — every session dies, including the shared
+  // storageState cookies the rest of the serial mutating bucket reuses.
+  // Re-mint all role states from a fresh login so specs ordered after this
+  // one don't land on the login screen. (Restored users keep their seed
+  // credentials, so the seed password logs in again.)
+  await reseedAllStorageStates(browser);
 });
 
 interface SeededAttachment {
@@ -298,7 +316,6 @@ async function vollstaendigerExportZip(page: Page): Promise<Buffer> {
 test('AC-259: full takeout roundtrip preserves (id, createdBy, createdAt) and plaintext bytes', async ({
   page,
   request,
-  browser,
 }) => {
   // -------------------------------------------------------------
   // 1. Seed photo + binary attachments via the wire init→PUT→complete
@@ -319,30 +336,12 @@ test('AC-259: full takeout roundtrip preserves (id, createdBy, createdAt) and pl
   expect(zipBytes.byteLength).toBeGreaterThan(0);
 
   // -------------------------------------------------------------
-  // 3. Wipe the importing instance (mirrors the orchestrator's text
-  //    leg — AC-254). Done out-of-band via the API so the spec
-  //    isolates the import-side flow under test from the wipe.
-  // -------------------------------------------------------------
-  const ctx = await browser.newContext({ storageState: STORAGE_STATES.owner });
-  // SCHEMA_VERSION is 2 post-#163 — the dropped crypto envelope fields
-  // bumped the format-version pin (`src/domain/dataExchange.ts`).
-  const wipeRes = await ctx.request.post('/api/import?override=true', {
-    data: {
-      schema_version: 2,
-      exported_at: new Date().toISOString(),
-      customers: [],
-      projects: [],
-      project_workers: [],
-      confirmation_phrase: EXPECTED_RESTORE_PHRASE,
-    },
-  });
-  expect(wipeRes.ok()).toBe(true);
-  await ctx.close();
-
-  // -------------------------------------------------------------
-  // 4. Vollständiger Import — drive the dialog with the exported zip.
-  //    The UI does not exist yet; this is the load-bearing red-phase
-  //    failure point.
+  // 3. Vollständiger Import — drive the dialog with the exported zip.
+  //    The takeout import's text leg runs override=true, so this single
+  //    action wipes-and-restores the whole importable set in one
+  //    transaction (AC-254) — there is no separate pre-wipe. The seeded
+  //    dataset is still present, so the target is non-empty and the
+  //    destructive confirmation phrase gate is shown.
   // -------------------------------------------------------------
   await page.goto('/');
   await clickView(page, 'daten');
@@ -362,21 +361,35 @@ test('AC-259: full takeout roundtrip preserves (id, createdBy, createdAt) and pl
 
     const preflight = page.getByTestId('import-all-preflight');
     await expect(preflight).toBeVisible();
-    // Confirmation phrase gates commit on a non-empty target. The wipe
-    // ran first, so the target is empty here — but the orchestrator
-    // dispatches the text-leg with the phrase regardless when override
-    // is true (matching AC-160 wiring).
+    // Non-empty target → the override path demands the typed phrase
+    // (AC-160). Assert the gate is present, then satisfy it.
     const phraseInput = preflight.getByTestId('import-all-phrase-input');
-    if (await phraseInput.isVisible().catch(() => false)) {
-      await phraseInput.fill(EXPECTED_RESTORE_PHRASE);
-    }
+    await expect(phraseInput).toBeVisible();
+    await phraseInput.fill(EXPECTED_RESTORE_PHRASE);
     await preflight.getByTestId('import-all-preflight-confirm').click();
 
-    const summary = page.getByTestId('import-all-summary');
-    await expect(summary).toBeVisible({ timeout: 60_000 });
+    // The override wiped `users` mid-import, cascading the session; the
+    // orchestrator carries the binary leg on the minted importToken and
+    // still reaches the summary.
+    await expect(page.getByTestId('import-all-summary')).toBeVisible({ timeout: 60_000 });
   } finally {
     if (fs.existsSync(tmpZipPath)) fs.unlinkSync(tmpZipPath);
   }
+
+  // -------------------------------------------------------------
+  // 4. Re-authenticate. The override-import TRUNCATEd `users`,
+  //    cascading the operator's session (AC-310) — the owner's cookie is
+  //    dead. Closing the summary fires the dialog's session-expired
+  //    redirect; log back in with the seed password (the owner row
+  //    round-tripped through the zip with its original hash) to get a
+  //    fresh session for the verification below.
+  // -------------------------------------------------------------
+  await page.getByTestId('import-all-summary-close').click();
+  await expect(page.getByTestId('login-username')).toBeVisible();
+  await page.getByTestId('login-username').fill(SEED_USERS.owner.username);
+  await page.getByTestId('login-password').fill(SEED_DEFAULT_PASSWORD);
+  await page.getByTestId('login-submit').click();
+  await expect(page.getByTestId('user-indicator')).toContainText(SEED_USERS.owner.displayName);
 
   // -------------------------------------------------------------
   // 5. Cross-check restored rows. Per AC-259:
@@ -384,10 +397,9 @@ test('AC-259: full takeout roundtrip preserves (id, createdBy, createdAt) and pl
   //    - download-URL plaintext byte-equals seed
   //    - photo thumbnails render via /encrypted-storage/.../thumbnail
   // -------------------------------------------------------------
-  const verifyCtx = await browser.newContext({ storageState: STORAGE_STATES.owner });
-
-  // Identity-field cross-check via the project's attachment list.
-  const list = await verifyCtx.request.get(`/api/projects/${projectId}/attachments`);
+  // Identity-field cross-check via the project's attachment list, using
+  // the page's freshly re-authed session.
+  const list = await page.request.get(`/api/projects/${projectId}/attachments`);
   expect(list.ok()).toBe(true);
   const restored = (await list.json()).data as Array<{
     id: string;
@@ -410,7 +422,7 @@ test('AC-259: full takeout roundtrip preserves (id, createdBy, createdAt) and pl
   // decrypt with the unwrapped DEK, and compare against the source
   // plaintext bytes.
   for (const src of attachments) {
-    const dl = await verifyCtx.request.get(
+    const dl = await page.request.get(
       `/api/projects/${projectId}/attachments/${src.id}/download-url?variant=original`,
     );
     expect(dl.ok()).toBe(true);
@@ -418,7 +430,7 @@ test('AC-259: full takeout roundtrip preserves (id, createdBy, createdAt) and pl
       url: string;
       dekMaterial: string;
     };
-    const ctRes = await verifyCtx.request.get(url);
+    const ctRes = await page.request.get(url);
     expect(ctRes.ok()).toBe(true);
     const ctBuf = await ctRes.body();
     const ciphertext = new Uint8Array(ctBuf);
@@ -439,8 +451,6 @@ test('AC-259: full takeout roundtrip preserves (id, createdBy, createdAt) and pl
     expect(plaintext.byteLength).toBe(src.plaintext.byteLength);
     expect(Buffer.from(plaintext).equals(src.plaintext)).toBe(true);
   }
-
-  await verifyCtx.close();
 
   // Photo thumbnail render via the SW-intercepted synthetic-origin URL.
   // For every photo row the gallery should mount an `<img>` whose

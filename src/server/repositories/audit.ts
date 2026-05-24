@@ -57,11 +57,12 @@ function escapeLike(value: string): string {
  *          Cheap: roles are a tiny bounded set.
  *       b) Assigned-worker match: rule has `includeAssignedWorkers =
  *          true`, the row's entity is project-scoped
- *          (`project` / `project_worker`), and caller is on
- *          `project_workers` for `audit_log.entity_id` (entity_id is
- *          the project id in both cases per the single-write-path
- *          convention — see `extractProjectId` in
- *          notificationRecipientResolver.ts).
+ *          (`project` / `project_worker` / `attachment`), and caller is
+ *          on `project_workers` for the row's project id. That id is
+ *          `entity_id` for `project` / `project_worker` rows, but
+ *          `ancestor_entity_id` for `attachment` rows (entity_id there
+ *          is the attachment id) — mirrors `extractProjectId` in
+ *          notificationRecipientResolver.ts.
  *       c) Explicit userIds membership: caller.id is a string element
  *          of the rule's `recipient_spec.userIds` jsonb array. The `?`
  *          operator tests jsonb key-or-string-array-element existence.
@@ -104,6 +105,8 @@ function auditRecipientScopePredicate(caller: AuthUser, enabled: boolean): SQL |
             THEN 'project.assignment_changed'
           WHEN audit_log.entity_type = 'project_worker' AND audit_log.action = 'delete'
             THEN 'project.assignment_changed'
+          WHEN audit_log.entity_type = 'attachment' AND audit_log.action = 'attachment:add'
+            THEN 'project.attachment_added'
           ELSE NULL
         END
       )
@@ -121,10 +124,12 @@ function auditRecipientScopePredicate(caller: AuthUser, enabled: boolean): SQL |
         -- (b) includeAssignedWorkers, project-scoped rows only
         (
           (nr.recipient_spec ->> 'includeAssignedWorkers')::boolean = TRUE
-          AND audit_log.entity_type IN ('project', 'project_worker')
+          AND audit_log.entity_type IN ('project', 'project_worker', 'attachment')
           AND EXISTS (
             SELECT 1 FROM project_workers pw
-            WHERE pw.project_id = audit_log.entity_id
+            WHERE pw.project_id = (CASE WHEN audit_log.entity_type = 'attachment'
+                                        THEN audit_log.ancestor_entity_id
+                                        ELSE audit_log.entity_id END)
               AND pw.user_id = ${caller.id}
           )
         )

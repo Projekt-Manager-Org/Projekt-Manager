@@ -69,6 +69,14 @@ interface Props {
    * global view both rely on the default.
    */
   emptyState?: { testId: string; message: string };
+  /**
+   * Test-id for the "Ältere anzeigen" pager button. Optional — when
+   * omitted the button carries no test-id (the project-detail feed and
+   * the global Aktivität view do not target it). The app-shell activity
+   * dock sets `activity-dock-load-older` so its e2e contract can page
+   * older entries (AC-318) without changing the existing consumers.
+   */
+  loadOlderTestId?: string;
 }
 
 /** Column count of the table layout — drives `colSpan` on empty/loader rows. */
@@ -81,6 +89,7 @@ export function ActivityFeed({
   inline,
   layout = 'list',
   emptyState,
+  loadOlderTestId,
 }: Props) {
   const emptyTestId = emptyState?.testId ?? 'audit-empty-state';
   const emptyMessage = emptyState?.message ?? STRINGS.audit.emptyState;
@@ -179,6 +188,7 @@ export function ActivityFeed({
               className={styles.loadMoreButton}
               onClick={() => void appendNextPage()}
               disabled={loadingMore}
+              data-testid={loadOlderTestId}
             >
               {STRINGS.audit.loadOlder}
             </button>
@@ -209,6 +219,7 @@ export function ActivityFeed({
             className={styles.loadMoreButton}
             onClick={() => void appendNextPage()}
             disabled={loadingMore}
+            data-testid={loadOlderTestId}
           >
             {STRINGS.audit.loadOlder}
           </button>

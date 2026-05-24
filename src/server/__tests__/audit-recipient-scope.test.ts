@@ -35,6 +35,9 @@ import {
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
+import { createStorageClient } from '../storage/client.js';
+import { getEnv } from '../config/env.js';
+import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
 
 interface AuditApiEntry {
   id: string;
@@ -101,6 +104,45 @@ async function createRule(
   });
   expect(res.statusCode).toBe(201);
   return res.json() as { id: string };
+}
+
+/**
+ * Init a binary attachment, stage its ciphertext object, and complete
+ * the upload (pending → ready) — the path that writes the `attachment:add`
+ * audit row. Returns the attachment id. The staged bytes must match the
+ * binary fixture's `ciphertextSizeBytes` (50_064) under the
+ * `application/octet-stream` sentinel or the complete-time HEAD verify
+ * fails before the row is written. (Local copy of the upload dance every
+ * attachment-touching integration test rolls — no shared helper exists.)
+ */
+async function stageAndComplete(token: string, projectId: string): Promise<string> {
+  const initRes = await authPost(
+    token,
+    `/api/projects/${projectId}/attachments/init`,
+    binaryInitBody({ fileName: 'ars-upload.pdf', sizeBytes: 4321 }),
+  );
+  expect(initRes.statusCode).toBe(201);
+  const body = initRes.json() as { attachment: { id: string; originalKey: string } };
+
+  const env = getEnv();
+  const s = createStorageClient({
+    endpoint: env.STORAGE_ENDPOINT!,
+    bucket: env.STORAGE_BUCKET,
+    accessKey: env.STORAGE_ACCESS_KEY!,
+    secretKey: env.STORAGE_SECRET_KEY!,
+  });
+  await s.upload(
+    body.attachment.originalKey,
+    Buffer.alloc(50_064, 0xff),
+    'application/octet-stream',
+  );
+
+  const completeRes = await authPost(
+    token,
+    `/api/projects/${projectId}/attachments/${body.attachment.id}/complete`,
+  );
+  expect(completeRes.statusCode).toBe(200);
+  return body.attachment.id;
 }
 
 describe('GET /api/audit recipientScope (AC-200)', () => {
@@ -300,6 +342,58 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
     const ownerEntries = (resOwner.json() as { data: AuditApiEntry[] }).data;
     expect(
       ownerEntries.some((e) => e.entityType === 'project_worker' && e.entityId === projectId),
+    ).toBe(false);
+  });
+
+  // ---------------------------------------------------------------
+  // AC-200 / AC-318 — attachment_added rows surface in the scoped feed
+  // ---------------------------------------------------------------
+  //
+  // The recipient-scope predicate maps (entity_type, action) to an event
+  // class via a CASE that must cover EVERY project-scoped class. A
+  // completed upload writes an `attachment:add` row on entity_type
+  // 'attachment'; with a rule targeting office for
+  // `project.attachment_added`, office's scoped feed must include that
+  // row — it is the row the activity dock (AC-318) surfaces live. A
+  // missing CASE arm drops it (fails closed), so the dock would never
+  // show file uploads.
+  it('includes a completed upload attachment:add row for a configured recipient', async () => {
+    await createRule(ownerToken, {
+      eventClass: 'project.attachment_added',
+      recipientSpec: { roles: ['office'], includeAssignedWorkers: false, userIds: [] },
+    });
+
+    const projectRes = await authPost(ownerToken, '/api/projects', {
+      number: `ARS-att-${Date.now().toString(36)}`,
+      title: 'Recipient-scope attachment arm',
+      customerId: seededCustomerId,
+    });
+    expect(projectRes.statusCode).toBe(201);
+    const projectId = projectRes.json().id as string;
+
+    const attachmentId = await stageAndComplete(ownerToken, projectId);
+
+    // Office is a configured recipient → the attachment:add row is in the
+    // scoped feed.
+    const res = await authGet(officeToken, '/api/audit?recipientScope=true&limit=200');
+    expect(res.statusCode).toBe(200);
+    const entries = (res.json() as { data: AuditApiEntry[] }).data;
+    expect(
+      entries.some(
+        (e) =>
+          e.entityType === 'attachment' &&
+          e.entityId === attachmentId &&
+          e.action === 'attachment:add',
+      ),
+    ).toBe(true);
+
+    // Owner (the uploader) is NOT in the office-only rule → the row must
+    // NOT appear in owner's scoped feed. Confirms rule-gating, not blanket
+    // inclusion of every attachment row.
+    const ownerRes = await authGet(ownerToken, '/api/audit?recipientScope=true&limit=200');
+    const ownerEntries = (ownerRes.json() as { data: AuditApiEntry[] }).data;
+    expect(
+      ownerEntries.some((e) => e.entityType === 'attachment' && e.entityId === attachmentId),
     ).toBe(false);
   });
 

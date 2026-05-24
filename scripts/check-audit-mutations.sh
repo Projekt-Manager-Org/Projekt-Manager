@@ -115,6 +115,16 @@ ALLOWLIST=(
   # type level; this path-based allowlist exists so the scan does not
   # flag the legitimate `tx.insert(...)` calls inside repos. The
   # integrity guarantee is the type, not the allowlist.
+  #
+  # AC-219 single audit-free exception for attachments lives here:
+  # `createPending` (the init `pending`-row insert) is the state-machine
+  # pre-step that writes NO audit row — an upload abandoned before
+  # complete leaves nothing on the activity feed (parity with the orphan
+  # reaper's pending-row carve-out below). `AttachmentService.initUpload`
+  # therefore calls it inside a plain `db.transaction`, not `mutate()`.
+  # Its sibling `markReady` (the `complete` flip) is NOT an exception:
+  # `completeUpload` routes it through `mutate()` so the authoritative
+  # `attachment:add` row co-commits with the `pending → ready` flip.
   "src/server/repositories/"
   # Migrations: schema-level DDL + seed-data migrations run outside
   # the runtime path and predate the helper.

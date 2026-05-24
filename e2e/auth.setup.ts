@@ -1,13 +1,14 @@
-import { test as setup, expect, type Page } from '@playwright/test';
+import { test as setup } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { createDatabase } from '../src/server/db/connection.js';
 import { seed } from '../src/server/seed.js';
-import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../src/test/seedAssumptions.js';
+import { SEED_USERS } from '../src/test/seedAssumptions.js';
 import { STORAGE_STATES } from './storage-states';
 import { resetE2eBucket } from './storage-reset';
+import { loginAndSaveState } from './auth-helpers';
 
 /**
  * Auth setup — Playwright's shared-auth pattern, four roles.
@@ -39,44 +40,6 @@ try {
   process.loadEnvFile(path.resolve(__dirname, '..', '.env'));
 } catch {
   // .env missing — rely on existing environment.
-}
-
-/**
- * Log in as the given user and save the authenticated context. The
- * role-specific landing testid is the ready signal — see
- * `src/config/routes.ts` for the canonical per-role default:
- * owner/office → `/kanban` (`kanban-board`), worker → `/meine-projekte`
- * (`my-projects-view`), bookkeeper → `/rechnungen` (`invoice-list-view`).
- */
-async function loginAndSaveState(
-  page: Page,
-  user: { username: string; displayName: string },
-  landingTestId: 'kanban-board' | 'my-projects-view' | 'invoice-list-view',
-  statePath: string,
-): Promise<void> {
-  await page.goto('/');
-  await page.getByTestId('login-username').fill(user.username);
-  await page.getByTestId('login-password').fill(SEED_DEFAULT_PASSWORD);
-  await page.getByTestId('login-submit').click();
-
-  // Playwright spawns a fresh vite + Fastify on every run (see
-  // `reuseExistingServer: false` in playwright.config.ts), so the
-  // first landing request pays vite's cold-start cost the first time
-  // through. 15 s absorbs the worst case on a warm-ish cache; a cold
-  // `.vite` directory can push this closer to 30 s, but we don't
-  // optimise for the once-per-week case.
-  await expect(page.getByTestId(landingTestId)).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId('user-indicator')).toContainText(user.displayName);
-
-  await page.context().storageState({ path: statePath });
-
-  // Chrome marks localhost cookies as Secure (localhost is a "secure
-  // context"), but Playwright won't send Secure cookies over plain HTTP
-  // when restoring state into a fresh context. Strip the flag so the
-  // session cookie survives the handoff.
-  const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
-  for (const cookie of state.cookies) cookie.secure = false;
-  fs.writeFileSync(statePath, JSON.stringify(state));
 }
 
 setup('reseed database and storage', async () => {

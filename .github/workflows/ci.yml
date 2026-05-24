@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, 'iteration/**']
+    branches: [main]
   pull_request:
-    branches: [main, 'iteration/**']
+    branches: [main]
   # GitHub merge queue fires `merge_group` events on a synthetic train
   # branch built from `main` + queued PRs. The queue is currently OFF
   # (see docs/ops/dep-management.md §5 for the evaluation + cost
@@ -24,18 +24,19 @@ on:
   # Mirrors the same pattern used by .github/workflows/e2e.yml.
   workflow_dispatch:
 
-# Dedup overlapping runs on the same branch. Without this, a push to a
-# feature branch with an open PR fires `pull_request` (runs `check`),
-# and a follow-up `gh workflow run` fires `workflow_dispatch` (runs
-# `check` AND `build-and-push`) — paying for `check` twice. The group
-# key normalises across event types: `pull_request.head.ref` is the
-# source branch on PR events, `ref_name` is the short branch name on
-# push/dispatch — both resolve to the same string for the same branch,
-# so the second run cancels the first. Branch protection looks up
-# `check` by name + commit SHA; the surviving run produces the same
-# named status, so PR mergeability is preserved.
+# Cancel only superseded *same-class* runs on a branch; never let one
+# event class cancel another. The PR merge box credits `check`/`lint`
+# ONLY from the `pull_request` run — a `workflow_dispatch` run's checks
+# are never associated with the PR, even on the same SHA, even when green.
+# So the operator's dispatch run (a superset: it also builds+pushes the
+# GHCR image for a feature-branch deploy via `gh workflow run ci.yml`) must
+# not cancel the PR run — doing so left the merge box reporting the
+# cancelled PR checks ("checks failing") while the dispatch run was green
+# (#234). The event-name suffix puts each class in its own lane: a newer
+# push's `pull_request` run still cancels the stale one (the dedup we want),
+# but a dispatch never touches it.
 concurrency:
-  group: ci-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: ci-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -481,10 +482,10 @@ jobs:
   # (PR), unconditionally on merge_group (Ruleset requirement), and
   # unconditionally on workflow_dispatch so operator feature-branch
   # tests see the PR-time signal too — otherwise the docker-bytes
-  # gate is only visible at publish time via build-and-push. On push
-  # (merge) events `build-and-push` does the same build for real
-  # (and actually publishes), so we skip here to avoid double-build.
-  # See ADR-0011 for the split rationale.
+  # gate is only visible at publish time via build-and-push. Push
+  # events fire only on `main`, handled by `promote` (re-tag, or
+  # rebuild in its fallback) — no PR-style image bytes to validate
+  # here. See ADR-0011 for the split rationale.
   #
   # Scans BOTH app and backup images at PR time (#219). The backup
   # image's `FROM ghcr.io/.../projekt-manager:${APP_IMAGE_TAG}` would
@@ -614,7 +615,7 @@ jobs:
           # points at the synthetic merge commit; we want the head SHA
           # so the chip identifies the bytes the contributor is actually
           # iterating on. Falls back to `github.sha` for non-PR events
-          # (push to iteration branches still exercises this job).
+          # (workflow_dispatch still exercises this job).
           build-args: |
             GIT_SHA=${{ github.event.pull_request.head.sha || github.sha }}
           cache-from: type=gha
@@ -707,8 +708,8 @@ jobs:
   # Build, scan, smoke, and push the production images to GHCR.
   # Single source of truth lives in .github/actions/build-scan-push —
   # this job is the entry point for `workflow_dispatch` (operator
-  # feature-branch dispatch) and for direct pushes to iteration
-  # branches. Pushes to `main` go through `promote` below instead;
+  # feature-branch dispatch). Pushes to `main` go through `promote`
+  # below instead;
   # `promote` re-tags the dispatched artifact rather than rebuilding,
   # and falls through to this same composite action if the promote
   # guards fail. See ADR-0011 §"Build once, promote on merge" and
@@ -718,9 +719,7 @@ jobs:
   # commit that fails tests, lint, type-check, or static analysis.
   # ---------------------------------------------------------------
   build-and-push:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref != 'refs/heads/main')
+    if: github.event_name == 'workflow_dispatch'
     needs: [check, lint]
     runs-on: ubuntu-latest
     permissions:

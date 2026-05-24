@@ -49,6 +49,24 @@ function readAfterStatus(row: AuditLogRow | null): string | null {
   return typeof status === 'string' ? status : null;
 }
 
+/**
+ * Read the owning project's frozen label snapshot off an
+ * `attachment:add` row's `payload.after.projectLabel` (AC-219). Used by
+ * the `project.attachment_added` body so the notification names the
+ * affected project even after a later rename / archive. Returns null
+ * when the field is absent (legacy / malformed row) — the case falls
+ * back to the generic project body.
+ */
+function readAfterProjectLabel(row: AuditLogRow | null): string | null {
+  if (!row) return null;
+  const payload = row.payload;
+  if (typeof payload !== 'object' || payload === null) return null;
+  const after = (payload as { after?: unknown }).after;
+  if (typeof after !== 'object' || after === null) return null;
+  const projectLabel = (after as { projectLabel?: unknown }).projectLabel;
+  return typeof projectLabel === 'string' && projectLabel.length > 0 ? projectLabel : null;
+}
+
 const PROJECT_FALLBACK_BODY = 'Aktualisierung';
 const SYSTEM_FALLBACK_URL = '/verwaltung';
 
@@ -87,6 +105,18 @@ export function composePushPayload(
       return { title, body: label, url: projectUrl(auditRow) };
     }
 
+    case 'project.attachment_added': {
+      // Body identifies the affected project via the frozen
+      // `payload.after.projectLabel` snapshot (AC-219) and that a file
+      // was added. The click target is the project — resolved from the
+      // audit row's ANCESTOR link, NOT `entityId`: an `attachment` row's
+      // `entityId` is the attachment, the ancestor is `('project',
+      // projectId)` (AC-211, architecture.md §11.12).
+      const projectLabel = readAfterProjectLabel(auditRow);
+      const body = projectLabel ? `Neue Datei in ${projectLabel}` : 'Neue Datei hinzugefügt';
+      return { title, body, url: projectUrlFromAncestor(auditRow) };
+    }
+
     case 'backup.failed': {
       return {
         title,
@@ -117,4 +147,18 @@ function projectUrl(row: AuditLogRow | null): string {
   // rows, entityId is the project id too (set by ProjectCrudService so
   // the per-project activity feed renders without a second lookup).
   return `/projects/${row.entityId}`;
+}
+
+/**
+ * Resolve `/projects/:id` from the audit row's ANCESTOR link
+ * (`ancestorEntityId`) rather than `entityId`. Required for
+ * `project.attachment_added`: an `attachment` row's `entityId` is the
+ * attachment, while the ancestor is `('project', projectId)`
+ * (architecture.md §11.12, AC-211). Falls back to `/` only when the
+ * ancestor is absent — a defensive branch the catalog should never hit,
+ * since every `attachment:add` row carries a project ancestor (AC-219).
+ */
+function projectUrlFromAncestor(row: AuditLogRow | null): string {
+  if (!row || !row.ancestorEntityId) return '/';
+  return `/projects/${row.ancestorEntityId}`;
 }

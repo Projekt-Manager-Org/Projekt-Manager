@@ -4,14 +4,20 @@
  * Pins the single-write-path invariant (AC-177, ADR-0021) as it
  * applies to the attachment entity:
  *
- *   - Init writes exactly one `attachment:add` audit row with
- *     `entityType='attachment'`, `entityId=attachmentId`, and a payload
- *     `after` naming projectId, attachmentId, label, mimeType, sizeBytes.
+ *   - Complete (the `pending → ready` finalize) writes exactly one
+ *     `attachment:add` audit row with `entityType='attachment'`,
+ *     `entityId=attachmentId`, and a payload `after` naming attachmentId,
+ *     projectId, the owning project's label (`projectLabel`, frozen for
+ *     notification rendering), label, mimeType, sizeBytes. This is the
+ *     attachment's authoritative entry into the project.
+ *   - Init creates the `pending` row and writes NO audit row (an
+ *     allowlisted single-write-path exception, parity with the orphan
+ *     reaper's pending-row carve-out). An upload abandoned before
+ *     complete therefore leaves NO `attachment:add` row and never
+ *     surfaces on the activity feed.
  *   - Delete (= soft-hide, ADR-0022) writes exactly one `attachment:hide`
  *     audit row with `entityType='attachment'`, `entityId=attachmentId`,
  *     and a payload `before` naming the same fields.
- *   - Complete is a state-machine finalize — it produces NO audit
- *     row. The `attachment:add` entry is the authoritative record.
  *
  *   - AC-240: the `wrappedDek` / `wrappedThumbDek` columns MUST NOT
  *     appear in any `audit_log` `payload` JSON — neither as column
@@ -45,7 +51,7 @@ import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js
 import { createDatabase } from '../db/connection.js';
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
-import { binaryInitBody, photoInitBody } from '../../test/fixtures/attachmentInit.js';
+import { photoInitBody } from '../../test/fixtures/attachmentInit.js';
 
 const year = new Date().getFullYear();
 
@@ -86,6 +92,68 @@ async function projectIdByNumber(ownerToken: string, number: string): Promise<st
   return p.id;
 }
 
+/**
+ * Fetch the owning project's `number` + `title` so a test can assert the
+ * exact `projectLabel` snapshot on the `attachment:add` row equals
+ * `projectAuditLabel({ number, title })` — i.e. `"<number> <title>"`.
+ */
+async function projectNumberTitleById(
+  ownerToken: string,
+  id: string,
+): Promise<{ number: string; title: string }> {
+  const res = await authGet(ownerToken, '/api/projects?limit=200');
+  const p = (res.json().data as { id: string; number: string; title: string }[]).find(
+    (r) => r.id === id,
+  );
+  if (!p) throw new Error(`project ${id} not found`);
+  return { number: p.number, title: p.title };
+}
+
+/**
+ * Drive init → stage backing ciphertext bytes → complete for one
+ * attachment, returning its id. Shared by the tests that need a
+ * `ready` row carrying an `attachment:add` audit row (AC-219: the row
+ * is written at complete, not at init). Sizes match the photo fixture's
+ * ciphertext defaults (120_064 original + 8_064 thumbnail) and the
+ * content-type is the sentinel `application/octet-stream` (ADR-0024) so
+ * the complete-time HEAD verification passes.
+ */
+async function stageAndComplete(
+  ownerToken: string,
+  projectId: string,
+  initBody: Record<string, unknown>,
+): Promise<string> {
+  const initRes = await authPost(
+    ownerToken,
+    `/api/projects/${projectId}/attachments/init`,
+    initBody,
+  );
+  expect(initRes.statusCode).toBe(201);
+  const body = initRes.json();
+  const attachmentId = body.attachment.id as string;
+
+  const env = getEnv();
+  const s = createStorageClient({
+    endpoint: env.STORAGE_ENDPOINT!,
+    bucket: env.STORAGE_BUCKET,
+    accessKey: env.STORAGE_ACCESS_KEY!,
+    secretKey: env.STORAGE_SECRET_KEY!,
+  });
+  await s.upload(
+    body.attachment.originalKey,
+    Buffer.alloc(120_064, 0xff),
+    'application/octet-stream',
+  );
+  await s.upload(body.attachment.thumbKey, Buffer.alloc(8_064, 0xaa), 'application/octet-stream');
+
+  const completeRes = await authPost(
+    ownerToken,
+    `/api/projects/${projectId}/attachments/${attachmentId}/complete`,
+  );
+  expect(completeRes.statusCode).toBe(200);
+  return attachmentId;
+}
+
 describe('Attachment audit contract (AC-219)', () => {
   let ownerToken: string;
   let projectId: string;
@@ -101,21 +169,58 @@ describe('Attachment audit contract (AC-219)', () => {
   });
 
   // -------------------------------------------------------------------
-  // init → exactly one `attachment:add` audit row
+  // complete → exactly one `attachment:add` audit row (AC-219)
+  //
+  // The `attachment:add` row is written at the `pending → ready`
+  // finalize, NOT at init. We drive init+complete, asserting init alone
+  // produces zero audit rows and complete produces exactly one — and
+  // that row carries the full `payload.after` including the owning
+  // project's frozen `projectLabel`.
   // -------------------------------------------------------------------
-  it('init writes exactly one attachment:add row with entityType=attachment and expected payload fields', async () => {
-    const before = await countAuditRows();
-
+  it('complete writes exactly one attachment:add row with entityType=attachment and full payload.after including projectLabel', async () => {
+    // Init: stage the pending row + backing bytes WITHOUT completing
+    // yet, so we can pin the "init writes no audit row" leg before the
+    // finalize. (We can't reuse stageAndComplete here — it completes in
+    // one shot; this test needs the count between init and complete.)
     const initRes = await authPost(
       ownerToken,
       `/api/projects/${projectId}/attachments/init`,
-      binaryInitBody({ fileName: 'vertrag-audit.pdf', sizeBytes: 4321 }),
+      photoInitBody({ fileName: 'vertrag-audit.jpg', sizeBytes: 4321, label: 'foto' }),
     );
     expect(initRes.statusCode).toBe(201);
-    const attachmentId = initRes.json().attachment.id as string;
+    const body = initRes.json();
+    const attachmentId = body.attachment.id as string;
 
-    const after = await countAuditRows();
-    expect(after - before).toBe(1);
+    // Stage backing ciphertext bytes so the complete-time HEAD verify
+    // passes. Sizes match the photo fixture's ciphertext defaults
+    // (120_064 + 8_064); content-type is the sentinel per ADR-0024.
+    const env = getEnv();
+    const s = createStorageClient({
+      endpoint: env.STORAGE_ENDPOINT!,
+      bucket: env.STORAGE_BUCKET,
+      accessKey: env.STORAGE_ACCESS_KEY!,
+      secretKey: env.STORAGE_SECRET_KEY!,
+    });
+    await s.upload(
+      body.attachment.originalKey,
+      Buffer.alloc(120_064, 0xff),
+      'application/octet-stream',
+    );
+    await s.upload(body.attachment.thumbKey, Buffer.alloc(8_064, 0xaa), 'application/octet-stream');
+
+    // Init alone writes NO audit row (AC-219).
+    const afterInit = await countAuditRows();
+    expect(await fetchLatestAuditRow(attachmentId, 'attachment:add')).toBeNull();
+
+    const completeRes = await authPost(
+      ownerToken,
+      `/api/projects/${projectId}/attachments/${attachmentId}/complete`,
+    );
+    expect(completeRes.statusCode).toBe(200);
+
+    // Complete writes exactly one audit row.
+    const afterComplete = await countAuditRows();
+    expect(afterComplete - afterInit).toBe(1);
 
     const row = await fetchLatestAuditRow(attachmentId, 'attachment:add');
     expect(row).not.toBeNull();
@@ -136,57 +241,40 @@ describe('Attachment audit contract (AC-219)', () => {
     expect(payload.after).toBeDefined();
     expect(payload.after!.projectId).toBe(projectId);
     expect(payload.after!.attachmentId).toBe(attachmentId);
-    expect(payload.after!.label).toBe('rechnung');
-    expect(payload.after!.mimeType).toBe('application/pdf');
+    expect(payload.after!.label).toBe('foto');
+    expect(payload.after!.mimeType).toBe('image/jpeg');
     expect(payload.after!.sizeBytes).toBe(4321);
+
+    // `projectLabel` is the owning project's frozen label snapshot
+    // (AC-219; AC-211 reads it for `project.attachment_added` push
+    // bodies). It MUST equal projectAuditLabel(project) = `<number>
+    // <title>`. Fetch the project's number+title and assert exact
+    // equality — not just presence.
+    const { number, title } = await projectNumberTitleById(ownerToken, projectId);
+    expect(payload.after!.projectLabel).toBe(`${number} ${title}`);
   });
 
   // -------------------------------------------------------------------
-  // complete → NO audit row (state-machine finalize)
+  // init → NO audit row; an abandoned upload leaves no `attachment:add`
   // -------------------------------------------------------------------
-  it('complete writes zero audit rows — the attachment:add entry is authoritative', async () => {
-    // Seed a pending attachment with backing bytes so complete()
-    // succeeds. Counting audit rows must include whatever init
-    // produced; we record the "after init" mark and compare after
-    // complete.
+  it('init writes zero audit rows — an abandoned upload leaves no attachment:add row', async () => {
+    const before = await countAuditRows();
+
+    // Init ONLY — no backing bytes staged, no complete call. This is an
+    // upload abandoned before finalize (the orphan reaper, data-model.md
+    // §6.11, later removes the pending row + objects). It must produce no
+    // audit row (AC-219).
     const initRes = await authPost(
       ownerToken,
       `/api/projects/${projectId}/attachments/init`,
-      photoInitBody({ fileName: 'complete-zero-audit.jpg' }),
+      photoInitBody({ fileName: 'abandoned-upload.jpg' }),
     );
     expect(initRes.statusCode).toBe(201);
-    const body = initRes.json();
-    const attachmentId = body.attachment.id as string;
+    const attachmentId = initRes.json().attachment.id as string;
 
-    // Stage backing bytes so the HEAD verify succeeds. Sizes must match
-    // the persisted `ciphertextSizeBytes` / `ciphertextThumbSizeBytes`
-    // (fixture defaults: 120_064 + 8_064) and content-type must be the
-    // sentinel `application/octet-stream` per ADR-0024.
-    const env = getEnv();
-    const s = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-    });
-    await s.upload(
-      body.attachment.originalKey,
-      Buffer.alloc(120_064, 0xff),
-      'application/octet-stream',
-    );
-    await s.upload(body.attachment.thumbKey, Buffer.alloc(8_064, 0xaa), 'application/octet-stream');
-
-    const afterInit = await countAuditRows();
-
-    const completeRes = await authPost(
-      ownerToken,
-      `/api/projects/${projectId}/attachments/${attachmentId}/complete`,
-    );
-    expect(completeRes.statusCode).toBe(200);
-
-    const afterComplete = await countAuditRows();
-    // No new audit row from complete — spec AC-219.
-    expect(afterComplete - afterInit).toBe(0);
+    const after = await countAuditRows();
+    expect(after - before).toBe(0);
+    expect(await fetchLatestAuditRow(attachmentId, 'attachment:add')).toBeNull();
   });
 
   // -------------------------------------------------------------------
@@ -260,14 +348,14 @@ describe('Attachment audit contract (AC-219)', () => {
   // fixture seeding, yields one `entity_type='customer'` audit row.
   // -------------------------------------------------------------------
   it('attachment and non-attachment writes produce distinct entity_type audit rows', async () => {
-    // Attachment write → `entity_type='attachment'`.
-    const initRes = await authPost(
+    // Attachment write → `entity_type='attachment'`. The `attachment:add`
+    // row lands at complete (AC-219), so drive the full init→stage→
+    // complete flow via the shared helper to get the row.
+    const attachmentId = await stageAndComplete(
       ownerToken,
-      `/api/projects/${projectId}/attachments/init`,
-      binaryInitBody({ fileName: 'cross-entity.pdf', sizeBytes: 1000, label: 'sonstiges' }),
+      projectId,
+      photoInitBody({ fileName: 'cross-entity.jpg', label: 'foto' }),
     );
-    expect(initRes.statusCode).toBe(201);
-    const attachmentId = initRes.json().attachment.id as string;
 
     // Non-attachment write → `entity_type='customer'`.
     const customerRes = await authPost(ownerToken, '/api/customers', {
@@ -293,12 +381,12 @@ describe('Attachment audit contract (AC-219)', () => {
 // ---------------------------------------------------------------------
 // AC-240 — schema-level audit exclusion for wrappedDek / wrappedThumbDek
 //
-// Drives the full `attachment:add` (init) → `attachment:hide` (DELETE)
-// → `attachment:restore` flow and asserts each resulting `audit_log`
-// row's `payload` JSON contains NEITHER the column names `wrappedDek` /
-// `wrappedThumbDek` NOR the actual envelope bytes for the row. The
-// schema-level mechanism (declarative column tag) is the implementation
-// — this test is the AC consumer pinning the contract.
+// Drives the full `attachment:add` (complete) → `attachment:hide`
+// (DELETE) → `attachment:restore` flow and asserts each resulting
+// `audit_log` row's `payload` JSON contains NEITHER the column names
+// `wrappedDek` / `wrappedThumbDek` NOR the actual envelope bytes for the
+// row. The schema-level mechanism (declarative column tag) is the
+// implementation — this test is the AC consumer pinning the contract.
 //
 // The seeded row carries fixture wrapped envelopes set via direct INSERT
 // so the test can inspect them on the audit-log read. A regression
@@ -367,47 +455,49 @@ describe('AC-240: wrapped-DEK columns never appear in audit payloads', () => {
     }
   }
 
-  it('attachment:add (init) audit row does not carry wrappedDek by name or by bytes', async () => {
-    // Init goes through the route, so the only way to land deterministic
-    // wrapped envelopes onto the row is to pin the column values via DB
-    // touch right after init returns. Easier path: seed a `pending` row
-    // directly with the fixture envelopes, then call the route flow on
-    // a second row whose envelope the server wraps. Here the audit row
-    // for a route-driven init is what AC-240 pins — the route's
-    // wrapping must NOT surface in the audit payload regardless of the
-    // envelope's literal bytes. We pin both shape (no column name) AND
-    // bytes (the post-init row's wrapped_dek must not appear in any
-    // audit row for the entity).
-    const initRes = await authPost(
+  it('attachment:add (complete) audit row does not carry wrappedDek by name or by bytes', async () => {
+    // The `attachment:add` row is written at complete, not init (AC-219),
+    // so drive the full init→stage→complete flow via the shared helper
+    // to produce it. The route wraps the DEK server-side; AC-240 pins
+    // that the wrapped envelope must NOT surface in the audit payload —
+    // by column name OR by its literal bytes. We pin both shape (no
+    // column name) AND bytes (the row's actual wrapped_dek /
+    // wrapped_thumb_dek must not appear in any audit row for the entity).
+    const attachmentId = await stageAndComplete(
       ownerToken,
-      `/api/projects/${projectId}/attachments/init`,
-      binaryInitBody({ fileName: 'audit-init.pdf', sizeBytes: 200 }),
+      projectId,
+      photoInitBody({ fileName: 'audit-complete.jpg', label: 'foto' }),
     );
-    expect(initRes.statusCode).toBe(201);
-    const attachmentId = initRes.json().attachment.id as string;
 
-    // Read the row's actual wrapped envelope post-init for the
-    // bytes-by-value check.
+    // Read the row's actual wrapped envelopes (a photo populates both
+    // original + thumbnail) for the bytes-by-value check.
     const { db, pool } = createDatabase();
     let actualWrappedDek: string;
+    let actualWrappedThumbDek: string;
     try {
       const res = await db.execute(
-        sql`SELECT wrapped_dek FROM attachments WHERE id = ${attachmentId}`,
+        sql`SELECT wrapped_dek, wrapped_thumb_dek FROM attachments WHERE id = ${attachmentId}`,
       );
-      actualWrappedDek = (res.rows[0] as { wrapped_dek: string }).wrapped_dek;
+      const r = res.rows[0] as { wrapped_dek: string; wrapped_thumb_dek: string };
+      actualWrappedDek = r.wrapped_dek;
+      actualWrappedThumbDek = r.wrapped_thumb_dek;
     } finally {
       await pool.end();
     }
     expect(actualWrappedDek.length).toBeGreaterThan(0);
+    expect(actualWrappedThumbDek.length).toBeGreaterThan(0);
 
     const payloads = await fetchAuditPayloadStrings(attachmentId);
     expect(payloads.length).toBe(1); // exactly one attachment:add row
     for (const p of payloads) {
       expect(p).not.toContain('wrappedDek');
+      expect(p).not.toContain('wrappedThumbDek');
       expect(p).not.toContain('wrapped_dek');
+      expect(p).not.toContain('wrapped_thumb_dek');
       // The literal envelope bytes for THIS row (defence against a
       // smuggle-under-another-name regression).
       expect(p).not.toContain(actualWrappedDek);
+      expect(p).not.toContain(actualWrappedThumbDek);
     }
   });
 

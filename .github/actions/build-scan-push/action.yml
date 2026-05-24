@@ -4,15 +4,15 @@ description: >
   publishes them to GHCR under the supplied SHA tag and branch-slug tag,
   then runs the runtime smoke (compose up, schedule registration, one
   backup cycle). Single source of truth for the rebuild path — called
-  from the `workflow_dispatch` and `push: iteration/**` jobs directly,
-  and from the `promote` job's fallback when the promote guards fail.
+  from the `build-and-push` job (workflow_dispatch) directly, and from
+  the `promote` job's fallback when the promote guards fail.
 
 inputs:
   sha_tag:
     description: SHA-derived image tag (e.g. `sha-<commit>`). Used as APP_IMAGE_TAG in the smoke compose.
     required: true
   branch_slug_tag:
-    description: Branch-slug human-friendly fallback tag (e.g. `main`, `iteration-9-foo`).
+    description: Branch-slug human-friendly fallback tag (e.g. `main`, `233-live-activity-dock`).
     required: true
   github_token:
     description: GHCR auth token. Pass `secrets.GITHUB_TOKEN`.
@@ -76,8 +76,8 @@ runs:
         tags: projekt-manager-app:ci
         # Bake the commit SHA into the client bundle for the footer
         # version chip. `github.sha` is the merge-commit SHA on push to
-        # main; on iteration branches and workflow_dispatch it is the
-        # branch HEAD. Vite truncates to 7 chars before inlining.
+        # main; on workflow_dispatch it is the branch HEAD. Vite
+        # truncates to 7 chars before inlining.
         build-args: |
           GIT_SHA=${{ github.sha }}
         cache-from: type=gha
