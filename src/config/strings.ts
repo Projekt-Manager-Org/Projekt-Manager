@@ -71,6 +71,9 @@ export const STRINGS = {
     importJobActive:
       'Es läuft bereits ein Import-Auftrag. Bitte warten Sie, bis dieser abgeschlossen ist.',
     exportJobNotReady: 'Der Export-Auftrag ist noch nicht bereit zum Herunterladen.',
+    uploadOffsetConflict:
+      'Der Upload-Versatz stimmt nicht mit dem Server-Stand überein. Bitte vom angezeigten Versatz fortsetzen.',
+    uploadTooLarge: 'Der Upload überschreitet die angekündigte Dateigröße.',
   },
 
   entities: {

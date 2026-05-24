@@ -1,5 +1,5 @@
 /**
- * Periodic takeout staging reaper scheduler — data-model.md §6.14,
+ * Periodic takeout staging reaper scheduler — data-model.md §6.15,
  * AC-334.
  *
  * Thin caller over `createPeriodicSweeper` (see

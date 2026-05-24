@@ -1,18 +1,22 @@
 /**
- * Takeout staging reaper — ADR-0018 / ADR-0024, data-model.md §6.14,
+ * Takeout staging reaper — ADR-0018 / ADR-0024, data-model.md §6.15,
  * AC-334.
  *
- * Sweeps staged full-account export archives off the VPS-local staging
- * path once they age past the takeout staging TTL. Selects `ready`
- * export jobs whose `finished_at` is older than `now - ttlMinutes` and
- * whose `archive_ref` is non-null, deletes the staged file, and nulls
- * `archive_ref` — the row PERSISTS as operational metadata so the
- * download surface resolves the swept artifact to `404` rather than a
- * missing-job `404` (the distinction matters for the UI's resume probe).
+ * Sweeps staged full-account takeout archives off the VPS-local staging
+ * path once they age past the takeout staging TTL:
  *
- * `finished_at` is the staging clock for a `ready` artifact: it is the
- * moment the build completed and the archive became downloadable, so the
- * age predicate is anchored there (the test backdates `finished_at`).
+ *   - `ready` EXPORT jobs whose `finished_at` is older than `now - ttlMinutes`
+ *     and whose `archive_ref` is non-null.
+ *   - Terminal (`ready` OR `failed`) IMPORT jobs with the same age predicate
+ *     and a non-null `archive_ref`. Abandoned `pending`/`running` imports are
+ *     flipped to `failed` by the boot reaper first and then swept here.
+ *
+ * `archive_ref` is nulled after the staged file is deleted — the row
+ * PERSISTS as operational metadata so the download surface resolves the
+ * swept artifact to `404` rather than a missing-job `404`.
+ *
+ * `finished_at` is the staging clock: it is the moment the job reached its
+ * terminal state (the test backdates `finished_at` to exercise this).
  *
  * Operational-log contract (mirrors attachment-orphan-reaper.ts §6.11):
  * exactly one info line per run with fields `event`, `ttl_minutes`,
@@ -24,7 +28,7 @@
  */
 
 import { rm } from 'node:fs/promises';
-import { and, eq, isNotNull, lt } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
 import { dataExchangeJob } from '../db/schema.js';
@@ -68,16 +72,27 @@ export async function runTakeoutStagingReaper(deps: RunTakeoutStagingReaperDeps)
   const runAt = deps.now ?? new Date();
   const cutoff = new Date(runAt.getTime() - deps.ttlMinutes * MS_PER_MINUTE);
 
-  // Select aged `ready` export artifacts. The DELETE-of-file follows the
-  // SELECT and the archive_ref null is the authoritative "swept" signal;
-  // a file-delete fault cannot revive the reference.
+  // Select aged terminal artifacts with a non-null archiveRef:
+  //   - export jobs: status='ready' (exports only reach ready when built)
+  //   - import jobs: status IN ('ready','failed') (a failed import may have
+  //     an archiveRef if the upload completed before processing failed; a
+  //     ready import always has one set by the runner)
+  // The DELETE-of-file follows the SELECT and the archive_ref null is the
+  // authoritative "swept" signal; a file-delete fault cannot revive the ref.
   const aged = await deps.db
     .select({ id: dataExchangeJob.id, archiveRef: dataExchangeJob.archiveRef })
     .from(dataExchangeJob)
     .where(
       and(
-        eq(dataExchangeJob.kind, 'export'),
-        eq(dataExchangeJob.status, 'ready'),
+        or(
+          // export: only ever ready when it has an archive
+          and(eq(dataExchangeJob.kind, 'export'), eq(dataExchangeJob.status, 'ready')),
+          // import: both terminal states can carry an archiveRef
+          and(
+            eq(dataExchangeJob.kind, 'import'),
+            inArray(dataExchangeJob.status, ['ready', 'failed']),
+          ),
+        ),
         isNotNull(dataExchangeJob.archiveRef),
         lt(dataExchangeJob.finishedAt, cutoff),
       ),

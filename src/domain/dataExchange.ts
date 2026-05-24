@@ -252,6 +252,14 @@ export interface ImportOptions {
    * request body omitted the field entirely.
    */
   confirmationPhrase: string | null;
+  /**
+   * When `false`, the `import_restored` audit row is suppressed. Defaults
+   * to `true` (the text-leg `/api/import` writes the row). The server-side
+   * import JOB sets this to `false` so it can write the single terminal
+   * `data_import` audit row itself — at the end of Pass 2, after attachment
+   * rows have been inserted — giving it sole audit ownership (AC-332).
+   */
+  writeAuditRow?: boolean;
 }
 
 export interface ValidationIssue {

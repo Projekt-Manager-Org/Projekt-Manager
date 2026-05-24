@@ -18,7 +18,7 @@
  * session cleanup (`deleteExpiredSessions`). NOT a scheduled sweep — a job can
  * only be abandoned by a restart, so boot is the only moment it occurs.
  *
- * Operational-log contract mirrors the staging reaper (§6.14): exactly one
+ * Operational-log contract mirrors the staging reaper (§6.15): exactly one
  * info line with `event`, `reaped_count` (non-negative; 0 on no-op), `ran_at`
  * (ISO 8601). A per-file unlink fault is logged on the error channel and the
  * row stays `failed` — the slot-freeing UPDATE is the load-bearing effect; a
@@ -58,15 +58,19 @@ export async function reapAbandonedDataExchangeJobs(
     .update(dataExchangeJob)
     .set({ status: 'failed', errorDetail: BOOT_REAP_DETAIL, finishedAt: now, updatedAt: now })
     .where(inArray(dataExchangeJob.status, ['pending', 'running']))
-    .returning({ id: dataExchangeJob.id });
+    .returning({ id: dataExchangeJob.id, kind: dataExchangeJob.kind });
 
   for (const job of reaped) {
-    // Staged archive name is deterministic (`<jobId>.zip`). A pending job
-    // may have written no file yet; a running one may have a partial. The
-    // archive_ref column is unset on a failed row, so the path is rebuilt
-    // from the job id rather than read back. `force: true` makes the
-    // absent-file case a no-op.
-    const stagedPath = path.join(deps.stagingDir, `${job.id}.zip`);
+    // Staged archive name is deterministic and KIND-specific: the export
+    // builder stages `<jobId>.zip`; the import upload stages
+    // `import-<jobId>.zip` (routes/import-jobs.ts). A pending job may have
+    // written no file yet; a running one may have a partial. The path is
+    // rebuilt from id+kind rather than read back (archive_ref may be null on
+    // a pending row). `force: true` makes the absent-file case a no-op.
+    const stagedPath = path.join(
+      deps.stagingDir,
+      job.kind === 'import' ? `import-${job.id}.zip` : `${job.id}.zip`,
+    );
     try {
       await rm(stagedPath, { force: true });
     } catch (err) {

@@ -28,6 +28,8 @@ export type ErrorCode =
   | 'EXPORT_JOB_ACTIVE'
   | 'IMPORT_JOB_ACTIVE'
   | 'EXPORT_JOB_NOT_READY'
+  | 'UPLOAD_OFFSET_CONFLICT'
+  | 'UPLOAD_TOO_LARGE'
   | 'BULK_LIMIT_EXCEEDED'
   | 'DEK_UNWRAP_FAILED'
   // Invoice + company-profile domain (ADR-0026, api.md §14.4).
@@ -173,6 +175,25 @@ export function importJobActive(activeJobId: string): AppError {
  */
 export function exportJobNotReady(): AppError {
   return new AppError('EXPORT_JOB_NOT_READY', STRINGS.errors.exportJobNotReady, 409);
+}
+
+/**
+ * Resumable-upload chunk PATCHed at an offset other than the server's
+ * current one (api.md §14.2.4 "Import job — resumable upload"). 409: the
+ * server offset is unchanged, so a retried chunk at the correct offset is
+ * safe (idempotent retry).
+ */
+export function uploadOffsetConflict(): AppError {
+  return new AppError('UPLOAD_OFFSET_CONFLICT', STRINGS.errors.uploadOffsetConflict, 409);
+}
+
+/**
+ * Resumable-upload chunk whose bytes would extend past the declared
+ * `Upload-Length` (api.md §14.2.4). 413: the write is rejected wholesale
+ * and the server offset does not advance.
+ */
+export function uploadTooLarge(): AppError {
+  return new AppError('UPLOAD_TOO_LARGE', STRINGS.errors.uploadTooLarge, 413);
 }
 
 /**

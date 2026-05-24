@@ -35,6 +35,13 @@ export type DataExchangeJob = typeof dataExchangeJob.$inferSelect;
 export interface RunningInit {
   filesTotal?: number;
   bytesTotal?: number;
+  /**
+   * Staged archive path. The import job stamps this at `markRunning` (when
+   * the upload completes) so the staging reaper ([data-model.md §6.15]) can
+   * locate the file for a terminal job — ready OR failed. The export job
+   * leaves it unset here and stamps it at `markReady` instead.
+   */
+  archiveRef?: string;
 }
 
 /** Incremental progress; `currentItem` is the file/label being processed. */
@@ -71,6 +78,7 @@ export class DataExchangeJobService {
       startedAt: new Date(),
       ...(init.filesTotal !== undefined ? { filesTotal: init.filesTotal } : {}),
       ...(init.bytesTotal !== undefined ? { bytesTotal: init.bytesTotal } : {}),
+      ...(init.archiveRef !== undefined ? { archiveRef: init.archiveRef } : {}),
     });
   }
 

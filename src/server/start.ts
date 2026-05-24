@@ -327,7 +327,7 @@ async function start(): Promise<void> {
     },
   });
 
-  // Takeout staging reaper (AC-334 / data-model.md §6.14). Sweeps `ready`
+  // Takeout staging reaper (AC-334 / data-model.md §6.15). Sweeps `ready`
   // export-job archives off the VPS-local staging path once they age past
   // TAKEOUT_STAGING_TTL_MINUTES, nulling `archive_ref` so the download
   // 404s. Reuses the attachment reaper's storage client (the staged

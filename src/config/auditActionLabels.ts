@@ -64,6 +64,11 @@ export const AUDIT_ACTION_KEYS = [
   // (export_built) or the failure detail (export_failed).
   'export_built',
   'export_failed',
+  // Full-account IMPORT-job terminal failure (api.md §14.2.4 "Jobs —
+  // audit"). The success path reuses `import_restored` (shared with the
+  // text-leg /api/import); a job that fails writes one `import_failed`
+  // row, entity_type='data_import', the job id as entity_id.
+  'import_failed',
 ] as const;
 
 export type AuditActionKey = (typeof AUDIT_ACTION_KEYS)[number];
@@ -105,6 +110,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionKey, string> = {
   import_restored: 'Daten importiert',
   export_built: 'Export erstellt',
   export_failed: 'Export fehlgeschlagen',
+  import_failed: 'Import fehlgeschlagen',
 };
 
 /**

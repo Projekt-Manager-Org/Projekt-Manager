@@ -523,6 +523,26 @@ export class ImportService {
   ) {}
 
   /**
+   * Whether the importable target carries any data — the EXISTS probe the
+   * override / dry-run paths run, exposed for the import JOB's create-time
+   * destructive guard (api.md §14.2.4, AC-329). `users` and `company_profile`
+   * are excluded (they always carry the bootstrap admin + the baseline-seeded
+   * singleton), so a fresh install reads as empty (issue #230).
+   */
+  async isTargetNonEmpty(): Promise<boolean> {
+    const res = await this.db.execute<{ present: boolean }>(
+      sql`SELECT (
+        EXISTS (SELECT 1 FROM customers)
+        OR EXISTS (SELECT 1 FROM projects)
+        OR EXISTS (SELECT 1 FROM project_workers)
+        OR EXISTS (SELECT 1 FROM invoices)
+        OR EXISTS (SELECT 1 FROM attachments)
+      ) AS present`,
+    );
+    return res.rows[0]?.present === true;
+  }
+
+  /**
    * Resolve which of `ids` are present in `envelope.users`.
    *
    * Issue #230: refs (`createdBy`, `updatedBy`, `project_workers.userId`,
@@ -752,30 +772,40 @@ export class ImportService {
         // the post-commit hide demotes them to noncurrent and the
         // existing lifecycle policy reaps them on its own clock.
         keysToHide = await listAllKeys(tx);
-        // Order of tables in TRUNCATE is immaterial under CASCADE, but
-        // listing the dependents-first reads more naturally. Note:
-        // `company_profile` and `invoice_sequence` are listed
-        // explicitly — they have no FK back to the rest of the wipe
-        // set so CASCADE alone would not reach them.
+        // Two-step wipe to preserve operational / permanent tables:
+        //
+        // Step A — TRUNCATE the pure-business and session tables that have
+        // no FK references from outside the wipe set. CASCADE is NOT used
+        // here to avoid accidentally wiping audit_log, data_exchange_job,
+        // notification_rule (all carry FK SET NULL back to users and must
+        // survive the restore so the operator can reattach to their job).
+        //
+        //   sessions, push_subscriptions — ON DELETE CASCADE from users;
+        //     wiped here so the TRUNCATE users (step B) has no live referrers.
+        //   company_profile, invoice_sequence — no FK back to the wipe set,
+        //     so CASCADE would NOT reach them; listed explicitly.
+        //
+        // Step B — DELETE FROM users (not TRUNCATE) so that Postgres honours
+        //   the ON DELETE SET NULL FKs: audit_log.actor_id, data_exchange_job.
+        //   created_by, and notification_rule.created_by are all NULLed rather
+        //   than deleted. TRUNCATE does NOT honour ON DELETE actions; DELETE
+        //   does. RESTART IDENTITY covers the sequences reset.
         await tx.execute(
           sql`TRUNCATE TABLE
+            sessions,
+            push_subscriptions,
             attachments,
             invoices,
             invoice_sequence,
             project_workers,
+            project_storage_usage,
             projects,
             customers,
-            company_profile,
-            users
-          RESTART IDENTITY CASCADE`,
+            company_profile
+          RESTART IDENTITY`,
         );
-        // The wipe cascaded to `sessions` (ON DELETE CASCADE on users)
-        // only when a `users` row existed pre-wipe. On the empty-users
-        // path (no rows to CASCADE — fresh install before the
-        // ADR-0010 bootstrap, or a deliberately user-less state), no
-        // session is dropped; `sessionInvalidated` stays false and no
-        // import token is needed (AC-310). The caller's still-valid
-        // session cookie carries the binary leg.
+        // Step B: DELETE users — honours SET NULL FKs (audit_log, data_exchange_job, ...).
+        await tx.execute(sql`DELETE FROM users`);
         sessionInvalidated = usersExisted;
       }
 
@@ -888,22 +918,28 @@ export class ImportService {
         attachments: 0,
       };
       const totalRecords = Object.values(counts).reduce((sum, n) => sum + n, 0);
-      await tx.insert(auditLog).values({
-        actorKind: 'system',
-        actorId: null,
-        actorReason: 'data_import',
-        entityType: 'data_import',
-        entityId: batchId,
-        // German operator-facing label; the activity feed renders it
-        // verbatim (data-model.md §5.10). Concrete row count gives the
-        // operator something useful, not a UUID.
-        entityLabel: `Import: ${totalRecords} Datensätze`,
-        action: 'import_restored',
-        payload: { counts },
-        ancestorEntityType: null,
-        ancestorEntityId: null,
-        correlationId: null,
-      });
+      // The server-side import JOB suppresses this row (`writeAuditRow:false`)
+      // so it can write the single terminal `data_import` audit row itself after
+      // attachment rows are inserted — giving the job sole audit ownership (AC-332).
+      // The text-leg `/api/import` leaves `writeAuditRow` undefined (defaults true).
+      if (opts.writeAuditRow !== false) {
+        await tx.insert(auditLog).values({
+          actorKind: 'system',
+          actorId: null,
+          actorReason: 'data_import',
+          entityType: 'data_import',
+          entityId: batchId,
+          // German operator-facing label; the activity feed renders it
+          // verbatim (data-model.md §5.10). Concrete row count gives the
+          // operator something useful, not a UUID.
+          entityLabel: `Import: ${totalRecords} Datensätze`,
+          action: 'import_restored',
+          payload: { counts },
+          ancestorEntityType: null,
+          ancestorEntityId: null,
+          correlationId: null,
+        });
+      } // end writeAuditRow guard
     });
 
     // Post-commit project-list invalidation (AC-276). Both non-dry-run
