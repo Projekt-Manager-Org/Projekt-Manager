@@ -158,6 +158,7 @@ export const MANIFEST_TABLES: ReadonlyArray<{
   { name: 'audit_log', pkColumns: ['id'] },
   { name: 'company_profile', pkColumns: ['id'] },
   { name: 'customers', pkColumns: ['id'] },
+  { name: 'data_exchange_job', pkColumns: ['id'] },
   { name: 'invoice_sequence', pkColumns: ['year', 'kind'] },
   { name: 'invoices', pkColumns: ['id'] },
   { name: 'meta_backup_status', pkColumns: ['singleton'] },
