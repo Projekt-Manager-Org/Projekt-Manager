@@ -15,7 +15,6 @@ The methodology is therefore to arrive at confidence in sequential steps. Each a
 **Human-made** - ultimate source of truth, can still be questioned and discussed:
 
 - **Kickoff**: [docs/project/kickoff.md](docs/project/kickoff.md) - the guiding light of the project, the ultimate truth
-- **Plan**: [docs/project/plan.md](docs/project/plan.md) - iteration plan, search for `**CURRENT**`
 - **Conventions**: [CONTRIBUTING.md](CONTRIBUTING.md) and category-specific: `review/conventions-*.md`
 
 **AI-made, human scrutiny** - second level truth/trust, can be questioned and discussed:
