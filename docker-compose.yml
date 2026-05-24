@@ -133,6 +133,12 @@ services:
       ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES: ${ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES:-}
       ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES: ${ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES:-}
       ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES: ${ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES:-}
+      # Full-account takeout staging (ADR-0018 / ADR-0024, architecture.md
+      # §12.2). TTL is [C]; both default in the env.ts Zod schema (1440 min
+      # / OS-temp path, mirroring the ATTACHMENT reaper TTLs). Leave blank
+      # to use the defaults.
+      TAKEOUT_STAGING_TTL_MINUTES: ${TAKEOUT_STAGING_TTL_MINUTES:-}
+      TAKEOUT_STAGING_DIR: ${TAKEOUT_STAGING_DIR:-}
       # Invoice retention (ADR-0026, architecture.md §12.2). Object-Lock
       # days for rendered invoice PDF/A-3 binaries; 0 disables the
       # boot-time retention assertion (dev), 3650 in production (§147 AO).

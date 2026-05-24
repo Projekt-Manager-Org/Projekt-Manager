@@ -65,6 +65,12 @@ export const STRINGS = {
       'Genau eines von „ids" oder „filter" angeben — nicht beides und nicht keines.',
     exportTooLarge: (total: number, cap: number) =>
       `Der Filter trifft ${total} Rechnungen — Export ist auf ${cap} pro Anfrage begrenzt. Bitte den Filter eingrenzen (z. B. nach Jahr).`,
+    // Full-account takeout jobs (ADR-0018 / api.md §14.2.4).
+    exportJobActive:
+      'Es läuft bereits ein Export-Auftrag. Bitte warten Sie, bis dieser abgeschlossen ist.',
+    importJobActive:
+      'Es läuft bereits ein Import-Auftrag. Bitte warten Sie, bis dieser abgeschlossen ist.',
+    exportJobNotReady: 'Der Export-Auftrag ist noch nicht bereit zum Herunterladen.',
   },
 
   entities: {

@@ -24,6 +24,10 @@ export type ErrorCode =
   | 'TARGET_NOT_EMPTY'
   | 'RESTORE_CONFIRMATION_MISMATCH'
   | 'MISSING_USER_REFS'
+  // Full-account takeout jobs (ADR-0018, api.md §14.2.4 / §14.4.1).
+  | 'EXPORT_JOB_ACTIVE'
+  | 'IMPORT_JOB_ACTIVE'
+  | 'EXPORT_JOB_NOT_READY'
   | 'BULK_LIMIT_EXCEEDED'
   | 'DEK_UNWRAP_FAILED'
   // Invoice + company-profile domain (ADR-0026, api.md §14.4).
@@ -145,6 +149,30 @@ export interface MissingUserRefsDetails {
 
 export function missingUserRefs(details: MissingUserRefsDetails): AppError {
   return new AppError('MISSING_USER_REFS', STRINGS.errors.missingUserRefs, 422, details);
+}
+
+/**
+ * A full-account export/import job create collided with one already
+ * `pending`/`running` (api.md §14.2.4 "Jobs — one active per kind").
+ * The active job's id rides in `details.activeJobId` so the UI
+ * re-attaches to the running build rather than starting a second.
+ */
+export function exportJobActive(activeJobId: string): AppError {
+  return new AppError('EXPORT_JOB_ACTIVE', STRINGS.errors.exportJobActive, 409, { activeJobId });
+}
+
+export function importJobActive(activeJobId: string): AppError {
+  return new AppError('IMPORT_JOB_ACTIVE', STRINGS.errors.importJobActive, 409, { activeJobId });
+}
+
+/**
+ * Download requested on an export job that has not reached `ready`
+ * (api.md §14.2.4 "Export job — download"). 409 (not 404): the job
+ * exists, the artifact is simply not built yet — the client polls and
+ * retries.
+ */
+export function exportJobNotReady(): AppError {
+  return new AppError('EXPORT_JOB_NOT_READY', STRINGS.errors.exportJobNotReady, 409);
 }
 
 /**

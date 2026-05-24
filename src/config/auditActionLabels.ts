@@ -57,6 +57,13 @@ export const AUDIT_ACTION_KEYS = [
   // entity_type='data_import' with a synthetic batch UUID for entity_id;
   // payload carries per-slot counts.
   'import_restored',
+  // Full-account export-job terminal events (ADR-0018, api.md §14.2.4
+  // "Jobs — audit"). One row per job at its terminal transition,
+  // entity_type='data_import' (the synthetic deployment-level type) with
+  // the job id as entity_id; payload carries the file/byte totals
+  // (export_built) or the failure detail (export_failed).
+  'export_built',
+  'export_failed',
 ] as const;
 
 export type AuditActionKey = (typeof AUDIT_ACTION_KEYS)[number];
@@ -96,6 +103,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionKey, string> = {
   'invoice:issue': 'Rechnung ausgestellt',
   'invoice:cancel': 'Rechnung storniert',
   import_restored: 'Daten importiert',
+  export_built: 'Export erstellt',
+  export_failed: 'Export fehlgeschlagen',
 };
 
 /**

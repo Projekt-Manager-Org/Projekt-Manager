@@ -20,7 +20,7 @@
  * job does not emit a thousand SSE frames.
  */
 
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
 import { dataExchangeJob } from '../db/schema.js';
 import { emitDataExchangeJobChanged } from '../sse/emitters.js';
@@ -39,6 +39,16 @@ export interface RunningInit {
 
 /** Incremental progress; `currentItem` is the file/label being processed. */
 export interface ProgressUpdate {
+  /**
+   * Total work units known once the build has enumerated its input.
+   * `markRunning` seeds them when the totals are known up front; the
+   * export builder enumerates the `ready` attachment set lazily, so it
+   * carries `filesTotal`/`bytesTotal` on its first progress tick instead
+   * (data-model.md §5.18). `bytesTotal` is the byte readout's denominator
+   * (ui/daten.md §8.11).
+   */
+  filesTotal?: number;
+  bytesTotal?: number;
   filesDone?: number;
   bytesDone?: number;
   currentItem?: string | null;
@@ -67,6 +77,8 @@ export class DataExchangeJobService {
   /** Advance the progress counters / current-item readout. Caller throttles. */
   async updateProgress(id: string, p: ProgressUpdate): Promise<DataExchangeJob> {
     return this.updateAndEmit(id, {
+      ...(p.filesTotal !== undefined ? { filesTotal: p.filesTotal } : {}),
+      ...(p.bytesTotal !== undefined ? { bytesTotal: p.bytesTotal } : {}),
       ...(p.filesDone !== undefined ? { filesDone: p.filesDone } : {}),
       ...(p.bytesDone !== undefined ? { bytesDone: p.bytesDone } : {}),
       ...(p.currentItem !== undefined ? { currentItem: p.currentItem } : {}),
@@ -89,6 +101,27 @@ export class DataExchangeJobService {
       .select()
       .from(dataExchangeJob)
       .where(eq(dataExchangeJob.id, id))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * The currently-active (`pending` or `running`) job of a kind, or
+   * `null` — backs the one-active-per-kind gate on create (api.md
+   * §14.2.4). In-process single-operator execution means at most one
+   * such row exists; `desc(createdAt)` is a defensive tiebreaker.
+   */
+  async activeOfKind(kind: DataExchangeJobKind): Promise<DataExchangeJob | null> {
+    const [row] = await this.db
+      .select()
+      .from(dataExchangeJob)
+      .where(
+        and(
+          eq(dataExchangeJob.kind, kind),
+          inArray(dataExchangeJob.status, ['pending', 'running']),
+        ),
+      )
+      .orderBy(desc(dataExchangeJob.createdAt))
       .limit(1);
     return row ?? null;
   }
