@@ -1,28 +1,25 @@
 /**
- * Phase-specific render branches for `VollstaendigerImportDialog`.
+ * Phase-specific render branches for `VollstaendigerImportDialog` (the
+ * server-side import-job flow, ui/daten.md §8.11.2).
  *
- * Mirrors `VollstaendigerExportDialog.views.tsx` — extracted to keep
- * the dialog file under the C-SIZE ceiling. Each phase view renders
- * the shared `DialogShell` with its phase-specific body and actions.
+ * Each view renders the shared `DialogShell` with its phase body + actions.
+ * The shell carries a CONSTANT `import-job-dialog` testid on the dialog div
+ * (the e2e scopes dialog-presence to it) + `import-job-overlay` on the overlay,
+ * plus a per-phase testid on the body (`import-job-confirm` / `-uploading` /
+ * `-processing` / `-summary` / `-error`). Mirrors
+ * `VollstaendigerExportDialog.views.tsx`; kept local to this module.
  */
 
 import { type ReactNode, type RefObject } from 'react';
 import { STRINGS } from '@/config/strings';
 import { RESTORE_CONFIRMATION_PHRASE } from '@/config/dataExchangeConfig';
+import type { DataExchangeJobDto } from '@/state/importJobStore';
 import { formatBytes } from '@/ui/utils/formatBytes';
-import type {
-  ParsingPhase,
-  PreflightPhase,
-  ProgressPhase,
-  SummaryPhase,
-  ErrorPhase,
-  TokenInvalidPhase,
-} from './useImportAllRunner';
 import styles from './VollstaendigerImportDialog.module.css';
 
 interface DialogShellProps {
   dialogRef: RefObject<HTMLDivElement | null>;
-  testId: string;
+  phaseTestId: string;
   titleId: string;
   bodyId: string;
   title: string;
@@ -31,9 +28,9 @@ interface DialogShellProps {
 }
 
 function DialogShell(props: DialogShellProps) {
-  const { dialogRef, testId, titleId, bodyId, title, body, actions } = props;
+  const { dialogRef, phaseTestId, titleId, bodyId, title, body, actions } = props;
   return (
-    <div className={styles.overlay} data-testid="import-all-overlay">
+    <div className={styles.overlay} data-testid="import-job-overlay">
       <div
         ref={dialogRef}
         className={styles.dialog}
@@ -41,12 +38,12 @@ function DialogShell(props: DialogShellProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
-        data-testid={testId}
+        data-testid="import-job-dialog"
       >
         <h2 id={titleId} className={styles.title}>
           {title}
         </h2>
-        <div id={bodyId} className={styles.body}>
+        <div id={bodyId} className={styles.body} data-testid={phaseTestId}>
           {body}
         </div>
         <div className={styles.actions}>{actions}</div>
@@ -55,127 +52,80 @@ function DialogShell(props: DialogShellProps) {
   );
 }
 
-export interface ParsingViewProps {
-  phase: ParsingPhase;
-  dialogRef: RefObject<HTMLDivElement | null>;
-}
-
-export function ParsingView(props: ParsingViewProps) {
-  const { dialogRef } = props;
-  return (
-    <DialogShell
-      dialogRef={dialogRef}
-      testId="import-parsing"
-      titleId="import-parsing-title"
-      bodyId="import-parsing-body"
-      title={STRINGS.dataExchange.importPreflightTitle}
-      body={<div className={styles.readoutLine}>{STRINGS.dataExchange.importParsing}</div>}
-      actions={null}
-    />
-  );
-}
-
-export interface PreflightViewProps {
-  phase: PreflightPhase;
+export interface ConfirmViewProps {
   isMobile: boolean;
-  dialogRef: RefObject<HTMLDivElement | null>;
-  initialFocusRef: RefObject<HTMLButtonElement | null>;
   phraseInput: string;
   onPhraseInputChange: (v: string) => void;
+  /** True while the typed value matches the configured phrase (AC-161 gate). */
+  phraseMatches: boolean;
+  /** True while a create/upload is in flight — blocks a double-create. */
+  startDisabled: boolean;
+  /** Set when the server rejected the create-time destructive guard. */
+  showMismatch: boolean;
+  dialogRef: RefObject<HTMLDivElement | null>;
+  initialFocusRef: RefObject<HTMLInputElement | null>;
   onCancel: () => void;
   onConfirm: () => void;
 }
 
-export function PreflightView(props: PreflightViewProps) {
+export function ConfirmView(props: ConfirmViewProps) {
   const {
-    phase,
     isMobile,
-    dialogRef,
-    initialFocusRef,
     phraseInput,
     onPhraseInputChange,
+    phraseMatches,
+    startDisabled,
+    showMismatch,
+    dialogRef,
+    initialFocusRef,
     onCancel,
     onConfirm,
   } = props;
-  const users = (phase.envelope.users ?? []).length;
-  const companyProfile = (phase.envelope.company_profile ?? []).length;
-  const customers = (phase.envelope.customers ?? []).length;
-  const projects = (phase.envelope.projects ?? []).length;
-  const assignments = (phase.envelope.project_workers ?? []).length;
-  const invoices = (phase.envelope.invoices ?? []).length;
-  const invoiceSequence = (phase.envelope.invoice_sequence ?? []).length;
   return (
     <DialogShell
       dialogRef={dialogRef}
-      testId="import-all-preflight"
-      titleId="import-all-preflight-title"
-      bodyId="import-all-preflight-body"
+      phaseTestId="import-job-confirm"
+      titleId="import-job-confirm-title"
+      bodyId="import-job-confirm-body"
       title={STRINGS.dataExchange.importPreflightTitle}
       body={
         <>
-          <div className={styles.readoutLine} data-testid="import-all-preflight-user-count">
-            {STRINGS.dataExchange.importPreflightUsers(users)}
-          </div>
-          {companyProfile > 0 && (
-            <div className={styles.readoutLine} data-testid="import-all-preflight-company-profile">
-              {STRINGS.dataExchange.importPreflightCompanyProfile}
-            </div>
-          )}
-          <div className={styles.readoutLine} data-testid="import-all-preflight-customer-count">
-            {STRINGS.dataExchange.importPreflightCustomers(customers)}
-          </div>
-          <div className={styles.readoutLine} data-testid="import-all-preflight-project-count">
-            {STRINGS.dataExchange.importPreflightProjects(projects)}
-          </div>
-          <div className={styles.readoutLine} data-testid="import-all-preflight-assignment-count">
-            {STRINGS.dataExchange.importPreflightAssignments(assignments)}
-          </div>
-          <div className={styles.readoutLine} data-testid="import-all-preflight-invoice-count">
-            {STRINGS.dataExchange.importPreflightInvoices(invoices)}
-          </div>
-          {invoiceSequence > 0 && (
-            <div className={styles.readoutLine} data-testid="import-all-preflight-invoice-sequence">
-              {STRINGS.dataExchange.importPreflightInvoiceSequence(invoiceSequence)}
-            </div>
-          )}
-          <div className={styles.readoutLine} data-testid="import-all-preflight-attachment-count">
-            {STRINGS.dataExchange.importPreflightAttachmentCount(phase.attachmentCount)}
-          </div>
+          {/* A full-account restore is ALWAYS destructive — no client dry-run
+              (AC-161), so the phrase gate is unconditional. */}
           <div
-            className={styles.readoutLine}
-            data-testid="import-all-preflight-size"
-            data-bytes-total={phase.totalBytes}
+            className={styles.destructiveNotice}
+            data-testid="import-job-destructive-notice"
+            role="note"
           >
-            {STRINGS.dataExchange.importPreflightSize(formatBytes(phase.totalBytes))}
+            {STRINGS.dataExchange.restoreDestructiveNotice}
           </div>
-          {phase.targetNonEmpty && (
-            <>
-              <div
-                className={styles.destructiveNotice}
-                data-testid="import-all-preflight-destructive-notice"
-                role="note"
-              >
-                {STRINGS.dataExchange.restoreDestructiveNotice}
-              </div>
-              <label className={styles.readoutLine} htmlFor="import-all-phrase-input">
-                {STRINGS.dataExchange.restorePhrasePrompt(RESTORE_CONFIRMATION_PHRASE)}
-              </label>
-              <input
-                id="import-all-phrase-input"
-                type="text"
-                className={styles.phraseInput}
-                value={phraseInput}
-                onChange={(e) => onPhraseInputChange(e.target.value)}
-                autoComplete="off"
-                spellCheck={false}
-                data-testid="import-all-phrase-input"
-              />
-            </>
+          <label className={styles.readoutLine} htmlFor="import-job-phrase-input">
+            {STRINGS.dataExchange.restorePhrasePrompt(RESTORE_CONFIRMATION_PHRASE)}
+          </label>
+          <input
+            ref={initialFocusRef}
+            id="import-job-phrase-input"
+            type="text"
+            className={styles.phraseInput}
+            value={phraseInput}
+            onChange={(e) => onPhraseInputChange(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            data-testid="import-job-phrase-input"
+          />
+          {showMismatch && (
+            <div
+              className={styles.destructiveNotice}
+              data-testid="import-job-confirm-mismatch"
+              role="alert"
+            >
+              {STRINGS.dataExchange.importConfirmMismatch}
+            </div>
           )}
           {isMobile && (
             <div
               className={styles.mobileWarning}
-              data-testid="import-all-preflight-mobile-warning"
+              data-testid="import-job-mobile-warning"
               role="note"
             >
               {STRINGS.dataExchange.importMobileWarning}
@@ -189,16 +139,16 @@ export function PreflightView(props: PreflightViewProps) {
             type="button"
             className={`${styles.button} ${styles.cancel}`}
             onClick={onCancel}
-            data-testid="import-all-preflight-cancel"
+            data-testid="import-job-cancel"
           >
             {STRINGS.dataExchange.importPreflightCancel}
           </button>
           <button
-            ref={initialFocusRef}
             type="button"
             className={`${styles.button} ${styles.confirm}`}
             onClick={onConfirm}
-            data-testid="import-all-preflight-confirm"
+            disabled={!phraseMatches || startDisabled}
+            data-testid="import-job-start"
           >
             {STRINGS.dataExchange.importPreflightConfirm}
           </button>
@@ -208,45 +158,80 @@ export function PreflightView(props: PreflightViewProps) {
   );
 }
 
-export interface ProgressViewProps {
-  phase: ProgressPhase;
+export interface UploadingViewProps {
+  job: DataExchangeJobDto;
+  /** Bytes uploaded to the VPS so far (client→VPS phase). */
+  uploadOffset: number;
   dialogRef: RefObject<HTMLDivElement | null>;
   initialFocusRef: RefObject<HTMLButtonElement | null>;
-  onCancel: () => void;
+  onClose: () => void;
 }
 
-export function ProgressView(props: ProgressViewProps) {
-  const { phase, dialogRef, initialFocusRef, onCancel } = props;
+export function UploadingView(props: UploadingViewProps) {
+  const { job, uploadOffset, dialogRef, initialFocusRef, onClose } = props;
   return (
     <DialogShell
       dialogRef={dialogRef}
-      testId="import-all-progress"
-      titleId="import-all-progress-title"
-      bodyId="import-all-progress-body"
-      title={STRINGS.dataExchange.importProgressTitle}
+      phaseTestId="import-job-uploading"
+      titleId="import-job-uploading-title"
+      bodyId="import-job-uploading-body"
+      title={STRINGS.dataExchange.importUploadingTitle}
+      body={
+        <div
+          className={styles.readoutLine}
+          data-testid="import-job-upload-bytes"
+          data-bytes-total={job.bytesTotal}
+          data-bytes-done={uploadOffset}
+        >
+          {STRINGS.dataExchange.importProgressBytes(
+            formatBytes(uploadOffset),
+            formatBytes(job.bytesTotal),
+          )}
+        </div>
+      }
+      actions={
+        <button
+          ref={initialFocusRef}
+          type="button"
+          className={`${styles.button} ${styles.cancel}`}
+          onClick={onClose}
+          data-testid="import-job-close"
+        >
+          {STRINGS.dataExchange.importSummaryClose}
+        </button>
+      }
+    />
+  );
+}
+
+export interface ProcessingViewProps {
+  job: DataExchangeJobDto;
+  dialogRef: RefObject<HTMLDivElement | null>;
+  initialFocusRef: RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}
+
+export function ProcessingView(props: ProcessingViewProps) {
+  const { job, dialogRef, initialFocusRef, onClose } = props;
+  return (
+    <DialogShell
+      dialogRef={dialogRef}
+      phaseTestId="import-job-processing"
+      titleId="import-job-processing-title"
+      bodyId="import-job-processing-body"
+      title={STRINGS.dataExchange.importProcessingTitle}
       body={
         <>
           <div
             className={styles.readoutLine}
-            data-testid="import-all-progress-counter"
-            data-files-total={phase.totalCount}
-            data-files-done={phase.filesDone}
+            data-testid="import-job-processing-counter"
+            data-files-total={job.filesTotal}
+            data-files-done={job.filesDone}
           >
-            {STRINGS.dataExchange.importProgressCounter(phase.filesDone, phase.totalCount)}
+            {STRINGS.dataExchange.importProgressCounter(job.filesDone, job.filesTotal)}
           </div>
-          <div
-            className={styles.readoutLine}
-            data-testid="import-all-progress-bytes"
-            data-bytes-total={phase.totalSizeBytes}
-            data-bytes-done={phase.bytesDone}
-          >
-            {STRINGS.dataExchange.importProgressBytes(
-              formatBytes(phase.bytesDone),
-              formatBytes(phase.totalSizeBytes),
-            )}
-          </div>
-          <div className={styles.currentFile} data-testid="import-all-progress-current-file">
-            {STRINGS.dataExchange.importProgressCurrentFile(phase.currentFile || '—')}
+          <div className={styles.currentFile} data-testid="import-job-current-item">
+            {STRINGS.dataExchange.importProgressCurrentFile(job.currentItem || '—')}
           </div>
         </>
       }
@@ -255,10 +240,10 @@ export function ProgressView(props: ProgressViewProps) {
           ref={initialFocusRef}
           type="button"
           className={`${styles.button} ${styles.cancel}`}
-          onClick={onCancel}
-          data-testid="import-all-cancel"
+          onClick={onClose}
+          data-testid="import-job-close"
         >
-          {STRINGS.dataExchange.importCancel}
+          {STRINGS.dataExchange.importSummaryClose}
         </button>
       }
     />
@@ -266,39 +251,31 @@ export function ProgressView(props: ProgressViewProps) {
 }
 
 export interface SummaryViewProps {
-  phase: SummaryPhase;
+  job: DataExchangeJobDto;
   dialogRef: RefObject<HTMLDivElement | null>;
   initialFocusRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }
 
 export function SummaryView(props: SummaryViewProps) {
-  const { phase, dialogRef, initialFocusRef, onClose } = props;
+  const { job, dialogRef, initialFocusRef, onClose } = props;
+  const skipped = Math.max(0, job.filesTotal - job.filesDone);
   return (
     <DialogShell
       dialogRef={dialogRef}
-      testId="import-all-summary"
-      titleId="import-all-summary-title"
-      bodyId="import-all-summary-body"
+      phaseTestId="import-job-summary"
+      titleId="import-job-summary-title"
+      bodyId="import-job-summary-body"
       title={STRINGS.dataExchange.importSummaryTitle}
       body={
         <>
-          <div className={styles.readoutLine} data-testid="import-all-summary-committed">
-            {STRINGS.dataExchange.importSummaryCommitted(phase.committedCount)}
+          <div className={styles.readoutLine} data-testid="import-job-restored">
+            {STRINGS.dataExchange.importSummaryCommitted(job.filesDone)}
           </div>
-          {phase.failures.length > 0 && (
-            <>
-              <div className={styles.skippedLine} data-testid="import-all-summary-skipped">
-                {STRINGS.dataExchange.importSummarySkipped(phase.failures.length)}
-              </div>
-              <ul className={styles.failureList} data-testid="import-all-summary-failures">
-                {phase.failures.map((f) => (
-                  <li key={f.attachmentId}>
-                    <code>{f.zipPath || f.attachmentId}</code>: {f.reason}
-                  </li>
-                ))}
-              </ul>
-            </>
+          {skipped > 0 && (
+            <div className={styles.skippedLine} data-testid="import-job-skipped">
+              {STRINGS.dataExchange.importSummarySkipped(skipped)}
+            </div>
           )}
         </>
       }
@@ -308,7 +285,7 @@ export function SummaryView(props: SummaryViewProps) {
           type="button"
           className={`${styles.button} ${styles.confirm}`}
           onClick={onClose}
-          data-testid="import-all-summary-close"
+          data-testid="import-job-close"
         >
           {STRINGS.dataExchange.importSummaryClose}
         </button>
@@ -317,64 +294,36 @@ export function SummaryView(props: SummaryViewProps) {
   );
 }
 
-export interface ErrorViewProps {
-  phase: ErrorPhase;
+export interface FailedViewProps {
+  job: DataExchangeJobDto;
   dialogRef: RefObject<HTMLDivElement | null>;
   initialFocusRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }
 
-export function ErrorView(props: ErrorViewProps) {
-  const { phase, dialogRef, initialFocusRef, onClose } = props;
+export function FailedView(props: FailedViewProps) {
+  const { job, dialogRef, initialFocusRef, onClose } = props;
   return (
     <DialogShell
       dialogRef={dialogRef}
-      testId="import-all-error"
-      titleId="import-all-error-title"
-      bodyId="import-all-error-body"
+      phaseTestId="import-job-error"
+      titleId="import-job-error-title"
+      bodyId="import-job-error-body"
       title={STRINGS.dataExchange.importError}
-      body={<div className={styles.readoutLine}>{phase.message}</div>}
+      body={
+        <div className={styles.readoutLine}>
+          {job.errorDetail || STRINGS.dataExchange.importError}
+        </div>
+      }
       actions={
         <button
           ref={initialFocusRef}
           type="button"
           className={`${styles.button} ${styles.confirm}`}
           onClick={onClose}
-          data-testid="import-all-error-close"
+          data-testid="import-job-error-close"
         >
           {STRINGS.dataExchange.importSummaryClose}
-        </button>
-      }
-    />
-  );
-}
-
-export interface TokenInvalidViewProps {
-  phase: TokenInvalidPhase;
-  dialogRef: RefObject<HTMLDivElement | null>;
-  initialFocusRef: RefObject<HTMLButtonElement | null>;
-  onClose: () => void;
-}
-
-export function TokenInvalidView(props: TokenInvalidViewProps) {
-  const { dialogRef, initialFocusRef, onClose } = props;
-  return (
-    <DialogShell
-      dialogRef={dialogRef}
-      testId="import-all-token-invalid"
-      titleId="import-all-token-invalid-title"
-      bodyId="import-all-token-invalid-body"
-      title={STRINGS.dataExchange.importTokenInvalidTitle}
-      body={<div className={styles.readoutLine}>{STRINGS.dataExchange.importTokenInvalidBody}</div>}
-      actions={
-        <button
-          ref={initialFocusRef}
-          type="button"
-          className={`${styles.button} ${styles.confirm}`}
-          onClick={onClose}
-          data-testid="import-all-token-invalid-close"
-        >
-          {STRINGS.dataExchange.importTokenInvalidClose}
         </button>
       }
     />

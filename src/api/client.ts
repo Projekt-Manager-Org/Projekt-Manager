@@ -116,6 +116,13 @@ interface RequestOptions {
    * authoritative on routes that opt into the token-aware middleware.
    */
   authToken?: string;
+  /**
+   * Extra request headers merged on top of the defaults (Content-Type when a
+   * body is present, Authorization when `authToken` is set). The import-job
+   * create uses this to carry the tus-style `Upload-Length` header alongside
+   * its JSON body.
+   */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -127,7 +134,11 @@ interface RequestOptions {
  */
 export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promise<ApiResult<T>> {
   const method = opts.method ?? 'GET';
-  const headers: Record<string, string> = {};
+  // Caller-supplied headers go FIRST; the Content-Type/Authorization defaults
+  // are applied after so they stay authoritative — a caller cannot accidentally
+  // desync the always-JSON-stringified body by overriding Content-Type. Used
+  // today only to carry the import-job `Upload-Length`.
+  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
@@ -1016,6 +1027,135 @@ export const invoicesApi = {
     }),
 
   pdfUrl: (id: string) => `/api/invoices/${id}/pdf`,
+};
+
+/**
+ * Data-exchange job DTO (api.md §14.2.4, data-model.md §5.18) — the client-
+ * facing projection of a `data_exchange_job` row. The server strips
+ * `archiveRef` (an absolute VPS staging path) and `createdBy` before sending
+ * (Finding F1): the client consumes neither. The counters back the progress
+ * readout; `currentItem` is the file/label currently being processed;
+ * `errorDetail` populates the failure view.
+ */
+export interface DataExchangeJobDto {
+  id: string;
+  kind: 'export' | 'import';
+  status: 'pending' | 'running' | 'ready' | 'failed';
+  filesTotal: number;
+  filesDone: number;
+  bytesTotal: number;
+  bytesDone: number;
+  currentItem: string | null;
+  errorDetail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+/**
+ * Full-account EXPORT job (api.md §14.2.4 "Export job"). The browser triggers,
+ * polls, and downloads; it never assembles the archive. `downloadPath` is a
+ * URL builder (not a fetch) — the dialog renders an `<a href download>` so the
+ * browser's native download manager handles the Range-resumable stream
+ * (parity with `invoicesApi.pdfUrl`).
+ */
+export const exportJobApi = {
+  getLatest: () => apiCall<{ job: DataExchangeJobDto | null }>('/api/export-jobs'),
+  get: (id: string) => apiCall<DataExchangeJobDto>(`/api/export-jobs/${id}`),
+  create: () => apiCall<DataExchangeJobDto>('/api/export-jobs', { method: 'POST' }),
+  downloadPath: (id: string) => `/api/export-jobs/${id}/download`,
+};
+
+/**
+ * Result of the raw-fetch tus-style chunk append. NOT an `ApiResult` — it
+ * reads the `Upload-Offset` response header and maps the status code (409
+ * `UPLOAD_OFFSET_CONFLICT` / 413 `UPLOAD_TOO_LARGE` / 401) rather than a JSON
+ * error body.
+ */
+export interface UploadOffsetResult {
+  ok: boolean;
+  status: number;
+  /** Server-authoritative byte offset after this call (current staged size). */
+  offset: number;
+}
+/** The offset probe additionally returns the declared total (Upload-Length). */
+export interface UploadHeadResult extends UploadOffsetResult {
+  length: number;
+}
+
+const OFFSET_OCTET_STREAM = 'application/offset+octet-stream';
+
+/**
+ * Full-account IMPORT job (api.md §14.2.4 "Import job"). `create` mints the job
+ * — the destructive guard (target emptiness + override + confirmation phrase)
+ * runs server-side AT create, before any upload. `headOffset` / `patchChunk`
+ * drive the resumable (tus-style) upload and are RAW fetches: Fastify needs the
+ * `application/offset+octet-stream` content-type and the offset rides in the
+ * `Upload-Offset` header, neither of which `apiCall` (JSON-only) handles.
+ */
+export const importJobApi = {
+  getLatest: () => apiCall<{ job: DataExchangeJobDto | null }>('/api/import-jobs'),
+  get: (id: string) => apiCall<DataExchangeJobDto>(`/api/import-jobs/${id}`),
+
+  create: (args: { uploadLength: number; override: boolean; phrase: string | null }) =>
+    apiCall<DataExchangeJobDto>('/api/import-jobs', {
+      method: 'POST',
+      body: { override: args.override, confirmation_phrase: args.phrase },
+      headers: { 'Upload-Length': String(args.uploadLength) },
+    }),
+
+  /** tus-style offset probe — current staged size + declared length. */
+  headOffset: async (id: string): Promise<UploadHeadResult> => {
+    try {
+      const res = await fetch(`/api/import-jobs/${id}/archive`, {
+        method: 'HEAD',
+        credentials: 'same-origin',
+      });
+      return {
+        ok: res.ok,
+        status: res.status,
+        offset: Number(res.headers.get('Upload-Offset') ?? '0'),
+        length: Number(res.headers.get('Upload-Length') ?? '0'),
+      };
+    } catch {
+      return { ok: false, status: 0, offset: 0, length: 0 };
+    }
+  },
+
+  /**
+   * Append one chunk at `offset`; returns the new server offset. A stale offset
+   * is rejected `409 UPLOAD_OFFSET_CONFLICT` with the offset unchanged
+   * (retry-safe — the caller re-reads via `headOffset` and resumes).
+   */
+  patchChunk: async (
+    id: string,
+    args: { offset: number; chunk: Blob; signal?: AbortSignal },
+  ): Promise<UploadOffsetResult> => {
+    try {
+      const res = await fetch(`/api/import-jobs/${id}/archive`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': OFFSET_OCTET_STREAM,
+          'Upload-Offset': String(args.offset),
+        },
+        body: args.chunk,
+        signal: args.signal,
+      });
+      // On success the server echoes the new Upload-Offset; on a 409 it leaves
+      // the offset unchanged and may omit the header — fall back to the request
+      // offset so the return is always deterministic.
+      const headerOffset = res.headers.get('Upload-Offset');
+      return {
+        ok: res.ok,
+        status: res.status,
+        offset: headerOffset !== null ? Number(headerOffset) : args.offset,
+      };
+    } catch {
+      return { ok: false, status: 0, offset: args.offset };
+    }
+  },
 };
 
 export type { AuthUser };

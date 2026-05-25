@@ -1,35 +1,25 @@
 /**
- * Phase-specific render branches for `VollstaendigerExportDialog`.
+ * Phase-specific render branches for `VollstaendigerExportDialog` (the
+ * server-side export-job flow, ui/daten.md §8.11.1).
  *
- * Extracted to keep the dialog file under the C-SIZE ceiling. Each
- * phase view renders the shared `DialogShell` with its phase-specific
- * body and actions; the shell itself owns the overlay + dialog chrome
- * and the a11y attributes (role, aria-modal, aria-labelledby,
- * aria-describedby).
- *
- * Notes on size: this file runs slightly over 200 LOC because each of
- * the four phase views carries a few `data-testid` / `aria-*` /
- * `data-*` attributes the E2E spec scopes its assertions to; merging
- * any two of them would force phase branching back inside a single
- * function. Argued exception accepted.
- *
- * Kept local to `src/ui/management/` rather than promoted to
- * `src/ui/common/`: `ConfirmDialog` has a structurally similar shell
- * but its body is a single `<p>` (not a div carrying multiple row
- * children), so collapsing the two would force a needless slot
- * abstraction. If a third dialog with the same body shape lands, lift
- * `DialogShell` into a shared module.
+ * Each view renders the shared `DialogShell` with its phase body + actions.
+ * The shell carries a CONSTANT `export-job-dialog` testid on the dialog div
+ * (the e2e scopes dialog-presence to it) plus a per-phase testid on the body
+ * (`export-job-preflight` / `-progress` / `-ready` / `-error`). Kept local to
+ * this module, mirroring the retiring dialog's split — see that file's note on
+ * the C-SIZE exception.
  */
 
 import { type ReactNode, type RefObject } from 'react';
 import { STRINGS } from '@/config/strings';
+import type { DataExchangeJobDto } from '@/state/exportJobStore';
 import { formatBytes } from '@/ui/utils/formatBytes';
-import type { PreflightPhase, ProgressPhase, SummaryPhase, ErrorPhase } from './useExportAllRunner';
+import { exportDownloadFilename } from '@/ui/utils/exportDownloadFilename';
 import styles from './VollstaendigerExportDialog.module.css';
 
 interface DialogShellProps {
   dialogRef: RefObject<HTMLDivElement | null>;
-  testId: string;
+  phaseTestId: string;
   titleId: string;
   bodyId: string;
   title: string;
@@ -37,16 +27,10 @@ interface DialogShellProps {
   actions: ReactNode;
 }
 
-/**
- * Phase-agnostic overlay + dialog wrapper. The `data-testid` on the
- * outer overlay is constant across phases (the E2E spec scopes mobile-
- * warning queries to the overlay), the phase-specific testId lands on
- * the inner dialog div.
- */
 function DialogShell(props: DialogShellProps) {
-  const { dialogRef, testId, titleId, bodyId, title, body, actions } = props;
+  const { dialogRef, phaseTestId, titleId, bodyId, title, body, actions } = props;
   return (
-    <div className={styles.overlay} data-testid="export-all-overlay">
+    <div className={styles.overlay} data-testid="export-job-overlay">
       <div
         ref={dialogRef}
         className={styles.dialog}
@@ -54,12 +38,12 @@ function DialogShell(props: DialogShellProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
-        data-testid={testId}
+        data-testid="export-job-dialog"
       >
         <h2 id={titleId} className={styles.title}>
           {title}
         </h2>
-        <div id={bodyId} className={styles.body}>
+        <div id={bodyId} className={styles.body} data-testid={phaseTestId}>
           {body}
         </div>
         <div className={styles.actions}>{actions}</div>
@@ -69,39 +53,32 @@ function DialogShell(props: DialogShellProps) {
 }
 
 export interface PreflightViewProps {
-  phase: PreflightPhase;
   isMobile: boolean;
+  /** True once Start was clicked but the job row has not yet arrived — keeps
+   *  the preflight visible (no null-job render) and blocks a double-create. */
+  startDisabled: boolean;
   dialogRef: RefObject<HTMLDivElement | null>;
   initialFocusRef: RefObject<HTMLButtonElement | null>;
   onCancel: () => void;
-  onConfirm: () => void;
+  onStart: () => void;
 }
 
 export function PreflightView(props: PreflightViewProps) {
-  const { phase, isMobile, dialogRef, initialFocusRef, onCancel, onConfirm } = props;
+  const { isMobile, startDisabled, dialogRef, initialFocusRef, onCancel, onStart } = props;
   return (
     <DialogShell
       dialogRef={dialogRef}
-      testId="export-all-preflight"
-      titleId="export-all-preflight-title"
-      bodyId="export-all-preflight-body"
+      phaseTestId="export-job-preflight"
+      titleId="export-job-preflight-title"
+      bodyId="export-job-preflight-body"
       title={STRINGS.dataExchange.exportPreflightTitle}
       body={
         <>
-          <div className={styles.readoutLine} data-testid="export-all-preflight-count">
-            {STRINGS.dataExchange.exportPreflightCount(phase.firstPage.totalCount)}
-          </div>
-          <div
-            className={styles.readoutLine}
-            data-testid="export-all-preflight-size"
-            data-bytes-total={phase.firstPage.totalSizeBytes}
-          >
-            {STRINGS.dataExchange.exportPreflightSize(formatBytes(phase.firstPage.totalSizeBytes))}
-          </div>
+          <div className={styles.readoutLine}>{STRINGS.dataExchange.exportPreflightBody}</div>
           {isMobile && (
             <div
               className={styles.mobileWarning}
-              data-testid="export-all-preflight-mobile-warning"
+              data-testid="export-job-mobile-warning"
               role="note"
             >
               {STRINGS.dataExchange.exportMobileWarning}
@@ -115,7 +92,7 @@ export function PreflightView(props: PreflightViewProps) {
             type="button"
             className={`${styles.button} ${styles.cancel}`}
             onClick={onCancel}
-            data-testid="export-all-preflight-cancel"
+            data-testid="export-job-cancel"
           >
             {STRINGS.dataExchange.exportPreflightCancel}
           </button>
@@ -123,8 +100,9 @@ export function PreflightView(props: PreflightViewProps) {
             ref={initialFocusRef}
             type="button"
             className={`${styles.button} ${styles.confirm}`}
-            onClick={onConfirm}
-            data-testid="export-all-preflight-confirm"
+            onClick={onStart}
+            disabled={startDisabled}
+            data-testid="export-job-start"
           >
             {STRINGS.dataExchange.exportPreflightConfirm}
           </button>
@@ -135,44 +113,44 @@ export function PreflightView(props: PreflightViewProps) {
 }
 
 export interface ProgressViewProps {
-  phase: ProgressPhase;
+  job: DataExchangeJobDto;
   dialogRef: RefObject<HTMLDivElement | null>;
   initialFocusRef: RefObject<HTMLButtonElement | null>;
-  onCancel: () => void;
+  onClose: () => void;
 }
 
 export function ProgressView(props: ProgressViewProps) {
-  const { phase, dialogRef, initialFocusRef, onCancel } = props;
+  const { job, dialogRef, initialFocusRef, onClose } = props;
   return (
     <DialogShell
       dialogRef={dialogRef}
-      testId="export-all-progress"
-      titleId="export-all-progress-title"
-      bodyId="export-all-progress-body"
+      phaseTestId="export-job-progress"
+      titleId="export-job-progress-title"
+      bodyId="export-job-progress-body"
       title={STRINGS.dataExchange.exportProgressTitle}
       body={
         <>
           <div
             className={styles.readoutLine}
-            data-testid="export-all-progress-counter"
-            data-files-total={phase.totalCount}
-            data-files-done={phase.filesDone}
+            data-testid="export-job-progress-counter"
+            data-files-total={job.filesTotal}
+            data-files-done={job.filesDone}
           >
-            {STRINGS.dataExchange.exportProgressCounter(phase.filesDone, phase.totalCount)}
+            {STRINGS.dataExchange.exportProgressCounter(job.filesDone, job.filesTotal)}
           </div>
           <div
             className={styles.readoutLine}
-            data-testid="export-all-progress-bytes"
-            data-bytes-total={phase.totalSizeBytes}
-            data-bytes-done={phase.bytesDone}
+            data-testid="export-job-progress-bytes"
+            data-bytes-total={job.bytesTotal}
+            data-bytes-done={job.bytesDone}
           >
             {STRINGS.dataExchange.exportProgressBytes(
-              formatBytes(phase.bytesDone),
-              formatBytes(phase.totalSizeBytes),
+              formatBytes(job.bytesDone),
+              formatBytes(job.bytesTotal),
             )}
           </div>
-          <div className={styles.currentFile} data-testid="export-all-progress-current-file">
-            {STRINGS.dataExchange.exportProgressCurrentFile(phase.currentFile || '—')}
+          <div className={styles.currentFile} data-testid="export-job-current-item">
+            {STRINGS.dataExchange.exportProgressCurrentFile(job.currentItem || '—')}
           </div>
         </>
       }
@@ -181,51 +159,8 @@ export function ProgressView(props: ProgressViewProps) {
           ref={initialFocusRef}
           type="button"
           className={`${styles.button} ${styles.cancel}`}
-          onClick={onCancel}
-          data-testid="export-all-cancel"
-        >
-          {STRINGS.dataExchange.exportCancel}
-        </button>
-      }
-    />
-  );
-}
-
-export interface SummaryViewProps {
-  phase: SummaryPhase;
-  dialogRef: RefObject<HTMLDivElement | null>;
-  initialFocusRef: RefObject<HTMLButtonElement | null>;
-  onClose: () => void;
-}
-
-export function SummaryView(props: SummaryViewProps) {
-  const { phase, dialogRef, initialFocusRef, onClose } = props;
-  return (
-    <DialogShell
-      dialogRef={dialogRef}
-      testId="export-all-summary"
-      titleId="export-all-summary-title"
-      bodyId="export-all-summary-body"
-      title={STRINGS.dataExchange.exportSummaryTitle}
-      body={
-        <>
-          <div className={styles.readoutLine} data-testid="export-all-summary-filename">
-            {STRINGS.dataExchange.exportSummaryFile(phase.filename)}
-          </div>
-          {phase.skippedCount > 0 && (
-            <div className={styles.skippedLine} data-testid="export-all-summary-skipped">
-              {STRINGS.dataExchange.exportSummarySkipped(phase.skippedCount)}
-            </div>
-          )}
-        </>
-      }
-      actions={
-        <button
-          ref={initialFocusRef}
-          type="button"
-          className={`${styles.button} ${styles.confirm}`}
           onClick={onClose}
-          data-testid="export-all-summary-close"
+          data-testid="export-job-close"
         >
           {STRINGS.dataExchange.exportSummaryClose}
         </button>
@@ -234,30 +169,88 @@ export function SummaryView(props: SummaryViewProps) {
   );
 }
 
-export interface ErrorViewProps {
-  phase: ErrorPhase;
+export interface ReadyViewProps {
+  job: DataExchangeJobDto;
+  /** Range-capable download URL for this job's archive (built by the store). */
+  downloadHref: string;
+  dialogRef: RefObject<HTMLDivElement | null>;
+  initialFocusRef: RefObject<HTMLAnchorElement | null>;
+  onClose: () => void;
+}
+
+export function ReadyView(props: ReadyViewProps) {
+  const { job, downloadHref, dialogRef, initialFocusRef, onClose } = props;
+  const skipped = Math.max(0, job.filesTotal - job.filesDone);
+  return (
+    <DialogShell
+      dialogRef={dialogRef}
+      phaseTestId="export-job-ready"
+      titleId="export-job-ready-title"
+      bodyId="export-job-ready-body"
+      title={STRINGS.dataExchange.exportReadyTitle}
+      body={
+        <>
+          {skipped > 0 && (
+            <div className={styles.skippedLine} data-testid="export-job-skipped">
+              {STRINGS.dataExchange.exportSummarySkipped(skipped)}
+            </div>
+          )}
+          {/* Range-capable authenticated download. The browser's native
+              download manager handles the stream (cookies ride along on the
+              same-origin GET); an interrupted download resumes via Range. */}
+          <a
+            ref={initialFocusRef}
+            className={`${styles.button} ${styles.confirm}`}
+            href={downloadHref}
+            download={exportDownloadFilename()}
+            data-testid="export-job-download"
+          >
+            {STRINGS.dataExchange.exportDownloadAction}
+          </a>
+        </>
+      }
+      actions={
+        <button
+          type="button"
+          className={`${styles.button} ${styles.cancel}`}
+          onClick={onClose}
+          data-testid="export-job-close"
+        >
+          {STRINGS.dataExchange.exportSummaryClose}
+        </button>
+      }
+    />
+  );
+}
+
+export interface FailedViewProps {
+  job: DataExchangeJobDto;
   dialogRef: RefObject<HTMLDivElement | null>;
   initialFocusRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }
 
-export function ErrorView(props: ErrorViewProps) {
-  const { phase, dialogRef, initialFocusRef, onClose } = props;
+export function FailedView(props: FailedViewProps) {
+  const { job, dialogRef, initialFocusRef, onClose } = props;
   return (
     <DialogShell
       dialogRef={dialogRef}
-      testId="export-all-error"
-      titleId="export-all-error-title"
-      bodyId="export-all-error-body"
+      phaseTestId="export-job-error"
+      titleId="export-job-error-title"
+      bodyId="export-job-error-body"
       title={STRINGS.dataExchange.exportError}
-      body={<div className={styles.readoutLine}>{phase.message}</div>}
+      body={
+        <div className={styles.readoutLine}>
+          {job.errorDetail || STRINGS.dataExchange.exportError}
+        </div>
+      }
       actions={
         <button
           ref={initialFocusRef}
           type="button"
           className={`${styles.button} ${styles.confirm}`}
           onClick={onClose}
-          data-testid="export-all-error-close"
+          data-testid="export-job-error-close"
         >
           {STRINGS.dataExchange.exportSummaryClose}
         </button>
