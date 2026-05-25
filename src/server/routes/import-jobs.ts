@@ -38,7 +38,6 @@
 
 import { chmod, mkdir, stat, truncate } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
-import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
@@ -47,7 +46,7 @@ import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
 import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
 import { ImportService } from '../services/ImportService.js';
 import { runTakeoutImport } from '../services/takeout-import-runner.js';
-import { sweepStagedArtifact } from '../services/takeout-staging.js';
+import { stagedArtifactPath, sweepStagedArtifact } from '../services/takeout-staging.js';
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 import {
@@ -72,14 +71,6 @@ const UPLOAD_CONTENT_TYPE = 'application/offset+octet-stream';
  * ourselves while streaming. 2 GB expressed in bytes (C-HARD).
  */
 const UPLOAD_BODY_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
-
-/**
- * Compute the absolute path for the staged import upload. Distinct from
- * the export convention (`<jobId>.zip`) so the two kinds never collide.
- */
-function stagedImportPath(stagingDir: string, jobId: string): string {
-  return path.join(stagingDir, `import-${jobId}.zip`);
-}
 
 export function importJobRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
@@ -249,7 +240,7 @@ export function importJobRoutes(db: Database) {
         const job = await jobs.get(id);
         if (!job) throw notFound(STRINGS.entities.resource);
 
-        const stagedPath = stagedImportPath(env.TAKEOUT_STAGING_DIR, id);
+        const stagedPath = stagedArtifactPath(env.TAKEOUT_STAGING_DIR, 'import', id);
 
         // The server-authoritative offset is the current on-disk file size.
         let currentOffset = 0;
@@ -302,7 +293,7 @@ export function importJobRoutes(db: Database) {
         }
 
         const stagingDir = env.TAKEOUT_STAGING_DIR;
-        const stagedPath = stagedImportPath(stagingDir, id);
+        const stagedPath = stagedArtifactPath(stagingDir, 'import', id);
 
         // Ensure staging directory exists with tight permissions (ADR-0024).
         await mkdir(stagingDir, { recursive: true, mode: 0o700 });

@@ -47,7 +47,6 @@ import crypto from 'node:crypto';
 import { once } from 'node:events';
 import { createWriteStream } from 'node:fs';
 import { chmod, mkdir } from 'node:fs/promises';
-import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { ZipArchive } from 'archiver';
 import { asc, eq } from 'drizzle-orm';
@@ -59,6 +58,7 @@ import type { ServiceLogger } from './Logger.js';
 import { ExportService } from './ExportService.js';
 import { KeyEnvelopeService } from './KeyEnvelopeService.js';
 import { decryptInvoicePayload } from './invoice/payloadCrypto.js';
+import { stagedArtifactPath } from './takeout-staging.js';
 import type { AuthUser } from '../middleware/auth.js';
 
 /**
@@ -192,7 +192,7 @@ export async function buildExportArchive(
   // `mode` only applies on creation — enforce 0700 even if the dir
   // pre-existed (a prior version, or a crash, may have left it 0755).
   await chmod(deps.stagingDir, 0o700);
-  const archiveRef = path.join(deps.stagingDir, `${deps.jobId}.zip`);
+  const archiveRef = stagedArtifactPath(deps.stagingDir, 'export', deps.jobId);
   const out = createWriteStream(archiveRef, { mode: 0o600 });
   const archive = new ZipArchive({ zlib: { level: 9 } });
   archive.on('warning', (err: Error) => {

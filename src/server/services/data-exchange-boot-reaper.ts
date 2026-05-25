@@ -26,12 +26,12 @@
  */
 
 import { rm } from 'node:fs/promises';
-import path from 'node:path';
 import { inArray } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
 import { dataExchangeJob } from '../db/schema.js';
 import type { ServiceLogger } from './Logger.js';
+import { stagedArtifactPath } from './takeout-staging.js';
 
 export const EVENT_DATA_EXCHANGE_BOOT_REAPER = 'data-exchange-boot-reaper';
 
@@ -61,15 +61,15 @@ export async function reapAbandonedDataExchangeJobs(
     .returning({ id: dataExchangeJob.id, kind: dataExchangeJob.kind });
 
   for (const job of reaped) {
-    // Staged archive name is deterministic and KIND-specific: the export
-    // builder stages `<jobId>.zip`; the import upload stages
-    // `import-<jobId>.zip` (routes/import-jobs.ts). A pending job may have
-    // written no file yet; a running one may have a partial. The path is
-    // rebuilt from id+kind rather than read back (archive_ref may be null on
-    // a pending row). `force: true` makes the absent-file case a no-op.
-    const stagedPath = path.join(
+    // Staged archive name is deterministic and KIND-specific (stagedArtifactPath).
+    // A pending job may have written no file yet; a running one may have a
+    // partial. The path is rebuilt from id+kind rather than read back
+    // (archive_ref may be null on a pending row). `force: true` makes the
+    // absent-file case a no-op.
+    const stagedPath = stagedArtifactPath(
       deps.stagingDir,
-      job.kind === 'import' ? `import-${job.id}.zip` : `${job.id}.zip`,
+      job.kind === 'import' ? 'import' : 'export',
+      job.id,
     );
     try {
       await rm(stagedPath, { force: true });

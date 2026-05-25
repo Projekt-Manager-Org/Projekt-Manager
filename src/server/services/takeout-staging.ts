@@ -1,7 +1,8 @@
 /**
- * Shared sweep helper for VPS-local takeout staging artifacts.
+ * Shared helpers for VPS-local takeout staging artifacts: the staged-file
+ * path convention (`stagedArtifactPath`) and the sweep (`sweepStagedArtifact`).
  *
- * Used at two call sites:
+ * `sweepStagedArtifact` is used at two call sites:
  *   1. Create-time pre-sweep on POST /api/export-jobs and POST /api/import-jobs:
  *      before minting a new job, clear prior staged artifacts of the same kind
  *      so files do not accumulate between back-to-back jobs.
@@ -21,6 +22,7 @@
  */
 
 import { rm } from 'node:fs/promises';
+import path from 'node:path';
 import { eq } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
@@ -28,6 +30,25 @@ import { dataExchangeJob } from '../db/schema.js';
 import type { ServiceLogger } from './Logger.js';
 
 export const EVENT_TAKEOUT_SWEEP = 'takeout-staged-sweep';
+
+/**
+ * Absolute path of a job's staged artifact, by kind — the single source of
+ * the staged-file naming convention (was hand-built in the import-jobs route,
+ * the boot reaper, and the export builder). The two kinds use distinct names
+ * so a back-to-back export+import never collide on disk:
+ *   - export → `<jobId>.zip`        (the builder's finished archive)
+ *   - import → `import-<jobId>.zip` (the resumable upload target)
+ * Rebuildable from (kind, id) alone — callers holding only the row id (boot
+ * reaper, create-time pre-sweep) need no `archive_ref`, which is null on a
+ * pending row.
+ */
+export function stagedArtifactPath(
+  stagingDir: string,
+  kind: 'export' | 'import',
+  jobId: string,
+): string {
+  return path.join(stagingDir, kind === 'import' ? `import-${jobId}.zip` : `${jobId}.zip`);
+}
 
 /**
  * Delete the staged file (best-effort) and null `archive_ref` + bump
