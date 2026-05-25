@@ -590,6 +590,42 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
+  // Pre-sweep on new create — back-to-back export jobs must NOT accumulate
+  // staged plaintext archives on disk. When a prior ready export exists with
+  // a staged file, a new POST /api/export-jobs must:
+  //   (a) delete the prior staged file from disk,
+  //   (b) null the prior job's archive_ref (so its download 404s),
+  //   (c) respond with X-Discarded-Prior-Staged: 1.
+  // -------------------------------------------------------------------
+  describe('pre-sweep on new create: prior staged export artifact discarded', () => {
+    it('second create sweeps the first ready artifact, nulls archiveRef, sets header', async () => {
+      // Build a complete export job (reaches ready and sets archiveRef on disk).
+      const first = await createExportJob(ownerToken);
+      const terminal = await pollUntilTerminal(ownerToken, first.id);
+      expect(terminal.status).toBe('ready');
+      expect(terminal.archiveRef).not.toBeNull();
+
+      // Verify the staged file exists before the second create.
+      await expect(stat(terminal.archiveRef!)).resolves.toBeDefined();
+
+      // Create a second export job — this should sweep the first.
+      const secondRes = await authPost(ownerToken, '/api/export-jobs');
+      expect(secondRes.statusCode).toBe(201);
+
+      // (c) X-Discarded-Prior-Staged header must be '1'.
+      expect(secondRes.headers['x-discarded-prior-staged']).toBe('1');
+
+      // (a) The first job's staged file must no longer exist on disk.
+      await expect(stat(terminal.archiveRef!)).rejects.toThrow();
+
+      // (b) The first job's archive_ref must now be null.
+      const firstRow = await authGet(ownerToken, `/api/export-jobs/${first.id}`);
+      expect(firstRow.statusCode).toBe(200);
+      expect((firstRow.json() as ExportJobRow).archiveRef).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------
   // Staged-archive confidentiality — the zip holds decrypted plaintext of
   // all business data + every passwordHash, so it must not be readable by
   // other UIDs on the VPS (ADR-0024 trust radius). File 0600 is the

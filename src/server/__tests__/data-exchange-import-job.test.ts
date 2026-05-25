@@ -55,6 +55,7 @@ import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 
@@ -662,6 +663,66 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       );
       expect(res.rows.length).toBe(1);
       expect((res.rows[0] as { entity_type: string }).entity_type).toBe('data_import');
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Pre-sweep on new create — back-to-back import jobs must NOT accumulate
+  // staged plaintext archives on disk. When a prior import is in a terminal
+  // state with a staged file (archiveRef set at markRunning), a new
+  // POST /api/import-jobs must:
+  //   (a) delete the prior staged file from disk,
+  //   (b) null the prior job's archive_ref (so its future download 404s),
+  //   (c) respond with X-Discarded-Prior-Staged: 1.
+  //
+  // Drive the first job to `failed` by uploading invalid bytes — archiveRef
+  // is set at markRunning (upload completion), so a failed job has a staged
+  // file. Use override + phrase to pass the destructive guard on both creates.
+  // -------------------------------------------------------------------
+  describe('pre-sweep on new create: prior staged import artifact discarded', () => {
+    it('second create sweeps the first failed artifact, nulls archiveRef, sets header', async () => {
+      // Drive the first import to terminal (failed) by uploading invalid bytes.
+      const total = 1024;
+      const first = await createImportJob(ownerToken, total, {
+        override: true,
+        confirmation_phrase: EXPECTED_RESTORE_PHRASE,
+      });
+      expect(first.statusCode).toBe(201);
+      const firstId = (first.json() as ImportJobRow).id;
+
+      // Upload exactly Upload-Length bytes to trigger markRunning (archiveRef set).
+      await patchArchive(ownerToken, firstId, 0, crypto.randomBytes(total));
+
+      // Wait for the job to reach a terminal state (invalid bytes → failed).
+      const terminal = await pollUntilTerminal(ownerToken, firstId);
+      expect(['ready', 'failed']).toContain(terminal.status);
+
+      // The terminal job must have archiveRef set (set at markRunning).
+      const firstRow = await authGet(ownerToken, `/api/import-jobs/${firstId}`);
+      const firstJobRow = firstRow.json() as ImportJobRow;
+      expect(firstJobRow.archiveRef).not.toBeNull();
+      const stagedPath = firstJobRow.archiveRef!;
+
+      // Verify the staged file exists before the second create.
+      await expect(stat(stagedPath)).resolves.toBeDefined();
+
+      // Create a second import job — this should sweep the first's staged file.
+      const secondRes = await createImportJob(ownerToken, 2048, {
+        override: true,
+        confirmation_phrase: EXPECTED_RESTORE_PHRASE,
+      });
+      expect(secondRes.statusCode).toBe(201);
+
+      // (c) X-Discarded-Prior-Staged header must be '1'.
+      expect(secondRes.headers['x-discarded-prior-staged']).toBe('1');
+
+      // (a) The first job's staged file must no longer exist on disk.
+      await expect(stat(stagedPath)).rejects.toThrow();
+
+      // (b) The first job's archive_ref must now be null.
+      const firstRowAfter = await authGet(ownerToken, `/api/import-jobs/${firstId}`);
+      expect(firstRowAfter.statusCode).toBe(200);
+      expect((firstRowAfter.json() as ImportJobRow).archiveRef).toBeNull();
     });
   });
 });

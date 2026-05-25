@@ -27,13 +27,13 @@
  * the orphan reaper's storage-delete posture.
  */
 
-import { rm } from 'node:fs/promises';
 import { and, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
 import { dataExchangeJob } from '../db/schema.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
+import { sweepStagedArtifact } from './takeout-staging.js';
 
 const MS_PER_MINUTE = 60 * 1000;
 
@@ -100,15 +100,10 @@ export async function runTakeoutStagingReaper(deps: RunTakeoutStagingReaperDeps)
 
   for (const job of aged) {
     if (job.archiveRef) {
-      await bestEffortRemoveFile(job.archiveRef, deps.logger);
+      // Shared sweep helper: best-effort rm + null archive_ref, matching the
+      // create-time pre-sweep so both call sites use the same code path.
+      await sweepStagedArtifact(deps.db, { id: job.id, archiveRef: job.archiveRef }, deps.logger);
     }
-    // Null the reference + bump updatedAt; the row stays as operational
-    // metadata. NOT routed through the job service's emitter — a reap is
-    // not a lifecycle transition the UI re-attaches to.
-    await deps.db
-      .update(dataExchangeJob)
-      .set({ archiveRef: null, updatedAt: new Date() })
-      .where(eq(dataExchangeJob.id, job.id));
   }
 
   deps.logger.info(
@@ -120,21 +115,4 @@ export async function runTakeoutStagingReaper(deps: RunTakeoutStagingReaperDeps)
     },
     EVENT_TAKEOUT_STAGING_REAPER,
   );
-}
-
-async function bestEffortRemoveFile(filePath: string, logger: ServiceLogger): Promise<void> {
-  try {
-    // `force: true` swallows ENOENT — an already-missing staged file is a
-    // no-op, not a fault. Other FS errors fall to the catch below.
-    await rm(filePath, { force: true });
-  } catch (err) {
-    logger.error(
-      {
-        event: EVENT_TAKEOUT_STAGING_REAPER,
-        error_hint: err instanceof Error ? err.message : String(err),
-        path: filePath,
-      },
-      EVENT_TAKEOUT_STAGING_REAPER,
-    );
-  }
 }

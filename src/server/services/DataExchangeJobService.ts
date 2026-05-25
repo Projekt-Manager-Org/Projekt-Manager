@@ -26,7 +26,7 @@
  * frames, and they supply the job-kind-specific terminal audit content.
  */
 
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
 import { auditLog, dataExchangeJob } from '../db/schema.js';
 import { emitDataExchangeJobChanged } from '../sse/emitters.js';
@@ -176,6 +176,45 @@ export class DataExchangeJobService {
       .orderBy(desc(dataExchangeJob.createdAt))
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * Terminal jobs of a given kind whose staged archive has not yet been swept
+   * (`archive_ref IS NOT NULL`), ordered most-recent first.
+   *
+   * Used at create-time to sweep prior staged artifacts before minting a new
+   * job (so files do not accumulate between back-to-back jobs).
+   *
+   * Terminal means:
+   *   - export: `status = 'ready'` (exports only set archive_ref at markReady)
+   *   - import: `status IN ('ready', 'failed')` (imports set archive_ref at
+   *     markRunning, so both terminal states can carry one)
+   *
+   * Returns all matching rows defensively — handles any backlog.
+   */
+  async priorStagedOfKind(
+    kind: DataExchangeJobKind,
+  ): Promise<{ id: string; archiveRef: string }[]> {
+    const terminalCondition =
+      kind === 'export'
+        ? eq(dataExchangeJob.status, 'ready')
+        : or(eq(dataExchangeJob.status, 'ready'), eq(dataExchangeJob.status, 'failed'))!;
+
+    const rows = await this.db
+      .select({ id: dataExchangeJob.id, archiveRef: dataExchangeJob.archiveRef })
+      .from(dataExchangeJob)
+      .where(
+        and(
+          eq(dataExchangeJob.kind, kind),
+          terminalCondition,
+          isNotNull(dataExchangeJob.archiveRef),
+        ),
+      )
+      .orderBy(desc(dataExchangeJob.createdAt));
+
+    // archiveRef is guaranteed non-null by the isNotNull filter above;
+    // the cast is safe — Drizzle infers string | null from the column type.
+    return rows.filter((r): r is { id: string; archiveRef: string } => r.archiveRef !== null);
   }
 
   /** Most recently created job of a kind — the UI's "active job" probe. */

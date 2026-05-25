@@ -47,6 +47,7 @@ import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
 import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
 import { ImportService } from '../services/ImportService.js';
 import { runTakeoutImport } from '../services/takeout-import-runner.js';
+import { sweepStagedArtifact } from '../services/takeout-staging.js';
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 import {
@@ -155,6 +156,26 @@ export function importJobRoutes(db: Database) {
           }
         }
 
+        // Sweep prior staged artifacts of this kind BEFORE minting the new job.
+        // A prior import's staged file lingers on disk until the 24h TTL reaper;
+        // back-to-back imports accumulate plaintext archives on the VPS.
+        // Order: sweep BEFORE create so the new job's id is never in the list.
+        const priorStaged = await jobs.priorStagedOfKind('import');
+        for (const prior of priorStaged) {
+          await sweepStagedArtifact(db, prior, request.log);
+        }
+        if (priorStaged.length > 0) {
+          request.log.info(
+            {
+              event: 'takeout-pre-sweep',
+              kind: 'import',
+              swept_count: priorStaged.length,
+              swept_ids: priorStaged.map((j) => j.id),
+            },
+            'takeout-pre-sweep',
+          );
+        }
+
         // Mint the job row then immediately record the declared upload size
         // so HEAD can serve Upload-Length before any bytes arrive.
         const job = await jobs.create('import', request.user!.id);
@@ -162,6 +183,13 @@ export function importJobRoutes(db: Database) {
         // Re-fetch so the response reflects the persisted bytesTotal.
         const fresh = await jobs.get(job.id);
 
+        // When prior staged artifacts were swept, advertise the count on the
+        // response so the caller can observe it (e.g. in tests / logging).
+        // Omit the header entirely when count is 0 — present only when
+        // something was actually discarded.
+        if (priorStaged.length > 0) {
+          reply.header('X-Discarded-Prior-Staged', String(priorStaged.length));
+        }
         return reply.code(201).send(fresh);
       },
     );

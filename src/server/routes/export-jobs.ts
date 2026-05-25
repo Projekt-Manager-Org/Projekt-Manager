@@ -33,6 +33,7 @@ import type { Database } from '../db/connection.js';
 import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
 import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
 import { runExportBuild } from '../services/takeout-export-runner.js';
+import { sweepStagedArtifact } from '../services/takeout-staging.js';
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 import { exportJobActive, exportJobNotReady, notFound } from '../errors.js';
@@ -131,6 +132,26 @@ export function exportJobRoutes(db: Database) {
           throw exportJobActive(active.id);
         }
 
+        // Sweep prior staged artifacts of this kind BEFORE minting the new job.
+        // A prior ready job's staged file lingers on disk until the 24h TTL
+        // reaper, so back-to-back exports accumulate plaintext archives.
+        // Order: sweep BEFORE create so the new job's id is never in the list.
+        const priorStaged = await jobs.priorStagedOfKind('export');
+        for (const prior of priorStaged) {
+          await sweepStagedArtifact(db, prior, request.log);
+        }
+        if (priorStaged.length > 0) {
+          request.log.info(
+            {
+              event: 'takeout-pre-sweep',
+              kind: 'export',
+              swept_count: priorStaged.length,
+              swept_ids: priorStaged.map((j) => j.id),
+            },
+            'takeout-pre-sweep',
+          );
+        }
+
         const job = await jobs.create('export', request.user!.id);
 
         // Fire-and-forget the build — the request returns 201 with the
@@ -152,6 +173,13 @@ export function exportJobRoutes(db: Database) {
           stagingDir: env.TAKEOUT_STAGING_DIR,
         });
 
+        // When prior staged artifacts were swept, advertise the count on the
+        // response so the caller can observe it (e.g. in tests / logging).
+        // Omit the header entirely when count is 0 — present only when
+        // something was actually discarded.
+        if (priorStaged.length > 0) {
+          reply.header('X-Discarded-Prior-Staged', String(priorStaged.length));
+        }
         return reply.code(201).send(job);
       },
     );
