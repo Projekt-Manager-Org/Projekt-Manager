@@ -9,7 +9,7 @@ import { STORAGE_STATES } from './storage-states';
  * Lives in a plain module (not `auth.setup.ts`) because Playwright rejects
  * test-file → test-file imports — see the note in `storage-states.ts`. Both
  * `auth.setup.ts` (initial minting) and specs that destroy the shared
- * session (e.g. `daten-vollstaendiger-import.spec.ts`) import from here so
+ * session (e.g. `daten-jobs.spec.ts`) import from here so
  * there is exactly one definition of "how a storage state is minted".
  */
 

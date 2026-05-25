@@ -147,7 +147,7 @@ test.describe('Kanban board flows', () => {
     // Read the integer count displayed in a column-count badge. Returned
     // as a number so the assertion can express transitions relative to
     // the count seen at test start — earlier mutating suites in the
-    // serial bucket (invoices, daten-vollstaendiger-import) reshape the
+    // serial bucket (invoices, daten-jobs) reshape the
     // seed before kanban-flows runs, so pinning to a literal "2" / "3"
     // is brittle.
     async function readColumnCount(page: Page, status: string) {
