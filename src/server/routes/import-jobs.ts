@@ -43,7 +43,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 import type { Database } from '../db/connection.js';
 import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
-import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
+import { DataExchangeJobService, toExchangeJobDto } from '../services/DataExchangeJobService.js';
 import { ImportService } from '../services/ImportService.js';
 import { runTakeoutImport } from '../services/takeout-import-runner.js';
 import { stagedArtifactPath, sweepStagedArtifact } from '../services/takeout-staging.js';
@@ -56,6 +56,7 @@ import {
   restoreConfirmationMismatch,
   uploadOffsetConflict,
   uploadTooLarge,
+  uploadNotAccepted,
 } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 import { restorePhraseMatches } from '../../config/dataExchangeConfig.js';
@@ -170,9 +171,9 @@ export function importJobRoutes(db: Database) {
         // Mint the job row then immediately record the declared upload size
         // so HEAD can serve Upload-Length before any bytes arrive.
         const job = await jobs.create('import', request.user!.id);
-        await jobs.updateProgress(job.id, { bytesTotal: uploadLength });
-        // Re-fetch so the response reflects the persisted bytesTotal.
-        const fresh = await jobs.get(job.id);
+        // updateProgress returns the fresh row (with the persisted bytesTotal),
+        // so the response reflects it without a second read.
+        const fresh = await jobs.updateProgress(job.id, { bytesTotal: uploadLength });
 
         // When prior staged artifacts were swept, advertise the count on the
         // response so the caller can observe it (e.g. in tests / logging).
@@ -181,7 +182,8 @@ export function importJobRoutes(db: Database) {
         if (priorStaged.length > 0) {
           reply.header('X-Discarded-Prior-Staged', String(priorStaged.length));
         }
-        return reply.code(201).send(fresh);
+        // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
+        return reply.code(201).send(toExchangeJobDto(fresh));
       },
     );
 
@@ -193,7 +195,9 @@ export function importJobRoutes(db: Database) {
       { preHandler: requirePermission('data:restore') },
       async (_request, reply) => {
         const job = await jobs.latest('import');
-        return reply.code(200).send({ job });
+        // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
+        // A null latest stays null.
+        return reply.code(200).send({ job: job ? toExchangeJobDto(job) : null });
       },
     );
 
@@ -216,7 +220,8 @@ export function importJobRoutes(db: Database) {
         const { id } = request.params as { id: string };
         const job = await jobs.get(id);
         if (!job) throw notFound(STRINGS.entities.resource);
-        return reply.code(200).send(job);
+        // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
+        return reply.code(200).send(toExchangeJobDto(job));
       },
     );
 
@@ -238,7 +243,9 @@ export function importJobRoutes(db: Database) {
       async (request, reply) => {
         const { id } = request.params as { id: string };
         const job = await jobs.get(id);
-        if (!job) throw notFound(STRINGS.entities.resource);
+        // A non-import id (or unknown) does not exist in this namespace — 404.
+        // Guards against an export job's id being probed via the import surface.
+        if (!job || job.kind !== 'import') throw notFound(STRINGS.entities.resource);
 
         const stagedPath = stagedArtifactPath(env.TAKEOUT_STAGING_DIR, 'import', id);
 
@@ -282,7 +289,15 @@ export function importJobRoutes(db: Database) {
       async (request: FastifyRequest, reply) => {
         const { id } = request.params as { id: string };
         const job = await jobs.get(id);
-        if (!job) throw notFound(STRINGS.entities.resource);
+        // Reject a non-import id (or unknown) — an export job's id PATCHed here
+        // would otherwise flip THAT job to `running` and fire a bogus restore.
+        if (!job || job.kind !== 'import') throw notFound(STRINGS.entities.resource);
+        // Only a `pending` job accepts bytes. Once the upload completes the job
+        // leaves `pending` (running → terminal); appending then would corrupt
+        // the staged archive the runner reads, or re-fire a failed job's
+        // restore. The normal client never hits this (its loop ends at
+        // Upload-Length, before the flip) — it guards direct API misuse.
+        if (job.status !== 'pending') throw uploadNotAccepted();
 
         const clientOffset = Number(request.headers['upload-offset']);
         if (!Number.isInteger(clientOffset) || clientOffset < 0) {
@@ -299,7 +314,12 @@ export function importJobRoutes(db: Database) {
         await mkdir(stagingDir, { recursive: true, mode: 0o700 });
         await chmod(stagingDir, 0o700);
 
-        // Authoritative server offset = current on-disk file size.
+        // Authoritative server offset = current on-disk file size. NOTE: the
+        // stat→compare→append below is not serialized, so two PATCHes racing at
+        // the same offset could both append and corrupt the staged archive.
+        // The one-active-job-per-kind gate + the single-operator deployment
+        // (one client uploading sequentially) make that unreachable in practice;
+        // a per-job upload lock is the fix if this ever serves concurrent writers.
         let currentOffset = 0;
         try {
           const s = await stat(stagedPath);

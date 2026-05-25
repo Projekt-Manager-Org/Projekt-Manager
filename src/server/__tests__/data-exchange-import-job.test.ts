@@ -55,7 +55,7 @@ import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 
@@ -66,6 +66,8 @@ import {
   EXPECTED_RESTORE_PHRASE,
 } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
+import { getEnv } from '../config/env.js';
+import { stagedArtifactPath } from '../services/takeout-staging.js';
 
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -85,9 +87,7 @@ interface ImportJobRow {
   bytesTotal: number;
   bytesDone: number;
   currentItem: string | null;
-  archiveRef: string | null;
   errorDetail: string | null;
-  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   startedAt: string | null;
@@ -162,6 +162,15 @@ function createImportJob(
       'content-type': 'application/json',
     },
     payload: body ?? {},
+  });
+}
+
+/** `POST /api/export-jobs` — mints an EXPORT job (used by the cross-kind guard). */
+function createExportJob(token: string) {
+  return getApp().inject({
+    method: 'POST',
+    url: '/api/export-jobs',
+    headers: { cookie: `session=${token}` },
   });
 }
 
@@ -286,7 +295,6 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       expect(job.status).toBe('pending');
       expect(job.filesDone).toBe(0);
       expect(job.bytesDone).toBe(0);
-      expect(job.archiveRef).toBeNull();
       expect(job.finishedAt).toBeNull();
       expect(typeof job.id).toBe('string');
     });
@@ -521,6 +529,57 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   });
 
   // -------------------------------------------------------------------
+  // Upload-surface guards: the HEAD/PATCH archive routes resolve the job by
+  // id only, so they must reject (a) a non-import id — an export job's id
+  // PATCHed here would otherwise flip THAT job to `running` and fire a bogus
+  // restore — and (b) a job that has left `pending` (append would corrupt the
+  // staged archive the runner reads, or re-fire a failed job's restore).
+  // -------------------------------------------------------------------
+  describe('upload surface rejects cross-kind / non-pending jobs', () => {
+    it('HEAD with an EXPORT job id → 404 (not an import job)', async () => {
+      const created = await createExportJob(ownerToken);
+      expect(created.statusCode).toBe(201);
+      const exportId = (created.json() as ImportJobRow).id;
+
+      const head = await headArchive(ownerToken, exportId);
+      expect(head.statusCode).toBe(404);
+    });
+
+    it('PATCH with an EXPORT job id → 404, and the export job is NOT driven into a restore', async () => {
+      const created = await createExportJob(ownerToken);
+      expect(created.statusCode).toBe(201);
+      const exportId = (created.json() as ImportJobRow).id;
+
+      const res = await patchArchive(ownerToken, exportId, 0, crypto.randomBytes(64));
+      expect(res.statusCode).toBe(404);
+
+      // The export job keeps running its OWN lifecycle (export build), never an
+      // import: a hijack would have stamped `data_import` audit + a restore.
+      const exportRow = await authGet(ownerToken, `/api/export-jobs/${exportId}`);
+      expect((exportRow.json() as ImportJobRow).kind).toBe('export');
+    });
+
+    it('PATCH on a job that already left pending → 409 UPLOAD_NOT_ACCEPTED', async () => {
+      // Complete the upload so the job flips pending → running, then try to
+      // append again.
+      const total = 2048;
+      const id = await createImportJob(ownerToken, total, {
+        override: true,
+        confirmation_phrase: EXPECTED_RESTORE_PHRASE,
+      }).then((r) => (r.json() as ImportJobRow).id);
+      const done = await patchArchive(ownerToken, id, 0, crypto.randomBytes(total));
+      expect(done.headers['upload-offset']).toBe(String(total));
+
+      const advanced = await pollUntilNotPending(ownerToken, id);
+      expect(advanced.status).not.toBe('pending');
+
+      const late = await patchArchive(ownerToken, id, total, crypto.randomBytes(16));
+      expect(late.statusCode).toBe(409);
+      expect(late.json().code).toBe('UPLOAD_NOT_ACCEPTED');
+    });
+  });
+
+  // -------------------------------------------------------------------
   // Status + latest endpoints (api.md §14.2.4 Import-job table).
   // -------------------------------------------------------------------
   describe('status + latest', () => {
@@ -697,14 +756,11 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       const terminal = await pollUntilTerminal(ownerToken, firstId);
       expect(['ready', 'failed']).toContain(terminal.status);
 
-      // The terminal job must have archiveRef set (set at markRunning).
-      const firstRow = await authGet(ownerToken, `/api/import-jobs/${firstId}`);
-      const firstJobRow = firstRow.json() as ImportJobRow;
-      expect(firstJobRow.archiveRef).not.toBeNull();
-      const stagedPath = firstJobRow.archiveRef!;
-
-      // Verify the staged file exists before the second create.
-      await expect(stat(stagedPath)).resolves.toBeDefined();
+      // The staged path is derivable from (kind, id) — the route no longer
+      // echoes archiveRef on the wire (Finding F1). archiveRef was set on disk
+      // at markRunning, so the staged file exists before the second create.
+      const stagedPath = stagedArtifactPath(getEnv().TAKEOUT_STAGING_DIR, 'import', firstId);
+      expect(existsSync(stagedPath)).toBe(true);
 
       // Create a second import job — this should sweep the first's staged file.
       const secondRes = await createImportJob(ownerToken, 2048, {
@@ -716,13 +772,15 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       // (c) X-Discarded-Prior-Staged header must be '1'.
       expect(secondRes.headers['x-discarded-prior-staged']).toBe('1');
 
-      // (a) The first job's staged file must no longer exist on disk.
-      await expect(stat(stagedPath)).rejects.toThrow();
+      // (a) The first job's staged file must no longer exist on disk — the
+      // observable of the sweep (archive_ref nulled + file deleted), now that
+      // the ref is no longer carried on the wire.
+      expect(existsSync(stagedPath)).toBe(false);
 
-      // (b) The first job's archive_ref must now be null.
+      // (b) The first job's row survives as operational metadata.
       const firstRowAfter = await authGet(ownerToken, `/api/import-jobs/${firstId}`);
       expect(firstRowAfter.statusCode).toBe(200);
-      expect((firstRowAfter.json() as ImportJobRow).archiveRef).toBeNull();
+      expect((firstRowAfter.json() as ImportJobRow).id).toBe(firstId);
     });
   });
 });

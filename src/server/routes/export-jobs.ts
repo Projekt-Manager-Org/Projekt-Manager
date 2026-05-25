@@ -31,7 +31,7 @@ import type { FastifyInstance } from 'fastify';
 
 import type { Database } from '../db/connection.js';
 import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
-import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
+import { DataExchangeJobService, toExchangeJobDto } from '../services/DataExchangeJobService.js';
 import { runExportBuild } from '../services/takeout-export-runner.js';
 import { sweepStagedArtifact } from '../services/takeout-staging.js';
 import { createStorageClient } from '../storage/client.js';
@@ -180,7 +180,8 @@ export function exportJobRoutes(db: Database) {
         if (priorStaged.length > 0) {
           reply.header('X-Discarded-Prior-Staged', String(priorStaged.length));
         }
-        return reply.code(201).send(job);
+        // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
+        return reply.code(201).send(toExchangeJobDto(job));
       },
     );
 
@@ -192,7 +193,9 @@ export function exportJobRoutes(db: Database) {
       { preHandler: requirePermission('data:export') },
       async (_request, reply) => {
         const job = await jobs.latest('export');
-        return reply.code(200).send({ job });
+        // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
+        // A null latest stays null.
+        return reply.code(200).send({ job: job ? toExchangeJobDto(job) : null });
       },
     );
 
@@ -215,7 +218,8 @@ export function exportJobRoutes(db: Database) {
         const { id } = request.params as { id: string };
         const job = await jobs.get(id);
         if (!job) throw notFound(STRINGS.entities.resource);
-        return reply.code(200).send(job);
+        // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
+        return reply.code(200).send(toExchangeJobDto(job));
       },
     );
 

@@ -37,6 +37,34 @@ export type DataExchangeJobStatus = 'pending' | 'running' | 'ready' | 'failed';
 /** Row shape as selected from the DB (counters are plain numbers). */
 export type DataExchangeJob = typeof dataExchangeJob.$inferSelect;
 
+/**
+ * The client-facing projection of a job row — the full row MINUS `archiveRef`
+ * and `createdBy`.
+ */
+export type DataExchangeJobDto = Omit<DataExchangeJob, 'archiveRef' | 'createdBy'>;
+
+/**
+ * Project a job row to the wire DTO the job routes return (Finding F1).
+ *
+ * The DB row carries two fields the client never consumes and that must NOT
+ * leave the server:
+ *   - `archiveRef` — an ABSOLUTE VPS-local staging path (e.g.
+ *     `/tmp/.../<jobId>.zip`). Leaking an internal filesystem layout to the
+ *     browser is needless attack-surface; the download surface is the only
+ *     legitimate consumer of the staged path and reads `archiveRef` server-side.
+ *   - `createdBy` — the operator's user id. The client already knows who it is;
+ *     echoing an internal id back gains nothing and widens exposure.
+ *
+ * Everything else (counters, status, timestamps, `errorDetail`, `currentItem`)
+ * is kept — `updatedAt` included; it is innocuous. Apply this at every JSON
+ * send site in the job routes; the `:id/download` handler still reads the raw
+ * row's `archiveRef` and must NOT use this projection.
+ */
+export function toExchangeJobDto(row: DataExchangeJob): DataExchangeJobDto {
+  const { archiveRef: _archiveRef, createdBy: _createdBy, ...dto } = row;
+  return dto;
+}
+
 /** Totals known at the point the job starts running. */
 export interface RunningInit {
   filesTotal?: number;

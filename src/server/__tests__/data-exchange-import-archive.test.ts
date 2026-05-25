@@ -63,7 +63,7 @@ import { unzipSync, zipSync } from 'fflate';
 import sharp from 'sharp';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 
@@ -76,6 +76,7 @@ import {
 import { createDatabase, type Database } from '../db/connection.js';
 import { createStorageClient, type StorageClient } from '../storage/client.js';
 import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
+import { stagedArtifactPath } from '../services/takeout-staging.js';
 import { getEnv } from '../config/env.js';
 
 const migrationsFolder = path.resolve(
@@ -89,7 +90,6 @@ const migrationsFolder = path.resolve(
 interface JobRow {
   id: string;
   status: 'pending' | 'running' | 'ready' | 'failed';
-  archiveRef: string | null;
   errorDetail: string | null;
 }
 
@@ -737,9 +737,12 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const reauth = await awaitWipeAndReauth(ownerToken, jobId);
       const terminal = await pollImportTerminal(reauth, jobId);
       // A terminal import job retains its uploaded archive on the VPS
-      // staging path until the reaper sweeps it.
+      // staging path until the reaper sweeps it. The staged path is derivable
+      // from (kind, id) — the route no longer echoes archiveRef on the wire
+      // (Finding F1) — so assert the on-disk staged file directly.
       expect(terminal.status).toBe('ready');
-      expect(terminal.archiveRef).not.toBeNull();
+      const stagedPath = stagedArtifactPath(getEnv().TAKEOUT_STAGING_DIR, 'import', jobId);
+      expect(existsSync(stagedPath)).toBe(true);
 
       // Backdate finishedAt well past the TTL so the reaper's age
       // predicate selects this row, then run the reaper with now=real time.
@@ -758,7 +761,10 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       });
 
       // The reaper deletes the staged file and nulls archiveRef; the row
-      // persists as operational metadata (data-model.md §6.15).
+      // persists as operational metadata (data-model.md §6.15). Assert the
+      // staged file is gone on disk AND the column was nulled (a direct-DB
+      // read, not a wire field).
+      expect(existsSync(stagedPath)).toBe(false);
       const row = (
         await db.execute(sql`SELECT archive_ref FROM data_exchange_job WHERE id = ${jobId}`)
       ).rows as { archive_ref: string | null }[];

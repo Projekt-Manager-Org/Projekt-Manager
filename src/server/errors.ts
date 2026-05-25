@@ -30,6 +30,7 @@ export type ErrorCode =
   | 'EXPORT_JOB_NOT_READY'
   | 'UPLOAD_OFFSET_CONFLICT'
   | 'UPLOAD_TOO_LARGE'
+  | 'UPLOAD_NOT_ACCEPTED'
   | 'BULK_LIMIT_EXCEEDED'
   | 'DEK_UNWRAP_FAILED'
   // Invoice + company-profile domain (ADR-0026, api.md §14.4).
@@ -194,6 +195,16 @@ export function uploadOffsetConflict(): AppError {
  */
 export function uploadTooLarge(): AppError {
   return new AppError('UPLOAD_TOO_LARGE', STRINGS.errors.uploadTooLarge, 413);
+}
+
+/**
+ * Resumable-upload chunk PATCHed at a job that is not accepting bytes — it
+ * either already left `pending` (upload complete / restore running / terminal)
+ * so appending would corrupt the staged archive the runner reads, or it is not
+ * an import job at all. 409: the job exists, its state simply forbids the write.
+ */
+export function uploadNotAccepted(): AppError {
+  return new AppError('UPLOAD_NOT_ACCEPTED', STRINGS.errors.uploadNotAccepted, 409);
 }
 
 /**

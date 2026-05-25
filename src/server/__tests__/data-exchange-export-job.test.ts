@@ -37,6 +37,7 @@ import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
@@ -56,6 +57,7 @@ import {
   BOOT_REAP_DETAIL,
 } from '../services/data-exchange-boot-reaper.js';
 import { runExportBuild } from '../services/takeout-export-runner.js';
+import { stagedArtifactPath } from '../services/takeout-staging.js';
 import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
 import type { AuthUser } from '../middleware/auth.js';
 
@@ -77,9 +79,7 @@ interface ExportJobRow {
   bytesTotal: number;
   bytesDone: number;
   currentItem: string | null;
-  archiveRef: string | null;
   errorDetail: string | null;
-  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   startedAt: string | null;
@@ -267,7 +267,6 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       expect(job.status).toBe('pending');
       expect(job.filesDone).toBe(0);
       expect(job.bytesDone).toBe(0);
-      expect(job.archiveRef).toBeNull();
       expect(job.finishedAt).toBeNull();
       expect(typeof job.id).toBe('string');
     });
@@ -281,7 +280,6 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       expect(terminal.status).toBe('ready');
       expect(terminal.startedAt).not.toBeNull();
       expect(terminal.finishedAt).not.toBeNull();
-      expect(terminal.archiveRef).not.toBeNull();
     });
 
     it('GET /api/export-jobs/:id returns the row; unknown id → 404 NOT_FOUND', async () => {
@@ -555,6 +553,12 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       const terminal = await pollUntilTerminal(ownerToken, created.id);
       expect(terminal.status).toBe('ready');
 
+      // The staged path is derivable from (kind, id) — the route no longer
+      // echoes archiveRef on the wire (Finding F1), so assert the on-disk
+      // staging artifact directly.
+      const stagedPath = stagedArtifactPath(getEnv().TAKEOUT_STAGING_DIR, 'export', created.id);
+      expect(existsSync(stagedPath)).toBe(true);
+
       // The download is live before the sweep.
       const before = await authGet(ownerToken, `/api/export-jobs/${created.id}/download`);
       expect(before.statusCode).toBe(200);
@@ -583,9 +587,9 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       expect(after.statusCode).toBe(404);
       expect(after.json().code).toBe('NOT_FOUND');
 
-      const row = await authGet(ownerToken, `/api/export-jobs/${created.id}`);
-      expect(row.statusCode).toBe(200);
-      expect((row.json() as ExportJobRow).archiveRef).toBeNull();
+      // The staged file is gone on disk (the observable of "archiveRef nulled
+      // + file swept", now that the ref is no longer on the wire).
+      expect(existsSync(stagedPath)).toBe(false);
     });
   });
 
@@ -599,14 +603,16 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // -------------------------------------------------------------------
   describe('pre-sweep on new create: prior staged export artifact discarded', () => {
     it('second create sweeps the first ready artifact, nulls archiveRef, sets header', async () => {
-      // Build a complete export job (reaches ready and sets archiveRef on disk).
+      // Build a complete export job (reaches ready and stages a file on disk).
       const first = await createExportJob(ownerToken);
       const terminal = await pollUntilTerminal(ownerToken, first.id);
       expect(terminal.status).toBe('ready');
-      expect(terminal.archiveRef).not.toBeNull();
 
-      // Verify the staged file exists before the second create.
-      await expect(stat(terminal.archiveRef!)).resolves.toBeDefined();
+      // The staged path is derivable from (kind, id) — the route no longer
+      // echoes archiveRef on the wire (Finding F1). Verify the staged file
+      // exists before the second create.
+      const firstStagedPath = stagedArtifactPath(getEnv().TAKEOUT_STAGING_DIR, 'export', first.id);
+      await expect(stat(firstStagedPath)).resolves.toBeDefined();
 
       // Create a second export job — this should sweep the first.
       const secondRes = await authPost(ownerToken, '/api/export-jobs');
@@ -616,12 +622,13 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       expect(secondRes.headers['x-discarded-prior-staged']).toBe('1');
 
       // (a) The first job's staged file must no longer exist on disk.
-      await expect(stat(terminal.archiveRef!)).rejects.toThrow();
+      await expect(stat(firstStagedPath)).rejects.toThrow();
 
-      // (b) The first job's archive_ref must now be null.
-      const firstRow = await authGet(ownerToken, `/api/export-jobs/${first.id}`);
-      expect(firstRow.statusCode).toBe(200);
-      expect((firstRow.json() as ExportJobRow).archiveRef).toBeNull();
+      // (b) The first job's download now 404s — the archive_ref was nulled
+      // (the observable of the sweep, with the ref no longer on the wire).
+      const firstDownload = await authGet(ownerToken, `/api/export-jobs/${first.id}/download`);
+      expect(firstDownload.statusCode).toBe(404);
+      expect(firstDownload.json().code).toBe('NOT_FOUND');
     });
   });
 
@@ -636,14 +643,17 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       const created = await createExportJob(ownerToken);
       const terminal = await pollUntilTerminal(ownerToken, created.id);
       expect(terminal.status).toBe('ready');
-      expect(terminal.archiveRef).not.toBeNull();
 
-      const fileStat = await stat(terminal.archiveRef!);
+      // Derive the staged path from (kind, id) — the route no longer echoes
+      // archiveRef on the wire (Finding F1).
+      const stagedPath = stagedArtifactPath(getEnv().TAKEOUT_STAGING_DIR, 'export', created.id);
+
+      const fileStat = await stat(stagedPath);
       // No read/write/exec for group or other on the plaintext archive.
       expect(fileStat.mode & 0o077).toBe(0);
       expect(fileStat.mode & 0o777).toBe(0o600);
 
-      const dirStat = await stat(path.dirname(terminal.archiveRef!));
+      const dirStat = await stat(path.dirname(stagedPath));
       expect(dirStat.mode & 0o077).toBe(0);
     });
   });

@@ -74,6 +74,7 @@ export const STRINGS = {
     uploadOffsetConflict:
       'Der Upload-Versatz stimmt nicht mit dem Server-Stand überein. Bitte vom angezeigten Versatz fortsetzen.',
     uploadTooLarge: 'Der Upload überschreitet die angekündigte Dateigröße.',
+    uploadNotAccepted: 'Für diesen Auftrag können keine Daten mehr hochgeladen werden.',
   },
 
   entities: {
@@ -489,6 +490,20 @@ export const STRINGS = {
     importTokenInvalidClose: 'Zur Anmeldung',
     restoreDestructiveNotice: 'Die bestehenden Daten werden unwiderruflich gelöscht.',
     restorePhrasePrompt: (phrase: string) => `Zur Bestätigung bitte „${phrase}" eingeben:`,
+
+    // --- Server-side job flow (ui/daten.md §8.11, AC-322–335) ---------------
+    // The job model builds/restores on the VPS; the browser triggers, polls,
+    // and downloads/uploads. Reuses the export/import Progress* + Summary* keys
+    // above for the shared readouts; the keys below are job-specific.
+    exportPreflightBody:
+      'Der vollständige Export wird auf dem Server erstellt und anschließend zum Download angeboten.',
+    exportReadyTitle: 'Export bereit',
+    exportDownloadAction: 'Herunterladen',
+    importUploadingTitle: 'Hochladen …',
+    importProcessingTitle: 'Wiederherstellung läuft',
+    // Surfaced when the server rejects the create-time destructive guard
+    // despite the client-side phrase match (clock skew, a stale config).
+    importConfirmMismatch: 'Der Bestätigungstext stimmt nicht überein.',
   },
 
   /**
