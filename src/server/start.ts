@@ -43,6 +43,7 @@ import { STATE_KEYS } from '../config/stateConfig.js';
 import { assertBinaryIdentityLoaded } from './storage/binaryIdentity.js';
 import { createStorageClient } from './storage/client.js';
 import { assertStorageBucketSafe } from './storage/safety.js';
+import { probeStagingDurability } from './config/assertStagingDurable.js';
 import { staticCacheControl } from './staticCache.js';
 
 const HOST = '0.0.0.0';
@@ -100,6 +101,14 @@ async function start(): Promise<void> {
   // presigned URLs against a container-only hostname — the browser
   // cannot resolve those, so every upload fails silently.
   assertStoragePublicEndpointInProduction(env);
+  // Refuse to start in production when TAKEOUT_STAGING_DIR resolves to a
+  // RAM-backed filesystem (tmpfs/ramfs). A multi-GB archive on a tmpfs
+  // staging path exhausts container RAM and OOM-kills the VPS. In
+  // docker-compose.yml the `app` service mounts /tmp as tmpfs, so the
+  // env.ts default (os.tmpdir()) lands in RAM; the compose named volume
+  // `takeout-staging` at /var/lib/projekt-manager/takeout is disk-backed.
+  // mkdir -p is idempotent — creates the dir when the volume is fresh.
+  probeStagingDurability(env.TAKEOUT_STAGING_DIR, env.NODE_ENV);
 
   // Emit the boot-time feature manifest (AC-230) immediately after env
   // validation — operators see a single structured line listing every

@@ -31,6 +31,15 @@ services:
       # loader script (write) run as `app`, so the tmpfs must be owned
       # by that uid. Mode 0700 keeps it unreadable to any other uid.
       - /run/binary-key:mode=0700,uid=1001,gid=1001
+    volumes:
+      # Disk-backed staging for full-account takeout archives. Docker
+      # initialises an empty named volume with the ownership/perms of the
+      # image's mountpoint dir (/var/lib/projekt-manager/takeout, created
+      # in the Dockerfile as app:app 0700), so the `app` user (uid 1001)
+      # can write without a root step. Using a named volume — not /tmp —
+      # avoids landing multi-GB exports on the tmpfs mount above, which
+      # would exhaust container RAM and OOM-kill the VPS.
+      - takeout-staging:/var/lib/projekt-manager/takeout
     mem_limit: 512m
     cpus: 1.0
     environment:
@@ -135,10 +144,13 @@ services:
       ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES: ${ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES:-}
       # Full-account takeout staging (ADR-0018 / ADR-0024, architecture.md
       # §12.2). TTL is [C]; both default in the env.ts Zod schema (1440 min
-      # / OS-temp path, mirroring the ATTACHMENT reaper TTLs). Leave blank
-      # to use the defaults.
+      # / OS-temp path). TAKEOUT_STAGING_DIR defaults to the named-volume
+      # mountpoint so archives land on disk, not on the tmpfs /tmp above.
+      # Override TAKEOUT_STAGING_DIR in .env only when using a different
+      # mount target; the boot probe refuses to start if the resolved path
+      # is tmpfs/ramfs in production (see src/server/config/assertStagingDurable.ts).
       TAKEOUT_STAGING_TTL_MINUTES: ${TAKEOUT_STAGING_TTL_MINUTES:-}
-      TAKEOUT_STAGING_DIR: ${TAKEOUT_STAGING_DIR:-}
+      TAKEOUT_STAGING_DIR: ${TAKEOUT_STAGING_DIR:-/var/lib/projekt-manager/takeout}
       # Invoice retention (ADR-0026, architecture.md §12.2). Object-Lock
       # days for rendered invoice PDF/A-3 binaries; 0 disables the
       # boot-time retention assertion (dev), 3650 in production (§147 AO).
@@ -390,3 +402,9 @@ volumes:
   pgdata:
   caddy_data:
   caddy_config:
+  # Disk-backed staging for full-account takeout archives (data-model.md
+  # §6.14). Keeps multi-GB exports off the tmpfs /tmp mount and prevents
+  # the RAM-exhaustion DoS that the default os.tmpdir() path would cause
+  # inside the container. The app service mounts this at
+  # /var/lib/projekt-manager/takeout (uid=1001 app:app, mode 0700).
+  takeout-staging:
