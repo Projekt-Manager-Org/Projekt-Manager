@@ -60,6 +60,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { unzipSync, zipSync } from 'fflate';
+import sharp from 'sharp';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -157,7 +158,14 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   async function seedReadyAttachment(opts: {
     plaintext: Buffer;
     fileName: string;
+    /** Default 'binary' (application/pdf); pass 'photo' to seed an image row. */
+    kind?: 'photo' | 'binary';
+    mimeType?: string;
+    label?: string;
   }): Promise<{ id: string; plaintext: Buffer; fileName: string }> {
+    const kind = opts.kind ?? 'binary';
+    const label = opts.label ?? 'sonstiges';
+    const mimeType = opts.mimeType ?? 'application/pdf';
     const id = crypto.randomUUID();
     const dek = crypto.randomBytes(32);
     const nonce = crypto.randomBytes(12);
@@ -177,13 +185,16 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       svc.close();
     }
 
+    // Seeded WITHOUT a thumbnail (has_thumbnail FALSE, thumb columns null):
+    // the export carries only originals (EnvelopeAttachment has no thumb), so
+    // a thumbnail on the RESTORED row can only come from server-side regen.
     await db.execute(sql`
       INSERT INTO attachments
         (id, project_id, status, kind, label, filename, mime_type, size_bytes,
          ciphertext_size_bytes, original_key, has_thumbnail,
          wrapped_dek, wrapped_dek_version)
-      VALUES (${id}, ${projectId}, 'ready', 'binary', 'sonstiges',
-              ${opts.fileName}, 'application/pdf', ${opts.plaintext.length},
+      VALUES (${id}, ${projectId}, 'ready', ${kind}, ${label},
+              ${opts.fileName}, ${mimeType}, ${opts.plaintext.length},
               ${ciphertext.length}, ${originalKey}, FALSE, ${wrapped}, 1)
     `);
     return { id, plaintext: opts.plaintext, fileName: opts.fileName };
@@ -483,6 +494,90 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
         .rows as { id: string }[];
       expect(proj.length).toBe(1);
       expect(proj[0]!.id).toBe(projectId);
+    });
+
+    it('regenerates a WebP thumbnail for a restored photo and captures version-ids', async () => {
+      // A REAL, decodable JPEG (random bytes would not decode) so the server
+      // can derive a thumbnail from the restored original. 800×600 keeps the
+      // longest edge above the 320px thumb target so the resize is exercised.
+      const photo = await sharp({
+        create: { width: 800, height: 600, channels: 3, background: { r: 30, g: 90, b: 160 } },
+      })
+        .jpeg()
+        .toBuffer();
+
+      // Seeded as a PHOTO with NO source thumbnail — the export bundles only
+      // the original, so a thumbnail on the restored row proves SERVER-SIDE
+      // regeneration on import, not a carried-over blob.
+      const seeded = await seedReadyAttachment({
+        plaintext: photo,
+        fileName: 'baustelle.jpg',
+        kind: 'photo',
+        mimeType: 'image/jpeg',
+        label: 'foto',
+      });
+
+      const archive = await buildExportArchive(ownerToken);
+      const jobId = await uploadArchiveToNewJob(ownerToken, archive);
+      const reauth = await awaitWipeAndReauth(ownerToken, jobId);
+      expect((await pollImportTerminal(reauth, jobId)).status).toBe('ready');
+
+      const row = (
+        await db.execute(sql`
+          SELECT kind, has_thumbnail, thumb_key, wrapped_thumb_dek,
+                 ciphertext_thumb_size_bytes, version_id, thumb_version_id
+          FROM attachments WHERE id = ${seeded.id}
+        `)
+      ).rows[0] as {
+        kind: string;
+        has_thumbnail: boolean;
+        thumb_key: string | null;
+        wrapped_thumb_dek: string | null;
+        // bigint over raw db.execute → string
+        ciphertext_thumb_size_bytes: string | null;
+        version_id: string | null;
+        thumb_version_id: string | null;
+      };
+
+      // The restored photo carries a regenerated thumbnail at the conventional
+      // `.thumb` key with its own wrapped DEK + ciphertext size.
+      expect(row.kind).toBe('photo');
+      expect(row.has_thumbnail).toBe(true);
+      expect(row.thumb_key).toBe(`attachments/${projectId}/${seeded.id}.thumb`);
+      expect(row.wrapped_thumb_dek).toBeTruthy();
+      // bigint columns come back from raw db.execute as strings — coerce.
+      expect(Number(row.ciphertext_thumb_size_bytes ?? 0)).toBeGreaterThan(0);
+
+      // Version-id capture (server-side PUT into the versioned bucket): both
+      // ids are non-null so a later hide → restore can copyFromVersion. Without
+      // the capture an imported attachment is un-restorable from the Papierkorb
+      // (AttachmentService restore throws restoreMissingVersionId).
+      expect(row.version_id ?? '').toMatch(/.+/);
+      expect(row.thumb_version_id ?? '').toMatch(/.+/);
+
+      // The thumb ciphertext decrypts (via the freshly-wrapped thumb DEK) to a
+      // real, decodable WebP no larger than the configured longest edge (320).
+      const dl = await storage.download(row.thumb_key!);
+      const ct = Buffer.from(dl.data);
+      const svc = new KeyEnvelopeService({ recipient, identity });
+      let thumbDek: Buffer;
+      try {
+        thumbDek = Buffer.from(await svc.unwrap(Buffer.from(row.wrapped_thumb_dek!, 'base64')));
+      } finally {
+        svc.close();
+      }
+      const tNonce = ct.subarray(0, 12);
+      const tTag = ct.subarray(ct.length - 16);
+      const tBody = ct.subarray(12, ct.length - 16);
+      const decipher = crypto.createDecipheriv('aes-256-gcm', thumbDek, tNonce);
+      decipher.setAuthTag(tTag);
+      const thumbPlain = Buffer.concat([decipher.update(tBody), decipher.final()]);
+
+      const meta = await sharp(thumbPlain).metadata();
+      expect(meta.format).toBe('webp');
+      const longestEdge = Math.max(meta.width ?? 0, meta.height ?? 0);
+      expect(longestEdge).toBeGreaterThan(0);
+      expect(longestEdge).toBeLessThanOrEqual(320);
     });
   });
 

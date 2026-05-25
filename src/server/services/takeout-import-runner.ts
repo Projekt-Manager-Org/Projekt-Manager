@@ -19,7 +19,10 @@
  * time via fflate's streaming `Unzip` (NOT `unzipSync`, NOT `readFileSync`):
  * at most ONE entry is buffered at any moment, plus `data.json` (business
  * rows, bounded by row count) and `manifest.json`. Peak memory scales with
- * the single largest entry, NOT with the archive size.
+ * the single largest entry, NOT with the archive size. Photo thumbnail regen
+ * (below) adds one transient raw raster per photo — bounded by `sharp`'s
+ * default `limitInputPixels` (~268 MP) and strictly sequential (one entry at
+ * a time), so the bound is per-file, not cumulative.
  *
  * Two passes over the staged file (re-read from local disk — cheap):
  *   PASS 1 — VALIDATE BEFORE WIPE: stream once, hashing each entry one at a
@@ -42,13 +45,20 @@
  *     attachment at a time; per row mint a fresh DEK, AES-256-GCM-encrypt,
  *     wrap the DEK under the instance recipient, PUT ciphertext to B2, and
  *     insert the `attachments` row with `id` / `createdBy` / `createdAt`
- *     preserved (AC-328). Progress is throttled (~1/s).
+ *     preserved (AC-328). The PUT's VersionId is captured into `version_id`
+ *     / `thumb_version_id` so a restored row round-trips through the
+ *     Papierkorb (hide → restore copyFromVersion). Photos also get a
+ *     regenerated thumbnail (see below). Progress is throttled (~1/s).
  *
- * Photo-thumbnail regeneration is deliberately OUT OF SCOPE: AC-328 mentions
- * it, but the regen needs a server-side image pipeline (a new dependency)
- * and the import tests exercise binary attachments only. Every restored row
- * is `hasThumbnail = false`; a restored photo shows its full-size original.
- * Flagged boundary — revisit if photo previews on restore are required.
+ * Photo-thumbnail regeneration (AC-328): the export bundles only originals
+ * (EnvelopeAttachment carries no thumb), so for each `kind='photo'` row the
+ * runner re-derives the gallery WebP thumbnail server-side via `sharp`
+ * (serverImagePipeline.ts), encrypts it under its own fresh DEK, PUTs the
+ * ciphertext to the `.thumb` key, and sets `hasThumbnail` / `thumbKey` /
+ * `wrappedThumbDek` / `ciphertextThumbSizeBytes` / `thumbVersionId`.
+ * Thumbnail derivation is opportunistic — an undecodable image logs and
+ * restores without a thumb (the original still renders) rather than failing
+ * the job, mirroring the export builder's per-row skip.
  *
  * The staged upload is NOT removed on failure: the route stamped
  * `archiveRef` at `markRunning`, so the staging reaper (data-model.md §6.15)
@@ -68,6 +78,7 @@ import type { ServiceLogger } from './Logger.js';
 import { DataExchangeJobService } from './DataExchangeJobService.js';
 import { ImportService } from './ImportService.js';
 import { KeyEnvelopeService } from './KeyEnvelopeService.js';
+import { renderWebpThumbnail } from './serverImagePipeline.js';
 import { encryptInvoicePayload } from './invoice/payloadCrypto.js';
 import { WRAPPED_DEK_CURRENT_VERSION } from '../../domain/attachments.js';
 import { RESTORE_CONFIRMATION_PHRASE } from '../../config/dataExchangeConfig.js';
@@ -106,13 +117,14 @@ function sha256Hex(bytes: Buffer): string {
 }
 
 /**
- * Storage key for the original ciphertext object — mirrors AttachmentService's
- * `storageKey(projectId, id, 'orig')` (ADR-0024 § key conventions). The keys
- * are local to the importing instance (the export envelope carries no opaque
- * keys), derived from the preserved `(projectId, id)`.
+ * Storage key for an attachment's ciphertext objects — mirrors
+ * AttachmentService's `storageKey(projectId, id, suffix)` (ADR-0024 § key
+ * conventions). The keys are local to the importing instance (the export
+ * envelope carries no opaque keys), derived from the preserved `(projectId,
+ * id)`: `.orig` for the original, `.thumb` for the regenerated thumbnail.
  */
-function storageKey(projectId: string, attachmentId: string): string {
-  return `attachments/${projectId}/${attachmentId}.orig`;
+function storageKey(projectId: string, attachmentId: string, suffix: 'orig' | 'thumb'): string {
+  return `attachments/${projectId}/${attachmentId}.${suffix}`;
 }
 
 /**
@@ -363,8 +375,55 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
         // instance recipient; PUT ciphertext to B2; insert the ready row.
         const { ciphertext, dek } = encryptInvoicePayload(plaintext);
         const wrapped = await envelopeService.wrap(Buffer.from(dek));
-        const originalKey = storageKey(att.projectId, att.id);
-        await storage.upload(originalKey, Buffer.from(ciphertext), 'application/octet-stream');
+        const originalKey = storageKey(att.projectId, att.id, 'orig');
+        const originalUpload = await storage.upload(
+          originalKey,
+          Buffer.from(ciphertext),
+          'application/octet-stream',
+        );
+
+        // Regenerate the gallery thumbnail for photos (the export bundles
+        // only originals — EnvelopeAttachment has no thumb). Each thumb gets
+        // its OWN DEK + `.thumb` key, mirroring the upload path's separate
+        // thumb envelope. Opportunistic: an undecodable image logs + restores
+        // the original without a thumb rather than failing the whole job.
+        let thumbKey: string | null = null;
+        let wrappedThumbDek: string | null = null;
+        let ciphertextThumbSizeBytes: number | null = null;
+        let thumbVersionId: string | null = null;
+        let hasThumbnail = false;
+        if (att.kind === 'photo') {
+          try {
+            const thumbPlain = await renderWebpThumbnail(plaintext);
+            const { ciphertext: thumbCt, dek: thumbDek } = encryptInvoicePayload(thumbPlain);
+            const wrappedThumb = await envelopeService.wrap(Buffer.from(thumbDek));
+            thumbKey = storageKey(att.projectId, att.id, 'thumb');
+            const thumbUpload = await storage.upload(
+              thumbKey,
+              Buffer.from(thumbCt),
+              'application/octet-stream',
+            );
+            wrappedThumbDek = Buffer.from(wrappedThumb).toString('base64');
+            ciphertextThumbSizeBytes = thumbCt.byteLength;
+            thumbVersionId = thumbUpload.versionId ?? null;
+            hasThumbnail = true;
+          } catch (err) {
+            thumbKey = null;
+            logger.error(
+              {
+                event: 'takeout-import-thumbnail-failed',
+                jobId,
+                attachment_id: att.id,
+                error_hint: err instanceof Error ? err.message : String(err),
+              },
+              'takeout-import-thumbnail-failed',
+            );
+          }
+        }
+
+        // `versionId` / `thumbVersionId` come from the PUT response (the
+        // bucket is versioned, ADR-0022) so the restored row can later
+        // hide → restore via copyFromVersion; null on an unversioned bucket.
         await db.insert(attachments).values({
           id: att.id,
           projectId: att.projectId,
@@ -375,10 +434,15 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
           mimeType: att.mimeType,
           sizeBytes: att.sizeBytes,
           originalKey,
-          hasThumbnail: false, // photo-thumbnail regen out of scope (module header)
+          versionId: originalUpload.versionId ?? null,
+          hasThumbnail,
+          thumbKey,
           ciphertextSizeBytes: ciphertext.byteLength,
+          ciphertextThumbSizeBytes,
           wrappedDek: Buffer.from(wrapped).toString('base64'),
+          wrappedThumbDek,
           wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,
+          thumbVersionId,
           createdBy: att.createdBy,
           createdAt: new Date(att.createdAt),
         });
