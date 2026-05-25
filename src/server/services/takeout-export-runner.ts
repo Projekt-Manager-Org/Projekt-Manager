@@ -5,16 +5,15 @@
  * Owns the asynchronous, fire-and-forget build a `POST /api/export-jobs`
  * kicks off: it advances the `data_exchange_job` row through
  * `pending → running → ready | failed` via `DataExchangeJobService`,
- * drives `buildExportArchive`, and writes EXACTLY ONE `audit_log` row at
- * the terminal transition (AC-332).
+ * driving `buildExportArchive` in between.
  *
- * Audit shape mirrors `ImportService`'s single `data_import` row
- * (AC-311): a takeout job is a deployment-level event with a `system`
- * actor, so the row is a raw insert (not `mutate()`). `data_import` is a
- * synthetic `AuditEntityType` backing no physical table, so it sits
- * outside the single-write-path scan; `entityId` is the job id (a
- * synthetic identifier, not an FK). Progress updates write no audit rows
- * and do not route through `mutate()`.
+ * The EXACTLY ONE `audit_log` row at the terminal transition (AC-332) is
+ * written by `markReady` / `markFailed` ATOMICALLY with the status flip —
+ * the runner only supplies the job-kind-specific content (`export_built` /
+ * `export_failed`, the German label, the counts). See
+ * `DataExchangeJobService.TerminalAuditRow` for why this is folded into the
+ * service's transaction rather than a second write here. Progress updates
+ * write no audit rows and do not route through `mutate()`.
  *
  * The runner never throws — it runs detached from the originating
  * request (which already returned 201). A wholesale build fault is
@@ -26,7 +25,6 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Database } from '../db/connection.js';
-import { auditLog } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
@@ -95,11 +93,14 @@ export async function runExportBuild(deps: RunExportBuildDeps): Promise<void> {
       bytesDone: result.bytesDone,
       currentItem: null,
     });
-    await jobs.markReady(jobId, result.archiveRef);
-    await writeTerminalAuditRow(db, jobId, 'export_built', {
-      filesTotal: result.filesTotal,
-      filesDone: result.filesDone,
-      bytesDone: result.bytesDone,
+    await jobs.markReady(jobId, result.archiveRef, {
+      action: 'export_built',
+      entityLabel: 'Export erstellt',
+      payload: {
+        filesTotal: result.filesTotal,
+        filesDone: result.filesDone,
+        bytesDone: result.bytesDone,
+      },
     });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
@@ -108,8 +109,11 @@ export async function runExportBuild(deps: RunExportBuildDeps): Promise<void> {
       'takeout-export-build-failed',
     );
     try {
-      await jobs.markFailed(jobId, detail);
-      await writeTerminalAuditRow(db, jobId, 'export_failed', { error: detail });
+      await jobs.markFailed(jobId, detail, {
+        action: 'export_failed',
+        entityLabel: 'Export fehlgeschlagen',
+        payload: { error: detail },
+      });
     } catch (innerErr) {
       // Last-resort: the row could not be moved to failed (e.g. it was
       // deleted). Log and give up — there is no caller to surface this to.
@@ -140,29 +144,4 @@ export async function runExportBuild(deps: RunExportBuildDeps): Promise<void> {
       );
     }
   }
-}
-
-/**
- * Write the single `data_import` audit row at the job's terminal
- * transition (AC-332). Raw insert by design — see the module header.
- */
-async function writeTerminalAuditRow(
-  db: Database,
-  jobId: string,
-  action: 'export_built' | 'export_failed',
-  payload: Record<string, unknown>,
-): Promise<void> {
-  await db.insert(auditLog).values({
-    actorKind: 'system',
-    actorId: null,
-    actorReason: 'data_import',
-    entityType: 'data_import',
-    entityId: jobId,
-    entityLabel: action === 'export_built' ? 'Export erstellt' : 'Export fehlgeschlagen',
-    action,
-    payload,
-    ancestorEntityType: null,
-    ancestorEntityId: null,
-    correlationId: null,
-  });
 }

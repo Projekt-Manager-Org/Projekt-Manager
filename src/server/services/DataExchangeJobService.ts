@@ -9,20 +9,26 @@
  * discipline) so the UI refetches the row over its REST endpoint — the
  * SSE frame is an invalidation hint, never a data carrier.
  *
- * Deliberately NOT an audited entity: progress is high-frequency and is
- * not a business-entity mutation, so the row does not route through
- * `mutate()`. The start/terminal audit row (entity_type `data_import`)
- * is the job endpoint's concern (later commit), where the request/actor
- * context lives.
+ * Progress is deliberately NOT audited: it is high-frequency and not a
+ * business-entity mutation, so it does not route through `mutate()`. The
+ * SINGLE terminal audit row (entity_type `data_import`), however, is written
+ * by THIS service ATOMICALLY with the terminal status flip (`markReady` /
+ * `markFailed` — see `TerminalAuditRow`). Folding the row into the same
+ * transaction as the status update is what guarantees AC-332's "exactly one
+ * row at the terminal transition": the status flip is the commit point a
+ * poller waits on, so no observer can ever see a terminal job without its
+ * audit row. (The prior split-write — flip status, then insert the row in a
+ * second statement — let a poller observe the terminal status and query
+ * `audit_log` in the window before the insert committed: a flaky 0-rows.)
  *
- * The export builder and import processor (later commits) drive this
- * service. They own throttling of `updateProgress` so a thousand-file
- * job does not emit a thousand SSE frames.
+ * The export/import runners drive this service. They own throttling of
+ * `updateProgress` so a thousand-file job does not emit a thousand SSE
+ * frames, and they supply the job-kind-specific terminal audit content.
  */
 
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
-import { dataExchangeJob } from '../db/schema.js';
+import { auditLog, dataExchangeJob } from '../db/schema.js';
 import { emitDataExchangeJobChanged } from '../sse/emitters.js';
 
 export type DataExchangeJobKind = 'export' | 'import';
@@ -61,6 +67,26 @@ export interface ProgressUpdate {
   currentItem?: string | null;
 }
 
+/** The four `data_import`-typed terminal actions the takeout jobs emit. */
+export type TerminalAuditAction =
+  | 'export_built'
+  | 'export_failed'
+  | 'import_restored'
+  | 'import_failed';
+
+/**
+ * The single terminal `audit_log` row, written ATOMICALLY with the terminal
+ * status flip (AC-332). The runner supplies the job-kind-specific content
+ * (action / German label / payload); the service fills the constant `system`
+ * / `data_import` envelope and owns the atomicity, so "exactly one row at the
+ * terminal transition" is structural rather than a caller convention.
+ */
+export interface TerminalAuditRow {
+  action: TerminalAuditAction;
+  entityLabel: string;
+  payload: Record<string, unknown>;
+}
+
 export class DataExchangeJobService {
   constructor(private readonly db: Database) {}
 
@@ -93,14 +119,32 @@ export class DataExchangeJobService {
     });
   }
 
-  /** Terminal `ready`: record the staged archive location (VPS-local). */
-  async markReady(id: string, archiveRef: string | null): Promise<DataExchangeJob> {
-    return this.updateAndEmit(id, { status: 'ready', archiveRef, finishedAt: new Date() });
+  /**
+   * Terminal `ready`: record the staged archive location (VPS-local) and the
+   * single terminal audit row, atomically. See {@link TerminalAuditRow}.
+   */
+  async markReady(
+    id: string,
+    archiveRef: string | null,
+    audit: TerminalAuditRow,
+  ): Promise<DataExchangeJob> {
+    return this.terminalAndEmit(id, { status: 'ready', archiveRef, finishedAt: new Date() }, audit);
   }
 
-  /** Terminal `failed`: record the operator-facing reason. */
-  async markFailed(id: string, errorDetail: string): Promise<DataExchangeJob> {
-    return this.updateAndEmit(id, { status: 'failed', errorDetail, finishedAt: new Date() });
+  /**
+   * Terminal `failed`: record the operator-facing reason and the single
+   * terminal audit row, atomically. See {@link TerminalAuditRow}.
+   */
+  async markFailed(
+    id: string,
+    errorDetail: string,
+    audit: TerminalAuditRow,
+  ): Promise<DataExchangeJob> {
+    return this.terminalAndEmit(
+      id,
+      { status: 'failed', errorDetail, finishedAt: new Date() },
+      audit,
+    );
   }
 
   /** Fetch a single job, or `null` if absent. */
@@ -160,6 +204,49 @@ export class DataExchangeJobService {
       .where(eq(dataExchangeJob.id, id))
       .returning();
     if (!row) throw new Error(`DataExchangeJobService: job ${id} not found`);
+    emitDataExchangeJobChanged();
+    return row;
+  }
+
+  /**
+   * Apply a TERMINAL status patch and write the single `data_import` audit
+   * row in ONE transaction, then emit post-commit. The two writes commit
+   * together so a poller that observes the terminal status is guaranteed to
+   * also see the audit row (AC-332). Throws (rolling back both) if `id`
+   * matched no row.
+   */
+  private async terminalAndEmit(
+    id: string,
+    patch: Partial<typeof dataExchangeJob.$inferInsert>,
+    audit: TerminalAuditRow,
+  ): Promise<DataExchangeJob> {
+    const row = await this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(dataExchangeJob)
+        .set({ ...patch, updatedAt: new Date() })
+        .where(eq(dataExchangeJob.id, id))
+        .returning();
+      if (!updated) throw new Error(`DataExchangeJobService: job ${id} not found`);
+      // Constant envelope: a takeout terminal is a deployment-level event with
+      // a `system` actor (actor_id NULL ⇒ actor_reason non-empty, the schema's
+      // compound CHECK). `data_import` backs no physical table, so it sits
+      // outside the single-write-path scan; `entity_id` is the (synthetic) job
+      // id. Progress updates write none of this — only this terminal flip does.
+      await tx.insert(auditLog).values({
+        actorKind: 'system',
+        actorId: null,
+        actorReason: 'data_import',
+        entityType: 'data_import',
+        entityId: id,
+        entityLabel: audit.entityLabel,
+        action: audit.action,
+        payload: audit.payload,
+        ancestorEntityType: null,
+        ancestorEntityId: null,
+        correlationId: null,
+      });
+      return updated;
+    });
     emitDataExchangeJobChanged();
     return row;
   }

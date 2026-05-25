@@ -6,10 +6,13 @@
  * Owns the asynchronous, fire-and-forget restore that the final upload
  * `PATCH` kicks off (the route stamps `running` + `archiveRef` and fires
  * this detached, exactly as `POST /api/export-jobs` fires the export
- * builder). Advances `running → ready | failed` via `DataExchangeJobService`
- * and writes EXACTLY ONE `audit_log` row at the terminal transition
- * (AC-332). It never throws — a wholesale fault is recorded on the row +
- * the audit trail, never surfaced to a caller (the PATCH already returned).
+ * builder). Advances `running → ready | failed` via `DataExchangeJobService`,
+ * whose `markReady` / `markFailed` write the EXACTLY ONE `audit_log` row at
+ * the terminal transition (AC-332) ATOMICALLY with the status flip — the
+ * runner only supplies the content (`import_restored` / `import_failed`, the
+ * German label, the counts). It never throws — a wholesale fault is recorded
+ * on the row + the audit trail, never surfaced to a caller (the PATCH already
+ * returned).
  *
  * Bounded memory is the load-bearing property (the PR's raison d'être —
  * multi-GB takeouts). The staged zip is STREAMED from disk one entry at a
@@ -59,7 +62,7 @@ import { createReadStream } from 'node:fs';
 import { Unzip, UnzipInflate, UnzipPassThrough } from 'fflate';
 
 import type { Database } from '../db/connection.js';
-import { attachments, auditLog } from '../db/schema.js';
+import { attachments } from '../db/schema.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
 import { DataExchangeJobService } from './DataExchangeJobService.js';
@@ -201,32 +204,6 @@ async function forEachZipEntry(
   unzip.push(new Uint8Array(0), true);
   if (fatal) throw fatal;
   await drain();
-}
-
-/**
- * Write the single `data_import` audit row at the job's terminal transition
- * (AC-332). Raw insert by design — mirrors takeout-export-runner.ts.
- */
-async function writeTerminalAuditRow(
-  db: Database,
-  jobId: string,
-  action: 'import_restored' | 'import_failed',
-  payload: Record<string, unknown>,
-): Promise<void> {
-  await db.insert(auditLog).values({
-    actorKind: 'system',
-    actorId: null,
-    actorReason: 'data_import',
-    entityType: 'data_import',
-    entityId: jobId,
-    entityLabel:
-      action === 'import_restored' ? 'Import wiederhergestellt' : 'Import fehlgeschlagen',
-    action,
-    payload,
-    ancestorEntityType: null,
-    ancestorEntityId: null,
-    correlationId: null,
-  });
 }
 
 /** Parsed + validated archive metadata produced by Pass 1. */
@@ -415,8 +392,11 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
       envelopeService.close();
     }
 
-    await jobs.markReady(jobId, deps.stagedPath);
-    await writeTerminalAuditRow(db, jobId, 'import_restored', { filesTotal, filesDone, bytesDone });
+    await jobs.markReady(jobId, deps.stagedPath, {
+      action: 'import_restored',
+      entityLabel: 'Import wiederhergestellt',
+      payload: { filesTotal, filesDone, bytesDone },
+    });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     logger.error(
@@ -424,8 +404,11 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
       'takeout-import-failed',
     );
     try {
-      await jobs.markFailed(jobId, detail);
-      await writeTerminalAuditRow(db, jobId, 'import_failed', { error: detail });
+      await jobs.markFailed(jobId, detail, {
+        action: 'import_failed',
+        entityLabel: 'Import fehlgeschlagen',
+        payload: { error: detail },
+      });
     } catch (innerErr) {
       logger.error(
         {

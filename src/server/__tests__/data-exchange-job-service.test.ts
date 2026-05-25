@@ -123,19 +123,42 @@ describe('DataExchangeJobService', () => {
     expect(progressed.currentItem).toBe('0815-Dach/foto.jpg');
     expect(progressed.status).toBe('running');
 
-    const ready = await svc.markReady(job.id, 'exchange/exports/abc123/data.zip');
+    const ready = await svc.markReady(job.id, 'exchange/exports/abc123/data.zip', {
+      action: 'export_built',
+      entityLabel: 'Export erstellt',
+      payload: { filesTotal: 3, filesDone: 3, bytesDone: 300 },
+    });
     expect(ready.status).toBe('ready');
     expect(ready.archiveRef).toBe('exchange/exports/abc123/data.zip');
     expect(ready.finishedAt).not.toBeNull();
+
+    // AC-332: the terminal flip wrote its single data_import audit row in the
+    // SAME transaction — by the time markReady resolves, the row is visible.
+    const auditRows = await db.execute(
+      sql`SELECT action FROM audit_log WHERE entity_id = ${job.id} AND entity_type = 'data_import'`,
+    );
+    expect(auditRows.rows.length).toBe(1);
+    expect((auditRows.rows[0] as { action: string }).action).toBe('export_built');
   });
 
-  it('markFailed() records the reason and the terminal status', async () => {
+  it('markFailed() records the reason, the terminal status, and the audit row', async () => {
     const job = await svc.create('import', null);
     await svc.markRunning(job.id);
-    const failed = await svc.markFailed(job.id, 'unzip failed: corrupt central directory');
+    const failed = await svc.markFailed(job.id, 'unzip failed: corrupt central directory', {
+      action: 'import_failed',
+      entityLabel: 'Import fehlgeschlagen',
+      payload: { error: 'unzip failed: corrupt central directory' },
+    });
     expect(failed.status).toBe('failed');
     expect(failed.errorDetail).toContain('corrupt central directory');
     expect(failed.finishedAt).not.toBeNull();
+
+    // The failed terminal also writes its single audit row atomically.
+    const auditRows = await db.execute(
+      sql`SELECT action FROM audit_log WHERE entity_id = ${job.id} AND entity_type = 'data_import'`,
+    );
+    expect(auditRows.rows.length).toBe(1);
+    expect((auditRows.rows[0] as { action: string }).action).toBe('import_failed');
   });
 
   it('emits exactly one frame per lifecycle transition', async () => {
@@ -144,7 +167,11 @@ describe('DataExchangeJobService', () => {
       const job = await svc.create('export', null); // 1
       await svc.markRunning(job.id); // 2
       await svc.updateProgress(job.id, { filesDone: 1 }); // 3
-      await svc.markReady(job.id, null); // 4
+      await svc.markReady(job.id, null, {
+        action: 'export_built',
+        entityLabel: 'Export erstellt',
+        payload: {},
+      }); // 4 — the in-tx audit insert emits no SSE frame, so the count stays 4
       expect(countJobChanged(conn)).toBe(4);
     } finally {
       bus.unsubscribe(conn);
