@@ -38,7 +38,7 @@ const CONFIG_BANNED = [
 ];
 
 export default tseslint.config(
-  { ignores: ['dist/', '.claude/', 'node_modules/', 'coverage/'] },
+  { ignores: ['dist/', '.claude/', 'node_modules/', 'coverage/', 'playwright-report/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
