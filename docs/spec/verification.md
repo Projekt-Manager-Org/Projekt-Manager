@@ -621,11 +621,11 @@ The end-to-end path is covered by focused, isolated test files rather than a sin
 23. The owner deactivates the new user. A separate browser context confirms the deactivated user cannot log in.
 24. The owner reactivates the user. The user can log in again.
 
-**Data exchange flows**:
+**Data exchange flows** (job-based — see [ui/daten.md §8.11](ui/daten.md#8111-export) and `e2e/daten-jobs.spec.ts`):
 
-25. User with `data:export` clicks the export action in the Daten view. The downloaded file is a unified JSON envelope covering every customer, project, and project-worker assignment, including archived rows.
-26. User with `data:restore` uploads an exported envelope into an empty database via the restore form. The dry-run preview renders, the user commits, and the restored rows match the source by ID.
-27. User with `data:restore` attempts the same restore into a non-empty database. The UI surfaces a destructive-action warning with a confirmation-phrase input and keeps the commit disabled. After the user types the configured phrase **[C]**, the commit enables; on confirm, the server re-validates the phrase and the request succeeds as an atomic wipe+restore.
+25. User with `data:export` clicks the export action in the Daten view. A server-side **export job** runs (`pending → running → ready`); the produced archive is a Range-capable ZIP — a server-built `manifest.json`, the text envelope covering every customer, project, and project-worker assignment (including archived rows), and the attachment blobs. The user downloads it once the job is `ready` ([AC-322](#1514-data-exchange), [AC-324](#1514-data-exchange)).
+26. User with `data:restore` selects an exported archive. A full-account restore always overwrites the deployment, so the dialog renders the destructive confirmation-phrase input **[C]** and keeps the start action disabled until the typed value matches — there is **no client dry-run** ([AC-161](#1514-data-exchange)). On confirm the client creates the **import job** (`POST /api/import-jobs`, where the server re-validates the phrase before accepting the upload — [AC-329](#1514-data-exchange)) and uploads the archive to the VPS over the resumable chunked protocol.
+27. The server validates the archive **before any write**, then wipes and restores the business data in one transaction and re-encrypts every attachment server-side. The restored rows match the source by ID and the attachments round-trip byte-for-byte ([AC-327](#1514-data-exchange), [AC-328](#1514-data-exchange)).
 
 **Push subscription error path (AC-205)**: The `Gerät abmelden` failure path (network error / 5xx) is covered by `e2e/push-unsubscribe-error.spec.ts`, which asserts that the affordance is restored, an error notification appears, and a subsequent retry succeeds.
 
