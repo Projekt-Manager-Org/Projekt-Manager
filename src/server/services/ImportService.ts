@@ -65,7 +65,6 @@ import { bestEffortHideStorageKeys } from './AttachmentService.js';
 import type { ServiceLogger } from './Logger.js';
 import { emitProjectChanged } from '../sse/emitters.js';
 import type { AuthUser } from '../middleware/auth.js';
-import { mintImportToken, IMPORT_TOKEN_PERMISSIONS } from './importTokenStore.js';
 
 /**
  * Within-envelope structural checks — uniqueness of keys that become DB
@@ -960,27 +959,6 @@ export class ImportService {
       await bestEffortHideStorageKeys(this.storage, keysToHide, log);
     }
 
-    // Issue #230 fixup: when the override TRUNCATE cascaded into
-    // `sessions`, the operator's session is dead. Mint a short-lived
-    // bearer token so the binary-leg orchestrator (per-attachment
-    // init + PUT + complete + rollback DELETE) can continue past the
-    // dead cookie. Bound to the operator's user-id; the imported
-    // envelope round-trips that id, so the same id resolves on the
-    // freshly-inserted row.
-    //
-    // Token is only minted when:
-    //   - `sessionInvalidated` is `true` (otherwise the session is fine
-    //     and no Bearer fallback is needed), AND
-    //   - `caller` was provided (the seed path is the lone null-caller
-    //     case and never invalidates a session).
-    //
-    // On every other path `importToken` is `null` — the field is part
-    // of the wire contract regardless.
-    const importToken =
-      sessionInvalidated && caller !== undefined && caller !== null
-        ? mintImportToken(caller.id, IMPORT_TOKEN_PERMISSIONS)
-        : null;
-
     return {
       schema_version: SCHEMA_VERSION,
       summary: {
@@ -993,7 +971,6 @@ export class ImportService {
         invoice_sequence: envelope.invoice_sequence.length,
       },
       sessionInvalidated,
-      importToken,
     };
   }
 }

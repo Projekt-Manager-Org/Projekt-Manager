@@ -163,22 +163,13 @@ export function hasPermission(roles: string[], permission: Permission): boolean 
 }
 
 /**
- * Effective permission check for service-layer gates. A Bearer-authenticated
- * caller (import binary leg) carries `importTokenPermissions` on the
- * AuthUser; the token's scope is the authoritative capability set and
- * `roles` are NOT consulted on that path. A cookie-authenticated caller
- * has `importTokenPermissions` undefined and resolves through the role
- * set, identical to direct `hasPermission(caller.roles, p)` calls.
+ * Effective permission check for service-layer gates. Resolves through the
+ * caller's role set, identical to a direct `hasPermission(caller.roles, p)`
+ * call.
  *
  * Structural input type avoids importing `AuthUser` (which lives in the
  * server-side `middleware/auth.ts`) into this client-shared config module.
  */
-export function callerHasPermission(
-  caller: { roles: string[]; importTokenPermissions?: readonly Permission[] },
-  permission: Permission,
-): boolean {
-  if (caller.importTokenPermissions !== undefined) {
-    return caller.importTokenPermissions.includes(permission);
-  }
+export function callerHasPermission(caller: { roles: string[] }, permission: Permission): boolean {
   return hasPermission(caller.roles, permission);
 }

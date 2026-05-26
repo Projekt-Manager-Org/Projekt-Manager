@@ -390,7 +390,6 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
           schema_version: number;
           summary: Record<string, number>;
           sessionInvalidated: boolean;
-          importToken: string | null;
         };
         expect(body.schema_version).toBe(SCHEMA_VERSION);
         expect(body.summary.users).toBe(env.users.length);
@@ -400,10 +399,8 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         expect(body.summary.project_workers).toBe(env.project_workers.length);
         expect(body.summary.invoices).toBe(env.invoices.length);
         expect(body.summary.invoice_sequence).toBe(env.invoice_sequence.length);
-        // Empty-target path: no wipe ran, sessions untouched. No token
-        // minted because the session is still alive (issue #230 fixup).
+        // Empty-target path: no wipe ran, sessions untouched.
         expect(body.sessionInvalidated).toBe(false);
-        expect(body.importToken).toBeNull();
 
         // Direct-DB cross-check: the expected rows landed alongside the
         // seeded users that survived the (selective) wipe.
@@ -457,18 +454,9 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         const result = res.json() as {
           sessionInvalidated: boolean;
           summary: { users: number };
-          importToken: string | null;
         };
         expect(result.sessionInvalidated).toBe(true);
         expect(result.summary.users).toBe(env.users.length);
-        // Issue #230 fixup: when the override wiped the operator's
-        // session, the response carries a short-lived bearer token so
-        // the binary-leg orchestrator can continue past the dead cookie.
-        // Shape contract: 32 random bytes, base64url-encoded (no padding)
-        // = 43 chars. The dedicated `import-token.test.ts` exercises the
-        // token's verify / expire / revoke / scope semantics; here we
-        // pin the wire-shape contract.
-        expect(result.importToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
         // Sessions cascade-deleted with users.
         const sessionsAfter = await db.select().from(sessions);

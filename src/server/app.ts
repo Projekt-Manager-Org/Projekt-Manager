@@ -73,12 +73,12 @@ function extractOrigin(endpoint: string | undefined): string | null {
 
 export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // Redact paths that would otherwise leak credentials into structured
-  // logs: `Authorization: Bearer <importToken>` on the binary leg of an
-  // import, the `session` cookie on every authenticated route, and the
-  // `confirmation_phrase` body field on `/api/import?override=true`.
-  // Fastify's default request serializer does not log headers today, so
-  // this is defense-in-depth — a future `req.log.info(request.headers, …)`
-  // would otherwise serialize the bearer verbatim.
+  // logs: any `Authorization` header, the `session` cookie on every
+  // authenticated route, and the `confirmation_phrase` body field on
+  // `/api/import?override=true`. Fastify's default request serializer
+  // does not log headers today, so this is defense-in-depth — a future
+  // `req.log.info(request.headers, …)` would otherwise serialize them
+  // verbatim.
   const REDACT_PATHS = [
     'req.headers.authorization',
     'req.headers.cookie',

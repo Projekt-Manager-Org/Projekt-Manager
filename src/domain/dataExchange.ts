@@ -340,20 +340,6 @@ export interface ImportResult {
    * next call. `false` in every other code path (dry-run never reaches
    * the commit; empty-target inserts into empty tables; envelopes
    * without users — once another path produces one — would not wipe).
-   *
-   * The companion `importToken` field (below) carries the bearer
-   * credential the binary leg needs to continue past the dead session.
    */
   sessionInvalidated: boolean;
-  /**
-   * Short-lived bearer token issued when the import wiped the operator's
-   * session (`sessionInvalidated === true`). The client orchestrator
-   * passes this in `Authorization: Bearer <token>` on the per-attachment
-   * binary leg calls (`init`, `complete`, `DELETE`) so it can continue
-   * past the dead session. Five-minute TTL; scoped to
-   * `attachment:read` / `attachment:write` / `attachment:hide`.
-   * `null` when the session survived (empty-target import or dry-run);
-   * absent from the dry-run preview shape entirely.
-   */
-  importToken: string | null;
 }

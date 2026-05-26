@@ -21,7 +21,6 @@ export const STRINGS = {
     sessionExpired: 'Sitzung abgelaufen.',
     sessionExpiredLogin: 'Sitzung abgelaufen. Bitte erneut anmelden.',
     notPermitted: 'Keine Berechtigung.',
-    importTokenInvalid: 'Import-Token ungültig oder abgelaufen.',
   },
 
   errors: {
@@ -484,10 +483,6 @@ export const STRINGS = {
     importSummaryClose: 'Schließen',
     importError: 'Import fehlgeschlagen.',
     importValidationFailed: 'ZIP-Datei ungültig oder unvollständig.',
-    importTokenInvalidTitle: 'Erneute Anmeldung erforderlich',
-    importTokenInvalidBody:
-      'Der Import-Token ist abgelaufen oder ungültig. Bitte erneut anmelden und den Import erneut starten.',
-    importTokenInvalidClose: 'Zur Anmeldung',
     restoreDestructiveNotice: 'Die bestehenden Daten werden unwiderruflich gelöscht.',
     restorePhrasePrompt: (phrase: string) => `Zur Bestätigung bitte „${phrase}" eingeben:`,
 

@@ -25,10 +25,6 @@ export interface ApiError {
  */
 export type ErrorCategory =
   | 'authentication' // INVALID_CREDENTIALS, UNAUTHENTICATED, SESSION_EXPIRED
-  | 'import_token_invalid' // IMPORT_TOKEN_INVALID (distinct so the orchestrator can
-  //                          escalate to a fatal-token phase without triggering the
-  //                          global session-expired redirect that would unmount the
-  //                          dialog mid-message)
   | 'authorization' // NOT_PERMITTED
   | 'validation' // VALIDATION_ERROR
   | 'not_found' // NOT_FOUND
@@ -73,8 +69,6 @@ function classifyCode(code: string): ErrorCategory {
     case 'UNAUTHENTICATED':
     case 'SESSION_EXPIRED':
       return 'authentication';
-    case 'IMPORT_TOKEN_INVALID':
-      return 'import_token_invalid';
     case 'NOT_PERMITTED':
       return 'authorization';
     case 'VALIDATION_ERROR':
@@ -106,21 +100,9 @@ interface RequestOptions {
    */
   signal?: AbortSignal;
   /**
-   * Optional bearer token. When set, the request carries
-   * `Authorization: Bearer <token>` and the server's import-token-aware
-   * middleware will accept the call without a session cookie. Used by
-   * the takeout-zip restore orchestrator on the override-with-users
-   * path, after the operator's session has CASCADEd away with the
-   * imported user set (issue #230). The session cookie is still sent
-   * (`credentials: 'same-origin'`); the server treats the header as
-   * authoritative on routes that opt into the token-aware middleware.
-   */
-  authToken?: string;
-  /**
    * Extra request headers merged on top of the defaults (Content-Type when a
-   * body is present, Authorization when `authToken` is set). The import-job
-   * create uses this to carry the tus-style `Upload-Length` header alongside
-   * its JSON body.
+   * body is present). The import-job create uses this to carry the tus-style
+   * `Upload-Length` header alongside its JSON body.
    */
   headers?: Record<string, string>;
 }
@@ -134,16 +116,13 @@ interface RequestOptions {
  */
 export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promise<ApiResult<T>> {
   const method = opts.method ?? 'GET';
-  // Caller-supplied headers go FIRST; the Content-Type/Authorization defaults
-  // are applied after so they stay authoritative — a caller cannot accidentally
-  // desync the always-JSON-stringified body by overriding Content-Type. Used
-  // today only to carry the import-job `Upload-Length`.
+  // Caller-supplied headers go FIRST; the Content-Type default is applied
+  // after so it stays authoritative — a caller cannot accidentally desync
+  // the always-JSON-stringified body by overriding Content-Type. Used today
+  // only to carry the import-job `Upload-Length`.
   const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
-  }
-  if (opts.authToken !== undefined) {
-    headers['Authorization'] = `Bearer ${opts.authToken}`;
   }
 
   let res: Response;
@@ -190,7 +169,6 @@ export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promis
     else if (category === 'server_error') fallbackMessage = STRINGS.errors.serverError;
     else if (sessionExpired) fallbackMessage = STRINGS.auth.sessionExpired;
     else if (category === 'authorization') fallbackMessage = STRINGS.auth.notPermitted;
-    else if (category === 'import_token_invalid') fallbackMessage = STRINGS.auth.importTokenInvalid;
 
     return {
       ok: false,
@@ -763,31 +741,22 @@ export const attachmentApi = {
       restore?: { id: string; createdBy: string; createdAt: string };
     },
     signal?: AbortSignal,
-    authToken?: string,
   ) =>
     apiCall<AttachmentInitResponse>(`/api/projects/${projectId}/attachments/init`, {
       method: 'POST',
       body: input,
       signal,
-      authToken,
     }),
 
-  completeUpload: (
-    projectId: string,
-    attachmentId: string,
-    signal?: AbortSignal,
-    authToken?: string,
-  ) =>
+  completeUpload: (projectId: string, attachmentId: string, signal?: AbortSignal) =>
     apiCall<Attachment>(`/api/projects/${projectId}/attachments/${attachmentId}/complete`, {
       method: 'POST',
       signal,
-      authToken,
     }),
 
-  delete: (projectId: string, attachmentId: string, authToken?: string) =>
+  delete: (projectId: string, attachmentId: string) =>
     apiCall<null>(`/api/projects/${projectId}/attachments/${attachmentId}`, {
       method: 'DELETE',
-      authToken,
     }),
 
   listTrash: (projectId: string) =>

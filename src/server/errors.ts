@@ -11,7 +11,6 @@ export type ErrorCode =
   | 'INVALID_CREDENTIALS'
   | 'UNAUTHENTICATED'
   | 'SESSION_EXPIRED'
-  | 'IMPORT_TOKEN_INVALID'
   | 'NOT_PERMITTED'
   | 'VALIDATION_ERROR'
   | 'CONFLICT'
@@ -90,18 +89,6 @@ export function unauthenticated(): AppError {
 
 export function sessionExpired(): AppError {
   return new AppError('SESSION_EXPIRED', STRINGS.auth.sessionExpired, 401);
-}
-
-/**
- * Bearer import token presented on a binary-leg endpoint was unknown,
- * expired, or revoked. Distinct from `SESSION_EXPIRED` so the import
- * orchestrator can distinguish a dead token from a real session expiry
- * and surface the correct UX (re-import vs. re-login). Issued only by
- * the import-token-aware auth middleware on routes used by the takeout-
- * zip restore binary leg.
- */
-export function importTokenInvalid(): AppError {
-  return new AppError('IMPORT_TOKEN_INVALID', STRINGS.auth.importTokenInvalid, 401);
 }
 
 export function notPermitted(): AppError {
