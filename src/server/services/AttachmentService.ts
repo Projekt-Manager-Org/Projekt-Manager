@@ -205,7 +205,7 @@ export interface DownloadUrlResult {
    * of triggering a download (the browser only renders inline for the
    * matching content type — `application/octet-stream` collapses to
    * download). Originals use the stored `mimeType`; thumbnails are
-   * always `image/jpeg` per the photo-thumbnail pipeline.
+   * always `image/webp` per the photo-thumbnail pipeline.
    */
   mimeType: string;
 }
@@ -1315,9 +1315,10 @@ export class AttachmentService {
         : await this.storage.createPresignedGet(row.originalKey, undefined, row.filename);
 
     // Thumbnails are produced by the photo-thumbnail pipeline and are
-    // always JPEG (src/server/services/AttachmentService.ts thumbnail
-    // pre-encode); originals carry whatever MIME the client uploaded.
-    const variantMime = variant === 'thumbnail' ? 'image/jpeg' : row.mimeType;
+    // always WebP (serverImagePipeline.renderWebpThumbnail on the restore
+    // path, encodeWebpThumbnail in the browser upload path — both emit
+    // image/webp); originals carry whatever MIME the client uploaded.
+    const variantMime = variant === 'thumbnail' ? 'image/webp' : row.mimeType;
 
     return {
       url: presigned.url,
