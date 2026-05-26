@@ -4,10 +4,6 @@
  * Surfaces:
  *   - GET  /api/export                      — single-shot business-data envelope
  *   - POST /api/import                      — restore-only ingest (dry-run + override + confirmation)
- *   - GET  /api/export/binary-descriptors   — paginated companion that yields
- *     every `status='ready'` attachment as a `BinaryDescriptor` (api.md
- *     §14.2.4, AC-248). Browser-side `Vollständiger Export` drains it
- *     alongside `data.json` to assemble a streaming-zip locally.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -15,7 +11,6 @@ import type { Database } from '../db/connection.js';
 import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
 import { ExportService } from '../services/ExportService.js';
 import { ImportService } from '../services/ImportService.js';
-import { BinaryDescriptorService } from '../services/BinaryDescriptorService.js';
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
@@ -85,11 +80,9 @@ export function dataExchangeRoutes(db: Database) {
     const authenticate = createAuthMiddleware(db);
     const exportService = new ExportService(db);
     const env = getEnv();
-    // Storage client + binary-descriptor service mirror the attachment-
-    // route construction (env-derived endpoints, per-request envelope
-    // service against the operator-loaded identity). The fallback
-    // `?? ''` collapses satisfy tsc — the boot probes refuse to start
-    // the app without these env values populated.
+    // Storage client mirrors the attachment-route construction (env-derived
+    // endpoints). The `!` collapses satisfy tsc — the boot probes refuse to
+    // start the app without these env values populated.
     const storage = createStorageClient({
       endpoint: env.STORAGE_ENDPOINT!,
       publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
@@ -99,12 +92,6 @@ export function dataExchangeRoutes(db: Database) {
       region: env.STORAGE_REGION,
     });
     const importService = new ImportService(db, storage);
-    const binaryDescriptorService = new BinaryDescriptorService({
-      db,
-      storage,
-      binaryAgeRecipient: env.BINARY_AGE_RECIPIENT ?? '',
-      binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
-    });
 
     app.addHook('preHandler', authenticate);
 
@@ -120,47 +107,6 @@ export function dataExchangeRoutes(db: Database) {
         // acquires `data:export` (tripwire for ADR-0019 bypass).
         const envelope = await exportService.export(request.user!);
         return reply.code(200).send(envelope);
-      },
-    );
-
-    // ---------------------------------------------------------------
-    // GET /api/export/binary-descriptors — paginated descriptor surface
-    // (api.md §14.2.4 / verification.md AC-248).
-    //
-    // The query-string schema is intentionally permissive on `after` (a
-    // free-form string — service decodes and validates) and `limit` (a
-    // bare number — service enforces the `[C]` ceiling so the
-    // 422 VALIDATION_ERROR surface stays in one place rather than split
-    // between Fastify's schema validator and the service). Both paths
-    // surface the same `code: 'VALIDATION_ERROR'` envelope shape.
-    // ---------------------------------------------------------------
-    app.get(
-      '/api/export/binary-descriptors',
-      {
-        schema: {
-          querystring: {
-            type: 'object',
-            properties: {
-              after: { type: 'string' },
-              // `coerce: { types: [...] }` would be cleaner but Fastify
-              // doesn't support per-field coercion in the standard ajv
-              // pipeline; accepting `string` here and parsing in the
-              // handler keeps the validator simple and lets the service
-              // own the `[C]` ceiling check.
-              limit: { type: 'string' },
-            },
-          },
-        },
-        preHandler: requirePermission('data:export'),
-      },
-      async (request, reply) => {
-        const q = request.query as { after?: string; limit?: string };
-        const limit = q.limit !== undefined ? Number(q.limit) : undefined;
-        const page = await binaryDescriptorService.listPage(request.user!, {
-          after: q.after,
-          limit,
-        });
-        return reply.code(200).send(page);
       },
     );
 

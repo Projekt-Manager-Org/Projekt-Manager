@@ -55,13 +55,11 @@ vi.mock('@/api/client', async (importActual) => {
     },
     exportJobApi: {
       getLatest: () => exportGetLatestMock(),
-      get: vi.fn(),
       create: vi.fn(),
       downloadPath: (id: string) => `/api/export-jobs/${id}/download`,
     },
     importJobApi: {
       getLatest: () => importGetLatestMock(),
-      get: vi.fn(),
       create: vi.fn(),
       headOffset: vi.fn(),
       patchChunk: vi.fn(),

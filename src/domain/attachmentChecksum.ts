@@ -1,12 +1,11 @@
 /**
  * Browser-side MD5-of-ciphertext helper for attachment uploads.
  *
- * Extracted from `state/attachmentStore.ts` so the import-orchestrator
- * (`ui/management/useImportAllRunner.ts`) and the standard upload path
- * share one implementation. Both routes need RFC 1864 base64 of the
- * 16-byte digest — that is what the server signs into the presigned
- * PUT's `Content-MD5` header (ADR-0024 / api.md §14.2.11), and what
- * the storage provider verifies the body against.
+ * Used by the standard upload path (`state/attachmentStore.ts`), which
+ * needs RFC 1864 base64 of the 16-byte digest — that is what the server
+ * signs into the presigned PUT's `Content-MD5` header (ADR-0024 /
+ * api.md §14.2.11), and what the storage provider verifies the body
+ * against.
  *
  * MD5 is required by the S3 wire protocol (`Content-MD5`); imported
  * from `@noble/hashes/legacy` because Paul Miller's noble suite

@@ -1062,7 +1062,6 @@ export interface DataExchangeJobDto {
  */
 export const exportJobApi = {
   getLatest: () => apiCall<{ job: DataExchangeJobDto | null }>('/api/export-jobs'),
-  get: (id: string) => apiCall<DataExchangeJobDto>(`/api/export-jobs/${id}`),
   create: () => apiCall<DataExchangeJobDto>('/api/export-jobs', { method: 'POST' }),
   downloadPath: (id: string) => `/api/export-jobs/${id}/download`,
 };
@@ -1096,7 +1095,6 @@ const OFFSET_OCTET_STREAM = 'application/offset+octet-stream';
  */
 export const importJobApi = {
   getLatest: () => apiCall<{ job: DataExchangeJobDto | null }>('/api/import-jobs'),
-  get: (id: string) => apiCall<DataExchangeJobDto>(`/api/import-jobs/${id}`),
 
   create: (args: { uploadLength: number; override: boolean; phrase: string | null }) =>
     apiCall<DataExchangeJobDto>('/api/import-jobs', {

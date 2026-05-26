@@ -298,9 +298,8 @@ async function start(): Promise<void> {
   // explicitly rejects degraded modes (uploads-yes-downloads-no, fall
   // back to plaintext). Presence of BINARY_AGE_RECIPIENT is enforced by
   // checkAppServerEnv before this runs, so the recipient is non-empty.
-  // This probe is also what makes the wholesale-500 path on
-  // GET /api/export/binary-descriptors (AC-248) non-reachable in steady
-  // state — startup is blocked before the route is exposed.
+  // Blocking startup here keeps every binary-decryption surface (export
+  // jobs, attachment downloads) from ever serving in a degraded mode.
   await assertBinaryIdentityLoaded({
     identityPath: env.BINARY_AGE_IDENTITY_PATH,
     configuredRecipient: env.BINARY_AGE_RECIPIENT ?? '',

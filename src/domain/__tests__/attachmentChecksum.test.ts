@@ -1,8 +1,7 @@
 /**
  * MD5 helper for the S3-presigned PUT path — the storage provider
  * verifies the body against `Content-MD5` (ADR-0024 / api.md §14.2.11).
- * Both upload routes (`state/attachmentStore.ts` and
- * `ui/management/useImportAllRunner.ts`) call into this single
+ * The upload path (`state/attachmentStore.ts`) calls into this single
  * implementation; a regression here breaks every upload.
  *
  * Golden values pinned against `md5sum` (coreutils) so the test is
