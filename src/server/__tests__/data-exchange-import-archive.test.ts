@@ -721,6 +721,49 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const stillAuthed = await authGet(ownerToken, '/api/import-jobs');
       expect(stillAuthed.statusCode).toBe(200);
     });
+
+    it('an attachment fileName with a path separator → job failed at Pass-1, target untouched', async () => {
+      // Parity with the upload-path `isSafeFileName` guard: the import
+      // path must not persist a fileName (path separator / control char)
+      // the upload path would reject. Like the enum gate, this fails in
+      // Pass-1 before the destructive wipe (AC-327).
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'ok.pdf' });
+      const archive = await buildExportArchive(ownerToken);
+
+      const before = {
+        projects: await countRows('projects'),
+        attachments: await countRows('attachments'),
+      };
+      expect(before.attachments).toBeGreaterThan(0);
+
+      // Tamper data.json with a traversal-style fileName, re-stamping the
+      // manifest digest so the run reaches the fileName-safety check.
+      const corrupt = remuxArchive(archive, (entries) => {
+        const env = JSON.parse(Buffer.from(entries['data.json']!).toString('utf-8')) as {
+          attachments: { fileName: string }[];
+        };
+        expect(env.attachments.length).toBeGreaterThan(0);
+        env.attachments[0]!.fileName = '../../etc/passwd';
+        const repacked = Buffer.from(JSON.stringify(env));
+        entries['data.json'] = new Uint8Array(repacked);
+
+        const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf-8')) as {
+          files: { zipPath: string; sha256: string }[];
+        };
+        const dataEntry = manifest.files.find((f) => f.zipPath === 'data.json');
+        expect(dataEntry).toBeDefined();
+        dataEntry!.sha256 = crypto.createHash('sha256').update(repacked).digest('hex');
+        entries['manifest.json'] = new Uint8Array(Buffer.from(JSON.stringify(manifest)));
+      });
+
+      const jobId = await uploadArchiveToNewJob(ownerToken, corrupt);
+      const terminal = await pollImportTerminal(ownerToken, jobId);
+      expect(terminal.status).toBe('failed');
+      expect(terminal.errorDetail).toContain('unsafe fileName');
+
+      expect(await countRows('projects')).toBe(before.projects);
+      expect(await countRows('attachments')).toBe(before.attachments);
+    });
   });
 
   // -------------------------------------------------------------------

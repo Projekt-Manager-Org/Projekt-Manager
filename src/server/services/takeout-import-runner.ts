@@ -29,9 +29,10 @@
  *     time and buffering only `data.json` + `manifest.json`. Verify every
  *     entry's SHA-256 against the manifest, manifest↔envelope coverage
  *     parity, attachment-id uniqueness, attachment→project referential
- *     integrity, and each attachment's kind/label/mimeType against the
+ *     integrity, each attachment's kind/label/mimeType against the
  *     `attachments` CHECK enums (so a tampered envelope can't survive to
- *     trip the constraint on the post-wipe Pass-2 insert). ImportService
+ *     trip the constraint on the post-wipe Pass-2 insert), and `fileName`
+ *     safety (parity with the upload-path guard). ImportService
  *     additionally re-checks `schema_version` (throws pre-tx). ANY failure
  *     → `failed` + `import_failed` audit +
  *     ZERO destructive writes — a corrupt / tampered / wrong-version
@@ -85,6 +86,7 @@ import { renderWebpThumbnail } from './serverImagePipeline.js';
 import { encryptInvoicePayload } from './invoice/payloadCrypto.js';
 import {
   WRAPPED_DEK_CURRENT_VERSION,
+  isSafeFileName,
   validateKind,
   validateLabel,
   validateMime,
@@ -317,6 +319,14 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
         }`,
         { cause: err },
       );
+    }
+    // Filename safety — parity with the upload path's service-boundary
+    // guard. `fileName` lands in the row and later feeds the presigned-GET
+    // Content-Disposition; `buildContentDisposition` sanitizes that sink,
+    // but the import path must not persist a name (control chars, path
+    // separators) the upload path would reject.
+    if (!isSafeFileName(att.fileName)) {
+      throw new Error(`attachment ${att.id} has an unsafe fileName`);
     }
   }
 
