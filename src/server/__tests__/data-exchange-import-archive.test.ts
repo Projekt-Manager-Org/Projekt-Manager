@@ -664,6 +664,63 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(await countRows('customers')).toBe(before.customers);
       expect(await countRows('projects')).toBe(before.projects);
     });
+
+    it('an attachment mimeType outside the CHECK enum → job failed at Pass-1, target untouched', async () => {
+      // Regression: Pass-1 must reject an attachment whose kind/label/
+      // mimeType is outside the `attachments` CHECK enums. Without that
+      // gate the value survives validation, the wipe commits, and the
+      // Pass-2 insert trips the DB constraint AFTER the destructive
+      // restore — leaving the target truncated (AC-327 violation).
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'evil.pdf' });
+      const archive = await buildExportArchive(ownerToken);
+
+      const before = {
+        customers: await countRows('customers'),
+        projects: await countRows('projects'),
+        users: await countRows('users'),
+        attachments: await countRows('attachments'),
+      };
+      expect(before.attachments).toBeGreaterThan(0); // the seed left an attachment to tamper
+
+      // Tamper data.json: flip the first attachment's mimeType to a value
+      // outside the whitelist. Because data.json's own digest is pinned in
+      // the manifest, we re-stamp that entry so the integrity gate passes
+      // and the run reaches the enum check (otherwise this would merely
+      // re-prove the sha256 path).
+      const corrupt = remuxArchive(archive, (entries) => {
+        const env = JSON.parse(Buffer.from(entries['data.json']!).toString('utf-8')) as {
+          attachments: { mimeType: string }[];
+        };
+        expect(env.attachments.length).toBeGreaterThan(0);
+        env.attachments[0]!.mimeType = 'application/x-tampered';
+        const repacked = Buffer.from(JSON.stringify(env));
+        entries['data.json'] = new Uint8Array(repacked);
+
+        const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf-8')) as {
+          files: { zipPath: string; sha256: string }[];
+        };
+        const dataEntry = manifest.files.find((f) => f.zipPath === 'data.json');
+        expect(dataEntry).toBeDefined();
+        dataEntry!.sha256 = crypto.createHash('sha256').update(repacked).digest('hex');
+        entries['manifest.json'] = new Uint8Array(Buffer.from(JSON.stringify(manifest)));
+      });
+
+      const jobId = await uploadArchiveToNewJob(ownerToken, corrupt);
+      const terminal = await pollImportTerminal(ownerToken, jobId);
+      expect(terminal.status).toBe('failed');
+      // The failure is the enum gate specifically — not an incidental
+      // integrity trip — so the message names the invalid enum value.
+      expect(terminal.errorDetail).toContain('invalid enum value');
+
+      // ZERO writes: the wipe never ran (AC-327). Counts unchanged and the
+      // owner's session still works (no users wipe).
+      expect(await countRows('customers')).toBe(before.customers);
+      expect(await countRows('projects')).toBe(before.projects);
+      expect(await countRows('users')).toBe(before.users);
+      expect(await countRows('attachments')).toBe(before.attachments);
+      const stillAuthed = await authGet(ownerToken, '/api/import-jobs');
+      expect(stillAuthed.statusCode).toBe(200);
+    });
   });
 
   // -------------------------------------------------------------------

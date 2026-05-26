@@ -28,9 +28,12 @@
  *   PASS 1 — VALIDATE BEFORE WIPE: stream once, hashing each entry one at a
  *     time and buffering only `data.json` + `manifest.json`. Verify every
  *     entry's SHA-256 against the manifest, manifest↔envelope coverage
- *     parity, attachment-id uniqueness, and attachment→project referential
- *     integrity. ImportService additionally re-checks `schema_version`
- *     (throws pre-tx). ANY failure → `failed` + `import_failed` audit +
+ *     parity, attachment-id uniqueness, attachment→project referential
+ *     integrity, and each attachment's kind/label/mimeType against the
+ *     `attachments` CHECK enums (so a tampered envelope can't survive to
+ *     trip the constraint on the post-wipe Pass-2 insert). ImportService
+ *     additionally re-checks `schema_version` (throws pre-tx). ANY failure
+ *     → `failed` + `import_failed` audit +
  *     ZERO destructive writes — a corrupt / tampered / wrong-version
  *     archive never wipes the target (AC-327).
  *   RESTORE: `ImportService.import` with `override:true` (a full-account
@@ -80,7 +83,12 @@ import { ImportService } from './ImportService.js';
 import { KeyEnvelopeService } from './KeyEnvelopeService.js';
 import { renderWebpThumbnail } from './serverImagePipeline.js';
 import { encryptInvoicePayload } from './invoice/payloadCrypto.js';
-import { WRAPPED_DEK_CURRENT_VERSION } from '../../domain/attachments.js';
+import {
+  WRAPPED_DEK_CURRENT_VERSION,
+  validateKind,
+  validateLabel,
+  validateMime,
+} from '../../domain/attachments.js';
 import { RESTORE_CONFIRMATION_PHRASE } from '../../config/dataExchangeConfig.js';
 import type { Envelope, EnvelopeAttachment } from '../../domain/dataExchange.js';
 
@@ -292,6 +300,23 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
     }
     if (!envelopeProjectIds.has(att.projectId)) {
       throw new Error(`attachment ${att.id} references project ${att.projectId} not in envelope`);
+    }
+    // Closed-enum check against the `attachments` CHECK constraints
+    // (kind/label/mime_type). Pass-2 inserts the row AFTER the wipe has
+    // committed, so an out-of-enum value would otherwise trip the DB
+    // constraint post-wipe and strand a truncated target (AC-327). The
+    // domain validators are the shared source of truth for these enums.
+    try {
+      validateKind(att.kind);
+      validateLabel(att.label);
+      validateMime(att.mimeType);
+    } catch (err) {
+      throw new Error(
+        `attachment ${att.id} has an invalid enum value: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        { cause: err },
+      );
     }
   }
 
