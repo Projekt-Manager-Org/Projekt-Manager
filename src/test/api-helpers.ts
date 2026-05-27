@@ -97,6 +97,21 @@ export function getApp(): FastifyInstance {
 }
 
 /**
+ * Get the database handle the running app was built with.
+ *
+ * Lets tests drive the service layer directly (e.g. ExportService /
+ * ImportService — see `data-exchange-helpers.ts`) against the same
+ * Postgres state the app serves, without an HTTP hop.
+ * Throws if `startApp()` has not been called.
+ */
+export function getDb(): Database {
+  if (!db) {
+    throw new Error('Test app not started. Call startApp() in beforeAll.');
+  }
+  return db;
+}
+
+/**
  * Log in as a user and return the session token.
  *
  * Extracts the token from the `set-cookie` header (HttpOnly session

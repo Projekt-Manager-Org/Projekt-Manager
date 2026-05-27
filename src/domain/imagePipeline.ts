@@ -288,26 +288,6 @@ async function shrinkUntilUnderCap(
 }
 
 /**
- * Derive a WebP thumbnail from `source` plaintext bytes at the
- * configured `thumbnailMaxDimension` / `thumbnailQuality`. Used by the
- * Vollständiger-Import runner, which already has plaintext-on-disk
- * (the takeout zip's entry bytes) and must not re-run the original
- * compression — the original is preserved verbatim from the source
- * export so the byte-equality contract holds (verification.md AC-241).
- *
- * Returns `null` in non-browser runtimes (no canvas) — the caller
- * surfaces a per-file failure rather than crashing.
- */
-export async function deriveWebpThumbnail(source: Blob): Promise<Blob | null> {
-  if (!canProcessImages()) return null;
-  return encodeWebpThumbnail(
-    source,
-    ATTACHMENT_PIPELINE.thumbnailMaxDimension,
-    ATTACHMENT_PIPELINE.thumbnailQuality,
-  );
-}
-
-/**
  * Encode a WebP thumbnail at `dimension` longest edge / `quality`.
  *
  * `shrinkFile` outputs JPEG (or PNG for transparent sources) only —

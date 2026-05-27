@@ -1,76 +1,65 @@
 /**
- * Vollständiger Export dialog — pre-flight → progress → post-export
- * summary (ui/daten.md §8.11.1, AC-249/AC-251).
+ * Vollständiger Export dialog — server-side export-job flow
+ * (ui/daten.md §8.11.1, AC-335). The browser triggers, polls, and downloads;
+ * the archive is built on the VPS.
  *
- * Three phases:
- *   1. preflight  — server-computed `totalCount` + `totalSizeBytes`
- *                   readout. Below the mobile-warning breakpoint a
- *                   non-blocking warning copy is rendered. Confirm
- *                   starts the export; Escape / Cancel closes the
- *                   dialog.
- *   2. progress   — drains descriptor pages in cursor order with
- *                   bounded retry on URL expiry, feeds the helper a
- *                   pre-flattened iterable so the helper stays a pure
- *                   stream-zip assembler. Cancel closes the dialog
- *                   immediately, aborts the in-flight ciphertext
- *                   fetch, and unregisters the SW-side registry entry
- *                   (AC-249: any partially-written download is the
- *                   user's to discard).
- *   3. summary    — resulting filename + cumulative skipped-row count.
+ * Four phases, derived from the `exportJobStore` job + a local "tracking" flag:
+ *   - preflight — start action + mobile-warning. Shown on a fresh open (the
+ *     Export button) until Start is clicked and the job row arrives.
+ *   - progress  — files/bytes/current-item readout while the build runs.
+ *   - ready     — Range-capable download link (+ skipped count).
+ *   - failed    — the job's error_detail.
  *
- * The orchestration (state machine, fetch loop, served-ACK await,
- * identity-gated `finally`) lives in `useExportAllRunner`; the four
- * phase render branches live in `VollstaendigerExportDialog.views`.
- * This file is the dialog mount + a11y wiring.
+ * `tracking` distinguishes a fresh open (Export button → preflight, even if a
+ * prior terminal job sits in the store) from a mount-time resume of an active
+ * build (DatenView auto-opens this dialog for pending/running jobs → progress).
+ * It is captured from the job status AT MOUNT; DatenView conditionally mounts
+ * the dialog, so each open is a fresh lifecycle. Closing never stops the
+ * server-side job — the resume probe re-attaches.
+ *
+ * Orchestration lives in `exportJobStore`; phase render branches live in
+ * `VollstaendigerExportDialog.views`. This file is the mount + a11y + phase
+ * selection.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
+import { useExportJobStore } from '@/state/exportJobStore';
 import { useDialogA11y } from '@/ui/common/useDialogA11y';
-import { useExportAllRunner } from './useExportAllRunner';
 import {
-  ErrorView,
+  FailedView,
   PreflightView,
   ProgressView,
-  SummaryView,
+  ReadyView,
 } from './VollstaendigerExportDialog.views';
-import styles from './VollstaendigerExportDialog.module.css';
 
 interface VollstaendigerExportDialogProps {
-  /** Whether the dialog is mounted/open. */
-  isOpen: boolean;
-  /** Called when the user closes the dialog (any phase). */
   onClose: () => void;
 }
 
-/**
- * One-shot probe of the mobile-warning breakpoint. Used as the lazy
- * initializer for `useState` so the first render already reflects the
- * viewport — no extra setState-in-effect cascade. SSR-safe: returns
- * false when `window` is unavailable, matching the no-warning default.
- */
 function probeIsMobile(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia(`(max-width: ${ATTACHMENT_CONFIG.exportAllMobileWarningBreakpointPx}px)`)
     .matches;
 }
 
-export function VollstaendigerExportDialog({ isOpen, onClose }: VollstaendigerExportDialogProps) {
+export function VollstaendigerExportDialog({ onClose }: VollstaendigerExportDialogProps) {
   const [isMobile, setIsMobile] = useState<boolean>(probeIsMobile);
+  const [startClicked, setStartClicked] = useState<boolean>(false);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const initialFocusRef = useRef<HTMLButtonElement>(null);
+  const buttonFocusRef = useRef<HTMLButtonElement>(null);
+  const anchorFocusRef = useRef<HTMLAnchorElement>(null);
 
-  const { phase, start, cancel } = useExportAllRunner({ isOpen });
+  const job = useExportJobStore((s) => s.job);
+  const start = useExportJobStore((s) => s.start);
+  const downloadPath = useExportJobStore((s) => s.downloadPath);
 
-  // --- Mobile-warning breakpoint detection ---------------------------
-  // matchMedia is the canonical pattern for breakpoint reactivity;
-  // re-evaluates on viewport resize so the warning appears/disappears
-  // mirroring CSS media-query behavior. The E2E test resizes BEFORE
-  // opening the dialog, so a one-shot read at open-time would suffice —
-  // matchMedia is added for robustness against future viewport changes
-  // mid-session. The initial value is supplied via `useState`'s lazy
-  // initializer (`probeIsMobile`); the effect only wires the resize
-  // handler so we don't trip the no-cascading-setState lint rule.
+  // Job status captured at mount (lazy useState — read freely during render):
+  // a dialog opened onto an active build (DatenView auto-opens for
+  // pending/running) resumes straight to progress; a fresh open (Export button,
+  // job null or terminal) shows preflight first.
+  const [jobStatusAtMount] = useState(() => job?.status);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const mql = window.matchMedia(
@@ -81,75 +70,76 @@ export function VollstaendigerExportDialog({ isOpen, onClose }: VollstaendigerEx
     return () => mql.removeEventListener('change', handler);
   }, []);
 
-  const handleClose = useCallback(() => {
-    cancel();
-    onClose();
-  }, [cancel, onClose]);
+  const onStart = useCallback(() => {
+    setStartClicked(true);
+    void (async () => {
+      await start();
+      // A non-409 failure produced no job — re-enable the preflight so the user
+      // can retry. A 409 re-attach or a success leaves `job` set, so the
+      // derivation moves to progress and Start is no longer rendered.
+      if (!useExportJobStore.getState().job) setStartClicked(false);
+    })();
+  }, [start]);
 
-  // Modal a11y — focus trap, focus restoration, body scroll lock.
-  // Escape closes only on preflight / summary / error: the progress
-  // phase intentionally requires the user-visible "Abbrechen" press
-  // so the partial-download contract is unambiguous.
-  const escapeAllowed =
-    phase.kind === 'preflight' || phase.kind === 'summary' || phase.kind === 'error';
+  // Escape closes in every phase: closing never stops the server-side job —
+  // the build continues and the mount-time resume probe re-attaches.
   useDialogA11y({
-    isOpen,
+    isOpen: true,
     dialogRef,
-    onOpenedFocus: useCallback(() => initialFocusRef.current?.focus(), []),
-    onEscape: escapeAllowed ? handleClose : undefined,
+    onOpenedFocus: useCallback(() => {
+      (anchorFocusRef.current ?? buttonFocusRef.current)?.focus();
+    }, []),
+    onEscape: onClose,
   });
 
-  if (!isOpen) return null;
+  const isResume = jobStatusAtMount === 'pending' || jobStatusAtMount === 'running';
+  const tracking = isResume || startClicked;
 
-  if (phase.kind === 'closed') {
-    // isOpen=true but phase=closed means we're between mount and the
-    // first preflight fetch — render an empty overlay so the dialog
-    // mount doesn't pop in/out.
-    return <div className={styles.overlay} data-testid="export-all-loading" />;
-  }
-
-  if (phase.kind === 'preflight') {
+  // Preflight until we have a job to track: a fresh open, or the brief window
+  // after Start before the pending row arrives (Start is disabled meanwhile).
+  if (!tracking || !job) {
     return (
       <PreflightView
-        phase={phase}
         isMobile={isMobile}
+        startDisabled={startClicked}
         dialogRef={dialogRef}
-        initialFocusRef={initialFocusRef}
-        onCancel={handleClose}
-        onConfirm={() => start(phase)}
+        initialFocusRef={buttonFocusRef}
+        onCancel={onClose}
+        onStart={onStart}
       />
     );
   }
 
-  if (phase.kind === 'progress') {
+  if (job.status === 'ready') {
     return (
-      <ProgressView
-        phase={phase}
+      <ReadyView
+        job={job}
+        downloadHref={downloadPath(job.id)}
         dialogRef={dialogRef}
-        initialFocusRef={initialFocusRef}
-        onCancel={handleClose}
+        initialFocusRef={anchorFocusRef}
+        onClose={onClose}
       />
     );
   }
 
-  if (phase.kind === 'summary') {
+  if (job.status === 'failed') {
     return (
-      <SummaryView
-        phase={phase}
+      <FailedView
+        job={job}
         dialogRef={dialogRef}
-        initialFocusRef={initialFocusRef}
-        onClose={handleClose}
+        initialFocusRef={buttonFocusRef}
+        onClose={onClose}
       />
     );
   }
 
-  // phase.kind === 'error'
+  // pending | running
   return (
-    <ErrorView
-      phase={phase}
+    <ProgressView
+      job={job}
       dialogRef={dialogRef}
-      initialFocusRef={initialFocusRef}
-      onClose={handleClose}
+      initialFocusRef={buttonFocusRef}
+      onClose={onClose}
     />
   );
 }

@@ -11,7 +11,6 @@ export type ErrorCode =
   | 'INVALID_CREDENTIALS'
   | 'UNAUTHENTICATED'
   | 'SESSION_EXPIRED'
-  | 'IMPORT_TOKEN_INVALID'
   | 'NOT_PERMITTED'
   | 'VALIDATION_ERROR'
   | 'CONFLICT'
@@ -24,6 +23,13 @@ export type ErrorCode =
   | 'TARGET_NOT_EMPTY'
   | 'RESTORE_CONFIRMATION_MISMATCH'
   | 'MISSING_USER_REFS'
+  // Full-account takeout jobs (ADR-0018, api.md §14.2.4 / §14.4.1).
+  | 'EXPORT_JOB_ACTIVE'
+  | 'IMPORT_JOB_ACTIVE'
+  | 'EXPORT_JOB_NOT_READY'
+  | 'UPLOAD_OFFSET_CONFLICT'
+  | 'UPLOAD_TOO_LARGE'
+  | 'UPLOAD_NOT_ACCEPTED'
   | 'BULK_LIMIT_EXCEEDED'
   | 'DEK_UNWRAP_FAILED'
   // Invoice + company-profile domain (ADR-0026, api.md §14.4).
@@ -85,18 +91,6 @@ export function sessionExpired(): AppError {
   return new AppError('SESSION_EXPIRED', STRINGS.auth.sessionExpired, 401);
 }
 
-/**
- * Bearer import token presented on a binary-leg endpoint was unknown,
- * expired, or revoked. Distinct from `SESSION_EXPIRED` so the import
- * orchestrator can distinguish a dead token from a real session expiry
- * and surface the correct UX (re-import vs. re-login). Issued only by
- * the import-token-aware auth middleware on routes used by the takeout-
- * zip restore binary leg.
- */
-export function importTokenInvalid(): AppError {
-  return new AppError('IMPORT_TOKEN_INVALID', STRINGS.auth.importTokenInvalid, 401);
-}
-
 export function notPermitted(): AppError {
   return new AppError('NOT_PERMITTED', STRINGS.auth.notPermitted, 403);
 }
@@ -145,6 +139,59 @@ export interface MissingUserRefsDetails {
 
 export function missingUserRefs(details: MissingUserRefsDetails): AppError {
   return new AppError('MISSING_USER_REFS', STRINGS.errors.missingUserRefs, 422, details);
+}
+
+/**
+ * A full-account export/import job create collided with one already
+ * `pending`/`running` (api.md §14.2.4 "Jobs — one active per kind").
+ * The active job's id rides in `details.activeJobId` so the UI
+ * re-attaches to the running build rather than starting a second.
+ */
+export function exportJobActive(activeJobId: string): AppError {
+  return new AppError('EXPORT_JOB_ACTIVE', STRINGS.errors.exportJobActive, 409, { activeJobId });
+}
+
+export function importJobActive(activeJobId: string): AppError {
+  return new AppError('IMPORT_JOB_ACTIVE', STRINGS.errors.importJobActive, 409, { activeJobId });
+}
+
+/**
+ * Download requested on an export job that has not reached `ready`
+ * (api.md §14.2.4 "Export job — download"). 409 (not 404): the job
+ * exists, the artifact is simply not built yet — the client polls and
+ * retries.
+ */
+export function exportJobNotReady(): AppError {
+  return new AppError('EXPORT_JOB_NOT_READY', STRINGS.errors.exportJobNotReady, 409);
+}
+
+/**
+ * Resumable-upload chunk PATCHed at an offset other than the server's
+ * current one (api.md §14.2.4 "Import job — resumable upload"). 409: the
+ * server offset is unchanged, so a retried chunk at the correct offset is
+ * safe (idempotent retry).
+ */
+export function uploadOffsetConflict(): AppError {
+  return new AppError('UPLOAD_OFFSET_CONFLICT', STRINGS.errors.uploadOffsetConflict, 409);
+}
+
+/**
+ * Resumable-upload chunk whose bytes would extend past the declared
+ * `Upload-Length` (api.md §14.2.4). 413: the write is rejected wholesale
+ * and the server offset does not advance.
+ */
+export function uploadTooLarge(): AppError {
+  return new AppError('UPLOAD_TOO_LARGE', STRINGS.errors.uploadTooLarge, 413);
+}
+
+/**
+ * Resumable-upload chunk PATCHed at a job that is not accepting bytes — it
+ * either already left `pending` (upload complete / restore running / terminal)
+ * so appending would corrupt the staged archive the runner reads, or it is not
+ * an import job at all. 409: the job exists, its state simply forbids the write.
+ */
+export function uploadNotAccepted(): AppError {
+  return new AppError('UPLOAD_NOT_ACCEPTED', STRINGS.errors.uploadNotAccepted, 409);
 }
 
 /**

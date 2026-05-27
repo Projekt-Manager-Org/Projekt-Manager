@@ -19,8 +19,8 @@
  *     entity-typed slot) with the documented shape.
  *   - SCHEMA_VERSION = 3 is a hard cut — a v2-stamped envelope rejects.
  *
- * Test fixtures are built in-test rather than via the seed or
- * `/api/export` so the cases can vary independently. The roundtrip AT-77
+ * Test fixtures are built in-test rather than via the seed or a full
+ * `ExportService` export so the cases can vary independently. The roundtrip AT-77
  * analog uses the seed + export but skips fields that legitimately change
  * between two snapshots (`exported_at`).
  */
@@ -32,12 +32,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type pg from 'pg';
 
-import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
-import {
-  SEED_DEFAULT_PASSWORD,
-  SEED_USERS,
-  EXPECTED_RESTORE_PHRASE,
-} from '../../test/seedAssumptions.js';
+import { startApp, stopApp } from '../../test/api-helpers.js';
+import { exportEnvelope, importEnvelope } from '../../test/data-exchange-helpers.js';
+import { EXPECTED_RESTORE_PHRASE } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import {
@@ -50,7 +47,8 @@ import {
 } from '../db/schema.js';
 import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
 import type { Database } from '../db/connection.js';
-import type { Envelope } from '../../domain/dataExchange.js';
+import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
+import { AppError } from '../errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -79,17 +77,20 @@ function isoNow(): string {
 }
 
 /**
- * Cast an `Envelope` (strict shape) to the loose payload type
- * `authPost` accepts AND strip the `attachments` field. Issue #163 /
- * AC-253: `/api/import` rejects any body carrying an `attachments` key
- * (the route schema declares `attachments: { not: {} }`), even an empty
- * array — the orchestrator strips the field before POST and that's the
- * contract the route encodes. Tests mirror the orchestrator step.
+ * Drive an import expected to fail and return the thrown `AppError`. The
+ * service throws (carrying `.code` / `.statusCode` / `.details`) rather
+ * than returning an HTTP envelope, so failure cases inspect the error
+ * directly. ImportService ignores any `attachments` key on the envelope
+ * (it never restores attachment rows — AC-253), so fixtures pass the full
+ * `Envelope` as-is; no payload massaging is needed.
  */
-function asPayload(env: Envelope): Record<string, unknown> {
-  const { attachments: _stripped, ...rest } = env;
-  void _stripped;
-  return rest as unknown as Record<string, unknown>;
+async function expectImportRejection(env: Envelope, opts: ImportOptions): Promise<AppError> {
+  try {
+    await importEnvelope(env, opts);
+  } catch (e) {
+    return e as AppError;
+  }
+  throw new Error('expected importEnvelope to reject, but it resolved');
 }
 
 /**
@@ -349,14 +350,7 @@ async function reseed(): Promise<void> {
   await seed(db, { force: true });
 }
 
-describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
-  let ownerToken: string;
-
-  async function reseedAndRelogin(): Promise<void> {
-    await reseed();
-    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
-  }
-
+describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
   beforeAll(async () => {
     await startApp();
     const conn = createDatabase();
@@ -364,8 +358,6 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
     pool = conn.pool;
     await pool.query('SELECT 1');
     await migrate(db, { migrationsFolder });
-
-    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
   });
 
   afterAll(async () => {
@@ -383,14 +375,14 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
       await wipeBusinessDataExceptUsers();
       try {
         const env = buildExpandedEnvelope();
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(200);
-
-        const body = res.json() as {
+        const body = (await importEnvelope(env, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        })) as {
           schema_version: number;
           summary: Record<string, number>;
           sessionInvalidated: boolean;
-          importToken: string | null;
         };
         expect(body.schema_version).toBe(SCHEMA_VERSION);
         expect(body.summary.users).toBe(env.users.length);
@@ -400,10 +392,8 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         expect(body.summary.project_workers).toBe(env.project_workers.length);
         expect(body.summary.invoices).toBe(env.invoices.length);
         expect(body.summary.invoice_sequence).toBe(env.invoice_sequence.length);
-        // Empty-target path: no wipe ran, sessions untouched. No token
-        // minted because the session is still alive (issue #230 fixup).
+        // Empty-target path: no wipe ran, sessions untouched.
         expect(body.sessionInvalidated).toBe(false);
-        expect(body.importToken).toBeNull();
 
         // Direct-DB cross-check: the expected rows landed alongside the
         // seeded users that survived the (selective) wipe.
@@ -429,7 +419,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         expect(dbSeq.length).toBe(2);
         expect(dbSeq[0]!.nextValue).toBe(2);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -442,33 +432,33 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('override wipe-and-replace sets sessionInvalidated and wipes sessions', () => {
     it('returns sessionInvalidated: true and clears sessions table post-call', async () => {
-      // Verify the seeded state has at least one session row (the
-      // owner's, established by the test's login). Without this baseline
-      // the post-call empty-check would be vacuous.
+      // Seed a session row so the wipe has something to CASCADE-delete.
+      // The text-leg relied on the operator's own login session; the
+      // service is now driven directly, so plant a session on a seeded
+      // user. The override TRUNCATEs users and the session row cascades
+      // with it (sessions.user_id ON DELETE CASCADE). Without this the
+      // post-call empty-check would be vacuous.
+      const [seededUser] = await db.select({ id: users.id }).from(users).limit(1);
+      await db.insert(sessions).values({
+        userId: seededUser!.id,
+        token: 'import-expanded-session-fixture',
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      });
       const sessionsBefore = await db.select().from(sessions);
       expect(sessionsBefore.length).toBeGreaterThan(0);
 
       try {
         const env = buildExpandedEnvelope();
-        const body = { ...asPayload(env), confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBe(200);
-
-        const result = res.json() as {
+        const result = (await importEnvelope(env, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        })) as {
           sessionInvalidated: boolean;
           summary: { users: number };
-          importToken: string | null;
         };
         expect(result.sessionInvalidated).toBe(true);
         expect(result.summary.users).toBe(env.users.length);
-        // Issue #230 fixup: when the override wiped the operator's
-        // session, the response carries a short-lived bearer token so
-        // the binary-leg orchestrator can continue past the dead cookie.
-        // Shape contract: 32 random bytes, base64url-encoded (no padding)
-        // = 43 chars. The dedicated `import-token.test.ts` exercises the
-        // token's verify / expire / revoke / scope semantics; here we
-        // pin the wire-shape contract.
-        expect(result.importToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
         // Sessions cascade-deleted with users.
         const sessionsAfter = await db.select().from(sessions);
@@ -479,7 +469,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         const dbUsers = await db.select().from(users).orderBy(asc(users.username));
         expect(dbUsers.map((u) => u.username).sort()).toEqual(['imp-owner', 'imp-worker'].sort());
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -497,8 +487,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
       try {
         const env = buildExpandedEnvelope();
         // env.invoices already arrives in originals-first order.
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
 
         const dbInvoices = await db.select().from(invoices).orderBy(asc(invoices.number));
         expect(dbInvoices.length).toBe(2);
@@ -508,7 +497,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
           dbInvoices.find((i) => i.number === 'RE-2026-0001')!.id,
         );
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -518,8 +507,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         const env = buildExpandedEnvelope();
         // Reverse so the Storno comes first — a hand-edited envelope.
         env.invoices = [...env.invoices].reverse();
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
 
         const dbInvoices = await db.select().from(invoices).orderBy(asc(invoices.number));
         expect(dbInvoices.length).toBe(2);
@@ -528,7 +516,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
           dbInvoices.find((i) => i.number === 'RE-2026-0001')!.id,
         );
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -563,14 +551,17 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
           s.kind === 'storno' ? { ...s, nextValue: 3 } : s,
         );
 
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as { code: string; details?: { issues?: unknown[] } };
-        expect(body.code).toBe('VALIDATION_ERROR');
+        const err = await expectImportRejection(env, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('VALIDATION_ERROR');
         // The details payload should name the offending path so an
         // operator inspecting the rejection can find the chain.
-        expect(JSON.stringify(body.details)).toMatch(/cancellationOf/);
-        expect(JSON.stringify(body.details)).toMatch(/chain|Storno/);
+        expect(JSON.stringify(err.details)).toMatch(/cancellationOf/);
+        expect(JSON.stringify(err.details)).toMatch(/chain|Storno/);
 
         // No partial state: the original invoices count is 0 (we wiped
         // before the test) and the rejected envelope didn't insert
@@ -578,7 +569,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         const dbInvoices = await db.select().from(invoices);
         expect(dbInvoices.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -598,10 +589,9 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         const workerId = env.project_workers[0]!.userId;
         expect(env.users.some((u) => u.id === workerId)).toBe(true);
 
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -615,16 +605,16 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         // semantic — the envelope is the sole authoritative source.
         env.project_workers[0]!.userId = UUID_ZERO;
 
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as {
-          code: string;
-          details?: { missingUserIds?: string[] };
-        };
-        expect(body.code).toBe('MISSING_USER_REFS');
-        expect(body.details?.missingUserIds).toContain(UUID_ZERO);
+        const err = await expectImportRejection(env, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('MISSING_USER_REFS');
+        expect((err.details as { missingUserIds?: string[] }).missingUserIds).toContain(UUID_ZERO);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -658,16 +648,16 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         env.company_profile[0]!.updatedBy = null;
         env.project_workers[0]!.userId = seededId;
 
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as {
-          code: string;
-          details?: { missingUserIds?: string[] };
-        };
-        expect(body.code).toBe('MISSING_USER_REFS');
-        expect(body.details?.missingUserIds).toContain(seededId);
+        const err = await expectImportRejection(env, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('MISSING_USER_REFS');
+        expect((err.details as { missingUserIds?: string[] }).missingUserIds).toContain(seededId);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -680,7 +670,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
   // Datensätze'`, and `payload.counts` carrying the per-slot row counts
   // (every slot key, zero where empty).
   //
-  // Rationale: an `/api/import` is a deployment-level event, not an
+  // Rationale: a business-data import is a deployment-level event, not an
   // event attributed to a single user / customer / etc. Per-slot audit
   // rows misattributed entries in the activity feed; one row per
   // import + the full counts breakdown in the payload preserves the
@@ -698,8 +688,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
       );
       try {
         const env = buildExpandedEnvelope();
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
 
         const rows = await db
           .select()
@@ -733,8 +722,8 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
 
         // Payload carries the full per-slot counts breakdown — every
         // slot key, zero where empty. `attachments` is structurally
-        // always 0 in the text leg (AC-253) but the key is present
-        // for shape uniformity.
+        // always 0 for the business-data import (AC-253) but the key is
+        // present for shape uniformity.
         const expectedCounts = {
           users: env.users.length,
           company_profile: env.company_profile.length,
@@ -751,7 +740,85 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         const totalRecords = Object.values(expectedCounts).reduce((sum, n) => sum + n, 0);
         expect(row.entityLabel).toBe(`Import: ${totalRecords} Datensätze`);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // AC-253: the business-data import never inserts `attachments` rows.
+  // The export envelope carries a metadata-only `attachments[]` slot,
+  // but the import ignores it entirely — attachment rows + bytes are
+  // restored only by the server-side import JOB (AC-328), never here.
+  // (The former route-layer wire-reject of a body carrying an
+  // `attachments` key went with the removed text-leg route; the
+  // invariant is now "ignore the slot, insert nothing".) This locks it:
+  // a future change that started reading `envelope.attachments` on the
+  // restore path would land rows whose wrapped DEKs are unwrappable on
+  // the importing instance — a silent-data-loss class.
+  // -------------------------------------------------------------------
+  describe('AC-253: import ignores a populated attachments slot', () => {
+    it('inserts zero attachment rows and reports counts.attachments=0 even when the envelope carries descriptors', async () => {
+      await wipeBusinessDataExceptUsers();
+      await db.execute(
+        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
+      );
+      try {
+        const env = buildExpandedEnvelope();
+        // Populate the slot a real export would emit — two `ready`
+        // descriptors referencing the envelope's own project + owner.
+        env.attachments = [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            projectId: env.projects[0]!.id,
+            status: 'ready',
+            kind: 'photo',
+            label: 'Baustelle',
+            fileName: 'foto.webp',
+            mimeType: 'image/webp',
+            sizeBytes: 2048,
+            createdAt: '2026-01-15T00:00:00.000Z',
+            createdBy: env.users[0]!.id,
+          },
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            projectId: env.projects[0]!.id,
+            status: 'ready',
+            kind: 'binary',
+            label: 'Angebot',
+            fileName: 'angebot.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 4096,
+            createdAt: '2026-01-16T00:00:00.000Z',
+            createdBy: env.users[0]!.id,
+          },
+        ];
+
+        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+
+        // The slot was ignored — no attachment rows landed.
+        const count = await pool.query<{ c: string }>(
+          'SELECT COUNT(*)::text AS c FROM attachments',
+        );
+        expect(count.rows[0]!.c).toBe('0');
+
+        // The single import-audit row reports zero restored attachments.
+        const rows = await db
+          .select()
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.actorKind, 'system'),
+              eq(auditLog.actorReason, 'data_import'),
+              eq(auditLog.action, 'import_restored'),
+            ),
+          );
+        expect(rows.length).toBe(1);
+        expect((rows[0]!.payload as { counts: { attachments: number } }).counts.attachments).toBe(
+          0,
+        );
+      } finally {
+        await reseed();
       }
     });
   });
@@ -771,10 +838,13 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         // — the route's body schema accepts any integer.
         env.schema_version = 2;
 
-        const res = await authPost(ownerToken, '/api/import', asPayload(env));
-        expect(res.statusCode).toBeGreaterThanOrEqual(400);
-        expect(res.statusCode).toBeLessThan(500);
-        expect(res.json().code).toBe('SCHEMA_VERSION_MISMATCH');
+        const err = await expectImportRejection(env, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('SCHEMA_VERSION_MISMATCH');
 
         // No writes — customers/projects stay empty (the wipe ran in
         // setup). users intact (the wipe is selective).
@@ -783,49 +853,18 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         );
         expect(Number(dbCustomers.rows[0]!.c)).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
 
-  // -------------------------------------------------------------------
-  // Route-layer body schema rejection — missing one of the four new
-  // required keys yields 422 from Fastify ajv before the service runs.
-  // -------------------------------------------------------------------
-  describe('route body schema requires the new v3 slots', () => {
-    it('rejects an envelope missing the `users` key with 422', async () => {
-      // Take a baseline count before the call. `wipeBusinessDataExceptUsers`
-      // is not called here because the route-schema rejection happens
-      // before any DB write — the post-call counts should equal the
-      // pre-call counts.
-      const customersBefore = await db.execute<{ c: string }>(
-        sql`SELECT count(*)::text AS c FROM customers`,
-      );
-      const customerCountBefore = Number(customersBefore.rows[0]!.c);
-
-      try {
-        const env = buildExpandedEnvelope();
-        // Strip the users field — Fastify ajv refuses required-key
-        // omissions with statusCode 400 by default; in this codebase
-        // the validation-error customizer maps to 422 with code
-        // VALIDATION_ERROR. Either way, the request fails.
-        const { users: _users, ...withoutUsers } = asPayload(env);
-        void _users;
-
-        const res = await authPost(ownerToken, '/api/import', withoutUsers);
-        expect(res.statusCode).toBeGreaterThanOrEqual(400);
-        expect(res.statusCode).toBeLessThan(500);
-
-        // No writes — the customer count is unchanged.
-        const customersAfter = await db.execute<{ c: string }>(
-          sql`SELECT count(*)::text AS c FROM customers`,
-        );
-        expect(Number(customersAfter.rows[0]!.c)).toBe(customerCountBefore);
-      } finally {
-        await reseedAndRelogin();
-      }
-    });
-  });
+  // The "route body schema requires the new v3 slots" case (an envelope
+  // missing the `users` key → 422 from Fastify ajv) tested the removed
+  // text-leg route's body schema. ImportService has no equivalent
+  // structural guard — a missing slot key surfaces as a type error, not a
+  // clean VALIDATION_ERROR — so the case went with the route. The slot
+  // *content* validation (schema version, user refs, Storno chains) is
+  // covered by the service-level cases above.
 
   // -------------------------------------------------------------------
   // AT-77 analog roundtrip. Export the seeded dataset, wipe, override-
@@ -836,25 +875,20 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
   describe('AT-77 analog — seed → export → wipe → import (override) → export', () => {
     it('preserves every slot byte-for-byte (modulo exported_at and lastLoginAt)', async () => {
       // First export — the seeded baseline.
-      const e1Res = await authGet(ownerToken, '/api/export');
-      expect(e1Res.statusCode).toBe(200);
-      const e1 = e1Res.json() as Envelope;
+      const e1 = await exportEnvelope();
 
       try {
         // Override-import the snapshot back into the (currently seeded)
         // database — the wipe + restore must reproduce every slot.
-        // `asPayload(e1)` strips the `attachments` key per AC-253.
-        const body = { ...asPayload(e1), confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-        const importRes = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(importRes.statusCode).toBe(200);
-
-        // The override wiped sessions — re-login before the next call.
-        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+        // ImportService ignores the envelope's `attachments` slot (AC-253).
+        await importEnvelope(e1, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        });
 
         // Second export.
-        const e2Res = await authGet(ownerToken, '/api/export');
-        expect(e2Res.statusCode).toBe(200);
-        const e2 = e2Res.json() as Envelope;
+        const e2 = await exportEnvelope();
 
         // Compare the slots, masking fields that legitimately drift.
         expect(e2.schema_version).toBe(e1.schema_version);
@@ -874,7 +908,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         expect(e2.invoices).toEqual(e1.invoices);
         expect(e2.invoice_sequence).toEqual(e1.invoice_sequence);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });

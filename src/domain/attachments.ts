@@ -58,6 +58,8 @@ export function isKnownWrappedDekVersion(version: number): boolean {
 
 const PHOTO_MIMES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+const KIND_VALUES: ReadonlySet<string> = new Set<string>(['photo', 'binary']);
+
 const LABEL_VALUES: ReadonlySet<string> = new Set(ATTACHMENT_LABELS.map((entry) => entry.value));
 
 const MIME_WHITELIST_SET: ReadonlySet<string> = new Set(ATTACHMENT_MIME_WHITELIST);
@@ -74,6 +76,20 @@ export function classifyKind(mime: string): AttachmentKind {
     throw new Error(`classifyKind: MIME '${mime}' is not in the whitelist`);
   }
   return PHOTO_MIMES.has(mime) ? 'photo' : 'binary';
+}
+
+/**
+ * Accept-or-throw guard for `AttachmentKind` (closed enum). Mirrors the
+ * `attachments_valid_kind` CHECK constraint (schema.ts). Used by the
+ * takeout import runner to reject a tampered envelope in Pass-1, before
+ * any destructive write — a `kind` outside the enum would otherwise pass
+ * validation and only trip the CHECK on the post-wipe insert (AC-327).
+ */
+export function validateKind(kind: string): AttachmentKind {
+  if (!KIND_VALUES.has(kind)) {
+    throw new Error(`validateKind: '${kind}' is not a valid AttachmentKind`);
+  }
+  return kind as AttachmentKind;
 }
 
 /**

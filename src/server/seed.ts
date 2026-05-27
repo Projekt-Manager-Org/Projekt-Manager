@@ -9,7 +9,7 @@
  *
  * Issue #230: every envelope-resident table flows through `ImportService`
  * in a single call — users, company_profile, customers, projects, and
- * project_workers ride the same envelope `POST /api/import` consumes,
+ * project_workers ride the same envelope `ImportService` consumes,
  * so envelope-format drift breaks the seed and the public restore path
  * together. Invoices are minted afterwards via the real lifecycle
  * (`loadInvoices`: draft → issue → optional cancel + reissue, allocating

@@ -99,6 +99,27 @@ CREATE TABLE "customers" (
 	"updated_by" uuid
 );
 --> statement-breakpoint
+CREATE TABLE "data_exchange_job" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"kind" text NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"files_total" bigint DEFAULT 0 NOT NULL,
+	"files_done" bigint DEFAULT 0 NOT NULL,
+	"bytes_total" bigint DEFAULT 0 NOT NULL,
+	"bytes_done" bigint DEFAULT 0 NOT NULL,
+	"current_item" text,
+	"archive_ref" text,
+	"error_detail" text,
+	"created_by" uuid,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"started_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
+	CONSTRAINT "data_exchange_job_kind_valid" CHECK ("data_exchange_job"."kind" IN ('export', 'import')),
+	CONSTRAINT "data_exchange_job_status_valid" CHECK ("data_exchange_job"."status" IN ('pending', 'running', 'ready', 'failed')),
+	CONSTRAINT "data_exchange_job_counts_non_negative" CHECK ("data_exchange_job"."files_total" >= 0 AND "data_exchange_job"."files_done" >= 0 AND "data_exchange_job"."bytes_total" >= 0 AND "data_exchange_job"."bytes_done" >= 0)
+);
+--> statement-breakpoint
 CREATE TABLE "invoice_sequence" (
 	"year" smallint NOT NULL,
 	"kind" text NOT NULL,
@@ -244,6 +265,7 @@ ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_actor_id_users_id_fk" FOREIGN 
 ALTER TABLE "company_profile" ADD CONSTRAINT "company_profile_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "customers" ADD CONSTRAINT "customers_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "customers" ADD CONSTRAINT "customers_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "data_exchange_job" ADD CONSTRAINT "data_exchange_job_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_cancellation_of_invoices_id_fk" FOREIGN KEY ("cancellation_of") REFERENCES "public"."invoices"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -266,6 +288,8 @@ CREATE INDEX "audit_log_actor_idx" ON "audit_log" USING btree ("actor_id","creat
 CREATE INDEX "audit_log_created_at_idx" ON "audit_log" USING btree ("created_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "audit_log_ancestor_idx" ON "audit_log" USING btree ("ancestor_entity_type","ancestor_entity_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "audit_log_entity_label_trgm_idx" ON "audit_log" USING gin ("entity_label" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "idx_data_exchange_job_status" ON "data_exchange_job" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "idx_data_exchange_job_created_at" ON "data_exchange_job" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "invoices_project_id_idx" ON "invoices" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "invoices_status_idx" ON "invoices" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "invoices_cancellation_of_idx" ON "invoices" USING btree ("cancellation_of");--> statement-breakpoint

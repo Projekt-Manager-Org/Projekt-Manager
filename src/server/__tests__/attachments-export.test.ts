@@ -40,7 +40,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import crypto from 'node:crypto';
-import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
+import { startApp, stopApp, login, authGet } from '../../test/api-helpers.js';
+import { exportEnvelope } from '../../test/data-exchange-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 
@@ -191,9 +192,7 @@ describe('Attachment export envelope (AC-220)', () => {
   // AC-220 Part 1 — Envelope shape + ready/pending filtering
   // -------------------------------------------------------------------
   it('includes every ready row with the documented metadata fields', async () => {
-    const res = await authGet(ownerToken, '/api/export');
-    expect(res.statusCode).toBe(200);
-    const env = res.json() as { attachments: AttachmentInEnvelope[] };
+    const env = (await exportEnvelope()) as unknown as { attachments: AttachmentInEnvelope[] };
     const exportedIds = env.attachments.map((a) => a.id);
     for (const id of readyIds) {
       expect(exportedIds).toContain(id);
@@ -223,8 +222,7 @@ describe('Attachment export envelope (AC-220)', () => {
   // leak.
   // -------------------------------------------------------------------
   it('drops crypto fields, storage keys, and ciphertext sizes from envelope entries', async () => {
-    const res = await authGet(ownerToken, '/api/export');
-    const env = res.json() as { attachments: Record<string, unknown>[] };
+    const env = (await exportEnvelope()) as unknown as { attachments: Record<string, unknown>[] };
     expect(env.attachments.length).toBeGreaterThan(0);
 
     for (const row of env.attachments) {
@@ -246,8 +244,7 @@ describe('Attachment export envelope (AC-220)', () => {
     // Defense-in-depth grep over the serialized JSON. A regression that
     // re-introduced any of the dropped fields under a nested or aliased
     // shape (e.g. on the project rows by mistake) would surface here.
-    const res = await authGet(ownerToken, '/api/export');
-    const serialized = res.body;
+    const serialized = JSON.stringify(await exportEnvelope());
     expect(serialized).not.toMatch(/"wrappedDek"\s*:/);
     expect(serialized).not.toMatch(/"wrappedThumbDek"\s*:/);
     expect(serialized).not.toMatch(/"wrappedDekVersion"\s*:/);
@@ -258,8 +255,7 @@ describe('Attachment export envelope (AC-220)', () => {
   });
 
   it('excludes every pending row', async () => {
-    const res = await authGet(ownerToken, '/api/export');
-    const env = res.json() as { attachments: AttachmentInEnvelope[] };
+    const env = (await exportEnvelope()) as unknown as { attachments: AttachmentInEnvelope[] };
     const exportedIds = new Set(env.attachments.map((a) => a.id));
     for (const id of pendingIds) {
       expect(exportedIds.has(id)).toBe(false);
@@ -269,81 +265,12 @@ describe('Attachment export envelope (AC-220)', () => {
     }
   });
 
-  // -------------------------------------------------------------------
-  // AC-253 (regression-style coverage on the export-driven snapshot
-  // path) — `/api/import` is text-only post-#163. Re-posting an export
-  // snapshot verbatim (which carries `attachments`) is rejected with
-  // `422 VALIDATION_ERROR` and no rows are written. The takeout-zip
-  // restore orchestrator strips the `attachments` key before posting
-  // the text-leg, then drives the per-attachment `init` (with
-  // `restore` block) + presigned PUT + `complete` pipeline.
-  // -------------------------------------------------------------------
-  it('rejects re-posting an export snapshot verbatim (attachments key triggers 422)', async () => {
-    const snapshot = (await authGet(ownerToken, '/api/export')).json() as {
-      attachments: AttachmentInEnvelope[];
-    };
-    expect(snapshot.attachments.length).toBeGreaterThan(0);
-
-    // The snapshot is intra-consistent: re-posting it as-is is the
-    // pre-fix replay loop the AC closes. The wire-shape rejection has
-    // to fire BEFORE any state change — otherwise a regression that
-    // dropped the route-level reject + the silent attachment row
-    // insertion (the original silent-loss bug) would slip through here.
-    const before = await countAttachmentsViaDb();
-
-    const importRes = await authPost(
-      ownerToken,
-      '/api/import',
-      snapshot as unknown as Record<string, unknown>,
-    );
-    expect(importRes.statusCode).toBe(422);
-    expect(importRes.json().code).toBe('VALIDATION_ERROR');
-
-    expect(await countAttachmentsViaDb()).toBe(before);
-  });
-
-  // -------------------------------------------------------------------
-  // AC-253 (positive arm) — same snapshot with `attachments` removed
-  // proceeds: the orchestrator's strip-then-post pattern is what the
-  // server expects. Drives the wipe-and-restore branch via override.
-  // -------------------------------------------------------------------
-  it('proceeds when the orchestrator strips `attachments` before posting (text-leg)', async () => {
-    const snapshot = (await authGet(ownerToken, '/api/export')).json() as Record<
-      string,
-      unknown
-    > & { attachments: AttachmentInEnvelope[] };
-    expect(snapshot.attachments.length).toBeGreaterThan(0);
-
-    // Strip the key — mirrors the orchestrator step in
-    // ui/daten.md §8.11.2.
-    const { attachments: _attachmentsStripped, ...textLegBody } = snapshot;
-    void _attachmentsStripped;
-
-    const { EXPECTED_RESTORE_PHRASE } = await import('../../test/seedAssumptions.js');
-    const importRes = await authPost(ownerToken, '/api/import?override=true', {
-      ...textLegBody,
-      confirmation_phrase: EXPECTED_RESTORE_PHRASE,
-    });
-    expect(importRes.statusCode).toBe(200);
-
-    // AC-254: the truncate ran — no attachment rows survive the wipe
-    // (the per-attachment re-upload runs through `init` + PUT +
-    // `complete` post-call, not via the import endpoint).
-    expect(await countAttachmentsViaDb()).toBe(0);
-  });
+  // The import-side cross-checks that used to live here (re-posting an
+  // export snapshot verbatim → 422 on the `attachments` key, and the
+  // strip-then-override roundtrip) tested the removed text-leg
+  // `POST /api/import` route schema. The attachments-key rejection was a
+  // route-schema guard with no service-layer equivalent (ImportService
+  // ignores the key — it never inserts attachment rows), and the override
+  // truncate (AC-254) is owned by `data-exchange.test.ts`. Both went with
+  // the route; this file is now purely the AC-220 export envelope.
 });
-
-/**
- * Direct-DB count helper — the API list surface excludes pending /
- * hidden rows, so the only honest way to assert "no rows survive"
- * across every status is direct SQL.
- */
-async function countAttachmentsViaDb(): Promise<number> {
-  const { db, pool } = createDatabase();
-  try {
-    const res = await db.execute<{ c: string }>(sql`SELECT COUNT(*)::text AS c FROM attachments`);
-    return Number(res.rows[0]!.c);
-  } finally {
-    await pool.end();
-  }
-}

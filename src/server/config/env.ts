@@ -23,6 +23,8 @@
  *     Used by the deploy pre-flight CLI and by tests.
  */
 import { z } from 'zod';
+import os from 'node:os';
+import path from 'node:path';
 
 export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
@@ -249,6 +251,27 @@ export const envSchema = z.object({
   ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES: z.preprocess(
     (v) => (v === '' ? undefined : v),
     z.coerce.number().int().positive().optional(),
+  ),
+  // ---------------------------------------------------------------
+  // Full-account takeout staging (ADR-0018 / ADR-0024, data-model.md
+  // §5.18 / §6.14, architecture.md §12.2). The export job builds the
+  // archive (envelope + every ready attachment's plaintext) and stages
+  // it on a VPS-local path — never on B2 (ADR-0024: plaintext stays
+  // inside the trust radius). `TAKEOUT_STAGING_TTL_MINUTES` is the [C]
+  // age after which the scheduled reaper sweeps a `ready` artifact
+  // (default 1440 = §12.2's 24h, mirroring the ATTACHMENT_*_REAPER TTLs).
+  // `TAKEOUT_STAGING_DIR` is the staging directory; the default lands
+  // under the OS temp dir so the test env and a zero-config dev boot
+  // both work without an explicit value. The builder creates the dir
+  // before the first write.
+  // ---------------------------------------------------------------
+  TAKEOUT_STAGING_TTL_MINUTES: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.coerce.number().int().positive().default(1440),
+  ),
+  TAKEOUT_STAGING_DIR: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().default(path.join(os.tmpdir(), 'projekt-manager-takeout')),
   ),
   // ---------------------------------------------------------------
   // Invoice retention (ADR-0026, architecture.md §12.2 / §11.14).

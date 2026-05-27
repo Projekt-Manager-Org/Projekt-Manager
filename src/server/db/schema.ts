@@ -40,7 +40,7 @@ import {
  *   - **Synthetic entity types** — `data_import` (and any future
  *     deployment-level event class). No physical table backs the
  *     `entity_id`; the audit row describes a deployment-level event
- *     (e.g. "an `/api/import` happened") whose granularity is the batch,
+ *     (e.g. "a business-data import happened") whose granularity is the batch,
  *     not a single row. `entity_id` carries a synthetic UUID minted at
  *     write time.
  *
@@ -271,6 +271,69 @@ export const metaBackupStatus = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [check('meta_backup_status_singleton', sql`${table.singleton} = true`)],
+);
+
+// ---------------------------------------------------------------
+// Data-exchange job (ADR-0018 § Two surfaces, ADR-0024 § Full-account
+// takeout).
+//
+// Tracks one full-account "Vollständiger Export/Import" job: the rare,
+// operator-initiated server-side dump/restore of all business data +
+// every attachment. The interactive hot path (gallery, upload,
+// per-project bulk download) does NOT use this table. Progress counters
+// drive the live readout; `data_exchange_job_changed` SSE fires on
+// transitions so the UI refetches the row. Not routed through `mutate()`
+// — lifecycle progress is high-frequency and not a business-entity audit
+// event; the start/terminal audit row (entity_type `data_import`) is
+// written by the job endpoints, not here.
+//
+//   kind:   export | import
+//   status: pending → running → (ready | failed)
+//
+// `archive_ref` is the staged plaintext archive's location on the VPS
+// (export output / import upload) — never a B2 key (ADR-0024: plaintext
+// stages only inside the trust radius). Bytes are bigint: a multi-GB
+// archive overflows int4.
+// ---------------------------------------------------------------
+export const dataExchangeJob = pgTable(
+  'data_exchange_job',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: text('kind').notNull(),
+    status: text('status').notNull().default('pending'),
+    filesTotal: bigint('files_total', { mode: 'number' }).notNull().default(0),
+    filesDone: bigint('files_done', { mode: 'number' }).notNull().default(0),
+    bytesTotal: bigint('bytes_total', { mode: 'number' }).notNull().default(0),
+    bytesDone: bigint('bytes_done', { mode: 'number' }).notNull().default(0),
+    // Human-readable current activity (e.g. the file being processed),
+    // surfaced verbatim in the progress dialog. Nullable: unset before
+    // the first item.
+    currentItem: text('current_item'),
+    // Staged archive location on the VPS (filesystem path or local
+    // staging key). Nullable until the export build finishes / the
+    // import upload lands.
+    archiveRef: text('archive_ref'),
+    // Failure detail for the summary view. Nullable; set only on `failed`.
+    errorDetail: text('error_detail'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (table) => [
+    check('data_exchange_job_kind_valid', sql`${table.kind} IN ('export', 'import')`),
+    check(
+      'data_exchange_job_status_valid',
+      sql`${table.status} IN ('pending', 'running', 'ready', 'failed')`,
+    ),
+    check(
+      'data_exchange_job_counts_non_negative',
+      sql`${table.filesTotal} >= 0 AND ${table.filesDone} >= 0 AND ${table.bytesTotal} >= 0 AND ${table.bytesDone} >= 0`,
+    ),
+    index('idx_data_exchange_job_status').on(table.status),
+    index('idx_data_exchange_job_created_at').on(table.createdAt),
+  ],
 );
 
 // ---------------------------------------------------------------

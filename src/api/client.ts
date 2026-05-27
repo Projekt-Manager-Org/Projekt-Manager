@@ -25,10 +25,6 @@ export interface ApiError {
  */
 export type ErrorCategory =
   | 'authentication' // INVALID_CREDENTIALS, UNAUTHENTICATED, SESSION_EXPIRED
-  | 'import_token_invalid' // IMPORT_TOKEN_INVALID (distinct so the orchestrator can
-  //                          escalate to a fatal-token phase without triggering the
-  //                          global session-expired redirect that would unmount the
-  //                          dialog mid-message)
   | 'authorization' // NOT_PERMITTED
   | 'validation' // VALIDATION_ERROR
   | 'not_found' // NOT_FOUND
@@ -73,8 +69,6 @@ function classifyCode(code: string): ErrorCategory {
     case 'UNAUTHENTICATED':
     case 'SESSION_EXPIRED':
       return 'authentication';
-    case 'IMPORT_TOKEN_INVALID':
-      return 'import_token_invalid';
     case 'NOT_PERMITTED':
       return 'authorization';
     case 'VALIDATION_ERROR':
@@ -106,16 +100,11 @@ interface RequestOptions {
    */
   signal?: AbortSignal;
   /**
-   * Optional bearer token. When set, the request carries
-   * `Authorization: Bearer <token>` and the server's import-token-aware
-   * middleware will accept the call without a session cookie. Used by
-   * the takeout-zip restore orchestrator on the override-with-users
-   * path, after the operator's session has CASCADEd away with the
-   * imported user set (issue #230). The session cookie is still sent
-   * (`credentials: 'same-origin'`); the server treats the header as
-   * authoritative on routes that opt into the token-aware middleware.
+   * Extra request headers merged on top of the defaults (Content-Type when a
+   * body is present). The import-job create uses this to carry the tus-style
+   * `Upload-Length` header alongside its JSON body.
    */
-  authToken?: string;
+  headers?: Record<string, string>;
 }
 
 /**
@@ -127,12 +116,13 @@ interface RequestOptions {
  */
 export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promise<ApiResult<T>> {
   const method = opts.method ?? 'GET';
-  const headers: Record<string, string> = {};
+  // Caller-supplied headers go FIRST; the Content-Type default is applied
+  // after so it stays authoritative — a caller cannot accidentally desync
+  // the always-JSON-stringified body by overriding Content-Type. Used today
+  // only to carry the import-job `Upload-Length`.
+  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
-  }
-  if (opts.authToken !== undefined) {
-    headers['Authorization'] = `Bearer ${opts.authToken}`;
   }
 
   let res: Response;
@@ -179,7 +169,6 @@ export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promis
     else if (category === 'server_error') fallbackMessage = STRINGS.errors.serverError;
     else if (sessionExpired) fallbackMessage = STRINGS.auth.sessionExpired;
     else if (category === 'authorization') fallbackMessage = STRINGS.auth.notPermitted;
-    else if (category === 'import_token_invalid') fallbackMessage = STRINGS.auth.importTokenInvalid;
 
     return {
       ok: false,
@@ -227,7 +216,6 @@ export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promis
 
 import type { Address, Project, Customer, User, Attachment, AttachmentLabel } from '@/domain/types';
 import type { WorkflowState } from '@/config/stateConfig';
-import type { Envelope, DryRunPreview, ImportResult } from '@/domain/dataExchange';
 import type { BackupStatus } from '@/domain/backupBadge';
 import type { AuditEntry, AuditListParams, AuditListResponse } from '@/domain/audit';
 import type { NotificationRule, NotificationRuleInput } from '@/domain/notifications';
@@ -535,36 +523,6 @@ export const userApi = {
     }),
 };
 
-/**
- * Unified business-data export/import (ADR-0018, api.md §14.2.4).
- *
- * Export is GET /api/export (permission: data:export).
- * Import is POST /api/import?dry_run=&override= (permission: data:restore).
- * The dry-run response is a DryRunPreview; the non-dry response is an
- * ImportResult. The caller disambiguates via the `dryRun` option.
- */
-export const dataApi = {
-  export: () => apiCall<Envelope>('/api/export'),
-
-  import: (
-    envelope: Envelope,
-    opts: { dryRun: boolean; override: boolean; confirmationPhrase?: string | null },
-  ) => {
-    const params = new URLSearchParams();
-    if (opts.dryRun) params.set('dry_run', 'true');
-    if (opts.override) params.set('override', 'true');
-    const qs = params.toString();
-    const body =
-      opts.confirmationPhrase != null
-        ? { ...envelope, confirmation_phrase: opts.confirmationPhrase }
-        : envelope;
-    return apiCall<ImportResult | DryRunPreview>('/api/import' + (qs ? '?' + qs : ''), {
-      method: 'POST',
-      body,
-    });
-  },
-};
-
 export interface ExtractionResult {
   customer: {
     name: string | null;
@@ -752,31 +710,22 @@ export const attachmentApi = {
       restore?: { id: string; createdBy: string; createdAt: string };
     },
     signal?: AbortSignal,
-    authToken?: string,
   ) =>
     apiCall<AttachmentInitResponse>(`/api/projects/${projectId}/attachments/init`, {
       method: 'POST',
       body: input,
       signal,
-      authToken,
     }),
 
-  completeUpload: (
-    projectId: string,
-    attachmentId: string,
-    signal?: AbortSignal,
-    authToken?: string,
-  ) =>
+  completeUpload: (projectId: string, attachmentId: string, signal?: AbortSignal) =>
     apiCall<Attachment>(`/api/projects/${projectId}/attachments/${attachmentId}/complete`, {
       method: 'POST',
       signal,
-      authToken,
     }),
 
-  delete: (projectId: string, attachmentId: string, authToken?: string) =>
+  delete: (projectId: string, attachmentId: string) =>
     apiCall<null>(`/api/projects/${projectId}/attachments/${attachmentId}`, {
       method: 'DELETE',
-      authToken,
     }),
 
   listTrash: (projectId: string) =>
@@ -1016,6 +965,133 @@ export const invoicesApi = {
     }),
 
   pdfUrl: (id: string) => `/api/invoices/${id}/pdf`,
+};
+
+/**
+ * Data-exchange job DTO (api.md §14.2.4, data-model.md §5.18) — the client-
+ * facing projection of a `data_exchange_job` row. The server strips
+ * `archiveRef` (an absolute VPS staging path) and `createdBy` before sending
+ * (Finding F1): the client consumes neither. The counters back the progress
+ * readout; `currentItem` is the file/label currently being processed;
+ * `errorDetail` populates the failure view.
+ */
+export interface DataExchangeJobDto {
+  id: string;
+  kind: 'export' | 'import';
+  status: 'pending' | 'running' | 'ready' | 'failed';
+  filesTotal: number;
+  filesDone: number;
+  bytesTotal: number;
+  bytesDone: number;
+  currentItem: string | null;
+  errorDetail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+/**
+ * Full-account EXPORT job (api.md §14.2.4 "Export job"). The browser triggers,
+ * polls, and downloads; it never assembles the archive. `downloadPath` is a
+ * URL builder (not a fetch) — the dialog renders an `<a href download>` so the
+ * browser's native download manager handles the Range-resumable stream
+ * (parity with `invoicesApi.pdfUrl`).
+ */
+export const exportJobApi = {
+  getLatest: () => apiCall<{ job: DataExchangeJobDto | null }>('/api/export-jobs'),
+  create: () => apiCall<DataExchangeJobDto>('/api/export-jobs', { method: 'POST' }),
+  downloadPath: (id: string) => `/api/export-jobs/${id}/download`,
+};
+
+/**
+ * Result of the raw-fetch tus-style chunk append. NOT an `ApiResult` — it
+ * reads the `Upload-Offset` response header and maps the status code (409
+ * `UPLOAD_OFFSET_CONFLICT` / 413 `UPLOAD_TOO_LARGE` / 401) rather than a JSON
+ * error body.
+ */
+export interface UploadOffsetResult {
+  ok: boolean;
+  status: number;
+  /** Server-authoritative byte offset after this call (current staged size). */
+  offset: number;
+}
+/** The offset probe additionally returns the declared total (Upload-Length). */
+export interface UploadHeadResult extends UploadOffsetResult {
+  length: number;
+}
+
+const OFFSET_OCTET_STREAM = 'application/offset+octet-stream';
+
+/**
+ * Full-account IMPORT job (api.md §14.2.4 "Import job"). `create` mints the job
+ * — the destructive guard (target emptiness + override + confirmation phrase)
+ * runs server-side AT create, before any upload. `headOffset` / `patchChunk`
+ * drive the resumable (tus-style) upload and are RAW fetches: Fastify needs the
+ * `application/offset+octet-stream` content-type and the offset rides in the
+ * `Upload-Offset` header, neither of which `apiCall` (JSON-only) handles.
+ */
+export const importJobApi = {
+  getLatest: () => apiCall<{ job: DataExchangeJobDto | null }>('/api/import-jobs'),
+
+  create: (args: { uploadLength: number; override: boolean; phrase: string | null }) =>
+    apiCall<DataExchangeJobDto>('/api/import-jobs', {
+      method: 'POST',
+      body: { override: args.override, confirmation_phrase: args.phrase },
+      headers: { 'Upload-Length': String(args.uploadLength) },
+    }),
+
+  /** tus-style offset probe — current staged size + declared length. */
+  headOffset: async (id: string): Promise<UploadHeadResult> => {
+    try {
+      const res = await fetch(`/api/import-jobs/${id}/archive`, {
+        method: 'HEAD',
+        credentials: 'same-origin',
+      });
+      return {
+        ok: res.ok,
+        status: res.status,
+        offset: Number(res.headers.get('Upload-Offset') ?? '0'),
+        length: Number(res.headers.get('Upload-Length') ?? '0'),
+      };
+    } catch {
+      return { ok: false, status: 0, offset: 0, length: 0 };
+    }
+  },
+
+  /**
+   * Append one chunk at `offset`; returns the new server offset. A stale offset
+   * is rejected `409 UPLOAD_OFFSET_CONFLICT` with the offset unchanged
+   * (retry-safe — the caller re-reads via `headOffset` and resumes).
+   */
+  patchChunk: async (
+    id: string,
+    args: { offset: number; chunk: Blob; signal?: AbortSignal },
+  ): Promise<UploadOffsetResult> => {
+    try {
+      const res = await fetch(`/api/import-jobs/${id}/archive`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': OFFSET_OCTET_STREAM,
+          'Upload-Offset': String(args.offset),
+        },
+        body: args.chunk,
+        signal: args.signal,
+      });
+      // On success the server echoes the new Upload-Offset; on a 409 it leaves
+      // the offset unchanged and may omit the header — fall back to the request
+      // offset so the return is always deterministic.
+      const headerOffset = res.headers.get('Upload-Offset');
+      return {
+        ok: res.ok,
+        status: res.status,
+        offset: headerOffset !== null ? Number(headerOffset) : args.offset,
+      };
+    } catch {
+      return { ok: false, status: 0, offset: args.offset };
+    }
+  },
 };
 
 export type { AuthUser };

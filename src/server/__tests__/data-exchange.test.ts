@@ -1,23 +1,30 @@
 /**
- * API integration tests: Unified Data Exchange.
+ * Integration tests: Unified Data Exchange (ExportService / ImportService).
  *
  * Covers AC-133 through AC-141 (verification.md §15.14) for the unified
- * business-data export/import surface introduced by ADR-0018:
+ * business-data export/import surface introduced by ADR-0018.
  *
- *   GET  /api/export             → envelope snapshot (permission: data:export)
- *   POST /api/import[?flags]     → restore-only import    (permission: data:restore)
+ * The text-leg HTTP routes (`GET /api/export`, `POST /api/import`) were
+ * removed once the operator UI moved to the export/import JOB endpoints:
+ * nothing in production reached them — the import-job runner, the
+ * export-job builder, and the seed all call `ExportService` /
+ * `ImportService` directly. These tests now drive the same live services
+ * the jobs use, via `src/test/data-exchange-helpers.ts`:
+ *
+ *   exportEnvelope()                  → returns the Envelope directly
+ *   importEnvelope(env, opts, options?) → returns ImportResult | DryRunPreview
+ *                                         on success; THROWS an AppError on
+ *                                         failure (carries .code / .statusCode
+ *                                         / .details).
+ *
+ * The auth/permission gate that the removed routes enforced is covered on
+ * the live job routes (`data-exchange-export-job.test.ts` asserts 401 +
+ * 403 NOT_PERMITTED for `data:export`); the service has no such check, so
+ * the gate describes that used to live here were dropped.
  *
  * Envelope shape (data-model.md §5.8):
- *   { schema_version: number,
- *     exported_at: ISO 8601,
- *     customers: Customer[],
- *     projects: Project[],
- *     project_workers: { projectId, userId }[] }
- *
- * Written ahead of implementation (TDD). Until the endpoints exist these
- * tests fail with HTTP 404 or assertion mismatches — never with TypeScript
- * compile errors. The test file defines the contract; the implementation
- * catches up.
+ *   { schema_version, exported_at, users, company_profile, customers,
+ *     projects, project_workers, invoices, invoice_sequence, attachments }
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -27,26 +34,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type pg from 'pg';
 
-import {
-  startApp,
-  stopApp,
-  login,
-  authGet,
-  authPost,
-  getApp,
-  authDelete,
-} from '../../test/api-helpers.js';
-import {
-  SEED_DEFAULT_PASSWORD,
-  SEED_USERS,
-  EXPECTED_RESTORE_PHRASE,
-} from '../../test/seedAssumptions.js';
+import { startApp, stopApp } from '../../test/api-helpers.js';
+import { exportEnvelope, importEnvelope } from '../../test/data-exchange-helpers.js';
+import { EXPECTED_RESTORE_PHRASE } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
 import { createStorageClient } from '../storage/client.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
+import { AppError } from '../errors.js';
+import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -272,8 +270,9 @@ interface ExportEnvelope {
   project_workers: Array<{ projectId: string; userId: string }>;
   invoices: unknown[];
   invoice_sequence: unknown[];
-  // Index signature so an envelope is assignable to the authPost payload
-  // type Record<string, unknown> without per-call casting.
+  // Index signature so fixture envelopes can carry extra keys (e.g.
+  // `attachments`, `siteAddress`) without per-field declarations; the
+  // services ignore keys they don't consume.
   [key: string]: unknown;
 }
 
@@ -294,35 +293,35 @@ async function wipeBusinessData(): Promise<void> {
 }
 
 /**
- * Re-seed the database. Because `seed(..., { force: true })` TRUNCATEs the
- * sessions table (see src/server/seed.ts), every previously-issued session
- * token becomes invalid. Callers MUST refresh any tokens they hold —
- * see `reseedAndRelogin` below. Using `reseed()` directly is intentional
- * for the initial startApp() path (no tokens yet).
+ * Re-seed the database. `seed(..., { force: true })` rebuilds the canonical
+ * dataset (and TRUNCATEs sessions). The data-exchange services are driven
+ * directly now — no session tokens are held — so a plain reseed is all the
+ * cleanup any test needs.
  */
 async function reseed(): Promise<void> {
   await seed(db, { force: true });
 }
 
-describe('Unified Data Exchange', () => {
-  let ownerToken: string;
-  let officeToken: string;
-  let workerToken: string;
-  let bookkeeperToken: string;
-
-  /**
-   * Reseed + refresh all session tokens. Seed TRUNCATEs sessions, so any
-   * token obtained before the call becomes invalid (401 on next request).
-   * Tests that reseed between sub-cases MUST call this, not plain `reseed()`.
-   */
-  async function reseedAndRelogin(): Promise<void> {
-    await reseed();
-    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
-    officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
-    workerToken = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
-    bookkeeperToken = await login(SEED_USERS.bookkeeper.username, SEED_DEFAULT_PASSWORD);
+/**
+ * Drive an import expected to fail and return the thrown `AppError`. The
+ * service throws (carrying `.code` / `.statusCode` / `.details`) rather
+ * than returning an HTTP envelope, so failure cases inspect the error
+ * directly. Mirrors the helper in `data-exchange-import-expanded.test.ts`.
+ */
+async function expectImportRejection(
+  env: Envelope,
+  opts: ImportOptions,
+  options?: { storage?: AttachmentStorageClient | null },
+): Promise<AppError> {
+  try {
+    await importEnvelope(env, opts, options);
+  } catch (e) {
+    return e as AppError;
   }
+  throw new Error('expected importEnvelope to reject, but it resolved');
+}
 
+describe('Unified Data Exchange', () => {
   beforeAll(async () => {
     await startApp();
 
@@ -331,11 +330,6 @@ describe('Unified Data Exchange', () => {
     pool = conn.pool;
     await pool.query('SELECT 1');
     await migrate(db, { migrationsFolder });
-
-    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
-    officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
-    workerToken = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
-    bookkeeperToken = await login(SEED_USERS.bookkeeper.username, SEED_DEFAULT_PASSWORD);
   });
 
   afterAll(async () => {
@@ -344,90 +338,16 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-133: export rejects unauthenticated or unauthorized callers
+  // AC-133 / AC-134 (export + import auth gate) were route-middleware
+  // concerns. The removed `GET /api/export` / `POST /api/import` routes
+  // enforced 401 (unauthenticated) and 403 NOT_PERMITTED (missing
+  // data:export / data:restore). ExportService / ImportService have no
+  // auth or permission check of their own, so those describes were
+  // dropped: the gate is now covered on the live job routes
+  // (`data-exchange-export-job.test.ts` asserts 401 + 403 NOT_PERMITTED
+  // for `data:export`). The AC-134 empty-DB success arm is covered by
+  // AC-137 below.
   // ---------------------------------------------------------------
-  describe('AC-133: export auth gate', () => {
-    // AC-133: unauthenticated GET /api/export → 401 (UNAUTHENTICATED)
-    it('returns 401 when not authenticated', async () => {
-      const res = await getApp().inject({ method: 'GET', url: '/api/export' });
-      expect(res.statusCode).toBe(401);
-    });
-
-    // AC-133: workers lack data:export → 403 NOT_PERMITTED
-    it('returns 403 NOT_PERMITTED for worker (lacks data:export)', async () => {
-      const res = await authGet(workerToken, '/api/export');
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('NOT_PERMITTED');
-    });
-
-    // AC-133: bookkeepers lack data:export → 403 NOT_PERMITTED
-    it('returns 403 NOT_PERMITTED for bookkeeper (lacks data:export)', async () => {
-      const res = await authGet(bookkeeperToken, '/api/export');
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('NOT_PERMITTED');
-    });
-
-    // AC-133: owner has data:export → 200
-    it('returns 200 for owner (holds data:export)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      expect(res.statusCode).toBe(200);
-    });
-
-    // AC-133: office has data:export → 200
-    it('returns 200 for office (holds data:export)', async () => {
-      const res = await authGet(officeToken, '/api/export');
-      expect(res.statusCode).toBe(200);
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // AC-134: import rejects unauthenticated or unauthorized callers
-  // ---------------------------------------------------------------
-  describe('AC-134: import auth gate', () => {
-    // AC-134: unauthenticated POST /api/import → 401 UNAUTHENTICATED
-    it('returns 401 when not authenticated', async () => {
-      const res = await getApp().inject({
-        method: 'POST',
-        url: '/api/import',
-        payload: buildFreshEnvelope(),
-      });
-      expect(res.statusCode).toBe(401);
-    });
-
-    // AC-134: office does NOT hold data:restore (owner-only per §14.3) → 403
-    it('returns 403 NOT_PERMITTED for office (lacks data:restore)', async () => {
-      const res = await authPost(officeToken, '/api/import', buildFreshEnvelope());
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('NOT_PERMITTED');
-    });
-
-    // AC-134: worker lacks data:restore → 403
-    it('returns 403 NOT_PERMITTED for worker (lacks data:restore)', async () => {
-      const res = await authPost(workerToken, '/api/import', buildFreshEnvelope());
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('NOT_PERMITTED');
-    });
-
-    // AC-134: bookkeeper lacks data:restore → 403
-    it('returns 403 NOT_PERMITTED for bookkeeper (lacks data:restore)', async () => {
-      const res = await authPost(bookkeeperToken, '/api/import', buildFreshEnvelope());
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('NOT_PERMITTED');
-    });
-
-    // AC-134: owner holds data:restore; into empty DB a valid envelope
-    // is accepted (200). We wipe + restore-seed around this case so sibling
-    // tests see the seed unchanged.
-    it('returns 200 for owner (holds data:restore) on empty DB', async () => {
-      await wipeBusinessData();
-      try {
-        const res = await authPost(ownerToken, '/api/import', buildFreshEnvelope());
-        expect(res.statusCode).toBe(200);
-      } finally {
-        await reseedAndRelogin();
-      }
-    });
-  });
 
   // ---------------------------------------------------------------
   // AC-135: export envelope shape and row-level fidelity
@@ -439,29 +359,26 @@ describe('Unified Data Exchange', () => {
     // branch has something to check. Archived rows must still appear in
     // the export with `deleted: true`.
     beforeAll(async () => {
-      // Seed is already in place from the outer beforeAll; don't wipe it
-      // here (that would invalidate tokens the outer describe just
-      // issued). Just soft-delete a project.
-      const list = await authGet(ownerToken, '/api/projects');
-      const projects = list.json().data as Array<{ id: string; status: string }>;
-      const target = projects.find((p) => p.status === 'angebot') ?? projects[0]!;
-      archivedProjectId = target.id;
-      const del = await authDelete(ownerToken, `/api/projects/${archivedProjectId}`);
-      expect(del.statusCode).toBe(200);
+      // Soft-delete a project directly so the export carries a deleted=true
+      // row. (No /api/projects route hop — the export service reads the DB.)
+      const target = await db.execute<{ id: string }>(
+        sql`UPDATE projects
+            SET deleted = true
+            WHERE id = (SELECT id FROM projects WHERE deleted = false ORDER BY id ASC LIMIT 1)
+            RETURNING id`,
+      );
+      archivedProjectId = target.rows[0]!.id;
     });
 
     afterAll(async () => {
       // Restore the seed so downstream describes see the canonical dataset.
-      await reseedAndRelogin();
+      await reseed();
     });
 
     // AC-135: top-level envelope contains schema_version, exported_at,
     // customers[], projects[], project_workers[] — every field present.
     it('returns schema_version, exported_at, customers, projects, project_workers', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      expect(res.statusCode).toBe(200);
-
-      const env = res.json() as ExportEnvelope;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(typeof env.schema_version).toBe('number');
       expect(env.schema_version).toBe(CURRENT_SCHEMA_VERSION);
 
@@ -477,8 +394,7 @@ describe('Unified Data Exchange', () => {
     // AC-135: customers.length matches the seeded row count (21 per
     // src/server/seed.ts). Off-by-one = seed drift the test should surface.
     it('exports every seeded customer (21 from seed)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelope;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(env.customers.length).toBe(21);
     });
 
@@ -486,8 +402,7 @@ describe('Unified Data Exchange', () => {
     // Seed = 19 projects; none are archived in seed. We soft-deleted one
     // above, so the export must still include 19 (archived = included).
     it('exports every project INCLUDING archived (deleted=true) rows', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelope;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(env.projects.length).toBe(19);
 
       const archived = env.projects.find((p) => p.id === archivedProjectId);
@@ -501,8 +416,7 @@ describe('Unified Data Exchange', () => {
     // out by design (ephemeral, per-deployment). The positive assertion
     // for users + passwordHash lives in `data-exchange-export-envelope.test.ts`.
     it('still excludes sessions from the serialized envelope', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const serialized = res.body;
+      const serialized = JSON.stringify(await exportEnvelope());
       expect(serialized).not.toMatch(/"sessions"\s*:/);
     });
   });
@@ -513,20 +427,20 @@ describe('Unified Data Exchange', () => {
   describe('AC-136: schema_version mismatch rejection', () => {
     // AC-136: envelope version current+1 → rejected with specific code, no writes.
     it('rejects an envelope with a newer schema_version', async () => {
-      const before = await authGet(ownerToken, '/api/export');
-      const baseline = before.json() as ExportEnvelope;
+      const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
 
       const bad = buildOverrideEnvelope();
       bad.schema_version = CURRENT_SCHEMA_VERSION + 1;
-      const body = { ...bad, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-      const res = await authPost(ownerToken, '/api/import?override=true', body);
+      const err = await expectImportRejection(bad as unknown as Envelope, {
+        dryRun: false,
+        override: true,
+        confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+      });
 
-      expect(res.statusCode).toBeGreaterThanOrEqual(400);
-      expect(res.statusCode).toBeLessThan(500);
-      expect(res.json().code).toBe('SCHEMA_VERSION_MISMATCH');
+      expect(err.statusCode).toBe(422);
+      expect(err.code).toBe('SCHEMA_VERSION_MISMATCH');
 
-      const after = await authGet(ownerToken, '/api/export');
-      const post = after.json() as ExportEnvelope;
+      const post = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(post.customers.length).toBe(baseline.customers.length);
       expect(post.projects.length).toBe(baseline.projects.length);
     });
@@ -535,12 +449,14 @@ describe('Unified Data Exchange', () => {
     it('rejects an envelope with an older schema_version', async () => {
       const bad = buildOverrideEnvelope();
       bad.schema_version = CURRENT_SCHEMA_VERSION - 1;
-      const body = { ...bad, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-      const res = await authPost(ownerToken, '/api/import?override=true', body);
+      const err = await expectImportRejection(bad as unknown as Envelope, {
+        dryRun: false,
+        override: true,
+        confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+      });
 
-      expect(res.statusCode).toBeGreaterThanOrEqual(400);
-      expect(res.statusCode).toBeLessThan(500);
-      expect(res.json().code).toBe('SCHEMA_VERSION_MISMATCH');
+      expect(err.statusCode).toBe(422);
+      expect(err.code).toBe('SCHEMA_VERSION_MISMATCH');
     });
   });
 
@@ -548,16 +464,18 @@ describe('Unified Data Exchange', () => {
   // AC-137: import into empty DB preserves IDs, all-or-nothing
   // ---------------------------------------------------------------
   describe('AC-137: import into empty DB', () => {
-    // AC-137 happy path: empty target, valid envelope → 200 and IDs match.
+    // AC-137 happy path: empty target, valid envelope → IDs match.
     it('imports a valid envelope and preserves row IDs exactly', async () => {
       await wipeBusinessData();
       try {
         const envelope = buildFreshEnvelope();
-        const res = await authPost(ownerToken, '/api/import', envelope);
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
 
         const customerIds = new Set(out.customers.map((c) => c.id));
         for (const c of envelope.customers) expect(customerIds.has(c.id)).toBe(true);
@@ -565,7 +483,7 @@ describe('Unified Data Exchange', () => {
         const projectIds = new Set(out.projects.map((p) => p.id));
         for (const p of envelope.projects) expect(projectIds.has(p.id)).toBe(true);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -589,18 +507,21 @@ describe('Unified Data Exchange', () => {
             },
           ],
         };
-        const res = await authPost(ownerToken, '/api/import', broken);
-        expect(res.statusCode).toBeGreaterThanOrEqual(400);
+        const err = await expectImportRejection(broken as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+        expect(err.statusCode).toBeGreaterThanOrEqual(400);
 
         // DB must still be empty — neither the valid project nor the
         // "valid" customer should have been persisted.
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
         expect(out.project_workers.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -643,22 +564,23 @@ describe('Unified Data Exchange', () => {
           updatedAt: '2026-01-03T00:00:00.000Z',
         });
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as {
-          code: string;
-          details?:
-            | { validation_errors?: Array<{ path: string; message: string }> }
-            | Array<{ path: string; message: string }>;
-        };
-        expect(body.code).toBe('VALIDATION_ERROR');
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('VALIDATION_ERROR');
 
         // `details` carries the validation issues. The existing
         // referential-integrity path stores them as a plain array;
         // accept either the array-directly or a {validation_errors:[…]}
         // wrapper so the test pins structure, not incidental nesting.
-        const issues = Array.isArray(body.details) ? body.details : body.details?.validation_errors;
+        const details = err.details as
+          | { validation_errors?: Array<{ path: string; message: string }> }
+          | Array<{ path: string; message: string }>;
+        const issues = Array.isArray(details) ? details : details?.validation_errors;
         expect(Array.isArray(issues)).toBe(true);
         const dup = issues!.find((i) => /customers\[1\]/.test(i.path));
         expect(dup).toBeDefined();
@@ -666,13 +588,12 @@ describe('Unified Data Exchange', () => {
 
         // No rows written — DB remains empty. This is the point of
         // validating before the transaction opens.
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
         expect(out.project_workers.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -690,27 +611,26 @@ describe('Unified Data Exchange', () => {
           updatedAt: '2026-01-03T00:00:00.000Z',
         });
 
-        const res = await authPost(ownerToken, '/api/import?dry_run=true', envelope);
         // Dry-run never throws for invalid envelopes — the preview carries
         // the errors so the UI can render them. This is the clean proof
         // that validation (not the DB) surfaces the issue.
-        expect(res.statusCode).toBe(200);
+        const preview = (await importEnvelope(envelope as unknown as Envelope, {
+          dryRun: true,
+          override: false,
+          confirmationPhrase: null,
+        })) as { validation_errors: Array<{ path: string; message: string }> };
 
-        const preview = res.json() as {
-          validation_errors: Array<{ path: string; message: string }>;
-        };
         expect(Array.isArray(preview.validation_errors)).toBe(true);
         const dup = preview.validation_errors.find((i) => /customers\[1\]/.test(i.path));
         expect(dup).toBeDefined();
         expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
 
         // No state change.
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -731,28 +651,28 @@ describe('Unified Data Exchange', () => {
           updatedAt: '2026-01-06T00:00:00.000Z',
         });
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as {
-          code: string;
-          details?:
-            | { validation_errors?: Array<{ path: string; message: string }> }
-            | Array<{ path: string; message: string }>;
-        };
-        expect(body.code).toBe('VALIDATION_ERROR');
-        const issues = Array.isArray(body.details) ? body.details : body.details?.validation_errors;
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('VALIDATION_ERROR');
+        const details = err.details as
+          | { validation_errors?: Array<{ path: string; message: string }> }
+          | Array<{ path: string; message: string }>;
+        const issues = Array.isArray(details) ? details : details?.validation_errors;
         expect(Array.isArray(issues)).toBe(true);
         const dup = issues!.find((i) => /projects\[1\]/.test(i.path) && /id/i.test(i.path));
         expect(dup).toBeDefined();
         expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
 
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -771,28 +691,28 @@ describe('Unified Data Exchange', () => {
           updatedAt: '2026-01-07T00:00:00.000Z',
         });
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as {
-          code: string;
-          details?:
-            | { validation_errors?: Array<{ path: string; message: string }> }
-            | Array<{ path: string; message: string }>;
-        };
-        expect(body.code).toBe('VALIDATION_ERROR');
-        const issues = Array.isArray(body.details) ? body.details : body.details?.validation_errors;
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('VALIDATION_ERROR');
+        const details = err.details as
+          | { validation_errors?: Array<{ path: string; message: string }> }
+          | Array<{ path: string; message: string }>;
+        const issues = Array.isArray(details) ? details : details?.validation_errors;
         expect(Array.isArray(issues)).toBe(true);
         const dup = issues!.find((i) => /projects\[1\]/.test(i.path) && /number/i.test(i.path));
         expect(dup).toBeDefined();
         expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
 
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -811,29 +731,29 @@ describe('Unified Data Exchange', () => {
           { projectId, userId },
         ];
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as {
-          code: string;
-          details?:
-            | { validation_errors?: Array<{ path: string; message: string }> }
-            | Array<{ path: string; message: string }>;
-        };
-        expect(body.code).toBe('VALIDATION_ERROR');
-        const issues = Array.isArray(body.details) ? body.details : body.details?.validation_errors;
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('VALIDATION_ERROR');
+        const details = err.details as
+          | { validation_errors?: Array<{ path: string; message: string }> }
+          | Array<{ path: string; message: string }>;
+        const issues = Array.isArray(details) ? details : details?.validation_errors;
         expect(Array.isArray(issues)).toBe(true);
         const dup = issues!.find((i) => /project_workers\[1\]/.test(i.path));
         expect(dup).toBeDefined();
         expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
 
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
         expect(out.project_workers.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -857,30 +777,30 @@ describe('Unified Data Exchange', () => {
         // Other projects keep their valid value.
         envelope.projects[0]!.siteAddress = { street: 'Goethestr. 18', zip: '', city: 'Köln' };
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as {
-          code: string;
-          details?:
-            | { validation_errors?: Array<{ path: string; message: string }> }
-            | Array<{ path: string; message: string }>;
-        };
-        expect(body.code).toBe('VALIDATION_ERROR');
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('VALIDATION_ERROR');
 
-        const issues = Array.isArray(body.details) ? body.details : body.details?.validation_errors;
+        const details = err.details as
+          | { validation_errors?: Array<{ path: string; message: string }> }
+          | Array<{ path: string; message: string }>;
+        const issues = Array.isArray(details) ? details : details?.validation_errors;
         expect(Array.isArray(issues)).toBe(true);
         const partial = issues!.find((i) => /projects\[0\]\.siteAddress/.test(i.path));
         expect(partial).toBeDefined();
         expect(partial!.message.toLowerCase()).toMatch(/partial|street|zip|city|empty/);
 
         // No rows written — DB remains empty.
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -890,25 +810,24 @@ describe('Unified Data Exchange', () => {
         const envelope = buildFreshEnvelope();
         envelope.projects[0]!.siteAddress = { street: '', zip: '51103', city: 'Köln' };
 
-        const res = await authPost(ownerToken, '/api/import?dry_run=true', envelope);
         // Dry-run never throws — preview carries the issues.
-        expect(res.statusCode).toBe(200);
+        const preview = (await importEnvelope(envelope as unknown as Envelope, {
+          dryRun: true,
+          override: false,
+          confirmationPhrase: null,
+        })) as { validation_errors: Array<{ path: string; message: string }> };
 
-        const preview = res.json() as {
-          validation_errors: Array<{ path: string; message: string }>;
-        };
         expect(Array.isArray(preview.validation_errors)).toBe(true);
         const partial = preview.validation_errors.find((i) =>
           /projects\[0\]\.siteAddress/.test(i.path),
         );
         expect(partial).toBeDefined();
 
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -916,10 +835,13 @@ describe('Unified Data Exchange', () => {
       // Baseline: buildFreshEnvelope() seeds rows with siteAddress field absent; the validator must accept the baseline before the partial-rejection tests below assert their failure modes.
       await wipeBusinessData();
       try {
-        const res = await authPost(ownerToken, '/api/import', buildFreshEnvelope());
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(buildFreshEnvelope() as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -932,18 +854,20 @@ describe('Unified Data Exchange', () => {
     // specific error code; no state change.
     it('rejects with a conflict-category error when target is non-empty', async () => {
       // Seed is present from startApp(); confirm baseline.
-      const before = await authGet(ownerToken, '/api/export');
-      const baseline = before.json() as ExportEnvelope;
+      const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(baseline.customers.length).toBeGreaterThan(0);
 
       const env = buildOverrideEnvelope();
-      const res = await authPost(ownerToken, '/api/import', env);
+      const err = await expectImportRejection(env as unknown as Envelope, {
+        dryRun: false,
+        override: false,
+        confirmationPhrase: null,
+      });
 
-      expect(res.statusCode).toBe(409);
-      expect(res.json().code).toBe('TARGET_NOT_EMPTY');
+      expect(err.statusCode).toBe(409);
+      expect(err.code).toBe('TARGET_NOT_EMPTY');
 
-      const after = await authGet(ownerToken, '/api/export');
-      const post = after.json() as ExportEnvelope;
+      const post = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(post.customers.length).toBe(baseline.customers.length);
       expect(post.projects.length).toBe(baseline.projects.length);
       // Original seeded IDs still present.
@@ -962,22 +886,23 @@ describe('Unified Data Exchange', () => {
     // Issue #230: override now wipes `users` too, which cascades to
     // `sessions` and invalidates the operator's token mid-flight. The
     // post-import assertions therefore use direct DB queries rather
-    // than /api/export — the latter would 401 with a wiped session.
+    // than an authenticated read — the wiped session would 401.
     it('wipes existing data and imports the new envelope when override=true', async () => {
-      const before = await authGet(ownerToken, '/api/export');
-      const seeded = before.json() as ExportEnvelope;
+      const seeded = (await exportEnvelope()) as unknown as ExportEnvelope;
       // Sanity: seed has distinct IDs from the override envelope.
       const env = buildOverrideEnvelope();
       const seedIds = new Set(seeded.customers.map((c) => c.id));
       for (const c of env.customers) expect(seedIds.has(c.id)).toBe(false);
 
       try {
-        const body = { ...env, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(env as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        });
 
-        // Direct-DB cross-check — the export route requires auth and
-        // the override wiped sessions.
+        // Direct-DB cross-check — the override wiped users (and cascaded
+        // sessions), so a count is the cleanest post-state assertion.
         const dbCustomers = await db.execute<{ c: string }>(
           sql`SELECT count(*)::text AS c FROM customers`,
         );
@@ -987,33 +912,34 @@ describe('Unified Data Exchange', () => {
         expect(Number(dbCustomers.rows[0]!.c)).toBe(env.customers.length);
         expect(Number(dbProjects.rows[0]!.c)).toBe(env.projects.length);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
     // AC-139 atomicity: invalid envelope + override → rollback, seed intact.
     it('rolls back entirely on invalid envelope even with override (atomic)', async () => {
-      const before = await authGet(ownerToken, '/api/export');
-      const seeded = before.json() as ExportEnvelope;
+      const seeded = (await exportEnvelope()) as unknown as ExportEnvelope;
 
       const broken = buildOverrideEnvelope();
       // A project referencing a customerId not present in the envelope.
       broken.projects[0]!.customerId = UUID_ZERO;
 
       try {
-        const body = { ...broken, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBeGreaterThanOrEqual(400);
+        const err = await expectImportRejection(broken as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        });
+        expect(err.statusCode).toBeGreaterThanOrEqual(400);
 
         // Seed must be unchanged — rollback covers the wipe, not just the insert.
-        const after = await authGet(ownerToken, '/api/export');
-        const post = after.json() as ExportEnvelope;
+        const post = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(post.customers.length).toBe(seeded.customers.length);
         expect(post.projects.length).toBe(seeded.projects.length);
         const seededIds = new Set(seeded.customers.map((c) => c.id));
         for (const c of post.customers) expect(seededIds.has(c.id)).toBe(true);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -1024,14 +950,14 @@ describe('Unified Data Exchange', () => {
   describe('AC-140: dry-run import', () => {
     // AC-140 valid + dry-run: returns a preview of would-be writes, no state change.
     it('returns a preview for a valid envelope and performs no writes', async () => {
-      const before = await authGet(ownerToken, '/api/export');
-      const baseline = before.json() as ExportEnvelope;
+      const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
 
       const env = buildOverrideEnvelope();
-      const res = await authPost(ownerToken, '/api/import?dry_run=true', env);
-      expect(res.statusCode).toBe(200);
-
-      const preview = res.json() as {
+      const preview = (await importEnvelope(env as unknown as Envelope, {
+        dryRun: true,
+        override: false,
+        confirmationPhrase: null,
+      })) as {
         target_non_empty: boolean;
         would_write: { customers: number; projects: number; project_workers: number };
         validation_errors: unknown[];
@@ -1049,8 +975,7 @@ describe('Unified Data Exchange', () => {
       expect(preview.target_non_empty).toBe(true);
 
       // No writes.
-      const after = await authGet(ownerToken, '/api/export');
-      const post = after.json() as ExportEnvelope;
+      const post = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(post.customers.length).toBe(baseline.customers.length);
       expect(post.projects.length).toBe(baseline.projects.length);
     });
@@ -1062,34 +987,34 @@ describe('Unified Data Exchange', () => {
       await wipeBusinessData();
       try {
         const env = buildFreshEnvelope();
-        const res = await authPost(ownerToken, '/api/import?dry_run=true', env);
-        expect(res.statusCode).toBe(200);
-
-        const preview = res.json() as { target_non_empty: boolean };
+        const preview = (await importEnvelope(env as unknown as Envelope, {
+          dryRun: true,
+          override: false,
+          confirmationPhrase: null,
+        })) as { target_non_empty: boolean };
         expect(preview.target_non_empty).toBe(false);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
     // AC-140 invalid + dry-run: preview carries validation errors, still no writes.
     it('reports validation_errors for an invalid envelope and performs no writes', async () => {
-      const before = await authGet(ownerToken, '/api/export');
-      const baseline = before.json() as ExportEnvelope;
+      const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
 
       const broken = buildOverrideEnvelope();
       broken.projects[0]!.customerId = UUID_ZERO; // FK violation
 
-      const res = await authPost(ownerToken, '/api/import?dry_run=true', broken);
-      expect(res.statusCode).toBe(200);
-
-      const preview = res.json() as { validation_errors: unknown[] };
+      const preview = (await importEnvelope(broken as unknown as Envelope, {
+        dryRun: true,
+        override: false,
+        confirmationPhrase: null,
+      })) as { validation_errors: unknown[] };
       expect(Array.isArray(preview.validation_errors)).toBe(true);
       expect(preview.validation_errors.length).toBeGreaterThan(0);
 
       // Still no writes.
-      const after = await authGet(ownerToken, '/api/export');
-      const post = after.json() as ExportEnvelope;
+      const post = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(post.customers.length).toBe(baseline.customers.length);
       expect(post.projects.length).toBe(baseline.projects.length);
     });
@@ -1097,52 +1022,38 @@ describe('Unified Data Exchange', () => {
 
   // ---------------------------------------------------------------
   // AC-141: roundtrip byte-equivalence (modulo exported_at) for the
-  // text-row slice. Issue #163: `/api/import` is text-only post-fix
-  // (AC-253), so the orchestrator strips the envelope's `attachments`
-  // key before posting; per-attachment restoration runs through the
-  // takeout-zip path covered by AC-259. Re-exporting the seeded
-  // dataset after a stripped re-import therefore returns an empty
-  // `attachments` array — matched against the source by construction.
+  // text-row slice. ImportService never restores attachment rows (it
+  // ignores the envelope's `attachments` slot); per-attachment
+  // restoration runs through the takeout-zip path covered by AC-259.
+  // Re-exporting the seeded dataset after a re-import therefore returns
+  // an empty `attachments` array — matched against the source by
+  // construction.
   // ---------------------------------------------------------------
   describe('AC-141: full roundtrip produces byte-identical content', () => {
-    // AC-141 text-row arm: seed → export1 → override-import →
-    // re-login → export2 → customers/projects/project_workers match
-    // exactly.
+    // AC-141 text-row arm: seed → export1 → override-import → export2 →
+    // customers/projects/project_workers match exactly.
     //
     // Issue #230: the export carries users now, and the seeded users
     // already exist in the target — re-importing without override
     // collides on users.id. Override is the right semantic for a
-    // self-roundtrip (wipe + replace with the snapshot). The override
-    // wipes sessions so the operator must re-login before the second
-    // export call. A fuller roundtrip pinning every v3 slot lives in
+    // self-roundtrip (wipe + replace with the snapshot). A fuller
+    // roundtrip pinning every v3 slot lives in
     // `data-exchange-import-expanded.test.ts` (AT-77 analog).
     it('exports → imports → re-exports without drift (exported_at + lastLoginAt excluded)', async () => {
-      const e1Res = await authGet(ownerToken, '/api/export');
-      expect(e1Res.statusCode).toBe(200);
-      const e1 = e1Res.json() as ExportEnvelope;
+      const e1 = (await exportEnvelope()) as unknown as ExportEnvelope;
 
       try {
-        // Strip `attachments` (AC-253) and inject the confirmation
-        // phrase the override branch requires for a non-empty target.
-        const { attachments: _attachmentsStripped, ...textLeg } = e1 as ExportEnvelope & {
-          attachments?: unknown;
-        };
-        void _attachmentsStripped;
-        const importBody = { ...textLeg, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
+        // Override is the right semantic for a self-roundtrip (wipe +
+        // replace with the snapshot). ImportService ignores the
+        // envelope's `attachments` slot (AC-253) and never restores
+        // attachment rows. No session is held now, so no re-login.
+        await importEnvelope(e1 as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        });
 
-        const imp = await authPost(
-          ownerToken,
-          '/api/import?override=true',
-          importBody as unknown as Record<string, unknown>,
-        );
-        expect(imp.statusCode).toBe(200);
-
-        // Re-login — the override wiped sessions.
-        ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
-
-        const e2Res = await authGet(ownerToken, '/api/export');
-        expect(e2Res.statusCode).toBe(200);
-        const e2 = e2Res.json() as ExportEnvelope;
+        const e2 = (await exportEnvelope()) as unknown as ExportEnvelope;
 
         expect(e2.schema_version).toBe(e1.schema_version);
         // exported_at will differ — explicitly excluded from the compare.
@@ -1155,7 +1066,7 @@ describe('Unified Data Exchange', () => {
         expect(e2.projects).toEqual(e1.projects);
         expect(e2.project_workers).toEqual(e1.project_workers);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -1171,72 +1082,75 @@ describe('Unified Data Exchange', () => {
     // `confirmation_phrase` rejects with 422 RESTORE_CONFIRMATION_MISMATCH
     // and leaves the seed untouched.
     it('rejects override into non-empty DB when confirmation_phrase is missing', async () => {
-      const before = await authGet(ownerToken, '/api/export');
-      const baseline = before.json() as ExportEnvelope;
+      const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
 
       const env = buildOverrideEnvelope();
-      const res = await authPost(ownerToken, '/api/import?override=true', env);
+      const err = await expectImportRejection(env as unknown as Envelope, {
+        dryRun: false,
+        override: true,
+        confirmationPhrase: null,
+      });
 
-      expect(res.statusCode).toBe(422);
-      expect(res.json().code).toBe('RESTORE_CONFIRMATION_MISMATCH');
+      expect(err.statusCode).toBe(422);
+      expect(err.code).toBe('RESTORE_CONFIRMATION_MISMATCH');
 
-      const after = await authGet(ownerToken, '/api/export');
-      const post = after.json() as ExportEnvelope;
+      const post = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(post.customers.length).toBe(baseline.customers.length);
       expect(post.projects.length).toBe(baseline.projects.length);
     });
 
     // AT-82 — case sensitivity: a phrase that differs only in case is
-    // rejected. The body wraps the lowercased value in whitespace so a
-    // permissive implementation that trimmed but ignored case would still
-    // fail this test — the assertion isolates "case" from "trim".
+    // rejected. The value is wrapped in whitespace so a permissive
+    // implementation that trimmed but ignored case would still fail this
+    // test — the assertion isolates "case" from "trim".
     it('rejects override when confirmation_phrase has wrong casing', async () => {
-      const before = await authGet(ownerToken, '/api/export');
-      const baseline = before.json() as ExportEnvelope;
+      const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
 
       const env = buildOverrideEnvelope();
-      const body = {
-        ...env,
-        confirmation_phrase: `  ${EXPECTED_RESTORE_PHRASE.toLowerCase()}  `,
-      };
-      const res = await authPost(ownerToken, '/api/import?override=true', body);
+      const err = await expectImportRejection(env as unknown as Envelope, {
+        dryRun: false,
+        override: true,
+        confirmationPhrase: `  ${EXPECTED_RESTORE_PHRASE.toLowerCase()}  `,
+      });
 
-      expect(res.statusCode).toBe(422);
-      expect(res.json().code).toBe('RESTORE_CONFIRMATION_MISMATCH');
+      expect(err.statusCode).toBe(422);
+      expect(err.code).toBe('RESTORE_CONFIRMATION_MISMATCH');
 
-      const after = await authGet(ownerToken, '/api/export');
-      const post = after.json() as ExportEnvelope;
+      const post = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(post.customers.length).toBe(baseline.customers.length);
     });
 
     // AT-82 — happy path: matching phrase commits the atomic wipe+restore.
-    // Issue #230: post-override the session is wiped — use a direct-DB
-    // assertion rather than /api/export.
+    // Issue #230: the override wipes users — use a direct-DB assertion.
     it('accepts override with a matching confirmation_phrase', async () => {
       const env = buildOverrideEnvelope();
-      const body = { ...env, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
       try {
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(env as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        });
 
         const dbCustomers = await db.execute<{ c: string }>(
           sql`SELECT count(*)::text AS c FROM customers`,
         );
         expect(Number(dbCustomers.rows[0]!.c)).toBe(env.customers.length);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
     // AT-82 — trim: leading/trailing whitespace around the phrase is tolerated.
     it('accepts override when confirmation_phrase has surrounding whitespace', async () => {
       const env = buildOverrideEnvelope();
-      const body = { ...env, confirmation_phrase: `  ${EXPECTED_RESTORE_PHRASE}\n` };
       try {
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(env as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: `  ${EXPECTED_RESTORE_PHRASE}\n`,
+        });
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -1244,30 +1158,35 @@ describe('Unified Data Exchange', () => {
     // phrase returns the preview (no writes, no enforcement).
     it('accepts dry_run without confirmation_phrase on non-empty DB', async () => {
       const env = buildOverrideEnvelope();
-      const res = await authPost(ownerToken, '/api/import?override=true&dry_run=true', env);
-      expect(res.statusCode).toBe(200);
-      const preview = res.json() as { target_non_empty: boolean };
+      const preview = (await importEnvelope(env as unknown as Envelope, {
+        dryRun: true,
+        override: true,
+        confirmationPhrase: null,
+      })) as { target_non_empty: boolean };
       expect(preview.target_non_empty).toBe(true);
     });
 
     // AT-83 — empty-target exempt: override into an empty DB succeeds
     // without a phrase (there is nothing to wipe). Issue #230: even
     // an empty-target override wipes users (TRUNCATE users CASCADE
-    // sweeps every session including the operator's), so the post-call
-    // assertion uses a direct DB query.
+    // sweeps every session), so the post-call assertion uses a direct
+    // DB query.
     it('accepts override into empty DB without confirmation_phrase', async () => {
       const env = buildFreshEnvelope();
       try {
         await wipeBusinessData();
-        const res = await authPost(ownerToken, '/api/import?override=true', env);
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(env as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: null,
+        });
 
         const dbCustomers = await db.execute<{ c: string }>(
           sql`SELECT count(*)::text AS c FROM customers`,
         );
         expect(Number(dbCustomers.rows[0]!.c)).toBe(env.customers.length);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -1357,13 +1276,16 @@ describe('Unified Data Exchange', () => {
         envelope.projects[0]!.updatedBy = null; // null must NOT trigger the code
         envelope.project_workers = [{ projectId: envelope.projects[0]!.id, userId: GHOST_USER_A }];
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as MissingUserRefsBody;
-        expect(body.code).toBe('MISSING_USER_REFS');
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('MISSING_USER_REFS');
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -1380,17 +1302,20 @@ describe('Unified Data Exchange', () => {
         envelope.projects[0]!.updatedBy = GHOST_USER_B;
         envelope.project_workers = [{ projectId: envelope.projects[0]!.id, userId: GHOST_USER_A }];
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as MissingUserRefsBody;
-        expect(body.code).toBe('MISSING_USER_REFS');
-        const ids = body.details?.missingUserIds;
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('MISSING_USER_REFS');
+        const ids = (err.details as MissingUserRefsBody['details'])?.missingUserIds;
         expect(Array.isArray(ids)).toBe(true);
         const sorted = [...(ids as string[])].sort();
         expect(sorted).toEqual([GHOST_USER_A, GHOST_USER_B].sort());
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -1408,11 +1333,14 @@ describe('Unified Data Exchange', () => {
         envelope.projects[0]!.updatedBy = null;
         envelope.project_workers = [{ projectId: envelope.projects[0]!.id, userId: GHOST_USER_A }];
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as MissingUserRefsBody;
-        const refs = body.details?.references;
+        expect(err.statusCode).toBe(422);
+        const refs = (err.details as MissingUserRefsBody['details'])?.references;
         expect(Array.isArray(refs)).toBe(true);
         const entries = refs as Array<{ path: string; userId: string }>;
         // All four sites point at GHOST_USER_A; all four paths are distinct.
@@ -1431,7 +1359,7 @@ describe('Unified Data Exchange', () => {
           ]),
         );
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -1468,14 +1396,18 @@ describe('Unified Data Exchange', () => {
         envelope.projects[0]!.updatedBy = null;
         envelope.project_workers = [];
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res.statusCode).toBe(422);
-        const body = res.json() as MissingUserRefsBody;
-        expect(body.code).toBe('MISSING_USER_REFS');
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('MISSING_USER_REFS');
 
         // The ghost reference is flagged — path points at customers[0].createdBy.
-        const refs = (body.details?.references ?? []) as Array<{ path: string; userId: string }>;
+        const details = err.details as MissingUserRefsBody['details'];
+        const refs = (details?.references ?? []) as Array<{ path: string; userId: string }>;
         const ghostHit = refs.find(
           (r) => r.path === 'customers[0].createdBy' && r.userId === GHOST_USER_A,
         );
@@ -1488,10 +1420,10 @@ describe('Unified Data Exchange', () => {
         expect(nullSiteHit).toBeUndefined();
 
         // And the deduplicated id list contains only the ghost — no null.
-        const ids = (body.details?.missingUserIds ?? []) as string[];
+        const ids = (details?.missingUserIds ?? []) as string[];
         expect(ids).toEqual([GHOST_USER_A]);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -1506,14 +1438,18 @@ describe('Unified Data Exchange', () => {
         envelope.customers[0]!.createdBy = GHOST_USER_A;
         envelope.projects[0]!.createdBy = GHOST_USER_A;
 
-        const res = await authPost(ownerToken, '/api/import', envelope);
-        expect(res.statusCode).toBe(422);
-        expect((res.json() as { code: string }).code).toBe('MISSING_USER_REFS');
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('MISSING_USER_REFS');
 
         const after = await businessRowCounts();
         expect(after).toEqual(before);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -1535,15 +1471,14 @@ describe('Unified Data Exchange', () => {
         // the target `users` table.
         envelope.projects[0]!.createdBy = GHOST_USER_A;
 
-        const res = await authPost(ownerToken, '/api/import?dry_run=true', envelope);
-
-        expect(res.statusCode).toBe(200);
+        const preview = (await importEnvelope(envelope as unknown as Envelope, {
+          dryRun: true,
+          override: false,
+          confirmationPhrase: null,
+        })) as { validation_errors?: Array<{ path: string; message: string }> };
 
         // Intra-envelope class — already surfaced via `validation_errors`
         // in the existing preview shape.
-        const preview = res.json() as {
-          validation_errors?: Array<{ path: string; message: string }>;
-        };
         expect(Array.isArray(preview.validation_errors)).toBe(true);
         const intra = preview.validation_errors!.find((i) =>
           /projects\[0\]\.customerId/.test(i.path),
@@ -1562,7 +1497,7 @@ describe('Unified Data Exchange', () => {
         const after = await businessRowCounts();
         expect(after).toEqual(before);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -1586,148 +1521,65 @@ describe('Unified Data Exchange', () => {
         const dual = buildFreshEnvelope();
         dual.projects[0]!.customerId = UUID_ZERO; // intra-envelope issue
         dual.projects[0]!.createdBy = GHOST_USER_A; // missing-user issue
-        const res1 = await authPost(ownerToken, '/api/import', dual);
+        const err1 = await expectImportRejection(dual as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res1.statusCode).toBeGreaterThanOrEqual(400);
-        expect(res1.statusCode).toBeLessThan(500);
-        const body1 = res1.json() as { code: string };
-        expect(body1.code).toBe('VALIDATION_ERROR');
+        expect(err1.statusCode).toBeGreaterThanOrEqual(400);
+        expect(err1.statusCode).toBeLessThan(500);
+        expect(err1.code).toBe('VALIDATION_ERROR');
         // Single-code guarantee: MISSING_USER_REFS must not leak into the
-        // same response (neither as the code nor inside details).
-        expect(JSON.stringify(body1)).not.toContain('MISSING_USER_REFS');
+        // same error (neither as the code nor inside details).
+        expect(JSON.stringify({ code: err1.code, details: err1.details })).not.toContain(
+          'MISSING_USER_REFS',
+        );
 
         // Pass 2 — intra-consistent, ghost reference only.
         const clean = buildFreshEnvelope();
         clean.projects[0]!.createdBy = GHOST_USER_A;
-        const res2 = await authPost(ownerToken, '/api/import', clean);
+        const err2 = await expectImportRejection(clean as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
-        expect(res2.statusCode).toBe(422);
-        const body2 = res2.json() as { code: string };
-        expect(body2.code).toBe('MISSING_USER_REFS');
-        // And the reverse: the missing-user response must not carry
+        expect(err2.statusCode).toBe(422);
+        expect(err2.code).toBe('MISSING_USER_REFS');
+        // And the reverse: the missing-user error must not carry
         // VALIDATION_ERROR either — one code per response.
-        expect(JSON.stringify(body2).match(/"VALIDATION_ERROR"/)).toBeNull();
+        expect(
+          JSON.stringify({ code: err2.code, details: err2.details }).match(/"VALIDATION_ERROR"/),
+        ).toBeNull();
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
 
   // ---------------------------------------------------------------
-  // AC-253: /api/import never inserts attachment rows; an `attachments`
-  // key in the body is rejected with 422 VALIDATION_ERROR. Closes the
-  // silent-loss bug at the wire — the pre-fix path inserted attachment
-  // rows whose wrapped DEKs were unwrappable on the importing instance.
-  // The new contract is text-only; the per-attachment leg of the
-  // takeout-zip restore drives `init` + presigned PUT + `complete`
-  // through the orchestrator (api.md §14.2.4 / api.md §14.2.11).
+  // AC-253 (DELETED): "/api/import rejects bodies carrying an
+  // `attachments` key" was a ROUTE BODY-SCHEMA rejection (the route
+  // declared `attachments: { not: {} }`). ImportService has NO
+  // equivalent structural guard — it simply never inserts attachment
+  // rows and ignores any `attachments` key on the envelope. With the
+  // route gone there is no service-level analog to assert, so the whole
+  // describe (including the dry_run × override `it.each` matrix and the
+  // "proceeds normally without the key" arm) was removed. The "no
+  // attachment rows are restored" invariant is covered by AC-254 below
+  // (post-override truncate count is 0) and the AT-77 roundtrip.
   // ---------------------------------------------------------------
-  describe('AC-253: /api/import rejects bodies carrying an `attachments` key', () => {
-    /**
-     * Count `attachments` rows directly. Used to pin the no-write side
-     * of the AC: the rejection must happen before the transaction would
-     * have inserted any row, on every (dry_run × override) combination.
-     */
-    async function countAttachments(): Promise<number> {
-      const r = await pool.query<{ c: string }>(`SELECT COUNT(*)::text AS c FROM attachments`);
-      return Number(r.rows[0]!.c);
-    }
-
-    it.each([
-      ['no flags', '/api/import'],
-      ['dry_run only', '/api/import?dry_run=true'],
-      ['override only', '/api/import?override=true'],
-      ['dry_run and override', '/api/import?dry_run=true&override=true'],
-    ] as const)(
-      'returns 422 VALIDATION_ERROR when the body carries an `attachments` key (%s)',
-      async (_label, url) => {
-        await wipeBusinessData();
-        try {
-          const before = await countAttachments();
-
-          // Envelope is otherwise valid (intra-consistent, current
-          // schema_version) and the attachment row is structurally
-          // complete against the pre-#163 envelope shape — only the
-          // disallowed `attachments` key on the body should drive the
-          // 422. Any current-impl rejection on a different field
-          // (e.g. ADR-0024 `wrappedDekVersion` guard) would mask the
-          // load-bearing AC-253 wire-shape rejection; populating every
-          // documented field defuses that.
-          const envelope = buildFreshEnvelope() as ExportEnvelope & { attachments: unknown[] };
-          envelope.attachments = [
-            {
-              id: uuid('att', 1),
-              projectId: envelope.projects[0]!.id,
-              status: 'ready',
-              kind: 'binary',
-              label: 'sonstiges',
-              fileName: 'noop.pdf',
-              mimeType: 'application/pdf',
-              sizeBytes: 100,
-              ciphertextSizeBytes: 164,
-              ciphertextThumbSizeBytes: null,
-              originalKey: `attachments/${envelope.projects[0]!.id}/${uuid('att', 1)}.orig`,
-              thumbKey: null,
-              hasThumbnail: false,
-              wrappedDek: Buffer.alloc(192, 0x77).toString('base64'),
-              wrappedThumbDek: null,
-              wrappedDekVersion: 1,
-              createdAt: '2026-01-05T00:00:00.000Z',
-              createdBy: null,
-            },
-          ];
-          const body = {
-            ...envelope,
-            confirmation_phrase: EXPECTED_RESTORE_PHRASE,
-          };
-
-          const res = await authPost(ownerToken, url, body);
-          expect(res.statusCode).toBe(422);
-          expect(res.json().code).toBe('VALIDATION_ERROR');
-
-          // No `attachments` row was inserted regardless of flag combo.
-          // The whole point of the wire-shape rejection is that the
-          // transaction never opens.
-          expect(await countAttachments()).toBe(before);
-        } finally {
-          await reseedAndRelogin();
-        }
-      },
-    );
-
-    it('proceeds normally on the same fixture without the `attachments` key', async () => {
-      // Parallel call against the same envelope content with the
-      // disallowed key removed: the request must succeed (200) and
-      // the text rows land. This pins that the rejection above is the
-      // `attachments` key specifically, not some incidental envelope
-      // issue. It also keeps the AC-253 wire contract self-evident
-      // alongside its negative arm.
-      await wipeBusinessData();
-      try {
-        const envelope = buildFreshEnvelope();
-        const res = await authPost(ownerToken, '/api/import', envelope);
-        expect(res.statusCode).toBe(200);
-
-        // Customer + project rows landed on the text-only path.
-        const exp = await authGet(ownerToken, '/api/export');
-        const out = exp.json() as ExportEnvelope;
-        const ids = new Set(out.customers.map((c) => c.id));
-        for (const c of envelope.customers) expect(ids.has(c.id)).toBe(true);
-      } finally {
-        await reseedAndRelogin();
-      }
-    });
-  });
 
   // ---------------------------------------------------------------
-  // AC-254: /api/import?override=true atomically truncates the
+  // AC-254: an `override` business-data import atomically truncates the
   // `attachments` table alongside the customer / project / project-
   // worker wipe. After a successful override-import, the table is
-  // empty regardless of envelope content (envelope `attachments[]`
-  // is rejected at the wire by AC-253; the takeout-zip restore
+  // empty regardless of envelope content (the import ignores the
+  // envelope's `attachments` slot per AC-253; the takeout-zip restore
   // mechanics re-upload through `init` after this call returns).
   // ---------------------------------------------------------------
-  describe('AC-254: /api/import?override=true truncates the attachments table', () => {
+  describe('AC-254: an override business-data import truncates the attachments table', () => {
     /**
      * Seed a single `pending` attachment row directly so the truncate
      * has something to remove. A `pending` row is enough — the AC is
@@ -1772,27 +1624,30 @@ describe('Unified Data Exchange', () => {
       // override envelope refers to FRESH projects (different ids); the
       // truncate runs unconditionally, not as a "rows whose project is
       // also being replaced" partial.
-      const projectsRes = await authGet(ownerToken, '/api/projects?limit=200');
-      const projects = projectsRes.json().data as Array<{ id: string }>;
-      expect(projects.length).toBeGreaterThanOrEqual(2);
-      await seedAttachmentRow(projects[0]!.id, 'a01');
-      await seedAttachmentRow(projects[1]!.id, 'b02');
+      const seededProjects = await db.execute<{ id: string }>(
+        sql`SELECT id FROM projects ORDER BY id ASC LIMIT 2`,
+      );
+      expect(seededProjects.rows.length).toBeGreaterThanOrEqual(2);
+      await seedAttachmentRow(seededProjects.rows[0]!.id, 'a01');
+      await seedAttachmentRow(seededProjects.rows[1]!.id, 'b02');
       expect(await countAttachments()).toBeGreaterThanOrEqual(2);
 
       try {
-        // Post-fix wire contract: bodies with `attachments` key reject
-        // (AC-253), so the only honest envelope here is text-only. The
-        // load-bearing AC-254 assertion is that the truncate ran AND no
-        // path re-inserted attachment rows — the post-call count is 0.
+        // ImportService never restores attachment rows (it ignores the
+        // envelope's `attachments` slot). The load-bearing AC-254
+        // assertion is that the override truncate ran AND no path
+        // re-inserted attachment rows — the post-call count is 0.
         const envelope = buildOverrideEnvelope();
-        const body = { ...envelope, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(envelope as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        });
 
         // The whole point of AC-254: the table is empty post-call.
         expect(await countAttachments()).toBe(0);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
@@ -1804,30 +1659,33 @@ describe('Unified Data Exchange', () => {
       // The AC names this explicitly: "truncates the attachments table
       // inside the same transaction that wipes existing customer /
       // project / project-worker rows, atomically with the restore".
-      const projectsRes = await authGet(ownerToken, '/api/projects?limit=200');
-      const projects = projectsRes.json().data as Array<{ id: string }>;
-      const seedProjectId = projects[0]!.id;
+      const seededProjects = await db.execute<{ id: string }>(
+        sql`SELECT id FROM projects ORDER BY id ASC LIMIT 1`,
+      );
+      const seedProjectId = seededProjects.rows[0]!.id;
       await seedAttachmentRow(seedProjectId, 'atom1');
       const beforeAttachments = await countAttachments();
       expect(beforeAttachments).toBeGreaterThanOrEqual(1);
 
       try {
-        // Force a rollback by posting a structurally invalid override
-        // envelope (a project pointing at a non-existent customerId in
-        // the same envelope). The whole transaction must abort —
-        // attachments restored to their pre-call state, business rows
-        // unchanged.
+        // Force a rollback with a structurally invalid override envelope
+        // (a project pointing at a non-existent customerId in the same
+        // envelope). The whole transaction must abort — attachments
+        // restored to their pre-call state, business rows unchanged.
         const broken = buildOverrideEnvelope();
         broken.projects[0]!.customerId = UUID_ZERO;
-        const body = { ...broken, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBeGreaterThanOrEqual(400);
+        const err = await expectImportRejection(broken as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        });
+        expect(err.statusCode).toBeGreaterThanOrEqual(400);
 
         // Atomicity: the seeded attachment row survives, because the
         // truncate sat inside the rolled-back transaction.
         expect(await countAttachments()).toBe(beforeAttachments);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });
@@ -1867,10 +1725,11 @@ describe('Unified Data Exchange', () => {
     }
 
     it('writes a delete marker for every prior attachment object on successful override-import', async () => {
-      const projectsRes = await authGet(ownerToken, '/api/projects?limit=200');
-      const projects = projectsRes.json().data as Array<{ id: string }>;
-      expect(projects.length).toBeGreaterThanOrEqual(1);
-      const projectId = projects[0]!.id;
+      const seededProjects = await db.execute<{ id: string }>(
+        sql`SELECT id FROM projects ORDER BY id ASC LIMIT 1`,
+      );
+      expect(seededProjects.rows.length).toBeGreaterThanOrEqual(1);
+      const projectId = seededProjects.rows[0]!.id;
 
       // Seed a `ready` row + push real bytes to storage so the
       // post-call assertion meaningfully distinguishes "object hidden"
@@ -1897,10 +1756,14 @@ describe('Unified Data Exchange', () => {
       expect(await objectAbsent(originalKey)).toBe(false);
 
       try {
+        // Pass this test's own storage instance so the hide side-effect
+        // lands on the bucket this test inspects (issue #163).
         const envelope = buildOverrideEnvelope();
-        const body = { ...envelope, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(
+          envelope as unknown as Envelope,
+          { dryRun: false, override: true, confirmationPhrase: EXPECTED_RESTORE_PHRASE },
+          { storage },
+        );
 
         // The hide call wrote a delete marker — GET without versionId
         // returns 404. The prior version is now a noncurrent version
@@ -1908,15 +1771,16 @@ describe('Unified Data Exchange', () => {
         // ADR-0022.
         expect(await objectAbsent(originalKey)).toBe(true);
       } finally {
-        await reseedAndRelogin();
+        await reseed();
       }
     });
 
     it('leaves prior storage objects untouched when the override import is rejected', async () => {
-      const projectsRes = await authGet(ownerToken, '/api/projects?limit=200');
-      const projects = projectsRes.json().data as Array<{ id: string }>;
-      expect(projects.length).toBeGreaterThanOrEqual(1);
-      const projectId = projects[0]!.id;
+      const seededProjects = await db.execute<{ id: string }>(
+        sql`SELECT id FROM projects ORDER BY id ASC LIMIT 1`,
+      );
+      expect(seededProjects.rows.length).toBeGreaterThanOrEqual(1);
+      const projectId = seededProjects.rows[0]!.id;
 
       // Seed a real uploaded object. A failed override-import must
       // leave it retrievable — the hide path must NOT fire on the
@@ -1944,9 +1808,12 @@ describe('Unified Data Exchange', () => {
         // customer in the same envelope.
         const broken = buildOverrideEnvelope();
         broken.projects[0]!.customerId = UUID_ZERO;
-        const body = { ...broken, confirmation_phrase: EXPECTED_RESTORE_PHRASE };
-        const res = await authPost(ownerToken, '/api/import?override=true', body);
-        expect(res.statusCode).toBeGreaterThanOrEqual(400);
+        const err = await expectImportRejection(
+          broken as unknown as Envelope,
+          { dryRun: false, override: true, confirmationPhrase: EXPECTED_RESTORE_PHRASE },
+          { storage },
+        );
+        expect(err.statusCode).toBeGreaterThanOrEqual(400);
 
         // No commit ⇒ no hide. The seeded object is still the current
         // version and remains retrievable.
@@ -1956,7 +1823,7 @@ describe('Unified Data Exchange', () => {
         // the object directly so the next describe block starts
         // clean, then reseed (which cascades the row away via FK).
         await storage.hide(originalKey);
-        await reseedAndRelogin();
+        await reseed();
       }
     });
   });

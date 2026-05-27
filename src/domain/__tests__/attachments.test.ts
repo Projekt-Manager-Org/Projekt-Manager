@@ -2,7 +2,7 @@
  * Tests for the attachment domain helpers and catalogs that back the
  * client-side enforcement surface of AC-245 — the closed `AttachmentLabel`
  * enum, the closed MIME whitelist, `classifyKind` (MIME → photo|binary),
- * `validateLabel`, and `validateMime`.
+ * `validateKind`, `validateLabel`, and `validateMime`.
  *
  * Parity with architecture.md §12.2's attachment-label catalog entry and
  * data-model.md §5.13's MIME whitelist is pinned explicitly: a future
@@ -15,6 +15,7 @@ import {
   ATTACHMENT_LABELS,
   ATTACHMENT_MIME_WHITELIST,
   classifyKind,
+  validateKind,
   validateLabel,
   validateMime,
 } from '../attachments';
@@ -109,6 +110,21 @@ describe('classifyKind', () => {
     expect(() => classifyKind('text/plain')).toThrow();
     expect(() => classifyKind('image/gif')).toThrow();
     expect(() => classifyKind('')).toThrow();
+  });
+});
+
+describe('validateKind', () => {
+  it.each(['photo', 'binary'] as const)('accepts %s and returns it typed', (kind) => {
+    expect(validateKind(kind)).toBe(kind);
+  });
+
+  it('rejects a kind outside the closed enum', () => {
+    // Mirrors the `attachments_valid_kind` CHECK. The import runner's
+    // Pass-1 gate relies on this throwing so a tampered envelope fails
+    // before the destructive wipe (AC-327).
+    expect(() => validateKind('document')).toThrow();
+    expect(() => validateKind('Photo')).toThrow();
+    expect(() => validateKind('')).toThrow();
   });
 });
 

@@ -235,9 +235,10 @@ export interface Envelope {
   /**
    * Attachments — every row with `status = 'ready'`. The export emits
    * the field unconditionally (empty array when no ready rows exist);
-   * `/api/import` rejects bodies that carry an `attachments` key
+   * the business-data import (`ImportService`) never inserts attachment
+   * rows and ignores any `attachments` key on the envelope
    * (issue #163 / AC-253) — the field rides the takeout zip, not the
-   * `/api/import` request body.
+   * import envelope.
    */
   attachments: EnvelopeAttachment[];
 }
@@ -252,6 +253,14 @@ export interface ImportOptions {
    * request body omitted the field entirely.
    */
   confirmationPhrase: string | null;
+  /**
+   * When `false`, the `import_restored` audit row is suppressed. Defaults
+   * to `true` (a direct `ImportService` call writes the row). The server-side
+   * import JOB sets this to `false` so it can write the single terminal
+   * `data_import` audit row itself — at the end of Pass 2, after attachment
+   * rows have been inserted — giving it sole audit ownership (AC-332).
+   */
+  writeAuditRow?: boolean;
 }
 
 export interface ValidationIssue {
@@ -332,20 +341,6 @@ export interface ImportResult {
    * next call. `false` in every other code path (dry-run never reaches
    * the commit; empty-target inserts into empty tables; envelopes
    * without users — once another path produces one — would not wipe).
-   *
-   * The companion `importToken` field (below) carries the bearer
-   * credential the binary leg needs to continue past the dead session.
    */
   sessionInvalidated: boolean;
-  /**
-   * Short-lived bearer token issued when the import wiped the operator's
-   * session (`sessionInvalidated === true`). The client orchestrator
-   * passes this in `Authorization: Bearer <token>` on the per-attachment
-   * binary leg calls (`init`, `complete`, `DELETE`) so it can continue
-   * past the dead session. Five-minute TTL; scoped to
-   * `attachment:read` / `attachment:write` / `attachment:hide`.
-   * `null` when the session survived (empty-target import or dry-run);
-   * absent from the dry-run preview shape entirely.
-   */
-  importToken: string | null;
 }

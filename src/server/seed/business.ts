@@ -5,7 +5,7 @@
  * Issue #230: the Layer 1 envelope covers every user-meaningful table
  * (data-model.md §5.8, ADR-0018). The seed assembles the whole envelope
  * in one place and ships it through the same `ImportService.import` path
- * that serves `POST /api/import`, so envelope-format drift breaks the
+ * the public restore uses, so envelope-format drift breaks the
  * seed and the public restore path together instead of only one or the
  * other. Invoices and `invoice_sequence` stay empty in the envelope —
  * `loadInvoices` mints them afterwards through the real draft→issue

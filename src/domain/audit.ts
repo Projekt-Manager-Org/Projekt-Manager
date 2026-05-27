@@ -19,7 +19,8 @@
  * domain layer must not depend on server internals.
  *
  * `data_import` is a synthetic type (no physical row) carried by the
- * single audit entry an `/api/import` commit writes (issue #230). The
+ * single audit entry a business-data import (`ImportService`) commit
+ * writes (issue #230). The
  * domain row stands alone — `entity_id` is a per-import batch UUID,
  * not a row reference.
  */

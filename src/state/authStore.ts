@@ -16,6 +16,8 @@ import { useUIStore } from './uiStore';
 import { useCustomerStore } from './customerStore';
 import { useUserStore } from './userStore';
 import { useProjectManagementStore } from './projectManagementStore';
+import { useExportJobStore } from './exportJobStore';
+import { useImportJobStore } from './importJobStore';
 
 interface AuthState {
   authUser: AuthUser | null;
@@ -149,6 +151,13 @@ function clearDownstreamState(): void {
     sortBy: null,
     sortDir: 'asc',
   });
+  // The data-exchange job stores hold a module-singleton `job` (and the
+  // import side a dismissed-job marker) that would otherwise survive into the
+  // next operator's first paint on the same tab — an inline export-download
+  // link or an auto-opened import summary for the PRIOR user. Reset them here
+  // too (the mount-time probe re-attaches the new user's job server-side).
+  useExportJobStore.getState().reset();
+  useImportJobStore.getState().reset();
   // No audit-store reset: the factory-based `createAuditStore()` yields
   // per-component instances (see `src/state/auditStore.ts`), so audit
   // state dies with the `ActivityFeed` / `AuditManagement` components

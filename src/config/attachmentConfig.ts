@@ -55,18 +55,6 @@ export interface AttachmentConfig {
    */
   hiddenReaperIntervalMinutes: number;
   /**
-   * Export-all per-page descriptor limit — default page size for the
-   * `GET /api/export/binary-descriptors` surface
-   * (api.md §14.2.4 / verification.md AC-248,
-   * architecture.md §12.2). [C]
-   */
-  exportAllPerPageDefault: number;
-  /**
-   * Export-all per-page descriptor ceiling — `limit` values above this
-   * are rejected with `422 VALIDATION_ERROR`. [C]
-   */
-  exportAllPerPageCeiling: number;
-  /**
    * Vollständiger Export pre-flight mobile-warning breakpoint (CSS px).
    * Below this viewport width the dialog renders a non-blocking
    * "intended for desktop" copy. UI-only [C]; no server companion.
@@ -85,7 +73,5 @@ export const ATTACHMENT_CONFIG: AttachmentConfig = {
   workerSelfDeleteGraceMinutes: 15,
   hiddenReaperTtlMinutes: 2880,
   hiddenReaperIntervalMinutes: 60,
-  exportAllPerPageDefault: 100,
-  exportAllPerPageCeiling: 500,
   exportAllMobileWarningBreakpointPx: 480,
 };

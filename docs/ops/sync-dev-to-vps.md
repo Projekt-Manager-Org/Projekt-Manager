@@ -101,4 +101,4 @@ Untouched: VPS filesystem, `secrets.env.age`, Caddy config, VAPID private key un
 
 - [manual-deploy.md](manual-deploy.md) — runs first to get the VPS onto a compatible schema.
 - [backup/overview.md](backup/overview.md) — unrelated; Layer 2 encrypted backup is for disaster recovery, not dev→prod mirroring.
-- The `/api/export` → `/api/import` flow — business-data-only, validates user refs, requires matching user UUIDs on the target. This script subsumes that use case by carrying the entire DB.
+- The business-data export→import flow (`ExportService` / `ImportService`) — business-data-only, validates user refs, requires matching user UUIDs on the target. This script subsumes that use case by carrying the entire DB.

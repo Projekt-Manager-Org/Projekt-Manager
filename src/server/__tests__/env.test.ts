@@ -68,6 +68,8 @@ function makeEnv(overrides: Partial<Env>): Env {
     VAPID_SUBJECT: undefined,
     SSE_HEARTBEAT_INTERVAL_MS: 25_000,
     INVOICE_OBJECT_LOCK_DAYS: 0,
+    TAKEOUT_STAGING_TTL_MINUTES: 1440,
+    TAKEOUT_STAGING_DIR: '/tmp/projekt-manager-takeout',
     ...overrides,
   };
 }

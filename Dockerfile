@@ -94,6 +94,17 @@ RUN chmod +x /usr/local/bin/load-binary-key
 RUN addgroup -g 1001 -S app && adduser -u 1001 -S app -G app \
  && chown -R app:app /app
 
+# Pre-create the takeout staging mountpoint owned by the app user so
+# Docker initialises the named volume (takeout-staging in
+# docker-compose.yml) with app:app ownership and mode 0700.  Docker only
+# copies the image directory's ownership/perms into an EMPTY named volume
+# on first creation; an already-populated volume keeps its existing state.
+# Without this, the fresh volume is root:root and the app (running as uid
+# 1001) cannot write to it.
+RUN mkdir -p /var/lib/projekt-manager/takeout \
+ && chown app:app /var/lib/projekt-manager/takeout \
+ && chmod 0700 /var/lib/projekt-manager/takeout
+
 USER app
 
 EXPOSE 3000

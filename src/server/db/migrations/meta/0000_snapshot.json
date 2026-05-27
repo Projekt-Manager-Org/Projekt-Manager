@@ -1,5 +1,5 @@
 {
-  "id": "68c5d2d1-ac9c-419c-9910-faa03096c8fc",
+  "id": "d629b437-88df-44c4-a5a4-048b2dfcb066",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -723,6 +723,175 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.data_exchange_job": {
+      "name": "data_exchange_job",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "files_total": {
+          "name": "files_total",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "files_done": {
+          "name": "files_done",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "bytes_total": {
+          "name": "bytes_total",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "bytes_done": {
+          "name": "bytes_done",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "current_item": {
+          "name": "current_item",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archive_ref": {
+          "name": "archive_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_detail": {
+          "name": "error_detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idx_data_exchange_job_status": {
+          "name": "idx_data_exchange_job_status",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_data_exchange_job_created_at": {
+          "name": "idx_data_exchange_job_created_at",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "data_exchange_job_created_by_users_id_fk": {
+          "name": "data_exchange_job_created_by_users_id_fk",
+          "tableFrom": "data_exchange_job",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "data_exchange_job_kind_valid": {
+          "name": "data_exchange_job_kind_valid",
+          "value": "\"data_exchange_job\".\"kind\" IN ('export', 'import')"
+        },
+        "data_exchange_job_status_valid": {
+          "name": "data_exchange_job_status_valid",
+          "value": "\"data_exchange_job\".\"status\" IN ('pending', 'running', 'ready', 'failed')"
+        },
+        "data_exchange_job_counts_non_negative": {
+          "name": "data_exchange_job_counts_non_negative",
+          "value": "\"data_exchange_job\".\"files_total\" >= 0 AND \"data_exchange_job\".\"files_done\" >= 0 AND \"data_exchange_job\".\"bytes_total\" >= 0 AND \"data_exchange_job\".\"bytes_done\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.invoice_sequence": {

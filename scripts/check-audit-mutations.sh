@@ -161,6 +161,15 @@ ALLOWLIST=(
   # deletes pending rows past TTL with no audit row (orphans never
   # entered the domain). Parallel to audit-retention's allowlist slot.
   "src/server/services/attachment-orphan-reaper.ts"
+  # Full-account takeout IMPORT job runner — writes raw audit_log rows at
+  # its terminal transition (AC-332) and raw INSERT into `attachments` for
+  # each restored binary (Pass 2). Both are reviewed bulk-write sites:
+  #   - The audit row is the single job-terminal row (mirrors takeout-
+  #     export-runner's allowlisted terminal audit insert).
+  #   - The attachments insert restores IDs-preserved rows from the takeout
+  #     archive; routing through mutate() would write spurious audit rows
+  #     for every attachment (AC-332: exactly ONE data_import row, not N).
+  "src/server/services/takeout-import-runner.ts"
   # Any `__tests__/` directory anywhere under the scan root — the
   # AC-179 carve-out for tests. The nested-glob form covers both
   # top-level `src/server/__tests__/` and any future subtree's local

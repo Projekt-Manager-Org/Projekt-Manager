@@ -34,6 +34,8 @@ import { startSessionReaper } from './session-reaper.js';
 import { startAuditRetentionScheduler } from './audit-retention-scheduler.js';
 import { startAttachmentOrphanReaperScheduler } from './attachment-orphan-reaper-scheduler.js';
 import { startAttachmentHiddenReaperScheduler } from './attachment-hidden-reaper-scheduler.js';
+import { startTakeoutStagingReaperScheduler } from './takeout-staging-reaper-scheduler.js';
+import { reapAbandonedDataExchangeJobs } from './services/data-exchange-boot-reaper.js';
 import { setOperationalLogger as setAuditPublisherLogger } from './services/audit-publisher.js';
 import { AUDIT_RETENTION } from '../config/auditRetention.js';
 import { ATTACHMENT_CONFIG } from '../config/attachmentConfig.js';
@@ -41,9 +43,16 @@ import { STATE_KEYS } from '../config/stateConfig.js';
 import { assertBinaryIdentityLoaded } from './storage/binaryIdentity.js';
 import { createStorageClient } from './storage/client.js';
 import { assertStorageBucketSafe } from './storage/safety.js';
+import { probeStagingDurability } from './config/assertStagingDurable.js';
 import { staticCacheControl } from './staticCache.js';
 
 const HOST = '0.0.0.0';
+
+// Takeout staging reaper cadence. The TTL it enforces is a [C] value
+// (TAKEOUT_STAGING_TTL_MINUTES, default 24h); the sweep cadence is fixed
+// because the action it takes is on a multi-hour window — hourly is the
+// same rationale as the attachment hidden reaper's default cadence.
+const TAKEOUT_STAGING_REAPER_INTERVAL_MINUTES = 60;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, 'db/migrations');
@@ -92,6 +101,14 @@ async function start(): Promise<void> {
   // presigned URLs against a container-only hostname — the browser
   // cannot resolve those, so every upload fails silently.
   assertStoragePublicEndpointInProduction(env);
+  // Refuse to start in production when TAKEOUT_STAGING_DIR resolves to a
+  // RAM-backed filesystem (tmpfs/ramfs). A multi-GB archive on a tmpfs
+  // staging path exhausts container RAM and OOM-kills the VPS. In
+  // docker-compose.yml the `app` service mounts /tmp as tmpfs, so the
+  // env.ts default (os.tmpdir()) lands in RAM; the compose named volume
+  // `takeout-staging` at /var/lib/projekt-manager/takeout is disk-backed.
+  // mkdir -p is idempotent — creates the dir when the volume is fresh.
+  probeStagingDurability(env.TAKEOUT_STAGING_DIR, env.NODE_ENV);
 
   // Emit the boot-time feature manifest (AC-230) immediately after env
   // validation — operators see a single structured line listing every
@@ -203,6 +220,23 @@ async function start(): Promise<void> {
     console.log(`Cleaned up ${deleted} expired sessions.`);
   }
 
+  // Reconcile abandoned data-exchange jobs on boot (data-model.md §5.18).
+  // A restart leaves any in-flight export/import job stuck pending/running,
+  // permanently occupying the one-active-per-kind slot (every later create
+  // would 409); reap them to failed and delete their partial staged
+  // archives. One-shot, like the expired-session cleanup above.
+  const reapedJobs = await reapAbandonedDataExchangeJobs({
+    db,
+    stagingDir: env.TAKEOUT_STAGING_DIR,
+    logger: {
+      info: (ctx, event) => console.log(event, ctx),
+      error: (ctx, event) => console.error(event, ctx),
+    },
+  });
+  if (reapedJobs > 0) {
+    console.log(`Reaped ${reapedJobs} abandoned data-exchange job(s) on boot.`);
+  }
+
   // Schedule periodic cleanup so long-running deployments don't accumulate
   // expired rows between restarts. Handle is captured for the graceful
   // shutdown hook below.
@@ -264,9 +298,8 @@ async function start(): Promise<void> {
   // explicitly rejects degraded modes (uploads-yes-downloads-no, fall
   // back to plaintext). Presence of BINARY_AGE_RECIPIENT is enforced by
   // checkAppServerEnv before this runs, so the recipient is non-empty.
-  // This probe is also what makes the wholesale-500 path on
-  // GET /api/export/binary-descriptors (AC-248) non-reachable in steady
-  // state — startup is blocked before the route is exposed.
+  // Blocking startup here keeps every binary-decryption surface (export
+  // jobs, attachment downloads) from ever serving in a degraded mode.
   await assertBinaryIdentityLoaded({
     identityPath: env.BINARY_AGE_IDENTITY_PATH,
     configuredRecipient: env.BINARY_AGE_RECIPIENT ?? '',
@@ -296,6 +329,22 @@ async function start(): Promise<void> {
       ATTACHMENT_CONFIG.hiddenReaperIntervalMinutes,
     ttlMinutes:
       env.ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES ?? ATTACHMENT_CONFIG.hiddenReaperTtlMinutes,
+    logger: {
+      info: (ctx, event) => console.log(event, ctx),
+      error: (ctx, event) => console.error(event, ctx),
+    },
+  });
+
+  // Takeout staging reaper (AC-334 / data-model.md §6.15). Sweeps `ready`
+  // export-job archives off the VPS-local staging path once they age past
+  // TAKEOUT_STAGING_TTL_MINUTES, nulling `archive_ref` so the download
+  // 404s. Reuses the attachment reaper's storage client (the staged
+  // artifact is a filesystem path, so storage is a contract-surface dep).
+  const takeoutStagingReaper = startTakeoutStagingReaperScheduler({
+    db,
+    storage: attachmentStorageForReaper,
+    intervalMinutes: TAKEOUT_STAGING_REAPER_INTERVAL_MINUTES,
+    ttlMinutes: env.TAKEOUT_STAGING_TTL_MINUTES,
     logger: {
       info: (ctx, event) => console.log(event, ctx),
       error: (ctx, event) => console.error(event, ctx),
@@ -360,6 +409,7 @@ async function start(): Promise<void> {
         auditRetention.stop(),
         attachmentReaper.stop(),
         hiddenReaper.stop(),
+        takeoutStagingReaper.stop(),
       ]);
       await app.close();
       await pool.end();

@@ -84,6 +84,16 @@ export interface StorageConfig {
 
 export interface UploadResult {
   key: string;
+  /**
+   * S3 VersionId minted by this PUT, when the bucket has versioning
+   * enabled (ADR-0022). Server-side write paths that persist an
+   * attachment row capture it as `version_id` / `thumb_version_id` so the
+   * Papierkorb restore flow can later `copyFromVersion(key, versionId)`.
+   * Undefined on unversioned buckets or when the provider omits the
+   * field. Mirrors `HeadObjectResult.versionId` (the complete()-time
+   * source for browser-uploaded blobs).
+   */
+  versionId?: string;
 }
 
 export interface DownloadResult {
@@ -528,7 +538,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
       contentType: string,
     ): Promise<UploadResult> {
       validateKey(key);
-      await s3.send(
+      const res = await s3.send(
         new PutObjectCommand({
           Bucket: bucket,
           Key: wireKey(key),
@@ -536,7 +546,10 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
           ContentType: contentType,
         }),
       );
-      return { key };
+      // On a versioned bucket the PUT response carries the new VersionId;
+      // surface it so server-side writers (the takeout import runner) can
+      // persist version_id without a follow-up HEAD round-trip.
+      return { key, versionId: res.VersionId };
     },
 
     async download(key: string): Promise<DownloadResult> {

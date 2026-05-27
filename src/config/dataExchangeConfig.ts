@@ -5,8 +5,9 @@
 
 /**
  * Phrase the caller must type (and submit in the request body) to commit a
- * destructive restore — `POST /api/import` with `override=true` into a
- * non-empty target. Pure ASCII so it's safe to type on any keyboard layout
+ * destructive restore — a business-data import (`ImportService`) with
+ * `override=true` into a non-empty target. Pure ASCII so it's safe to type
+ * on any keyboard layout
  * during a disaster-recovery window, and long enough that muscle memory
  * doesn't fire the wipe by accident.
  *

@@ -1,46 +1,52 @@
 /**
- * Import dialog — parsing → preflight → progress → summary
- * (ui/daten.md §8.11.2, AC-259/AC-260).
+ * Vollständiger Import dialog — server-side import-job flow
+ * (ui/daten.md §8.11.2, AC-335/AC-161). The browser confirms, uploads the
+ * archive to the VPS, then polls; the restore runs on the VPS.
  *
- * Five phases:
- *   1. parsing       — hook reads + parses zip + dry-runs API. Spinner.
- *   2. preflight     — parsed envelope-counts readout + (when target
- *                      non-empty) destructive-action confirmation
- *                      phrase input. Confirm dispatches the text-leg
- *                      and per-attachment legs.
- *   3. progress      — files-done / total + bytes-done / total + current
- *                      filename + Abbrechen action.
- *   4. summary       — restored counts + per-file failure list.
- *   5. error         — pre-flight or text-leg rejection surfaces here.
+ * Five phases, derived from the `importJobStore` job + the picked `file`:
+ *   - confirm    — destructive notice + confirmation-phrase gate + mobile
+ *                  warning. Shown on a fresh open (DatenView mounts this with a
+ *                  picked archive) while no job exists yet. No client dry-run
+ *                  (AC-161): the phrase gate is unconditional. Start is disabled
+ *                  until the typed value matches the configured phrase and while
+ *                  a create/upload is in flight.
+ *   - uploading  — client→VPS resumable upload (`uploadOffset` / `bytesTotal`).
+ *   - processing — server restore readout (files-done/total + current item).
+ *   - summary    — restored count (+ skipped).
+ *   - failed     — the job's error_detail.
  *
- * The parent owns the file-picker step (see DatenView): it triggers a
- * hidden <input type="file"> from the Import button and only mounts
- * this dialog once a file has been selected. This file accepts the
- * file as a prop and threads it to `useImportAllRunner` for the
- * parse-on-mount flow.
+ * Two open modes, distinguished by the job status captured AT MOUNT:
+ *   - Fresh import: a picked `file`, no active job → confirm → create → upload.
+ *   - Re-attach: `file` is null; DatenView auto-opens onto an already
+ *     running/terminal job (after a reload or post-wipe re-login) → straight to
+ *     processing/summary, no upload. The mount snapshot also keeps a fresh open
+ *     on `confirm` even when a PRIOR terminal job still sits in the store.
  *
- * Orchestration (state machine, zip parse, dry-run, orchestrator
- * dispatch) lives in `useImportAllRunner`; phase render branches live
- * in `VollstaendigerImportDialog.views`. This file is the dialog mount
- * + a11y wiring.
+ * Mid-wipe re-auth (AC-330) needs NO code here: the restore wipes `users`, the
+ * store's SSE-driven refetch 401s → `handleSessionExpired` routes to login;
+ * after re-login DatenView's resume probe re-attaches.
+ *
+ * Orchestration lives in `importJobStore`; phase render branches live in
+ * `VollstaendigerImportDialog.views`. This file is the mount + a11y + phase
+ * selection.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
-import { endSessionExpiredSuppression, handleSessionExpired } from '@/state/sessionExpired';
+import { restorePhraseMatches } from '@/config/dataExchangeConfig';
+import { useImportJobStore } from '@/state/importJobStore';
 import { useDialogA11y } from '@/ui/common/useDialogA11y';
-import { useImportAllRunner } from './useImportAllRunner';
 import {
-  ErrorView,
-  ParsingView,
-  PreflightView,
-  ProgressView,
+  ConfirmView,
+  FailedView,
+  ProcessingView,
   SummaryView,
-  TokenInvalidView,
+  UploadingView,
 } from './VollstaendigerImportDialog.views';
 
 interface VollstaendigerImportDialogProps {
-  file: File;
+  /** The picked archive for a fresh import, or null in re-attach mode. */
+  file: File | null;
   onClose: () => void;
 }
 
@@ -53,10 +59,22 @@ function probeIsMobile(): boolean {
 export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImportDialogProps) {
   const [isMobile, setIsMobile] = useState<boolean>(probeIsMobile);
   const [phraseInput, setPhraseInput] = useState<string>('');
+  const [confirmClicked, setConfirmClicked] = useState<boolean>(false);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const initialFocusButtonRef = useRef<HTMLButtonElement>(null);
+  const inputFocusRef = useRef<HTMLInputElement>(null);
+  const buttonFocusRef = useRef<HTMLButtonElement>(null);
 
-  const { phase, start, cancel } = useImportAllRunner({ file });
+  const job = useImportJobStore((s) => s.job);
+  const uploadOffset = useImportJobStore((s) => s.uploadOffset);
+  const createError = useImportJobStore((s) => s.createError);
+  const create = useImportJobStore((s) => s.create);
+
+  // Job status captured at mount (lazy useState — read freely during render):
+  // a dialog opened onto an active/terminal job (DatenView re-attach) resumes
+  // straight to its phase; a fresh open (picked `file`, no active job at mount)
+  // shows `confirm` first — even if a PRIOR terminal job still sits in the
+  // store.
+  const [jobStatusAtMount] = useState(() => job?.status);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -68,114 +86,112 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
     return () => mql.removeEventListener('change', handler);
   }, []);
 
-  const handleClose = useCallback(() => {
-    cancel();
-    // On the override-with-users path the server returned
-    // `sessionInvalidated: true` (the user-wipe CASCADEd the session
-    // row). On the token-invalid phase the bearer itself was
-    // rejected — same end state, operator must re-auth. Trigger the
-    // global session-expired redirect on close so the next API call
-    // doesn't get a surprise 401.
-    const needsReauth =
-      (phase.kind === 'summary' && phase.sessionInvalidated) || phase.kind === 'token-invalid';
-    // End suppression BEFORE the explicit redirect — the runner kept
-    // it active across the summary phase to swallow racing 401s from
-    // background fetches (storage-usage refresh, SSE-driven project
-    // list reload). Without ending it first, the synchronous
-    // `handleSessionExpired()` below would be no-op'd. Idempotent at
-    // depth 0, so the non-invalidating paths see it as a noop.
-    if (needsReauth) {
-      endSessionExpiredSuppression();
+  // Create → upload (the load-bearing sequence). Always `override: true` — a
+  // full-account restore is always destructive. A create-time rejection
+  // (`confirmation_mismatch` / `target_not_empty`) re-enables Start and surfaces
+  // the mismatch copy; otherwise the upload begins, the server flips the job to
+  // `running`, and the SSE refetch advances the dialog into processing → summary.
+  const onConfirm = useCallback(async () => {
+    if (!file) return;
+    setConfirmClicked(true);
+    await create({ file, override: true, phrase: phraseInput });
+    const s = useImportJobStore.getState();
+    if (s.createError !== null) {
+      setConfirmClicked(false);
+      return;
     }
-    onClose();
-    if (needsReauth) {
-      handleSessionExpired();
+    if (s.job) {
+      await s.upload(file);
     }
-  }, [cancel, onClose, phase]);
+  }, [create, file, phraseInput]);
 
-  // Safety net — if the operator navigates away while the runner had
-  // suppression active (e.g. tab-close mid-progress on the override
-  // path), drop the suppression so the next page render's
-  // session-expiry handling works normally.
-  useEffect(() => {
-    return () => {
-      endSessionExpiredSuppression();
-    };
-  }, []);
+  // Phase the dialog will render — needed by a11y (Escape is blocked only while
+  // an active client upload is in flight).
+  const isResume =
+    jobStatusAtMount === 'pending' ||
+    jobStatusAtMount === 'running' ||
+    jobStatusAtMount === 'ready' ||
+    jobStatusAtMount === 'failed';
+  const tracking = isResume || confirmClicked;
+  const inUploadingPhase = tracking && job?.status === 'pending';
 
-  const escapeAllowed =
-    phase.kind === 'parsing' ||
-    phase.kind === 'preflight' ||
-    phase.kind === 'summary' ||
-    phase.kind === 'error' ||
-    phase.kind === 'token-invalid';
+  // Escape closes in every phase EXCEPT `uploading`: closing during an active
+  // client upload would abandon bytes mid-stream. Confirm/processing/summary/
+  // failed are safe — the job is server-side or not yet started, and the
+  // resume probe re-attaches.
   useDialogA11y({
     isOpen: true,
     dialogRef,
     onOpenedFocus: useCallback(() => {
-      initialFocusButtonRef.current?.focus();
+      (inputFocusRef.current ?? buttonFocusRef.current)?.focus();
     }, []),
-    onEscape: escapeAllowed ? handleClose : undefined,
+    onEscape: inUploadingPhase ? undefined : onClose,
   });
 
-  if (phase.kind === 'parsing') {
-    return <ParsingView phase={phase} dialogRef={dialogRef} />;
-  }
-
-  if (phase.kind === 'preflight') {
+  // Confirm until we have a job to track: a fresh open (or the brief window
+  // after Start before the pending row arrives — Start is disabled meanwhile).
+  if (!tracking || !job) {
+    // Re-attach with no job yet AND no file = nothing to confirm; bail out
+    // (the resume probe will re-open once it lands a job). A fresh open always
+    // carries a `file`.
+    if (!file) return null;
     return (
-      <PreflightView
-        phase={phase}
+      <ConfirmView
         isMobile={isMobile}
-        dialogRef={dialogRef}
-        initialFocusRef={initialFocusButtonRef}
         phraseInput={phraseInput}
         onPhraseInputChange={setPhraseInput}
-        onCancel={handleClose}
-        onConfirm={() => start(phraseInput)}
-      />
-    );
-  }
-
-  if (phase.kind === 'progress') {
-    return (
-      <ProgressView
-        phase={phase}
+        phraseMatches={restorePhraseMatches(phraseInput)}
+        startDisabled={confirmClicked}
+        showMismatch={createError !== null}
         dialogRef={dialogRef}
-        initialFocusRef={initialFocusButtonRef}
-        onCancel={handleClose}
+        initialFocusRef={inputFocusRef}
+        onCancel={onClose}
+        onConfirm={onConfirm}
       />
     );
   }
 
-  if (phase.kind === 'summary') {
+  if (job.status === 'ready') {
     return (
       <SummaryView
-        phase={phase}
+        job={job}
         dialogRef={dialogRef}
-        initialFocusRef={initialFocusButtonRef}
-        onClose={handleClose}
+        initialFocusRef={buttonFocusRef}
+        onClose={onClose}
       />
     );
   }
 
-  if (phase.kind === 'token-invalid') {
+  if (job.status === 'failed') {
     return (
-      <TokenInvalidView
-        phase={phase}
+      <FailedView
+        job={job}
         dialogRef={dialogRef}
-        initialFocusRef={initialFocusButtonRef}
-        onClose={handleClose}
+        initialFocusRef={buttonFocusRef}
+        onClose={onClose}
       />
     );
   }
 
+  if (job.status === 'running') {
+    return (
+      <ProcessingView
+        job={job}
+        dialogRef={dialogRef}
+        initialFocusRef={buttonFocusRef}
+        onClose={onClose}
+      />
+    );
+  }
+
+  // pending — the client→VPS upload.
   return (
-    <ErrorView
-      phase={phase}
+    <UploadingView
+      job={job}
+      uploadOffset={uploadOffset}
       dialogRef={dialogRef}
-      initialFocusRef={initialFocusButtonRef}
-      onClose={handleClose}
+      initialFocusRef={buttonFocusRef}
+      onClose={onClose}
     />
   );
 }

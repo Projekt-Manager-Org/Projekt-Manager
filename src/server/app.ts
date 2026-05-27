@@ -17,7 +17,8 @@ import { projectRoutes } from './routes/projects.js';
 import { customerRoutes } from './routes/customers.js';
 import { userRoutes } from './routes/users.js';
 import { workerRoutes } from './routes/workers.js';
-import { dataExchangeRoutes } from './routes/data-exchange.js';
+import { exportJobRoutes } from './routes/export-jobs.js';
+import { importJobRoutes } from './routes/import-jobs.js';
 import { extractRoutes } from './routes/extract.js';
 import { auditRoutes } from './routes/audit.js';
 import { notificationRuleRoutes } from './routes/notification-rules.js';
@@ -71,12 +72,13 @@ function extractOrigin(endpoint: string | undefined): string | null {
 
 export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // Redact paths that would otherwise leak credentials into structured
-  // logs: `Authorization: Bearer <importToken>` on the binary leg of an
-  // import, the `session` cookie on every authenticated route, and the
-  // `confirmation_phrase` body field on `/api/import?override=true`.
-  // Fastify's default request serializer does not log headers today, so
-  // this is defense-in-depth — a future `req.log.info(request.headers, …)`
-  // would otherwise serialize the bearer verbatim.
+  // logs: any `Authorization` header, the `session` cookie on every
+  // authenticated route, and the `confirmation_phrase` body field carried
+  // by a destructive business-data import (override=true). Fastify's
+  // default request serializer
+  // does not log headers today, so this is defense-in-depth — a future
+  // `req.log.info(request.headers, …)` would otherwise serialize them
+  // verbatim.
   const REDACT_PATHS = [
     'req.headers.authorization',
     'req.headers.cookie',
@@ -244,7 +246,8 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     app.register(customerRoutes(opts.db));
     app.register(userRoutes(opts.db));
     app.register(workerRoutes(opts.db));
-    app.register(dataExchangeRoutes(opts.db));
+    app.register(exportJobRoutes(opts.db));
+    app.register(importJobRoutes(opts.db));
     app.register(extractRoutes(opts.db));
     app.register(auditRoutes(opts.db));
     app.register(notificationRuleRoutes(opts.db));

@@ -21,7 +21,6 @@ export const STRINGS = {
     sessionExpired: 'Sitzung abgelaufen.',
     sessionExpiredLogin: 'Sitzung abgelaufen. Bitte erneut anmelden.',
     notPermitted: 'Keine Berechtigung.',
-    importTokenInvalid: 'Import-Token ungültig oder abgelaufen.',
   },
 
   errors: {
@@ -65,6 +64,16 @@ export const STRINGS = {
       'Genau eines von „ids" oder „filter" angeben — nicht beides und nicht keines.',
     exportTooLarge: (total: number, cap: number) =>
       `Der Filter trifft ${total} Rechnungen — Export ist auf ${cap} pro Anfrage begrenzt. Bitte den Filter eingrenzen (z. B. nach Jahr).`,
+    // Full-account takeout jobs (ADR-0018 / api.md §14.2.4).
+    exportJobActive:
+      'Es läuft bereits ein Export-Auftrag. Bitte warten Sie, bis dieser abgeschlossen ist.',
+    importJobActive:
+      'Es läuft bereits ein Import-Auftrag. Bitte warten Sie, bis dieser abgeschlossen ist.',
+    exportJobNotReady: 'Der Export-Auftrag ist noch nicht bereit zum Herunterladen.',
+    uploadOffsetConflict:
+      'Der Upload-Versatz stimmt nicht mit dem Server-Stand überein. Bitte vom angezeigten Versatz fortsetzen.',
+    uploadTooLarge: 'Der Upload überschreitet die angekündigte Dateigröße.',
+    uploadNotAccepted: 'Für diesen Auftrag können keine Daten mehr hochgeladen werden.',
   },
 
   entities: {
@@ -474,12 +483,22 @@ export const STRINGS = {
     importSummaryClose: 'Schließen',
     importError: 'Import fehlgeschlagen.',
     importValidationFailed: 'ZIP-Datei ungültig oder unvollständig.',
-    importTokenInvalidTitle: 'Erneute Anmeldung erforderlich',
-    importTokenInvalidBody:
-      'Der Import-Token ist abgelaufen oder ungültig. Bitte erneut anmelden und den Import erneut starten.',
-    importTokenInvalidClose: 'Zur Anmeldung',
     restoreDestructiveNotice: 'Die bestehenden Daten werden unwiderruflich gelöscht.',
     restorePhrasePrompt: (phrase: string) => `Zur Bestätigung bitte „${phrase}" eingeben:`,
+
+    // --- Server-side job flow (ui/daten.md §8.11, AC-322–335) ---------------
+    // The job model builds/restores on the VPS; the browser triggers, polls,
+    // and downloads/uploads. Reuses the export/import Progress* + Summary* keys
+    // above for the shared readouts; the keys below are job-specific.
+    exportPreflightBody:
+      'Der vollständige Export wird auf dem Server erstellt und anschließend zum Download angeboten.',
+    exportReadyTitle: 'Export bereit',
+    exportDownloadAction: 'Herunterladen',
+    importUploadingTitle: 'Hochladen …',
+    importProcessingTitle: 'Wiederherstellung läuft',
+    // Surfaced when the server rejects the create-time destructive guard
+    // despite the client-side phrase match (clock skew, a stale config).
+    importConfirmMismatch: 'Der Bestätigungstext stimmt nicht überein.',
   },
 
   /**

@@ -9,6 +9,7 @@
 
 import {
   AUDIT_CHANGED,
+  DATA_EXCHANGE_JOB_CHANGED,
   INVOICE_CHANGED,
   PROJECT_CHANGED,
   STORAGE_USAGE_CHANGED,
@@ -53,4 +54,15 @@ export function emitInvoiceChanged(): void {
  */
 export function emitAuditChanged(): void {
   broadcast(AUDIT_CHANGED);
+}
+
+/**
+ * Broadcast `data_exchange_job_changed` (ADR-0018 § Two surfaces,
+ * ADR-0024 § Full-account takeout). Emit AFTER the job-row write resolves
+ * so a failed write leaks no event. Lifecycle transitions (created /
+ * running / ready / failed) always emit; the job runner throttles
+ * high-frequency progress emissions (architecture.md §11.13).
+ */
+export function emitDataExchangeJobChanged(): void {
+  broadcast(DATA_EXCHANGE_JOB_CHANGED);
 }

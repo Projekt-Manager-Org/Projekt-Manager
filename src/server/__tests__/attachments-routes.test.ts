@@ -1868,10 +1868,10 @@ describe('Attachment routes — integration (issue #108)', () => {
       // 200 by status but wrong by shape.
     });
 
-    it('returns mimeType=image/jpeg for variant=thumbnail regardless of original mime', async () => {
+    it('returns mimeType=image/webp for variant=thumbnail regardless of original mime', async () => {
       // Thumbnails are produced by the photo-thumbnail pipeline and
-      // are always JPEG, even when the original is image/png or
-      // image/webp. The SW relies on a stable thumbnail mime to render
+      // are always WebP, even when the original is image/png or
+      // image/jpeg. The SW relies on a stable thumbnail mime to render
       // the gallery placeholder.
       const [id] = await seedReadyAttachments(projectId, [
         { sizeBytes: 100, kind: 'photo', mimeType: 'image/png', label: 'foto' },
@@ -1881,7 +1881,7 @@ describe('Attachment routes — integration (issue #108)', () => {
         `/api/projects/${projectId}/attachments/${id}/download-url?variant=thumbnail`,
       );
       expect(res.statusCode).toBe(200);
-      expect(res.json().mimeType).toBe('image/jpeg');
+      expect(res.json().mimeType).toBe('image/webp');
     });
 
     it('returns { url, expiresAt, dekMaterial } for variant=thumbnail (using wrappedThumbDek) — end-to-end DEK fidelity', async () => {
