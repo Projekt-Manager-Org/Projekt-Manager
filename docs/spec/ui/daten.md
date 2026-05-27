@@ -8,7 +8,7 @@ Section 8.11 of the [product spec](../index.md) — the unified business-data ex
 
 The view surfaces the full-account export and import jobs ([api.md §14.2.4](../api.md#1424-unified-data-exchange) — Export job / Import job). Visible only to users with `data:export`; the import section is visible only to users who additionally hold `data:restore`.
 
-The text-row endpoints (`GET /api/export`, `POST /api/import`) are not surfaced as standalone UI actions — the export and import jobs reuse them server-side for the business-data leg. See [api.md §14.2.4](../api.md#1424-unified-data-exchange).
+The business-data export/import (`ExportService` / `ImportService`) are not standalone UI actions — the export and import jobs call them server-side for the business-data leg. See [api.md §14.2.4](../api.md#1424-unified-data-exchange).
 
 ### 8.11.1 Export
 
