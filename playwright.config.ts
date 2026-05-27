@@ -148,7 +148,7 @@ const MUTATING_TESTS =
   // `activity-dock\.spec` is anchored to the file extension so it matches
   // only the mutating AC-317/AC-318 spec — NOT `activity-dock-visibility`
   // (AC-319), which is read-only and must stay in the `chromium` project.
-  /kanban-flows|management-flows|import-export-flows|theme-preference|data-exchange|archive-flows|activity-feed|notification-rules|activity-recipient-scope|activity-dock\.spec|push-permission|attachment-upload|papierkorb|daten-jobs|storage-usage-multi-user|project-lifecycle-multi-user|realtime-after-fresh-login|invoices|company-profile/;
+  /kanban-flows|management-flows|import-export-flows|theme-preference|data-exchange|archive-flows|activity-feed|notification-rules|activity-recipient-scope|activity-dock\.spec|push-permission|attachment-upload|papierkorb|daten-jobs|storage-usage-multi-user|project-lifecycle-multi-user|attachment-lifecycle-multi-user|realtime-after-fresh-login|invoices|company-profile/;
 const DEMO_TESTS = /demo-.*\.spec\.ts/;
 
 export default defineConfig({
