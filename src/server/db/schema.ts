@@ -40,7 +40,7 @@ import {
  *   - **Synthetic entity types** — `data_import` (and any future
  *     deployment-level event class). No physical table backs the
  *     `entity_id`; the audit row describes a deployment-level event
- *     (e.g. "an `/api/import` happened") whose granularity is the batch,
+ *     (e.g. "a business-data import happened") whose granularity is the batch,
  *     not a single row. `entity_id` carries a synthetic UUID minted at
  *     write time.
  *

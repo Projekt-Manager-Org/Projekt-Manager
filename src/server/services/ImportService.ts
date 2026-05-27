@@ -103,8 +103,8 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
   // and an envelope with zero rows means the importing instance has no
   // restored profile when invoice issuance reads it. Every well-formed
   // envelope (issue #230) carries the singleton — the seed assembles it
-  // through `buildBusinessEnvelope`, and `/api/export` always emits the
-  // single seeded row.
+  // through `buildBusinessEnvelope`, and the business-data export
+  // (`ExportService`) always emits the single seeded row.
   if (envelope.company_profile.length !== 1) {
     issues.push({
       path: 'company_profile',
@@ -283,13 +283,12 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     }
   }
 
-  // Issue #163: `/api/import` is text-only post-fix. The envelope
-  // body MUST NOT carry an `attachments` key (rejected at the route
-  // layer with 422 VALIDATION_ERROR — see api.md §14.2.4 and
-  // AC-253). Per-attachment restoration runs through the standard
-  // `init` (with `restore` block) + per-blob PUT + `complete`
-  // pipeline against the importing instance (AC-256), driven by the
-  // client orchestrator.
+  // Issue #163: the business-data import is metadata-only post-fix. It
+  // never inserts attachment rows and ignores any `attachments` key on
+  // the envelope (see api.md §14.2.4 and AC-253). Per-attachment
+  // restoration runs through the standard `init` (with `restore` block)
+  // + per-blob PUT + `complete` pipeline against the importing instance
+  // (AC-256), driven by the client orchestrator.
 
   return issues;
 }
@@ -875,7 +874,7 @@ export class ImportService {
         await tx.insert(invoices).values(invoiceStornos);
       }
 
-      // Single import-audit row. An `/api/import` is a deployment-level
+      // Single import-audit row. A business-data import is a deployment-level
       // event, not an event attributed to any one entity — the prior
       // per-slot rows (one each for users / customers / projects / ...)
       // wrote misattributed activity-feed entries like "user X.displayName
@@ -920,7 +919,7 @@ export class ImportService {
       // The server-side import JOB suppresses this row (`writeAuditRow:false`)
       // so it can write the single terminal `data_import` audit row itself after
       // attachment rows are inserted — giving the job sole audit ownership (AC-332).
-      // The text-leg `/api/import` leaves `writeAuditRow` undefined (defaults true).
+      // A direct `ImportService` call (e.g. the seed) leaves `writeAuditRow` undefined (defaults true).
       if (opts.writeAuditRow !== false) {
         await tx.insert(auditLog).values({
           actorKind: 'system',

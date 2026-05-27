@@ -53,7 +53,8 @@ export const AUDIT_ACTION_KEYS = [
   'invoice:delete',
   'invoice:issue',
   'invoice:cancel',
-  // Data-import event (issue #230). One row per `/api/import` commit,
+  // Data-import event (issue #230). One row per business-data import
+  // (`ImportService`) commit,
   // entity_type='data_import' with a synthetic batch UUID for entity_id;
   // payload carries per-slot counts.
   'import_restored',
@@ -66,7 +67,7 @@ export const AUDIT_ACTION_KEYS = [
   'export_failed',
   // Full-account IMPORT-job terminal failure (api.md §14.2.4 "Jobs —
   // audit"). The success path reuses `import_restored` (shared with the
-  // text-leg /api/import); a job that fails writes one `import_failed`
+  // direct `ImportService` path); a job that fails writes one `import_failed`
   // row, entity_type='data_import', the job id as entity_id.
   'import_failed',
 ] as const;

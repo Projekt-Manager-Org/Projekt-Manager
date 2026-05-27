@@ -235,9 +235,10 @@ export interface Envelope {
   /**
    * Attachments — every row with `status = 'ready'`. The export emits
    * the field unconditionally (empty array when no ready rows exist);
-   * `/api/import` rejects bodies that carry an `attachments` key
+   * the business-data import (`ImportService`) never inserts attachment
+   * rows and ignores any `attachments` key on the envelope
    * (issue #163 / AC-253) — the field rides the takeout zip, not the
-   * `/api/import` request body.
+   * import envelope.
    */
   attachments: EnvelopeAttachment[];
 }
@@ -254,7 +255,7 @@ export interface ImportOptions {
   confirmationPhrase: string | null;
   /**
    * When `false`, the `import_restored` audit row is suppressed. Defaults
-   * to `true` (the text-leg `/api/import` writes the row). The server-side
+   * to `true` (a direct `ImportService` call writes the row). The server-side
    * import JOB sets this to `false` so it can write the single terminal
    * `data_import` audit row itself — at the end of Pass 2, after attachment
    * rows have been inserted — giving it sole audit ownership (AC-332).

@@ -17,7 +17,7 @@
  * A per-row attachment failure is skipped by the builder — the build still
  * reaches `ready` (AC-325). At the terminal transition (and only there) the
  * runner writes EXACTLY ONE `audit_log` row with `entityType='data_import'`
- * (AC-332), mirroring the single `data_import` row `POST /api/import` writes
+ * (AC-332), mirroring the single `data_import` row `ImportService` writes
  * (AC-311). Progress updates write no audit rows.
  *
  * One active per kind (AC-331): a create colliding with a `pending`/

@@ -73,8 +73,9 @@ function extractOrigin(endpoint: string | undefined): string | null {
 export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // Redact paths that would otherwise leak credentials into structured
   // logs: any `Authorization` header, the `session` cookie on every
-  // authenticated route, and the `confirmation_phrase` body field on
-  // `/api/import?override=true`. Fastify's default request serializer
+  // authenticated route, and the `confirmation_phrase` body field carried
+  // by a destructive business-data import (override=true). Fastify's
+  // default request serializer
   // does not log headers today, so this is defense-in-depth — a future
   // `req.log.info(request.headers, …)` would otherwise serialize them
   // verbatim.
