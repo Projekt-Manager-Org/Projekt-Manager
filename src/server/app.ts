@@ -17,7 +17,6 @@ import { projectRoutes } from './routes/projects.js';
 import { customerRoutes } from './routes/customers.js';
 import { userRoutes } from './routes/users.js';
 import { workerRoutes } from './routes/workers.js';
-import { dataExchangeRoutes } from './routes/data-exchange.js';
 import { exportJobRoutes } from './routes/export-jobs.js';
 import { importJobRoutes } from './routes/import-jobs.js';
 import { extractRoutes } from './routes/extract.js';
@@ -246,7 +245,6 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     app.register(customerRoutes(opts.db));
     app.register(userRoutes(opts.db));
     app.register(workerRoutes(opts.db));
-    app.register(dataExchangeRoutes(opts.db));
     app.register(exportJobRoutes(opts.db));
     app.register(importJobRoutes(opts.db));
     app.register(extractRoutes(opts.db));

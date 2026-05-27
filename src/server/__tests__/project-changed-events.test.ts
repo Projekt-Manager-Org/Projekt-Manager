@@ -81,9 +81,11 @@ import {
   SEED_USERS,
   EXPECTED_RESTORE_PHRASE,
 } from '../../test/seedAssumptions.js';
+import { importEnvelope } from '../../test/data-exchange-helpers.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
+import type { Envelope } from '../../domain/dataExchange.js';
 import { createStorageClient } from '../storage/client.js';
 import { ProjectCrudService } from '../services/ProjectCrudService.js';
 import { getEnv } from '../config/env.js';
@@ -731,12 +733,11 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
       const conn = subscribeFake(bus);
       try {
-        const res = await authPost(
-          ownerToken,
-          '/api/import?override=true',
-          buildOverrideEnvelope(),
-        );
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(buildOverrideEnvelope() as unknown as Envelope, {
+          dryRun: false,
+          override: true,
+          confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+        });
 
         await new Promise<void>((r) => setImmediate(r));
 
@@ -776,8 +777,11 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
       const conn = subscribeFake(bus);
       try {
-        const res = await authPost(ownerToken, '/api/import', buildOverrideEnvelope());
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(buildOverrideEnvelope() as unknown as Envelope, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
 
         await new Promise<void>((r) => setImmediate(r));
 
@@ -820,8 +824,11 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
       const conn = subscribeFake(bus);
       try {
-        const res = await authPost(ownerToken, '/api/import?dry_run=true', buildOverrideEnvelope());
-        expect(res.statusCode).toBe(200);
+        await importEnvelope(buildOverrideEnvelope() as unknown as Envelope, {
+          dryRun: true,
+          override: false,
+          confirmationPhrase: null,
+        });
 
         await new Promise<void>((r) => setImmediate(r));
 

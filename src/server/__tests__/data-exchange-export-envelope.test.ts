@@ -10,9 +10,13 @@
  * was missing pre-#230.
  *
  * Scope is intentionally narrow: assertions target the export surface
- * only (no `/api/import` round-trip). The ImportService side of the same
- * issue lands on a sibling agent's commit; AT-77-style byte-stable
- * round-trip coverage moves with that surface.
+ * only (no import round-trip). The ImportService side of the same issue
+ * is covered in `data-exchange.test.ts` / `data-exchange-import-expanded.test.ts`;
+ * AT-77-style byte-stable round-trip coverage lives there.
+ *
+ * Drives `ExportService.export` directly (was `GET /api/export`, removed
+ * with the text-leg routes once the operator UI moved to the job
+ * endpoints — see `data-exchange-helpers.ts`).
  *
  * Why a separate test file rather than extending `data-exchange.test.ts`:
  * the legacy file's fixtures pin `CURRENT_SCHEMA_VERSION = 2` and assert
@@ -26,8 +30,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
-import { startApp, stopApp, login, authGet } from '../../test/api-helpers.js';
-import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
+import { startApp, stopApp } from '../../test/api-helpers.js';
+import { exportEnvelope } from '../../test/data-exchange-helpers.js';
 import { createDatabase } from '../db/connection.js';
 import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
 import type { Database } from '../db/connection.js';
@@ -99,8 +103,7 @@ interface ExportEnvelopeV3 {
   attachments: Array<{ id: string; [key: string]: unknown }>;
 }
 
-describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
-  let ownerToken: string;
+describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
   let db: Database;
   let pool: pg.Pool;
 
@@ -109,7 +112,6 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
     const conn = createDatabase();
     db = conn.db;
     pool = conn.pool;
-    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
   });
 
   afterAll(async () => {
@@ -122,9 +124,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('envelope top-level shape', () => {
     it('stamps SCHEMA_VERSION = 3 (the contract bump for #230)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      expect(res.statusCode).toBe(200);
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
       // Mirrors the source-of-truth import — a future re-bump must update
       // both this assertion and the domain constant in one commit.
       expect(env.schema_version).toBe(SCHEMA_VERSION);
@@ -132,8 +132,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
     });
 
     it('emits every documented top-level slot, including the four #230 additions', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
       expect(Array.isArray(env.users)).toBe(true);
       expect(Array.isArray(env.company_profile)).toBe(true);
       expect(Array.isArray(env.customers)).toBe(true);
@@ -152,8 +151,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('users slot', () => {
     it('exports every seeded user row, including inactive accounts', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
 
       // The seed mints 6 users (5 active + 1 inactive — see
       // src/test/seedAssumptions.ts SEED_USERS).
@@ -169,8 +167,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
     });
 
     it('ships passwordHash verbatim (no redaction)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
 
       // Cross-check the bytes against the DB directly — a regression that
       // replaced the hash with a fixed sentinel or null would slip past a
@@ -189,8 +186,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
     });
 
     it('orders users by id ASC (deterministic for byte-stable round-trip)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
       const ids = env.users.map((u) => u.id);
       const sorted = [...ids].sort();
       expect(ids).toEqual(sorted);
@@ -203,14 +199,12 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('company_profile slot', () => {
     it('is a singleton-array (exactly one row)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
       expect(env.company_profile.length).toBe(1);
     });
 
     it('carries the seeded fixture values (sanity that the seed snapshot landed)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
       const profile = env.company_profile[0]!;
       // Mirrors the seed insert in src/server/seed.ts; if the seed's
       // values change, this test fails loudly so the assertion is kept
@@ -234,8 +228,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('customers.ustId field round-trip', () => {
     it('emits ustId on every customer row, defaulting to null when unset', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
 
       // Every customer carries the field — null for the unset arm,
       // string for the set arm. The seed has no customer with a non-
@@ -263,8 +256,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
       const targetId = updated.rows[0]!.id;
 
       try {
-        const res = await authGet(ownerToken, '/api/export');
-        const env = res.json() as ExportEnvelopeV3;
+        const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
         const target = env.customers.find((c) => c.id === targetId);
         expect(target).toBeDefined();
         expect(target!.ustId).toBe('DE246800001');
@@ -282,8 +274,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('invoices slot ordering', () => {
     it('emits the seeded invoice rows (originals + at least one Storno)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
 
       // The seed mints at least one cancellation pair (RE-0001 →
       // ST-0001 + RE-0002 reissue per src/server/seed/invoices.ts), so
@@ -296,8 +287,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
     });
 
     it('orders originals (cancellation_of IS NULL) before Stornos; id ASC tiebreaker', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
 
       // Find the first Storno — every preceding row must have a null
       // cancellationOf. This is the importer's two-pass-insert
@@ -321,8 +311,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
     });
 
     it('formats issueDate / performanceDate as YYYY-MM-DD strings (date columns, not timestamps)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
       const issued = env.invoices.find((i) => i.status !== 'draft');
       expect(issued).toBeDefined();
       expect(issued!.issueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -336,8 +325,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('invoice_sequence slot', () => {
     it('emits the per-(year, kind) counter rows the seed allocated', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
 
       // Seed issues invoices across 2024 / 2025 / 2026 and at least
       // one cancellation, so both `invoice` and `storno` sub-sequences
@@ -357,8 +345,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
     });
 
     it('orders rows by (year ASC, kind ASC)', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
       const keys = env.invoice_sequence.map((s) => `${s.year}|${s.kind}`);
       const sorted = [...keys].sort();
       expect(keys).toEqual(sorted);
@@ -374,8 +361,7 @@ describe('GET /api/export — Layer 1 envelope v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('snapshot consistency across slots', () => {
     it('every non-null user reference on customers/projects resolves to an env.users row', async () => {
-      const res = await authGet(ownerToken, '/api/export');
-      const env = res.json() as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
       const userIds = new Set(env.users.map((u) => u.id));
 
       // The seed sets createdBy/updatedBy to null for business rows
