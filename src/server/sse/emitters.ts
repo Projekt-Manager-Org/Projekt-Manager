@@ -8,6 +8,7 @@
  */
 
 import {
+  ATTACHMENT_CHANGED,
   AUDIT_CHANGED,
   DATA_EXCHANGE_JOB_CHANGED,
   INVOICE_CHANGED,
@@ -23,6 +24,20 @@ import { broadcast } from './bus.js';
  */
 export function emitStorageUsageChanged(): void {
   broadcast(STORAGE_USAGE_CHANGED);
+}
+
+/**
+ * Broadcast `attachment_changed` (api.md §14.2.13, ADR-0025). Emitted
+ * post-commit from every attachment mutation that changes a project's
+ * attachment list (completeUpload / hide / restore / hidden-reaper
+ * purge) so the cross-session `attachmentStore` caches invalidate —
+ * the gallery gap #237 closed. Emit AFTER the surrounding `mutate()`
+ * resolves so a tx abort emits nothing (verification.md AC-336,
+ * architecture.md §11.13). Co-emitted with `emitStorageUsageChanged`
+ * at each site; the two events' consumers are independent.
+ */
+export function emitAttachmentChanged(): void {
+  broadcast(ATTACHMENT_CHANGED);
 }
 
 /**

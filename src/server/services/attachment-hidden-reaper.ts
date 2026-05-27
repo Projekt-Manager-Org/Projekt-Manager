@@ -26,7 +26,7 @@ import type { Database } from '../db/connection.js';
 import type { ServiceLogger } from './Logger.js';
 import { findHiddenForReap, deleteHiddenForReap } from '../repositories/attachment.js';
 import { mutate } from './mutate.js';
-import { emitStorageUsageChanged } from '../sse/emitters.js';
+import { emitAttachmentChanged, emitStorageUsageChanged } from '../sse/emitters.js';
 
 const MS_PER_MINUTE = 60 * 1000;
 
@@ -113,6 +113,9 @@ export async function runAttachmentHiddenReaper(
       // CAS-loss (HiddenReaperRowRaced — caught below) and per-row
       // failures emit nothing (AC-270 emitter list).
       emitStorageUsageChanged();
+      // The purged row leaves the project's Papierkorb, so the
+      // cross-session attachment caches must invalidate too (AC-336).
+      emitAttachmentChanged();
     } catch (err) {
       if (err instanceof HiddenReaperRowRaced) continue;
       // Real DB / dispatcher fault on this row — log on the error
