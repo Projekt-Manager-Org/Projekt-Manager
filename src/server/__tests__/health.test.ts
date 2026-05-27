@@ -87,36 +87,45 @@ describe('probeHealth', () => {
   });
 
   it('runs both checks in parallel — a hang in one does not block the other', async () => {
-    // BOTH mocks take ~40ms so the sequential and parallel wall-clock times
-    // diverge sharply:
-    //   - Parallel (Promise.allSettled): max(40, 40) ≈ 40ms
-    //   - Sequential (await-then-await):  40 + 40   ≈ 80ms
-    //
-    // The previous setup had storage resolving instantly, which made the
-    // serial and parallel cases both ~40ms — the test would have kept
-    // passing even if a future refactor broke parallelism with something
-    // like:
-    //     const db = await pool.query(...);
-    //     const st = await storage.ping();
-    //
-    // With the balanced delays, a refactor like that would push elapsed to
-    // ~80ms and trip the 60ms ceiling below.
-    const pool = mockPool(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 40));
-      return { rows: [{ '?column?': 1 }] };
-    });
-    const storage = mockStorage(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 40));
-    });
+    // Concurrency is asserted on a deterministic VIRTUAL clock, not on
+    // wall-clock elapsed time — the old `Date.now()` budget flaked under
+    // load (a busy box pushed a genuinely-parallel probe past the ceiling).
+    // Both checks take a virtual 40ms:
+    //   - Parallel (`Promise.allSettled`): both timers are scheduled at
+    //     t=0, so advancing the clock by 40ms settles the probe.
+    //   - Sequential (`await` then `await`): the storage timer is only
+    //     scheduled after the db check resolves at t=40, so it needs t=80
+    //     — the probe is still pending after a single 40ms advance.
+    // A serial refactor like `const db = await pool.query(); const st =
+    // await storage.ping();` therefore leaves `settled` false and fails
+    // here, deterministically and without a wall-clock budget.
+    vi.useFakeTimers();
+    try {
+      const pool = mockPool(
+        () =>
+          new Promise((resolve) => setTimeout(() => resolve({ rows: [{ '?column?': 1 }] }), 40)),
+      );
+      const storage = mockStorage(() => new Promise((resolve) => setTimeout(resolve, 40)));
 
-    const start = Date.now();
-    await probeHealth(pool, storage);
-    const elapsed = Date.now() - start;
+      let settled = false;
+      const probe = probeHealth(pool, storage).then((r) => {
+        settled = true;
+        return r;
+      });
 
-    // 60ms is ~20ms jitter budget above the parallel floor (40ms) and
-    // comfortably below the sequential floor (80ms). Widen incrementally
-    // if CI proves flaky — but do NOT widen past 70ms, or a serial refactor
-    // would slip through unnoticed.
-    expect(elapsed).toBeLessThan(60);
+      // Advance exactly one check's worth of virtual time.
+      await vi.advanceTimersByTimeAsync(40);
+
+      // Parallel → both timers fired at t=40 → probe settled.
+      // Sequential → storage timer is at t=80 → probe still pending.
+      expect(settled).toBe(true);
+
+      await expect(probe).resolves.toEqual({
+        status: 'ok',
+        checks: { db: 'ok', storage: 'ok' },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
