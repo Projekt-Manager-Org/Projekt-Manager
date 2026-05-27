@@ -216,7 +216,6 @@ export async function apiCall<T>(url: string, opts: RequestOptions = {}): Promis
 
 import type { Address, Project, Customer, User, Attachment, AttachmentLabel } from '@/domain/types';
 import type { WorkflowState } from '@/config/stateConfig';
-import type { Envelope, DryRunPreview, ImportResult } from '@/domain/dataExchange';
 import type { BackupStatus } from '@/domain/backupBadge';
 import type { AuditEntry, AuditListParams, AuditListResponse } from '@/domain/audit';
 import type { NotificationRule, NotificationRuleInput } from '@/domain/notifications';
@@ -522,36 +521,6 @@ export const userApi = {
       method: 'POST',
       body: { newPassword },
     }),
-};
-
-/**
- * Unified business-data export/import (ADR-0018, api.md §14.2.4).
- *
- * Export is GET /api/export (permission: data:export).
- * Import is POST /api/import?dry_run=&override= (permission: data:restore).
- * The dry-run response is a DryRunPreview; the non-dry response is an
- * ImportResult. The caller disambiguates via the `dryRun` option.
- */
-export const dataApi = {
-  export: () => apiCall<Envelope>('/api/export'),
-
-  import: (
-    envelope: Envelope,
-    opts: { dryRun: boolean; override: boolean; confirmationPhrase?: string | null },
-  ) => {
-    const params = new URLSearchParams();
-    if (opts.dryRun) params.set('dry_run', 'true');
-    if (opts.override) params.set('override', 'true');
-    const qs = params.toString();
-    const body =
-      opts.confirmationPhrase != null
-        ? { ...envelope, confirmation_phrase: opts.confirmationPhrase }
-        : envelope;
-    return apiCall<ImportResult | DryRunPreview>('/api/import' + (qs ? '?' + qs : ''), {
-      method: 'POST',
-      body,
-    });
-  },
 };
 
 export interface ExtractionResult {

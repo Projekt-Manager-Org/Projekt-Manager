@@ -86,10 +86,6 @@ vi.mock('@/api/client', async (importActual) => {
     userApi: {
       list: vi.fn().mockResolvedValue({ ok: true, data: { users: [], total: 0 } }),
     },
-    dataApi: {
-      export: vi.fn(),
-      import: vi.fn(),
-    },
     extractApi: {
       extract: vi.fn(),
     },
