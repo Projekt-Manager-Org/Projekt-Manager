@@ -38,7 +38,7 @@ Treat persistence and recovery as **three independent layers**, each with its ow
 
 Business-data layer specifics:
 
-- **Two surfaces.** A **text business-data pair** (`GET /api/export`, `POST /api/import`) carries the envelope only and anchors the CI roundtrip; per-entity endpoints are removed. The **full-account takeout** (business data + attachment bytes) runs as a server-side **job** (`POST /api/export-jobs` / `POST /api/import-jobs` + status + archive download); the job reuses the text pair internally for the business-data leg and handles attachment bytes server-side (see Attachments below and [ADR-0024 § Full-account takeout](0024-binary-attachment-e2e-encryption.md)).
+- **Two surfaces.** A **business-data envelope pair** (`ExportService` / `ImportService`, internal — no standalone HTTP route) carries the envelope only and anchors the CI roundtrip; per-entity surfaces do not exist. The **full-account takeout** (business data + attachment bytes) runs as a server-side **job** (`POST /api/export-jobs` / `POST /api/import-jobs` + status + archive download); the job calls these services directly for the business-data leg and handles attachment bytes server-side (see Attachments below and [ADR-0024 § Full-account takeout](0024-binary-attachment-e2e-encryption.md)).
 - **Restore-only** import: empty target → proceed; non-empty → refuse unless an explicit override flag is set (dev ergonomics). IDs preserved. All-or-nothing single transaction.
 - **Strict schema versioning**: export writes a monotonic `schema_version`; import rejects any mismatch. **No data-format migration code.** Cross-version imports, if ever needed, get a one-off script at that moment.
 - **Dry-run mode** on import: full validation and preview, no writes.
