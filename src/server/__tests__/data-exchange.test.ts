@@ -886,7 +886,7 @@ describe('Unified Data Exchange', () => {
     // Issue #230: override now wipes `users` too, which cascades to
     // `sessions` and invalidates the operator's token mid-flight. The
     // post-import assertions therefore use direct DB queries rather
-    // than /api/export — the latter would 401 with a wiped session.
+    // than an authenticated read — the wiped session would 401.
     it('wipes existing data and imports the new envelope when override=true', async () => {
       const seeded = (await exportEnvelope()) as unknown as ExportEnvelope;
       // Sanity: seed has distinct IDs from the override envelope.
@@ -1572,14 +1572,14 @@ describe('Unified Data Exchange', () => {
   // ---------------------------------------------------------------
 
   // ---------------------------------------------------------------
-  // AC-254: /api/import?override=true atomically truncates the
+  // AC-254: an `override` business-data import atomically truncates the
   // `attachments` table alongside the customer / project / project-
   // worker wipe. After a successful override-import, the table is
-  // empty regardless of envelope content (envelope `attachments[]`
-  // is rejected at the wire by AC-253; the takeout-zip restore
+  // empty regardless of envelope content (the import ignores the
+  // envelope's `attachments` slot per AC-253; the takeout-zip restore
   // mechanics re-upload through `init` after this call returns).
   // ---------------------------------------------------------------
-  describe('AC-254: /api/import?override=true truncates the attachments table', () => {
+  describe('AC-254: an override business-data import truncates the attachments table', () => {
     /**
      * Seed a single `pending` attachment row directly so the truncate
      * has something to remove. A `pending` row is enough — the AC is

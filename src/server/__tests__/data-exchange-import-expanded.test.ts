@@ -19,8 +19,8 @@
  *     entity-typed slot) with the documented shape.
  *   - SCHEMA_VERSION = 3 is a hard cut — a v2-stamped envelope rejects.
  *
- * Test fixtures are built in-test rather than via the seed or
- * `/api/export` so the cases can vary independently. The roundtrip AT-77
+ * Test fixtures are built in-test rather than via the seed or a full
+ * `ExportService` export so the cases can vary independently. The roundtrip AT-77
  * analog uses the seed + export but skips fields that legitimately change
  * between two snapshots (`exported_at`).
  */
@@ -350,7 +350,7 @@ async function reseed(): Promise<void> {
   await seed(db, { force: true });
 }
 
-describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
+describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
   beforeAll(async () => {
     await startApp();
     const conn = createDatabase();
@@ -670,7 +670,7 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
   // Datensätze'`, and `payload.counts` carrying the per-slot row counts
   // (every slot key, zero where empty).
   //
-  // Rationale: an `/api/import` is a deployment-level event, not an
+  // Rationale: a business-data import is a deployment-level event, not an
   // event attributed to a single user / customer / etc. Per-slot audit
   // rows misattributed entries in the activity feed; one row per
   // import + the full counts breakdown in the payload preserves the
@@ -722,8 +722,8 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
 
         // Payload carries the full per-slot counts breakdown — every
         // slot key, zero where empty. `attachments` is structurally
-        // always 0 in the text leg (AC-253) but the key is present
-        // for shape uniformity.
+        // always 0 for the business-data import (AC-253) but the key is
+        // present for shape uniformity.
         const expectedCounts = {
           users: env.users.length,
           company_profile: env.company_profile.length,
@@ -739,6 +739,84 @@ describe('POST /api/import — Layer 1 envelope v3 (issue #230)', () => {
         // Total row count drives the German operator-facing label.
         const totalRecords = Object.values(expectedCounts).reduce((sum, n) => sum + n, 0);
         expect(row.entityLabel).toBe(`Import: ${totalRecords} Datensätze`);
+      } finally {
+        await reseed();
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // AC-253: the business-data import never inserts `attachments` rows.
+  // The export envelope carries a metadata-only `attachments[]` slot,
+  // but the import ignores it entirely — attachment rows + bytes are
+  // restored only by the server-side import JOB (AC-328), never here.
+  // (The former route-layer wire-reject of a body carrying an
+  // `attachments` key went with the removed text-leg route; the
+  // invariant is now "ignore the slot, insert nothing".) This locks it:
+  // a future change that started reading `envelope.attachments` on the
+  // restore path would land rows whose wrapped DEKs are unwrappable on
+  // the importing instance — a silent-data-loss class.
+  // -------------------------------------------------------------------
+  describe('AC-253: import ignores a populated attachments slot', () => {
+    it('inserts zero attachment rows and reports counts.attachments=0 even when the envelope carries descriptors', async () => {
+      await wipeBusinessDataExceptUsers();
+      await db.execute(
+        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
+      );
+      try {
+        const env = buildExpandedEnvelope();
+        // Populate the slot a real export would emit — two `ready`
+        // descriptors referencing the envelope's own project + owner.
+        env.attachments = [
+          {
+            id: '11111111-1111-4111-8111-111111111111',
+            projectId: env.projects[0]!.id,
+            status: 'ready',
+            kind: 'photo',
+            label: 'Baustelle',
+            fileName: 'foto.webp',
+            mimeType: 'image/webp',
+            sizeBytes: 2048,
+            createdAt: '2026-01-15T00:00:00.000Z',
+            createdBy: env.users[0]!.id,
+          },
+          {
+            id: '22222222-2222-4222-8222-222222222222',
+            projectId: env.projects[0]!.id,
+            status: 'ready',
+            kind: 'binary',
+            label: 'Angebot',
+            fileName: 'angebot.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 4096,
+            createdAt: '2026-01-16T00:00:00.000Z',
+            createdBy: env.users[0]!.id,
+          },
+        ];
+
+        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+
+        // The slot was ignored — no attachment rows landed.
+        const count = await pool.query<{ c: string }>(
+          'SELECT COUNT(*)::text AS c FROM attachments',
+        );
+        expect(count.rows[0]!.c).toBe('0');
+
+        // The single import-audit row reports zero restored attachments.
+        const rows = await db
+          .select()
+          .from(auditLog)
+          .where(
+            and(
+              eq(auditLog.actorKind, 'system'),
+              eq(auditLog.actorReason, 'data_import'),
+              eq(auditLog.action, 'import_restored'),
+            ),
+          );
+        expect(rows.length).toBe(1);
+        expect((rows[0]!.payload as { counts: { attachments: number } }).counts.attachments).toBe(
+          0,
+        );
       } finally {
         await reseed();
       }
