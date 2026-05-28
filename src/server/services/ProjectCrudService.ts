@@ -745,10 +745,11 @@ export class ProjectCrudService {
           entityType: 'project',
           action: 'purge',
           run: async (tx) => {
-            // Read pre-delete state for the audit payload. The repository
-            // throws ProjectNotFoundError for missing rows and
-            // ProjectNotArchivedError for non-archived rows; we catch both
-            // outside the tx and map to HTTP codes.
+            // Read pre-delete state for the audit payload. `hardDeleteProjectRepo`
+            // below throws `ProjectNotFoundError` if the row is missing, so by
+            // the time `return` runs `priorRow` is guaranteed populated. The
+            // outer catch maps `ProjectNotFoundError` / `ProjectNotArchivedError`
+            // to HTTP codes.
             const priorRows = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
             const priorRow = priorRows[0];
             // AC-308: a project carrying any issued or cancelled invoice
@@ -765,15 +766,18 @@ export class ProjectCrudService {
             }
             collectedKeys = await listKeysForProject(tx, id);
             await hardDeleteProjectRepo(tx, id);
+            // hardDeleteProjectRepo threw if priorRow was missing, so it is
+            // safe to dereference unconditionally from here.
+            const label = projectAuditLabel(priorRow!);
             return {
               entityId: id,
-              entityLabel: priorRow ? projectAuditLabel(priorRow) : null,
+              entityLabel: label,
               value: null,
-              before: priorRow ? { number: priorRow.number, title: priorRow.title } : {},
+              before: { number: priorRow!.number, title: priorRow!.title },
               after: {},
               ancestorEntityType: 'project',
               ancestorEntityId: id,
-              ancestorEntityLabel: priorRow ? projectAuditLabel(priorRow) : null,
+              ancestorEntityLabel: label,
             };
           },
         },
