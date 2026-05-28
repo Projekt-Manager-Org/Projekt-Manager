@@ -55,6 +55,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useGlobalShortcut } from '@/hooks/useGlobalShortcut';
 import { useUIStore } from '@/state/uiStore';
 import { STRINGS } from '@/config/strings';
+import type { RouteView } from '@/config/routes';
 import type { AuditListParams } from '@/domain/audit';
 import { ActivityFeed } from '@/ui/audit/ActivityFeed';
 import styles from './ActivityDock.module.css';
@@ -79,11 +80,10 @@ const DOCK_FILTER_KEY = 'activity-dock';
 /**
  * The view key of Verwaltung → Aktivität — AC-341 hides the dock while
  * this view is active because the page already renders the full audit
- * table. Mirrored from the routes table; a magic string is acceptable
- * here because the source of truth (config/routes.ts) uses the same
- * literal and there is no risk of drift without a coordinated rename.
+ * table. Typed against `RouteView` so a rename of the key in
+ * `config/routes.ts` fails the build here instead of silently desyncing.
  */
-const AUDIT_VIEW_KEY = 'aktivitaet';
+const AUDIT_VIEW_KEY: RouteView = 'aktivitaet';
 
 export function ActivityDock() {
   const canReadAudit = usePermission('audit:read');
