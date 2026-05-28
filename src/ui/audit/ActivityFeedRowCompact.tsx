@@ -23,6 +23,7 @@
  */
 
 import type { AuditEntry } from '@/domain/audit';
+import { auditProjectSlot } from '@/domain/audit';
 import { describeAuditRow } from '@/domain/auditRowDescription';
 import { formatDateTimeDE } from '@/domain/dateFormat';
 import { STRINGS } from '@/config/strings';
@@ -46,16 +47,6 @@ function resolveActorLabel(entry: AuditEntry): { label: string; isSystem: boolea
   };
 }
 
-/**
- * Project slot — `ancestorEntityLabel` for child entities and project
- * rows (data-model.md §5.10), em dash for top-level entries. Em dash is
- * a single visual atom — the user reads "no project" without parsing
- * a missing field.
- */
-function projectLabel(entry: AuditEntry): string {
-  return entry.ancestorEntityLabel ?? '—';
-}
-
 export function ActivityFeedRowCompact({ entry }: Props) {
   const description = describeAuditRow({
     action: entry.action,
@@ -63,6 +54,7 @@ export function ActivityFeedRowCompact({ entry }: Props) {
     entityType: entry.entityType,
   });
   const actor = resolveActorLabel(entry);
+  const project = auditProjectSlot(entry);
 
   return (
     <div
@@ -71,15 +63,12 @@ export function ActivityFeedRowCompact({ entry }: Props) {
       data-action={entry.action}
       data-created-at={entry.createdAt}
     >
-      <span
-        className={styles.body}
-        title={`${actor.label} · ${projectLabel(entry)} · ${description}`}
-      >
+      <span className={styles.body} title={`${actor.label} · ${project} · ${description}`}>
         <span className={actor.isSystem ? styles.actorSystem : styles.actor}>{actor.label}</span>
         <span className={styles.separator} aria-hidden="true">
           ·
         </span>
-        <span className={styles.project}>{projectLabel(entry)}</span>
+        <span className={styles.project}>{project}</span>
         <span className={styles.separator} aria-hidden="true">
           ·
         </span>

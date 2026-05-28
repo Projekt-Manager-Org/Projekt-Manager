@@ -169,3 +169,20 @@ export function isPayloadDiff(payload: unknown): payload is {
 export function projectAuditLabel(row: { number: string; title: string }): string {
   return `${row.number} ${row.title}`;
 }
+
+/**
+ * Em dash for the "Projekt" cell when an audit row has no project
+ * ancestor (top-level entities: customer / user / company_profile /
+ * data_import). Single visual atom — the user reads "no project"
+ * without parsing a blank cell.
+ */
+export const AUDIT_NO_PROJECT_LABEL = '—';
+
+/**
+ * Display value for the project slot — `ancestorEntityLabel` when set,
+ * em dash otherwise. AC-339 (dock single-line row) and AC-342 (audit
+ * table Projekt column) share this; centralising avoids drift.
+ */
+export function auditProjectSlot(entry: Pick<AuditEntry, 'ancestorEntityLabel'>): string {
+  return entry.ancestorEntityLabel ?? AUDIT_NO_PROJECT_LABEL;
+}
