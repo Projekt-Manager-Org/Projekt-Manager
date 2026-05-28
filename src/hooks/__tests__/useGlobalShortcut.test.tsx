@@ -16,7 +16,7 @@
  * primitive itself so a refactor / new consumer cannot drift.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import { useGlobalShortcut } from '@/hooks/useGlobalShortcut';
 
@@ -40,14 +40,11 @@ function Probe({
       </select>
       <div data-testid="editable" contentEditable />
       <div data-testid="role-textbox" role="textbox" tabIndex={0} />
+      <div data-testid="role-searchbox" role="searchbox" tabIndex={0} />
       <button data-testid="button">button</button>
     </>
   );
 }
-
-beforeEach(() => {
-  // Ensure no stale listener from a prior test bleeds into the next.
-});
 
 afterEach(() => {
   cleanup();
@@ -80,6 +77,26 @@ describe('useGlobalShortcut — basic match', () => {
     render(<Probe onFire={onFire} />);
     fireEvent.keyDown(window, { key: 'A', altKey: true });
     expect(onFire).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires on macOS Option+A (event.key remapped to "å", event.code stays KeyA)', () => {
+    // macOS: holding Option remaps the typed character to a dead-key
+    // glyph but `event.code` keeps the physical position. The matcher
+    // must fall back to `event.code === 'KeyA'` for letter shortcuts so
+    // Alt+A still fires AND `preventDefault()` runs (which is what stops
+    // the dead-key `å` from leaking through into focused inputs).
+    const onFire = vi.fn();
+    render(<Probe onFire={onFire} />);
+    const event = new KeyboardEvent('keydown', {
+      key: 'å',
+      code: 'KeyA',
+      altKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    window.dispatchEvent(event);
+    expect(onFire).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
   });
 });
 
@@ -159,6 +176,15 @@ describe('useGlobalShortcut — editable-affordance suppression', () => {
     expect(onFire).not.toHaveBeenCalled();
   });
 
+  it('suppresses while a role="searchbox" element has focus', () => {
+    const onFire = vi.fn();
+    render(<Probe onFire={onFire} />);
+    const widget = screen.getByTestId('role-searchbox');
+    widget.focus();
+    fireEvent.keyDown(widget, { key: 'a', altKey: true });
+    expect(onFire).not.toHaveBeenCalled();
+  });
+
   it('does NOT suppress on a non-text input type (checkbox)', () => {
     const onFire = vi.fn();
     render(<Probe onFire={onFire} />);
@@ -184,5 +210,22 @@ describe('useGlobalShortcut — disabled flag', () => {
     render(<Probe onFire={onFire} disabled />);
     fireEvent.keyDown(window, { key: 'a', altKey: true });
     expect(onFire).not.toHaveBeenCalled();
+  });
+});
+
+describe('useGlobalShortcut — cleanup', () => {
+  it('removes its listener on unmount so a remount does not leak handlers', () => {
+    // Regression guard: a useEffect cleanup that forgets to call
+    // `removeEventListener` would still pass every match/suppress case
+    // above but leak a handler per (un)mount cycle. After unmount, a
+    // matching keystroke must NOT reach the now-stale callback.
+    const onFire = vi.fn();
+    const { unmount } = render(<Probe onFire={onFire} />);
+    fireEvent.keyDown(window, { key: 'a', altKey: true });
+    expect(onFire).toHaveBeenCalledTimes(1);
+
+    unmount();
+    fireEvent.keyDown(window, { key: 'a', altKey: true });
+    expect(onFire).toHaveBeenCalledTimes(1);
   });
 });

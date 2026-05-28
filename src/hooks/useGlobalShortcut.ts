@@ -9,6 +9,10 @@
  *     callback so the keystroke does not also trigger a browser-default
  *     binding (e.g. Firefox/Chrome menu-bar mnemonic on `Alt+letter`)
  *     or insert a macOS dead-key character (`Option+A → å`).
+ *   - For single-letter shortcuts the matcher falls back to
+ *     `event.code === 'Key<L>'` so macOS Option+letter (which remaps
+ *     `event.key` to a dead-key glyph) still fires the binding — see
+ *     `matchesKey()`.
  *   - Handler is suppressed while any element with an "editable
  *     affordance" has focus — `<input>` text-likes, `<textarea>`,
  *     `<select>`, `contenteditable`, or ARIA `role="textbox"` /
@@ -95,8 +99,31 @@ function isEditableFocus(target: EventTarget | null): boolean {
   return false;
 }
 
+/**
+ * Match a key spec to a `KeyboardEvent`. Tries `event.key` first; for
+ * single ASCII letters, falls back to `event.code === 'Key<L>'`.
+ *
+ * macOS rationale: holding Option remaps the typed character — Option+A
+ * produces `event.key === 'å'`, Option+C → `'ç'`, Option+E → dead-key
+ * pending. `event.code` keeps the physical position (`KeyA`, `KeyC`),
+ * which is what `Alt+A` actually means as a mnemonic. Without this
+ * fallback the matcher silently fails on macOS AND `preventDefault()`
+ * never runs, so the keystroke leaks through as a dead-key insert.
+ *
+ * Non-letter shortcuts (`'escape'`, `'/'`, `'?'`) match `event.key`
+ * only — those don't dead-key on macOS and their event.code values are
+ * layout-specific in ways event.key isn't.
+ */
+function matchesKey(event: KeyboardEvent, key: string): boolean {
+  if (event.key.toLowerCase() === key.toLowerCase()) return true;
+  if (/^[a-z]$/i.test(key)) {
+    return event.code === `Key${key.toUpperCase()}`;
+  }
+  return false;
+}
+
 function matches(event: KeyboardEvent, shortcut: GlobalShortcut): boolean {
-  if (event.key.toLowerCase() !== shortcut.key.toLowerCase()) return false;
+  if (!matchesKey(event, shortcut.key)) return false;
   if (!!event.altKey !== !!shortcut.alt) return false;
   if (!!event.shiftKey !== !!shortcut.shift) return false;
   if (!!event.ctrlKey !== !!shortcut.ctrl) return false;
