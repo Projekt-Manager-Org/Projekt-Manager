@@ -1,5 +1,6 @@
 import { test, expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { STORAGE_STATES } from './storage-states';
+import { clickView } from './nav-helpers';
 import { SEED_USERS } from '../src/test/seedAssumptions';
 
 /**
@@ -285,15 +286,22 @@ test.describe('AC-318: activity dock collapse default, session persistence, resp
     await expect(page.getByTestId('activity-dock')).toBeHidden();
   });
 
-  test('default list is recipient-scoped, not the full "Alles" feed', async ({ page }) => {
-    // AC-318: the dock defaults to the caller's recipient-scoped set per
-    // AC-200 — the same default the global Aktivität view uses. The
-    // recipient-scoping engine (the `recipientScope=true` predicate and
-    // its role / assigned-worker / userIds clauses) is pinned by the
-    // server integration coverage and by e2e/activity-recipient-scope.spec.ts;
-    // this case does NOT re-derive that machinery (T-REDU). It asserts only
-    // that the dock's first audit fetch carries `recipientScope=true` —
-    // i.e. the dock opted into the scoped default rather than the full feed.
+  test('default list is the full RBAC-scoped feed, NOT the recipient-scoped subset', async ({
+    page,
+  }) => {
+    // AC-318 (revised): the dock fetches every audit row the caller may
+    // read. Recipient-scoping is a notifications concern (AC-200) and
+    // is exercised only on the Aktivität page via its "Alles anzeigen"
+    // toggle — NOT on the dock. The dock surface is "everything the
+    // caller may read", so a freshly written audit row (e.g. a project
+    // create with no matching notification rule) must appear in the
+    // dock even though no rule admits the viewer as a recipient.
+    //
+    // This case asserts only the wire shape: the dock's first audit
+    // fetch must NOT carry `recipientScope=true`. The recipient-scope
+    // narrowing machinery itself is pinned by the server integration
+    // suite and by e2e/activity-recipient-scope.spec.ts for the
+    // Aktivität page; this test stays focused on the dock's contract.
     await page.goto('/kanban');
     await expect(page.getByTestId('kanban-board')).toBeVisible();
 
@@ -302,26 +310,23 @@ test.describe('AC-318: activity dock collapse default, session persistence, resp
     );
     await expandDock(page);
     const request = await auditFetch;
-    expect(new URL(request.url()).searchParams.get('recipientScope')).toBe('true');
+    expect(new URL(request.url()).searchParams.get('recipientScope')).toBeNull();
   });
 });
 
 /**
- * AC-318 — the "Ältere anzeigen" pager. Isolated in its own block because
- * it must MANUFACTURE its data: the dock defaults to office's recipient-
- * scoped feed (AC-200), and under the seed that feed is empty for office —
- * no seed rule names office (by role or userId) and office is on zero
- * `project_workers` rows (the seed assigns only arbeiter1/arbeiter2). With
- * an empty feed `total = 0`, so `hasMore` is false and `ActivityFeed`
- * renders no pager affordance (src/ui/audit/ActivityFeed.tsx) — the pager
- * assertion would fail regardless of pager correctness.
- *
- * The `beforeAll` drives > the audit page size of office-recipient-scoped
- * rows so the first page leaves older entries behind the pager. Mirrors
- * how `e2e/activity-feed.spec.ts` deliberately crosses the page boundary.
- * The page-size literal is NOT hardcoded here — `activity-dock-load-older`
- * visibility IS the `hasMore` signal, so > the boundary is the only thing
- * the test relies on.
+ * AC-318 — the "Ältere anzeigen" pager. Isolated in its own block
+ * because it must MANUFACTURE its data: even with the dock now fetching
+ * the full RBAC-scoped feed (AC-318 — no recipient narrowing), the
+ * seed traffic under office's scope is below the default page size, so
+ * `hasMore` is false and `ActivityFeed` renders no pager. The
+ * `beforeAll` drives > the audit page size of audit rows visible to
+ * office so the first page leaves older entries behind the pager. The
+ * page-size literal is NOT hardcoded here — `activity-dock-load-older`
+ * visibility IS the `hasMore` signal, so > the boundary is the only
+ * thing the test relies on. The notification-rule POST below is a
+ * residual from the recipient-scope era; under the new dock contract
+ * it is a no-op but harmless and kept to minimise spec churn.
  */
 test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', () => {
   test.use({ storageState: STORAGE_STATES.office });
@@ -421,5 +426,71 @@ test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', ()
     // only that the dock surfaces the pager and it grows the count, to
     // avoid duplicating that machinery (T-REDU).
     await expect.poll(async () => rows.count(), { timeout: 5_000 }).toBeGreaterThan(before);
+  });
+});
+
+/**
+ * AC-340 — global `Alt+A` shortcut. The shortcut is wired at the shell
+ * (App.tsx via ActivityDock) so it works from any view; the focus-in-
+ * input suppression is unit-tested in `useGlobalShortcut.test.tsx`.
+ * This e2e pin asserts only the cross-view + preventDefault behaviour,
+ * which JSDOM cannot honestly verify.
+ */
+test.describe('AC-340: Alt+A global toggle for the activity dock', () => {
+  test.use({ storageState: STORAGE_STATES.office });
+
+  test('Alt+A toggles the dock from Kanban — header hint is visible', async ({ page }) => {
+    await page.goto('/kanban');
+    await expect(page.getByTestId('kanban-board')).toBeVisible();
+
+    const toggle = page.getByTestId('activity-dock-toggle');
+    const panel = page.getByTestId('activity-dock-panel');
+
+    // The hint is rendered inline next to the title — AC-340.
+    await expect(toggle).toContainText('Aktivität');
+    await expect(toggle).toContainText('(Alt+A)');
+
+    // Collapsed by default — panel hidden via CSS.
+    await expect(panel).toBeHidden();
+
+    // First Alt+A → expand.
+    await page.keyboard.press('Alt+a');
+    await expect(panel).toBeVisible();
+
+    // Second Alt+A → collapse.
+    await page.keyboard.press('Alt+a');
+    await expect(panel).toBeHidden();
+  });
+});
+
+/**
+ * AC-341 — the dock is hidden while Verwaltung → Aktivität is the
+ * active view, since the page already renders the full audit table and
+ * a second feed below it would be redundant.
+ */
+test.describe('AC-341: activity dock hidden on Verwaltung → Aktivität', () => {
+  test.use({ storageState: STORAGE_STATES.office });
+
+  test('dock is absent on /audit and reappears on navigation away', async ({ page }) => {
+    await page.goto('/kanban');
+    await expect(page.getByTestId('kanban-board')).toBeVisible();
+
+    // Dock is present on Kanban.
+    await expect(page.getByTestId('activity-dock')).toBeVisible();
+
+    // Navigate to Verwaltung → Aktivität; dock disappears entirely.
+    await clickView(page, 'aktivitaet');
+    await expect(page.getByTestId('audit-list')).toBeVisible();
+    await expect(page.getByTestId('activity-dock')).toBeHidden();
+
+    // Alt+A on /audit is a no-op (handler suppressed). No element
+    // appears, and navigation state is unchanged.
+    await page.keyboard.press('Alt+a');
+    await expect(page.getByTestId('activity-dock')).toBeHidden();
+
+    // Back to Kanban → dock returns in its prior (collapsed) state.
+    await clickView(page, 'kanban');
+    await expect(page.getByTestId('activity-dock')).toBeVisible();
+    await expect(page.getByTestId('activity-dock-panel')).toBeHidden();
   });
 });

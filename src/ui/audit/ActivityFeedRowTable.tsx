@@ -93,6 +93,13 @@ export function ActivityFeedRowTable({ entry }: Props) {
         {actor.label}
         {actor.reason && <span className={styles.actorReason}> ({actor.reason})</span>}
       </td>
+      {/* AC-342: parent project's label snapshot for child entities,
+          duplicated from `entityLabel` for project rows, em dash for
+          rows without a project ancestor (customer, user,
+          company_profile, data_import). */}
+      <td className={tableStyles.project} data-testid="audit-row-project">
+        {entry.ancestorEntityLabel ?? '—'}
+      </td>
       <td className={tableStyles.entity}>
         <div className={styles.entityLabel}>{entityTypeLabel(entry.entityType)}</div>
         <div className={tableStyles.entityId}>{entry.entityLabel ?? entry.entityId}</div>

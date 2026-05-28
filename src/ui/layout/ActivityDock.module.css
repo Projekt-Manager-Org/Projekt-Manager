@@ -36,6 +36,16 @@
   font-weight: 600;
 }
 
+/* Shortcut affordance hint rendered inline next to the title — AC-340.
+   Lighter weight so the title still anchors the visual hierarchy. */
+.shortcutHint {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--color-text-subtle);
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+
 .chevron {
   font-size: 0.7rem;
   line-height: 1;

@@ -74,6 +74,15 @@
   color: var(--color-text);
 }
 
+.project {
+  color: var(--color-text);
+  font-weight: 500;
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .entity {
   color: var(--color-text-secondary);
 }

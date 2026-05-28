@@ -28,6 +28,7 @@ import { AUDIT_CHANGED } from '@/config/sseEvents';
 import { onSseEvent } from '@/sse/client';
 import { ActivityFeedRow } from './ActivityFeedRow';
 import { ActivityFeedRowTable } from './ActivityFeedRowTable';
+import { ActivityFeedRowCompact } from './ActivityFeedRowCompact';
 import styles from './ActivityFeed.module.css';
 import tableStyles from './AuditTable.module.css';
 
@@ -56,10 +57,13 @@ interface Props {
    * Row layout. `list` is the stacked form used by the project-detail
    * panel (ui/workflow-views.md §8.4.1 describes a one-line-per-entry
    * list). `table` is the column form used by the global Aktivität view
-   * (ui/management.md §8.13.1 names columns: timestamp, actor, entity,
-   * action, payload).
+   * (ui/management.md §8.13.1 names columns: timestamp, actor, project,
+   * entity, action, payload). `compact` is the single-line glanceable
+   * form used by the app-shell activity dock (ui/index.md §8.1.2,
+   * AC-339) — `Aktor · Projekt · Beschreibung` with the timestamp
+   * aligned right, no detail drawer.
    */
-  layout?: 'list' | 'table';
+  layout?: 'list' | 'table' | 'compact';
   /**
    * Override for the empty-state cell. Used by the global Aktivität view
    * under recipient-scoped mode (AC-200) to distinguish "rules exist but
@@ -80,7 +84,7 @@ interface Props {
 }
 
 /** Column count of the table layout — drives `colSpan` on empty/loader rows. */
-const TABLE_COLUMN_COUNT = 5;
+const TABLE_COLUMN_COUNT = 6;
 
 export function ActivityFeed({
   filters,
@@ -152,6 +156,7 @@ export function ActivityFeed({
             <tr>
               <th>{STRINGS.audit.colTimestamp}</th>
               <th>{STRINGS.audit.colActor}</th>
+              <th>{STRINGS.audit.colProject}</th>
               <th>{STRINGS.audit.colEntity}</th>
               <th>{STRINGS.audit.colAction}</th>
               <th>{STRINGS.audit.colPayload}</th>
@@ -198,8 +203,13 @@ export function ActivityFeed({
     );
   }
 
-  // Default stacked-list layout (project-detail surface).
+  // Default stacked-list layout (project-detail surface) AND the
+  // compact dock layout — both are vertical lists; the row component is
+  // the only difference. The container styles match the list layout
+  // (existing CSS classes); the compact row's own CSS handles the
+  // single-line shape.
   const containerClass = inline ? styles.inlineContainer : styles.container;
+  const RowComponent = layout === 'compact' ? ActivityFeedRowCompact : ActivityFeedRow;
   return (
     <div className={containerClass} data-testid={testId}>
       {error && <div className={styles.error}>{error}</div>}
@@ -210,7 +220,7 @@ export function ActivityFeed({
         </div>
       )}
       {entries.map((entry) => (
-        <ActivityFeedRow key={entry.id} entry={entry} />
+        <RowComponent key={entry.id} entry={entry} />
       ))}
       {hasMore && (
         <div className={styles.footerActions}>

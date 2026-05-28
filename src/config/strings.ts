@@ -381,6 +381,12 @@ export const STRINGS = {
      * the meaning for assistive tech).
      */
     activityDockTitle: 'Aktivität',
+    /**
+     * Shortcut hint rendered next to the title in the toggle button so
+     * the affordance is self-documenting (AC-340). Kept in sync with the
+     * Alt+A handler installed by `useActivityDockShortcut`.
+     */
+    activityDockShortcutHint: '(Alt+A)',
     activityDockExpand: 'Aktivität einblenden',
     activityDockCollapse: 'Aktivität ausblenden',
   },
@@ -712,6 +718,7 @@ export const STRINGS = {
     /** Column / filter labels on the global Aktivität view. */
     colTimestamp: 'Zeitpunkt',
     colActor: 'Akteur',
+    colProject: 'Projekt',
     colEntity: 'Objekt',
     colAction: 'Aktion',
     colPayload: 'Details',
