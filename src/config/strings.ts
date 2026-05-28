@@ -384,11 +384,18 @@ export const STRINGS = {
     /**
      * Shortcut hint rendered next to the title in the toggle button so
      * the affordance is self-documenting (AC-340). Kept in sync with the
-     * Alt+A handler installed by `useActivityDockShortcut`.
+     * Alt+A binding installed via `useGlobalShortcut` in
+     * `ActivityDock.tsx`.
      */
     activityDockShortcutHint: '(Alt+A)',
-    activityDockExpand: 'Aktivität einblenden',
-    activityDockCollapse: 'Aktivität ausblenden',
+    /**
+     * Accessible labels for the toggle button. WCAG 2.5.3 "Label in
+     * Name" — the accessible name must contain the visible label
+     * (`Aktivität (Alt+A)`) so speech-input users can target the
+     * control by saying what they see.
+     */
+    activityDockExpand: 'Aktivität (Alt+A) einblenden',
+    activityDockCollapse: 'Aktivität (Alt+A) ausblenden',
   },
 
   companyProfile: {
