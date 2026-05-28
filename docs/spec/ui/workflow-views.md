@@ -96,7 +96,7 @@ Contents:
 
 ### 8.4.1 Activity Feed
 
-The detail panel surfaces the project's activity history — a reverse-chronological list of `audit_log` entries whose ancestor is this project (`ancestorType = 'project'` for this `ancestorId`). Every row scoped to the project is returned, regardless of its own `entityType`: the project itself self-ancestors, and nested entities (`project_worker`, `attachment`, and any future nested type) set the ancestor to `('project', projectId)` at write time ([architecture.md §11.12](../architecture.md#1112-audit-ancestor-link)). See [data-model.md §5.10](../data-model.md#510-audit-log-entity) and [api.md §14.2.8](../api.md#1428-audit-log).
+The detail panel surfaces the project's activity history — a reverse-chronological list of `audit_log` entries whose ancestor is this project (`ancestorType = 'project'` for this `ancestorId`). Every row scoped to the project is returned, regardless of its own `entityType`: the project itself self-ancestors, and nested entities (`project_worker`, `attachment`, `invoice`, and any future nested type) set the ancestor triple to `('project', projectId, projectLabel)` at write time ([architecture.md §11.12](../architecture.md#1112-audit-ancestor-link)). The `projectLabel` slot of the ancestor triple is unused on this per-project surface (the panel header already names the project) but is load-bearing for the cross-project surfaces — the dock and the global Aktivität view. See [data-model.md §5.10](../data-model.md#510-audit-log-entity) and [api.md §14.2.8](../api.md#1428-audit-log).
 
 **Content per row (newest first):**
 
