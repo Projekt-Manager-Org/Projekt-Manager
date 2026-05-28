@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useRef, type RefObject } from 'react';
+import { isTopEscape, registerEscape, unregisterEscape } from '@/hooks/escapeStack';
 
 export interface UseDialogA11yInput {
   /** Whether the dialog is currently open / mounted. */
@@ -76,6 +77,13 @@ export function useDialogA11y(input: UseDialogA11yInput): void {
 
     onOpenedFocusRef.current?.();
 
+    // Claim a slot on the escape stack so Esc fires for this dialog only
+    // when it is the topmost dismissable surface. Without this, a
+    // ConfirmDialog stacked on top of a host modal would close both at
+    // once. Tab focus-trap stays governed by this listener regardless of
+    // stack position — focus belongs to the visible dialog.
+    const escapeToken = registerEscape();
+
     function getFocusable(): HTMLElement[] {
       const root = dialogRef.current;
       if (!root) return [];
@@ -85,7 +93,7 @@ export function useDialogA11y(input: UseDialogA11yInput): void {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         const handler = onEscapeRef.current;
-        if (handler) {
+        if (handler && isTopEscape(escapeToken)) {
           e.preventDefault();
           handler();
         }
@@ -118,6 +126,7 @@ export function useDialogA11y(input: UseDialogA11yInput): void {
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
+      unregisterEscape(escapeToken);
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus();
     };
