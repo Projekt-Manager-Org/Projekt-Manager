@@ -217,13 +217,13 @@ Process-local projection over two feeds: the post-commit `audit_log` stream (mut
 
 ### 11.12 Audit Ancestor Link
 
-Each `audit_log` row carries an optional `(ancestorEntityType, ancestorEntityId)` pair alongside its own `(entityType, entityId)`. The pair exists so a per-parent activity feed (project detail) can pull every row scoped to that parent in one indexed predicate — without JSON-path probes or bespoke `projectScope` carve-outs. Both columns are populated atomically with the audit row by the `mutate()` helper; the DB CHECK `audit_log_ancestor_pair` enforces both-or-neither.
+Each `audit_log` row carries an optional `(ancestorEntityType, ancestorEntityId, ancestorEntityLabel)` triple alongside its own `(entityType, entityId, entityLabel)`. The triple exists so a per-parent activity feed (project detail) can pull every row scoped to that parent in one indexed predicate — without JSON-path probes or bespoke `projectScope` carve-outs — and so a cross-project activity feed (the dock + the global Aktivität view) can render the parent project's name on every child-entity row without a runtime JOIN against `projects`. All three columns are populated atomically with the audit row by the `mutate()` helper; the DB CHECK `audit_log_ancestor_pair` enforces both-or-neither on the `(type, id)` pair, and `ancestorEntityLabel` follows the same null-shape as the pair (label is nullable independently — for rows whose ancestor is a project that lacks a displayable label, but otherwise present).
 
 **Write-time convention.**
 
-- `entityType = 'project'` rows self-ancestor: `ancestor = ('project', entityId)`.
-- Nested entities (`entityType = 'project_worker'`, `entityType = 'attachment'`) set `ancestor = ('project', projectId)` — the id of the owning project is already in scope at every service call site.
-- Top-level entities (`entityType = 'customer'`, `entityType = 'user'`) leave the ancestor pair NULL.
+- `entityType = 'project'` rows self-ancestor: `ancestor = ('project', entityId, projectLabel)` — `ancestorEntityLabel` duplicates the row's own `entityLabel` so the cross-project feed reads uniformly across a project's own lifecycle and its nested entities.
+- Nested entities (`entityType = 'project_worker'`, `entityType = 'attachment'`, `entityType = 'invoice'`) set `ancestor = ('project', projectId, projectLabel)` — the id and label of the owning project are already in scope at every service call site (the service has just read or written the project row).
+- Top-level entities (`entityType = 'customer'`, `entityType = 'user'`, `entityType = 'company_profile'`, `entityType = 'data_import'`) leave the ancestor triple NULL.
 - New nested entity types extend the convention by setting their parent ancestor at the service layer; no schema change is required.
 
 **Read path.** The compound index `audit_log_ancestor_idx` on `(ancestor_entity_type, ancestor_entity_id, created_at DESC, id DESC)` serves the project-detail query shape — filter by ancestor pair, order by `createdAt DESC, id DESC` (the list endpoint's tiebreaker from [api.md §14.2.8](api.md#1428-audit-log)). The index key mirrors the ORDER BY so a page is served entirely from the index.
