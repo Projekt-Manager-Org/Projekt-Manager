@@ -128,6 +128,33 @@ describe('composePushPayload — AC-211', () => {
     expect(out.url).not.toBe('/projects/attachment-77');
   });
 
+  it('falls back to "Neue Datei hinzugefügt" when attachment_added row has no ancestor label', () => {
+    // Defensive branch: every `attachment:add` row is supposed to carry
+    // a project ancestor (AC-219), but the composer falls back gracefully
+    // when the snapshot is absent — e.g. a future top-level attachment
+    // class, or a buggy write path. Pins the fallback string so a
+    // regression that drops the conditional surfaces here instead of
+    // emitting a confusing "Neue Datei in null".
+    const out = composePushPayload(
+      'project.attachment_added',
+      row({
+        entityType: 'attachment',
+        action: 'attachment:add',
+        entityId: 'attachment-77',
+        ancestorEntityType: null,
+        ancestorEntityId: null,
+        ancestorEntityLabel: null,
+        entityLabel: 'orphan.pdf',
+        payload: { after: { attachmentId: 'attachment-77' } },
+      }),
+      null,
+    );
+    expect(out.title).toBe('Datei hinzugefügt');
+    expect(out.body).toBe('Neue Datei hinzugefügt');
+    // Url fallback: no ancestor → `/`, not `/projects/null`.
+    expect(out.url).toBe('/');
+  });
+
   it('renders backup.failed system event without an audit row', () => {
     const out = composePushPayload('backup.failed', null, {});
     expect(out.title).toBe('Backup fehlgeschlagen');
