@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup, fireEvent } from '@testing-library/react';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { __resetEscapeStackForTests } from '@/hooks/escapeStack';
 
 function Probe({ onClose, enabled = true }: { onClose: () => void; enabled?: boolean }) {
   useEscapeKey(onClose, enabled);
@@ -14,6 +15,7 @@ function Probe({ onClose, enabled = true }: { onClose: () => void; enabled?: boo
 
 afterEach(() => {
   cleanup();
+  __resetEscapeStackForTests();
 });
 
 describe('useEscapeKey', () => {
@@ -50,6 +52,33 @@ describe('useEscapeKey', () => {
     unmountPopover();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(closeModal).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-rendering a stacked-under surface with a new handler does not steal the top', () => {
+    // Regression guard (PR #243 review): registration is per open/close
+    // cycle, NOT per handler identity. A host passing an inline closure
+    // (fresh ref each render) must not re-push its token to the top on
+    // re-render and steal Esc from the surface that is actually on top —
+    // the exact "wrong layer closes" bug the stack exists to prevent.
+    const closeLower = vi.fn();
+    const closeUpper = vi.fn();
+
+    // Lower surface mounts first; its host passes a fresh arrow each render.
+    const lower = render(<Probe onClose={() => closeLower()} />);
+    // Upper surface stacks on top.
+    render(<Probe onClose={closeUpper} />);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(closeUpper).toHaveBeenCalledTimes(1);
+    expect(closeLower).not.toHaveBeenCalled();
+
+    // The lower surface's host re-renders with a new handler identity.
+    lower.rerender(<Probe onClose={() => closeLower()} />);
+
+    // Upper is still on top — it must absorb Esc again.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(closeUpper).toHaveBeenCalledTimes(2);
+    expect(closeLower).not.toHaveBeenCalled();
   });
 
   it('removes its listener on unmount', () => {

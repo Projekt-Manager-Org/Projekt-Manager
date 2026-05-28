@@ -5,6 +5,7 @@ import { STRINGS } from '@/config/strings';
 import type { Project } from '@/domain/types';
 import { formatDateDE, formatCurrencyDE } from '@/domain/dateFormat';
 import { usePermission } from '@/hooks/usePermission';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { useProjectStore } from '@/state/projectStore';
 import { ActivityFeed } from '@/ui/audit/ActivityFeed';
 import { dateInputValue } from './dateInputValue';
@@ -20,6 +21,11 @@ export function ProjectDetailPanel({ project, onClose }: ProjectDetailPanelProps
   const updateDates = useProjectStore((s) => s.updateDates);
   const projects = useProjectStore((s) => s.projects);
   const navigate = useNavigate();
+
+  // Close on Escape, consistent with every other dismissable surface
+  // (stack-aware via the shared escape registry). The panel also closes
+  // on backdrop click and the close button.
+  useEscapeKey(onClose);
 
   // Always get fresh project data from store
   const currentProject = projects.find((p) => p.id === project.id) ?? project;

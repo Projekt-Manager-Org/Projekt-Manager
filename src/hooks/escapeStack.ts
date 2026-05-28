@@ -16,9 +16,9 @@
  * stack mirrors that mount order, so the contract is "the most recently
  * pushed handler wins" without any DOM probing.
  *
- * Ad-hoc handlers in `PhotoGallery`, `BinaryList`, `WorkerFilter` are
- * NOT yet stack-aware. They don't currently stack with modals in
- * practice; if they ever do, migrate them here.
+ * Every Esc-dismissable surface registers here via `useEscapeKey` (or,
+ * for full modals, `useDialogA11y`). No surface attaches its own
+ * `keydown` listener — see ARCHITECTURE.md "Escape-to-dismiss".
  */
 
 const stack: symbol[] = [];

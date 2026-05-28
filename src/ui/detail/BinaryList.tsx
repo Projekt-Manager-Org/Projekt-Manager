@@ -23,6 +23,7 @@ import { ATTACHMENT_PIPELINE } from '@/config/attachmentPipeline';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
 import { ATTACHMENT_LABELS, canDeleteAttachment } from '@/domain/attachments';
 import type { Attachment, AttachmentLabel } from '@/domain/types';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { useAttachmentStore } from '@/state/attachmentStore';
 import { useAuthStore } from '@/state/authStore';
 import { useConfirmStore } from '@/state/confirmStore';
@@ -232,17 +233,8 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
     });
   }, []);
 
-  useEffect(() => {
-    if (!preview) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closePreview();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [preview, closePreview]);
+  // Esc closes the preview via the shared, stack-aware escape registry.
+  useEscapeKey(closePreview, Boolean(preview));
 
   // Revoke on unmount — covers the case where the component unmounts
   // while the preview is still open (e.g. navigation away).

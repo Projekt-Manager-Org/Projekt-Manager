@@ -16,6 +16,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { STRINGS } from '@/config/strings';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { useProjectManagementStore } from '@/state/projectManagementStore';
 import styles from './Management.module.css';
 
@@ -44,22 +45,20 @@ export function WorkerFilter() {
     }
   }, [open, workers.length, fetchWorkers]);
 
-  // Click-outside + Escape close the popover. Listeners attach only while
-  // open so we don't pay for them on the resting state.
+  // Escape closes the popover via the shared, stack-aware escape registry.
+  useEscapeKey(() => setOpen(false), open);
+
+  // Click-outside closes the popover. The listener attaches only while
+  // open so we don't pay for it on the resting state.
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: MouseEvent) => {
       if (!wrapperRef.current) return;
       if (!wrapperRef.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
     document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
     };
   }, [open]);
 
