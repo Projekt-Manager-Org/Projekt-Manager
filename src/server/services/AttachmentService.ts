@@ -102,7 +102,7 @@ import {
 import { getProjectRowById } from '../repositories/project.js';
 import { projectAuditLabel } from '../../domain/audit.js';
 import { mutate } from './mutate.js';
-import { emitStorageUsageChanged } from '../sse/emitters.js';
+import { emitAttachmentChanged, emitStorageUsageChanged } from '../sse/emitters.js';
 import {
   bulkLimitExceeded,
   conflict,
@@ -893,6 +893,9 @@ export class AttachmentService {
     // AFTER mutate() resolves so a tx that aborts emits nothing
     // (architecture.md §11.13, AC-270).
     emitStorageUsageChanged();
+    // The new ready row joins the project's gallery / binary list, so
+    // the cross-session attachment caches must invalidate too (AC-336).
+    emitAttachmentChanged();
 
     log.info({ attachmentId, projectId }, 'attachment_ready');
     return toAttachment(updated);
@@ -1013,6 +1016,9 @@ export class AttachmentService {
     // AFTER mutate() resolves; emission inside `run` would leak on a
     // post-mutate fault and pre-empt the abort guarantee (AC-270).
     emitStorageUsageChanged();
+    // The row leaves the live gallery for the Papierkorb — both caches
+    // must invalidate cross-session (AC-336).
+    emitAttachmentChanged();
 
     log.info({ attachmentId, projectId }, 'attachment_hidden');
   }
@@ -1218,6 +1224,9 @@ export class AttachmentService {
     // AFTER mutate() resolves so a tx rollback (storage copy fault,
     // CAS-loss) emits nothing (AC-270).
     emitStorageUsageChanged();
+    // The row returns from the Papierkorb to the live gallery — both
+    // caches must invalidate cross-session (AC-336).
+    emitAttachmentChanged();
 
     log.info({ attachmentId, projectId }, 'attachment_restored');
     return toAttachment(restored);

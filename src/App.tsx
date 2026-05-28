@@ -6,6 +6,7 @@ import { useProjectStore } from '@/state/projectStore';
 import { useUIStore } from '@/state/uiStore';
 import { subscribeProjectStoresToSse } from '@/state/projectSseSubscription';
 import { subscribeInvoiceStoreToSse } from '@/state/invoiceSseSubscription';
+import { subscribeAttachmentStoreToSse } from '@/state/attachmentSseSubscription';
 import { viewFromPath } from '@/hooks/useRouterNav';
 import { ROUTES, routeByPath, landingPathForUser } from '@/config/routes';
 import { isInsecureConnection } from '@/config/insecureConnection';
@@ -183,6 +184,16 @@ export function App() {
   useEffect(() => {
     if (!authUser) return;
     return subscribeInvoiceStoreToSse();
+  }, [authUser]);
+
+  // Cross-cutting `attachment_changed` SSE subscription (api.md
+  // §14.2.13, ADR-0025, AC-337). Same auth-gated lifecycle as the
+  // project / invoice subscriptions above — refreshes the per-project
+  // attachment caches so an always-open gallery / Papierkorb reflects
+  // another user's add / hide / restore / purge (#237).
+  useEffect(() => {
+    if (!authUser) return;
+    return subscribeAttachmentStoreToSse();
   }, [authUser]);
 
   if (authUser) {
