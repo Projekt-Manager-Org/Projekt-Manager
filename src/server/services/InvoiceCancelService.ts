@@ -15,6 +15,8 @@ import crypto from 'node:crypto';
 import type { Database } from '../db/connection.js';
 import type { ServiceLogger } from './Logger.js';
 import { mutateInTx, dispatchAuditRows } from './mutate.js';
+import { projectAuditLabel } from '../../domain/audit.js';
+import { getProjectRowById } from '../repositories/project.js';
 import type { AuditLogRow } from './audit-publisher.js';
 import {
   computeInvoiceTotals,
@@ -200,6 +202,17 @@ export class InvoiceCancelService {
       // 4. Flip the original to `cancelled`.
       const originalRow = await applyCancellationFlip(tx, id, userId, now);
 
+      // Snapshot the parent project's audit label once, inside the
+      // same tx. Both audit rows below share the same ancestor; one
+      // read keeps the label consistent and avoids two round-trips.
+      // FK from invoice→project guarantees existence — a missing row
+      // here is a programmer/integrity error.
+      const projectRow = await getProjectRowById(tx, before.projectId);
+      if (!projectRow) {
+        throw new Error(`cancel: project ${before.projectId} missing for invoice ${id}`);
+      }
+      const ancestorLabel = projectAuditLabel(projectRow);
+
       // 5. Two audit rows in one tx (AC-290). Project status is
       //    deliberately NOT flipped — AC-290 trailing clause.
       const cancelAudit = await mutateInTx(tx, ctx, {
@@ -213,6 +226,7 @@ export class InvoiceCancelService {
           after: { status: originalRow.status },
           ancestorEntityType: 'project',
           ancestorEntityId: before.projectId,
+          ancestorEntityLabel: ancestorLabel,
         }),
       });
       collected.push(cancelAudit.auditRow);
@@ -240,6 +254,7 @@ export class InvoiceCancelService {
           },
           ancestorEntityType: 'project',
           ancestorEntityId: before.projectId,
+          ancestorEntityLabel: ancestorLabel,
         }),
       });
       collected.push(stornoAudit.auditRow);

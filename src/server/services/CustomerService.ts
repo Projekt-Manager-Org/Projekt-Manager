@@ -365,6 +365,7 @@ export class CustomerService {
               // filter until audit retention sweeps them.
               ancestorEntityType: 'project',
               ancestorEntityId: row.id,
+              ancestorEntityLabel: projectAuditLabel(row),
             };
           },
         });

@@ -820,12 +820,14 @@ export class AttachmentService {
     // 404 vs 409). A storage object verified by HEAD but not-yet-marked-
     // ready can remain orphaned for up to one reaper tick.
     //
-    // `payload.after` carries the owning project's frozen `projectLabel`
-    // (= `projectAuditLabel(project)` = `"<number> <title>"`) so the
-    // `project.attachment_added` push body (AC-211) can name the project
-    // without a second lookup, and `label` / `mimeType` / `sizeBytes`
-    // off the pending row. The `wrappedDek` / `wrappedThumbDek` columns
-    // are stripped at the schema layer (AUDIT_EXCLUDED_FIELDS) — they are
+    // `payload.after` carries `label` / `mimeType` / `sizeBytes` off the
+    // pending row, plus the structural `attachmentId` / `projectId` for
+    // parent-linkage. The owning project's display name is NOT in the
+    // payload — the row-level `ancestorEntityLabel` snapshot (AC-339 /
+    // AC-342) is the single source of the project label for the push
+    // composer (AC-211), the dock (AC-339), and the /audit Projekt
+    // column (AC-342). The `wrappedDek` / `wrappedThumbDek` columns are
+    // stripped at the schema layer (AUDIT_EXCLUDED_FIELDS) — they are
     // not in `value`/`after` here, and `mutate()` would strip them anyway
     // (AC-240).
     let updated: AttachmentRowWithUploader | null = null;
@@ -855,7 +857,6 @@ export class AttachmentService {
             after: {
               projectId,
               attachmentId,
-              projectLabel: projectAuditLabel(projectRow),
               label: flipped.label,
               mimeType: flipped.mimeType,
               sizeBytes: flipped.sizeBytes,
@@ -865,6 +866,7 @@ export class AttachmentService {
             // push composer resolves `/projects/:id` from the ancestor.
             ancestorEntityType: 'project',
             ancestorEntityId: projectId,
+            ancestorEntityLabel: projectAuditLabel(projectRow),
           };
         },
       },
@@ -1006,6 +1008,7 @@ export class AttachmentService {
             },
             ancestorEntityType: 'project',
             ancestorEntityId: projectId,
+            ancestorEntityLabel: projectAuditLabel(projectRow),
           };
         },
       },
@@ -1214,6 +1217,7 @@ export class AttachmentService {
             },
             ancestorEntityType: 'project',
             ancestorEntityId: projectId,
+            ancestorEntityLabel: projectAuditLabel(projectRow),
           };
         },
       },

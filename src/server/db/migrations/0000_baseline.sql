@@ -46,6 +46,7 @@ CREATE TABLE "audit_log" (
 	"entity_label" text,
 	"ancestor_entity_type" text,
 	"ancestor_entity_id" uuid,
+	"ancestor_entity_label" text,
 	"action" text NOT NULL,
 	"payload" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"correlation_id" text,

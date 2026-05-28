@@ -22,6 +22,7 @@ function row(overrides: Partial<AuditLogRow> = {}): AuditLogRow {
     entityLabel: '2026-002 Innenraumgestaltung Weber',
     ancestorEntityType: 'project',
     ancestorEntityId: 'project-42',
+    ancestorEntityLabel: '2026-002 Innenraumgestaltung Weber',
     action: 'transition:forward',
     payload: { before: { status: 'anfrage' }, after: { status: 'beauftragt' } },
     correlationId: null,
@@ -86,14 +87,16 @@ describe('composePushPayload — AC-211', () => {
     expect(out.url).toBe('/projects/project-42');
   });
 
-  it('renders project.attachment_added with the project-label snapshot and an ancestor-resolved url', () => {
+  it('renders project.attachment_added with the project-label snapshot from ancestorEntityLabel and an ancestor-resolved url', () => {
     // AC-211 for this class: the body names the affected project via the
-    // frozen `payload.after.projectLabel` snapshot AND indicates a file
-    // was added; the click target is `/projects/:id` resolved from the
+    // row-level `ancestorEntityLabel` snapshot AND indicates a file was
+    // added; the click target is `/projects/:id` resolved from the
     // audit row's ANCESTOR link, NOT `entityId` — an `attachment` row's
     // `entityId` is the attachment, the ancestor is the project. Distinct
     // ids for entityId vs ancestorEntityId so an entityId-based
-    // regression on the url fails here.
+    // regression on the url fails here. The payload-side projectLabel
+    // duplicate (legacy AC-219 shape) is no longer rendered, ensuring
+    // ancestorEntityLabel is the single source of the project name.
     const out = composePushPayload(
       'project.attachment_added',
       row({
@@ -102,12 +105,12 @@ describe('composePushPayload — AC-211', () => {
         entityId: 'attachment-77',
         ancestorEntityType: 'project',
         ancestorEntityId: 'project-42',
+        ancestorEntityLabel: '2026-002 Innenraumgestaltung Weber',
         entityLabel: 'ancestor.pdf',
         payload: {
           after: {
             projectId: 'project-42',
             attachmentId: 'attachment-77',
-            projectLabel: '2026-002 Innenraumgestaltung Weber',
             label: 'rechnung',
             mimeType: 'application/pdf',
             sizeBytes: 123,
@@ -123,6 +126,33 @@ describe('composePushPayload — AC-211', () => {
     // resolved the url from `entityId` would land `/projects/attachment-77`.
     expect(out.url).toBe('/projects/project-42');
     expect(out.url).not.toBe('/projects/attachment-77');
+  });
+
+  it('falls back to "Neue Datei hinzugefügt" when attachment_added row has no ancestor label', () => {
+    // Defensive branch: every `attachment:add` row is supposed to carry
+    // a project ancestor (AC-219), but the composer falls back gracefully
+    // when the snapshot is absent — e.g. a future top-level attachment
+    // class, or a buggy write path. Pins the fallback string so a
+    // regression that drops the conditional surfaces here instead of
+    // emitting a confusing "Neue Datei in null".
+    const out = composePushPayload(
+      'project.attachment_added',
+      row({
+        entityType: 'attachment',
+        action: 'attachment:add',
+        entityId: 'attachment-77',
+        ancestorEntityType: null,
+        ancestorEntityId: null,
+        ancestorEntityLabel: null,
+        entityLabel: 'orphan.pdf',
+        payload: { after: { attachmentId: 'attachment-77' } },
+      }),
+      null,
+    );
+    expect(out.title).toBe('Datei hinzugefügt');
+    expect(out.body).toBe('Neue Datei hinzugefügt');
+    // Url fallback: no ancestor → `/`, not `/projects/null`.
+    expect(out.url).toBe('/');
   });
 
   it('renders backup.failed system event without an audit row', () => {

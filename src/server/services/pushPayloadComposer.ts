@@ -49,24 +49,6 @@ function readAfterStatus(row: AuditLogRow | null): string | null {
   return typeof status === 'string' ? status : null;
 }
 
-/**
- * Read the owning project's frozen label snapshot off an
- * `attachment:add` row's `payload.after.projectLabel` (AC-219). Used by
- * the `project.attachment_added` body so the notification names the
- * affected project even after a later rename / archive. Returns null
- * when the field is absent (legacy / malformed row) — the case falls
- * back to the generic project body.
- */
-function readAfterProjectLabel(row: AuditLogRow | null): string | null {
-  if (!row) return null;
-  const payload = row.payload;
-  if (typeof payload !== 'object' || payload === null) return null;
-  const after = (payload as { after?: unknown }).after;
-  if (typeof after !== 'object' || after === null) return null;
-  const projectLabel = (after as { projectLabel?: unknown }).projectLabel;
-  return typeof projectLabel === 'string' && projectLabel.length > 0 ? projectLabel : null;
-}
-
 const PROJECT_FALLBACK_BODY = 'Aktualisierung';
 const SYSTEM_FALLBACK_URL = '/verwaltung';
 
@@ -106,13 +88,14 @@ export function composePushPayload(
     }
 
     case 'project.attachment_added': {
-      // Body identifies the affected project via the frozen
-      // `payload.after.projectLabel` snapshot (AC-219) and that a file
-      // was added. The click target is the project — resolved from the
+      // Body identifies the affected project via the row-level
+      // `ancestorEntityLabel` snapshot (AC-211 / AC-339) so the
+      // notification names the project even after a later rename /
+      // archive. The click target is the project — resolved from the
       // audit row's ANCESTOR link, NOT `entityId`: an `attachment` row's
       // `entityId` is the attachment, the ancestor is `('project',
-      // projectId)` (AC-211, architecture.md §11.12).
-      const projectLabel = readAfterProjectLabel(auditRow);
+      // projectId, projectLabel)` (architecture.md §11.12).
+      const projectLabel = auditRow?.ancestorEntityLabel ?? null;
       const body = projectLabel ? `Neue Datei in ${projectLabel}` : 'Neue Datei hinzugefügt';
       return { title, body, url: projectUrlFromAncestor(auditRow) };
     }

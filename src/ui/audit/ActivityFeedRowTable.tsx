@@ -17,6 +17,7 @@
 
 import { useState } from 'react';
 import type { AuditEntry } from '@/domain/audit';
+import { auditProjectSlot } from '@/domain/audit';
 import { formatDateTimeDE } from '@/domain/dateFormat';
 import { STRINGS } from '@/config/strings';
 import { labelForAuditAction } from '@/config/auditActionLabels';
@@ -92,6 +93,14 @@ export function ActivityFeedRowTable({ entry }: Props) {
       <td className={tableStyles.actor}>
         {actor.label}
         {actor.reason && <span className={styles.actorReason}> ({actor.reason})</span>}
+      </td>
+      {/* AC-342: parent project's label snapshot for child entities,
+          duplicated from `entityLabel` for project rows, em dash for
+          rows without a project ancestor (customer, user,
+          company_profile, data_import). Shared with the dock's
+          compact row via `auditProjectSlot` (AC-339). */}
+      <td className={tableStyles.project} data-testid="audit-row-project">
+        {auditProjectSlot(entry)}
       </td>
       <td className={tableStyles.entity}>
         <div className={styles.entityLabel}>{entityTypeLabel(entry.entityType)}</div>

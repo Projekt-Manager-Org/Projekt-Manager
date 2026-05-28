@@ -381,8 +381,21 @@ export const STRINGS = {
      * the meaning for assistive tech).
      */
     activityDockTitle: 'Aktivität',
-    activityDockExpand: 'Aktivität einblenden',
-    activityDockCollapse: 'Aktivität ausblenden',
+    /**
+     * Shortcut hint rendered next to the title in the toggle button so
+     * the affordance is self-documenting (AC-340). Kept in sync with the
+     * Alt+A binding installed via `useGlobalShortcut` in
+     * `ActivityDock.tsx`.
+     */
+    activityDockShortcutHint: '(Alt+A)',
+    /**
+     * Accessible labels for the toggle button. WCAG 2.5.3 "Label in
+     * Name" — the accessible name must contain the visible label
+     * (`Aktivität (Alt+A)`) so speech-input users can target the
+     * control by saying what they see.
+     */
+    activityDockExpand: 'Aktivität (Alt+A) einblenden',
+    activityDockCollapse: 'Aktivität (Alt+A) ausblenden',
   },
 
   companyProfile: {
@@ -712,6 +725,7 @@ export const STRINGS = {
     /** Column / filter labels on the global Aktivität view. */
     colTimestamp: 'Zeitpunkt',
     colActor: 'Akteur',
+    colProject: 'Projekt',
     colEntity: 'Objekt',
     colAction: 'Aktion',
     colPayload: 'Details',

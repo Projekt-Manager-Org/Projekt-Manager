@@ -56,6 +56,7 @@ export class ProjectDatesService {
               },
               ancestorEntityType: 'project',
               ancestorEntityId: projectId,
+              ancestorEntityLabel: projectAuditLabel(r.project),
             };
           },
         },

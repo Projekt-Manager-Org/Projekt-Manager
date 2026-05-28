@@ -66,6 +66,7 @@ export class ProjectTransitionService {
               },
               ancestorEntityType: 'project',
               ancestorEntityId: projectId,
+              ancestorEntityLabel: projectAuditLabel(repoResult.project),
             };
           },
         },
@@ -128,6 +129,7 @@ export class ProjectTransitionService {
               },
               ancestorEntityType: 'project',
               ancestorEntityId: projectId,
+              ancestorEntityLabel: projectAuditLabel(repoResult.project),
             };
           },
         },

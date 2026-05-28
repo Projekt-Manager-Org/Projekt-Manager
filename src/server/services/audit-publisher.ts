@@ -44,13 +44,20 @@ export interface AuditLogRow {
   entityLabel: string | null;
   /**
    * Ancestor-link snapshot (architecture.md §11.12). Populated at write
-   * time for nested entities (project_worker, attachment) and for
-   * project rows (self-ancestor) so the per-parent activity feed can
-   * fetch every row scoped to a project in one indexed query. Null for
-   * top-level entities (customer, user).
+   * time for nested entities (project_worker, attachment, invoice) and
+   * for project rows (self-ancestor) so the per-parent activity feed
+   * can fetch every row scoped to a project in one indexed query, and
+   * so the cross-project surfaces (the dock + global Aktivität view's
+   * Projekt column) can render the parent project's name without a
+   * runtime JOIN. Null for top-level entities (customer, user,
+   * company_profile, data_import). The `(type, id)` pair is both-or-
+   * neither (DB CHECK `audit_log_ancestor_pair`); `Label` is co-
+   * populated by the service layer whenever the pair is set (projects
+   * always carry a displayName-derived label).
    */
   ancestorEntityType: AuditEntityType | null;
   ancestorEntityId: string | null;
+  ancestorEntityLabel: string | null;
   action: string;
   payload: unknown;
   correlationId: string | null;

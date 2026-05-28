@@ -197,13 +197,28 @@ async function fetchPurgeAuditRow(
 ): Promise<Record<string, unknown> | null> {
   const res = await db.execute(sql`
     SELECT id, entity_type, entity_id, entity_label, action, actor_id, actor_kind,
-           actor_reason, ancestor_entity_type, ancestor_entity_id, payload, correlation_id
+           actor_reason, ancestor_entity_type, ancestor_entity_id, ancestor_entity_label,
+           payload, correlation_id
     FROM audit_log
     WHERE entity_id = ${entityId} AND action = 'attachment:purge'
     ORDER BY created_at DESC
     LIMIT 1
   `);
   return (res.rows[0] as Record<string, unknown> | undefined) ?? null;
+}
+
+/**
+ * Resolve a project row's `<number> <title>` so a test can assert the
+ * `ancestor_entity_label` snapshot equals the canonical
+ * `projectAuditLabel(...)` output without re-importing the domain helper.
+ */
+async function projectAuditLabelById(db: Database, projectId: string): Promise<string> {
+  const res = await db.execute(sql`
+    SELECT number, title FROM projects WHERE id = ${projectId} LIMIT 1
+  `);
+  const row = res.rows[0] as { number: string; title: string } | undefined;
+  if (!row) throw new Error(`projectAuditLabelById: project ${projectId} not found`);
+  return `${row.number} ${row.title}`;
 }
 
 describe('Attachment hidden reaper (AC-246)', () => {
@@ -362,6 +377,12 @@ describe('Attachment hidden reaper (AC-246)', () => {
       // up alongside project + project_worker rows in one indexed query.
       expect(row!.ancestor_entity_type).toBe('project');
       expect(row!.ancestor_entity_id).toBe(seeded.projectId);
+      // AC-339 / AC-342: the reaper also snapshots the owning project's
+      // canonical `<number> <title>` label so the dock + audit table can
+      // render the Projekt slot without a runtime JOIN even for
+      // system-actor `attachment:purge` rows.
+      const expectedLabel = await projectAuditLabelById(db, seeded.projectId);
+      expect(row!.ancestor_entity_label).toBe(expectedLabel);
       // The reaper is unattended — no request id to thread.
       expect(row!.correlation_id).toBeNull();
       // entityLabel may be null or the filename — both acceptable per

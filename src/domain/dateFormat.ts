@@ -1,6 +1,14 @@
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { LOCALE } from '@/config/localeConfig';
 import { STRINGS } from '@/config/strings';
+
+// The *DE formatters claim German formatting, which by convention
+// includes Berlin wall-clock time. Binding the zone here means a
+// process running on a UTC host (CI, default cloud VM) still renders
+// the audit log / badge tooltips in the timezone users expect, rather
+// than silently inheriting the host TZ.
+const DE_TIMEZONE = 'Europe/Berlin';
 
 /**
  * Format a `Date` as YYYY-MM-DD using its LOCAL components.
@@ -23,7 +31,9 @@ export function formatDateOnly(d: Date): string {
  * Format an ISO date string to German DD.MM.YYYY format.
  */
 export function formatDateDE(isoDate: string): string {
-  return format(parseISO(isoDate), 'dd.MM.yyyy', { locale: LOCALE.dateFns });
+  return formatInTimeZone(parseISO(isoDate), DE_TIMEZONE, 'dd.MM.yyyy', {
+    locale: LOCALE.dateFns,
+  });
 }
 
 /**
@@ -32,14 +42,18 @@ export function formatDateDE(isoDate: string): string {
  * ui/management.md §8.13.1).
  */
 export function formatDateTimeDE(isoDate: string): string {
-  return format(parseISO(isoDate), 'dd.MM.yyyy HH:mm', { locale: LOCALE.dateFns });
+  return formatInTimeZone(parseISO(isoDate), DE_TIMEZONE, 'dd.MM.yyyy HH:mm', {
+    locale: LOCALE.dateFns,
+  });
 }
 
 /**
  * Format an ISO date string to short German DD.MM. format.
  */
 export function formatDateShortDE(isoDate: string): string {
-  return format(parseISO(isoDate), 'dd.MM.', { locale: LOCALE.dateFns });
+  return formatInTimeZone(parseISO(isoDate), DE_TIMEZONE, 'dd.MM.', {
+    locale: LOCALE.dateFns,
+  });
 }
 
 /**
@@ -52,7 +66,9 @@ export function formatDateShortDE(isoDate: string): string {
  * "Saturday last week" at a glance without subtracting dates.
  */
 export function formatBackupTimestampDE(isoDate: string): string {
-  return format(parseISO(isoDate), 'HH:mm EEE dd.MM.yyyy', { locale: LOCALE.dateFns });
+  return formatInTimeZone(parseISO(isoDate), DE_TIMEZONE, 'HH:mm EEE dd.MM.yyyy', {
+    locale: LOCALE.dateFns,
+  });
 }
 
 /**
