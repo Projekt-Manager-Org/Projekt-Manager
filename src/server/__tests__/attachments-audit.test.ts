@@ -49,7 +49,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import crypto from 'node:crypto';
-import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPost,
+  authPatch,
+  authDelete,
+} from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import { createStorageClient } from '../storage/client.js';
@@ -334,6 +342,12 @@ describe('Attachment audit contract (AC-219)', () => {
     // Ancestor link (architecture.md §11.12).
     expect(row!.ancestor_entity_type).toBe('project');
     expect(row!.ancestor_entity_id).toBe(projectId);
+    // AC-339 / AC-342: ancestor label snapshot equals
+    // `projectAuditLabel(project)` so the dock and /audit Projekt column
+    // render the project name without a JOIN. Regression-guard the change
+    // under test (the hide leg was previously asserted only on type+id).
+    const { number, title } = await projectNumberTitleById(ownerToken, projectId);
+    expect(row!.ancestor_entity_label).toBe(`${number} ${title}`);
 
     const payload = row!.payload as { before?: Record<string, unknown> };
     expect(payload.before).toBeDefined();
@@ -385,6 +399,59 @@ describe('Attachment audit contract (AC-219)', () => {
     expect(attachmentRow!.entity_type).toBe('attachment');
     expect(customerRow!.entity_type).toBe('customer');
     expect(attachmentRow!.entity_type).not.toBe(customerRow!.entity_type);
+  });
+
+  // -------------------------------------------------------------------
+  // Snapshot survival — ancestor_entity_label is frozen at write time.
+  //
+  // The whole point of denormalizing the parent project's label onto
+  // every audit row (architecture.md §11.12) is that the activity feed
+  // stays readable AFTER the project is renamed or purged. This test
+  // pins that guarantee: write an audit row, rename the project, fetch
+  // the SAME audit row, assert the label still shows the original
+  // value.
+  // -------------------------------------------------------------------
+  it('ancestor_entity_label is frozen at write time — a later project rename does not mutate prior audit rows', async () => {
+    const { number: originalNumber, title: originalTitle } = await projectNumberTitleById(
+      ownerToken,
+      projectId,
+    );
+    const originalLabel = `${originalNumber} ${originalTitle}`;
+
+    // 1) Write an audit row carrying the current label snapshot.
+    const attachmentId = await stageAndComplete(
+      ownerToken,
+      projectId,
+      photoInitBody({ fileName: 'snapshot-survival.jpg', label: 'foto' }),
+    );
+    const rowBeforeRename = await fetchLatestAuditRow(attachmentId, 'attachment:add');
+    expect(rowBeforeRename).not.toBeNull();
+    expect(rowBeforeRename!.ancestor_entity_label).toBe(originalLabel);
+
+    // 2) Rename the project. Restore in `finally` so a later test that
+    //    reads the live title isn't affected by a failure here.
+    const renamedTitle = `${originalTitle} (renamed)`;
+    try {
+      const patchRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
+        title: renamedTitle,
+      });
+      expect(patchRes.statusCode).toBe(200);
+
+      // Sanity: the live row reflects the new title.
+      const { title: liveTitleAfter } = await projectNumberTitleById(ownerToken, projectId);
+      expect(liveTitleAfter).toBe(renamedTitle);
+
+      // 3) The originally written audit row's ancestor label must
+      //    still be the ORIGINAL value. A regression that resolved
+      //    the label from a JOIN-at-read instead of the snapshot
+      //    would surface the renamed title here.
+      const rowAfterRename = await fetchLatestAuditRow(attachmentId, 'attachment:add');
+      expect(rowAfterRename).not.toBeNull();
+      expect(rowAfterRename!.ancestor_entity_label).toBe(originalLabel);
+      expect(rowAfterRename!.ancestor_entity_label).not.toBe(`${originalNumber} ${renamedTitle}`);
+    } finally {
+      await authPatch(ownerToken, `/api/projects/${projectId}`, { title: originalTitle });
+    }
   });
 });
 
