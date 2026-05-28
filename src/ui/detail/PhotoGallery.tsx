@@ -21,6 +21,7 @@ import { STRINGS } from '@/config/strings';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
 import type { Attachment } from '@/domain/types';
 import { canDeleteAttachment } from '@/domain/attachments';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { useAttachmentStore } from '@/state/attachmentStore';
 import { useAuthStore } from '@/state/authStore';
 import { useConfirmStore } from '@/state/confirmStore';
@@ -119,12 +120,14 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
     setLightbox(null);
   }, []);
 
-  // Esc-to-close + focus management. Document-level key listener is
-  // installed only while the lightbox is open, avoiding background
-  // interference with the rest of the page (form inputs, etc.).
+  // Esc-to-close via the shared, stack-aware escape registry — so a
+  // lightbox opened over a modal dismisses only the lightbox.
+  useEscapeKey(closeLightbox, Boolean(lightbox));
+
+  // Focus management: pull focus into the lightbox on open, restore it
+  // to the trigger on close.
   useEffect(() => {
     if (!lightbox) {
-      // Restore focus to the trigger on close.
       const opener = lightboxOpenerRef.current;
       if (opener && typeof opener.focus === 'function') {
         opener.focus();
@@ -132,20 +135,8 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
       lightboxOpenerRef.current = null;
       return;
     }
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closeLightbox();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    // Pull focus into the dialog so Tab and screen-reader cursors stay
-    // inside the modal surface.
     lightboxRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [lightbox, closeLightbox]);
+  }, [lightbox]);
 
   /**
    * Accessible label for the thumbnail button. AC-image is the filename,

@@ -215,3 +215,17 @@ describe('ProjectDetailPanel — Öffnen affordance (AC-207)', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ProjectDetailPanel — Escape closes the panel', () => {
+  it('invokes onClose on Escape, consistent with every other dismissable surface', async () => {
+    // Regression guard for issue #242: the panel shipped with no Esc
+    // handler at all (overlay-click and the close button were the only
+    // exits), so it was the lone surface that ignored Escape. It now
+    // routes through the shared stack-aware `useEscapeKey`.
+    const { onClose } = renderPanelAt('/kanban');
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
