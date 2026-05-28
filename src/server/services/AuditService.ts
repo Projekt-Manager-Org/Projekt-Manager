@@ -67,6 +67,14 @@ export interface AuditEntry {
   entityId: string;
   /** Snapshot of the entity's human-readable label at write time. */
   entityLabel: string | null;
+  /**
+   * Snapshot of the parent project's human-readable label at write time
+   * (architecture.md §11.12). Null for top-level entities (`customer`,
+   * `user`, `company_profile`, `data_import`). Powers the activity dock's
+   * single-line row (AC-339) and the global Aktivität view's `Projekt`
+   * column (AC-342) without a runtime JOIN against `projects`.
+   */
+  ancestorEntityLabel: string | null;
   action: string;
   payload: unknown | null;
   correlationId: string | null;
@@ -109,6 +117,7 @@ function shapeEntry(row: AuditRow): AuditEntry {
     entityType: row.entityType,
     entityId: row.entityId,
     entityLabel: row.entityLabel,
+    ancestorEntityLabel: row.ancestorEntityLabel,
     action: row.action,
     payload: row.payload,
     correlationId: row.correlationId,

@@ -7,9 +7,12 @@
  *   - Complete (the `pending → ready` finalize) writes exactly one
  *     `attachment:add` audit row with `entityType='attachment'`,
  *     `entityId=attachmentId`, and a payload `after` naming attachmentId,
- *     projectId, the owning project's label (`projectLabel`, frozen for
- *     notification rendering), label, mimeType, sizeBytes. This is the
- *     attachment's authoritative entry into the project.
+ *     projectId, label, mimeType, sizeBytes. The owning project's
+ *     display name is captured in `ancestor_entity_label` (not in the
+ *     payload — AC-339 / AC-342), which is the single source consumed
+ *     by the push composer (AC-211), the dock, and the /audit Projekt
+ *     column. This is the attachment's authoritative entry into the
+ *     project.
  *   - Init creates the `pending` row and writes NO audit row (an
  *     allowlisted single-write-path exception, parity with the orphan
  *     reaper's pending-row carve-out). An upload abandoned before
@@ -73,7 +76,7 @@ async function fetchLatestAuditRow(
   try {
     const res = await db.execute(sql`
       SELECT id, entity_type, entity_id, action, actor_id, actor_kind,
-             ancestor_entity_type, ancestor_entity_id, payload
+             ancestor_entity_type, ancestor_entity_id, ancestor_entity_label, payload
       FROM audit_log
       WHERE entity_id = ${entityId} AND action = ${action}
       ORDER BY created_at DESC
@@ -174,10 +177,12 @@ describe('Attachment audit contract (AC-219)', () => {
   // The `attachment:add` row is written at the `pending → ready`
   // finalize, NOT at init. We drive init+complete, asserting init alone
   // produces zero audit rows and complete produces exactly one — and
-  // that row carries the full `payload.after` including the owning
-  // project's frozen `projectLabel`.
+  // that row carries the structural `payload.after` AND a non-null
+  // `ancestor_entity_label` snapshot equal to `<number> <title>` (the
+  // single source of the project's display name for downstream consumers
+  // — push composer, dock, /audit Projekt column).
   // -------------------------------------------------------------------
-  it('complete writes exactly one attachment:add row with entityType=attachment and full payload.after including projectLabel', async () => {
+  it('complete writes exactly one attachment:add row with entityType=attachment, structural payload.after, and the project-label snapshot on ancestor_entity_label', async () => {
     // Init: stage the pending row + backing bytes WITHOUT completing
     // yet, so we can pin the "init writes no audit row" leg before the
     // finalize. (We can't reuse stageAndComplete here — it completes in
@@ -245,13 +250,18 @@ describe('Attachment audit contract (AC-219)', () => {
     expect(payload.after!.mimeType).toBe('image/jpeg');
     expect(payload.after!.sizeBytes).toBe(4321);
 
-    // `projectLabel` is the owning project's frozen label snapshot
-    // (AC-219; AC-211 reads it for `project.attachment_added` push
-    // bodies). It MUST equal projectAuditLabel(project) = `<number>
-    // <title>`. Fetch the project's number+title and assert exact
-    // equality — not just presence.
+    // The owning project's display name is NOT in payload.after — the
+    // single source is `ancestor_entity_label` on the audit row itself
+    // (AC-219 / AC-339 / AC-342). The push composer, dock, and /audit
+    // Projekt column all read from there. Assert the absence so a
+    // regression that re-duplicates it into the payload is caught.
+    expect(payload.after).not.toHaveProperty('projectLabel');
+
+    // `ancestor_entity_label` MUST equal projectAuditLabel(project) =
+    // `<number> <title>`. Fetch the project's number+title and assert
+    // exact equality — not just presence.
     const { number, title } = await projectNumberTitleById(ownerToken, projectId);
-    expect(payload.after!.projectLabel).toBe(`${number} ${title}`);
+    expect(row!.ancestor_entity_label).toBe(`${number} ${title}`);
   });
 
   // -------------------------------------------------------------------

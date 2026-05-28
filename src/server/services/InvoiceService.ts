@@ -22,6 +22,8 @@ import { projects, customers } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import type { ServiceLogger } from './Logger.js';
 import { mutate } from './mutate.js';
+import { projectAuditLabel } from '../../domain/audit.js';
+import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
   TAX_MODES,
@@ -349,6 +351,7 @@ export class InvoiceService {
             // project's activity feed (ADR-0026 §Audit and realtime).
             ancestorEntityType: 'project',
             ancestorEntityId: input.projectId,
+            ancestorEntityLabel: projectAuditLabel(project),
           };
         },
       },
@@ -445,6 +448,16 @@ export class InvoiceService {
             afterFields.performanceDate = nextPerformanceDate;
           }
 
+          // Project row is needed for the ancestor label. Read inside
+          // the tx so the audit row's label reflects the same snapshot
+          // as the invoice update; the project FK guarantees existence.
+          const projectRow = await getProjectRowById(tx, row.projectId);
+          if (!projectRow) {
+            // FK guarantee — should be unreachable. Defensive throw so
+            // the inconsistency surfaces loudly rather than landing a
+            // half-formed audit row.
+            throw new Error(`updateDraft: project ${row.projectId} missing for invoice ${id}`);
+          }
           return {
             entityId: id,
             entityLabel: null,
@@ -453,6 +466,7 @@ export class InvoiceService {
             after: afterFields,
             ancestorEntityType: 'project',
             ancestorEntityId: row.projectId,
+            ancestorEntityLabel: projectAuditLabel(projectRow),
           };
         },
       },
@@ -485,6 +499,13 @@ export class InvoiceService {
           if (!before) throw notFound(STRINGS.entities.invoice);
           if (before.status !== 'draft') throw invoiceFrozen();
 
+          // Resolve the ancestor label from the live project row INSIDE
+          // the tx — the invoice FK guarantees existence at this point.
+          const projectRow = await getProjectRowById(tx, before.projectId);
+          if (!projectRow) {
+            throw new Error(`deleteDraft: project ${before.projectId} missing for invoice ${id}`);
+          }
+
           await deleteInvoiceDraft(tx, id);
 
           return {
@@ -501,6 +522,7 @@ export class InvoiceService {
             after: {},
             ancestorEntityType: 'project',
             ancestorEntityId: before.projectId,
+            ancestorEntityLabel: projectAuditLabel(projectRow),
           };
         },
       },

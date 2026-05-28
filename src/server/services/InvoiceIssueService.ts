@@ -35,6 +35,8 @@ import type { Database, MutatingDatabase } from '../db/connection.js';
 import { projects } from '../db/schema.js';
 import type { ServiceLogger } from './Logger.js';
 import { mutate } from './mutate.js';
+import { projectAuditLabel } from '../../domain/audit.js';
+import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
   type Invoice,
@@ -136,6 +138,7 @@ export class InvoiceIssueService {
     after: Record<string, unknown>;
     ancestorEntityType: 'project';
     ancestorEntityId: string;
+    ancestorEntityLabel: string;
   }> {
     const before = await getInvoiceRowForMutation(tx, invoiceId);
     if (!before) throw notFound(STRINGS.entities.invoice);
@@ -316,6 +319,18 @@ export class InvoiceIssueService {
     //    rationale (side-effect of issuance, not its own audit event).
     await flipParentProjectStatusToAbgerechnet(tx, before.projectId, userId, issueDate);
 
+    // Snapshot the parent project's audit label inside this tx so the
+    // audit row's `ancestorEntityLabel` matches the post-flip state.
+    // The FK from invoice→project guarantees existence; a missing row
+    // here is a programmer/integrity error and we refuse to write a
+    // half-formed audit entry.
+    const projectRow = await getProjectRowById(tx, before.projectId);
+    if (!projectRow) {
+      throw new Error(
+        `runIssueInsideTx: project ${before.projectId} missing for invoice ${invoiceId}`,
+      );
+    }
+
     return {
       entityId: invoiceId,
       entityLabel: number,
@@ -339,6 +354,7 @@ export class InvoiceIssueService {
       },
       ancestorEntityType: 'project',
       ancestorEntityId: before.projectId,
+      ancestorEntityLabel: projectAuditLabel(projectRow),
     };
   }
 }

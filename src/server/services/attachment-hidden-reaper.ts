@@ -25,7 +25,9 @@
 import type { Database } from '../db/connection.js';
 import type { ServiceLogger } from './Logger.js';
 import { findHiddenForReap, deleteHiddenForReap } from '../repositories/attachment.js';
+import { getProjectRowById } from '../repositories/project.js';
 import { mutate } from './mutate.js';
+import { projectAuditLabel } from '../../domain/audit.js';
 import { emitAttachmentChanged, emitStorageUsageChanged } from '../sse/emitters.js';
 
 const MS_PER_MINUTE = 60 * 1000;
@@ -89,6 +91,19 @@ export async function runAttachmentHiddenReaper(
               // would otherwise pair with a no-op DELETE.
               throw new HiddenReaperRowRaced(row.id);
             }
+            // Resolve the owning project's audit label from the live
+            // projects row inside the same tx — never from the
+            // attachment payload (which may be stale). The FK uses
+            // ON DELETE CASCADE, so a concurrently purged project
+            // would have already cascade-deleted this attachment row
+            // and our CAS DELETE above would have returned undefined.
+            // A null projectRow here therefore represents a data-
+            // integrity issue rather than a concurrency race; fall
+            // back to the projectId so the audit row is still well-
+            // formed (mutate() requires the label when the ancestor
+            // pair is set).
+            const projectRow = await getProjectRowById(tx, row.projectId);
+            const ancestorEntityLabel = projectRow ? projectAuditLabel(projectRow) : row.projectId;
             return {
               entityId: row.id,
               value: undefined,
@@ -103,6 +118,7 @@ export async function runAttachmentHiddenReaper(
               after: {},
               ancestorEntityType: 'project',
               ancestorEntityId: row.projectId,
+              ancestorEntityLabel,
             };
           },
         },

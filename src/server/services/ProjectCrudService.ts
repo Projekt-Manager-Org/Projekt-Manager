@@ -252,6 +252,7 @@ export class ProjectCrudService {
             // Project rows self-ancestor (architecture.md §11.12).
             ancestorEntityType: 'project',
             ancestorEntityId: row.id,
+            ancestorEntityLabel: projectAuditLabel(row),
           };
         },
       });
@@ -278,6 +279,7 @@ export class ProjectCrudService {
               // Nested entity: ancestor = project (architecture.md §11.12).
               ancestorEntityType: 'project',
               ancestorEntityId: inserted.id,
+              ancestorEntityLabel: projectAuditLabel(inserted),
             };
           },
         });
@@ -535,6 +537,7 @@ export class ProjectCrudService {
                 // Self-ancestor for a project row (architecture.md §11.12).
                 ancestorEntityType: 'project',
                 ancestorEntityId: id,
+                ancestorEntityLabel: projectAuditLabel(updated),
               };
             },
           });
@@ -563,6 +566,7 @@ export class ProjectCrudService {
                   after: {},
                   ancestorEntityType: 'project',
                   ancestorEntityId: id,
+                  ancestorEntityLabel: projectAuditLabel(currentRow),
                 };
               },
             });
@@ -583,6 +587,7 @@ export class ProjectCrudService {
                   after: { projectId: id, userId: workerId, displayName },
                   ancestorEntityType: 'project',
                   ancestorEntityId: id,
+                  ancestorEntityLabel: projectAuditLabel(currentRow),
                 };
               },
             });
@@ -643,6 +648,7 @@ export class ProjectCrudService {
               after: {},
               ancestorEntityType: 'project',
               ancestorEntityId: id,
+              ancestorEntityLabel: projectAuditLabel(priorRow),
             };
           },
         },
@@ -689,6 +695,7 @@ export class ProjectCrudService {
               after: { number: restoredRow.number, title: restoredRow.title },
               ancestorEntityType: 'project',
               ancestorEntityId: id,
+              ancestorEntityLabel: projectAuditLabel(restoredRow),
             };
           },
         });
@@ -766,6 +773,7 @@ export class ProjectCrudService {
               after: {},
               ancestorEntityType: 'project',
               ancestorEntityId: id,
+              ancestorEntityLabel: priorRow ? projectAuditLabel(priorRow) : null,
             };
           },
         },

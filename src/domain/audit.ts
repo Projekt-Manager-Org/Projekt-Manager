@@ -62,6 +62,15 @@ export interface AuditEntry {
    */
   entityLabel: string | null;
   /**
+   * Parent project's label snapshot at write time (architecture.md
+   * §11.12). Non-null for project rows (self-ancestor) and child-entity
+   * rows (`project_worker`, `attachment`, `invoice`); null for top-level
+   * entities (`customer`, `user`, `company_profile`, `data_import`).
+   * Powers the activity dock's single-line row (AC-339) and the global
+   * Aktivität view's `Projekt` column (AC-342) without a JOIN.
+   */
+  ancestorEntityLabel: string | null;
+  /**
    * Action vocabulary — free-text by design (data-model.md §5.10). The
    * shipping set is pinned by `auditActionLabels.ts` for UI rendering;
    * filter-side validation is enforced by the server.

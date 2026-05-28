@@ -374,16 +374,22 @@ export const auditLog = pgTable(
     entityLabel: text('entity_label'),
     // Ancestor denormalization (architecture.md §11.12). Per-parent
     // activity feeds (project detail) need rows for the project itself
-    // AND for its nested entities (`project_worker`, `attachment`).
+    // AND for its nested entities (`project_worker`, `attachment`,
+    // `invoice`). The `ancestorEntityLabel` snapshot additionally powers
+    // the cross-project surfaces (the activity dock and the global
+    // Aktivität view's `Projekt` column — AC-339 / AC-342) without a
+    // runtime JOIN against `projects`.
     // Write-time convention:
-    //   - `project` rows self-ancestor: ancestor = (project, entityId).
-    //   - Nested entities (`project_worker`, `attachment`) set
-    //     ancestor = (project, projectId).
-    //   - Top-level entities (`customer`, `user`) leave ancestor NULL.
+    //   - `project` rows self-ancestor: ancestor = (project, entityId, entityLabel).
+    //   - Nested entities (`project_worker`, `attachment`, `invoice`) set
+    //     ancestor = (project, projectId, projectLabel).
+    //   - Top-level entities (`customer`, `user`, `company_profile`,
+    //     `data_import`) leave ancestor NULL on all three columns.
     // Reads use a single indexed predicate (`audit_log_ancestor_idx`)
     // instead of a JSONB path match or a bespoke `projectScope` carve-out.
     ancestorEntityType: text('ancestor_entity_type'),
     ancestorEntityId: uuid('ancestor_entity_id'),
+    ancestorEntityLabel: text('ancestor_entity_label'),
     action: text('action').notNull(),
     payload: jsonb('payload')
       .notNull()

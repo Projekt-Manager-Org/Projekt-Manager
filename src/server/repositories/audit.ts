@@ -159,6 +159,12 @@ export interface AuditRow {
   entityId: string;
   /** Snapshot of the entity's human-readable label at write time. */
   entityLabel: string | null;
+  /**
+   * Snapshot of the parent project's human-readable label at write time
+   * (architecture.md §11.12). Null for top-level entities. Powers the
+   * dock and the /audit Projekt column without a JOIN.
+   */
+  ancestorEntityLabel: string | null;
   action: string;
   payload: unknown;
   correlationId: string | null;
@@ -274,6 +280,7 @@ export async function listAuditEntries(
       entityType: auditLog.entityType,
       entityId: auditLog.entityId,
       entityLabel: auditLog.entityLabel,
+      ancestorEntityLabel: auditLog.ancestorEntityLabel,
       action: auditLog.action,
       payload: auditLog.payload,
       correlationId: auditLog.correlationId,
@@ -336,6 +343,7 @@ export async function getAuditEntry(
       entityType: auditLog.entityType,
       entityId: auditLog.entityId,
       entityLabel: auditLog.entityLabel,
+      ancestorEntityLabel: auditLog.ancestorEntityLabel,
       action: auditLog.action,
       payload: auditLog.payload,
       correlationId: auditLog.correlationId,
@@ -375,6 +383,7 @@ function toAuditRow(row: {
   entityType: string;
   entityId: string;
   entityLabel: string | null;
+  ancestorEntityLabel: string | null;
   action: string;
   payload: unknown;
   correlationId: string | null;
@@ -389,6 +398,7 @@ function toAuditRow(row: {
     entityType: row.entityType as AuditEntityType,
     entityId: row.entityId,
     entityLabel: row.entityLabel,
+    ancestorEntityLabel: row.ancestorEntityLabel,
     action: row.action,
     payload: row.payload,
     correlationId: row.correlationId,

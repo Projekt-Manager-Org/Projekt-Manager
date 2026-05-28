@@ -114,20 +114,30 @@ export interface MutateResult<T> {
   /**
    * Ancestor-link snapshot (architecture.md §11.12). Populated at write
    * time so the per-parent activity feed can fetch every row scoped to a
-   * project in one indexed predicate. Services return both fields — or
-   * neither, for top-level entities (`customer`, `user`).
+   * project in one indexed predicate, and so the cross-project surfaces
+   * (the dock + the global Aktivität view's Projekt column — AC-339 /
+   * AC-342) render the parent project's name from `ancestorEntityLabel`
+   * without a runtime JOIN. Services return all three fields — or all
+   * three omitted, for top-level entities (`customer`, `user`,
+   * `company_profile`, `data_import`).
    *
    * Write-time convention:
-   *   - `entityType='project'`        → `('project', entityId)` (self-ancestor).
-   *   - `entityType='project_worker'` → `('project', projectId)`.
-   *   - `entityType='attachment'`     → `('project', projectId)`.
-   *   - `entityType='customer'|'user'` → omit.
+   *   - `entityType='project'`        → `('project', entityId, entityLabel)` (self-ancestor).
+   *   - `entityType='project_worker'` → `('project', projectId, projectLabel)`.
+   *   - `entityType='attachment'`     → `('project', projectId, projectLabel)`.
+   *   - `entityType='invoice'`        → `('project', projectId, projectLabel)`.
+   *   - `entityType='customer'|'user'|'company_profile'|'data_import'` → omit.
    *
-   * Both-or-neither is enforced at the service layer (`validateAncestor`)
-   * and by the DB CHECK `audit_log_ancestor_pair`.
+   * Both-or-neither on the `(type, id)` pair is enforced at the service
+   * layer (`validateAncestor`) and by the DB CHECK
+   * `audit_log_ancestor_pair`. `ancestorEntityLabel` co-populates with
+   * the pair — the service layer enforces this; the DB column is
+   * unconstrained (no CHECK) because the label is display metadata, not
+   * a structural invariant.
    */
   ancestorEntityType?: AuditEntityType;
   ancestorEntityId?: string;
+  ancestorEntityLabel?: string | null;
 }
 
 /**
@@ -216,6 +226,7 @@ export async function mutateInTx<T>(
       entityLabel: domainResult.entityLabel ?? null,
       ancestorEntityType: domainResult.ancestorEntityType ?? null,
       ancestorEntityId: domainResult.ancestorEntityId ?? null,
+      ancestorEntityLabel: domainResult.ancestorEntityLabel ?? null,
       action: spec.action,
       // Drizzle's `jsonb()` column serializes the JS value automatically
       // via the pg driver. The earlier `sql\`${JSON.stringify(...)}::jsonb\``
@@ -243,6 +254,7 @@ export async function mutateInTx<T>(
     entityLabel: inserted.entityLabel,
     ancestorEntityType: inserted.ancestorEntityType as AuditEntityType | null,
     ancestorEntityId: inserted.ancestorEntityId,
+    ancestorEntityLabel: inserted.ancestorEntityLabel,
     action: inserted.action,
     payload: inserted.payload,
     correlationId: inserted.correlationId,
@@ -266,17 +278,39 @@ export async function dispatchAuditRows(rows: AuditLogRow[]): Promise<void> {
  * Enforce the both-or-neither ancestor invariant at the service layer
  * so a programmer error surfaces with a clean stack trace rather than
  * as a 23514 CHECK violation at commit time. The DB CHECK
- * `audit_log_ancestor_pair` is the backstop.
+ * `audit_log_ancestor_pair` is the backstop on `(type, id)`; this
+ * function additionally requires `ancestorEntityLabel` whenever the
+ * pair is set, since the label is load-bearing for the cross-project
+ * Projekt column (AC-342) and the dock's single-line row (AC-339). The
+ * DB column is unconstrained so legacy rows would not break a query,
+ * but any new write going through `mutate()` must carry the label —
+ * projects always have a displayName-derived label, so missing it is a
+ * programmer error.
  */
 function validateAncestor(spec: {
   ancestorEntityType?: unknown;
   ancestorEntityId?: unknown;
+  ancestorEntityLabel?: unknown;
 }): void {
   const hasType = spec.ancestorEntityType !== undefined && spec.ancestorEntityType !== null;
   const hasId = spec.ancestorEntityId !== undefined && spec.ancestorEntityId !== null;
   if (hasType !== hasId) {
     throw new Error(
       'mutate(): ancestorEntityType and ancestorEntityId must be provided together or both omitted',
+    );
+  }
+  const hasLabel =
+    spec.ancestorEntityLabel !== undefined &&
+    spec.ancestorEntityLabel !== null &&
+    spec.ancestorEntityLabel !== '';
+  if (hasType && !hasLabel) {
+    throw new Error(
+      'mutate(): ancestorEntityLabel is required when ancestorEntityType / ancestorEntityId are set',
+    );
+  }
+  if (!hasType && hasLabel) {
+    throw new Error(
+      'mutate(): ancestorEntityLabel must be omitted when the ancestor pair is omitted',
     );
   }
 }

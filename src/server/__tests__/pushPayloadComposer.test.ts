@@ -22,6 +22,7 @@ function row(overrides: Partial<AuditLogRow> = {}): AuditLogRow {
     entityLabel: '2026-002 Innenraumgestaltung Weber',
     ancestorEntityType: 'project',
     ancestorEntityId: 'project-42',
+    ancestorEntityLabel: '2026-002 Innenraumgestaltung Weber',
     action: 'transition:forward',
     payload: { before: { status: 'anfrage' }, after: { status: 'beauftragt' } },
     correlationId: null,
@@ -86,14 +87,16 @@ describe('composePushPayload — AC-211', () => {
     expect(out.url).toBe('/projects/project-42');
   });
 
-  it('renders project.attachment_added with the project-label snapshot and an ancestor-resolved url', () => {
+  it('renders project.attachment_added with the project-label snapshot from ancestorEntityLabel and an ancestor-resolved url', () => {
     // AC-211 for this class: the body names the affected project via the
-    // frozen `payload.after.projectLabel` snapshot AND indicates a file
-    // was added; the click target is `/projects/:id` resolved from the
+    // row-level `ancestorEntityLabel` snapshot AND indicates a file was
+    // added; the click target is `/projects/:id` resolved from the
     // audit row's ANCESTOR link, NOT `entityId` — an `attachment` row's
     // `entityId` is the attachment, the ancestor is the project. Distinct
     // ids for entityId vs ancestorEntityId so an entityId-based
-    // regression on the url fails here.
+    // regression on the url fails here. The payload-side projectLabel
+    // duplicate (legacy AC-219 shape) is no longer rendered, ensuring
+    // ancestorEntityLabel is the single source of the project name.
     const out = composePushPayload(
       'project.attachment_added',
       row({
@@ -102,12 +105,12 @@ describe('composePushPayload — AC-211', () => {
         entityId: 'attachment-77',
         ancestorEntityType: 'project',
         ancestorEntityId: 'project-42',
+        ancestorEntityLabel: '2026-002 Innenraumgestaltung Weber',
         entityLabel: 'ancestor.pdf',
         payload: {
           after: {
             projectId: 'project-42',
             attachmentId: 'attachment-77',
-            projectLabel: '2026-002 Innenraumgestaltung Weber',
             label: 'rechnung',
             mimeType: 'application/pdf',
             sizeBytes: 123,
