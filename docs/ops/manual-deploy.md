@@ -33,6 +33,8 @@ Have `~/secrets/age-backup.key` open on the operator workstation before invoking
 
 ## Deploy
 
+`deploy.sh` is the **only** supported deploy path. It runs a non-destructive preflight (`deploy-preflight-cli.ts`) in a throwaway `docker run --rm` container — env validation, storage reachability/verb/bucket-safety probes — **before** `docker compose up` recreates anything. A bare `docker compose up` skips that gate: an invalid `.env` (weak bootstrap password, malformed VAPID or storage credentials, drifted bucket config) then crash-loops the recreated container _after_ the previous good replica is already gone.
+
 ```bash
 # Deploy origin/main (default)
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
