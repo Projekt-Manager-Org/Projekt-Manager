@@ -11,7 +11,7 @@ Concept map: [overview.md](overview.md). Design rationale: [ADR-0020 §Decision]
 
 Tier 2 needs the private identity on the VPS. `load-drill-key.sh` writes it to a tmpfs mount inside the `backup` container and never anywhere else ([AC-175](../../spec/verification.md#1522-backup-and-recovery)).
 
-**Location:** `scripts/backup/load-drill-key.sh` in the repo. `Dockerfile.backup` copies it into the image at `/usr/local/bin/load-drill-key` (no `.sh`) — that is the only path the operator ever invokes, via `docker exec` into the running backup container. The tmpfs target inside the container is `/run/drill-key/identity` (file mode 0400, owned by root; the tmpfs mount itself is mode 0700 uid 0 — the container runs as root).
+**Location:** `scripts/backup/load-drill-key.sh` in the repo. `Dockerfile.backup` copies it into the image at `/usr/local/bin/load-drill-key` (no `.sh`) — that is the only path the operator ever invokes, via `docker exec` into the running backup container. The tmpfs target inside the container is `/run/drill-key/identity` (file mode 0400, owned by the container's non-root `postgres` user (UID 70); the tmpfs mount itself is mode 0700 uid=70 gid=70).
 
 **Deploy auto-prompt:** `scripts/deploy.sh` checks `/run/drill-key/identity` after `docker compose --profile backup up -d` and invokes `load-drill-key` interactively when the tmpfs is empty (the common case after a deploy that recreated the backup container). Have `~/secrets/age-backup.key` ready on the operator workstation when running a deploy — that's the single intended trigger for the steps below in normal operation. The standalone invocation documented here remains the recovery path for ad-hoc reloads (operator-initiated rotation, post-VPS-reboot without a redeploy, container restart triggered outside the deploy flow).
 
@@ -26,7 +26,7 @@ You are about to write private key material into RAM on the VPS; this is cleared
 
 3. The script prompts with `read -s` ("Paste age identity, finish with Ctrl-D:"). Paste the clipboard contents, press Enter, then Ctrl-D. The script:
    - Validates the first line is `# public key: age1...` and that it matches `AGE_RECIPIENT`.
-   - Writes the identity to `/run/drill-key/identity` (tmpfs, mode 0400, root-owned).
+   - Writes the identity to `/run/drill-key/identity` (tmpfs, mode 0400, owned by `postgres` UID 70).
    - Zeros its own buffer before exit.
 
 4. Verify the key is loaded without exposing it:
@@ -57,6 +57,12 @@ Expected one-liners on stdout:
 - `backup-runner: drill ok` — full Tier 2 round-trip succeeded. `meta_backup_status.lastDrillAt` advanced and `lastDrillOk` is true.
 - `backup-runner: drill skipped reason=key-absent` — no identity at `/run/drill-key/identity`. Load the key via [§Loading](#loading-the-drill-key-on-the-vps) and retry. Skip is not a failure ([AC-168](../../spec/verification.md#1522-backup-and-recovery)), so the status row is not mutated.
 - `backup-runner: drill failed reason=...` — something between download, decrypt, and verify broke. `lastDrillOk=false` and `lastError` carries the cue; see [troubleshooting.md](troubleshooting.md).
+
+> A drill verifies the **latest** backup. After a deploy that adds a table, no existing dump has it yet, so the drill fails (`verify: Failed query: ... FROM "<new_table>"`) until a backup runs against the new schema. Take one `run` first:
+>
+> ```bash
+> sudo -u deploy docker exec projekt-manager-backup-1 node /app/dist/server/backup-runner.js run
+> ```
 
 croner's `protect: true` prevents two scheduled drill ticks from overlapping within the schedule process. A manual `docker exec … drill` runs in a separate Node process and is NOT serialised against the scheduled tick — operators who fire a manual drill during a scheduled tick may see two drills run in parallel. In practice the artifacts are independent (different ephemeral pg instances, same R2 artifact under verification) so the worst case is a duplicate "drill ok" log line and a status-mirror overwrite of the slower one's row by the faster.
 
