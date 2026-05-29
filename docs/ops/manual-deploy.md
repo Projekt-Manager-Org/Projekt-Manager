@@ -46,6 +46,8 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <sha>
 
 The script: fetches origin, checks out the exact SHA, decrypts `secrets.env.age` via process substitution (plaintext never on disk), sets `APP_IMAGE_TAG=sha-<sha>`, runs `docker compose pull app && docker compose up -d`, polls `/api/health` for 60s, reloads Caddy, and — when the backup container's tmpfs is empty — prompts the operator to paste the age private identity into `/run/drill-key/identity` via the existing `load-drill-key` tool (no key persisted to disk). A failed or skipped paste warns but does not abort the deploy; reload manually with `docker exec -it projekt-manager-backup-1 load-drill-key`.
 
+Finally — only after the stack is verified healthy — it garbage-collects superseded images. App/backup layers are `node_modules`-heavy (thousands of tiny files) and accumulate one image-set per deploy, exhausting inodes long before disk bytes if left unbounded. Retention is count-based: it keeps the most-recent `DEPLOY_IMAGE_RETENTION` (default `3`) tags per repo image — current + 2 rollback targets — and prunes BuildKit cache older than `DEPLOY_BUILD_CACHE_MAX_AGE` (default `168h`). GC runs last and is failure-tolerant; a reclaim hiccup never fails an already-successful deploy.
+
 ## How upgrades reach the VPS
 
 `deploy.sh` covers everything except the Docker engine itself.
@@ -66,7 +68,7 @@ sudo -u deploy git -C /opt/projekt-manager log --oneline -20   # find good SHA
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <sha>
 ```
 
-The GHCR image must still exist. If pruned, use forward-rollback: `git revert` on operator machine, push, wait for CI, redeploy.
+The image must still exist. The host keeps the last `DEPLOY_IMAGE_RETENTION` (default 3) tags per repo image, so a rollback within that window skips the registry round-trip. Beyond it, `compose pull` re-fetches from GHCR. If GHCR has also pruned it, use forward-rollback: `git revert` on operator machine, push, wait for CI, redeploy.
 
 ## Verify a deploy
 
@@ -200,3 +202,4 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main
 | `no such container` on exec                                            | `docker compose up -d` did not start `app`                                                                                             | `docker ps --filter name=projekt-manager-`; confirm the resolved tag exists in GHCR                                                                                                                                                          |
 | `APP_IMAGE_TAG must be set` or `CLOUDFLARE_API_TOKEN must be declared` | Compose parses the full file (and every `:?` gate) before dispatching any verb — trips on `restart`/`logs`/`exec`/`ps`, not just `up`. | Read-only ops: `docker` directly (no parse, e.g. `docker logs projekt-manager-caddy-1`). Any compose verb: re-run `scripts/deploy.sh` — by design the only entrypoint that pins the SHA and sources secrets, so they stay encrypted at rest. |
 | First request after deploy 500s with `column "<X>" does not exist`     | Schema baseline edited; live DB still on previous schema                                                                               | Wipe + reseed + sync — see [recover-from-schema-change.md](recover-from-schema-change.md)                                                                                                                                                    |
+| `failed to extract layer … no space left on device` mid-pull           | Disk or **inodes** exhausted (`df -i /` near 100%) — pre-GC image buildup, or another filler. The post-deploy GC bounds normal growth. | `df -h / && df -i /`; reclaim with `docker builder prune -af && docker image prune -af` (keeps running images), then re-run the deploy. If inodes stay high, find the hog: `du --inodes -xd1 / \| sort -rn`.                                 |

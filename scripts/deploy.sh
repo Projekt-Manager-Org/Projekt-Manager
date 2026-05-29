@@ -424,4 +424,74 @@ else
   fi
 fi
 
+# --- Post-deploy: image garbage collection (host-side retention) ------
+# Each deploy pulls a fresh `sha-<commit>` app+backup pair and builds a
+# new caddy layer; nothing here reclaimed the superseded ones, so they
+# accumulated one image-set per deploy. App/backup layers are
+# node_modules-heavy (thousands of tiny files) and exhaust INODES long
+# before bytes: 2026-05-29 the box hit 100% inodes at 78% disk with 122
+# images, and the next deploy died mid-pull with an overlayfs "no space
+# left on device". This is the host-side analogue of kubelet image GC /
+# an ECR lifecycle policy: keep a small rollback window of the
+# most-recent tags, expire the rest.
+#
+# Placed LAST, after the stack is verified healthy. Each running
+# container's live tag is excluded from pruning BY NAME — not by trusting
+# `docker rmi` to refuse an in-use image. That refusal only fires when
+# the tag is the image's sole reference; if a CI promote re-tag left the
+# image with a second tag, `docker rmi` would silently UNTAG the live,
+# compose-pinned ref instead, breaking the next restart. By-name
+# exclusion also protects a rollback target (an older running tag that
+# falls outside the recency window). Pruning is housekeeping, not a
+# deploy gate: every command is failure-tolerant so a reclaim hiccup
+# cannot fail an already-successful deploy.
+#
+# Retention is count-based (bounds inodes regardless of deploy frequency,
+# unlike an age window): keep the live tag + the newest
+# IMAGE_RETENTION-1 other tags per repo image (default 3 ⇒ current + 2
+# rollback targets). Override via DEPLOY_IMAGE_RETENTION.
+IMAGE_RETENTION="${DEPLOY_IMAGE_RETENTION:-3}"
+echo "Pruning superseded images (keep ${IMAGE_RETENTION} per image, plus dangling + build cache)..."
+
+prune_repo_image() {
+  # Resolve the live ref from the running container, so this auto-adapts
+  # to a registry/org rename — we only prune the exact repo we run.
+  local container="$1"
+  local ref repo
+  ref="$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null)" || ref=""
+  if [ -z "$ref" ]; then
+    echo "WARN: could not resolve image for $container — skipping its image GC." >&2
+    return 0
+  fi
+  repo="${ref%:*}"
+  # Newest-first by CreatedAt (host is UTC, single daemon ⇒ one TZ ⇒
+  # lexical = chronological). Always skip the live tag and any <none>
+  # rows; among the remaining tags keep the newest IMAGE_RETENTION-1 and
+  # untag the rest by `repo:tag` (never by image ID — untagging one tag
+  # must not delete an image a kept tag still points to).
+  docker images "$repo" --format '{{.CreatedAt}}|{{.Repository}}:{{.Tag}}' \
+    | sort -r \
+    | awk -F'|' -v keep="$IMAGE_RETENTION" -v live="$ref" '
+        $2 ~ /<none>/ { next }
+        $2 == live    { next }
+        { n++ }
+        n > keep - 1  { print $2 }' \
+    | xargs -r docker rmi 2>/dev/null || true
+}
+
+prune_repo_image projekt-manager-app-1
+prune_repo_image projekt-manager-backup-1
+
+# Reclaim dangling (<none>) images — chiefly superseded `docker compose
+# build caddy` layers, which the per-repo pass above cannot see (they
+# carry no repository). Dangling-only: never touches a tagged or in-use
+# image, and is the path that actually reclaims the recurring caddy-
+# rebuild inode sink.
+docker image prune -f >/dev/null 2>&1 || true
+
+# Build cache has no rollback semantics, so an age window (not a count)
+# is the right bound; tune via DEPLOY_BUILD_CACHE_MAX_AGE. Pruned rather
+# than wiped (-a) so an unchanged caddy build stays a near-no-op.
+docker builder prune -f --filter "until=${DEPLOY_BUILD_CACHE_MAX_AGE:-168h}" >/dev/null 2>&1 || true
+
 echo "Deploy verified — healthy at $(git rev-parse --short HEAD)"
