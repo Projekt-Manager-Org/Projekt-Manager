@@ -26,6 +26,7 @@ import { formatDateDE } from '@/domain/dateFormat';
 import { buildProjectBundleFilename } from '@/domain/filename';
 import { ActivityFeed } from '@/ui/audit/ActivityFeed';
 import { NotPermittedView } from '@/ui/common/NotPermittedView';
+import { triggerBlobDownload } from '@/ui/utils/downloadFile';
 import { CustomerEditForm } from '@/ui/management/CustomerEditForm';
 import { PhotoGallery } from './PhotoGallery';
 import { BinaryList } from './BinaryList';
@@ -255,17 +256,7 @@ export function ProjectDetailPage() {
       rows.map((a) => a.id),
     );
     if (!blob) return;
-    const blobUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = blobUrl;
-    anchor.download = bundleFileName;
-    anchor.rel = 'noopener';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    // Release the object URL after the click drains — synchronous
-    // revocation can race the browser's download-pickup on some engines.
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+    triggerBlobDownload(blob, bundleFileName);
   };
 
   const readyAttachmentCount = (attachmentsByProject ?? []).filter(
