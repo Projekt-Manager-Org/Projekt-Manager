@@ -1,21 +1,27 @@
 /**
- * Demo recording — produces a video of the LLM email extraction workflow.
+ * Demo recording — LLM email-extraction walkthrough.
  *
- * This is NOT a regular test. It hits the real extraction API and uses
- * deliberate pauses so the viewer can follow each step.
+ * This is NOT a regular test. It hits the real extraction API and is
+ * paced for a viewer via `step()` captions + a visible cursor. It runs
+ * under both the `demo` (desktop) and `demo-mobile` projects, so one
+ * authored scenario yields a desktop and a mobile clip.
  *
  * Prerequisites:
- *   - Dev server running (`npm run dev`)
- *   - OPENROUTER_API_KEY configured in .env
- *   - Database seeded (`npm run db:seed` or prior E2E setup run)
+ *   - `OPENROUTER_API_KEY` configured in `.env` (the extraction is real).
+ *   - Nothing else: the `demo`/`demo-mobile` projects depend on `setup`,
+ *     which boots the e2e stack and seeds the realistic snapshot.
  *
- * Run (headed, visible browser):
- *   npx playwright test e2e/demo-recording.spec.ts --project=demo --headed
+ * Run + encode to MP4 (+ .srt sidecar):
+ *   npm run demo
  *
- * Output:
- *   test-results/<test-folder>/video.webm
+ * Run only this scenario, headed:
+ *   PLAYWRIGHT_RUN_DEMO=1 npx playwright test e2e/demo-recording.spec.ts \
+ *     --project=demo --headed
+ *
+ * Output: `test-results/<folder>/video.webm` → `demo.mp4` (+ `demo.srt`).
  */
 import { test, expect } from '@playwright/test';
+import { startDemo } from './demo-helpers';
 
 /* Fresh session — no saved auth, so the recording starts at the login screen. */
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -41,47 +47,49 @@ const SAMPLE_EMAIL = [
   '51465 Bergisch Gladbach',
 ].join('\n');
 
-test('LLM email extraction demo', async ({ page }) => {
+test('E-Mail-Extraktion per KI', async ({ page }, testInfo) => {
+  const demo = await startDemo(page, testInfo);
+
   // toggled locally when recording the demo in a specific theme.
   await page.emulateMedia({ colorScheme: 'dark' });
-
-  // ── Login screen ──────────────────────────────────────────────────
   await page.goto('/');
-  await expect(page.getByTestId('login-form')).toBeVisible();
-  await page.waitForTimeout(1500);
 
-  await page.getByTestId('login-username').pressSequentially('inhaber', { delay: 80 });
-  await page.waitForTimeout(400);
-  await page.getByTestId('login-password').pressSequentially('changeme', { delay: 80 });
-  await page.waitForTimeout(600);
-
-  await page.getByTestId('login-submit').click();
-
-  // ── Dashboard ─────────────────────────────────────────────────────
-  await expect(page.getByTestId('kanban-board')).toBeVisible();
-  await page.waitForTimeout(2500);
-
-  // ── Open extraction modal ─────────────────────────────────────────
-  await page.getByTestId('extract-button').click();
-  await expect(page.getByTestId('extract-email-input')).toBeVisible();
-  await page.waitForTimeout(1000);
-
-  // ── Paste email text ──────────────────────────────────────────────
-  await page.getByTestId('extract-email-input').click();
-  await page.waitForTimeout(300);
-  await page.getByTestId('extract-email-input').fill(SAMPLE_EMAIL);
-  await page.waitForTimeout(2000);
-
-  // ── Extract ───────────────────────────────────────────────────────
-  await page.getByTestId('extract-submit').click();
-
-  // Wait for the LLM to respond — the modal transitions to the review
-  // view once extraction succeeds. The customer-name field only appears
-  // in the second stage, so its visibility signals completion.
-  await expect(page.getByTestId('extract-customer-name')).toBeVisible({
-    timeout: 60_000,
+  await demo.step('Anmeldung am System', async () => {
+    await expect(page.getByTestId('login-form')).toBeVisible();
+    await page.getByTestId('login-username').pressSequentially('inhaber', { delay: 80 });
+    await page.getByTestId('login-password').pressSequentially('changeme', { delay: 80 });
+    await page.getByTestId('login-submit').click();
+    await expect(page.getByTestId('kanban-board')).toBeVisible();
   });
 
-  // Let the viewer see the populated fields.
-  await page.waitForTimeout(5000);
+  await demo.step('Eingang einer Kundenanfrage per E-Mail', async () => {
+    await page.getByTestId('extract-button').click();
+    await expect(page.getByTestId('extract-email-input')).toBeVisible();
+  });
+
+  await demo.step('E-Mail-Text einfügen', async () => {
+    await page.getByTestId('extract-email-input').click();
+    await page.getByTestId('extract-email-input').fill(SAMPLE_EMAIL);
+  });
+
+  await demo.step(
+    'Die KI extrahiert Kunden- und Projektdaten …',
+    async () => {
+      await page.getByTestId('extract-submit').click();
+      // The review view appears once extraction succeeds; the customer-name
+      // field is only present in that second stage, so it signals completion.
+      await expect(page.getByTestId('extract-customer-name')).toBeVisible({ timeout: 60_000 });
+    },
+    { holdMs: 0 },
+  );
+
+  await demo.step(
+    'Erkannte Daten prüfen und übernehmen',
+    async () => {
+      // Let the viewer read the populated fields.
+    },
+    { settleMs: 1500, holdMs: 4000 },
+  );
+
+  await demo.finish();
 });

@@ -230,20 +230,39 @@ export default defineConfig({
       },
     },
 
-    // 5. Demo recordings — opt-in only. The project is omitted from
+    // 5. Demo recordings — opt-in only. The projects are omitted from
     //    the config entirely unless PLAYWRIGHT_RUN_DEMO is set, so a
     //    bare `npx playwright test` (locally or in CI) does not pick
-    //    them up. Run them with:
-    //      PLAYWRIGHT_RUN_DEMO=1 npx playwright test --project=demo --headed
+    //    them up. They depend on `setup` so the e2e DB/bucket is seeded
+    //    with the realistic snapshot before recording. Run with:
+    //      npm run demo
+    //    or directly:
+    //      PLAYWRIGHT_RUN_DEMO=1 npx playwright test --project=demo --project=demo-mobile
+    //
+    //    `demo` records the desktop layout; `demo-mobile` emulates a real
+    //    phone (Pixel 7, 412×839 — below the 768 px md breakpoint, so the
+    //    genuine mobile shell renders, not a squished desktop). Both match
+    //    every `demo-*.spec.ts`, so each scenario yields a desktop + a
+    //    mobile clip from one authored spec.
     ...(process.env.PLAYWRIGHT_RUN_DEMO
       ? [
           {
             name: 'demo',
+            dependencies: ['setup'],
             testMatch: DEMO_TESTS,
             use: {
               ...devices['Desktop Chrome'],
               viewport: { width: 1400, height: 1200 },
               video: { mode: 'on' as const, size: { width: 1400, height: 1200 } },
+            },
+          },
+          {
+            name: 'demo-mobile',
+            dependencies: ['setup'],
+            testMatch: DEMO_TESTS,
+            use: {
+              ...devices['Pixel 7'],
+              video: { mode: 'on' as const, size: { width: 412, height: 839 } },
             },
           },
         ]
