@@ -38,6 +38,8 @@ import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
 import { usePermission } from '@/hooks/usePermission';
 import { useInvoiceDetailStore } from '@/state/invoiceDetailStore';
 import { useInvoiceStore } from '@/state/invoiceStore';
+import { useToastStore } from '@/state/toastStore';
+import { downloadAuthedFile } from '@/ui/utils/downloadFile';
 import { NotPermittedView } from '@/ui/common/NotPermittedView';
 import { InvoiceCancelDialog } from '@/ui/detail/invoice/InvoiceCancelDialog';
 import styles from './InvoiceDetailView.module.css';
@@ -87,6 +89,7 @@ export function InvoiceDetailView() {
   const status = useInvoiceDetailStore((s) => s.statusById[invoiceId]);
   const fetchInvoice = useInvoiceDetailStore((s) => s.fetch);
   const cancelInvoice = useInvoiceStore((s) => s.cancel);
+  const showToast = useToastStore((s) => s.show);
 
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
@@ -170,15 +173,13 @@ export function InvoiceDetailView() {
       : STRINGS.invoices.downloadPdfAction;
 
   const downloadPdf = () => {
-    // Same programmatic-anchor trick the per-project block uses so the
-    // browser's download observer fires under E2E.
-    const anchor = document.createElement('a');
-    anchor.href = `/api/invoices/${invoice.id}/pdf`;
-    anchor.download = buildInvoiceDownloadFilename(invoice);
-    anchor.rel = 'noopener';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+    // Fetch the PDF bytes and save them via a blob URL (see
+    // `downloadAuthedFile`) — a direct `<a download>` at the attachment
+    // endpoint leaves mobile/PWA browsers on a blank page.
+    void downloadAuthedFile(
+      `/api/invoices/${invoice.id}/pdf`,
+      buildInvoiceDownloadFilename(invoice),
+    ).catch(() => showToast('error', STRINGS.invoices.downloadPdfError));
   };
 
   const handleCancelConfirm = async (reason: string) => {

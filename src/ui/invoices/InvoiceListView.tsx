@@ -34,6 +34,7 @@ import { orderInvoicesWithStornoGrouping } from '@/domain/invoiceGrouping';
 import { useInvoiceListStore } from '@/state/invoiceListStore';
 import { useProjectStore } from '@/state/projectStore';
 import { NotPermittedView } from '@/ui/common/NotPermittedView';
+import { triggerBlobDownload } from '@/ui/utils/downloadFile';
 import { CompanyProfileSection } from '@/ui/management/CompanyProfileSection';
 import { InvoiceListFilterBar } from './InvoiceListFilterBar';
 import { InvoiceListRow } from './InvoiceListRow';
@@ -48,21 +49,6 @@ function buildYearOptions(serverYears: readonly number[]): readonly number[] {
   const set = new Set<number>(serverYears);
   set.add(new Date().getFullYear());
   return Array.from(set).sort((a, b) => b - a);
-}
-
-/** Trigger a browser download for an in-memory Blob. Mirrors the
- *  `BinaryList` download path: anchor click + delayed revoke so the
- *  download pickup is not raced by URL cleanup. */
-function triggerBlobDownload(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function InvoiceListView() {
