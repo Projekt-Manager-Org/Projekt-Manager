@@ -1,3 +1,11 @@
+# check=skip=InvalidDefaultArgInFrom
+# ^ Deliberate, not a lint to "fix away": APP_IMAGE_TAG below carries NO
+#   default on purpose, so an unsupplied tag fails the build instead of
+#   silently resolving (H2 audit finding — a stale mutable default tag
+#   could ship the wrong code; see the ARG note further down). BuildKit's
+#   InvalidDefaultArgInFrom wants a default value; adding one would reopen
+#   H2. This directive MUST remain the first line — a comment before it
+#   makes BuildKit treat it as an ordinary comment and ignore it.
 # Layer 2 encrypted backup service — see ADR-0020.
 #
 # Two-stage build:
