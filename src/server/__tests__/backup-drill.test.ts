@@ -215,4 +215,39 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     expect(postIso).toBe(priorIso);
   });
+
+  it('surfaces the underlying Postgres cause in a verify-failure reason', async () => {
+    // drizzle wraps a driver error as `Failed query: <sql>` and hangs the
+    // real Postgres message on `.cause`. The drill cue must carry that
+    // cause — otherwise an operator sees only the opaque wrapper with no
+    // hint of WHY verify failed (e.g. a restored dump missing a table).
+    const identity = path.join(keyDir, 'present.key');
+    await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
+
+    const wrapped = new Error(
+      'Failed query: SELECT COUNT(*)::int AS c FROM "data_exchange_job"\nparams: ',
+    );
+    wrapped.cause = new Error('relation "data_exchange_job" does not exist');
+
+    const result = await runDrill({
+      db,
+      identityPath: identity,
+      downloadLatestDump: async () => new Uint8Array([1, 2, 3]),
+      decrypt: async () => new Uint8Array([1, 2, 3]),
+      expectedManifest: { data_exchange_job: { rowCount: 0, checksum: '' } },
+      verifyManifest: async () => {
+        throw wrapped;
+      },
+    });
+
+    expect(result.outcome).toBe('failed');
+    // Both the actionable cause AND the SQL context survive into the cue.
+    expect(result.reason).toContain('relation "data_exchange_job" does not exist');
+    expect(result.reason).toContain('Failed query');
+
+    // And it lands in the durable status row, not just the return value.
+    const row = await db.execute(sql`SELECT last_error FROM meta_backup_status`);
+    const lastError = (row.rows[0] as { last_error: string | null }).last_error ?? '';
+    expect(lastError).toContain('relation "data_exchange_job" does not exist');
+  });
 });

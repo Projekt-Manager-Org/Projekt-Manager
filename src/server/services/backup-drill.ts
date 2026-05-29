@@ -215,6 +215,17 @@ function firstDivergingTable(source: Manifest, restore: Manifest): string | null
 }
 
 function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
+  if (err instanceof Error) {
+    // drizzle wraps a driver failure as `Failed query: <sql>` and tucks
+    // the real Postgres message (e.g. `relation "x" does not exist`) onto
+    // `.cause`. Surface the cause so the drill cue is actionable rather
+    // than the opaque wrapper — the #1 reason a drill failure is slow to
+    // diagnose. The wrapper's `params:` tail stays for the SQL context.
+    const cause = err.cause;
+    if (cause instanceof Error && cause.message && cause.message !== err.message) {
+      return `${err.message} (cause: ${cause.message})`;
+    }
+    return err.message;
+  }
   return typeof err === 'string' ? err : 'unknown';
 }
