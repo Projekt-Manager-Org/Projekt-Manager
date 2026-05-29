@@ -29,6 +29,7 @@ import { useAuthStore } from '@/state/authStore';
 import { useConfirmStore } from '@/state/confirmStore';
 import { formatDateDE } from '@/domain/dateFormat';
 import { synthAttachmentUrl } from '@/sw/syntheticOrigin';
+import { triggerBlobDownload } from '@/ui/utils/downloadFile';
 import styles from './ProjectDetail.module.css';
 
 function isPdf(row: { fileName: string; mimeType?: string | null }): boolean {
@@ -54,21 +55,6 @@ const LABEL_BY_VALUE = new Map<AttachmentLabel, string>(
 );
 
 type RowError = 'object-absent' | 'key-unavailable';
-
-/**
- * Programmatically trigger a browser download for a URL using a
- * transient `<a download>` anchor. Shared by the single-file and bulk
- * paths so both use the same user-gesture-friendly approach.
- */
-function triggerDownload(url: string, filename: string): void {
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = 'noopener';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-}
 
 /**
  * Read the SW's `data-sw-error-code` signal off a non-2xx Response.
@@ -188,9 +174,9 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
    * "flip to placeholder" (spec §8.15.7 — lazy, click-triggered for
    * binaries).
    */
-  const probeAndDownload = async (
+  const probeAndFetch = async (
     attachmentId: string,
-  ): Promise<{ ok: true; blobUrl: string } | { ok: false; verdict: RowError }> => {
+  ): Promise<{ ok: true; blob: Blob } | { ok: false; verdict: RowError }> => {
     const url = synthAttachmentUrl(projectId, attachmentId, 'original');
     let response: Response;
     try {
@@ -204,22 +190,18 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
       return { ok: false, verdict };
     }
     const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    return { ok: true, blobUrl };
+    return { ok: true, blob };
   };
 
   const handleDownload = async (attachmentId: string) => {
     const row = binaries.find((b) => b.id === attachmentId);
     const fileName = row?.fileName ?? '';
-    const probe = await probeAndDownload(attachmentId);
+    const probe = await probeAndFetch(attachmentId);
     if (!probe.ok) {
       setRowErrors((prev) => ({ ...prev, [attachmentId]: probe.verdict }));
       return;
     }
-    triggerDownload(probe.blobUrl, fileName);
-    // Release the object URL after the click drains — synchronous
-    // revocation can race the browser's download-pickup on some engines.
-    setTimeout(() => URL.revokeObjectURL(probe.blobUrl), 0);
+    triggerBlobDownload(probe.blob, fileName);
   };
 
   const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null);
@@ -277,9 +259,7 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
     // return so the click is a no-op.
     const blob = await requestBulkZipBlob(projectId, ids);
     if (!blob) return;
-    const blobUrl = URL.createObjectURL(blob);
-    triggerDownload(blobUrl, bundleFileName);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+    triggerBlobDownload(blob, bundleFileName);
   };
 
   return (

@@ -5,12 +5,24 @@
    inline editors. */
 
 .container {
+  height: 100%;
+  /* `width: 100%` is load-bearing: the `margin: 0 auto` centering cancels
+     the flex-item cross-axis stretch, so without it the column shrinks to
+     its content's min-width and overflows narrow viewports (the shell's
+     `.main` clips the excess). Filling the track first, then capping at
+     `max-width`, keeps the cards inside the viewport on mobile and
+     centered on wide screens. */
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 1100px;
-  margin: 0 auto;
+  /* The shell's `.main` clips overflow (App.module.css); this view owns
+     its own scroll region so a long invoice reaches its footer on short
+     viewports. */
+  overflow-y: auto;
 }
 
 .header {

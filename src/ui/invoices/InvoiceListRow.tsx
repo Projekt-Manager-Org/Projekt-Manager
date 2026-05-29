@@ -35,7 +35,9 @@ import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
 import { useInvoiceListStore } from '@/state/invoiceListStore';
 import { useInvoiceStore } from '@/state/invoiceStore';
 import { useConfirmStore } from '@/state/confirmStore';
+import { useToastStore } from '@/state/toastStore';
 import { usePermission } from '@/hooks/usePermission';
+import { downloadAuthedFile } from '@/ui/utils/downloadFile';
 import styles from './InvoiceListView.module.css';
 
 interface RowAttrs {
@@ -87,6 +89,7 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
   const fetchList = useInvoiceListStore((s) => s.fetch);
   const deleteDraft = useInvoiceStore((s) => s.deleteDraft);
   const requestConfirm = useConfirmStore((s) => s.request);
+  const showToast = useToastStore((s) => s.show);
   const attrs = statusAttrs(invoice);
   const isDraft = invoice.status === 'draft';
   const showDownload = invoice.status !== 'draft';
@@ -108,19 +111,14 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
   // viewer (§8.16.3). Both are deep-linkable surfaces.
   const navigateOnRowClick = isDraft ? navigateToDraftEditor : navigateToDetail;
 
-  // Programmatic download via an invisible `<a download>` — the same
-  // trick the per-project block uses. Keeps the row's action a button
-  // (HTML allows nesting buttons as siblings of an action button when
-  // the row container is `role="button"`, but it does NOT allow nested
-  // anchors inside a button parent — hence the click-driven anchor).
+  // Fetch the PDF bytes and save them via a blob URL (see
+  // `downloadAuthedFile`) — a direct `<a download>` at the attachment
+  // endpoint leaves mobile/PWA browsers on a blank page.
   const downloadPdf = () => {
-    const anchor = document.createElement('a');
-    anchor.href = `/api/invoices/${invoice.id}/pdf`;
-    anchor.download = buildInvoiceDownloadFilename(invoice);
-    anchor.rel = 'noopener';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+    void downloadAuthedFile(
+      `/api/invoices/${invoice.id}/pdf`,
+      buildInvoiceDownloadFilename(invoice),
+    ).catch(() => showToast('error', STRINGS.invoices.downloadPdfError));
   };
 
   const handleDeleteDraft = async () => {
@@ -160,7 +158,7 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
           data-testid="invoice-select"
         />
       </div>
-      <div>
+      <div className={styles.cellNumberBlock}>
         <div className={styles.cellNumber} data-testid="invoice-number">
           {invoice.number ?? '—'}
         </div>
@@ -170,12 +168,14 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
           </div>
         )}
       </div>
-      <div>
+      <div className={styles.cellStatusWrap}>
         <span className={attrs.className} data-testid="invoice-status-badge">
           {attrs.label}
         </span>
       </div>
-      <div>{invoice.issueDate ? formatDateDE(invoice.issueDate) : '—'}</div>
+      <div className={styles.cellDate}>
+        {invoice.issueDate ? formatDateDE(invoice.issueDate) : '—'}
+      </div>
       <div className={styles.cellRecipient}>{invoice.recipient.name}</div>
       <div className={styles.cellTotal}>{formatCurrencyDE(invoice.totals.grossGrandTotal)}</div>
       <div className={styles.rowActions} onClick={(e) => e.stopPropagation()}>

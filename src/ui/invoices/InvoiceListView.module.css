@@ -3,10 +3,15 @@
    route reads as part of the management surfaces. */
 
 .container {
+  height: 100%;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* The shell's `.main` clips overflow (App.module.css); this view owns
+     its own scroll region so the list reaches its last row on short
+     viewports — mirrors the management views' container. */
+  overflow-y: auto;
 }
 
 /* Collapsible Firmendaten host. Closed-by-default so the section does
@@ -192,12 +197,48 @@
 /* The 6-column row needs roughly 900px to lay out its fixed widths
    (number 120, status 110, date 110, recipient 160, total 120) plus the
    action buttons and column gaps without squeezing. Below that we fall
-   to a 2-column stack so the row stays legible — the previous 700px
-   breakpoint left a 700–900px band where the buttons collapsed into
-   each other. */
+   to a card layout: a fixed grid of named areas so each cell lands in a
+   defined slot instead of auto-flowing into the wrong column (which left
+   the date sharing the 28px checkbox track and pushed the action button
+   off the left edge). The leading checkbox spans the three info rows;
+   the actions take a full-width row of their own. */
 @media (max-width: 900px) {
   .row {
-    grid-template-columns: 28px 1fr 1fr;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      'select number    status'
+      'select date      total'
+      'select recipient recipient'
+      'actions actions  actions';
+    column-gap: 12px;
+    row-gap: 4px;
+  }
+  .cellSelect {
+    grid-area: select;
+  }
+  .cellNumberBlock {
+    grid-area: number;
+  }
+  .cellStatusWrap {
+    grid-area: status;
+    justify-self: end;
+  }
+  .cellDate {
+    grid-area: date;
+    font-size: 0.9rem;
+    color: var(--color-text-subtle);
+  }
+  .cellRecipient {
+    grid-area: recipient;
+  }
+  .cellTotal {
+    grid-area: total;
+    justify-self: end;
+  }
+  .rowActions {
+    grid-area: actions;
+    flex-wrap: wrap;
+    margin-top: 4px;
   }
   .rowStorno {
     margin-left: 12px;

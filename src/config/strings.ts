@@ -542,6 +542,7 @@ export const STRINGS = {
     issueAction: 'Ausstellen',
     cancelAction: 'Stornieren',
     downloadPdfAction: 'PDF herunterladen',
+    downloadPdfError: 'PDF konnte nicht heruntergeladen werden.',
     deleteDraftAction: 'Entwurf löschen',
     editDraftAction: 'Bearbeiten',
     saveAction: 'Speichern',

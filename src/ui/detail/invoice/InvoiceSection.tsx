@@ -39,7 +39,9 @@ import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
 import { useInvoiceStore } from '@/state/invoiceStore';
 import { useProjectStore } from '@/state/projectStore';
 import { useConfirmStore } from '@/state/confirmStore';
+import { useToastStore } from '@/state/toastStore';
 import { usePermission } from '@/hooks/usePermission';
+import { downloadAuthedFile } from '@/ui/utils/downloadFile';
 import { InvoiceDraftForm } from './InvoiceDraftForm';
 import { InvoiceCancelDialog } from './InvoiceCancelDialog';
 import styles from './InvoiceSection.module.css';
@@ -92,6 +94,7 @@ export function InvoiceSection({ projectId, projectStatus }: Props) {
 
   const project = useProjectStore((s) => s.projects.find((p) => p.id === projectId));
   const requestConfirm = useConfirmStore((s) => s.request);
+  const showToast = useToastStore((s) => s.show);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingDraft, setEditingDraft] = useState<Invoice | null>(null);
@@ -214,15 +217,13 @@ export function InvoiceSection({ projectId, projectStatus }: Props) {
   };
 
   const downloadPdf = (invoice: Invoice) => {
-    // Use a programmatic <a download> click so the browser's download
-    // observer (the E2E's `page.waitForEvent('download')`) fires.
-    const anchor = document.createElement('a');
-    anchor.href = `/api/invoices/${invoice.id}/pdf`;
-    anchor.download = buildInvoiceDownloadFilename(invoice);
-    anchor.rel = 'noopener';
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+    // Fetch the PDF bytes and save them via a blob URL (see
+    // `downloadAuthedFile`) — a direct `<a download>` at the attachment
+    // endpoint leaves mobile/PWA browsers on a blank page.
+    void downloadAuthedFile(
+      `/api/invoices/${invoice.id}/pdf`,
+      buildInvoiceDownloadFilename(invoice),
+    ).catch(() => showToast('error', STRINGS.invoices.downloadPdfError));
   };
 
   const renderEmpty = !loading && (invoices ?? []).length === 0;
