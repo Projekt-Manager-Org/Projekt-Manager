@@ -19,7 +19,7 @@ import type { Database } from './db/connection.js';
 import { users } from './db/schema.js';
 import { createUser as createUserRepo } from './repositories/user.js';
 import { hashPassword } from './password.js';
-import { checkPasswordPolicy } from './config/password-policy.js';
+import { checkBootstrapCredentialPair } from './config/bootstrap-credentials.js';
 import { mutate } from './services/mutate.js';
 
 export interface BootstrapAdminConfig {
@@ -140,39 +140,17 @@ export async function bootstrapAdminIfEmpty(
   }
 
   // ---------------------------------------------------------------
-  // Step 4: fail closed on half-config [AC-B3].
-  // Messages name the missing var explicitly so operators know what
-  // to add to .env.
+  // Steps 4 + 5: fail closed on half-config [AC-B3], then enforce the
+  // password policy [AC-B5]. Both the pairing rule and the policy →
+  // message mapping live in config/bootstrap-credentials.ts so this boot
+  // path and the deploy-preflight guard (config/env.ts) cannot diverge on
+  // what "configured" means or on the operator-facing text. Messages name
+  // the missing var and MUST NOT include the password itself [AC-B8] — the
+  // shared validator never echoes it.
   // ---------------------------------------------------------------
-  if (!passwordProvided) {
-    throw new Error('BOOTSTRAP_ADMIN_PASSWORD is required when BOOTSTRAP_ADMIN_USERNAME is set.');
-  }
-  if (!usernameProvided) {
-    throw new Error('BOOTSTRAP_ADMIN_USERNAME is required when BOOTSTRAP_ADMIN_PASSWORD is set.');
-  }
-
-  // ---------------------------------------------------------------
-  // Step 5: password policy [AC-B5]. The check itself lives in
-  // src/server/config/password-policy.ts so it cannot diverge from the
-  // change-password endpoint. Error messages MUST NOT include the
-  // password itself [AC-B8] — the violation object does not carry it.
-  // ---------------------------------------------------------------
-  const violation = checkPasswordPolicy(password);
-  if (violation) {
-    switch (violation.code) {
-      case 'too_short':
-        throw new Error(
-          `BOOTSTRAP_ADMIN_PASSWORD must be at least ${violation.minLength} characters.`,
-        );
-      case 'too_long':
-        throw new Error(
-          `BOOTSTRAP_ADMIN_PASSWORD must not exceed ${violation.maxBytes} bytes when UTF-8 encoded.`,
-        );
-      case 'blocklist':
-        throw new Error(
-          'BOOTSTRAP_ADMIN_PASSWORD is in the common-password blocklist. Choose a less common password.',
-        );
-    }
+  const credentialError = checkBootstrapCredentialPair(config);
+  if (credentialError) {
+    throw new Error(credentialError);
   }
 
   // ---------------------------------------------------------------

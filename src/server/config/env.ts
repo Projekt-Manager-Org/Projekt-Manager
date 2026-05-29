@@ -25,6 +25,8 @@
 import { z } from 'zod';
 import os from 'node:os';
 import path from 'node:path';
+import { checkBootstrapCredentialPair } from './bootstrap-credentials.js';
+import { derivePublicKey } from './vapid.js';
 
 export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
@@ -89,9 +91,10 @@ export const envSchema = z.object({
   DOMAIN: z.string().default('localhost'),
   SEED: z.enum(['true', 'false', 'force']).default('false'),
   // First-run admin bootstrap — see ADR-0010 and issue #57. All three are
-  // optional; validation of the "both or neither" pairing and the password
-  // policy happens in src/server/bootstrap.ts where the schema check would
-  // be too coarse.
+  // optional; the "both or neither" pairing and the password policy are
+  // enforced by `checkBootstrapCredentialPair` (config/bootstrap-credentials.ts)
+  // at two points: the boot path (src/server/bootstrap.ts, DB-empty insert)
+  // and the deploy-preflight cross-field guard below.
   // When true, disables the Secure flag on session cookies so login works
   // over plain HTTP. Intended for evaluation deployments without a domain/TLS.
   // See docs/ops/http-only-evaluation.md.
@@ -456,6 +459,11 @@ function parseAndAggregate(
 // === 'true'` to also accept `'1'` (or similar) used to need updating in
 // two places; the path that wasn't updated kept the old behaviour. Now
 // there is exactly one body to soften.
+//
+// Two guards are aggregated-path-ONLY and have no `assert*` counterpart:
+// `checkBootstrapCredentials` and `checkVapidKeyShape` (#245). That
+// asymmetry is intentional — see each function's doc comment — and must
+// not be "fixed" by adding a boot-path wrapper.
 // ---------------------------------------------------------------------
 
 type GuardResult = { ok: true } | { ok: false; message: string };
@@ -475,6 +483,9 @@ type GuardSource = {
   STORAGE_SECRET_KEY?: string | undefined;
   STORAGE_REGION?: string | undefined;
   BINARY_AGE_RECIPIENT?: string | undefined;
+  BOOTSTRAP_ADMIN_USERNAME?: string | undefined;
+  BOOTSTRAP_ADMIN_PASSWORD?: string | undefined;
+  VAPID_PRIVATE_KEY?: string | undefined;
 };
 
 const ALLOW_INSECURE_HTTP_IN_PROD_MSG =
@@ -554,12 +565,66 @@ function checkStoragePublicEndpointInProduction(source: GuardSource): GuardResul
   return { ok: false, message: storagePublicEndpointMsg(endpoint) };
 }
 
+/**
+ * Bootstrap-credential predicate (#245). Validates the `BOOTSTRAP_ADMIN_*`
+ * pairing and password policy *when present*, reusing the same
+ * `checkBootstrapCredentialPair` the boot path uses so the two enforcement
+ * points cannot diverge.
+ *
+ * Deploy-preflight-ONLY by construction: it lives in `CROSS_FIELD_GUARDS`,
+ * which only `validateEnvAggregated` runs. There is deliberately no
+ * `assert*` boot-path wrapper — ADR-0010 requires bootstrap to be a DB-gated
+ * no-op on a populated users table, so leftover/invalid `BOOTSTRAP_ADMIN_*`
+ * vars must NOT crash a restart. The strict enforcement belongs at the
+ * non-destructive deploy gate, where there is no DB to gate on. Do not add
+ * an `assert*` counterpart: it would pull this onto the boot path and
+ * reintroduce the destructive crash-on-recreate this guard exists to
+ * replace.
+ */
+function checkBootstrapCredentials(source: GuardSource): GuardResult {
+  const message = checkBootstrapCredentialPair({
+    username: source.BOOTSTRAP_ADMIN_USERNAME,
+    password: source.BOOTSTRAP_ADMIN_PASSWORD,
+  });
+  return message === null ? { ok: true } : { ok: false, message };
+}
+
+/**
+ * VAPID key-shape predicate (#245). When `VAPID_PRIVATE_KEY` is present,
+ * derives the public half to assert it is a well-formed 32-byte P-256
+ * scalar — the same `derivePublicKey` check the runtime resolver applies,
+ * surfaced at deploy time so a malformed key fails the preflight instead of
+ * crash-looping the recreated container.
+ *
+ * Empty / whitespace-only is "not configured" (compose forwards
+ * `${VAPID_PRIVATE_KEY:-}`, so an unconfigured deploy sends ""); push then
+ * runs in no-op mode. Aggregated-path-only for the same reason as
+ * `checkBootstrapCredentials`: the boot path resolves VAPID material via
+ * `resolveVapidKeyMaterial`, which owns its own malformed-key throw.
+ */
+function checkVapidKeyShape(source: GuardSource): GuardResult {
+  const key = source.VAPID_PRIVATE_KEY?.trim();
+  if (!key) return { ok: true };
+  try {
+    derivePublicKey(key);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      message: `VAPID_PRIVATE_KEY is malformed (expected urlsafe-base64 32-byte P-256 scalar): ${reason}`,
+    };
+  }
+  return { ok: true };
+}
+
 /** Iteration order for `parseAndAggregate`. Stable so the aggregated
  * error message lists offences in a deterministic order. */
 const CROSS_FIELD_GUARDS: ReadonlyArray<(source: GuardSource) => GuardResult> = [
   checkProductionSafe,
   checkAppServerEnv,
   checkStoragePublicEndpointInProduction,
+  checkBootstrapCredentials,
+  checkVapidKeyShape,
 ];
 
 /**
