@@ -22,6 +22,7 @@ import {
   assertStoragePublicEndpointInProduction,
   envSchema,
   validateEnvAggregated,
+  validateEnvRuntime,
 } from '../config/env.js';
 import type { Env } from '../config/env.js';
 
@@ -704,5 +705,204 @@ describe('guard predicates: throw helper and aggregator agree', () => {
     );
     expect(aggregatedMsg, 'expected validateEnvAggregated to throw').not.toBeNull();
     expect(aggregatedMsg).toContain(throwMsg!);
+  });
+});
+
+// ---------------------------------------------------------------------
+// Deploy-preflight-only guards (#245). Two checks that run in the
+// aggregated path (validateEnvAggregated → CROSS_FIELD_GUARDS) but NOT
+// on the boot path (validateEnvRuntime, runAllGuards:false). The
+// asymmetry is deliberate: ADR-0010 requires the boot path to stay a
+// DB-gated no-op on a populated users table (so leftover/invalid
+// BOOTSTRAP_ADMIN_* vars after the first-run ritual do not crash a
+// restart), while the non-destructive deploy preflight enforces them
+// strictly before `docker compose up` recreates containers.
+//
+// `baseAggregatedInput` is a fully valid prod input so each arm trips
+// ONLY the guard under test. Note compose forwards these as
+// `${VAR:-}`, so an unconfigured var arrives as "" (empty string), not
+// undefined — the guards must treat "" / whitespace as "not set" or
+// every ordinary deploy would fail the preflight.
+// ---------------------------------------------------------------------
+function baseAggregatedInput(extra: Record<string, string>): Record<string, string | undefined> {
+  return {
+    NODE_ENV: 'production',
+    DATABASE_URL: 'postgres://prod',
+    STORAGE_ENDPOINT: 'https://storage.example.com',
+    STORAGE_PUBLIC_ENDPOINT: 'https://storage.example.com',
+    STORAGE_ACCESS_KEY: 'ak',
+    STORAGE_SECRET_KEY: 'sk',
+    STORAGE_BUCKET: 'pm',
+    STORAGE_REGION: 'us-east-1',
+    BINARY_AGE_RECIPIENT: 'age1unused',
+    ALLOW_INSECURE_HTTP: 'false',
+    ...extra,
+  };
+}
+
+/**
+ * Run `fn` with the given process.env overrides applied, then restore
+ * the original environment. `undefined` deletes a key. Used to exercise
+ * the boot path (`validateEnvRuntime` reads process.env) in isolation.
+ */
+function withProcessEnv(overrides: Record<string, string | undefined>, fn: () => void): void {
+  const snapshot = { ...process.env };
+  try {
+    for (const [k, v] of Object.entries(overrides)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    fn();
+  } finally {
+    for (const k of Object.keys(process.env)) {
+      if (!(k in snapshot)) delete process.env[k];
+    }
+    Object.assign(process.env, snapshot);
+  }
+}
+
+describe('checkBootstrapCredentials guard (deploy preflight, #245)', () => {
+  // A non-common password well within the 8..72 policy window.
+  const STRONG = 'Zq7mP2wXn4kT';
+
+  it('throws when only BOOTSTRAP_ADMIN_USERNAME is set, naming the missing password', () => {
+    expect(() =>
+      validateEnvAggregated(baseAggregatedInput({ BOOTSTRAP_ADMIN_USERNAME: 'admin' })),
+    ).toThrow(/BOOTSTRAP_ADMIN_PASSWORD/);
+  });
+
+  it('throws when only BOOTSTRAP_ADMIN_PASSWORD is set, naming the missing username', () => {
+    expect(() =>
+      validateEnvAggregated(baseAggregatedInput({ BOOTSTRAP_ADMIN_PASSWORD: STRONG })),
+    ).toThrow(/BOOTSTRAP_ADMIN_USERNAME/);
+  });
+
+  it('throws when the bootstrap password is shorter than the policy minimum', () => {
+    expect(() =>
+      validateEnvAggregated(
+        baseAggregatedInput({
+          BOOTSTRAP_ADMIN_USERNAME: 'admin',
+          BOOTSTRAP_ADMIN_PASSWORD: 'short',
+        }),
+      ),
+    ).toThrow(/BOOTSTRAP_ADMIN_PASSWORD must be at least 8 characters/);
+  });
+
+  it('throws when the bootstrap password exceeds the 72-byte bcrypt limit', () => {
+    expect(() =>
+      validateEnvAggregated(
+        baseAggregatedInput({
+          BOOTSTRAP_ADMIN_USERNAME: 'admin',
+          BOOTSTRAP_ADMIN_PASSWORD: 'a'.repeat(73),
+        }),
+      ),
+    ).toThrow(/BOOTSTRAP_ADMIN_PASSWORD must not exceed 72 bytes/);
+  });
+
+  it('throws when the bootstrap password is in the common-password blocklist', () => {
+    expect(() =>
+      validateEnvAggregated(
+        baseAggregatedInput({
+          BOOTSTRAP_ADMIN_USERNAME: 'admin',
+          BOOTSTRAP_ADMIN_PASSWORD: 'password',
+        }),
+      ),
+    ).toThrow(/BOOTSTRAP_ADMIN_PASSWORD is in the common-password blocklist/);
+  });
+
+  it('accepts a valid username + strong-password pairing', () => {
+    expect(() =>
+      validateEnvAggregated(
+        baseAggregatedInput({
+          BOOTSTRAP_ADMIN_USERNAME: 'admin',
+          BOOTSTRAP_ADMIN_PASSWORD: STRONG,
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it('treats compose-forwarded empty strings as "no bootstrap configured"', () => {
+    // The trap: docker-compose forwards `${BOOTSTRAP_ADMIN_USERNAME:-}` /
+    // `${BOOTSTRAP_ADMIN_PASSWORD:-}`, so a deploy that never configured
+    // bootstrap sends "" for both. A naive presence check would read ""
+    // as "set" and fail every ordinary deploy.
+    expect(() =>
+      validateEnvAggregated(
+        baseAggregatedInput({ BOOTSTRAP_ADMIN_USERNAME: '', BOOTSTRAP_ADMIN_PASSWORD: '' }),
+      ),
+    ).not.toThrow();
+  });
+
+  it('treats a whitespace-only username as unset (mirrors bootstrap.ts trim)', () => {
+    // bootstrap.ts normalizes the username with .trim(); the preflight
+    // guard must agree, else preflight and boot disagree on what "set"
+    // means. A whitespace username with a real password is half-config.
+    expect(() =>
+      validateEnvAggregated(
+        baseAggregatedInput({
+          BOOTSTRAP_ADMIN_USERNAME: '   ',
+          BOOTSTRAP_ADMIN_PASSWORD: STRONG,
+        }),
+      ),
+    ).toThrow(/BOOTSTRAP_ADMIN_USERNAME/);
+  });
+
+  it('does NOT run on the boot path (validateEnvRuntime) — half-config passes', () => {
+    // ADR-0010: a populated DB makes bootstrap a no-op regardless of env
+    // vars, so the boot path must NOT reject leftover half-config. The
+    // guard lives only in CROSS_FIELD_GUARDS (runAllGuards:true), which
+    // validateEnvRuntime skips.
+    withProcessEnv(
+      {
+        DATABASE_URL: 'postgres://unused',
+        BOOTSTRAP_ADMIN_USERNAME: 'admin',
+        BOOTSTRAP_ADMIN_PASSWORD: undefined,
+      },
+      () => {
+        expect(() => validateEnvRuntime()).not.toThrow();
+      },
+    );
+  });
+});
+
+describe('checkVapidKeyShape guard (deploy preflight, #245)', () => {
+  // 32-byte P-256 scalar (all 0x01) → valid shape, derives a public key.
+  const VALID_VAPID_KEY = Buffer.alloc(32, 1).toString('base64url');
+
+  it('throws when VAPID_PRIVATE_KEY is the wrong byte length', () => {
+    // 'AQEB' decodes to 3 bytes, not the required 32.
+    expect(() => validateEnvAggregated(baseAggregatedInput({ VAPID_PRIVATE_KEY: 'AQEB' }))).toThrow(
+      /VAPID_PRIVATE_KEY/,
+    );
+  });
+
+  it('accepts a well-formed 32-byte P-256 private key', () => {
+    expect(() =>
+      validateEnvAggregated(baseAggregatedInput({ VAPID_PRIVATE_KEY: VALID_VAPID_KEY })),
+    ).not.toThrow();
+  });
+
+  it('treats a compose-forwarded empty string as "push not configured"', () => {
+    // Same trap as bootstrap: `${VAPID_PRIVATE_KEY:-}` sends "" when push
+    // is unconfigured. derivePublicKey("") would throw on 0 bytes.
+    expect(() =>
+      validateEnvAggregated(baseAggregatedInput({ VAPID_PRIVATE_KEY: '' })),
+    ).not.toThrow();
+  });
+
+  it('treats a whitespace-only key as unset (mirrors resolveVapidKeyMaterial trim)', () => {
+    expect(() =>
+      validateEnvAggregated(baseAggregatedInput({ VAPID_PRIVATE_KEY: '   ' })),
+    ).not.toThrow();
+  });
+
+  it('does NOT run on the boot path (validateEnvRuntime)', () => {
+    // The boot path resolves VAPID material via resolveVapidKeyMaterial,
+    // which has its own malformed-key throw. The preflight shape guard is
+    // aggregated-path-only, so a malformed key must not trip the runtime
+    // schema validation itself.
+    withProcessEnv({ DATABASE_URL: 'postgres://unused', VAPID_PRIVATE_KEY: 'AQEB' }, () => {
+      expect(() => validateEnvRuntime()).not.toThrow();
+    });
   });
 });

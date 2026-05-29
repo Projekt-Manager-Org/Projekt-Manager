@@ -30,6 +30,15 @@ Rules:
 - One `warn` log line on successful insert telling the operator to log in, change the password immediately, and remove `BOOTSTRAP_ADMIN_*` from `.env` before the next deploy.
 - Password never logged at any level.
 
+The pairing rule and the password-policy → message mapping live in one shared check (`src/server/config/bootstrap-credentials.ts`, over the shared `password-policy.ts` core) and are enforced at **two points** that cannot diverge:
+
+| Point                | Trigger                              | Failure mode                                        | Rationale                                                                                                                                                          |
+| -------------------- | ------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Deploy preflight** | vars _present_ in the deploy env     | non-destructive — aborts before `docker compose up` | The preflight has no DB to gate on, so it enforces validate-if-present. A weak/half-config never reaches container recreation.                                     |
+| **Boot**             | vars present _and_ users table empty | startup exits non-zero                              | DB-gated (validate-if-used). A populated table short-circuits before validation, so leftover/invalid vars after the first-run ritual stay a safe no-op on restart. |
+
+The asymmetry is deliberate: the strict check belongs at the non-destructive deploy gate. Putting it unconditionally on the boot path would make a leftover invalid value crash a restart of an already-bootstrapped instance — the opposite of the "removal is hygiene, not correctness" property below.
+
 ## Alternatives Considered
 
 ### A — Manual `psql` insert after each deploy
@@ -55,6 +64,7 @@ Skip admin-in-DB by delegating auth. Rejected: scope is explicitly single-tenant
 - Self-serviceable fresh deploys: set two env vars, deploy, log in, rotate password, scrub vars, redeploy clean.
 - Seed guard stays intact; dev and prod do not share a convenient-but-unsafe user-creation path.
 - Fail-closed partial-config prevents the silent-empty-DB mode that triggered this investigation.
+- A weak password or half-config in the deploy environment fails the deploy preflight non-destructively (before container recreation), rather than crash-looping the just-recreated app container after the previous good replica is already gone.
 - Idempotent by row count — container restarts with vars still set are safe no-ops, so removal is hygiene, not correctness.
 - No new dependency or runtime surface — one `count(*)` + one conditional `INSERT` at startup.
 - Works identically on first deploy and on future `pgdata` rebuilds (e.g., restore-to-fresh-volume).
