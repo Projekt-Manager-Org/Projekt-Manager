@@ -6,7 +6,7 @@
  * `deploy.sh` does not need any project node_modules — it only needs
  * Docker.
  *
- * Five checkpoints, one container start:
+ * Six checkpoints, one container start:
  *   1. `validateEnvAggregated()` — schema + every cross-field guard in
  *      one pass. Aborts the deploy on first failure (issue #139,
  *      AC-231).
@@ -48,6 +48,14 @@
  *      cap rationale. Verifying at deploy time means the same
  *      misconfiguration surfaces here, not at first user-clicked
  *      Wiederherstellen.
+ *   6. Bucket-safety probe — `assertStorageBucketSafe()`, the same
+ *      data-integrity gate `start.ts` runs at boot (ADR-0022 / ADR-0026):
+ *      versioning on, Object Lock = Compliance, lifecycle present, the
+ *      running credential provably CANNOT destroy versions, and the
+ *      bucket's default retention window covers `INVOICE_OBJECT_LOCK_DAYS`.
+ *      It runs only at boot today, so config drift or an over-capable app
+ *      key refuses to start the just-recreated container; surfacing it here
+ *      fails the deploy non-destructively instead.
  *
  * Why a dedicated entry:
  *   - The existing `start.ts` entry point validates AND boots Fastify,
@@ -70,6 +78,7 @@ import { S3Client, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { assertAppServerEnv, validateEnvAggregated } from './config/env.js';
 import { formatFeatureManifest } from './config/features.js';
 import { createStorageClient, type AttachmentStorageClient } from './storage/client.js';
+import { assertStorageBucketSafe } from './storage/safety.js';
 
 async function main(): Promise<void> {
   // Snapshot process.env into a record so the aggregated path runs
@@ -127,6 +136,35 @@ async function main(): Promise<void> {
 
   await probeUploadVerb(storage, env.STORAGE_BUCKET);
   await probeCopyObjectVerb(env);
+  await probeBucketSafety(storage, env.INVOICE_OBJECT_LOCK_DAYS);
+}
+
+/**
+ * Data-integrity bucket-safety gate — the same `assertStorageBucketSafe()`
+ * `start.ts` runs at boot (ADR-0022 / ADR-0026), surfaced at deploy time so
+ * bucket-config drift (versioning off, Object Lock not Compliance, lifecycle
+ * gaps, an app key that CAN destroy versions, or a default retention window
+ * that under-covers `INVOICE_OBJECT_LOCK_DAYS`) fails the deploy
+ * non-destructively instead of refusing to start the recreated container.
+ *
+ * Reuses the same client built above. The helper aggregates every defect
+ * into one throw and already names the remediation per failure class; we
+ * only add the operator-visible OK line and a `probe-bucketsafe:` label on
+ * the failure path so the deploy log reads consistently with the probes
+ * above. `INVOICE_OBJECT_LOCK_DAYS = 0` (dev default) skips the retention
+ * envelope assertion; the shape + capability checks always run.
+ */
+async function probeBucketSafety(
+  storage: AttachmentStorageClient,
+  invoiceObjectLockDays: number,
+): Promise<void> {
+  try {
+    await assertStorageBucketSafe(storage, { invoiceObjectLockDays });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`probe-bucketsafe: FAILED\n${msg}`, { cause: err });
+  }
+  console.error('probe-bucketsafe: OK');
 }
 
 /**
