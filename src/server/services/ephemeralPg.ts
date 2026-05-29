@@ -214,21 +214,15 @@ async function computeManifestInInstance(instance: EphemeralInstance): Promise<M
     database: 'postgres',
   });
   attachPoolErrorHandler(pool);
-  // Force every checked-out connection to UTC before the manifest
-  // SELECTs run. `md5(row(t.*)::text)` in computeManifest serializes
-  // `timestamptz` values through the session's TimeZone, so a drift
-  // between source and ephemeral sessions produces a false Tier 1
-  // mismatch. The live `db` container runs TimeZone=UTC by default;
-  // the backup container sets TZ=Europe/Berlin for human-readable
-  // cron log timestamps (see docker-compose.yml services.backup.TZ),
-  // which initdb inherits here unless we pin it explicitly. Belt-
-  // and-suspenders with the `-c TimeZone=UTC` pin in
-  // buildPostgresArgv — this hook covers the pool-level path this
-  // file owns; the postgres arg covers any future reader that opens
-  // its own pool against the ephemeral cluster.
-  pool.on('connect', (client) => {
-    void client.query("SET TIME ZONE 'UTC'");
-  });
+  // UTC is pinned server-side by the ephemeral cluster's `-c TimeZone=UTC`
+  // (buildPostgresArgv), the default for every session on this throwaway
+  // instance. The manifest needs it: `md5(row(t.*)::text)` in
+  // computeManifest serializes `timestamptz` through the session TimeZone,
+  // and any drift from the UTC-pinned source manifest is a false Tier 1
+  // mismatch. Do NOT add a `pool.on('connect', …SET TIME ZONE…)` hook —
+  // fire-and-forget races the first query on the same client (pg "already
+  // executing a query" deprecation), and an awaited variant just
+  // serializes every checkout for no gain over the cluster arg.
   try {
     const db = drizzle(pool, { schema });
     return await computeManifest(db);
@@ -288,8 +282,9 @@ function buildPostgresArgv(dataDir: string, socketDir: string, port: number): Su
       // serialize `timestamptz` via `row(t.*)::text` as `+02` while the
       // live `db` container — which runs TimeZone=UTC — renders `+00`,
       // producing a false Tier 1 mismatch on any populated `timestamptz`
-      // column). Pairs with the `pool.on('connect', …UTC)` hook in
-      // computeManifestInInstance.
+      // column). This server-side default is the single source of UTC
+      // for every session on the ephemeral cluster — see the note in
+      // computeManifestInInstance on why no per-connection hook is used.
       '-c',
       'TimeZone=UTC',
     ],

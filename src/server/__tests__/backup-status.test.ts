@@ -112,8 +112,8 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
     // container runs TZ=Europe/Berlin, the ephemeral verify Postgres
     // inherits the latter. `runBackup`'s source-manifest transaction
     // pins `SET LOCAL TIME ZONE 'UTC'` to defuse the source side;
-    // `ephemeralPg.ts` pins the verify-pool connections (and the
-    // ephemeral cluster's `-c TimeZone=UTC`) for the verify side. This
+    // `ephemeralPg.ts` starts the ephemeral cluster with
+    // `-c TimeZone=UTC`, pinning the verify side. This
     // test exercises the source-side invariant directly: a source-path
     // tx must produce the same manifest no matter what TimeZone the
     // connection inherited before the tx started.
