@@ -105,7 +105,15 @@ drills. All real; none earns its seconds against the spine. Adding one means cut
   over the 16:9 canvas (`filter_complex`), so every segment is uniform and concat is clean.
 - **Live cross-user shot (beat 3)** — record the owner's page; drive the actor in a second
   `browser.newContext()` (worker/office). The dock reacts to a genuine cross-session event;
-  nothing faked.
+  nothing faked. Proven shape: `e2e/activity-dock.spec.ts` AC-317 already does exactly this.
+  The dock shows the caller's **full RBAC-scoped feed** (no recipient narrowing), so with the
+  owner as observer _any_ mutation in the company surfaces live — no notification-rule setup.
+  It is desktop-only and default-collapsed: expand via `activity-dock-toggle` (or Alt+A) first.
+- **Integrity refusal (beat 2)** — the refusal renders as a **persistent inline banner**, not
+  an auto-dismissing toast, so it lingers as long as the shot needs. Customer-delete is the
+  primary, well-confirmed refusal (`CustomerManagement.tsx`); trigger it from the list view —
+  the banner shows only when no form is open. `Papierkorb` is real (`src/ui/detail/Papierkorb.tsx`).
+  The issued-invoice "frozen" case is wired but its exact UI trigger is confirmed at build.
 - **Narrative continuity is a conceit, not DB threading.** Segments are separate recordings
   against seeded data, stitched by consistent naming + captions — they don't thread one live
   DB row across specs. Likely needs a curated **hero customer/project** in the seed
@@ -123,13 +131,16 @@ drills. All real; none earns its seconds against the spine. Adding one means cut
 - Retire the standalone "Mobile PWA demo video" link; the master includes mobile. One video,
   one entry point.
 
-## To verify before building (load-bearing, agent-reported)
+## Verification status
 
-These feature facts drive the script and are not yet independently confirmed:
+Spiked against the actual harness + code (not docs):
 
-1. Activity dock is genuinely live + cross-user (the SSE propagation claim).
-2. The integrity refusals render an on-screen message that lingers long enough to film, and
-   the recycle-bin (`Papierkorb`) tab is real.
-3. Worker on mobile lands on "Meine Projekte" with no dock / no transition arrows.
-4. `browser.newContext()` multi-session recording behaves as expected (the one spike).
-5. `OPENROUTER_API_KEY` is wired so the extract runs live.
+- **Confirmed** — live cross-user dock + two-context recording (`e2e/activity-dock.spec.ts`
+  AC-317); worker lands on `/meine-projekte`, scoped client- and server-side
+  (`src/server/repositories/scope.ts`), with no dock and no transition arrows (`permissions.ts`
+  worker set lacks `audit:read` + `project:transition`); mobile upload is a standard
+  `input[type=file]` (`UploadCta.tsx`); integrity refusals render a persistent banner and
+  `Papierkorb` exists.
+- **Confirm at build** — `OPENROUTER_API_KEY` is present, but verify it is non-empty and a
+  model is configured so the extract runs live; the exact UI trigger for the issued-invoice
+  "frozen" message; recording fidelity of the two-context shot with the caption/cursor overlay.
