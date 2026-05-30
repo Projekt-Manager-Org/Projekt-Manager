@@ -52,7 +52,9 @@ declare global {
     __demoFactAdd?: (melody: string, bassline: string) => void;
     /** Set the closing punch line under the fact list and fade it in. */
     __demoFactClose?: (text: string) => void;
-    /** Clear all reveal content (title, facts, close) for reuse. */
+    /** Show/hide the scene-change cue (forward-flowing chevrons). */
+    __demoFactNext?: (on: boolean) => void;
+    /** Clear all reveal content (title, facts, close, cue) for reuse. */
     __demoFactReset?: () => void;
   }
 }
@@ -102,7 +104,9 @@ export interface DemoRevealOptions {
   settleMs?: number;
   /** Hold after each fact card appears (ms). */
   perFactMs?: number;
-  /** Hold after the closing line, before the segment ends (ms). */
+  /** Hold after the closing line, before the scene-change cue (ms). */
+  closeMs?: number;
+  /** Hold after the cue appears, before the segment ends (ms). */
   holdMs?: number;
 }
 
@@ -111,12 +115,15 @@ const STEP_DEFAULTS: Required<Pick<DemoStepOptions, 'settleMs' | 'holdMs'>> = {
   holdMs: 1200,
 };
 
-const SCENE_DEFAULT_HOLD_MS = 2600;
+const SCENE_DEFAULT_HOLD_MS = 3800;
 
-const REVEAL_DEFAULTS: Required<Pick<DemoRevealOptions, 'settleMs' | 'perFactMs' | 'holdMs'>> = {
+const REVEAL_DEFAULTS: Required<
+  Pick<DemoRevealOptions, 'settleMs' | 'perFactMs' | 'closeMs' | 'holdMs'>
+> = {
   settleMs: 1100,
   perFactMs: 1650,
-  holdMs: 2600,
+  closeMs: 1500,
+  holdMs: 3000,
 };
 
 /**
@@ -154,8 +161,8 @@ const OVERLAY_SCRIPT = String.raw`
   window.__demoOverlayInstalled = true;
   var Z = '2147483647';
   var DEV_ICON = {
-    Desktop: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9db4d6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
-    Handy: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9db4d6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>'
+    Desktop: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6ea8fe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+    Handy: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6ea8fe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>'
   };
 
   function readCaption() {
@@ -173,6 +180,20 @@ const OVERLAY_SCRIPT = String.raw`
 
   function build() {
     if (!document.body) { requestAnimationFrame(build); return; }
+
+    if (!document.getElementById('__demo-overlay-style')) {
+      // Keyframes for the scene-change cue (the chevrons that flow forward
+      // after the last Daten card). Inline styles can't carry @keyframes.
+      var st = document.createElement('style');
+      st.id = '__demo-overlay-style';
+      st.textContent =
+        '@keyframes demoNextFlow{0%,100%{opacity:.25;transform:translateX(0)}' +
+        '50%{opacity:1;transform:translateX(8px)}}' +
+        '#__demo-glass-next span{display:inline-block;animation:demoNextFlow 1.1s ease-in-out infinite}' +
+        '#__demo-glass-next span:nth-child(2){animation-delay:.14s}' +
+        '#__demo-glass-next span:nth-child(3){animation-delay:.28s}';
+      (document.head || document.documentElement).appendChild(st);
+    }
 
     if (!document.getElementById('__demo-cursor')) {
       var cursor = document.createElement('div');
@@ -230,12 +251,13 @@ const OVERLAY_SCRIPT = String.raw`
       var chip = document.createElement('div');
       chip.id = '__demo-scene';
       Object.assign(chip.style, {
-        position: 'fixed', top: '4.5%', left: '3.5%', display: 'flex', alignItems: 'center',
-        gap: '11px', padding: '11px 17px', background: 'rgba(13, 18, 28, 0.86)',
-        border: '1px solid rgba(120, 150, 190, 0.28)', borderRadius: '13px',
-        boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45)', pointerEvents: 'none', zIndex: Z,
-        opacity: '0', transform: 'translateY(-10px)',
-        transition: 'opacity 0.4s ease, transform 0.4s ease'
+        position: 'fixed', top: '5%', left: '3.2%', display: 'flex', alignItems: 'center',
+        gap: '14px', padding: '16px 26px', background: 'rgba(13, 18, 28, 0.94)',
+        border: '1px solid rgba(110, 168, 254, 0.45)', borderLeft: '5px solid #6ea8fe',
+        borderRadius: '15px', boxShadow: '0 14px 38px rgba(0, 0, 0, 0.6)',
+        pointerEvents: 'none', zIndex: Z,
+        opacity: '0', transform: 'translateY(-14px) scale(0.92)',
+        transition: 'opacity 0.4s ease, transform 0.45s cubic-bezier(0.18, 0.9, 0.28, 1.25)'
       });
       var icon = document.createElement('div');
       icon.id = '__demo-scene-icon';
@@ -246,14 +268,15 @@ const OVERLAY_SCRIPT = String.raw`
       var nm = document.createElement('div');
       nm.id = '__demo-scene-name';
       Object.assign(nm.style, {
-        color: '#ffffff', font: '600 16px/1.25 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+        color: '#ffffff', font: '700 23px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        letterSpacing: '0.2px'
       });
       var rl = document.createElement('div');
       rl.id = '__demo-scene-role';
       Object.assign(rl.style, {
-        color: 'rgba(174, 191, 214, 0.92)',
-        font: '500 12.5px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-        letterSpacing: '0.2px'
+        color: '#9db4d6',
+        font: '600 14.5px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        letterSpacing: '0.3px', marginTop: '1px'
       });
       txt.appendChild(nm); txt.appendChild(rl);
       chip.appendChild(txt);
@@ -308,6 +331,18 @@ const OVERLAY_SCRIPT = String.raw`
         transition: 'opacity 0.5s ease'
       });
       glass.appendChild(gc);
+
+      // Scene-change cue — chevrons that flow forward once the reveal is done,
+      // telling the viewer the film is about to cut to the next segment.
+      var gn = document.createElement('div');
+      gn.id = '__demo-glass-next';
+      Object.assign(gn.style, {
+        marginTop: '30px', color: '#6ea8fe', letterSpacing: '6px', opacity: '0',
+        font: '700 34px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        transition: 'opacity 0.5s ease'
+      });
+      gn.innerHTML = '<span>›</span><span>›</span><span>›</span>';
+      glass.appendChild(gn);
 
       document.body.appendChild(glass);
     }
@@ -366,11 +401,11 @@ const OVERLAY_SCRIPT = String.raw`
     var rl = document.getElementById('__demo-scene-role');
     if (rl) rl.textContent = p.role + ' · ' + p.device;
     chip.style.opacity = '1';
-    chip.style.transform = 'translateY(0)';
+    chip.style.transform = 'translateY(0) scale(1)';
     if (window.__demoSceneTimer) clearTimeout(window.__demoSceneTimer);
     window.__demoSceneTimer = setTimeout(function () {
       chip.style.opacity = '0';
-      chip.style.transform = 'translateY(-10px)';
+      chip.style.transform = 'translateY(-14px) scale(0.92)';
     }, p.holdMs);
   };
 
@@ -426,6 +461,11 @@ const OVERLAY_SCRIPT = String.raw`
     if (gc) { gc.textContent = text; gc.style.opacity = text ? '1' : '0'; }
   };
 
+  window.__demoFactNext = function (on) {
+    var gn = document.getElementById('__demo-glass-next');
+    if (gn) gn.style.opacity = on ? '1' : '0';
+  };
+
   window.__demoFactReset = function () {
     var gf = document.getElementById('__demo-glass-facts');
     if (gf) gf.innerHTML = '';
@@ -435,6 +475,8 @@ const OVERLAY_SCRIPT = String.raw`
     if (gs) { gs.textContent = ''; gs.style.opacity = '0'; }
     var gc = document.getElementById('__demo-glass-close');
     if (gc) { gc.textContent = ''; gc.style.opacity = '0'; }
+    var gn = document.getElementById('__demo-glass-next');
+    if (gn) gn.style.opacity = '0';
   };
 })();
 `;
@@ -488,7 +530,7 @@ export class Demo {
    * server, the object store, and the backup drills.
    */
   async revealFacts(opts: DemoRevealOptions): Promise<void> {
-    const { settleMs, perFactMs, holdMs } = { ...REVEAL_DEFAULTS, ...opts };
+    const { settleMs, perFactMs, closeMs, holdMs } = { ...REVEAL_DEFAULTS, ...opts };
     await this.page.evaluate(() => {
       window.__demoSetCaption?.('');
       window.__demoSetNote?.('');
@@ -512,7 +554,10 @@ export class Demo {
 
     if (opts.close) {
       await this.page.evaluate((t) => window.__demoFactClose?.(t), opts.close);
+      await this.page.waitForTimeout(closeMs);
     }
+    // Flow the scene-change cue, then dwell so the reveal doesn't snap away.
+    await this.page.evaluate(() => window.__demoFactNext?.(true));
     await this.page.waitForTimeout(holdMs);
   }
 

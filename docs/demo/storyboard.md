@@ -113,7 +113,9 @@ Schlimmsten aus – und sorgt vor._, then four cards rise in turn (melody / bass
 3. _Ransomware, Absturz, Bedienfehler – einkalkuliert._ / `mehrstufig & verschlüsselt · providerseitig gesperrt · mit App-Zugang nicht löschbar`
 4. _Sicherung automatisch – und automatisch erprobt._ / `DB-Dump automatisch, mehrmals werktags · Restore-Drill gegen Echtdaten, nicht gegen Hoffnung`
 
-Closing punch line: _Wir rechnen mit dem Ausfall. Darum hält Ihr Betrieb._
+Closing punch line: _Wir rechnen mit dem Ausfall. Darum hält Ihr Betrieb._ After it, a
+forward-flowing chevron cue (`› › ›`) signals the cut, then the reveal dwells a beat before
+the film moves on.
 
 ## Out of scope (curation beats completeness)
 
@@ -138,8 +140,8 @@ backend guarantees the reveal now carries, so it was cut.)
   `demo-04` prefix slots it between 03 and 05). Mobile beats use a `.mobile.spec.ts` infix + a
   `testMatch` split so they record under `demo-mobile` only.
 - **Persona chips (`demo.scene`)** — each persona segment calls `demo.scene({ name, role,
-device })` after its first load; the overlay flashes a top-left chip that fades itself after
-  ~2.6 s. Office = Maria Schmidt, owner = Thomas Berger, worker = Jan Nowak (the seeded
+device })` after its first load; the overlay pops a prominent top-left chip (blue accent,
+  device glyph) that holds ~3.8 s, then fades. Office = Maria Schmidt, owner = Thomas Berger, worker = Jan Nowak (the seeded
   `arbeiter1`). The Daten and title-card segments carry no chip.
 - **Daten reveal (`demo.revealFacts`, beat 02)** — the owner lands on the live board; the
   overlay then drops a frosted-glass layer (`backdrop-filter: blur`) over the real app and
