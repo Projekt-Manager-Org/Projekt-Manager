@@ -242,9 +242,10 @@ export default defineConfig({
     //
     //    `demo` records the desktop layout; `demo-mobile` emulates a real
     //    phone (Pixel 7, 412×839 — below the 768 px md breakpoint, so the
-    //    genuine mobile shell renders, not a squished desktop). Both match
-    //    every `demo-*.spec.ts`, so each scenario yields a desktop + a
-    //    mobile clip from one authored spec.
+    //    genuine mobile shell renders, not a squished desktop). The two
+    //    projects partition the specs by filename: `demo-mobile` takes the
+    //    `*.mobile.spec.ts` segments, `demo` takes the rest (it ignores the
+    //    mobile ones). Each spec yields exactly one clip, in its own viewport.
     ...(process.env.PLAYWRIGHT_RUN_DEMO
       ? [
           {
