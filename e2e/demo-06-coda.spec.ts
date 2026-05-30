@@ -20,16 +20,17 @@ test('06 — Vertrauen', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(page.getByTestId('kanban-board')).toBeVisible();
+  await demo.scene({ name: 'Thomas Berger', role: 'Inhaber', device: 'Desktop' });
 
   await demo.step(
-    'Automatische Sicherung – alle paar Stunden.',
+    'Automatische Sicherung – jeden Tag.',
     async () => {
       // A click surfaces the status as a toast (BackupBadge.handleClick) —
       // it reads on camera where the native `title` tooltip does not.
       await demo.click(page.getByTestId('backup-badge'));
     },
     {
-      note: 'WORM-Objektspeicher mit Object-Lock – selbst bei App-Ausfall wiederherstellbar',
+      note: 'verschlüsselte Off-Site-Backups · providerseitig gesperrt · auch bei App-Ausfall wiederherstellbar',
       settleMs: 800,
       holdMs: 3200,
     },
