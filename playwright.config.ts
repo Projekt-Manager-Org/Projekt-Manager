@@ -150,6 +150,7 @@ const MUTATING_TESTS =
   // (AC-319), which is read-only and must stay in the `chromium` project.
   /kanban-flows|management-flows|import-export-flows|theme-preference|data-exchange|archive-flows|activity-feed|notification-rules|activity-recipient-scope|activity-dock\.spec|push-permission|attachment-upload|papierkorb|daten-jobs|storage-usage-multi-user|project-lifecycle-multi-user|attachment-lifecycle-multi-user|realtime-after-fresh-login|invoices|company-profile/;
 const DEMO_TESTS = /demo-.*\.spec\.ts/;
+const DEMO_MOBILE_TESTS = /demo-.*\.mobile\.spec\.ts$/;
 
 export default defineConfig({
   testDir: './e2e',
@@ -250,16 +251,18 @@ export default defineConfig({
             name: 'demo',
             dependencies: ['setup'],
             testMatch: DEMO_TESTS,
+            // Mobile segments (*.mobile.spec.ts) record under demo-mobile only.
+            testIgnore: [DEMO_MOBILE_TESTS],
             use: {
               ...devices['Desktop Chrome'],
-              viewport: { width: 1400, height: 1200 },
-              video: { mode: 'on' as const, size: { width: 1400, height: 1200 } },
+              viewport: { width: 1920, height: 1080 },
+              video: { mode: 'on' as const, size: { width: 1920, height: 1080 } },
             },
           },
           {
             name: 'demo-mobile',
             dependencies: ['setup'],
-            testMatch: DEMO_TESTS,
+            testMatch: DEMO_MOBILE_TESTS,
             use: {
               ...devices['Pixel 7'],
               video: { mode: 'on' as const, size: { width: 412, height: 839 } },

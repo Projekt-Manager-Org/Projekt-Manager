@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { sql } from 'drizzle-orm';
 import { createDatabase } from '../src/server/db/connection.js';
 import { seed } from '../src/server/seed.js';
 import { SEED_USERS } from '../src/test/seedAssumptions.js';
@@ -66,6 +67,27 @@ setup('reseed database and storage', async () => {
   try {
     await migrate(db, { migrationsFolder });
     await seed(db, { force: true });
+
+    // Demo recordings only: seed a healthy backup status so the header
+    // badge reads green. Dev/e2e otherwise show the "never-run" red state,
+    // which would contradict the data-integrity coda. Gated on the demo
+    // flag so normal e2e — including the backup-badge specs — keep seeing
+    // the real default. The badge reads `meta_backup_status` directly
+    // (repositories/backupStatus.ts § getBackupStatus).
+    if (process.env.PLAYWRIGHT_RUN_DEMO) {
+      await db.execute(sql`
+        INSERT INTO meta_backup_status
+          (singleton, last_backup_ok, last_backup_at, last_drill_ok, last_drill_at, last_error)
+        VALUES (TRUE, TRUE, now() - interval '2 hours', TRUE, now() - interval '1 day', NULL)
+        ON CONFLICT (singleton) DO UPDATE SET
+          last_backup_ok = TRUE,
+          last_backup_at = now() - interval '2 hours',
+          last_drill_ok = TRUE,
+          last_drill_at = now() - interval '1 day',
+          last_error = NULL,
+          updated_at = now()
+      `);
+    }
   } finally {
     await pool.end();
   }

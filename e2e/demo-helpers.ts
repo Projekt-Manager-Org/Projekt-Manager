@@ -34,6 +34,8 @@ declare global {
   interface Window {
     /** Set by the injected overlay; updates the on-screen caption banner. */
     __demoSetCaption?: (text: string) => void;
+    /** Set by the injected overlay; updates the smaller technical note line. */
+    __demoSetNote?: (text: string) => void;
   }
 }
 
@@ -42,9 +44,17 @@ export interface DemoStepOptions {
   settleMs?: number;
   /** Hold after the action completes, before the next step (ms). */
   holdMs?: number;
+  /**
+   * Optional second, smaller line under the caption — the "technical"
+   * register (RBAC, encryption, audit). Cleared when the next step omits it.
+   */
+  note?: string;
 }
 
-const STEP_DEFAULTS: Required<DemoStepOptions> = { settleMs: 700, holdMs: 1200 };
+const STEP_DEFAULTS: Required<Pick<DemoStepOptions, 'settleMs' | 'holdMs'>> = {
+  settleMs: 700,
+  holdMs: 1200,
+};
 
 /**
  * Cursor-glide tuning. `mouse.move(x, y, { steps })` dispatches its
@@ -54,10 +64,10 @@ const STEP_DEFAULTS: Required<DemoStepOptions> = { settleMs: 700, holdMs: 1200 }
  * cursor visibly travels. Step count scales with distance for roughly
  * constant on-screen speed.
  */
-const GLIDE_FRAME_MS = 12;
-const GLIDE_PX_PER_STEP = 12;
-const GLIDE_MIN_STEPS = 10;
-const GLIDE_MAX_STEPS = 40;
+const GLIDE_FRAME_MS = 7;
+const GLIDE_PX_PER_STEP = 18;
+const GLIDE_MIN_STEPS = 7;
+const GLIDE_MAX_STEPS = 24;
 
 /**
  * Browser overlay, injected once per document via `addInitScript`:
@@ -86,6 +96,12 @@ const OVERLAY_SCRIPT = String.raw`
   function persistCaption(t) {
     try { sessionStorage.setItem('__demoCaption', t); } catch (e) { /* opaque origin */ }
   }
+  function readNote() {
+    try { return sessionStorage.getItem('__demoNote'); } catch (e) { return null; }
+  }
+  function persistNote(t) {
+    try { sessionStorage.setItem('__demoNote', t); } catch (e) { /* opaque origin */ }
+  }
 
   function build() {
     if (!document.body) { requestAnimationFrame(build); return; }
@@ -98,29 +114,55 @@ const OVERLAY_SCRIPT = String.raw`
         marginLeft: '-12px', marginTop: '-12px', borderRadius: '50%',
         background: 'rgba(255, 70, 70, 0.40)', border: '2px solid rgba(255, 255, 255, 0.92)',
         boxShadow: '0 0 10px rgba(0, 0, 0, 0.55)', pointerEvents: 'none', zIndex: Z,
-        transition: 'transform 0.05s linear', transform: 'translate(-100px, -100px)'
+        transition: 'transform 0.03s linear', transform: 'translate(-100px, -100px)'
       });
       document.body.appendChild(cursor);
     }
 
-    if (!document.getElementById('__demo-caption')) {
+    if (!document.getElementById('__demo-captionbox')) {
+      // Caption + note live in ONE bottom-anchored flex column so they
+      // always stack (never overlap), even when the caption wraps to
+      // several lines on a narrow phone viewport.
+      var box = document.createElement('div');
+      box.id = '__demo-captionbox';
+      Object.assign(box.style, {
+        position: 'fixed', left: '50%', bottom: '6%', transform: 'translateX(-50%)',
+        maxWidth: '82%', display: 'flex', flexDirection: 'column', alignItems: 'center',
+        gap: '8px', pointerEvents: 'none', zIndex: Z
+      });
+
       var banner = document.createElement('div');
       banner.id = '__demo-caption';
       Object.assign(banner.style, {
-        position: 'fixed', left: '50%', bottom: '7%', transform: 'translateX(-50%)',
-        maxWidth: '82%', padding: '14px 28px', background: 'rgba(15, 15, 22, 0.88)',
-        color: '#ffffff',
+        padding: '14px 28px', background: 'rgba(15, 15, 22, 0.88)', color: '#ffffff',
         font: '600 22px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
         borderRadius: '14px', boxShadow: '0 6px 26px rgba(0, 0, 0, 0.5)',
-        pointerEvents: 'none', zIndex: Z, textAlign: 'center', whiteSpace: 'pre-wrap',
+        textAlign: 'center', whiteSpace: 'pre-wrap',
         opacity: '0', transition: 'opacity 0.25s ease'
       });
-      document.body.appendChild(banner);
+      box.appendChild(banner);
+
+      var note = document.createElement('div');
+      note.id = '__demo-note';
+      Object.assign(note.style, {
+        padding: '6px 16px', background: 'rgba(15, 15, 22, 0.72)',
+        color: 'rgba(214, 226, 244, 0.92)',
+        font: '500 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace',
+        borderRadius: '9px', textAlign: 'center', whiteSpace: 'pre-wrap',
+        letterSpacing: '0.2px', opacity: '0', transition: 'opacity 0.25s ease'
+      });
+      box.appendChild(note);
+
+      document.body.appendChild(box);
     }
 
     var b = document.getElementById('__demo-caption');
     var stored = readCaption();
     if (b && stored) { b.textContent = stored; b.style.opacity = '1'; }
+
+    var n = document.getElementById('__demo-note');
+    var storedNote = readNote();
+    if (n && storedNote) { n.textContent = storedNote; n.style.opacity = '1'; }
   }
 
   build();
@@ -150,6 +192,12 @@ const OVERLAY_SCRIPT = String.raw`
     var bb = document.getElementById('__demo-caption');
     if (bb) { bb.textContent = text; bb.style.opacity = text ? '1' : '0'; }
   };
+
+  window.__demoSetNote = function (text) {
+    persistNote(text);
+    var nn = document.getElementById('__demo-note');
+    if (nn) { nn.textContent = text; nn.style.opacity = text ? '1' : '0'; }
+  };
 })();
 `;
 
@@ -172,6 +220,7 @@ export class Demo {
   async step(caption: string, fn: () => Promise<void>, opts: DemoStepOptions = {}): Promise<void> {
     const { settleMs, holdMs } = { ...STEP_DEFAULTS, ...opts };
     await this.page.evaluate((t) => window.__demoSetCaption?.(t), caption);
+    await this.page.evaluate((t) => window.__demoSetNote?.(t), opts.note ?? '');
     await this.page.waitForTimeout(settleMs);
     await fn();
     await this.page.waitForTimeout(holdMs);
