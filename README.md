@@ -9,9 +9,11 @@ A centralized system aimed at simplifying the lives of all stakeholders in a sma
 
 Self-hosted, full control, fully customized, no BS.
 
-<img src="assets/projekt-manager.png" alt="preview" width="60%"/>
+<a href="https://vimeo.com/1196965721">
+   <img src="assets/demo-hero.webp" alt="Projekt-Manager — Demo" width="80%"/>
+</a>
 
-Mobile PWA demo video: [vimeo.com/1186689273](https://vimeo.com/1186689273)
+▶ **[See the full demo (Vimeo, ~1½ min, in German)](https://vimeo.com/1196965721)**
 
 ## Who is this for
 
