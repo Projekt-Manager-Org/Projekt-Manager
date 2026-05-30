@@ -25,7 +25,7 @@
     "test:e2e": "playwright test",
     "demo": "npm run demo:record && npm run demo:encode",
     "demo:record": "PLAYWRIGHT_RUN_DEMO=1 playwright test --project=demo --project=demo-mobile",
-    "demo:encode": "node scripts/demo/encode.mjs",
+    "demo:encode": "node scripts/demo/encode.mjs --master",
     "check:tokens": "bash scripts/check-theme-tokens.sh",
     "prepare": "husky || true",
     "postinstall": "patch-package"
