@@ -4,7 +4,7 @@ import type { Page, Locator } from '@playwright/test';
  * Demo-recording helpers — turn a Playwright spec into a human-friendly
  * walkthrough video.
  *
- * Three problems this solves over raw `waitForTimeout` sprinkling:
+ * Four problems this solves over raw `waitForTimeout` sprinkling:
  *   1. **Captions** — each step shows an on-screen banner so a silent
  *      video reads as a narrated walkthrough. The banner is a real DOM
  *      element, so it is burned into the recording with no post-encode
@@ -16,6 +16,11 @@ import type { Page, Locator } from '@playwright/test';
  *      time-spaced path to the target before acting, so motion is legible.
  *   3. **Consistent pacing** — `step()` holds before and after each
  *      action by the same default amounts, replacing ad-hoc sleeps.
+ *   4. **Scene framing** — `scene()` shows a small, self-dismissing
+ *      persona chip (who/role/device) at the top of each segment so a
+ *      stitched film tells the viewer whose shoes they are in;
+ *      `revealFacts()` blurs the live app behind frosted glass and floats
+ *      the otherwise-invisible backend guarantees on top as fact cards.
  *
  * Drive interactions through the demo methods (not raw locator calls) so
  * the cursor stays in sync with what is happening:
@@ -23,6 +28,7 @@ import type { Page, Locator } from '@playwright/test';
  *   test('guided tour', async ({ page }) => {
  *     const demo = await startDemo(page);
  *     await page.goto('/');
+ *     await demo.scene({ name: 'Maria Schmidt', role: 'Büro', device: 'Desktop' });
  *     await demo.step('Anmeldung als Inhaber', async () => {
  *       await demo.type(page.getByTestId('login-username'), 'inhaber');
  *       await demo.click(page.getByTestId('login-submit'));
@@ -36,6 +42,18 @@ declare global {
     __demoSetCaption?: (text: string) => void;
     /** Set by the injected overlay; updates the smaller technical note line. */
     __demoSetNote?: (text: string) => void;
+    /** Show the persona chip; auto-fades after `holdMs`. */
+    __demoSetScene?: (p: { name: string; role: string; device: string; holdMs: number }) => void;
+    /** Fade the frosted-glass reveal layer in (true) or out (false). */
+    __demoGlass?: (on: boolean) => void;
+    /** Set the reveal heading + subtitle and fade them in. */
+    __demoFactTitle?: (title: string, subtitle: string) => void;
+    /** Append one fact card (plain melody line + technical bassline) and fade it in. */
+    __demoFactAdd?: (melody: string, bassline: string) => void;
+    /** Set the closing punch line under the fact list and fade it in. */
+    __demoFactClose?: (text: string) => void;
+    /** Clear all reveal content (title, facts, close) for reuse. */
+    __demoFactReset?: () => void;
   }
 }
 
@@ -51,9 +69,54 @@ export interface DemoStepOptions {
   note?: string;
 }
 
+/** Who/where a segment is shot from — the self-dismissing persona chip. */
+export interface DemoScene {
+  /** Display name, e.g. "Maria Schmidt". */
+  name: string;
+  /** Role label, e.g. "Büro", "Inhaber", "Mitarbeiter". */
+  role: string;
+  /** Device label, e.g. "Desktop" or "Handy" (selects the chip glyph). */
+  device: 'Desktop' | 'Handy';
+  /** How long the chip stays before it fades out (ms). */
+  holdMs?: number;
+}
+
+/** A single plain-language claim paired with its technical proof. */
+export interface DemoFact {
+  /** The human (melody) line — plain language, the promise. */
+  melody: string;
+  /** The technical (bassline) line — the mechanism, for devs/power users. */
+  bassline: string;
+}
+
+export interface DemoRevealOptions {
+  /** Heading shown above the fact list. */
+  title: string;
+  /** One-line subtitle under the heading. */
+  subtitle: string;
+  /** The fact cards, revealed one by one. */
+  facts: DemoFact[];
+  /** Optional closing punch line under the list. */
+  close?: string;
+  /** Hold after the glass + title appear, before the first fact (ms). */
+  settleMs?: number;
+  /** Hold after each fact card appears (ms). */
+  perFactMs?: number;
+  /** Hold after the closing line, before the segment ends (ms). */
+  holdMs?: number;
+}
+
 const STEP_DEFAULTS: Required<Pick<DemoStepOptions, 'settleMs' | 'holdMs'>> = {
   settleMs: 700,
   holdMs: 1200,
+};
+
+const SCENE_DEFAULT_HOLD_MS = 2600;
+
+const REVEAL_DEFAULTS: Required<Pick<DemoRevealOptions, 'settleMs' | 'perFactMs' | 'holdMs'>> = {
+  settleMs: 1100,
+  perFactMs: 1650,
+  holdMs: 2600,
 };
 
 /**
@@ -71,9 +134,10 @@ const GLIDE_MAX_STEPS = 24;
 
 /**
  * Browser overlay, injected once per document via `addInitScript`:
- * a fake cursor that follows the synthetic pointer, a click ripple, and
- * a caption banner wired to `window.__demoSetCaption`. Re-runs on every
- * navigation (fresh JS context), restoring the current caption from
+ * a fake cursor that follows the synthetic pointer, a click ripple, a
+ * caption banner, a self-dismissing persona chip, and a frosted-glass
+ * fact-reveal layer — all wired to `window.__demo*` hooks. Re-runs on
+ * every navigation (fresh JS context), restoring the current caption from
  * `sessionStorage` so it survives same-origin navigations.
  *
  * Authored as a raw JS string on purpose: a TS function passed to
@@ -89,6 +153,10 @@ const OVERLAY_SCRIPT = String.raw`
   if (window.__demoOverlayInstalled) return;
   window.__demoOverlayInstalled = true;
   var Z = '2147483647';
+  var DEV_ICON = {
+    Desktop: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9db4d6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+    Handy: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9db4d6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>'
+  };
 
   function readCaption() {
     try { return sessionStorage.getItem('__demoCaption'); } catch (e) { return null; }
@@ -156,6 +224,94 @@ const OVERLAY_SCRIPT = String.raw`
       document.body.appendChild(box);
     }
 
+    if (!document.getElementById('__demo-scene')) {
+      // Persona chip — top-left, self-dismissing. Two lines: name (bold)
+      // over "role · device", with a small device glyph.
+      var chip = document.createElement('div');
+      chip.id = '__demo-scene';
+      Object.assign(chip.style, {
+        position: 'fixed', top: '4.5%', left: '3.5%', display: 'flex', alignItems: 'center',
+        gap: '11px', padding: '11px 17px', background: 'rgba(13, 18, 28, 0.86)',
+        border: '1px solid rgba(120, 150, 190, 0.28)', borderRadius: '13px',
+        boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45)', pointerEvents: 'none', zIndex: Z,
+        opacity: '0', transform: 'translateY(-10px)',
+        transition: 'opacity 0.4s ease, transform 0.4s ease'
+      });
+      var icon = document.createElement('div');
+      icon.id = '__demo-scene-icon';
+      Object.assign(icon.style, { display: 'flex', alignItems: 'center', flex: '0 0 auto' });
+      chip.appendChild(icon);
+      var txt = document.createElement('div');
+      Object.assign(txt.style, { display: 'flex', flexDirection: 'column', lineHeight: '1.25' });
+      var nm = document.createElement('div');
+      nm.id = '__demo-scene-name';
+      Object.assign(nm.style, {
+        color: '#ffffff', font: '600 16px/1.25 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+      });
+      var rl = document.createElement('div');
+      rl.id = '__demo-scene-role';
+      Object.assign(rl.style, {
+        color: 'rgba(174, 191, 214, 0.92)',
+        font: '500 12.5px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        letterSpacing: '0.2px'
+      });
+      txt.appendChild(nm); txt.appendChild(rl);
+      chip.appendChild(txt);
+      document.body.appendChild(chip);
+    }
+
+    if (!document.getElementById('__demo-glass')) {
+      // Frosted-glass reveal — blurs the live app behind it and floats
+      // the invisible backend guarantees on top as fact cards.
+      var glass = document.createElement('div');
+      glass.id = '__demo-glass';
+      Object.assign(glass.style, {
+        position: 'fixed', inset: '0', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', padding: '0 8%',
+        background: 'linear-gradient(rgba(7, 11, 19, 0.64), rgba(7, 11, 19, 0.78))',
+        backdropFilter: 'blur(16px)', webkitBackdropFilter: 'blur(16px)',
+        pointerEvents: 'none', zIndex: Z, opacity: '0',
+        transition: 'opacity 0.55s ease'
+      });
+
+      var gt = document.createElement('div');
+      gt.id = '__demo-glass-title';
+      Object.assign(gt.style, {
+        color: '#ffffff', textAlign: 'center', opacity: '0',
+        font: '700 40px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        transition: 'opacity 0.45s ease', letterSpacing: '0.3px'
+      });
+      glass.appendChild(gt);
+
+      var gs = document.createElement('div');
+      gs.id = '__demo-glass-sub';
+      Object.assign(gs.style, {
+        color: '#aebfd6', textAlign: 'center', marginTop: '12px', opacity: '0',
+        font: '500 21px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        transition: 'opacity 0.45s ease'
+      });
+      glass.appendChild(gs);
+
+      var gf = document.createElement('div');
+      gf.id = '__demo-glass-facts';
+      Object.assign(gf.style, {
+        display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '40px',
+        width: '100%', maxWidth: '900px'
+      });
+      glass.appendChild(gf);
+
+      var gc = document.createElement('div');
+      gc.id = '__demo-glass-close';
+      Object.assign(gc.style, {
+        color: '#6ea8fe', textAlign: 'center', marginTop: '40px', opacity: '0',
+        font: '600 24px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+        transition: 'opacity 0.5s ease'
+      });
+      glass.appendChild(gc);
+
+      document.body.appendChild(glass);
+    }
+
     var b = document.getElementById('__demo-caption');
     var stored = readCaption();
     if (b && stored) { b.textContent = stored; b.style.opacity = '1'; }
@@ -198,6 +354,88 @@ const OVERLAY_SCRIPT = String.raw`
     var nn = document.getElementById('__demo-note');
     if (nn) { nn.textContent = text; nn.style.opacity = text ? '1' : '0'; }
   };
+
+  window.__demoSceneTimer = null;
+  window.__demoSetScene = function (p) {
+    var chip = document.getElementById('__demo-scene');
+    if (!chip) return;
+    var icon = document.getElementById('__demo-scene-icon');
+    if (icon) icon.innerHTML = DEV_ICON[p.device] || DEV_ICON.Desktop;
+    var nm = document.getElementById('__demo-scene-name');
+    if (nm) nm.textContent = p.name;
+    var rl = document.getElementById('__demo-scene-role');
+    if (rl) rl.textContent = p.role + ' · ' + p.device;
+    chip.style.opacity = '1';
+    chip.style.transform = 'translateY(0)';
+    if (window.__demoSceneTimer) clearTimeout(window.__demoSceneTimer);
+    window.__demoSceneTimer = setTimeout(function () {
+      chip.style.opacity = '0';
+      chip.style.transform = 'translateY(-10px)';
+    }, p.holdMs);
+  };
+
+  window.__demoGlass = function (on) {
+    var g = document.getElementById('__demo-glass');
+    if (g) g.style.opacity = on ? '1' : '0';
+    // Hide the hand cursor while the glass is up — there is nothing to click.
+    var c = document.getElementById('__demo-cursor');
+    if (c) c.style.opacity = on ? '0' : '1';
+  };
+
+  window.__demoFactTitle = function (title, subtitle) {
+    var gt = document.getElementById('__demo-glass-title');
+    if (gt) { gt.textContent = title; gt.style.opacity = '1'; }
+    var gs = document.getElementById('__demo-glass-sub');
+    if (gs) { gs.textContent = subtitle; gs.style.opacity = subtitle ? '1' : '0'; }
+  };
+
+  window.__demoFactAdd = function (melody, bassline) {
+    var gf = document.getElementById('__demo-glass-facts');
+    if (!gf) return;
+    var row = document.createElement('div');
+    Object.assign(row.style, {
+      display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'left',
+      padding: '14px 22px', borderRadius: '14px',
+      background: 'rgba(20, 28, 42, 0.55)', border: '1px solid rgba(120, 150, 190, 0.22)',
+      borderLeft: '3px solid #6ea8fe', opacity: '0', transform: 'translateY(12px)',
+      transition: 'opacity 0.4s ease, transform 0.4s ease'
+    });
+    var m = document.createElement('div');
+    Object.assign(m.style, {
+      color: '#ffffff',
+      font: '600 21px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+    });
+    m.textContent = melody;
+    var bl = document.createElement('div');
+    Object.assign(bl.style, {
+      color: 'rgba(157, 180, 214, 0.95)',
+      font: '500 14.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace',
+      letterSpacing: '0.2px'
+    });
+    bl.textContent = bassline;
+    row.appendChild(m); row.appendChild(bl);
+    gf.appendChild(row);
+    requestAnimationFrame(function () {
+      row.style.opacity = '1';
+      row.style.transform = 'translateY(0)';
+    });
+  };
+
+  window.__demoFactClose = function (text) {
+    var gc = document.getElementById('__demo-glass-close');
+    if (gc) { gc.textContent = text; gc.style.opacity = text ? '1' : '0'; }
+  };
+
+  window.__demoFactReset = function () {
+    var gf = document.getElementById('__demo-glass-facts');
+    if (gf) gf.innerHTML = '';
+    var gt = document.getElementById('__demo-glass-title');
+    if (gt) { gt.textContent = ''; gt.style.opacity = '0'; }
+    var gs = document.getElementById('__demo-glass-sub');
+    if (gs) { gs.textContent = ''; gs.style.opacity = '0'; }
+    var gc = document.getElementById('__demo-glass-close');
+    if (gc) { gc.textContent = ''; gc.style.opacity = '0'; }
+  };
 })();
 `;
 
@@ -223,6 +461,58 @@ export class Demo {
     await this.page.evaluate((t) => window.__demoSetNote?.(t), opts.note ?? '');
     await this.page.waitForTimeout(settleMs);
     await fn();
+    await this.page.waitForTimeout(holdMs);
+  }
+
+  /**
+   * Flash the persona chip (who/role/device) at the top-left for `holdMs`,
+   * then let it fade. Call once at the start of a persona segment; it does
+   * not block the rest of the take — the chip dismisses itself.
+   */
+  async scene(scene: DemoScene): Promise<void> {
+    const payload = {
+      name: scene.name,
+      role: scene.role,
+      device: scene.device,
+      holdMs: scene.holdMs ?? SCENE_DEFAULT_HOLD_MS,
+    };
+    await this.page.evaluate((p) => window.__demoSetScene?.(p), payload);
+    // Let the chip settle in before the action starts.
+    await this.page.waitForTimeout(450);
+  }
+
+  /**
+   * Blur the live app behind frosted glass and reveal the invisible
+   * backend guarantees as fact cards, one by one. Used for the data
+   * segment, where the thing being shown has no UI — it lives in the
+   * server, the object store, and the backup drills.
+   */
+  async revealFacts(opts: DemoRevealOptions): Promise<void> {
+    const { settleMs, perFactMs, holdMs } = { ...REVEAL_DEFAULTS, ...opts };
+    await this.page.evaluate(() => {
+      window.__demoSetCaption?.('');
+      window.__demoSetNote?.('');
+      window.__demoFactReset?.();
+      window.__demoGlass?.(true);
+    });
+    await this.page.waitForTimeout(550);
+    await this.page.evaluate(
+      ({ title, subtitle }) => window.__demoFactTitle?.(title, subtitle),
+      { title: opts.title, subtitle: opts.subtitle },
+    );
+    await this.page.waitForTimeout(settleMs);
+
+    for (const fact of opts.facts) {
+      await this.page.evaluate(
+        ({ melody, bassline }) => window.__demoFactAdd?.(melody, bassline),
+        { melody: fact.melody, bassline: fact.bassline },
+      );
+      await this.page.waitForTimeout(perFactMs);
+    }
+
+    if (opts.close) {
+      await this.page.evaluate((t) => window.__demoFactClose?.(t), opts.close);
+    }
     await this.page.waitForTimeout(holdMs);
   }
 
