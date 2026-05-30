@@ -1,6 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import type { Page, TestInfo } from '@playwright/test';
+import type { Page, Locator } from '@playwright/test';
 
 /**
  * Demo-recording helpers — turn a Playwright spec into a human-friendly
@@ -10,25 +8,25 @@ import type { Page, TestInfo } from '@playwright/test';
  *   1. **Captions** — each step shows an on-screen banner so a silent
  *      video reads as a narrated walkthrough. The banner is a real DOM
  *      element, so it is burned into the recording with no post-encode
- *      step. The same caption list is dumped to `captions.json` next to
- *      the video, from which `scripts/demo/encode.mjs` can emit a `.srt`.
- *   2. **Visible cursor** — Playwright does not render the pointer in the
- *      recording. We inject a fake cursor that follows the synthetic
- *      pointer (its `mousemove`/`mousedown` events are real DOM events)
- *      plus a click ripple, so clicks are legible on screen.
+ *      step and no caption sidecar to keep in sync.
+ *   2. **Visible cursor that moves like a hand** — Playwright does not
+ *      render the pointer, and a `locator.click()` only emits a single
+ *      mousemove, so a naive fake cursor teleports between targets.
+ *      `moveTo()/click()/fill()/type()` glide the cursor along an eased,
+ *      time-spaced path to the target before acting, so motion is legible.
  *   3. **Consistent pacing** — `step()` holds before and after each
  *      action by the same default amounts, replacing ad-hoc sleeps.
  *
- * Usage (note the second `testInfo` arg of the test callback):
+ * Drive interactions through the demo methods (not raw locator calls) so
+ * the cursor stays in sync with what is happening:
  *
- *   test('guided tour', async ({ page }, testInfo) => {
- *     const demo = await startDemo(page, testInfo);
+ *   test('guided tour', async ({ page }) => {
+ *     const demo = await startDemo(page);
  *     await page.goto('/');
  *     await demo.step('Anmeldung als Inhaber', async () => {
- *       await page.getByTestId('login-username').fill('inhaber');
- *       ...
+ *       await demo.type(page.getByTestId('login-username'), 'inhaber');
+ *       await demo.click(page.getByTestId('login-submit'));
  *     });
- *     await demo.finish();
  *   });
  */
 
@@ -48,11 +46,18 @@ export interface DemoStepOptions {
 
 const STEP_DEFAULTS: Required<DemoStepOptions> = { settleMs: 700, holdMs: 1200 };
 
-interface CaptionEntry {
-  text: string;
-  /** ms from demo start (≈ video start) when this caption appeared. */
-  atMs: number;
-}
+/**
+ * Cursor-glide tuning. `mouse.move(x, y, { steps })` dispatches its
+ * intermediate events with no real delay between them, so the fake
+ * cursor would still snap to the target in one transition. We instead
+ * space the moves ourselves: one mousemove per frame, eased, so the
+ * cursor visibly travels. Step count scales with distance for roughly
+ * constant on-screen speed.
+ */
+const GLIDE_FRAME_MS = 12;
+const GLIDE_PX_PER_STEP = 12;
+const GLIDE_MIN_STEPS = 10;
+const GLIDE_MAX_STEPS = 40;
 
 /**
  * Browser overlay, injected once per document via `addInitScript`:
@@ -93,7 +98,7 @@ const OVERLAY_SCRIPT = String.raw`
         marginLeft: '-12px', marginTop: '-12px', borderRadius: '50%',
         background: 'rgba(255, 70, 70, 0.40)', border: '2px solid rgba(255, 255, 255, 0.92)',
         boxShadow: '0 0 10px rgba(0, 0, 0, 0.55)', pointerEvents: 'none', zIndex: Z,
-        transition: 'transform 0.08s linear', transform: 'translate(-100px, -100px)'
+        transition: 'transform 0.05s linear', transform: 'translate(-100px, -100px)'
       });
       document.body.appendChild(cursor);
     }
@@ -148,15 +153,17 @@ const OVERLAY_SCRIPT = String.raw`
 })();
 `;
 
-/** A live demo session bound to one page + test. */
+/** A live demo session bound to one page. */
 export class Demo {
-  private readonly captions: CaptionEntry[] = [];
+  /** Last cursor position we glided to — start tracking from the centre. */
+  private cx: number;
+  private cy: number;
 
-  constructor(
-    private readonly page: Page,
-    private readonly testInfo: TestInfo,
-    private readonly t0: number,
-  ) {}
+  constructor(private readonly page: Page) {
+    const vp = page.viewportSize();
+    this.cx = vp ? vp.width / 2 : 200;
+    this.cy = vp ? vp.height / 2 : 200;
+  }
 
   /**
    * Show `caption`, hold, run `fn`, hold again. The banner stays on
@@ -164,41 +171,70 @@ export class Demo {
    */
   async step(caption: string, fn: () => Promise<void>, opts: DemoStepOptions = {}): Promise<void> {
     const { settleMs, holdMs } = { ...STEP_DEFAULTS, ...opts };
-    this.captions.push({ text: caption, atMs: Date.now() - this.t0 });
     await this.page.evaluate((t) => window.__demoSetCaption?.(t), caption);
     await this.page.waitForTimeout(settleMs);
     await fn();
     await this.page.waitForTimeout(holdMs);
   }
 
+  /** Smoothly glide the visible cursor to the centre of `target`. */
+  async moveTo(target: Locator): Promise<void> {
+    await target.scrollIntoViewIfNeeded();
+    const box = await target.boundingBox();
+    if (!box) return;
+    await this.glideTo(box.x + box.width / 2, box.y + box.height / 2);
+  }
+
+  /** Glide to `target`, then click it (keeps Playwright actionability). */
+  async click(target: Locator): Promise<void> {
+    await this.moveTo(target);
+    await target.click();
+  }
+
+  /** Glide to `target`, then fill it in one shot. */
+  async fill(target: Locator, text: string): Promise<void> {
+    await this.moveTo(target);
+    await target.fill(text);
+  }
+
+  /** Glide to `target`, then type character-by-character (visible keystrokes). */
+  async type(target: Locator, text: string, opts?: { delay?: number }): Promise<void> {
+    await this.moveTo(target);
+    await target.pressSequentially(text, opts);
+  }
+
   /**
-   * Persist the caption timeline next to the video so the encode step
-   * can emit a `.srt`. Playwright writes `video.webm` into
-   * `testInfo.outputDir`; we drop `captions.json` in the same folder.
+   * Eased, time-spaced interpolation from the last cursor position to
+   * `(tx, ty)`. One mousemove per `GLIDE_FRAME_MS` so the cursor visibly
+   * travels; the real synthetic pointer follows the same path, so a
+   * subsequent `click()` lands exactly where the cursor came to rest.
    */
-  async finish(): Promise<void> {
-    fs.mkdirSync(this.testInfo.outputDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(this.testInfo.outputDir, 'captions.json'),
-      JSON.stringify(
-        {
-          title: this.testInfo.title,
-          project: this.testInfo.project.name,
-          entries: this.captions,
-        },
-        null,
-        2,
-      ),
+  private async glideTo(tx: number, ty: number): Promise<void> {
+    const sx = this.cx;
+    const sy = this.cy;
+    const dist = Math.hypot(tx - sx, ty - sy);
+    const steps = Math.min(
+      GLIDE_MAX_STEPS,
+      Math.max(GLIDE_MIN_STEPS, Math.round(dist / GLIDE_PX_PER_STEP)),
     );
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      // ease-in-out (accelerate, then decelerate) for natural-looking motion
+      const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+      await this.page.mouse.move(sx + (tx - sx) * e, sy + (ty - sy) * e);
+      await this.page.waitForTimeout(GLIDE_FRAME_MS);
+    }
+    this.cx = tx;
+    this.cy = ty;
   }
 }
 
 /**
- * Install the overlay and start the caption timeline. Call this BEFORE
- * the first `page.goto` — `addInitScript` only applies to subsequent
+ * Install the overlay and return a demo session. Call this BEFORE the
+ * first `page.goto` — `addInitScript` only applies to subsequent
  * navigations.
  */
-export async function startDemo(page: Page, testInfo: TestInfo): Promise<Demo> {
+export async function startDemo(page: Page): Promise<Demo> {
   await page.addInitScript(OVERLAY_SCRIPT);
-  return new Demo(page, testInfo, Date.now());
+  return new Demo(page);
 }

@@ -11,14 +11,14 @@
  *   - Nothing else: the `demo`/`demo-mobile` projects depend on `setup`,
  *     which boots the e2e stack and seeds the realistic snapshot.
  *
- * Run + encode to MP4 (+ .srt sidecar):
+ * Run + encode to MP4:
  *   npm run demo
  *
  * Run only this scenario, headed:
  *   PLAYWRIGHT_RUN_DEMO=1 npx playwright test e2e/demo-recording.spec.ts \
  *     --project=demo --headed
  *
- * Output: `test-results/<folder>/video.webm` → `demo.mp4` (+ `demo.srt`).
+ * Output: `test-results/<folder>/video.webm` → `demo.mp4` (captions burned in).
  */
 import { test, expect } from '@playwright/test';
 import { startDemo } from './demo-helpers';
@@ -47,8 +47,8 @@ const SAMPLE_EMAIL = [
   '51465 Bergisch Gladbach',
 ].join('\n');
 
-test('E-Mail-Extraktion per KI', async ({ page }, testInfo) => {
-  const demo = await startDemo(page, testInfo);
+test('E-Mail-Extraktion per KI', async ({ page }) => {
+  const demo = await startDemo(page);
 
   // toggled locally when recording the demo in a specific theme.
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -56,26 +56,25 @@ test('E-Mail-Extraktion per KI', async ({ page }, testInfo) => {
 
   await demo.step('Anmeldung am System', async () => {
     await expect(page.getByTestId('login-form')).toBeVisible();
-    await page.getByTestId('login-username').pressSequentially('inhaber', { delay: 80 });
-    await page.getByTestId('login-password').pressSequentially('changeme', { delay: 80 });
-    await page.getByTestId('login-submit').click();
+    await demo.type(page.getByTestId('login-username'), 'inhaber', { delay: 80 });
+    await demo.type(page.getByTestId('login-password'), 'changeme', { delay: 80 });
+    await demo.click(page.getByTestId('login-submit'));
     await expect(page.getByTestId('kanban-board')).toBeVisible();
   });
 
   await demo.step('Eingang einer Kundenanfrage per E-Mail', async () => {
-    await page.getByTestId('extract-button').click();
+    await demo.click(page.getByTestId('extract-button'));
     await expect(page.getByTestId('extract-email-input')).toBeVisible();
   });
 
   await demo.step('E-Mail-Text einfügen', async () => {
-    await page.getByTestId('extract-email-input').click();
-    await page.getByTestId('extract-email-input').fill(SAMPLE_EMAIL);
+    await demo.fill(page.getByTestId('extract-email-input'), SAMPLE_EMAIL);
   });
 
   await demo.step(
     'Die KI extrahiert Kunden- und Projektdaten …',
     async () => {
-      await page.getByTestId('extract-submit').click();
+      await demo.click(page.getByTestId('extract-submit'));
       // The review view appears once extraction succeeds; the customer-name
       // field is only present in that second stage, so it signals completion.
       await expect(page.getByTestId('extract-customer-name')).toBeVisible({ timeout: 60_000 });
@@ -90,6 +89,4 @@ test('E-Mail-Extraktion per KI', async ({ page }, testInfo) => {
     },
     { settleMs: 1500, holdMs: 4000 },
   );
-
-  await demo.finish();
 });

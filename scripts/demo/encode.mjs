@@ -4,18 +4,19 @@
  * into shareable MP4s, and (optionally) stitch same-resolution clips
  * into a single reel.
  *
+ * Captions are burned into the recording by the demo overlay, so there
+ * is no sidecar to emit here.
+ *
  * Pipeline:
  *   1. Walk `test-results/` for every `video.webm`.
  *   2. Transcode each to a sibling `demo.mp4` (H.264 + faststart — plays
  *      everywhere, seeks instantly).
- *   3. If a `captions.json` sits beside it (written by Demo.finish()),
- *      emit a `demo.srt` sidecar from the caption timeline.
- *   4. With `--reel`, concatenate the produced MP4s into one reel per
+ *   3. With `--reel`, concatenate the produced MP4s into one reel per
  *      resolution group (concat needs matching dimensions), written to
  *      `test-results/demo-reel-<WxH>.mp4`.
  *
  * Usage:
- *   node scripts/demo/encode.mjs            # transcode + srt
+ *   node scripts/demo/encode.mjs            # transcode
  *   node scripts/demo/encode.mjs --reel     # + stitch reels
  *
  * Requires `ffmpeg` and `ffprobe` on PATH.
@@ -55,31 +56,6 @@ function findVideos(dir) {
     else if (entry.name === 'video.webm') out.push(full);
   }
   return out;
-}
-
-/** ms → `HH:MM:SS,mmm` (SRT timestamp). */
-function srtTime(ms) {
-  const clamped = Math.max(0, Math.round(ms));
-  const h = Math.floor(clamped / 3_600_000);
-  const m = Math.floor((clamped % 3_600_000) / 60_000);
-  const s = Math.floor((clamped % 60_000) / 1000);
-  const millis = clamped % 1000;
-  const pad = (n, w = 2) => String(n).padStart(w, '0');
-  return `${pad(h)}:${pad(m)}:${pad(s)},${pad(millis, 3)}`;
-}
-
-/** Build an `.srt` from a `captions.json` caption timeline. */
-function writeSrt(captionsPath, srtPath) {
-  const { entries } = JSON.parse(fs.readFileSync(captionsPath, 'utf8'));
-  if (!Array.isArray(entries) || entries.length === 0) return false;
-  const TAIL_MS = 3000; // how long the last caption lingers
-  const blocks = entries.map((entry, i) => {
-    const start = entry.atMs;
-    const end = i + 1 < entries.length ? entries[i + 1].atMs : entry.atMs + TAIL_MS;
-    return `${i + 1}\n${srtTime(start)} --> ${srtTime(end)}\n${entry.text}\n`;
-  });
-  fs.writeFileSync(srtPath, blocks.join('\n'));
-  return true;
 }
 
 /** `WIDTHxHEIGHT` of the first video stream. */
@@ -145,14 +121,6 @@ for (const webm of videos) {
     ],
     { stdio: ['ignore', 'ignore', 'inherit'] },
   );
-
-  const captionsPath = path.join(dir, 'captions.json');
-  if (fs.existsSync(captionsPath)) {
-    const srtPath = path.join(dir, 'demo.srt');
-    if (writeSrt(captionsPath, srtPath)) {
-      console.log(`  + ${path.relative(repoRoot, srtPath)}`);
-    }
-  }
 
   produced.push(mp4);
 }
