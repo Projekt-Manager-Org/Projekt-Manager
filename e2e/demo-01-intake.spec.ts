@@ -36,6 +36,7 @@ test('01 — Anfrage per E-Mail', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(page.getByTestId('kanban-board')).toBeVisible();
+  await demo.scene({ name: 'Maria Schmidt', role: 'Büro', device: 'Desktop' });
 
   await demo.step('Eine neue Kundenanfrage – per E-Mail.', async () => {
     await demo.click(page.getByTestId('extract-button'));

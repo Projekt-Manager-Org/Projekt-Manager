@@ -21,6 +21,7 @@ test('05 — Rechnung als PDF', async ({ page }) => {
   const demo = await startDemo(page);
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
+  await demo.scene({ name: 'Maria Schmidt', role: 'Büro', device: 'Desktop' });
 
   // First issued (status "Ausgestellt") row. The list orders by
   // `issueDate DESC NULLS LAST` (invoice-read.ts), so the newest issued

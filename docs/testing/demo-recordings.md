@@ -8,24 +8,28 @@ capture, no flaky recording app.
 prose walkthrough (human-authored)
         │  translated into a spec
         ▼
-demo-*.spec.ts ── demo.step(caption, fn) + gliding cursor + seeded data
+demo-*.spec.ts ── demo.step / scene / revealFacts + gliding cursor + seeded data
         │
-        ▼  Playwright:  demo (desktop 1400×1200)  ·  demo-mobile (Pixel 7)
-   video.webm   (silent, captions burned in)
+        ▼  Playwright:  demo (desktop 1920×1080)  ·  demo-mobile (Pixel 7)
+   video.webm   (silent, captions/chips/cards burned in)
         │  scripts/demo/encode.mjs  (ffmpeg)
-        ▼
-   demo.mp4   (+ optional demo-reel-<WxH>.mp4)
+        ├── --master  one 1920×1080 film, built in a single pass → test-results/demo-master.mp4
+        └── --hero    README loop cut from the Daten reveal → assets/demo-hero.webp
 ```
 
-Captions are burned into the video by the on-screen banner — one caption
-source, no `.srt` sidecar to keep in sync.
+Captions, persona chips, and the data-reveal cards are real DOM, burned
+into the recording by the overlay — one source, no `.srt` sidecar to sync.
+The master is built in **one** ffmpeg pass (normalize every clip onto the
+canvas, concat, encode once); re-encoding per stage smeared text, so the
+pipeline decodes once and encodes once at high quality.
 
 ## Run
 
 ```bash
-npm run demo          # record (desktop + mobile) then encode to MP4
+npm run demo          # record (desktop + mobile), build master, cut hero
 npm run demo:record   # record only → test-results/<folder>/video.webm
-npm run demo:encode   # encode existing recordings; add -- --reel to stitch
+npm run demo:encode   # build the single-pass 1920×1080 master
+npm run demo:hero     # cut the README loop (assets/demo-hero.webp)
 ```
 
 Recording is opt-in: the `demo` / `demo-mobile` Playwright projects exist only
@@ -33,9 +37,12 @@ when `PLAYWRIGHT_RUN_DEMO=1`, so a normal `npm run test:e2e` never picks them
 up. Both projects depend on `setup`, which seeds the isolated e2e DB/bucket —
 demos run against the realistic snapshot and never touch dev data.
 
-Output lands beside each recording in `test-results/<folder>/`: `demo.mp4`
-(H.264, plays everywhere, captions burned in). `--reel` concatenates
-same-resolution clips into `test-results/demo-reel-<WxH>.mp4`.
+The master lands at `test-results/demo-master.mp4` (1920×1080, faststart) —
+stage it to `demo-clips/` for the Vimeo upload. The hero is a quality-first
+animated webp cut from the Daten reveal; its baked defaults reproduce the
+committed `assets/demo-hero.webp`, and `--hero-static` emits a single crisp
+frame instead. `node scripts/demo/encode.mjs` (no flag) transcodes each clip
+to a sibling `demo.mp4` for review; `--reel` stitches same-resolution clips.
 
 ## Authoring a scenario
 
@@ -61,11 +68,19 @@ test('Kanban-Überblick', async ({ page }) => {
 });
 ```
 
-- `startDemo(page)` injects the visible cursor + caption banner. Call it before
-  the first navigation (`addInitScript` only applies to later loads).
+- `startDemo(page)` injects the visible cursor, caption banner, persona chip,
+  and reveal layer. Call it before the first navigation (`addInitScript` only
+  applies to later loads).
 - `demo.step(caption, fn, opts?)` shows the on-screen caption, holds, runs the
   action, holds again. The caption is the narration — write it in German.
   Tune pacing per step with `{ settleMs, holdMs }`.
+- `demo.scene({ name, role, device })` flashes a self-dismissing top-left chip
+  at a segment's start so a stitched film stays oriented. Call it once after the
+  first load; it does not block the rest of the take.
+- `demo.revealFacts({ title, subtitle, facts, close })` blurs the live app
+  behind frosted glass and floats backend guarantees as fact cards (each a plain
+  melody line + a technical bassline) — for the data segment, whose subject has
+  no UI.
 - Drive interactions through `demo.click / fill / type / moveTo` rather than raw
   locator calls: each glides the visible cursor to the target first, so pointer
   motion reads naturally instead of teleporting. Assertions stay on `page`/`expect`.

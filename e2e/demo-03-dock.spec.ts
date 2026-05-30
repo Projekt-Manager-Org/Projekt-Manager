@@ -19,6 +19,7 @@ test('03 — Live-Überblick', async ({ page, browser }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(page.getByTestId('kanban-board')).toBeVisible();
+  await demo.scene({ name: 'Thomas Berger', role: 'Inhaber', device: 'Desktop' });
 
   const rows = page
     .getByTestId('activity-dock-panel')
