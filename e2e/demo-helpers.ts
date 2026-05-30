@@ -52,8 +52,8 @@ declare global {
     __demoFactAdd?: (melody: string, bassline: string) => void;
     /** Set the closing punch line under the fact list and fade it in. */
     __demoFactClose?: (text: string) => void;
-    /** Show/hide the scene-change cue (forward-flowing chevrons). */
-    __demoFactNext?: (on: boolean) => void;
+    /** Show the scene-change cue — a progress bar that drains over `ms`. */
+    __demoFactNext?: (on: boolean, ms?: number) => void;
     /** Clear all reveal content (title, facts, close, cue) for reuse. */
     __demoFactReset?: () => void;
   }
@@ -180,20 +180,6 @@ const OVERLAY_SCRIPT = String.raw`
 
   function build() {
     if (!document.body) { requestAnimationFrame(build); return; }
-
-    if (!document.getElementById('__demo-overlay-style')) {
-      // Keyframes for the scene-change cue (the chevrons that flow forward
-      // after the last Daten card). Inline styles can't carry @keyframes.
-      var st = document.createElement('style');
-      st.id = '__demo-overlay-style';
-      st.textContent =
-        '@keyframes demoNextFlow{0%,100%{opacity:.25;transform:translateX(0)}' +
-        '50%{opacity:1;transform:translateX(8px)}}' +
-        '#__demo-glass-next span{display:inline-block;animation:demoNextFlow 1.1s ease-in-out infinite}' +
-        '#__demo-glass-next span:nth-child(2){animation-delay:.14s}' +
-        '#__demo-glass-next span:nth-child(3){animation-delay:.28s}';
-      (document.head || document.documentElement).appendChild(st);
-    }
 
     if (!document.getElementById('__demo-cursor')) {
       var cursor = document.createElement('div');
@@ -332,16 +318,24 @@ const OVERLAY_SCRIPT = String.raw`
       });
       glass.appendChild(gc);
 
-      // Scene-change cue — chevrons that flow forward once the reveal is done,
-      // telling the viewer the film is about to cut to the next segment.
+      // Scene-change cue — a slideshow-style progress bar that drains the
+      // segment's remaining time, so the viewer reads "this slide is timed,
+      // about to advance" rather than "click me". Anchored to the bottom so
+      // it doesn't shift the centred card stack.
       var gn = document.createElement('div');
       gn.id = '__demo-glass-next';
       Object.assign(gn.style, {
-        marginTop: '30px', color: '#6ea8fe', letterSpacing: '6px', opacity: '0',
-        font: '700 34px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-        transition: 'opacity 0.5s ease'
+        position: 'absolute', bottom: '7%', left: '50%', transform: 'translateX(-50%)',
+        width: '34%', height: '5px', borderRadius: '3px', overflow: 'hidden',
+        background: 'rgba(150, 175, 210, 0.20)', opacity: '0',
+        transition: 'opacity 0.4s ease'
       });
-      gn.innerHTML = '<span>›</span><span>›</span><span>›</span>';
+      var gnf = document.createElement('div');
+      gnf.id = '__demo-glass-next-fill';
+      Object.assign(gnf.style, {
+        height: '100%', width: '100%', borderRadius: '3px', background: '#6ea8fe'
+      });
+      gn.appendChild(gnf);
       glass.appendChild(gn);
 
       document.body.appendChild(glass);
@@ -461,9 +455,22 @@ const OVERLAY_SCRIPT = String.raw`
     if (gc) { gc.textContent = text; gc.style.opacity = text ? '1' : '0'; }
   };
 
-  window.__demoFactNext = function (on) {
+  window.__demoFactNext = function (on, ms) {
     var gn = document.getElementById('__demo-glass-next');
-    if (gn) gn.style.opacity = on ? '1' : '0';
+    var gf = document.getElementById('__demo-glass-next-fill');
+    if (!gn || !gf) return;
+    if (on) {
+      gn.style.opacity = '1';
+      gf.style.transition = 'none';
+      gf.style.width = '100%';
+      void gf.offsetWidth; // reflow so the full bar sticks before it drains
+      gf.style.transition = 'width ' + (ms || 2500) + 'ms linear';
+      gf.style.width = '0%';
+    } else {
+      gn.style.opacity = '0';
+      gf.style.transition = 'none';
+      gf.style.width = '100%';
+    }
   };
 
   window.__demoFactReset = function () {
@@ -477,6 +484,8 @@ const OVERLAY_SCRIPT = String.raw`
     if (gc) { gc.textContent = ''; gc.style.opacity = '0'; }
     var gn = document.getElementById('__demo-glass-next');
     if (gn) gn.style.opacity = '0';
+    var gnf = document.getElementById('__demo-glass-next-fill');
+    if (gnf) { gnf.style.transition = 'none'; gnf.style.width = '100%'; }
   };
 })();
 `;
@@ -556,8 +565,9 @@ export class Demo {
       await this.page.evaluate((t) => window.__demoFactClose?.(t), opts.close);
       await this.page.waitForTimeout(closeMs);
     }
-    // Flow the scene-change cue, then dwell so the reveal doesn't snap away.
-    await this.page.evaluate(() => window.__demoFactNext?.(true));
+    // Drain the scene-change bar over the dwell, so it empties as the
+    // segment ends — the cut lands the moment the bar runs out.
+    await this.page.evaluate((ms) => window.__demoFactNext?.(true, ms), holdMs);
     await this.page.waitForTimeout(holdMs);
   }
 

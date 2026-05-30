@@ -24,6 +24,7 @@ test('02 — Daten', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(page.getByTestId('kanban-board')).toBeVisible();
+  await demo.scene({ name: 'Thomas Berger', role: 'Inhaber', device: 'Desktop' });
 
   // Establish the live operation — the data the rest of the segment is
   // about — before it dissolves behind the glass.
@@ -53,7 +54,7 @@ test('02 — Daten', async ({ page }) => {
       },
       {
         melody: 'Sicherung automatisch – und automatisch erprobt.',
-        bassline: 'DB-Dump automatisch, mehrmals werktags · Restore-Drill gegen Echtdaten, nicht gegen Hoffnung',
+        bassline: 'DB-Dump mehrmals täglich · Restore-Drill gegen Echtdaten, nicht gegen Hoffnung',
       },
     ],
     close: 'Wir rechnen mit dem Ausfall. Darum hält Ihr Betrieb.',

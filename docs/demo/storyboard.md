@@ -111,11 +111,11 @@ Schlimmsten aus – und sorgt vor._, then four cards rise in turn (melody / bass
 1. _Nichts verlässt die App im Klartext._ / `Anhänge Ende-zu-Ende verschlüsselt · AES-256-GCM · Schlüssel nie auf der Platte`
 2. _Was bleiben muss, löscht niemand – auch die App nicht._ / `WORM-Objektspeicher · Object-Lock providerseitig · App-Key ohne Löschrecht`
 3. _Ransomware, Absturz, Bedienfehler – einkalkuliert._ / `mehrstufig & verschlüsselt · providerseitig gesperrt · mit App-Zugang nicht löschbar`
-4. _Sicherung automatisch – und automatisch erprobt._ / `DB-Dump automatisch, mehrmals werktags · Restore-Drill gegen Echtdaten, nicht gegen Hoffnung`
+4. _Sicherung automatisch – und automatisch erprobt._ / `DB-Dump mehrmals täglich · Restore-Drill gegen Echtdaten, nicht gegen Hoffnung`
 
 Closing punch line: _Wir rechnen mit dem Ausfall. Darum hält Ihr Betrieb._ After it, a
-forward-flowing chevron cue (`› › ›`) signals the cut, then the reveal dwells a beat before
-the film moves on.
+slideshow-style progress bar drains away the segment's remaining seconds, so the cut reads as
+"the slide is timed" rather than waiting on the viewer.
 
 ## Out of scope (curation beats completeness)
 

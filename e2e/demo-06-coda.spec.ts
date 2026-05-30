@@ -23,7 +23,7 @@ test('06 — Vertrauen', async ({ page }) => {
   await demo.scene({ name: 'Thomas Berger', role: 'Inhaber', device: 'Desktop' });
 
   await demo.step(
-    'Automatische Sicherung – jeden Tag.',
+    'Automatische Sicherung – mehrmals täglich.',
     async () => {
       // A click surfaces the status as a toast (BackupBadge.handleClick) —
       // it reads on camera where the native `title` tooltip does not.
