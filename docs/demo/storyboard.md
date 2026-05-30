@@ -1,13 +1,15 @@
 # Demo Video — Storyboard & Shot List
 
-> Status: **draft, converging.** Drives the recording harness (`e2e/demo-*.spec.ts`,
-> `scripts/demo/encode.mjs`). Red-pen freely; the script is settled on paper before code.
+> Status: **shipped.** Eight segment specs (`e2e/demo-0X-*.spec.ts`) record under the
+> `demo` / `demo-mobile` Playwright projects; `scripts/demo/encode.mjs --master` (run via
+> `npm run demo`) concatenates them into one 1920×1080 master (~1:25). Upload to Vimeo and
+> link it from the README hero (`assets/demo-hero.webp`).
 
 ## Purpose
 
-One seamless ~2-minute film for the README hero, linked to Vimeo. It must present
-the app broadly without dragging, and make the invisible engineering (data integrity,
-RBAC, live audit) _visible_ rather than narrated.
+One seamless ~1½-minute film for the README hero, linked to Vimeo. It presents the app
+broadly without dragging, and makes the invisible engineering (data integrity, RBAC, live
+audit) _visible_ rather than narrated.
 
 ## Audience & thesis
 
@@ -18,129 +20,136 @@ The film carries two theses for two audiences, woven so neither talks down to th
   way around."_ Leads everywhere.
 - **Bassline — for the engineer / portfolio viewer:**
   _"Built to be distrusted — the app will fail and the user will try to break it — which
-  is exactly why the data survives."_ Rides underneath as proof; concentrated in three
+  is exactly why the data survives."_ Rides underneath as proof; concentrated in the
   technical grace notes and the coda.
 
-They converge in the final line: _made for you_ **and** _guards your data_. The two
-theses mirror the README's two pillars — "Who is this for" and "Data integrity, Security."
+They converge in the closing card: _made for you_ **and** _guards your data_. The two
+theses mirror the README's two pillars — "Who is this for" and "Data integrity, Security".
 
 ## Spine — "one job, three hands, one living board"
 
-Follow a single project through the company. Personas are the hands it passes through;
-the activity dock is the omniscient through-line; each invisible fact surfaces the moment
-it becomes relevant.
+Follow a single project through the company. Personas are the hands it passes through; the
+activity dock is the omniscient through-line; each invisible fact surfaces the moment it
+becomes relevant.
 
 ```
-  inquiry email
+   inquiry email
         │
         ▼
- ┌─ OFFICE · desktop ───────────────────────────┐
- │ LLM-extract → project created                 │  data intake + the user-first touch
- │ try to destroy data → app REFUSES · recycle-bin│  ★ data integrity, shown by refusal
- └──────────────┬─────────────────────────────────┘
-                │  every step logs into…
-                ▼
-        OWNER · desktop — kanban + activity dock      ★ killer feature: the company, alive
-                │  live, cross-user, no refresh
-                ▼
- ┌─ FIELD WORKER · mobile ────────────────────────┐
- │ "Meine Projekte" — only their jobs              │  RBAC, shown by absence
- │ open job · upload site photos                   │  data from the field (no camera needed)
- └──────────────┬─────────────────────────────────┘
-                ▼
-   completion → invoice issued → PDF                   the pipeline pays off
-                │
-                ▼
-   CODA — backup badge · one-click export · thesis     ★ built-to-be-distrusted payoff
+   OFFICE · desktop — LLM-extract → project created     data intake + the user-first touch
+        │
+        ▼
+   OWNER · try to delete live data → REFUSED           ★ data integrity, shown by refusal
+        │  every step logs into…
+        ▼
+   OWNER · desktop — kanban + activity dock            ★ killer feature: the company, alive
+        │  live, cross-user, no refresh
+        ▼
+   FIELD WORKER · mobile — only their jobs · upload     RBAC by absence + data from the field
+        │
+        ▼
+   OFFICE · invoice (ZUGFeRD) → PDF                     the pipeline pays off
+        │
+        ▼
+   CODA — green backup badge · one-click export        ★ built-to-be-distrusted payoff
 ```
 
 ## Format & constraints
 
-- **Length:** ~2:00–2:15. Vary pace — montage transitions, slow down on money shots.
-- **Aspect:** 16:9. Silent, with burned-in captions (no voiceover).
-- **Mobile:** emulated viewport composited onto a **phone mockup over the 16:9 canvas** at
-  encode time — uniform resolution + looks deliberate. No phone is ever physically recorded.
-  "Taking a photo" is replaced by a file upload of a pre-staged image.
-- **Output:** one seamless master (segments concatenated). A ~6–10s muted **webp loop** is
-  cut from the master as the clickable README hero → Vimeo.
+- **Length:** ~1:25 (eight segments). Pace varies — quick transitions, dwell on money shots.
+- **Aspect:** 16:9 (1920×1080). Silent, burned-in captions (no voiceover), **German**.
+- **Mobile:** the field segment records at a phone viewport (Pixel 7) and is composited at
+  encode onto a blurred, darkened construction backdrop with a border — uniform 1920×1080,
+  reading as a phone on-site. No phone is physically recorded; "taking a photo" is a file
+  upload of a pre-staged site photo (`e2e/fixtures/demo/site-1.jpg`).
+- **Output:** one seamless master (`npm run demo` → `test-results/demo-master.mp4`). A ~6.5 s
+  muted **webp loop** (`assets/demo-hero.webp`, cut from the live-dock beat) is the clickable
+  README hero → Vimeo.
 
 ## Shot list
 
-Target times are approximate. ★ = money shot.
+Actual segment timings in the shipped 1:25 master. ★ = money shot.
 
-| #   | ~time       | Beat        | User · viewport                          | On-screen actions                                                                                                           | Spec                |
-| --- | ----------- | ----------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| 0   | 0:00–0:12   | Cold open   | title card                               | chaos framing → "I have work to do." → "so it was built around you"                                                         | generated card      |
-| 1   | 0:12–0:34   | Intake      | office · desktop                         | open email-extract modal, paste inquiry, extract, review prefilled form, save → customer + project                          | `demo-01-intake`    |
-| 2   | 0:34–0:58 ★ | Integrity   | office · desktop                         | try to delete a customer with invoices → refused; try to delete an issued invoice → frozen; open `Papierkorb` (recycle-bin) | `demo-02-integrity` |
-| 3   | 0:58–1:14 ★ | Living dock | owner · desktop (+ worker actor context) | dock expanded on kanban; a background action lands live in the dock, no refresh                                             | `demo-03-dock`      |
-| 4   | 1:14–1:36   | Field       | worker · mobile                          | land on "Meine Projekte" (only their jobs), open a job, upload site photos                                                  | `demo-04-field`     |
-| 5   | 1:36–1:52   | Invoice     | office · desktop                         | project at `rechnung_faellig` → issue invoice → download PDF                                                                | `demo-05-invoice`   |
-| 6   | 1:52–2:14 ★ | Coda        | owner · desktop → title card             | green backup badge, one-click full export (takeout zip), thesis title card, close on the living board                       | `demo-06-coda`      |
+| #   | ~time       | Beat        | User · viewport                  | On-screen actions                                                               | Spec                   |
+| --- | ----------- | ----------- | -------------------------------- | ------------------------------------------------------------------------------- | ---------------------- |
+| 00  | 0:00–0:05   | Cold open   | title card                       | _»Ich habe zu arbeiten.«_ → _Also passt sich die Software an Sie an._           | `demo-00-open`         |
+| 01  | 0:05–0:23   | Intake      | office · desktop                 | email-extract modal: paste inquiry → LLM extract → review prefilled form → save | `demo-01-intake`       |
+| 02  | 0:23–0:35 ★ | Integrity   | owner · desktop                  | delete a customer with a live project (Familie Müller) → confirm → **refused**  | `demo-02-integrity`    |
+| 03  | 0:35–0:43 ★ | Living dock | owner · desktop (+ office actor) | expand the dock on the board; a colleague's new project lands live, no refresh  | `demo-03-dock`         |
+| 04  | 0:43–0:56   | Field       | worker · mobile                  | "Meine Projekte" (only their jobs) → open a job → upload a site photo           | `demo-04-field.mobile` |
+| 05  | 0:56–1:07   | Invoice     | office · desktop                 | open an issued invoice → download the ZUGFeRD PDF                               | `demo-05-invoice`      |
+| 06  | 1:07–1:19 ★ | Coda        | owner · desktop                  | green backup badge (click → status toast) + one-click full export               | `demo-06-coda`         |
+| 99  | 1:19–1:25   | Thesis      | title card                       | _Für Sie gebaut_ + the "built to be distrusted" bassline                        | `demo-99-thesis`       |
 
 ## Caption registers
 
-Human caption = the primary bottom banner, present on every beat. Technical note = a
-restrained second line, **only on the three grace-note beats** (2, 3, 6). The clueless
-user's eye glides over the technical line; the engineer catches it.
+Human caption = the primary bottom banner (every beat). Technical note = a smaller second
+line, only on the grace-note beats. German throughout.
 
-| Beat        | Human (melody)                                                                          | Technical (bassline)                                                                                |
-| ----------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 1 Intake    | "Paste the email — it fills in the rest. Typing the same address twice isn't your job." | —                                                                                                   |
-| 2 Integrity | "Try to delete something important — it won't. Your data is protected, even from you."  | "issued invoices immutable · the app holds no delete key"                                           |
-| 3 Dock      | "Leave it open. Watch the whole company move, live."                                    | "live audit feed · every mutation · in real time"                                                   |
-| 4 Field     | "On site, you see only your jobs. That's all you need right now."                       | "role-scoped, server-enforced"                                                                      |
-| 5 Invoice   | "Done. The invoice is one click away."                                                  | —                                                                                                   |
-| 6 Coda      | "Made for you. It adapts to how you work — not the other way around."                   | "encrypted · VPN-only · backed up to write-once storage · recoverable even if the app itself fails" |
+| Beat         | Human (melody)                                           | Technical (bassline)                                                             |
+| ------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 01 Intake    | „Einfügen genügt – den Rest erledigt die App."           | —                                                                                |
+| 02 Integrity | „Die App schützt die Daten – auch vor Ihnen."            | „referenzielle Integrität – serverseitig, in einer Transaktion geprüft"          |
+| 03 Dock      | „Der Aktivitäts-Dock – die ganze Firma auf einen Blick." | „Live-Audit über SSE – jede Änderung, jeder Nutzer"                              |
+| 04 Field     | „Unterwegs: nur die eigenen Einsätze."                   | „rollenbasiert – serverseitig erzwungen, nicht nur ausgeblendet"                 |
+| 05 Invoice   | „Ein Klick: als PDF – oder ZUGFeRD fürs Finanzamt."      | „ZUGFeRD / EN16931 – XML im PDF/A-3 eingebettet"                                 |
+| 06 Coda      | „Und alles gehört Ihnen."                                | „WORM-Objektspeicher mit Object-Lock – selbst bei App-Ausfall wiederherstellbar" |
+
+The 00 and 99 title cards carry the melody open and the converged thesis (melody + bassline).
 
 ## Out of scope (curation beats completeness)
 
-Calendar, user admin, bookkeeper view, push notifications, ZUGFeRD specifics, backup
-drills. All real; none earns its seconds against the spine. Adding one means cutting one.
+Calendar, user admin, bookkeeper view, push notifications, the attachment recycle-bin
+(`Papierkorb`), live invoice issuance, the invoice-frozen refusal, backup drills. All real;
+none earned its seconds against the spine. (Papierkorb, live issuance, and the frozen-invoice
+refusal were in the early plan and deliberately cut.)
 
 ## Production / harness notes
 
-- **Single master from mixed viewports** — the current encode concatenates only
-  same-resolution clips. Add a master path that composites mobile clips onto a phone-frame
-  over the 16:9 canvas (`filter_complex`), so every segment is uniform and concat is clean.
-- **Live cross-user shot (beat 3)** — record the owner's page; drive the actor in a second
-  `browser.newContext()` (worker/office). The dock reacts to a genuine cross-session event;
-  nothing faked. Proven shape: `e2e/activity-dock.spec.ts` AC-317 already does exactly this.
-  The dock shows the caller's **full RBAC-scoped feed** (no recipient narrowing), so with the
-  owner as observer _any_ mutation in the company surfaces live — no notification-rule setup.
-  It is desktop-only and default-collapsed: expand via `activity-dock-toggle` (or Alt+A) first.
-- **Integrity refusal (beat 2)** — the refusal renders as a **persistent inline banner**, not
-  an auto-dismissing toast, so it lingers as long as the shot needs. Customer-delete is the
-  primary, well-confirmed refusal (`CustomerManagement.tsx`); trigger it from the list view —
-  the banner shows only when no form is open. `Papierkorb` is real (`src/ui/detail/Papierkorb.tsx`).
-  The issued-invoice "frozen" case is wired but its exact UI trigger is confirmed at build.
-- **Narrative continuity is a conceit, not DB threading.** Segments are separate recordings
-  against seeded data, stitched by consistent naming + captions — they don't thread one live
-  DB row across specs. Likely needs a curated **hero customer/project** in the seed
-  (`src/server/seed/business.ts`) so the same name recurs across beats.
-- **Title cards (beats 0, 6)** — a blank styled page + caption overlay, or `drawtext` at
-  encode. No app screen.
-- **Reuse the existing primitives** — captions/cursor/glide in `e2e/demo-helpers.ts`,
-  per-role sessions in `e2e/storage-states.ts` + `e2e/auth.setup.ts`, demo projects in
-  `playwright.config.ts`. Drop the broken mobile-kanban teaser entirely.
+- **Single 1920×1080 master** — `scripts/demo/encode.mjs --master` normalizes every clip to
+  the canvas (desktop padded with the app's dark navy; phone clips composited onto the
+  blurred backdrop), re-asserts `setsar=1` (else the concat filter rejects a near-1:1 SAR
+  mismatch), and concatenates in filename order. `npm run demo` records serially
+  (`--workers=1`, since several beats mutate the shared e2e DB) then masters.
+- **Ordering** — segment specs carry zero-padded numeric prefixes (`demo-00` … `demo-99`); the
+  master sorts clip paths lexically, so filename order = narrative order. Mobile beats use a
+  `.mobile.spec.ts` infix + a `testMatch` split so they record under `demo-mobile` only.
+- **Live cross-user shot (beat 03)** — the owner's page is recorded; a second
+  `browser.newContext()` (office) creates a project via the API, and the row appears in the
+  dock via the `audit_changed` SSE push. Mirrors `e2e/activity-dock.spec.ts` AC-317; the dock
+  shows the full RBAC-scoped feed, so any mutation surfaces for the owner observer.
+- **Integrity refusal (beat 02)** — owner deletes a seeded customer with a live project; the
+  409 surfaces as the inline banner (`CustomerManagement.tsx`). Only `owner` holds
+  `customer:delete`, so the delete button renders for that role (office cannot delete).
+- **Title cards (00, 99)** — styled HTML rendered via `page.setContent` over a darkened
+  backdrop, recorded like a segment (desktop). No `drawtext`, no app screen.
+- **Green backup badge (coda)** — a demo-gated upsert in `e2e/auth.setup.ts` (only when
+  `PLAYWRIGHT_RUN_DEMO` is set) writes a healthy `meta_backup_status`, so the badge reads
+  green; normal e2e keeps the real default. Clicking the badge fires a status toast.
+- **Continuity is narrative, not DB threading** — segments record against the shared seed,
+  stitched by consistent naming + captions; no live project is threaded across specs. The
+  existing "Familie Müller" recurs where natural — no dedicated hero project was needed.
+- **Primitives** — captions / cursor / eased glide + the smaller technical-note line in
+  `e2e/demo-helpers.ts`; per-role sessions in `e2e/storage-states.ts`.
 
-## README integration
+## README integration (manual — README is read-only for AI)
 
-- Replace the mosaic hero (`assets/projekt-manager.png`) with the **clickable webp loop**
-  (a play affordance, links to Vimeo). The visual _is_ the entry point — no bare URL beneath.
-- Retire the standalone "Mobile PWA demo video" link; the master includes mobile. One video,
-  one entry point.
+The hero loop `assets/demo-hero.webp` is built. The README owner replaces the mosaic hero
+(`assets/projekt-manager.png`) and the standalone "Mobile PWA demo video" link with the
+clickable loop → Vimeo:
+
+```html
+<a href="https://vimeo.com/YOUR_NEW_ID">
+  <img src="assets/demo-hero.webp" alt="Projekt-Manager — Demo" width="80%" />
+</a>
+```
+
+One video, one entry point; the master includes mobile.
 
 ## Verification status
 
-Spiked against the actual harness + code (not docs):
-
-- **Confirmed** — live cross-user dock + two-context recording (`e2e/activity-dock.spec.ts`
-  AC-317); worker lands on `/meine-projekte`, scoped client- and server-side
-  (`src/server/repositories/scope.ts`), with no dock and no transition arrows (`permissions.ts`
-  worker set lacks `audit:read` + `project:transition`); mobile upload is a standard
-  `input[type=file]` (`UploadCta.tsx`); integrity refusals render a persistent banner and
-  `Papierkorb` exists.
-- **Confirm at build** — `OPENROUTER_API_KEY` is present, but verify it is non-empty and a
-  model is configured so the extract runs live; the exact UI trigger for the issued-invoice
-  "frozen" message; recording fidelity of the two-context shot with the caption/cursor overlay.
+Shipped: 8 segments record clean (**13 passed**), the master concatenates to 1920×1080 /
+~1:25, and every beat is frame-verified — green backup badge, the live cross-session dock
+row, the phone-on-backdrop composite, the ZUGFeRD invoice, and the German dual-register
+captions. Remaining manual steps: upload `demo-clips/demo-master.mp4` to Vimeo and apply the
+README snippet above.
