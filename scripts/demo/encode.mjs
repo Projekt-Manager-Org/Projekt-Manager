@@ -18,7 +18,7 @@
  * Modes:
  *   node scripts/demo/encode.mjs            # transcode each clip → demo.mp4
  *   node scripts/demo/encode.mjs --reel     # + stitch same-res reels
- *   node scripts/demo/encode.mjs --master   # one 16:9 master (single pass)
+ *   node scripts/demo/encode.mjs --master   # one 16:9 master → demo-clips/ (single pass)
  *   node scripts/demo/encode.mjs --hero     # README hero loop (animated webp)
  *
  * --hero options (override the baked defaults for quick iteration). The
@@ -48,7 +48,14 @@ const args = process.argv.slice(2);
 const makeReel = args.includes('--reel');
 const makeMaster = args.includes('--master');
 const makeHero = args.includes('--hero');
+// Raw clips are read from where Playwright drops them; the finished master
+// is written to a stable staging dir. Keeping them separate matters:
+// Playwright wipes `test-results/` at the start of every `demo:record`, so a
+// master left there is gone on the next run. `demo-clips/` (gitignored) is
+// the stable home for the ready-to-upload film — `npm run demo` writes it
+// there in one shot, no manual copy step to forget.
 const resultsDir = path.resolve(repoRoot, 'test-results');
+const stageDir = path.resolve(repoRoot, 'demo-clips');
 
 /** Read a `--flag=value` override, or `fallback` if absent. */
 function argVal(name, fallback) {
@@ -160,7 +167,8 @@ function buildMaster(clips) {
   const filter =
     branches.join(';') + ';' + concatLabels.join('') + `concat=n=${clips.length}:v=1[v]`;
 
-  const master = path.join(resultsDir, 'demo-master.mp4');
+  fs.mkdirSync(stageDir, { recursive: true });
+  const master = path.join(stageDir, 'demo-master.mp4');
   console.log(`Building master from ${clips.length} segment(s) → ${CW}×${CH} (single pass).`);
   shapes.forEach(({ clip, portrait }) =>
     console.log(`  · ${portrait ? 'phone ' : 'screen'} ${path.relative(repoRoot, clip)}`),

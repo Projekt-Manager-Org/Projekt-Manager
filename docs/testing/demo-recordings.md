@@ -13,7 +13,7 @@ demo-*.spec.ts ── demo.step / scene / revealFacts + gliding cursor + seeded 
         ▼  Playwright:  demo (desktop 1920×1080)  ·  demo-mobile (Pixel 7)
    video.webm   (silent, captions/chips/cards burned in)
         │  scripts/demo/encode.mjs  (ffmpeg)
-        ├── --master  one 1920×1080 film, built in a single pass → test-results/demo-master.mp4
+        ├── --master  one 1920×1080 film, built in a single pass → demo-clips/demo-master.mp4
         └── --hero    README loop cut from the Daten reveal → assets/demo-hero.webp
 ```
 
@@ -37,8 +37,10 @@ when `PLAYWRIGHT_RUN_DEMO=1`, so a normal `npm run test:e2e` never picks them
 up. Both projects depend on `setup`, which seeds the isolated e2e DB/bucket —
 demos run against the realistic snapshot and never touch dev data.
 
-The master lands at `test-results/demo-master.mp4` (1920×1080, faststart) —
-stage it to `demo-clips/` for the Vimeo upload. The hero is a quality-first
+The master lands at `demo-clips/demo-master.mp4` (1920×1080, faststart),
+ready for the Vimeo upload — `demo-clips/` is gitignored and survives the
+`test-results/` wipe each `demo:record` does, so the finished film isn't lost
+on the next run. The hero is a quality-first
 animated webp cut from the Daten reveal; its baked defaults reproduce the
 committed `assets/demo-hero.webp`, and `--hero-static` emits a single crisp
 frame instead. `node scripts/demo/encode.mjs` (no flag) transcodes each clip
