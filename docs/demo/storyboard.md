@@ -67,24 +67,24 @@ omniscient through-line; the data segment steps out of the app to show what guar
   encode onto a blurred, darkened construction backdrop with a border — uniform 1920×1080,
   reading as a phone on-site. No phone is physically recorded; "taking a photo" is a file
   upload of a pre-staged site photo (`e2e/fixtures/demo/site-1.jpg`).
-- **Output:** one seamless master (`npm run demo` → `test-results/demo-master.mp4`, staged to
-  `demo-clips/` for upload). A ~8 s muted **webp loop** (`assets/demo-hero.webp`, cut from the
+- **Output:** one seamless master (`npm run demo` → `demo-clips/demo-master.mp4`, ready for
+  upload). A ~8 s muted **webp loop** (`assets/demo-hero.webp`, cut from the
   Daten reveal) is the clickable README hero → Vimeo.
 
 ## Shot list
 
 Actual segment timings in the shipped ~1:30 master. ★ = money shot.
 
-| #   | ~time       | Beat        | User · viewport                  | On-screen actions                                                                       | Spec                   |
-| --- | ----------- | ----------- | -------------------------------- | --------------------------------------------------------------------------------------- | ---------------------- |
-| 00  | 0:00–0:05   | Cold open   | title card                       | _»Ich habe zu arbeiten.«_ → _Darum passt sich die Software an Sie an._                  | `demo-00-open`         |
-| 01  | 0:05–0:24   | Intake      | office · desktop                 | email-extract modal: paste inquiry → LLM extract → review prefilled form → save         | `demo-01-intake`       |
-| 02  | 0:24–0:37 ★ | Daten       | owner · desktop                  | establish the live board → blur it → reveal the four backend guarantees as cards        | `demo-02-daten`        |
-| 03  | 0:37–0:46 ★ | Living dock | owner · desktop (+ worker actor) | expand the dock; a field worker's site photo lands live, no refresh (no Dropbox detour) | `demo-03-dock`         |
-| 04  | 0:46–0:59   | Field       | worker · mobile                  | "Meine Projekte" (only their jobs) → open a job → upload a site photo                   | `demo-04-field.mobile` |
-| 05  | 0:59–1:11   | Invoice     | office · desktop                 | open an issued invoice → download the ZUGFeRD PDF                                       | `demo-05-invoice`      |
-| 06  | 1:11–1:24 ★ | Coda        | owner · desktop                  | green backup badge (click → status toast) + one-click full export                       | `demo-06-coda`         |
-| 99  | 1:24–1:30   | Thesis      | title card                       | _Für Sie gebaut_ + the "built to be distrusted" bassline                                | `demo-99-thesis`       |
+| #   | ~time       | Beat        | User · viewport                  | On-screen actions                                                                    | Spec                   |
+| --- | ----------- | ----------- | -------------------------------- | ------------------------------------------------------------------------------------ | ---------------------- |
+| 00  | 0:00–0:05   | Cold open   | title card                       | _»Ich habe zu arbeiten.«_ → _Darum passt sich die Software an Sie an._               | `demo-00-open`         |
+| 01  | 0:05–0:24   | Intake      | office · desktop                 | email-extract modal: paste inquiry → LLM extract → review prefilled form → save      | `demo-01-intake`       |
+| 02  | 0:24–0:37 ★ | Daten       | owner · desktop                  | establish the live board → blur it → reveal the four backend guarantees as cards     | `demo-02-daten`        |
+| 03  | 0:37–0:46 ★ | Living dock | owner · desktop (+ worker actor) | expand the dock; a field worker's site photo lands live, no refresh, no manual relay | `demo-03-dock`         |
+| 04  | 0:46–0:59   | Field       | worker · mobile                  | "Meine Projekte" (only their jobs) → open a job → upload a site photo                | `demo-04-field.mobile` |
+| 05  | 0:59–1:11   | Invoice     | office · desktop                 | open an issued invoice → download the ZUGFeRD PDF                                    | `demo-05-invoice`      |
+| 06  | 1:11–1:24 ★ | Coda        | owner · desktop                  | green backup badge (click → status toast) + one-click full export                    | `demo-06-coda`         |
+| 99  | 1:24–1:30   | Thesis      | title card                       | _Für Sie gebaut_ + the "built to be distrusted" bassline                             | `demo-99-thesis`       |
 
 ## Caption registers
 

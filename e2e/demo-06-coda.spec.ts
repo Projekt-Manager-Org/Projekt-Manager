@@ -51,7 +51,7 @@ test('06 — Vertrauen', async ({ page }) => {
       await demo.click(page.getByTestId('data-export-button'));
     },
     {
-      note: 'vollständiger Takeout – alle Daten + Anhänge, jederzeit importierbar',
+      note: 'vollständiger Datenexport – alle Daten + Anhänge, jederzeit importierbar',
       settleMs: 700,
       holdMs: 3500,
     },

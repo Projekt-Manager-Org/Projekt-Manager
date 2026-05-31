@@ -30,7 +30,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
 </style></head><body><div class="card">
   <div class="big">Für <span class="hl">Sie</span> gebaut.</div>
   <div class="sub">Die App passt sich an, wie Sie arbeiten – nicht umgekehrt.</div>
-  <div class="mono">Gebaut, um misstraut zu werden: verschlüsselt · VPN-only · täglich gesichert und providerseitig gesperrt. Darum sicher.</div>
+  <div class="mono">Gebaut, um misstraut zu werden: verschlüsselt · nur per VPN · mehrmals täglich gesichert · providerseitig gesperrt. Darum sicher.</div>
 </div></body></html>`;
 
 test.use({ storageState: { cookies: [], origins: [] } });

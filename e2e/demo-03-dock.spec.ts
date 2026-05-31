@@ -82,7 +82,7 @@ test('03 — Live-Überblick', async ({ page, browser }) => {
   );
 
   await demo.step(
-    '… und es ist sofort im Büro – ohne Dropbox, ohne WhatsApp.',
+    '… und es ist im selben Moment im Büro – ohne Umweg, ohne Nachfragen.',
     async () => {
       await expect
         .poll(

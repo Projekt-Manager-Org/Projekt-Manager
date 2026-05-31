@@ -73,7 +73,7 @@ test('01 — Anfrage per E-Mail', async ({ page }) => {
   );
 
   await demo.step(
-    'Erkannte Daten prüfen.',
+    'Erkannte Daten kurz prüfen.',
     async () => {
       // Let the viewer read the auto-filled customer + project fields.
     },
