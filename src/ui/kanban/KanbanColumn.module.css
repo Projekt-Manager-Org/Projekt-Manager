@@ -36,8 +36,7 @@
 
 .header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
   border-bottom: 3px solid;
@@ -48,6 +47,16 @@
 
 .header:hover {
   background: var(--color-surface-base);
+}
+
+/* Title + collapse chevron share the top row; the aged-buffer warning
+   drops to its own line below so its (nowrap) pill never competes for
+   horizontal room in the narrow column and gets clipped. */
+.headerTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .collapseChevron {
@@ -96,6 +105,7 @@
    warning at the unit of work the user has to act on. */
 .agedWarning {
   display: inline-flex;
+  align-self: flex-start;
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
