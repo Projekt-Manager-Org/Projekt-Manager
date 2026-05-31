@@ -11,6 +11,8 @@ import {
 import { STORAGE_STATES } from './storage-states';
 import { clickView } from './nav-helpers';
 import { reseedAllStorageStates } from './auth-helpers';
+import { createDatabase } from '../src/server/db/connection.js';
+import { seed } from '../src/server/seed.js';
 
 /**
  * E2E — Daten job-driven UI roundtrip (AC-335 [vis], AC-328 e2e arm, AC-161).
@@ -69,42 +71,37 @@ test.describe.configure({ mode: 'serial' });
 test.use({ storageState: STORAGE_STATES.owner });
 
 /**
- * Capture pre-spec state so the seed survives the wipe-and-restore the import
- * job performs. `/api/export` is text-only (#163), so this snapshot covers the
- * customer / project / project-worker rows; attachment rows are restored via
- * the takeout-zip job path the spec itself drives. Mirrors the retiring
- * import spec's pre-snapshot pattern.
+ * Teardown for the destructive roundtrip below.
+ *
+ * The roundtrip test drives an import JOB that wipes the account (TRUNCATEs
+ * `users`, cascading through `sessions` — AC-310) and leaves the seed reshaped
+ * (two extra attachments on the first project). The rest of the serial mutating
+ * bucket reuses this file's shared `storageState` cookies and a pristine seed,
+ * so this spec MUST restore both.
+ *
+ * Reset is done by re-running the canonical seed — identical to `auth.setup.ts`
+ * — rather than snapshotting + restoring through the `/api/export` +
+ * `/api/import` text routes. Those were removed when data-exchange moved to the
+ * job endpoints (#235); the old snapshot/restore therefore silently no-opped
+ * and the re-mint below never ran, landing every later mutating spec on the
+ * login screen.
  */
-let preSpecSnapshot: unknown = null;
-
-test.beforeAll(async ({ browser }) => {
-  const context = await browser.newContext({ storageState: STORAGE_STATES.owner });
-  const res = await context.request.get('/api/export');
-  if (res.ok()) {
-    preSpecSnapshot = await res.json();
-  }
-  await context.close();
-});
-
 test.afterAll(async ({ browser }) => {
-  if (!preSpecSnapshot) return;
-  const context = await browser.newContext({ storageState: STORAGE_STATES.owner });
-  // Restore the seed via the existing text-leg restore form (AC-160).
-  // `/api/import` is text-only post-#163 — strip the `attachments` key the
-  // export envelope carries, otherwise the body schema rejects.
-  const { attachments: _drop, ...snapshot } = preSpecSnapshot as Record<string, unknown>;
-  void _drop;
-  await context.request.post('/api/import?override=true', {
-    data: { ...snapshot, confirmation_phrase: EXPECTED_RESTORE_PHRASE },
-  });
-  await context.close();
+  // 1. Reset the e2e DB to the canonical seed, undoing the roundtrip's wipe +
+  //    the two attachments it adds. `process.env.DATABASE_URL` already points
+  //    at the isolated e2e database (set in playwright.config.ts, inherited by
+  //    every worker) — the same handle `auth.setup.ts` opens to seed.
+  const { db, pool } = createDatabase();
+  try {
+    await seed(db, { force: true });
+  } finally {
+    await pool.end();
+  }
 
-  // The override-import above TRUNCATEs `users`, cascading through
-  // `sessions.user_id` (AC-310) — every session dies, including the shared
-  // storageState cookies the rest of the serial mutating bucket reuses.
-  // Re-mint all role states from a fresh login so specs ordered after this
-  // one don't land on the login screen. (Restored users keep their seed
-  // credentials, so the seed password logs in again.)
+  // 2. Re-mint every role's storageState from a fresh login. The force-seed
+  //    above TRUNCATEs `sessions`, so the shared cookies are dead; this re-mint
+  //    is the contract that keeps the serial bucket authenticated, and MUST run
+  //    unconditionally.
   await reseedAllStorageStates(browser);
 });
 
