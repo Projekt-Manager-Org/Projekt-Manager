@@ -32,7 +32,9 @@ test('05 — Rechnung als PDF', async ({ page }) => {
   // of seed/order drift. (Draft rows have no `invoice-download-pdf`.)
   const issuedRow = page
     .locator('[data-testid^="invoice-row-"]')
-    .filter({ has: page.getByTestId('invoice-status-badge').getByText('Ausgestellt', { exact: true }) })
+    .filter({
+      has: page.getByTestId('invoice-status-badge').getByText('Ausgestellt', { exact: true }),
+    })
     .first();
 
   await demo.step(
@@ -54,7 +56,7 @@ test('05 — Rechnung als PDF', async ({ page }) => {
   );
 
   await demo.step(
-    'Ein Klick: als PDF – oder ZUGFeRD fürs Finanzamt.',
+    'Ein Klick: fertiges PDF – ZUGFeRD-konform fürs Finanzamt.',
     async () => {
       // The download button triggers a real browser download (no on-screen
       // PDF). Arm the download wait BEFORE the click, then swallow it, so

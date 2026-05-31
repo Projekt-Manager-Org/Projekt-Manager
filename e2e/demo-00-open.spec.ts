@@ -28,7 +28,7 @@ const HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
   .hl{color:#6ea8fe;}
 </style></head><body><div class="card">
   <div class="lead">»Ich habe zu arbeiten.«</div>
-  <div class="big">Also passt sich die Software an <span class="hl">Sie</span> an.</div>
+  <div class="big">Darum passt sich die Software an <span class="hl">Sie</span> an.</div>
 </div></body></html>`;
 
 test.use({ storageState: { cookies: [], origins: [] } });
