@@ -1,15 +1,24 @@
 /**
  * Demo segment 03 — Live-Überblick (the activity dock). The owner leaves
- * the dock open on the board; a colleague (a second, unrecorded session)
- * creates a project, and the row appears in the dock live — no refresh.
- * The killer feature: the whole company, in real time. Mirrors the
- * verified AC-317 two-context mechanic (e2e/activity-dock.spec.ts).
+ * the dock open on the board; a field worker (a second, unrecorded
+ * session) uploads a site photo, and the `Datei hinzugefügt` row appears
+ * in the owner's dock live — no refresh. This is the field→office moment
+ * that today goes through Dropbox + a WhatsApp to the office; here it just
+ * shows up. The killer feature: the whole company, in real time. Mirrors
+ * the verified AC-317 two-context mechanic (e2e/activity-dock.spec.ts).
  *
  * owner · desktop. Recorded by the `demo` project.
  */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { startDemo } from './demo-helpers';
 import { STORAGE_STATES } from './storage-states';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// A different site photo than the field segment (04) uploads, so the two
+// uploads stay visually distinct in the stitched film.
+const SITE_PHOTO = path.resolve(__dirname, 'fixtures', 'demo', 'site-2.jpg');
 
 test.use({ storageState: STORAGE_STATES.owner });
 test.setTimeout(60_000);
@@ -27,7 +36,7 @@ test('03 — Live-Überblick', async ({ page, browser }) => {
   let beforeIds: (string | null)[] = [];
 
   await demo.step(
-    'Der Aktivitäts-Dock – die ganze Firma auf einen Blick.',
+    'Alle Aktivitäten – die ganze Firma auf einen Blick.',
     async () => {
       await demo.click(page.getByTestId('activity-dock-toggle'));
       await expect(page.getByTestId('activity-dock-panel')).toBeVisible();
@@ -37,28 +46,43 @@ test('03 — Live-Überblick', async ({ page, browser }) => {
   );
 
   await demo.step(
-    'Ein Kollege legt gerade ein Projekt an …',
+    'Ein Mitarbeiter lädt ein Foto von der Baustelle hoch …',
     async () => {
-      // A second, unrecorded session performs the mutation — the dock is
-      // driven purely by the server's push, exactly as in production.
-      const colleague = await browser.newContext({ storageState: STORAGE_STATES.office });
+      // A second, unrecorded WORKER session uploads a site photo through the
+      // real (browser-side encrypted) attachment pipeline — the dock is
+      // driven purely by the server's `audit_changed` push, exactly as in
+      // production. Targets the worker's SECOND assigned project (`.nth(1)`)
+      // so it does NOT touch the project the field segment (04) records
+      // against (`.first()`): MyProjectsView sorts by plannedStart, which an
+      // upload never changes, so the two positions stay stable + distinct.
+      const worker = await browser.newContext({
+        storageState: STORAGE_STATES.worker,
+        baseURL: new URL(page.url()).origin,
+      });
       try {
-        const custRes = await colleague.request.get('/api/customers?limit=1');
-        const body = (await custRes.json()) as { customers?: { id: string }[] };
-        const customerId = (body.customers ?? (body as unknown as { id: string }[]))[0].id;
-        const projRes = await colleague.request.post('/api/projects', {
-          data: { number: '2026-100', title: 'Dachsanierung Koch', customerId },
-        });
-        expect(projRes.ok(), `project POST failed: ${projRes.status()}`).toBe(true);
+        const wPage = await worker.newPage();
+        await wPage.goto('/');
+        await expect(wPage.getByTestId('my-projects-view')).toBeVisible();
+        await wPage.locator('[data-testid^="my-project-row-"]').nth(1).click();
+        await expect(wPage.getByTestId('project-detail-page')).toBeVisible();
+        await wPage
+          .getByTestId('project-detail-upload-cta')
+          .getByTestId('attachment-photo-input')
+          .setInputFiles(SITE_PHOTO);
+        // Wait until the upload actually lands (thumbnail rendered) so the
+        // `attachment:add` audit event has fired before we assert the dock.
+        await expect(
+          wPage.getByTestId('project-detail-photos').getByTestId('attachment-thumbnail').first(),
+        ).toBeVisible({ timeout: 20_000 });
       } finally {
-        await colleague.close();
+        await worker.close();
       }
     },
     { holdMs: 0 },
   );
 
   await demo.step(
-    '… und es erscheint sofort – ganz ohne Aktualisieren.',
+    '… und es ist sofort im Büro – ohne Dropbox, ohne WhatsApp.',
     async () => {
       await expect
         .poll(
@@ -72,6 +96,6 @@ test('03 — Live-Überblick', async ({ page, browser }) => {
         )
         .toBe(true);
     },
-    { note: 'kein Polling-Hack – serverseitige Push-Events (SSE)', settleMs: 300, holdMs: 3500 },
+    { note: 'serverseitige Push-Events (SSE) – kein Neuladen', settleMs: 300, holdMs: 3500 },
   );
 });
