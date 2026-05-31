@@ -66,13 +66,13 @@ const ROLE_STATES: ReadonlyArray<{ user: { username: string }; statePath: string
 /**
  * Re-mint every role's storage-state file via a direct API login.
  *
- * Needed after a destructive `POST /api/import?override=true` TRUNCATEs
- * `users`, cascading through `sessions.user_id` (AC-310) and killing EVERY
- * session — including the shared storageState cookies the rest of the serial
- * mutating bucket reuses. Without this, every mutating spec ordered after the
- * destructive one lands on the login screen. The override-import re-inserts
- * users with identical credentials (passwordHash round-trips through the
- * envelope, issue #230), so the seed password logs in again.
+ * Needed after a destructive flow truncates `sessions` — e.g. the daten-jobs
+ * roundtrip's import job plus the force-reseed its teardown runs to reset the
+ * DB (AC-310) — which kills EVERY session, including the shared storageState
+ * cookies the rest of the serial mutating bucket reuses. Without this, every
+ * mutating spec ordered after the destructive one lands on the login screen.
+ * The reseed re-inserts users with their seed credentials, so the seed
+ * password logs in again.
  *
  * Uses the API endpoint rather than the UI form on purpose: four UI logins
  * (each up to a 15 s landing wait) blow the 30 s `afterAll` hook budget,
