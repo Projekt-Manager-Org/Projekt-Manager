@@ -75,16 +75,16 @@ omniscient through-line; the data segment steps out of the app to show what guar
 
 Actual segment timings in the shipped ~1:30 master. ★ = money shot.
 
-| #   | ~time       | Beat        | User · viewport                  | On-screen actions                                                                | Spec                   |
-| --- | ----------- | ----------- | -------------------------------- | -------------------------------------------------------------------------------- | ---------------------- |
-| 00  | 0:00–0:05   | Cold open   | title card                       | _»Ich habe zu arbeiten.«_ → _Also passt sich die Software an Sie an._            | `demo-00-open`         |
-| 01  | 0:05–0:24   | Intake      | office · desktop                 | email-extract modal: paste inquiry → LLM extract → review prefilled form → save  | `demo-01-intake`       |
-| 02  | 0:24–0:37 ★ | Daten       | owner · desktop                  | establish the live board → blur it → reveal the four backend guarantees as cards | `demo-02-daten`        |
-| 03  | 0:37–0:46 ★ | Living dock | owner · desktop (+ office actor) | expand the dock on the board; a colleague's new project lands live, no refresh   | `demo-03-dock`         |
-| 04  | 0:46–0:59   | Field       | worker · mobile                  | "Meine Projekte" (only their jobs) → open a job → upload a site photo            | `demo-04-field.mobile` |
-| 05  | 0:59–1:11   | Invoice     | office · desktop                 | open an issued invoice → download the ZUGFeRD PDF                                | `demo-05-invoice`      |
-| 06  | 1:11–1:24 ★ | Coda        | owner · desktop                  | green backup badge (click → status toast) + one-click full export                | `demo-06-coda`         |
-| 99  | 1:24–1:30   | Thesis      | title card                       | _Für Sie gebaut_ + the "built to be distrusted" bassline                         | `demo-99-thesis`       |
+| #   | ~time       | Beat        | User · viewport                  | On-screen actions                                                                       | Spec                   |
+| --- | ----------- | ----------- | -------------------------------- | --------------------------------------------------------------------------------------- | ---------------------- |
+| 00  | 0:00–0:05   | Cold open   | title card                       | _»Ich habe zu arbeiten.«_ → _Darum passt sich die Software an Sie an._                  | `demo-00-open`         |
+| 01  | 0:05–0:24   | Intake      | office · desktop                 | email-extract modal: paste inquiry → LLM extract → review prefilled form → save         | `demo-01-intake`       |
+| 02  | 0:24–0:37 ★ | Daten       | owner · desktop                  | establish the live board → blur it → reveal the four backend guarantees as cards        | `demo-02-daten`        |
+| 03  | 0:37–0:46 ★ | Living dock | owner · desktop (+ worker actor) | expand the dock; a field worker's site photo lands live, no refresh (no Dropbox detour) | `demo-03-dock`         |
+| 04  | 0:46–0:59   | Field       | worker · mobile                  | "Meine Projekte" (only their jobs) → open a job → upload a site photo                   | `demo-04-field.mobile` |
+| 05  | 0:59–1:11   | Invoice     | office · desktop                 | open an issued invoice → download the ZUGFeRD PDF                                       | `demo-05-invoice`      |
+| 06  | 1:11–1:24 ★ | Coda        | owner · desktop                  | green backup badge (click → status toast) + one-click full export                       | `demo-06-coda`         |
+| 99  | 1:24–1:30   | Thesis      | title card                       | _Für Sie gebaut_ + the "built to be distrusted" bassline                                | `demo-99-thesis`       |
 
 ## Caption registers
 
@@ -92,14 +92,14 @@ Human caption = the primary bottom banner. Technical note = a smaller second lin
 the grace-note beats. The Daten reveal (02) replaces both with its own frosted-glass card
 stack (each card pairs a melody line with a technical bassline). German throughout.
 
-| Beat       | Human (melody)                                           | Technical (bassline)                                                                                 |
-| ---------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 01 Intake  | „Einfügen genügt – den Rest erledigt die App."           | —                                                                                                    |
-| 02 Daten   | (reveal card stack — see below)                          | (reveal card stack — see below)                                                                      |
-| 03 Dock    | „Der Aktivitäts-Dock – die ganze Firma auf einen Blick." | „Live-Audit über SSE – jede Änderung, jeder Nutzer"                                                  |
-| 04 Field   | „Unterwegs: nur die eigenen Einsätze."                   | „rollenbasiert – serverseitig erzwungen, nicht nur ausgeblendet"                                     |
-| 05 Invoice | „Ein Klick: als PDF – oder ZUGFeRD fürs Finanzamt."      | „ZUGFeRD / EN16931 – XML im PDF/A-3 eingebettet"                                                     |
-| 06 Coda    | „Und alles gehört Ihnen."                                | „verschlüsselte Off-Site-Backups · providerseitig gesperrt · auch bei App-Ausfall wiederherstellbar" |
+| Beat       | Human (melody)                                              | Technical (bassline)                                                                                 |
+| ---------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 01 Intake  | „Einfügen genügt – den Rest erledigt die App."              | —                                                                                                    |
+| 02 Daten   | (reveal card stack — see below)                             | (reveal card stack — see below)                                                                      |
+| 03 Dock    | „Alle Aktivitäten – die ganze Firma auf einen Blick."       | „Live-Audit über SSE – jede Änderung, jeder Nutzer"                                                  |
+| 04 Field   | „Unterwegs: nur die eigenen Einsätze."                      | „rollenbasiert – serverseitig erzwungen, nicht nur ausgeblendet"                                     |
+| 05 Invoice | „Ein Klick: fertiges PDF – ZUGFeRD-konform fürs Finanzamt." | „ZUGFeRD / EN16931 – XML im PDF/A-3 eingebettet"                                                     |
+| 06 Coda    | „Und alles gehört Ihnen."                                   | „verschlüsselte Off-Site-Backups · providerseitig gesperrt · auch bei App-Ausfall wiederherstellbar" |
 
 The 00 and 99 title cards carry the melody open and the converged thesis (melody + bassline).
 
@@ -149,9 +149,14 @@ device })` after its first load; the overlay pops a prominent top-left chip (blu
   server, the object store, and the backup drills — so the reveal narrates it over the blurred
   data it protects, balancing plain-language melody with a technical bassline per card.
 - **Live cross-user shot (beat 03)** — the owner's page is recorded; a second
-  `browser.newContext()` (office) creates a project via the API, and the row appears in the
-  dock via the `audit_changed` SSE push. Mirrors `e2e/activity-dock.spec.ts` AC-317; the dock
-  shows the full RBAC-scoped feed, so any mutation surfaces for the owner observer.
+  `browser.newContext()` (a field WORKER) uploads a site photo through the real, browser-side
+  encrypted attachment pipeline, and the `Datei hinzugefügt` row appears in the owner's dock
+  via the `audit_changed` SSE push — the field→office moment that today goes through Dropbox +
+  a WhatsApp to the office. Targets the worker's second assigned project (`.nth(1)`) so it does
+  not collide with the field segment's (04) own upload (`.first()`); MyProjectsView sorts by
+  plannedStart, which an upload never changes, so the positions stay stable + distinct. Mirrors
+  `e2e/activity-dock.spec.ts` AC-317; the dock shows the full RBAC-scoped feed, so any mutation
+  surfaces for the owner observer.
 - **Title cards (00, 99)** — styled HTML rendered via `page.setContent` over a darkened
   backdrop, recorded like a segment (desktop). No `drawtext`, no app screen.
 - **Green backup badge (coda)** — a demo-gated upsert in `e2e/auth.setup.ts` (only when
