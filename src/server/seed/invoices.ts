@@ -100,8 +100,8 @@ interface IssueSpec {
    *  `issueDate` and today. When set, the loader re-stamps the project to
    *  this deliberate offset after the issue/cancel/reissue choreography —
    *  decoupling the board age from the (intentionally historical)
-   *  invoice date. When omitted the project is left at the post-issuance
-   *  default (`now`, via `setProjectStatus`). */
+   *  invoice date. When omitted the project is stamped to the seed
+   *  `now`. */
   finalStatusChangedAtDaysFromNow?: number;
 }
 
@@ -508,7 +508,7 @@ async function setProjectStatus(
   db: Database,
   projectId: string,
   status: 'rechnung_faellig' | RestorableProjectStatus,
-  statusChangedAt: Date = new Date(),
+  statusChangedAt: Date,
 ): Promise<void> {
   // Direct UPDATE on `projects.status` — the project state machine's
   // legal-transition table doesn't allow `erledigt → rechnung_faellig`
@@ -528,7 +528,7 @@ async function applyIssueSpec(
 ): Promise<void> {
   const projectId = resolveProjectId(projectIdByNumber, spec.projectNumberSuffix);
 
-  await setProjectStatus(db, projectId, 'rechnung_faellig');
+  await setProjectStatus(db, projectId, 'rechnung_faellig', now);
 
   // `recipient` cast: `CreateDraftInput.recipient` is typed as a full
   // `InvoiceRecipientSnapshot` but `InvoiceService.createDraft` treats
@@ -572,7 +572,7 @@ async function applyIssueSpec(
       // After cancellation the project is still `abgerechnet` (cancel
       // does not touch project status per AC-290); flip back so the
       // corrected invoice can be issued on the same project.
-      await setProjectStatus(db, projectId, 'rechnung_faellig');
+      await setProjectStatus(db, projectId, 'rechnung_faellig', now);
 
       const reissueIssueDate = parseIsoDate(spec.cancellation.reissue.issueDate);
       const reissueDraft = await service.createDraft(
@@ -601,10 +601,10 @@ async function applyIssueSpec(
   // intended age in its current state rather than the invoice's issue
   // date. A `finalStatusChangedAtDaysFromNow` offset (the two aged
   // `abgerechnet` showcases) re-stamps to that deliberate window; without
-  // one the project lands at `now` (the `setProjectStatus` default).
+  // one the project lands at `now`.
   const finalStatusChangedAt =
     spec.finalStatusChangedAtDaysFromNow === undefined
-      ? undefined
+      ? now
       : addDays(now, spec.finalStatusChangedAtDaysFromNow);
   await setProjectStatus(db, projectId, spec.finalProjectStatus, finalStatusChangedAt);
 }
