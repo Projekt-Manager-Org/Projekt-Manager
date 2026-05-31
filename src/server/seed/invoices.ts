@@ -267,6 +267,9 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
       },
     ],
     finalProjectStatus: 'erledigt',
+    // Paid + done a few days ago. `erledigt` is type `done` (no aging),
+    // so this only sets the detail panel's "Status seit:".
+    finalStatusChangedAtDaysFromNow: -5,
   },
 
   // — Kanzlei Dr. Meier, Wandgestaltung. Standard, single line. The
@@ -290,6 +293,7 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
       },
     ],
     finalProjectStatus: 'erledigt',
+    finalStatusChangedAtDaysFromNow: -10,
   },
 
   // — Herr Wagner, Außenanstrich Reihenhaus. Project is in `abnahme`
@@ -311,6 +315,9 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
       },
     ],
     finalProjectStatus: 'abnahme',
+    // Work just finished, awaiting acceptance — comfortably under the
+    // 7-day `abnahme` aging threshold, so the column stays unflagged.
+    finalStatusChangedAtDaysFromNow: -1,
   },
 ];
 
