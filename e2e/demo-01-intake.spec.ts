@@ -16,19 +16,29 @@ test.use({ storageState: STORAGE_STATES.office });
 test.setTimeout(120_000);
 
 /** A believable local Handwerker inquiry — a Fassade job (matches the
- *  exterior site photos used later in the field segment). */
+ *  exterior site photos used later in the field segment). Deliberately
+ *  more than the bare minimum: a referral opener, building details, the
+ *  actual problem, a rough timeline and a callback preference — the kind
+ *  of real, slightly rambling email the LLM has to distil a clean
+ *  customer + project out of. No competing person-name (the referral is
+ *  anonymous) so the extraction lands on "Familie Brandt" unambiguously. */
 const INQUIRY = [
   'Sehr geehrte Damen und Herren,',
   '',
-  'wir möchten den Fassadenanstrich unseres Einfamilienhauses erneuern lassen',
-  '(ca. 140 m², zweigeschossig) und bitten um ein Angebot.',
+  'auf Empfehlung eines Nachbarn wende ich mich an Sie. Die Fassade unseres',
+  'Einfamilienhauses (Baujahr 1998, zweigeschossig, ca. 140 m²) ist an der',
+  'Wetterseite stark verwittert – der Putz blättert stellenweise ab.',
+  '',
+  'Wir möchten die Fassade im Frühjahr neu streichen lassen, gerne inklusive',
+  'kleinerer Ausbesserungen am Putz. Könnten Sie sich das vor Ort ansehen und',
+  'uns ein Angebot erstellen? Vormittags sind wir am besten erreichbar.',
   '',
   'Mit freundlichen Grüßen',
   'Familie Brandt',
-  'Tel: +49 2202 445566',
-  'E-Mail: brandt.familie@example.de',
   'Lindenweg 9',
   '51427 Bergisch Gladbach',
+  'Tel.: +49 2202 445566',
+  'E-Mail: brandt.familie@example.de',
 ].join('\n');
 
 test('01 — Anfrage per E-Mail', async ({ page }) => {
@@ -71,11 +81,28 @@ test('01 — Anfrage per E-Mail', async ({ page }) => {
   );
 
   await demo.step(
-    'Übernehmen – das Projekt steht auf dem Board.',
+    'Übernehmen – fertig.',
     async () => {
       await demo.click(page.getByTestId('extract-save'));
       // Save closes the modal; the review field disappearing signals success.
       await expect(page.getByTestId('extract-customer-name')).toBeHidden({ timeout: 15_000 });
+    },
+    { holdMs: 600 },
+  );
+
+  await demo.step(
+    'Das neue Projekt steht auf dem Board.',
+    async () => {
+      // The freshly created project lands on the board; glide the cursor
+      // onto its card so the viewer's eye follows the import to where it
+      // came to rest. Located by the customer name from the email —
+      // deterministic, unlike the LLM-derived project title.
+      const newCard = page
+        .locator('[data-testid^="project-card-"]')
+        .filter({ hasText: 'Brandt' })
+        .first();
+      await expect(newCard).toBeVisible({ timeout: 10_000 });
+      await demo.moveTo(newCard);
     },
     { holdMs: 3000 },
   );
