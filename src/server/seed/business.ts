@@ -359,7 +359,12 @@ const PROJECT_SPECS: readonly ProjectSpec[] = [
     createdAtDays: -22,
     updatedAtDays: -8,
   },
-  // Abgerechnet (2) — invoice sent, waiting for payment
+  // Abgerechnet (2) — invoice sent, waiting for payment. Both projects
+  // are re-invoiced by the invoice loader (seed/invoices.ts), whose
+  // issuance overwrites `statusChangedAt`. Their final board age — set a
+  // little past the 30-day aging threshold so the buffer badge has
+  // realistic data — lives there (`finalStatusChangedAtDaysFromNow`); the
+  // values below are pre-issuance placeholders that never reach the board.
   {
     numberSuffix: '016',
     title: 'Fassadenanstrich Schule am Park',

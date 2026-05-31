@@ -162,6 +162,12 @@ device })` after its first load; the overlay pops a prominent top-left chip (blu
 - **Green backup badge (coda)** — a demo-gated upsert in `e2e/auth.setup.ts` (only when
   `PLAYWRIGHT_RUN_DEMO` is set) writes a healthy `meta_backup_status`, so the badge reads
   green; normal e2e keeps the real default. Clicking the badge fires a status toast.
+- **Aged-buffer badge (board beats 02 / owner desktop)** — left ON, not hidden: "make
+  inaction visible" is the product's headline, so the Abgerechnet column carries its
+  `⚠ N× seit >30 Tagen` warning during the live-board shots. The seed parks two
+  invoiced-but-unpaid projects a little past the 30-day threshold
+  (`seed/invoices.ts` `finalStatusChangedAtDaysFromNow`), giving the badge realistic ages
+  instead of the invoice's historical issue date.
 - **Continuity is narrative, not DB threading** — segments record against the shared seed,
   stitched by consistent naming + captions; no live project is threaded across specs.
 - **Primitives** — captions / cursor / eased glide / persona chip / fact-reveal in

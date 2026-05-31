@@ -87,20 +87,6 @@ setup('reseed database and storage', async () => {
           last_error = NULL,
           updated_at = now()
       `);
-
-      // Demo recordings only: the two seeded `abgerechnet` projects inherit
-      // their statusChangedAt from their invoice's historical issueDate
-      // (seed/invoices.ts issues RE-0001/RE-0004 at 2024 dates and, for a
-      // final `abgerechnet` status, skips the post-issue re-stamp), so the
-      // board ages them by ~2 years against today — "seit 786 Tagen", the
-      // opposite of a smoothly-running operation. Re-stamp them into a
-      // recent "invoiced last week, awaiting payment" window so the demo
-      // board reads healthy. Gated on the demo flag; normal e2e keeps the
-      // seed's dates so the aging-feature specs still see an aged buffer.
-      await db.execute(sql`
-        UPDATE projects SET status_changed_at = now() - interval '6 days'
-        WHERE status = 'abgerechnet'
-      `);
     }
   } finally {
     await pool.end();
