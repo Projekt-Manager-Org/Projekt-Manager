@@ -125,74 +125,45 @@ referential-integrity delete-refusal. All real; none earned its seconds against 
 (The delete-refusal was an earlier beat-02 draft — a true feature, but trivial against the
 backend guarantees the reveal now carries, so it was cut.)
 
-## Production / harness notes
+## Beat-specific calls
 
-- **Single-pass master** — `scripts/demo/encode.mjs --master` builds the whole 1920×1080
-  master in one ffmpeg `filter_complex`: each source clip is normalized onto the canvas
-  (desktop scaled+padded with the app's dark navy; the phone clip composited onto the blurred
-  backdrop with a white bezel), then concatenated and encoded **once** (libx264, CRF 17,
-  preset slow). The old three-encode pipeline (webm→mp4→norm→concat) smeared text and bred
-  mosquito noise; one decode → one filter → one encode keeps the type crisp. `npm run demo`
-  records serially (`--workers=1`, since several beats mutate the shared e2e DB), masters, and
-  cuts the hero.
-- **Ordering** — segment specs carry zero-padded numeric prefixes (`demo-00` … `demo-99`); the
-  master sorts source paths lexically, so filename order = narrative order (the mobile clip's
-  `demo-04` prefix slots it between 03 and 05). Mobile beats use a `.mobile.spec.ts` infix + a
-  `testMatch` split so they record under `demo-mobile` only.
-- **Persona chips (`demo.scene`)** — each persona segment calls `demo.scene({ name, role,
-device })` after its first load; the overlay pops a prominent top-left chip (blue accent,
-  device glyph) that holds ~3.8 s, then fades. Office = Maria Schmidt, owner = Thomas Berger, worker = Jan Nowak (the seeded
-  `arbeiter1`). The Daten and title-card segments carry no chip.
+How the harness records, encodes, orders, and cuts the hero is in
+[docs/testing/demo-recordings.md](../testing/demo-recordings.md). Below are only the
+decisions that belong to _this film_.
+
+- **Persona casting (`demo.scene`)** — office = Maria Schmidt, owner = Thomas Berger, worker =
+  Jan Nowak (the seeded `arbeiter1`). The Daten and title-card segments carry no chip.
 - **Daten reveal (`demo.revealFacts`, beat 02)** — the owner lands on the live board; the
-  overlay then drops a frosted-glass layer (`backdrop-filter: blur`) over the real app and
-  floats the four guarantees as fact cards. The thing being shown has no UI — it lives in the
-  server, the object store, and the backup drills — so the reveal narrates it over the blurred
-  data it protects, balancing plain-language melody with a technical bassline per card.
-- **Live cross-user shot (beat 03)** — the owner's page is recorded; a second
-  `browser.newContext()` (a field WORKER) uploads a site photo through the real, browser-side
-  encrypted attachment pipeline, and the `Datei hinzugefügt` row appears in the owner's dock
-  via the `audit_changed` SSE push — the field→office moment that today goes through Dropbox +
-  a WhatsApp to the office. Targets the worker's second assigned project (`.nth(1)`) so it does
-  not collide with the field segment's (04) own upload (`.first()`); MyProjectsView sorts by
-  plannedStart, which an upload never changes, so the positions stay stable + distinct. Mirrors
-  `e2e/activity-dock.spec.ts` AC-317; the dock shows the full RBAC-scoped feed, so any mutation
-  surfaces for the owner observer.
-- **Title cards (00, 99)** — styled HTML rendered via `page.setContent` over a darkened
-  backdrop, recorded like a segment (desktop). No `drawtext`, no app screen.
-- **Green backup badge (coda)** — a demo-gated upsert in `e2e/auth.setup.ts` (only when
-  `PLAYWRIGHT_RUN_DEMO` is set) writes a healthy `meta_backup_status`, so the badge reads
-  green; normal e2e keeps the real default. Clicking the badge fires a status toast.
-- **Aged-buffer badge (board beats 02 / owner desktop)** — left ON, not hidden: "make
-  inaction visible" is the product's headline, so the Abgerechnet column carries its
-  `⚠ N× seit >30 Tagen` warning during the live-board shots. The seed parks two
-  invoiced-but-unpaid projects a little past the 30-day threshold
-  (`seed/invoices.ts` `finalStatusChangedAtDaysFromNow`), giving the badge realistic ages
-  instead of the invoice's historical issue date.
+  reveal then floats the four backend guarantees as fact cards over the blurred data they
+  protect. The subject has no UI — it lives in the server, the object store, and the backup
+  drills — so each card pairs a plain-language melody line with a technical bassline.
+- **Live cross-user shot (beat 03)** — the owner's page is recorded while a second
+  `browser.newContext()` (a field WORKER) uploads a site photo, and the `Datei hinzugefügt`
+  row appears in the owner's dock — the field→office moment that today goes through Dropbox +
+  a WhatsApp. The upload targets the worker's _second_ assigned project (`.nth(1)`) so it does
+  not collide with the field segment's (04) own upload (`.first()`); `MyProjectsView` sorts by
+  `plannedStart`, which an upload never changes, so the two positions stay stable and distinct.
+- **Title cards (00, 99)** — styled HTML over a darkened backdrop, recorded like a segment.
+- **Green backup badge (coda)** — the badge must read green for the data-integrity coda, so the
+  demo seeds a healthy `meta_backup_status` (see demo-recordings.md). Clicking it fires a
+  status toast.
+- **Aged-buffer badge (live-board beats)** — left ON, not hidden: "make inaction visible" is
+  the product's headline, so the Abgerechnet column carries its `⚠ N× seit >30 Tagen` warning.
+  The seed parks two invoiced-but-unpaid projects a little past the 30-day threshold
+  (`seed/invoices.ts` `finalStatusChangedAtDaysFromNow`) for realistic ages.
 - **Continuity is narrative, not DB threading** — segments record against the shared seed,
   stitched by consistent naming + captions; no live project is threaded across specs.
-- **Primitives** — captions / cursor / eased glide / persona chip / fact-reveal in
-  `e2e/demo-helpers.ts`; per-role sessions in `e2e/storage-states.ts`.
 
-## README integration (manual — README is read-only for AI)
+## README entry point
 
-The hero loop `assets/demo-hero.webp` is built from the Daten reveal (large, readable, on
-brand) by `npm run demo:hero`. The README links it to Vimeo:
-
-```html
-<a href="https://vimeo.com/YOUR_ID">
-  <img src="assets/demo-hero.webp" alt="Projekt-Manager — Demo" width="80%" />
-</a>
-```
-
-One video, one entry point; the master includes mobile. The hero is a quality-first animated
-webp (~0.8 MB, well under GitHub's inline-animation limit); `--hero-static` emits a single
-crisp frame as a fallback if a still is ever preferred.
+The README hero links `assets/demo-hero.webp` (cut by `npm run demo:hero`) to the Vimeo film —
+one video, one entry point, mobile included. README is read-only for AI, so the link is applied
+by hand.
 
 ## Verification status
 
-Shipped: 8 segments record clean (**13 passed**), the single-pass master concatenates to
-1920×1080 / ~1:30, and every beat is frame-verified — the persona chips, the Daten fact-card
-reveal over the blurred board, the live cross-session dock row, the phone-on-backdrop
-composite, the ZUGFeRD invoice, and the German dual-register captions. Text is crisp (no
-generational artifacts) and the hero loop is readable. Remaining manual steps: upload
-`demo-clips/demo-master.mp4` to Vimeo and apply the README snippet above.
+All eight segments record clean and the single-pass master concatenates to 1920×1080 / ~1:30,
+frame-verified end to end — persona chips, the Daten fact-card reveal over the blurred board,
+the live cross-session dock row, the phone-on-backdrop composite, the ZUGFeRD invoice, and the
+German dual-register captions. Remaining manual step: upload `demo-clips/demo-master.mp4` to
+Vimeo.

@@ -20,8 +20,8 @@ demo-*.spec.ts ── demo.step / scene / revealFacts + gliding cursor + seeded 
 Captions, persona chips, and the data-reveal cards are real DOM, burned
 into the recording by the overlay — one source, no `.srt` sidecar to sync.
 The master is built in **one** ffmpeg pass (normalize every clip onto the
-canvas, concat, encode once); re-encoding per stage smeared text, so the
-pipeline decodes once and encodes once at high quality.
+canvas, concat, encode once) — a single decode and a single high-quality
+encode keep text crisp.
 
 ## Run
 
