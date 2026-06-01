@@ -22,7 +22,6 @@ test.setTimeout(60_000);
 
 test('04 — Im Einsatz', async ({ page }) => {
   const demo = await startDemo(page);
-  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(page.getByTestId('my-projects-view')).toBeVisible();
   await demo.scene({ name: 'Jan Nowak', role: 'Mitarbeiter', device: 'Handy' });

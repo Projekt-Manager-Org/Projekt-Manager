@@ -37,6 +37,19 @@ when `PLAYWRIGHT_RUN_DEMO=1`, so a normal `npm run test:e2e` never picks them
 up. Both projects depend on `setup`, which seeds the isolated e2e DB/bucket —
 demos run against the realistic snapshot and never touch dev data.
 
+Recordings render in **light** mode by default — the theme most users run. The
+seeded users store `theme-preference: 'system'`, so the app follows
+`prefers-color-scheme`, which both demo projects pin via `use.colorScheme`. To
+record the dark theme instead, set `DEMO_COLOR_SCHEME=dark`:
+
+```bash
+DEMO_COLOR_SCHEME=dark npm run demo
+```
+
+Any value other than `light` / `dark` fails the run rather than silently
+recording the wrong theme. Regenerate the committed hero/master after switching,
+since both bake in whichever theme produced them.
+
 The master lands at `demo-clips/demo-master.mp4` (1920×1080, faststart),
 ready for the Vimeo upload — `demo-clips/` is gitignored and survives the
 `test-results/` wipe each `demo:record` does, so the finished film isn't lost

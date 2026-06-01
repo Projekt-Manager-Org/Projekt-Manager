@@ -152,6 +152,20 @@ const MUTATING_TESTS =
 const DEMO_TESTS = /demo-.*\.spec\.ts/;
 const DEMO_MOBILE_TESTS = /demo-.*\.mobile\.spec\.ts$/;
 
+// Theme the demo recordings render in. The seeded users store
+// `theme-preference: 'system'`, so the app follows `prefers-color-scheme`,
+// which the `demo`/`demo-mobile` projects pin here via `use.colorScheme`.
+// Default to light — what most users run — and set `DEMO_COLOR_SCHEME=dark`
+// to record the dark theme instead. Validated so a typo fails the run rather
+// than silently recording the wrong theme.
+const DEMO_COLOR_SCHEME = ((): 'light' | 'dark' => {
+  const v = process.env.DEMO_COLOR_SCHEME ?? 'light';
+  if (v !== 'light' && v !== 'dark') {
+    throw new Error(`DEMO_COLOR_SCHEME must be "light" or "dark", got "${v}"`);
+  }
+  return v;
+})();
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -258,6 +272,7 @@ export default defineConfig({
               ...devices['Desktop Chrome'],
               viewport: { width: 1920, height: 1080 },
               video: { mode: 'on' as const, size: { width: 1920, height: 1080 } },
+              colorScheme: DEMO_COLOR_SCHEME,
             },
           },
           {
@@ -267,6 +282,7 @@ export default defineConfig({
             use: {
               ...devices['Pixel 7'],
               video: { mode: 'on' as const, size: { width: 412, height: 839 } },
+              colorScheme: DEMO_COLOR_SCHEME,
             },
           },
         ]

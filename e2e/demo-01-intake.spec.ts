@@ -43,7 +43,6 @@ const INQUIRY = [
 
 test('01 — Anfrage per E-Mail', async ({ page }) => {
   const demo = await startDemo(page);
-  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(page.getByTestId('kanban-board')).toBeVisible();
   await demo.scene({ name: 'Maria Schmidt', role: 'Büro', device: 'Desktop' });

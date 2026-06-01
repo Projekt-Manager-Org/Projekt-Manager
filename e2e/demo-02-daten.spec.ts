@@ -21,7 +21,6 @@ test.setTimeout(60_000);
 
 test('02 — Daten', async ({ page }) => {
   const demo = await startDemo(page);
-  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await expect(page.getByTestId('kanban-board')).toBeVisible();
   await demo.scene({ name: 'Thomas Berger', role: 'Inhaber', device: 'Desktop' });

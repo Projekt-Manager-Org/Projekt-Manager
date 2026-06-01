@@ -19,7 +19,6 @@ test.setTimeout(60_000);
 
 test('05 — Rechnung als PDF', async ({ page }) => {
   const demo = await startDemo(page);
-  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
   await demo.scene({ name: 'Maria Schmidt', role: 'Büro', device: 'Desktop' });
 
