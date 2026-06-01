@@ -46,6 +46,23 @@ committed `assets/demo-hero.webp`, and `--hero-static` emits a single crisp
 frame instead. `node scripts/demo/encode.mjs` (no flag) transcodes each clip
 to a sibling `demo.mp4` for review; `--reel` stitches same-resolution clips.
 
+## Local-only photo fixtures
+
+The site photos and the phone backdrop are Pixabay stock — free to use and
+modify, but redistributing them standalone (as raw files in a public repo) is a
+Prohibited Use under the Pixabay Content License. They're gitignored, not
+committed: drop any equivalent landscape photo at each path before recording —
+the demo doesn't depend on specific imagery.
+
+| File                                     | Used by                                              |
+| ---------------------------------------- | ---------------------------------------------------- |
+| `e2e/fixtures/demo/site-1.jpg`           | `demo-04-field.mobile.spec.ts`                       |
+| `e2e/fixtures/demo/site-2.jpg`           | `demo-03-dock.spec.ts`                               |
+| `scripts/demo/assets/phone-backdrop.jpg` | `demo-00`/`demo-99` + `encode.mjs` (phone composite) |
+
+The committed `assets/demo-hero.webp` stays in the repo — a composited film
+loop is a derivative work, not standalone Content.
+
 ## Authoring a scenario
 
 A demo is a normal Playwright spec named `demo-*.spec.ts`. Each scenario yields
