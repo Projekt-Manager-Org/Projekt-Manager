@@ -69,6 +69,14 @@ FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a6
 #                          check (AC-175 safety gate). Without it the
 #                          script falls back to /proc/mounts parsing
 #                          which is strictly less reliable.
+#   libxml2              — pulled in transitively by postgresql17 (XML
+#                          type / xpath support). Named explicitly so
+#                          the build always resolves the latest patched
+#                          version instead of whatever an older base or
+#                          cached layer happened to carry. Without it,
+#                          a stale libxml2 rides in under postgresql17
+#                          and trips the Trivy HIGH/CRITICAL gate
+#                          (CVE-2026-6732: libxml2 DoS, fixed 2.13.9-r1).
 #
 # What's no longer here (#199):
 #   - dcron / tzdata / su-exec — the schedule moved to in-process
@@ -94,7 +102,8 @@ RUN apk add --no-cache \
       postgresql17-contrib \
       age \
       bash \
-      findmnt
+      findmnt \
+      libxml2
 
 # Remove npm + npx from the production image. The runtime invokes only
 # `node /app/dist/server/backup-runner.js` — npm is build-time tooling
