@@ -235,8 +235,8 @@ function buildHero(clips) {
       out,
     ]);
   } else {
-    const ss = Number(argVal('hero-ss', '3.3'));
-    const dur = Number(argVal('hero-dur', '8.3'));
+    const ss = Number(argVal('hero-ss', '2.0'));
+    const dur = Number(argVal('hero-dur', '10.0'));
     const fps = Number(argVal('hero-fps', '15'));
     console.log(
       `Hero (loop): ${path.relative(repoRoot, src)} @ ${ss}s +${dur}s · ${width}px · ${fps}fps`,
