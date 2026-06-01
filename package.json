@@ -23,6 +23,10 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "demo": "npm run demo:record && npm run demo:encode && npm run demo:hero",
+    "demo:record": "PLAYWRIGHT_RUN_DEMO=1 playwright test --project=demo --project=demo-mobile --workers=1",
+    "demo:encode": "node scripts/demo/encode.mjs --master",
+    "demo:hero": "node scripts/demo/encode.mjs --hero",
     "check:tokens": "bash scripts/check-theme-tokens.sh",
     "prepare": "husky || true",
     "postinstall": "patch-package"

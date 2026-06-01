@@ -93,6 +93,16 @@ interface IssueSpec {
    *  invoiced" — used here as the natural pre-issue state for the
    *  reproduced Wagner example). */
   finalProjectStatus: RestorableProjectStatus;
+  /** Board age (`statusChangedAt`) for the project's final resting state,
+   *  expressed as days from the seed `now` (negative = in the past).
+   *  Issuance stamps `statusChangedAt` to the historical `issueDate`, so
+   *  without this the board would age the project by the gap between
+   *  `issueDate` and today. When set, the loader re-stamps the project to
+   *  this deliberate offset after the issue/cancel/reissue choreography —
+   *  decoupling the board age from the (intentionally historical)
+   *  invoice date. When omitted the project is stamped to the seed
+   *  `now`. */
+  finalStatusChangedAtDaysFromNow?: number;
 }
 
 interface DraftSpec {
@@ -200,6 +210,11 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
       },
     },
     finalProjectStatus: 'abgerechnet',
+    // Showcase the "make inaction visible" buffer badge: a little past
+    // the 30-day `abgerechnet` aging threshold (stateConfig.ts) so the
+    // board reads "an invoice has been waiting on payment too long" with
+    // realistic data — not the ~2-year gap the 2024 issueDate would imply.
+    finalStatusChangedAtDaysFromNow: -34,
   },
 
   // RE-0004 (after the cancellation pair RE-0002 + ST-0001 + RE-0003)
@@ -221,6 +236,9 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
       },
     ],
     finalProjectStatus: 'abgerechnet',
+    // Second aged buffer so the Abgerechnet column badge reads "2× seit
+    // >30 Tagen" — a slightly older overdue invoice than RE-0001's.
+    finalStatusChangedAtDaysFromNow: -41,
   },
 
   // — Familie Richter, Neubau-Malerarbeiten. 2 lines, standard. The
@@ -249,6 +267,9 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
       },
     ],
     finalProjectStatus: 'erledigt',
+    // Paid + done a few days ago. `erledigt` is type `done` (no aging),
+    // so this only sets the detail panel's "Status seit:".
+    finalStatusChangedAtDaysFromNow: -5,
   },
 
   // — Kanzlei Dr. Meier, Wandgestaltung. Standard, single line. The
@@ -272,6 +293,7 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
       },
     ],
     finalProjectStatus: 'erledigt',
+    finalStatusChangedAtDaysFromNow: -10,
   },
 
   // — Herr Wagner, Außenanstrich Reihenhaus. Project is in `abnahme`
@@ -293,6 +315,9 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
       },
     ],
     finalProjectStatus: 'abnahme',
+    // Work just finished, awaiting acceptance — comfortably under the
+    // 7-day `abnahme` aging threshold, so the column stays unflagged.
+    finalStatusChangedAtDaysFromNow: -1,
   },
 ];
 
@@ -452,7 +477,7 @@ export async function loadInvoices(db: Database, opts: { now?: Date } = {}): Pro
   const projectIdByNumber = await loadProjectIdMap(db);
 
   for (const spec of ISSUE_SPECS) {
-    await applyIssueSpec(db, service, ownerId, projectIdByNumber, spec);
+    await applyIssueSpec(db, service, ownerId, projectIdByNumber, now, spec);
   }
 
   for (const spec of DRAFT_SPECS) {
@@ -483,16 +508,14 @@ async function setProjectStatus(
   db: Database,
   projectId: string,
   status: 'rechnung_faellig' | RestorableProjectStatus,
+  statusChangedAt: Date,
 ): Promise<void> {
   // Direct UPDATE on `projects.status` — the project state machine's
   // legal-transition table doesn't allow `erledigt → rechnung_faellig`
   // (workflows.md §projectStatus), and the seed deliberately bypasses
   // that machine to reconstruct historical state. The orchestrator's
   // TRUNCATE just ran, so no users are observing these transitions.
-  await db
-    .update(projects)
-    .set({ status, statusChangedAt: new Date() })
-    .where(eq(projects.id, projectId));
+  await db.update(projects).set({ status, statusChangedAt }).where(eq(projects.id, projectId));
 }
 
 async function applyIssueSpec(
@@ -500,11 +523,12 @@ async function applyIssueSpec(
   service: ReturnType<typeof createInvoiceService>,
   ownerId: string,
   projectIdByNumber: Map<string, string>,
+  now: Date,
   spec: IssueSpec,
 ): Promise<void> {
   const projectId = resolveProjectId(projectIdByNumber, spec.projectNumberSuffix);
 
-  await setProjectStatus(db, projectId, 'rechnung_faellig');
+  await setProjectStatus(db, projectId, 'rechnung_faellig', now);
 
   // `recipient` cast: `CreateDraftInput.recipient` is typed as a full
   // `InvoiceRecipientSnapshot` but `InvoiceService.createDraft` treats
@@ -548,7 +572,7 @@ async function applyIssueSpec(
       // After cancellation the project is still `abgerechnet` (cancel
       // does not touch project status per AC-290); flip back so the
       // corrected invoice can be issued on the same project.
-      await setProjectStatus(db, projectId, 'rechnung_faellig');
+      await setProjectStatus(db, projectId, 'rechnung_faellig', now);
 
       const reissueIssueDate = parseIsoDate(spec.cancellation.reissue.issueDate);
       const reissueDraft = await service.createDraft(
@@ -570,9 +594,19 @@ async function applyIssueSpec(
     }
   }
 
-  if (spec.finalProjectStatus !== 'abgerechnet') {
-    await setProjectStatus(db, projectId, spec.finalProjectStatus);
-  }
+  // Restore the project's final resting state. Issuance left it in
+  // `abgerechnet` stamped at the (historical) issueDate; `erledigt` /
+  // `abnahme` additionally need the status flipped back. In every case
+  // re-stamp `statusChangedAt` so the board reflects the project's
+  // intended age in its current state rather than the invoice's issue
+  // date. A `finalStatusChangedAtDaysFromNow` offset (the two aged
+  // `abgerechnet` showcases) re-stamps to that deliberate window; without
+  // one the project lands at `now`.
+  const finalStatusChangedAt =
+    spec.finalStatusChangedAtDaysFromNow === undefined
+      ? now
+      : addDays(now, spec.finalStatusChangedAtDaysFromNow);
+  await setProjectStatus(db, projectId, spec.finalProjectStatus, finalStatusChangedAt);
 }
 
 async function applyDraftSpec(

@@ -47,6 +47,14 @@ interface ProjectSpec {
   numberSuffix: string; // e.g. '001' — year prefix is applied by the builder
   title: string;
   status: EnvelopeProject['status'];
+  /**
+   * Days from the seed `now` for `statusChangedAt` (negative = past) —
+   * drives the Kanban aging surfaces. NOTE: for projects the invoice
+   * loader re-issues (seed/invoices.ts), issuance overwrites this with the
+   * invoice's issueDate, and the loader then re-stamps the final board age
+   * via `IssueSpec.finalStatusChangedAtDaysFromNow`. For those rows the
+   * value here is a pre-issuance placeholder that never reaches the board.
+   */
   statusChangedAtDays: number;
   customerName: string;
   /**
@@ -359,7 +367,9 @@ const PROJECT_SPECS: readonly ProjectSpec[] = [
     createdAtDays: -22,
     updatedAtDays: -8,
   },
-  // Abgerechnet (2) — invoice sent, waiting for payment
+  // Abgerechnet (2) — invoice sent, waiting for payment. Board age (a
+  // little past the 30-day threshold, for the aged-buffer showcase) is set
+  // by the invoice loader — see the `statusChangedAtDays` field doc.
   {
     numberSuffix: '016',
     title: 'Fassadenanstrich Schule am Park',

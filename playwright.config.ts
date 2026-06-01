@@ -150,6 +150,21 @@ const MUTATING_TESTS =
   // (AC-319), which is read-only and must stay in the `chromium` project.
   /kanban-flows|management-flows|import-export-flows|theme-preference|data-exchange|archive-flows|activity-feed|notification-rules|activity-recipient-scope|activity-dock\.spec|push-permission|attachment-upload|papierkorb|daten-jobs|storage-usage-multi-user|project-lifecycle-multi-user|attachment-lifecycle-multi-user|realtime-after-fresh-login|invoices|company-profile/;
 const DEMO_TESTS = /demo-.*\.spec\.ts/;
+const DEMO_MOBILE_TESTS = /demo-.*\.mobile\.spec\.ts$/;
+
+// Theme the demo recordings render in. The seeded users store
+// `theme-preference: 'system'`, so the app follows `prefers-color-scheme`,
+// which the `demo`/`demo-mobile` projects pin here via `use.colorScheme`.
+// Default to light — what most users run — and set `DEMO_COLOR_SCHEME=dark`
+// to record the dark theme instead. Validated so a typo fails the run rather
+// than silently recording the wrong theme.
+const DEMO_COLOR_SCHEME = ((): 'light' | 'dark' => {
+  const v = process.env.DEMO_COLOR_SCHEME ?? 'light';
+  if (v !== 'light' && v !== 'dark') {
+    throw new Error(`DEMO_COLOR_SCHEME must be "light" or "dark", got "${v}"`);
+  }
+  return v;
+})();
 
 export default defineConfig({
   testDir: './e2e',
@@ -230,20 +245,44 @@ export default defineConfig({
       },
     },
 
-    // 5. Demo recordings — opt-in only. The project is omitted from
+    // 5. Demo recordings — opt-in only. The projects are omitted from
     //    the config entirely unless PLAYWRIGHT_RUN_DEMO is set, so a
     //    bare `npx playwright test` (locally or in CI) does not pick
-    //    them up. Run them with:
-    //      PLAYWRIGHT_RUN_DEMO=1 npx playwright test --project=demo --headed
+    //    them up. They depend on `setup` so the e2e DB/bucket is seeded
+    //    with the realistic snapshot before recording. Run with:
+    //      npm run demo
+    //    or directly:
+    //      PLAYWRIGHT_RUN_DEMO=1 npx playwright test --project=demo --project=demo-mobile
+    //
+    //    `demo` records the desktop layout; `demo-mobile` emulates a real
+    //    phone (Pixel 7, 412×839 — below the 768 px md breakpoint, so the
+    //    genuine mobile shell renders, not a squished desktop). The two
+    //    projects partition the specs by filename: `demo-mobile` takes the
+    //    `*.mobile.spec.ts` segments, `demo` takes the rest (it ignores the
+    //    mobile ones). Each spec yields exactly one clip, in its own viewport.
     ...(process.env.PLAYWRIGHT_RUN_DEMO
       ? [
           {
             name: 'demo',
+            dependencies: ['setup'],
             testMatch: DEMO_TESTS,
+            // Mobile segments (*.mobile.spec.ts) record under demo-mobile only.
+            testIgnore: [DEMO_MOBILE_TESTS],
             use: {
               ...devices['Desktop Chrome'],
-              viewport: { width: 1400, height: 1200 },
-              video: { mode: 'on' as const, size: { width: 1400, height: 1200 } },
+              viewport: { width: 1920, height: 1080 },
+              video: { mode: 'on' as const, size: { width: 1920, height: 1080 } },
+              colorScheme: DEMO_COLOR_SCHEME,
+            },
+          },
+          {
+            name: 'demo-mobile',
+            dependencies: ['setup'],
+            testMatch: DEMO_MOBILE_TESTS,
+            use: {
+              ...devices['Pixel 7'],
+              video: { mode: 'on' as const, size: { width: 412, height: 839 } },
+              colorScheme: DEMO_COLOR_SCHEME,
             },
           },
         ]

@@ -29,6 +29,9 @@ coverage/
 test-results/
 playwright-report/
 .playwright-mcp/
+# Demo master encode — large generated binary, staged here for Vimeo
+# upload. The film lives on Vimeo; only the hero loop (assets/) is committed.
+demo-clips/
 # Playwright shared auth state — generated per-run, contains a live
 # session cookie, must never be committed.
 e2e/.auth/
@@ -44,3 +47,7 @@ data/
 /*.png
 /*.jpg
 /*.jpeg
+
+# Pixabay stock photos used only by the opt-in demo recording flow
+e2e/fixtures/demo/*.jpg
+scripts/demo/assets/phone-backdrop.jpg

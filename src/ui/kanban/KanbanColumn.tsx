@@ -77,28 +77,31 @@ export function KanbanColumn({
             : undefined
         }
       >
-        <span className={styles.label}>
-          {config.label} (<span data-testid={`column-count-${config.key}`}>{projects.length}</span>)
-        </span>
+        <div className={styles.headerTop}>
+          <span className={styles.label}>
+            {config.label} (
+            <span data-testid={`column-count-${config.key}`}>{projects.length}</span>)
+          </span>
+          {onToggleExpand && (
+            <span className={styles.collapseChevron} aria-hidden="true">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="15 6 9 12 15 18" />
+              </svg>
+            </span>
+          )}
+        </div>
         {agedBuffer && (
           <span className={styles.agedWarning} data-testid={`column-aged-${config.key}`}>
             ⚠ {STRINGS.aging.agedBufferShort(agedBuffer.count, agedBuffer.thresholdDays)}
-          </span>
-        )}
-        {onToggleExpand && (
-          <span className={styles.collapseChevron} aria-hidden="true">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="15 6 9 12 15 18" />
-            </svg>
           </span>
         )}
       </div>

@@ -114,6 +114,18 @@ test.describe('Kanban board flows', () => {
       }
     });
 
+    test('raises the aged-buffer badge on the abgerechnet column', async ({ page }) => {
+      // "Make inaction visible" (kickoff.md §core): the seed parks two
+      // invoiced-but-unpaid projects a little past the 30-day abgerechnet
+      // aging threshold (seed/invoices.ts finalStatusChangedAtDaysFromNow
+      // -34/-41), so the column must surface the aged-buffer warning. At
+      // 1920px every column is expanded, so the badge renders as the
+      // `⚠ N× seit >D Tagen` span rather than the collapsed dot.
+      const badge = page.getByTestId('column-aged-abgerechnet');
+      await expect(badge).toBeVisible();
+      await expect(badge).toContainText('2× seit >30 Tagen');
+    });
+
     test('clicking an expanded column header collapses it, and again expands it', async ({
       page,
     }) => {
