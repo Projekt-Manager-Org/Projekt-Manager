@@ -49,10 +49,5 @@ data/
 /*.jpeg
 
 # Pixabay stock photos used only by the opt-in demo recording flow
-# (`npm run demo`). Free to use and modify, but redistributing them
-# standalone — as raw files in a public repo — is a Prohibited Use under
-# the Pixabay Content License. Kept local-only; the committed
-# assets/demo-hero.webp is a derivative (composited loop), not standalone
-# Content. See docs/testing/demo-recordings.md.
 e2e/fixtures/demo/*.jpg
 scripts/demo/assets/phone-backdrop.jpg
