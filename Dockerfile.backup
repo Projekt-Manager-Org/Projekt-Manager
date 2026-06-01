@@ -13,21 +13,22 @@
 #      `dist/server/backup-runner.js` (and its friends) into the final
 #      image. APP_IMAGE_TAG must match the tag deployed on the same
 #      commit (scripts/deploy.sh exports it before `docker compose up`).
-#   2. final stage — node:22.22.3-alpine with postgresql17 (server +
+#   2. final stage — node:24.15.0-alpine with postgresql17 (server +
 #      client) and the rest of the operational toolchain layered on top,
 #      plus the backend bundle from stage 1.
 #
-# BASE IMAGE CHOICE (F1): node:22.22.3-alpine instead of
-# postgres:17-alpine. Reason: ADR-0009 pins the app runtime at node
-# v22.22.3. postgres:17-alpine is tracking Alpine 3.23, whose `apk add
-# nodejs` resolves to v24.x — that would silently diverge from the app
-# image's v22 line and break the parity rule ADR-0009 exists to
-# enforce. node:22.22.3-alpine is on Alpine 3.22, which ships
-# postgresql17 server + client packages directly, so initdb /
-# postgres / pg_restore / pg_isready / pg_dump / psql are all
-# available for the Tier 1 verify-on-create path (ADR-0020 §Decision,
-# docs/spec/architecture.md §11.10) without multi-stage binary
-# shuffling.
+# BASE IMAGE CHOICE (F1): node:24.15.0-alpine instead of
+# postgres:17-alpine. Reason: the backup service runs the EXACT same
+# compiled backend bundle as the app image (see COPY --from=appsrc
+# below), so its node line must match the app image's — both track
+# node 24.15.0 (.nvmrc). postgres:17-alpine would give us Postgres but
+# pull `nodejs` at whatever Alpine's package happens to resolve to,
+# silently diverging from that pinned line. node:24.15.0-alpine is on
+# Alpine 3.23, which ships postgresql17 server + client packages
+# directly, so initdb / postgres / pg_restore / pg_isready / pg_dump /
+# psql are all available for the Tier 1 verify-on-create path
+# (ADR-0020 §Decision, docs/spec/architecture.md §11.10) without
+# multi-stage binary shuffling.
 # No default: callers (scripts/deploy.sh via the CI build-and-push job,
 # or an operator-run `docker build --build-arg`) MUST supply the tag.
 # Dropping the `=iteration-7-data` default closes the H2 audit finding —
@@ -44,7 +45,7 @@ FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a6
 #                          ephemeral Postgres over a unix socket inside
 #                          this container (ADR-0020 §Decision). Version
 #                          is pinned at the major in the package name —
-#                          Alpine 3.22 ships 17.x, which tracks the
+#                          Alpine 3.23 ships 17.x, which tracks the
 #                          `db` service's postgres:17-alpine image.
 #                          Creates the `postgres` system user (UID 70)
 #                          we run the container as — see USER below.
@@ -69,12 +70,20 @@ FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a6
 #                          check (AC-175 safety gate). Without it the
 #                          script falls back to /proc/mounts parsing
 #                          which is strictly less reliable.
+#   libxml2              — pulled in transitively by postgresql17 (XML
+#                          type / xpath support). Named explicitly so
+#                          the build always resolves the latest patched
+#                          version instead of whatever an older base or
+#                          cached layer happened to carry. Without it,
+#                          a stale libxml2 rides in under postgresql17
+#                          and trips the Trivy HIGH/CRITICAL gate
+#                          (CVE-2026-6732: libxml2 DoS, fixed 2.13.9-r1).
 #
 # What's no longer here (#199):
 #   - dcron / tzdata / su-exec — the schedule moved to in-process
 #     `croner` inside the backend bundle (see backup-runner.ts).
 #     croner reads timezones via the JS runtime's IANA `Intl` API;
-#     node:22-alpine bundles full ICU + tzdata so Europe/Berlin works
+#     node:24-alpine bundles full ICU + tzdata so Europe/Berlin works
 #     without an OS package. If the base image ever switches to a slim
 #     runtime without ICU, croner silently falls back to UTC and the
 #     schedule drifts by an hour twice a year — verify ICU presence
@@ -85,16 +94,19 @@ FROM node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a6
 #     them (run-backup.sh / run-drill.sh / crontab) collapsed into the
 #     Node bundle when the schedule moved in-process.
 #
-# No explicit version pins here (the db-image parity via
-# postgresql17's major version pin is what governs cross-environment
-# compatibility — ADR-0009); everything else tracks Alpine 3.22.
+# No explicit version pins here: cross-environment compatibility is
+# governed by the postgresql17 major matching the `db` service's
+# postgres:17-alpine (docker-compose.yml) — pg_restore / pg_dump must
+# speak the same major as that server. Everything else tracks Alpine
+# 3.23.
 RUN apk add --no-cache \
       postgresql17 \
       postgresql17-client \
       postgresql17-contrib \
       age \
       bash \
-      findmnt
+      findmnt \
+      libxml2
 
 # Remove npm + npx from the production image. The runtime invokes only
 # `node /app/dist/server/backup-runner.js` — npm is build-time tooling
