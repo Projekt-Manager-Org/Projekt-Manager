@@ -598,7 +598,7 @@ jobs:
       # though the image bytes were already assembled. The cache is
       # best-effort; missing it costs ~30s on the next cold build.
       - name: Build app image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
           file: Dockerfile
@@ -650,7 +650,7 @@ jobs:
       # previous app build via the shared gha cache, so this adds
       # only the tar-export cost (~5–10s on warm cache).
       - name: Export app image as OCI layout (for backup build context)
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
           file: Dockerfile
@@ -681,7 +681,7 @@ jobs:
       # cache scope mirrors `build-and-push` so the backup image's
       # layer cache stays isolated from the app image's.
       - name: Build backup image (FROM aliased to OCI layout)
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
           file: Dockerfile.backup
