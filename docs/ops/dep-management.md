@@ -84,12 +84,12 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 ## Cadence
 
-| Trigger                                         | Result                               | Latency                |
-| ----------------------------------------------- | ------------------------------------ | ---------------------- |
-| Renovate weekly window (Mon 09:00 Europe/Sofia) | Routine bumps as individual PRs      | ~30 min/week wrangler  |
-| Dependabot Alert                                | Renovate opens a vuln PR out-of-band | Hours from publication |
-| OSV-Scanner / Trivy CI fail                     | PR merge blocked                     | Per-PR                 |
-| Quarterly review                                | Walk strategic-dep list (below)      | ~1 hour, 4×/year       |
+| Trigger                                          | Result                               | Latency                |
+| ------------------------------------------------ | ------------------------------------ | ---------------------- |
+| Renovate weekly window (Mon 09:00 Europe/Berlin) | Routine bumps as individual PRs      | ~30 min/week wrangler  |
+| Dependabot Alert                                 | Renovate opens a vuln PR out-of-band | Hours from publication |
+| OSV-Scanner / Trivy CI fail                      | PR merge blocked                     | Per-PR                 |
+| Quarterly review                                 | Walk strategic-dep list (below)      | ~1 hour, 4×/year       |
 
 ## Weekly wrangler
 
@@ -256,7 +256,7 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 
 ## Files
 
-- `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Sofia), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
+- `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8) and Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL).
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist-osv-scanner--trivy) above.
