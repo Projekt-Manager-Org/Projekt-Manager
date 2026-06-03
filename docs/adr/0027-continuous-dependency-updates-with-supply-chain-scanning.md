@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-05-15
-- **Confidence:** Medium-High — the design rests on established industry patterns (Renovate + OSV-Scanner + Trivy is the OSS-tier supply-chain baseline at this stage), but the Renovate App is not yet installed on the repo, the allowlist schema has only been exercised against the empty baseline, and the quarterly-review cadence has not yet completed a full loop. Promote to High after the first Renovate-driven Monday lands and one quarterly review walk completes.
+- **Confidence:** Medium-High — the design rests on established industry patterns (Renovate + OSV-Scanner + Trivy is the OSS-tier supply-chain baseline at this stage). Renovate is installed and actively raising and merging dependency PRs, but the allowlist schema has only been exercised against the empty baseline and the quarterly-review cadence has not yet completed a full loop. Promote to High once a quarterly review walk completes and the allowlist has been exercised against a real advisory.
 
 ## Context
 
@@ -44,10 +44,10 @@ We will adopt **three coupled changes**:
 
 `.github/renovate.json` with:
 
-- **Schedule:** weekly window (e.g. `before 9am on monday`) for routine bumps. Vulnerability PRs bypass the schedule.
-- **Grouping:** seven lockstep clusters, one PR per cluster — AWS SDK (`@aws-sdk/**`), ESLint cluster (`eslint` + `@eslint/js` + `globals` + `typescript-eslint` + `eslint-plugin-react-hooks` + `eslint-plugin-react-refresh`), Vitest pair (`vitest` + `@vitest/coverage-v8`), React quartet (`react` + `react-dom` + `@types/react` + `@types/react-dom`), Fastify family (`fastify` + `@fastify/**`), Drizzle pair (`drizzle-orm` + `drizzle-kit`), and Caddy (groups the `caddy` base-image + plugin SHA bumps in `docker/caddy/Dockerfile` so a partial bump cannot ship a `xcaddy build vX` against a `FROM caddy:Y` mismatch).
+- **Schedule:** weekly window (e.g. `before 9am on monday`) for routine bumps. Vulnerability PRs bypass the schedule and the PR concurrency/hourly limits.
+- **Grouping:** seven lockstep clusters, one PR per cluster — AWS SDK (`@aws-sdk/**`), ESLint cluster (`eslint` + `@eslint/js` + `globals` + `typescript-eslint` + `eslint-plugin-react-hooks` + `eslint-plugin-react-refresh`), Vitest pair (`vitest` + `@vitest/coverage-v8`), React quartet (`react` + `react-dom` + `@types/react` + `@types/react-dom`), Fastify family (`fastify` + `@fastify/**`), Drizzle pair (`drizzle-orm` + `drizzle-kit`), and Caddy (the two `caddy` base-image FROM tags and the `xcaddy build` version all track the `caddy` Docker image, grouped into one PR so all three advance to the same version together; sharing one datasource keeps them in lockstep. The `caddy-dns/cloudflare` plugin SHA tracks separately via git-refs).
 - **Per-major-version PRs.** No grouping across majors; each major bump gets its own PR with the changelog inline.
-- **Auto-merge** for patch + minor when CI is green, **except** on the lockstep clusters above (group bumps get human review even if minor — easier to read changelog deltas in one place).
+- **Auto-merge** for patch + minor (plus digest/pin/lockfile) when CI is green, including the lockstep clusters — grouping consolidates one PR per cluster, it does not gate the merge. Majors never auto-merge.
 - **Lockfile maintenance** PR weekly to bound transitive drift.
 - **Managers:** `npm`, `dockerfile`, `docker-compose`, `github-actions`, and four `customManagers` of type `regex`: Caddy version (`xcaddy build vN.N.N` in `docker/caddy/Dockerfile`), the `caddy-dns/cloudflare` plugin SHA in the same Dockerfile, and MinIO `mc`/`minio` image tags in `scripts/sync-*.sh` and `.github/workflows/*.yml` (Renovate's built-in `github-actions` manager doesn't see Docker images inside `run:` blocks). **Out of scope for Renovate:** Alpine `apk add` packages on top of base images (unpinned versions; surface enumerated and walked in [`docs/ops/dep-management.md` § OS packages](../ops/dep-management.md#strategic-deps)) and Docker Engine apt packages on the VPS (tracked manually per [ADR-0009](0009-pin-docker-versions-across-environments.md) lifecycle table).
 
@@ -102,7 +102,7 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
 ### Negative
 
 - **PR queue volume.** A weekly window with grouping should land 3–8 PRs/week in steady state. The "weekly wrangler" hat is ~30 min/week.
-- **Auto-merge depends on CI confidence.** If Playwright E2E flakes, auto-merge produces false-green merges. No flake-quarantine practice is documented today — explicit gap. Interim mitigation: auto-merge stays off for grouped/major PRs (the highest-risk class). A future iteration revisits this once a quarter of CI history is available, at which point a tuning rule and its implementing mechanism land together — committing to a numeric threshold here without the calculator that enforces it would be exactly the placeholder-as-policy class the project avoids.
+- **Auto-merge depends on CI confidence.** If Playwright E2E flakes, auto-merge produces false-green merges. No flake-quarantine practice is documented today — explicit gap. Interim mitigation: auto-merge stays off for major PRs (the highest-risk class). A future iteration revisits this once a quarter of CI history is available, at which point a tuning rule and its implementing mechanism land together — committing to a numeric threshold here without the calculator that enforces it would be exactly the placeholder-as-policy class the project avoids.
 - **Renovate config drift.** A `.github/renovate.json` that goes stale (new dep types, ecosystem changes) silently degrades coverage. Mitigated by the quarterly review explicitly checking the config.
 - **OSV-Scanner / Trivy false positives** for advisories on dead code paths (cf. the original ADR-0007 case). Mitigated by a structured allowlist — never a blanket `--omit=dev`. The two scanners use different file formats but the same review-contract fields; both are enforced in CI by `scripts/check-allowlist-schema.sh` (~100ms; runs before the scanner gates so a sloppy entry fails fast). Required fields per entry:
   - **`id`** — the advisory or rule identifier (any non-empty string; Trivy and OSV-Scanner validate the ID shape themselves).

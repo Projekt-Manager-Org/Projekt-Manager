@@ -17,7 +17,9 @@
   },
   "vulnerabilityAlerts": {
     "labels": ["security", "dependencies"],
-    "schedule": ["at any time"]
+    "schedule": ["at any time"],
+    "prConcurrentLimit": 0,
+    "prHourlyLimit": 0
   },
   "osvVulnerabilityAlerts": true,
   "packageRules": [
@@ -70,38 +72,15 @@
       "matchPackageNames": ["drizzle-orm", "drizzle-kit"]
     },
     {
-      "description": "Grouped clusters: no auto-merge — human reads the combined changelog",
-      "matchPackageNames": [
-        "@aws-sdk/**",
-        "eslint",
-        "@eslint/js",
-        "globals",
-        "typescript-eslint",
-        "eslint-plugin-react-hooks",
-        "eslint-plugin-react-refresh",
-        "vitest",
-        "@vitest/coverage-v8",
-        "react",
-        "react-dom",
-        "@types/react",
-        "@types/react-dom",
-        "fastify",
-        "@fastify/**",
-        "drizzle-orm",
-        "drizzle-kit"
-      ],
-      "automerge": false
-    },
-    {
       "description": "MinIO RELEASE.* tags sort lexicographically — use loose versioning so timestamp order is respected",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["minio/minio", "minio/mc"],
       "versioning": "loose"
     },
     {
-      "description": "Caddy version bumps land across three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX). Group them so one PR moves the version everywhere — otherwise a partial bump builds an image where xcaddy compiles vX+1 against a base labelled vX",
+      "description": "Caddy version appears in three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX), all tracked against the `caddy` Docker image — the two FROM tags via the built-in dockerfile manager, the xcaddy build version via the customManager below. Group them so one PR advances all three to the same version together; sharing one datasource is what makes that lockstep hold. The caddy-dns/cloudflare plugin SHA tracks separately (git-refs).",
       "groupName": "caddy",
-      "matchPackageNames": ["caddy", "caddyserver/caddy"]
+      "matchPackageNames": ["caddy"]
     },
     {
       "description": "Suppress abandonment-heuristic false positives — release-date heuristic misfires on stable / maintenance-mode libs. Per-dep rationale + per-row verification dates in docs/ops/dep-management.md § Abandonment-flag verdicts. 3 years keeps real abandonment within range while filtering current noise.",
@@ -114,13 +93,13 @@
       "abandonmentThreshold": "3 years"
     },
     {
-      "description": "Auto-merge ungrouped patch + minor on green CI (requires repo Settings → General → Pull Requests → Allow auto-merge)",
+      "description": "Auto-merge all non-major updates (patch, minor, digest, pin, lockfile maintenance) on green CI — grouped clusters included; grouping consolidates PRs, it does not gate the merge (requires repo Settings → General → Pull Requests → Allow auto-merge)",
       "matchUpdateTypes": ["patch", "minor", "digest", "pin", "lockFileMaintenance"],
       "automerge": true,
       "platformAutomerge": true
     },
     {
-      "description": "Belt-and-braces: never auto-merge major bumps (best-practices already separates and disables, but be explicit)",
+      "description": "Belt-and-braces: never auto-merge major bumps. The rule above opts in only non-major types, so majors already fall through to no auto-merge — this states the exclusion explicitly and survives edits to the rule above",
       "matchUpdateTypes": ["major"],
       "automerge": false
     }
@@ -128,14 +107,14 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Caddy version inside `xcaddy build vN.N.N` in docker/caddy/Dockerfile — track caddyserver/caddy releases",
+      "description": "Caddy version inside `xcaddy build vN.N.N` in docker/caddy/Dockerfile. Tracks the `caddy` Docker image (not github-releases) so the built version can only advance to a Caddy release that already has a published image — keeping it in lockstep with the FROM caddy:X base tags, which the dockerfile manager bumps from the same datasource. Grouped under groupName 'caddy' above.",
       "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
       "matchStrings": [
         "xcaddy build v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
       ],
-      "depNameTemplate": "caddyserver/caddy",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v(?<version>.+)$"
+      "depNameTemplate": "caddy",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     },
     {
       "customType": "regex",

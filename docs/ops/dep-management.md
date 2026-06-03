@@ -13,11 +13,12 @@ Renovate is a GitHub App. Until installed and onboarded, the `.github/renovate.j
 npx --yes -p renovate renovate-config-validator --strict --no-global .github/renovate.json
 
 # Optional fuller dry-run: lists what Renovate WOULD do if installed.
-# Requires a GitHub token with read access to the repo; LOG_LEVEL=info
-# keeps the output manageable.
-LOG_LEVEL=info npx --yes -p renovate renovate \
-  --platform=local --dry-run \
-  Projekt-Manager-Org/Projekt-Manager
+# Runs against the local checkout — pass NO repository argument (with
+# platform=local a repo list errors out). Export a GitHub token so the
+# github-hosted datasources (release notes, git-refs) resolve. LOG_LEVEL=info
+# keeps output manageable; use debug to see per-dependency datasource lookups.
+GITHUB_COM_TOKEN="$(gh auth token)" LOG_LEVEL=info npx --yes -p renovate renovate \
+  --platform=local --dry-run=full
 ```
 
 The dry-run is most useful after editing `customManagers` regex patterns — Renovate logs which files matched, which deps it would have proposed, and which regexes returned zero matches (a silent regex typo otherwise lands invisibly).
@@ -96,11 +97,9 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 1. Open the Renovate dashboard issue — queue state at a glance.
 2. **Abandonment flags**: scan the dashboard's "Abandoned Dependencies" list for new entries. Verify each per [§ Abandonment-flag verdicts](#abandonment-flag-verdicts); record a verdict + (for false positives) add the package to `.github/renovate.json` `packageRules` in the same commit.
-3. **Auto-merged PRs** (patch/minor + green CI) need no action; spot-check for surprises.
-4. **Grouped PRs** (AWS SDK / ESLint cluster / Vitest pair / React pair / Fastify family / Drizzle pair): read combined changelog, merge.
-5. **Major PRs**: read upstream migration guide, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
-6. **Lockfile maintenance** PR: merge if green.
-7. Red CI: triage the failure, patch or revert.
+3. **Auto-merged PRs** (patch/minor/digest + green CI — grouped clusters and lockfile maintenance included) need no action; spot-check for surprises.
+4. **Major PRs**: read upstream migration guide, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
+5. Red CI: triage the failure, patch or revert.
 
 ## CVE handling
 

@@ -3,13 +3,15 @@
 # Custom Caddy build with the caddy-dns/cloudflare DNS provider plugin.
 # Required for DNS-01 ACME challenges per ADR-0008 §Network topology.
 #
-# Pinning policy (ADR-0008 + #52):
-# - Caddy version is pinned to a specific tag
-# - Both base images are also digest-pinned to defeat retag-under-known-good-label attacks
-# - The caddy-dns/cloudflare plugin is pinned to a specific git SHA, not a moving tag,
-#   so the build is fully reproducible from source
+# Pinning policy:
+# - Caddy version pinned to a specific tag (xcaddy build vN.N.N).
+# - Both base images digest-pinned to defeat retag-under-known-good-label attacks.
+# - The caddy-dns/cloudflare plugin pinned to a specific git SHA, so each build is
+#   reproducible from source.
 #
-# Bumping any of the three pins is a manual review gate per #52.
+# Renovate tracks all three (Caddy releases, base-image digests, plugin master SHA) and
+# auto-merges patch/minor/digest bumps on green CI; majors get a manual-review PR.
+# See ADR-0027 + docs/ops/dep-management.md.
 
 FROM caddy:2.11.3-builder@sha256:aa338f10bbce3e395b6f57061b1c3c53d1e54b83e10ce2395420d1e60f3f6819 AS builder
 
