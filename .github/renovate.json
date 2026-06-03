@@ -17,7 +17,9 @@
   },
   "vulnerabilityAlerts": {
     "labels": ["security", "dependencies"],
-    "schedule": ["at any time"]
+    "schedule": ["at any time"],
+    "prConcurrentLimit": 0,
+    "prHourlyLimit": 0
   },
   "osvVulnerabilityAlerts": true,
   "packageRules": [
@@ -70,36 +72,13 @@
       "matchPackageNames": ["drizzle-orm", "drizzle-kit"]
     },
     {
-      "description": "Grouped clusters: no auto-merge — human reads the combined changelog",
-      "matchPackageNames": [
-        "@aws-sdk/**",
-        "eslint",
-        "@eslint/js",
-        "globals",
-        "typescript-eslint",
-        "eslint-plugin-react-hooks",
-        "eslint-plugin-react-refresh",
-        "vitest",
-        "@vitest/coverage-v8",
-        "react",
-        "react-dom",
-        "@types/react",
-        "@types/react-dom",
-        "fastify",
-        "@fastify/**",
-        "drizzle-orm",
-        "drizzle-kit"
-      ],
-      "automerge": false
-    },
-    {
       "description": "MinIO RELEASE.* tags sort lexicographically — use loose versioning so timestamp order is respected",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["minio/minio", "minio/mc"],
       "versioning": "loose"
     },
     {
-      "description": "Caddy version bumps land across three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX). Group them so one PR moves the version everywhere — otherwise a partial bump builds an image where xcaddy compiles vX+1 against a base labelled vX",
+      "description": "Caddy version appears in three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX). Group caddy (Docker Hub image, the two FROM tags) and caddyserver/caddy (GitHub release, the xcaddy version) so both are reviewed in one PR. The two datasources publish independently, so a grouped PR can still move one pin ahead of the other — the wrangler reconciles a partial bump, the group does not prevent it",
       "groupName": "caddy",
       "matchPackageNames": ["caddy", "caddyserver/caddy"]
     },
@@ -114,7 +93,7 @@
       "abandonmentThreshold": "3 years"
     },
     {
-      "description": "Auto-merge ungrouped patch + minor on green CI (requires repo Settings → General → Pull Requests → Allow auto-merge)",
+      "description": "Auto-merge all non-major updates (patch, minor, digest, pin, lockfile maintenance) on green CI — grouped clusters included; grouping consolidates PRs, it does not gate the merge (requires repo Settings → General → Pull Requests → Allow auto-merge)",
       "matchUpdateTypes": ["patch", "minor", "digest", "pin", "lockFileMaintenance"],
       "automerge": true,
       "platformAutomerge": true

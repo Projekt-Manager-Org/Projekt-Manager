@@ -96,11 +96,9 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 1. Open the Renovate dashboard issue — queue state at a glance.
 2. **Abandonment flags**: scan the dashboard's "Abandoned Dependencies" list for new entries. Verify each per [§ Abandonment-flag verdicts](#abandonment-flag-verdicts); record a verdict + (for false positives) add the package to `.github/renovate.json` `packageRules` in the same commit.
-3. **Auto-merged PRs** (patch/minor + green CI) need no action; spot-check for surprises.
-4. **Grouped PRs** (AWS SDK / ESLint cluster / Vitest pair / React pair / Fastify family / Drizzle pair): read combined changelog, merge.
-5. **Major PRs**: read upstream migration guide, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
-6. **Lockfile maintenance** PR: merge if green.
-7. Red CI: triage the failure, patch or revert.
+3. **Auto-merged PRs** (patch/minor/digest + green CI — grouped clusters and lockfile maintenance included) need no action; spot-check for surprises.
+4. **Major PRs**: read upstream migration guide, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
+5. Red CI: triage the failure, patch or revert.
 
 ## CVE handling
 
