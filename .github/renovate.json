@@ -78,9 +78,9 @@
       "versioning": "loose"
     },
     {
-      "description": "Caddy version appears in three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX). Group caddy (Docker Hub image, the two FROM tags) and caddyserver/caddy (GitHub release, the xcaddy version) so both are reviewed in one PR. The two datasources publish independently, so a grouped PR can still move one pin ahead of the other — the wrangler reconciles a partial bump, the group does not prevent it",
+      "description": "Caddy version appears in three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX), all tracked against the `caddy` Docker image — the two FROM tags via the built-in dockerfile manager, the xcaddy build version via the customManager below. Group them so one PR advances all three to the same version together; sharing one datasource is what makes that lockstep hold. The caddy-dns/cloudflare plugin SHA tracks separately (git-refs).",
       "groupName": "caddy",
-      "matchPackageNames": ["caddy", "caddyserver/caddy"]
+      "matchPackageNames": ["caddy"]
     },
     {
       "description": "Suppress abandonment-heuristic false positives — release-date heuristic misfires on stable / maintenance-mode libs. Per-dep rationale + per-row verification dates in docs/ops/dep-management.md § Abandonment-flag verdicts. 3 years keeps real abandonment within range while filtering current noise.",
@@ -107,14 +107,14 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Caddy version inside `xcaddy build vN.N.N` in docker/caddy/Dockerfile — track caddyserver/caddy releases",
+      "description": "Caddy version inside `xcaddy build vN.N.N` in docker/caddy/Dockerfile. Tracks the `caddy` Docker image (not github-releases) so the built version can only advance to a Caddy release that already has a published image — keeping it in lockstep with the FROM caddy:X base tags, which the dockerfile manager bumps from the same datasource. Grouped under groupName 'caddy' above.",
       "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
       "matchStrings": [
         "xcaddy build v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
       ],
-      "depNameTemplate": "caddyserver/caddy",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v(?<version>.+)$"
+      "depNameTemplate": "caddy",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
     },
     {
       "customType": "regex",
