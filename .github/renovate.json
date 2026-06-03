@@ -99,7 +99,7 @@
       "platformAutomerge": true
     },
     {
-      "description": "Belt-and-braces: never auto-merge major bumps (best-practices already separates and disables, but be explicit)",
+      "description": "Belt-and-braces: never auto-merge major bumps. The rule above opts in only non-major types, so majors already fall through to no auto-merge — this states the exclusion explicitly and survives edits to the rule above",
       "matchUpdateTypes": ["major"],
       "automerge": false
     }

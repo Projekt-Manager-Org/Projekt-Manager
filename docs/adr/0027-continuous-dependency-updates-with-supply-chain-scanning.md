@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-05-15
-- **Confidence:** Medium-High — the design rests on established industry patterns (Renovate + OSV-Scanner + Trivy is the OSS-tier supply-chain baseline at this stage), but the Renovate App is not yet installed on the repo, the allowlist schema has only been exercised against the empty baseline, and the quarterly-review cadence has not yet completed a full loop. Promote to High after the first Renovate-driven Monday lands and one quarterly review walk completes.
+- **Confidence:** Medium-High — the design rests on established industry patterns (Renovate + OSV-Scanner + Trivy is the OSS-tier supply-chain baseline at this stage). Renovate is installed and actively raising and merging dependency PRs, but the allowlist schema has only been exercised against the empty baseline and the quarterly-review cadence has not yet completed a full loop. Promote to High once a quarterly review walk completes and the allowlist has been exercised against a real advisory.
 
 ## Context
 
