@@ -47,6 +47,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
        - Do **NOT** add `check-shard`: matrix jobs surface as `check-shard (1)` / `check-shard (2)`, names that change when shard count changes — the aggregator `check` exists precisely so the Ruleset isn't entangled with the matrix shape.
        - Do **NOT** add `build-and-push`: it only fires on `push` / `workflow_dispatch` events; its post-merge image-scan-then-push step is the deploy-time safety net, not a PR gate.
        - **Tick the sub-option "Require branches to be up to date before merging"** — the `strict_required_status_checks_policy` flag. This is the active safety net against semantic merge conflicts (two PRs that pass their own CI but break main when both land). Without it, a `package-lock.json` collision between a human PR and a concurrent Renovate PR can ship a stale lockfile to `main`. The trade is a rebase + re-CI cycle on any PR that lands behind a just-merged peer; per step 5 below, at this repo's volume that tax is acceptable.
+       - **Renovate must perform that rebase, not a human** — which is why `renovate.json` sets `rebaseWhen: "behind-base-branch"` _explicitly_. The default `auto` upgrades to `behind-base-branch` only when it detects "require branches up to date" via **classic** branch protection; it is blind to this repo's **Ruleset**, so it falls back to `conflicted` and leaves merely-behind PRs untouched. They then sit `BEHIND` until someone clicks "Update branch" — which stamps a non-`renovate[bot]` author on the branch and trips Renovate's edited-PR guard ("does not recognize the last commit author"), permanently disabling auto-rebase for that PR. Explicit `behind-base-branch` keeps the rebase on the bot and the serial tax automatic and hands-off.
 
    Without `lint`, `check`, and `docker` all as required contexts, Renovate's auto-merge bypasses the safety net this ADR adds; without `docker`, image-vuln gating becomes informational-only on PRs (the post-merge `build-and-push` scan is still the backstop). The full gating rationale is in [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational).
 
@@ -84,12 +85,12 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 ## Cadence
 
-| Trigger                                         | Result                               | Latency                |
-| ----------------------------------------------- | ------------------------------------ | ---------------------- |
-| Renovate weekly window (Mon 09:00 Europe/Sofia) | Routine bumps as individual PRs      | ~30 min/week wrangler  |
-| Dependabot Alert                                | Renovate opens a vuln PR out-of-band | Hours from publication |
-| OSV-Scanner / Trivy CI fail                     | PR merge blocked                     | Per-PR                 |
-| Quarterly review                                | Walk strategic-dep list (below)      | ~1 hour, 4×/year       |
+| Trigger                                          | Result                               | Latency                |
+| ------------------------------------------------ | ------------------------------------ | ---------------------- |
+| Renovate weekly window (Mon 09:00 Europe/Berlin) | Routine bumps as individual PRs      | ~30 min/week wrangler  |
+| Dependabot Alert                                 | Renovate opens a vuln PR out-of-band | Hours from publication |
+| OSV-Scanner / Trivy CI fail                      | PR merge blocked                     | Per-PR                 |
+| Quarterly review                                 | Walk strategic-dep list (below)      | ~1 hour, 4×/year       |
 
 ## Weekly wrangler
 
@@ -256,7 +257,7 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 
 ## Files
 
-- `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Sofia), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
+- `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8) and Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL).
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist-osv-scanner--trivy) above.

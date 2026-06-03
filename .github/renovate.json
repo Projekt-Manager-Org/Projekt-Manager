@@ -9,6 +9,7 @@
   "schedule": ["before 9am on monday"],
   "prHourlyLimit": 4,
   "prConcurrentLimit": 1,
+  "rebaseWhen": "behind-base-branch",
   "labels": ["dependencies"],
   "lockFileMaintenance": {
     "enabled": true,
