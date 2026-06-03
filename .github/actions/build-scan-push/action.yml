@@ -44,7 +44,7 @@ runs:
         } >> "$GITHUB_OUTPUT"
 
     - name: Log in to GHCR
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
       with:
         registry: ghcr.io
         username: ${{ inputs.github_actor }}
@@ -67,7 +67,7 @@ runs:
     # bytes were already assembled. The cache is best-effort; missing
     # it costs ~30s on the next cold build, nothing else.
     - name: Build app image (load locally for scan)
-      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
       with:
         context: .
         file: Dockerfile
@@ -101,7 +101,7 @@ runs:
         trivyignores: .trivyignore
 
     - name: Push app image
-      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
       with:
         context: .
         file: Dockerfile
@@ -129,7 +129,7 @@ runs:
     # apk layers on top of node-alpine, each with its own CVE surface
     # — leaving it unscanned was pre-existing tech debt.
     - name: Build backup image (load locally for scan)
-      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
       with:
         context: .
         file: Dockerfile.backup
@@ -151,7 +151,7 @@ runs:
         trivyignores: .trivyignore
 
     - name: Push backup image
-      uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
       with:
         context: .
         file: Dockerfile.backup
