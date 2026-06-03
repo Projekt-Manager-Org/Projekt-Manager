@@ -13,11 +13,12 @@ Renovate is a GitHub App. Until installed and onboarded, the `.github/renovate.j
 npx --yes -p renovate renovate-config-validator --strict --no-global .github/renovate.json
 
 # Optional fuller dry-run: lists what Renovate WOULD do if installed.
-# Requires a GitHub token with read access to the repo; LOG_LEVEL=info
-# keeps the output manageable.
-LOG_LEVEL=info npx --yes -p renovate renovate \
-  --platform=local --dry-run \
-  Projekt-Manager-Org/Projekt-Manager
+# Runs against the local checkout — pass NO repository argument (with
+# platform=local a repo list errors out). Export a GitHub token so the
+# github-hosted datasources (release notes, git-refs) resolve. LOG_LEVEL=info
+# keeps output manageable; use debug to see per-dependency datasource lookups.
+GITHUB_COM_TOKEN="$(gh auth token)" LOG_LEVEL=info npx --yes -p renovate renovate \
+  --platform=local --dry-run=full
 ```
 
 The dry-run is most useful after editing `customManagers` regex patterns — Renovate logs which files matched, which deps it would have proposed, and which regexes returned zero matches (a silent regex typo otherwise lands invisibly).
