@@ -5,6 +5,7 @@
     ":dependencyDashboard",
     ":semanticCommits"
   ],
+  "mode": "full",
   "timezone": "Europe/Berlin",
   "schedule": ["before 9am on monday"],
   "prHourlyLimit": 4,
