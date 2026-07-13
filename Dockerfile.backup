@@ -13,18 +13,18 @@
 #      `dist/server/backup-runner.js` (and its friends) into the final
 #      image. APP_IMAGE_TAG must match the tag deployed on the same
 #      commit (scripts/deploy.sh exports it before `docker compose up`).
-#   2. final stage — node:24.15.0-alpine with postgresql17 (server +
+#   2. final stage — node:24.16.0-alpine with postgresql17 (server +
 #      client) and the rest of the operational toolchain layered on top,
 #      plus the backend bundle from stage 1.
 #
-# BASE IMAGE CHOICE (F1): node:24.15.0-alpine instead of
+# BASE IMAGE CHOICE (F1): node:24.16.0-alpine instead of
 # postgres:17-alpine. Reason: the backup service runs the EXACT same
 # compiled backend bundle as the app image (see COPY --from=appsrc
 # below), so its node line must match the app image's — both track
-# node 24.15.0 (.nvmrc). postgres:17-alpine would give us Postgres but
+# node 24.16.0 (.nvmrc). postgres:17-alpine would give us Postgres but
 # pull `nodejs` at whatever Alpine's package happens to resolve to,
-# silently diverging from that pinned line. node:24.15.0-alpine is on
-# Alpine 3.23, which ships postgresql17 server + client packages
+# silently diverging from that pinned line. node:24.16.0-alpine is on
+# Alpine 3.24, which ships postgresql17 server + client packages
 # directly, so initdb / postgres / pg_restore / pg_isready / pg_dump /
 # psql are all available for the Tier 1 verify-on-create path
 # (ADR-0020 §Decision, docs/spec/architecture.md §11.10) without
@@ -37,7 +37,7 @@ ARG APP_IMAGE_TAG
 # hadolint ignore=DL3006  # tag is set by scripts/deploy.sh per commit
 FROM ghcr.io/projekt-manager-org/projekt-manager:${APP_IMAGE_TAG} AS appsrc
 
-FROM node:24.16.0-alpine@sha256:2bdb65ed1dab192432bc31c95f94155ca5ad7fc1392fb7eb7526ab682fa5bf14
+FROM node:24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd225f31f2bc59b5c9a
 
 # Package roles:
 #   postgresql17         — server binaries (initdb, postgres) used by
@@ -98,7 +98,7 @@ FROM node:24.16.0-alpine@sha256:2bdb65ed1dab192432bc31c95f94155ca5ad7fc1392fb7eb
 # governed by the postgresql17 major matching the `db` service's
 # postgres:17-alpine (docker-compose.yml) — pg_restore / pg_dump must
 # speak the same major as that server. Everything else tracks Alpine
-# 3.23.
+# 3.24.
 RUN apk add --no-cache \
       postgresql17 \
       postgresql17-client \
