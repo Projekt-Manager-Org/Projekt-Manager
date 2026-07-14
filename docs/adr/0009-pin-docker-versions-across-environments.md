@@ -89,5 +89,6 @@ The "Pinned versions" table above is the version surface. Upstream metadata:
 
 - [ADR-0003: Deployment infrastructure — VPS, Docker Compose, GitHub Actions](0003-deployment-infrastructure-vps-docker-compose-github-actions.md)
 - [ADR-0011: Build app images in CI, distribute via GHCR](0011-build-images-in-ci-distribute-via-ghcr.md) — CI now builds and pushes images
-- [docs/ops/server-setup.md](../ops/server-setup.md) — Phase 4 (Docker install)
+- [docs/ops/server-setup.md](../ops/server-setup.md) — Phase 4 (Docker install, VPS)
+- [docs/ops/local-dev.md](../ops/local-dev.md) — Installing Docker (dev workstation)
 - Docker apt repository: https://download.docker.com/linux/ubuntu

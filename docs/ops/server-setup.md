@@ -193,6 +193,8 @@ sysctl net.core.rmem_max      # 7500000
 
 **Note:** Docker group membership = effective root. See ADR-0012 residual risks.
 
+**Dev workstation:** same versions, different account -- see [local-dev.md § Installing Docker](local-dev.md#installing-docker).
+
 ### Phase 5 -- Host firewall & brute-force protection
 
 Host-level firewall (ufw) mirrors the cloud firewall policy. If the cloud provider has no firewall, or the server moves to a different provider, ufw is the baseline.

@@ -132,7 +132,7 @@ This project makes heavy use of modern LLMs, mostly Claude Code. A "fully automa
 
 **Prerequisites**:
 
-- Docker and Docker Compose
+- Docker Engine + Compose plugin, pinned version -- see [docs/ops/local-dev.md § Prerequisites](docs/ops/local-dev.md#prerequisites)
 - Node.js (pinned in `.nvmrc` - use `nvm install`)
 
 **Running**:
