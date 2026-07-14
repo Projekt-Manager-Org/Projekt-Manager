@@ -35,12 +35,7 @@ Pin Docker Engine, CLI, containerd, BuildKit plugin, and Compose plugin to expli
 
 **Enforcement:** `sudo apt-mark hold` on all five; verify via `apt-mark showhold` on install and on each host audit.
 
-**Upgrade procedure (lockstep):**
-
-1. Review Docker's release notes for the target version.
-2. Non-production host first: `apt-mark unhold` → install target → `apt-mark hold` → run the full stack (`docker compose up -d`; the dev `.env` sets `COMPOSE_FILE` to merge the dev overlay triple) + smoke tests.
-3. Repeat on remaining hosts, VPS last.
-4. Update this ADR with the new pinned versions and date.
+**Upgrades:** deliberate, lockstep, non-production host first, VPS last. Runbook (commands, verify, deploy-secret handling): [server-setup.md § Upgrading pinned versions](../ops/server-setup.md#upgrading-pinned-versions).
 
 ## Alternatives Considered
 
@@ -69,7 +64,7 @@ Pin Docker Engine, CLI, containerd, BuildKit plugin, and Compose plugin to expli
 
 - Security-advisory tracking mechanism is an open decision; interim backstop is manually checking Docker release notes before any bump.
 - `apt-mark showhold` is part of post-install verification (see `docs/ops/server-setup.md` Phase 4).
-- Upgrade procedure above is also in `docs/ops/server-setup.md` for operational reference.
+- The upgrade runbook lives entirely in `docs/ops/server-setup.md` -- not duplicated here, so the commands can't drift out of sync with this ADR's prose.
 
 ## Dep lifecycle health (as of 2026-07-14)
 

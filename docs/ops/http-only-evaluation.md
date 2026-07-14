@@ -48,7 +48,7 @@ For VPS provisioning (OS hardening, Docker install), see [server-setup.md](serve
 
 The app image is hosted on GitHub Container Registry. Public packages pull without authentication. For private packages, authenticate first:
 
-1. Create a classic Personal Access Token at `https://github.com/settings/tokens` with the `read:packages` scope
+1. Create a classic Personal Access Token with the `read:packages` scope -- see [manual-deploy.md § GHCR pull token](manual-deploy.md#ghcr-pull-token) for where and how.
 2. Log in:
    ```bash
    docker login ghcr.io -u <github-username>

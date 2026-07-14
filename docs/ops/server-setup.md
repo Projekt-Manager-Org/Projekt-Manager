@@ -189,7 +189,39 @@ sudo -u deploy docker ps      # empty table, not "permission denied"
 sysctl net.core.rmem_max      # 7500000
 ```
 
-**Upgrades:** follow lockstep procedure in ADR-0009. Unhold, install new version on non-prod first, smoke test, then VPS.
+#### Upgrading pinned versions
+
+Deliberate, lockstep bumps per [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) -- non-production host first, VPS last.
+
+1. Review [Docker's release notes](https://docs.docker.com/engine/release-notes/) for the target version.
+2. Non-production host first -- dev workstation, see [local-dev.md § Installing Docker](local-dev.md#installing-docker).
+3. Unhold, install the new pins, re-hold:
+
+   ```bash
+   sudo apt-mark unhold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   sudo apt-get install -y \
+     docker-ce=<version> \
+     docker-ce-cli=<version> \
+     containerd.io=<version> \
+     docker-buildx-plugin=<version> \
+     docker-compose-plugin=<version>
+   sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   apt-mark showhold
+   ```
+
+4. Smoke test.
+
+   **VPS:** the package upgrade restarts the Docker daemon -- no `live-restore` is configured, so every running container stops. All services are `restart: unless-stopped` and self-heal once the daemon is back, but don't rely on that alone -- re-run deploy:
+
+   ```bash
+   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
+   ```
+
+   `deploy.sh` sources `secrets.env.age`, runs the preflight, `docker compose up -d`, and polls `/api/health` -- a bare `docker compose ps`/`up` fails compose's `:?` env-interpolation gate without those secrets in shell (see [manual-deploy.md § Failure modes](manual-deploy.md#failure-modes)). Time the upgrade outside the backup schedule ([backup/overview.md § Cadence](backup/overview.md#cadence)) to avoid interrupting an in-flight tick.
+
+   **Dev workstation:** `docker compose up -d` (per [local-dev.md](local-dev.md)) -- no `deploy.sh`, no secrets file.
+
+5. Update the pinned-version table above and in [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) (table + bump date).
 
 **Note:** Docker group membership = effective root. See ADR-0012 residual risks.
 
