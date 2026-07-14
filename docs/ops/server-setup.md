@@ -128,11 +128,11 @@ Pinned versions (ADR-0009):
 
 | Package                 | Version                         |
 | ----------------------- | ------------------------------- |
-| `docker-ce`             | `5:29.5.0-1~ubuntu.24.04~noble` |
-| `docker-ce-cli`         | `5:29.5.0-1~ubuntu.24.04~noble` |
-| `containerd.io`         | `2.2.3-1~ubuntu.24.04~noble`    |
-| `docker-buildx-plugin`  | `0.34.0-1~ubuntu.24.04~noble`   |
-| `docker-compose-plugin` | `5.1.3-1~ubuntu.24.04~noble`    |
+| `docker-ce`             | `5:29.6.1-1~ubuntu.24.04~noble` |
+| `docker-ce-cli`         | `5:29.6.1-1~ubuntu.24.04~noble` |
+| `containerd.io`         | `2.2.6-1~ubuntu.24.04~noble`    |
+| `docker-buildx-plugin`  | `0.35.0-1~ubuntu.24.04~noble`   |
+| `docker-compose-plugin` | `5.3.1-1~ubuntu.24.04~noble`    |
 
 1. Add Docker apt repository:
 
@@ -142,7 +142,7 @@ Pinned versions (ADR-0009):
    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
    sudo chmod a+r /etc/apt/keyrings/docker.asc
    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-     https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${VERSION_CODENAME}") stable" | \
+     https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
    sudo apt-get update
    ```
@@ -151,11 +151,11 @@ Pinned versions (ADR-0009):
 
    ```bash
    sudo apt-get install -y \
-     docker-ce=5:29.5.0-1~ubuntu.24.04~noble \
-     docker-ce-cli=5:29.5.0-1~ubuntu.24.04~noble \
-     containerd.io=2.2.3-1~ubuntu.24.04~noble \
-     docker-buildx-plugin=0.34.0-1~ubuntu.24.04~noble \
-     docker-compose-plugin=5.1.3-1~ubuntu.24.04~noble
+     docker-ce=5:29.6.1-1~ubuntu.24.04~noble \
+     docker-ce-cli=5:29.6.1-1~ubuntu.24.04~noble \
+     containerd.io=2.2.6-1~ubuntu.24.04~noble \
+     docker-buildx-plugin=0.35.0-1~ubuntu.24.04~noble \
+     docker-compose-plugin=5.3.1-1~ubuntu.24.04~noble
    sudo usermod -aG docker deploy
    ```
 
@@ -182,16 +182,48 @@ Pinned versions (ADR-0009):
 **Verify:**
 
 ```bash
-docker --version              # 29.5.0
-docker compose version        # v5.1.3
+docker --version              # 29.6.1
+docker compose version        # v5.3.1
 apt-mark showhold             # all five listed
 sudo -u deploy docker ps      # empty table, not "permission denied"
 sysctl net.core.rmem_max      # 7500000
 ```
 
-**Upgrades:** follow lockstep procedure in ADR-0009. Unhold, install new version on non-prod first, smoke test, then VPS.
+#### Upgrading pinned versions
+
+Deliberate, lockstep bumps per [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) -- non-production host first, VPS last.
+
+1. Review [Docker's release notes](https://docs.docker.com/engine/release-notes/) for the target version.
+2. Non-production host first -- dev workstation, see [local-dev.md § Installing Docker](local-dev.md#installing-docker).
+3. Unhold, install the new pins, re-hold:
+
+   ```bash
+   sudo apt-mark unhold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   sudo apt-get install -y \
+     docker-ce=<version> \
+     docker-ce-cli=<version> \
+     containerd.io=<version> \
+     docker-buildx-plugin=<version> \
+     docker-compose-plugin=<version>
+   sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+   apt-mark showhold
+   ```
+
+4. Restart the stack.
+
+   **VPS:** the package upgrade restarts the Docker daemon -- no `live-restore` is configured, so every running container stops. All services are `restart: unless-stopped` and self-heal once the daemon is back; re-run deploy:
+
+   ```bash
+   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
+   ```
+
+   **Dev workstation:** `docker compose up -d` (per [local-dev.md](local-dev.md)) -- no `deploy.sh`, no secrets file.
+
+5. Update the pinned-version table above and in [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) (table + bump date).
 
 **Note:** Docker group membership = effective root. See ADR-0012 residual risks.
+
+**Dev workstation:** same versions, different account -- see [local-dev.md § Installing Docker](local-dev.md#installing-docker).
 
 ### Phase 5 -- Host firewall & brute-force protection
 

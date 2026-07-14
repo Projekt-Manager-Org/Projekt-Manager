@@ -5,8 +5,15 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 ## Prerequisites
 
 - **Node 22.22.3** (pinned in `.nvmrc`) -- `nvm install`
-- **Docker + Compose plugin**
+- **Docker Engine + Compose plugin**, pinned version ([ADR-0009](../adr/0009-pin-docker-versions-across-environments.md)) -- see [Installing Docker](#installing-docker) below
 - Free ports: `3000` (Fastify), `5173` (Vite), `5432` (Postgres), `9000`/`9001` (MinIO)
+
+### Installing Docker
+
+Same pinned versions as the VPS -- follow [server-setup.md](server-setup.md) Phase 4 for the apt repo, version table, and install/hold commands. Two differences for a workstation:
+
+- Install for your own interactive user, not `deploy` -- add yourself to the `docker` group instead: `sudo usermod -aG docker $USER` (log out/in to apply).
+- Skip step 4 (UDP socket buffer tuning) -- that's Caddy/HTTP3-specific and only applies to the VPS.
 
 ## First-time setup
 
