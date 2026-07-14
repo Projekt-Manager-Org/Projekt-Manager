@@ -209,15 +209,13 @@ Deliberate, lockstep bumps per [ADR-0009](../adr/0009-pin-docker-versions-across
    apt-mark showhold
    ```
 
-4. Smoke test.
+4. Restart the stack.
 
-   **VPS:** the package upgrade restarts the Docker daemon -- no `live-restore` is configured, so every running container stops. All services are `restart: unless-stopped` and self-heal once the daemon is back, but don't rely on that alone -- re-run deploy:
+   **VPS:** the package upgrade restarts the Docker daemon -- no `live-restore` is configured, so every running container stops. All services are `restart: unless-stopped` and self-heal once the daemon is back; re-run deploy:
 
    ```bash
    sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
    ```
-
-   `deploy.sh` sources `secrets.env.age`, runs the preflight, `docker compose up -d`, and polls `/api/health` -- a bare `docker compose ps`/`up` fails compose's `:?` env-interpolation gate without those secrets in shell (see [manual-deploy.md § Failure modes](manual-deploy.md#failure-modes)). Time the upgrade outside the backup schedule ([backup/overview.md § Cadence](backup/overview.md#cadence)) to avoid interrupting an in-flight tick.
 
    **Dev workstation:** `docker compose up -d` (per [local-dev.md](local-dev.md)) -- no `deploy.sh`, no secrets file.
 

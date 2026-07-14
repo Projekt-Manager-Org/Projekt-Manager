@@ -19,9 +19,11 @@ cp .env.example .env                  # first time only — dev-ready, no edits 
 
 ### Option A — Pull from GHCR
 
-Uses the pre-built image from GitHub Container Registry. Requires [GHCR authentication](#ghcr-authentication).
+Uses the pre-built image from GitHub Container Registry. Private packages need a GHCR login first -- classic PAT, `read:packages` scope, see [manual-deploy.md § GHCR pull token](manual-deploy.md#ghcr-pull-token) for where and how to create one.
 
 ```bash
+docker login ghcr.io -u <github-username>   # paste the PAT at the password prompt; skip if the package is public
+
 docker compose -f docker-compose.yml -f docker-compose.http.yml pull
 docker compose -f docker-compose.yml -f docker-compose.http.yml up -d
 # Open http://localhost — login with inhaber / changeme
@@ -43,17 +45,6 @@ First build takes a few minutes.
 When running on a remote server, open port 80/TCP in ufw (`sudo ufw allow 80/tcp`) and any cloud firewall. Access via `http://<server-ip>` instead of `http://localhost`.
 
 For VPS provisioning (OS hardening, Docker install), see [server-setup.md](server-setup.md).
-
-## GHCR authentication
-
-The app image is hosted on GitHub Container Registry. Public packages pull without authentication. For private packages, authenticate first:
-
-1. Create a classic Personal Access Token with the `read:packages` scope -- see [manual-deploy.md § GHCR pull token](manual-deploy.md#ghcr-pull-token) for where and how.
-2. Log in:
-   ```bash
-   docker login ghcr.io -u <github-username>
-   ```
-   Paste the token at the password prompt.
 
 ## Stop / clean up
 
