@@ -1,7 +1,7 @@
 # ADR-0009: Pin Docker Engine and Compose versions across environments
 
 - **Status:** Accepted
-- **Date:** 2026-04-07 (last bump: 2026-05-15)
+- **Date:** 2026-04-07 (last bump: 2026-07-14)
 - **Confidence:** High
 
 ## Context
@@ -21,21 +21,15 @@ Key forces:
 
 Pin Docker Engine, CLI, containerd, BuildKit plugin, and Compose plugin to explicit versions on every host; place all five on apt hold. Bumps are deliberate, lockstep across all environments.
 
-**Pinned versions (as of 2026-05-15):**
+**Pinned versions (as of 2026-07-14):**
 
 | Package                 | Version                         |
 | ----------------------- | ------------------------------- |
-| `docker-ce`             | `5:29.5.0-1~ubuntu.24.04~noble` |
-| `docker-ce-cli`         | `5:29.5.0-1~ubuntu.24.04~noble` |
-| `containerd.io`         | `2.2.3-1~ubuntu.24.04~noble`    |
-| `docker-buildx-plugin`  | `0.34.0-1~ubuntu.24.04~noble`   |
-| `docker-compose-plugin` | `5.1.3-1~ubuntu.24.04~noble`    |
-
-The 2026-05-15 bump (from 29.3.1 / 2.2.2 / 0.33.0 / 5.1.1) closes two
-CVEs against Docker Engine:
-
-- CVE-2026-32288: DoS via crafted sparse-tar (fixed 29.5.0)
-- CVE-2026-31431: in-container privesc via kernel crypto API (fixed 29.4.3)
+| `docker-ce`             | `5:29.6.1-1~ubuntu.24.04~noble` |
+| `docker-ce-cli`         | `5:29.6.1-1~ubuntu.24.04~noble` |
+| `containerd.io`         | `2.2.6-1~ubuntu.24.04~noble`    |
+| `docker-buildx-plugin`  | `0.35.0-1~ubuntu.24.04~noble`   |
+| `docker-compose-plugin` | `5.3.1-1~ubuntu.24.04~noble`    |
 
 **Source of truth:** the VPS. Local environments match the VPS, not the other way around — so dev reproduces prod rather than leading it.
 
@@ -77,18 +71,18 @@ CVEs against Docker Engine:
 - `apt-mark showhold` is part of post-install verification (see `docs/ops/server-setup.md` Phase 4).
 - Upgrade procedure above is also in `docs/ops/server-setup.md` for operational reference.
 
-## Dep lifecycle health (as of 2026-05-15)
+## Dep lifecycle health (as of 2026-07-14)
 
 The "Pinned versions" table above is the version surface. Upstream metadata:
 
-| Dep                                                                                            | License    | Maintainership           | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ---------------------------------------------------------------------------------------------- | ---------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin` | Apache-2.0 | Docker Inc., very active | CVE channel: [Docker Engine release notes](https://docs.docker.com/engine/release-notes/) + GHSA. The 2026-05-15 bump closed CVE-2026-32288 and CVE-2026-31431. These packages are installed on the VPS host (not in a container), so [ADR-0027](0027-continuous-dependency-updates-with-supply-chain-scanning.md)'s Renovate config does NOT track them. Bumps require the lockstep upgrade procedure above; the quarterly review walk (per [docs/ops/dep-management.md](../ops/dep-management.md#quarterly-lifecycle-review)) and the Docker release-notes channel are the surfacing mechanism. |
+| Dep                                                                                            | License    | Maintainership           | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------- | ---------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin` | Apache-2.0 | Docker Inc., very active | CVE channel: [Docker Engine release notes](https://docs.docker.com/engine/release-notes/) + GHSA. The 2026-07-14 bump closed the `docker cp` CVE trio (CVE-2026-41567/-41568/-42306), the Engine/containerd group-file DoS pair (GHSA-mjcv-p78q-w5fw et al., CVE-2026-47262), and the buildx Seccomp/AppArmor bypass (GHSA-7236-3392-c5c6). These packages are installed on the VPS host (not in a container), so [ADR-0027](0027-continuous-dependency-updates-with-supply-chain-scanning.md)'s Renovate config does NOT track them. Bumps require the lockstep upgrade procedure above; the quarterly review walk (per [docs/ops/dep-management.md](../ops/dep-management.md#quarterly-lifecycle-review)) and the Docker release-notes channel are the surfacing mechanism. |
 
 ## References
 
 - [ADR-0003: Deployment infrastructure — VPS, Docker Compose, GitHub Actions](0003-deployment-infrastructure-vps-docker-compose-github-actions.md)
 - [ADR-0011: Build app images in CI, distribute via GHCR](0011-build-images-in-ci-distribute-via-ghcr.md) — CI now builds and pushes images
-- [docs/ops/server-setup.md](../ops/server-setup.md) — Phase 4 (Docker install, VPS)
+- [docs/ops/server-setup.md](../ops/server-setup.md) — step 4 (Docker install, VPS)
 - [docs/ops/local-dev.md](../ops/local-dev.md) — Installing Docker (dev workstation)
 - Docker apt repository: https://download.docker.com/linux/ubuntu

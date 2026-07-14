@@ -128,11 +128,11 @@ Pinned versions (ADR-0009):
 
 | Package                 | Version                         |
 | ----------------------- | ------------------------------- |
-| `docker-ce`             | `5:29.5.0-1~ubuntu.24.04~noble` |
-| `docker-ce-cli`         | `5:29.5.0-1~ubuntu.24.04~noble` |
-| `containerd.io`         | `2.2.3-1~ubuntu.24.04~noble`    |
-| `docker-buildx-plugin`  | `0.34.0-1~ubuntu.24.04~noble`   |
-| `docker-compose-plugin` | `5.1.3-1~ubuntu.24.04~noble`    |
+| `docker-ce`             | `5:29.6.1-1~ubuntu.24.04~noble` |
+| `docker-ce-cli`         | `5:29.6.1-1~ubuntu.24.04~noble` |
+| `containerd.io`         | `2.2.6-1~ubuntu.24.04~noble`    |
+| `docker-buildx-plugin`  | `0.35.0-1~ubuntu.24.04~noble`   |
+| `docker-compose-plugin` | `5.3.1-1~ubuntu.24.04~noble`    |
 
 1. Add Docker apt repository:
 
@@ -142,7 +142,7 @@ Pinned versions (ADR-0009):
    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
    sudo chmod a+r /etc/apt/keyrings/docker.asc
    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-     https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${VERSION_CODENAME}") stable" | \
+     https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
    sudo apt-get update
    ```
@@ -151,11 +151,11 @@ Pinned versions (ADR-0009):
 
    ```bash
    sudo apt-get install -y \
-     docker-ce=5:29.5.0-1~ubuntu.24.04~noble \
-     docker-ce-cli=5:29.5.0-1~ubuntu.24.04~noble \
-     containerd.io=2.2.3-1~ubuntu.24.04~noble \
-     docker-buildx-plugin=0.34.0-1~ubuntu.24.04~noble \
-     docker-compose-plugin=5.1.3-1~ubuntu.24.04~noble
+     docker-ce=5:29.6.1-1~ubuntu.24.04~noble \
+     docker-ce-cli=5:29.6.1-1~ubuntu.24.04~noble \
+     containerd.io=2.2.6-1~ubuntu.24.04~noble \
+     docker-buildx-plugin=0.35.0-1~ubuntu.24.04~noble \
+     docker-compose-plugin=5.3.1-1~ubuntu.24.04~noble
    sudo usermod -aG docker deploy
    ```
 
@@ -182,8 +182,8 @@ Pinned versions (ADR-0009):
 **Verify:**
 
 ```bash
-docker --version              # 29.5.0
-docker compose version        # v5.1.3
+docker --version              # 29.6.1
+docker compose version        # v5.3.1
 apt-mark showhold             # all five listed
 sudo -u deploy docker ps      # empty table, not "permission denied"
 sysctl net.core.rmem_max      # 7500000
