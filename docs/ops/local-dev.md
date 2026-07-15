@@ -6,6 +6,7 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 
 - **Node 22.22.3** (pinned in `.nvmrc`) -- `nvm install`
 - **Docker Engine + Compose plugin**, pinned version ([ADR-0009](../adr/0009-pin-docker-versions-across-environments.md)) -- see [Installing Docker](#installing-docker) below
+- **`age`** -- see [CONTRIBUTING.md § Runtime Requirements](../../CONTRIBUTING.md#runtime-requirements). Required before the first `npm run dev` boots (`scripts/binary-key/init-local-key.sh`, ADR-0024).
 - Free ports: `3000` (Fastify), `5173` (Vite), `5432` (Postgres), `9000`/`9001` (MinIO)
 
 ### Installing Docker
@@ -21,6 +22,7 @@ Same pinned versions as the VPS -- follow [server-setup.md](server-setup.md) Pha
 nvm install
 npm install
 cp .env.example .env
+scripts/binary-key/init-local-key.sh  # generates the dev age identity, writes it into .env
 ```
 
 The `.env.example` defaults are dev-ready: `NODE_ENV=development`, `SEED=true`, `DOMAIN=localhost`. No Cloudflare token or bootstrap vars needed.
@@ -49,6 +51,12 @@ Open `http://localhost:5173`. Vite proxies `/api/*` to `http://localhost:3000`.
 | `arbeiter2`   | worker            | `changeme` |
 | `buchhalter`  | bookkeeper        | `changeme` |
 | `deaktiviert` | worker (inactive) | `changeme` |
+
+### Connecting the DB in WebStorm
+
+Data Source → PostgreSQL: host `localhost`, port `5432`, user `pm`, password `changeme`, database `projekt_manager` (matches `DATABASE_URL` in `.env.example`).
+
+The DB is empty until seeded. `npm run dev` seeds it automatically on first run (`SEED=true` is the `.env.example` default — see [§ Seed users](#seed-users) above), so run it once before browsing tables. To pull real data instead, see [sync-vps-to-dev.md](sync-vps-to-dev.md).
 
 ## Stop / reset
 

@@ -6,7 +6,7 @@ End-to-end provisioning for a fresh VPS. Credential rotation reuses §1.4, §2, 
 
 **Operator workstation:**
 
-- Shell with `age`, `age-keygen`, `ssh`, `wg-quick` (or `wg` + a platform-native WireGuard client), `docker` + `docker compose` plugin, `aws` CLI (or `rclone` — this runbook uses `aws` examples; the container image does not ship aws), `curl`, `jq`, `openssl`, `shred`. Debian/Ubuntu: `sudo apt install age awscli jq curl openssl`.
+- Shell with `age`, `age-keygen` ([CONTRIBUTING.md § Runtime Requirements](../../../CONTRIBUTING.md#runtime-requirements)), `ssh`, `wg-quick` (or `wg` + a platform-native WireGuard client), `docker` + `docker compose` plugin, `aws` CLI (or `rclone` — this runbook uses `aws` examples; the container image does not ship aws), `curl`, `jq`, `openssl`, `shred`. Debian/Ubuntu: `sudo apt install awscli jq curl openssl`.
 - Repo checked out locally: `git clone git@github.com:Projekt-Manager-Org/Projekt-Manager.git`.
 - WireGuard peer config imported and active ([wireguard-setup.md](../wireguard-setup.md)).
 - Password manager entries for: the R2 API token, the age private identity (backed up outside the system — see §2), the `secrets.env.age` passphrase.

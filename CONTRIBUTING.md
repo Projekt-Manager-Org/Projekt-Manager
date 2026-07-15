@@ -8,6 +8,7 @@ For lists of category-specific conventions (spec, docs, code, tests, ARCHITECTUR
 
 - Node.js (pinned in `.nvmrc` — use `nvm install`)
 - npm (use the version bundled with that Node release — do not upgrade independently)
+- `age` / `age-keygen` — `sudo apt install age` (Debian/Ubuntu). Required from the first `npm run dev` (`scripts/binary-key/init-local-key.sh`, ADR-0024), by integration/Playwright tests, and by every operator workflow.
 
 ## Tech Stack
 
@@ -48,7 +49,7 @@ The trigger question: **"Does this change affect how the system authenticates, a
 
 **Integration prerequisites**: `docker compose up -d` — `npm run test` needs Postgres on `:5432` and MinIO on `:9000`; Playwright needs those plus the dev server on `:5173` (auto-started via `webServer`). The dev `.env` sets `COMPOSE_FILE` so bare compose commands pick up the dev overlay triple. Close the MCP Chromium browser or limit workers before Playwright runs — the persistent MCP instance plus per-worker Playwright browsers OOM Chrome.
 
-**`age` on PATH**: integration setup and Playwright's `webServer` both shell out to `age-keygen` to generate a per-fork/per-run binary identity (ADR-0024). Install via `apt-get install age` (Ubuntu) or `brew install age` (macOS).
+**`age` on PATH**: integration setup and Playwright's `webServer` both shell out to `age-keygen` to generate a per-fork/per-run binary identity (ADR-0024) — see [§ Runtime Requirements](#runtime-requirements).
 
 ## Debugging
 
