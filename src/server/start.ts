@@ -378,9 +378,17 @@ async function start(): Promise<void> {
     return reply.code(code).send(health);
   });
 
-  // Serve the Vite-built frontend from dist/ (production).
-  // In dev, Vite's dev server handles the frontend via proxy.
-  if (existsSync(distFolder)) {
+  // Serve the Vite-built frontend from dist/ — production only. Gate on
+  // isProduction, not just existsSync: a stray dist/ left over from an
+  // earlier `npm run build` (typecheck, CI, Docker build context) must
+  // never get silently served in dev. Vite's dev server on :5173 is always
+  // the source of truth there; :3000 should only ever answer /api.
+  if (isProduction) {
+    if (!existsSync(distFolder)) {
+      throw new Error(
+        `dist/ not found at ${distFolder}. Run 'npm run build' before starting in production.`,
+      );
+    }
     await app.register(fastifyStatic, {
       root: distFolder,
       wildcard: false,
@@ -391,10 +399,6 @@ async function start(): Promise<void> {
     });
 
     installSpaAwareNotFoundHandler(app);
-  } else if (isProduction) {
-    throw new Error(
-      `dist/ not found at ${distFolder}. Run 'npm run build' before starting in production.`,
-    );
   } else {
     installNotFoundHandler(app);
   }
