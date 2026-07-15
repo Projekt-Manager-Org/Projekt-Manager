@@ -33,7 +33,7 @@ All services on a single VPS via Docker Compose, with GitHub Actions for CI. Ima
 
 **CI/CD pipeline:**
 
-- **GitHub Actions** runs the full test suite on GitHub's free runners on every push to `main` and `iteration/**`. The VPS never runs tests.
+- **GitHub Actions** runs the full test suite on GitHub's free runners on every push to `main`. The VPS never runs tests.
 - **On green:** CI builds and pushes the app image to GHCR. Operator deploys manually on the VPS via `scripts/deploy.sh` over WireGuard.
 - **Rollback:** re-deploy a previous SHA-tagged image via the same script.
 

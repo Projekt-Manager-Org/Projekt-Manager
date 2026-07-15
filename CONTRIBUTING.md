@@ -9,6 +9,7 @@ For lists of category-specific conventions (spec, docs, code, tests, ARCHITECTUR
 - Node.js (pinned in `.nvmrc` — use `nvm install`)
 - npm (use the version bundled with that Node release — do not upgrade independently)
 - `age` / `age-keygen` — `sudo apt install age` (Debian/Ubuntu). Required from the first `npm run dev` (`scripts/binary-key/init-local-key.sh`, ADR-0024), by integration/Playwright tests, and by every operator workflow.
+- `shellcheck` — `sudo apt install shellcheck` (Debian/Ubuntu). Checked by CI's `lint` job (hard fail) and by `.husky/pre-push` (warns only if missing) — install locally to catch shell-script issues before pushing, not after.
 
 ## Tech Stack
 
@@ -70,14 +71,14 @@ The trigger question: **"Does this change affect how the system authenticates, a
 ## Branching Strategy
 
 ```
-main                          always reflects completed iterations
-  └── iteration/N-name        integration branch for iteration N
-       ├── 12-state-model     feature branch (issue #12)
-       └── 15-adr-framework   feature branch (issue #15)
+main                     always deployable
+  └── <type>/<slug>      topic branch (e.g. fix/dev-static-fallback)
 ```
 
-- **main**: Only receives merges from completed iteration branches. Never commit directly.
-- **Iteration branch**: Integration target during an iteration. Feature branches (optional, make on request) merge here via PR.
+Short-lived topic branches off `main`, merged back via PR. No integration/iteration branches — that was the model early in the project; current practice is direct-to-`main`.
+
+- **main**: Always deployable. Never commit directly — every change lands via PR.
+- **Topic branch**: `<type>/<short-slug>`, matching the commit type below. Branch off `main`, PR into `main`.
 
 ## Commit Conventions
 
