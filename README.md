@@ -140,11 +140,12 @@ This project makes heavy use of modern LLMs, mostly Claude Code. A "fully automa
 ```bash
 # first time only:
 nvm install                           # installs the Node.js version pinned in `.nvmrc`
-cp .env.example .env                  # dev-ready, no edits needed
+cp .env.example .env
+scripts/binary-key/init-local-key.sh  # generates the dev age identity, writes it into .env
 npm install
 # run:
 docker compose up -d                  # Postgres + MinIO (the app runs on the host via npm run dev)
-npm run dev                           # starts backend + frontend at http://localhost:5173
+npm run dev                           # starts backend + frontend at http://localhost:5173 — seeds the DB on first run (§ Seed Data)
 
 # stop:
 docker compose down                   # stop containers, keep data
