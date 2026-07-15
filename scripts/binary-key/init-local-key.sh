@@ -12,9 +12,10 @@
 #   - generates an age keypair at $BINARY_AGE_IDENTITY_PATH if absent
 #     (default: ~/.local/share/projekt-manager/binary-identity-dev);
 #   - never overwrites an existing identity (idempotent);
-#   - prints the matching public recipient + the two .env lines to
-#     paste, so a fresh `cp .env.example .env` followed by this
-#     script unblocks `npm run dev` in two commands.
+#   - writes the matching BINARY_AGE_RECIPIENT / BINARY_AGE_IDENTITY_PATH
+#     lines into .env after an explicit y/N confirmation, so a fresh
+#     `cp .env.example .env` followed by this script unblocks
+#     `npm run dev` in two commands with no manual copy/paste.
 #
 # This identity protects nothing of value (test data only). It exists
 # purely to satisfy the boot probe with the same shape the production
@@ -26,13 +27,24 @@
 # Override the path:
 #   BINARY_AGE_IDENTITY_PATH=/some/other/path scripts/binary-key/init-local-key.sh
 #
+# Override the target .env file:
+#   ENV_FILE=/some/other/.env scripts/binary-key/init-local-key.sh
+#
 set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env}"
 
 DEFAULT_PATH="${HOME}/.local/share/projekt-manager/binary-identity-dev"
 IDENTITY_PATH="${BINARY_AGE_IDENTITY_PATH:-$DEFAULT_PATH}"
 
 if ! command -v age-keygen >/dev/null 2>&1; then
-  echo "ERROR: age-keygen not found in PATH. Install age (apt install age)." >&2
+  echo "ERROR: age-keygen not found in PATH. Install age — see CONTRIBUTING.md § Runtime Requirements." >&2
+  exit 1
+fi
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "ERROR: $ENV_FILE not found. Run 'cp .env.example .env' first." >&2
   exit 1
 fi
 
@@ -55,10 +67,50 @@ fi
 # for its round-trip validation.
 RECIPIENT="$(age-keygen -y "$IDENTITY_PATH")"
 
+CURRENT_RECIPIENT="$(grep -m1 '^BINARY_AGE_RECIPIENT=' "$ENV_FILE" | cut -d= -f2- || true)"
+CURRENT_IDENTITY_PATH="$(grep -m1 '^BINARY_AGE_IDENTITY_PATH=' "$ENV_FILE" | cut -d= -f2- || true)"
+
+if [[ "$CURRENT_RECIPIENT" == "$RECIPIENT" && "$CURRENT_IDENTITY_PATH" == "$IDENTITY_PATH" ]]; then
+  echo "$ENV_FILE already has the matching BINARY_AGE_* values — nothing to do."
+  echo "Start the dev stack: npm run dev"
+  exit 0
+fi
+
 echo
-echo "Add (or update) these two lines in .env:"
+echo "About to write to $ENV_FILE:"
 echo
 echo "  BINARY_AGE_RECIPIENT=$RECIPIENT"
 echo "  BINARY_AGE_IDENTITY_PATH=$IDENTITY_PATH"
 echo
-echo "Then start the dev stack: npm run dev"
+if [[ -n "$CURRENT_RECIPIENT" || -n "$CURRENT_IDENTITY_PATH" ]]; then
+  echo "This overwrites the existing values:"
+  echo "  BINARY_AGE_RECIPIENT=$CURRENT_RECIPIENT"
+  echo "  BINARY_AGE_IDENTITY_PATH=$CURRENT_IDENTITY_PATH"
+  echo
+fi
+
+read -r -p "Write these values into $ENV_FILE? [y/N] " REPLY
+if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+  echo "Aborted — no changes made. Paste the values above into $ENV_FILE manually if needed."
+  exit 1
+fi
+
+TMP_FILE="$(mktemp "${ENV_FILE}.XXXXXX")"
+trap 'rm -f "$TMP_FILE"' EXIT
+
+awk -v recipient="BINARY_AGE_RECIPIENT=$RECIPIENT" \
+    -v identity="BINARY_AGE_IDENTITY_PATH=$IDENTITY_PATH" '
+  /^BINARY_AGE_RECIPIENT=/ { print recipient; found_r=1; next }
+  /^BINARY_AGE_IDENTITY_PATH=/ { print identity; found_i=1; next }
+  { print }
+  END {
+    if (!found_r) print recipient
+    if (!found_i) print identity
+  }
+' "$ENV_FILE" > "$TMP_FILE"
+
+mv "$TMP_FILE" "$ENV_FILE"
+trap - EXIT
+
+echo "Wrote BINARY_AGE_RECIPIENT and BINARY_AGE_IDENTITY_PATH into $ENV_FILE."
+echo "Start the dev stack: npm run dev"
