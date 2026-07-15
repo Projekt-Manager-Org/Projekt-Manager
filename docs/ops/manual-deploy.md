@@ -39,8 +39,9 @@ Have `~/secrets/age-backup.key` open on the operator workstation before invoking
 # Deploy origin/main (default)
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
 
-# Deploy an iteration branch
-sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/iteration/N-name
+# Deploy a topic branch built via the operator's manual CI dispatch
+# (gh workflow run ci.yml --ref <branch> — see ci.yml's build-and-push job)
+sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/fix/some-slug
 
 # Deploy a specific SHA (rollback)
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <sha>

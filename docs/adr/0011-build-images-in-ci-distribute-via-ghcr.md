@@ -40,7 +40,7 @@ Build the production `app` image in GitHub Actions, push to GitHub Container Reg
 **CI pipeline:**
 
 - Build/scan/smoke/push lives in a composite action `.github/actions/build-scan-push` — single source of truth for the rebuild path. Two callers in `.github/workflows/ci.yml`:
-  - `build-and-push` job — runs on `workflow_dispatch` (operator feature-branch dispatch) and on `push` to `iteration/**`. Calls the composite directly.
+  - `build-and-push` job — runs on `workflow_dispatch` (operator feature-branch dispatch). Calls the composite directly.
   - `promote` job — runs on `push: main`. Tries promote-on-merge (see next section); falls through to the same composite on guard failure.
 - Not path-filtered — a TypeScript change changes image contents without touching `Dockerfile`, so path filtering would ship stale images.
 - `docker/login-action` authenticates to GHCR with the built-in `GITHUB_TOKEN` (no separate secret).
