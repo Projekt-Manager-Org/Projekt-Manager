@@ -20,9 +20,10 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildApp } from '../app.js';
 import { installNotFoundHandler, installSpaAwareNotFoundHandler } from '../error-handler.js';
 
@@ -220,5 +221,48 @@ describe('production composition — SPA-aware not-found handler', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('SPA');
     expect(res.headers['content-type']).toMatch(/text\/html/);
+  });
+});
+
+// Call-site pin (technique per env.test.ts / baseline-guard.test.ts) for the
+// dev/prod branch in start.ts. The composition test above proves the
+// production wiring behaves correctly once assembled; it does not prove
+// start.ts only assembles it in production. That decision is inline in
+// `start()` (not a separable pure function — extracting one would be a
+// larger refactor than the fix warrants), so an inject()-based test can't
+// exercise it directly without duplicating the composition test above with
+// nothing to serve. Source-string pinning is the minimum-invasive way to
+// make a regression back to gating on `existsSync(distFolder)` alone loud.
+describe('start.ts call-site pin — dist/ serving gated on isProduction, not existsSync', () => {
+  const startTsPath = resolve(dirname(fileURLToPath(import.meta.url)), '../start.ts');
+  const startSource = readFileSync(startTsPath, 'utf8');
+  const stripped = startSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  // Anchor on `existsSync(distFolder)` — its only call site outside the
+  // `const distFolder =` declaration — so this can't accidentally match the
+  // unrelated `if (isProduction)` used earlier in start.ts for cookie config.
+  const distGateIdx = stripped.indexOf('existsSync(distFolder)');
+  const ifProdIdx = stripped.lastIndexOf('if (isProduction)', distGateIdx);
+  const registerIdx = stripped.indexOf('app.register(fastifyStatic', distGateIdx);
+
+  it('gates both the missing-dist throw and the fastifyStatic registration on isProduction', () => {
+    expect(distGateIdx).toBeGreaterThan(-1);
+    expect(ifProdIdx).toBeGreaterThan(-1);
+    expect(registerIdx).toBeGreaterThan(-1);
+    expect(ifProdIdx).toBeLessThan(distGateIdx);
+
+    const throwIdx = stripped.indexOf('throw new Error', distGateIdx);
+    expect(throwIdx).toBeGreaterThan(distGateIdx);
+    expect(throwIdx).toBeLessThan(registerIdx);
+    expect(distGateIdx).toBeLessThan(registerIdx);
+  });
+
+  it('the non-production branch installs the plain not-found handler, not the SPA-aware one', () => {
+    const spaHandlerIdx = stripped.indexOf('installSpaAwareNotFoundHandler(app)', registerIdx);
+    const elseIdx = stripped.indexOf('} else {', spaHandlerIdx);
+    const notFoundIdx = stripped.indexOf('installNotFoundHandler(app)', elseIdx);
+    expect(spaHandlerIdx).toBeGreaterThan(registerIdx);
+    expect(elseIdx).toBeGreaterThan(spaHandlerIdx);
+    expect(notFoundIdx).toBeGreaterThan(elseIdx);
   });
 });
