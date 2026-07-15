@@ -9,6 +9,7 @@ For lists of category-specific conventions (spec, docs, code, tests, ARCHITECTUR
 - Node.js (pinned in `.nvmrc` — use `nvm install`)
 - npm (use the version bundled with that Node release — do not upgrade independently)
 - `age` / `age-keygen` — `sudo apt install age` (Debian/Ubuntu). Required from the first `npm run dev` (`scripts/binary-key/init-local-key.sh`, ADR-0024), by integration/Playwright tests, and by every operator workflow.
+- `shellcheck` — `sudo apt install shellcheck` (Debian/Ubuntu). Checked by CI's `lint` job (hard fail) and by `.husky/pre-push` (warns only if missing) — install locally to catch shell-script issues before pushing, not after.
 
 ## Tech Stack
 
