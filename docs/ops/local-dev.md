@@ -9,7 +9,7 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 - **`age`** -- see [CONTRIBUTING.md § Runtime Requirements](../../CONTRIBUTING.md#runtime-requirements). Required before the first `npm run dev` boots (`scripts/binary-key/init-local-key.sh`, ADR-0024).
 - Free ports: `3000` (Fastify), `5173` (Vite), `5432` (Postgres), `9000`/`9001` (MinIO)
 - **Claude Code tooling** (only if developing with Claude Code) -- machine-level, not project dependencies:
-  - `npx playwright install chrome` -- Chrome binary for the Playwright MCP browser tool. Separate from the project's own `chromium` E2E binary (see [§ Tests](#tests)); needs its own install.
+  - `npx playwright install chrome` -- Chrome binary for the Playwright MCP browser tool. Separate from the project's own `chromium` E2E binary (see [§ Tests](#tests)); needs its own install. Needs root and only runs on Debian/Ubuntu (checks `/etc/os-release`'s `ID` literally) -- on a derivative like Linux Mint it refuses outright. There, install Google Chrome manually from [google.com/chrome](https://www.google.com/chrome/) instead; the MCP tool finds it at the same `/opt/google/chrome/chrome` path either way.
   - `npm install -g typescript-language-server` -- lets the LSP tool do go-to-definition/references/hover. Resolves this project's local `typescript` automatically, no project-side config needed.
 
 ### Installing Docker
