@@ -458,11 +458,6 @@ export class AttachmentService {
     // additionally required. A caller missing it gets 403 NOT_PERMITTED
     // and no row is persisted (the rejection happens before the wrap +
     // insert pipeline runs).
-    //
-    // Bearer-authenticated callers (the import binary leg) are bounded by
-    // the token's declared scope (AC-313 / AC-315) — the token carries
-    // `data:restore` explicitly, so a regression that drops it from the
-    // mint surface fails here, not at the caller's role set.
     if (input.restore !== undefined && !callerHasPermission(caller, 'data:restore')) {
       throw notPermitted();
     }
