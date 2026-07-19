@@ -28,6 +28,7 @@
     "demo:encode": "node scripts/demo/encode.mjs --master",
     "demo:hero": "node scripts/demo/encode.mjs --hero",
     "check:tokens": "bash scripts/check-theme-tokens.sh",
+    "check:permissions-doc": "tsx scripts/generate-permissions-doc.ts --check",
     "prepare": "husky || true",
     "postinstall": "patch-package"
   },
@@ -43,7 +44,11 @@
       "prettier --write"
     ],
     "src/**/*.css": "prettier --write",
-    "**/*.md": "prettier --write"
+    "**/*.md": "prettier --write",
+    "src/config/{permissions,roleKeys}.ts": [
+      "tsx scripts/generate-permissions-doc.ts",
+      "git add docs/spec/api.md"
+    ]
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1047.0",

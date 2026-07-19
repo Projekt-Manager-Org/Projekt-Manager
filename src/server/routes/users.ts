@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
 import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
 import { UserService } from '../services/UserService.js';
+import { ROLE_KEYS } from '../../config/roleKeys.js';
 
 export function userRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
@@ -71,7 +72,7 @@ export function userRoutes(db: Database) {
               password: { type: 'string', minLength: 1 },
               roles: {
                 type: 'array',
-                items: { type: 'string', enum: ['owner', 'office', 'worker', 'bookkeeper'] },
+                items: { type: 'string', enum: [...ROLE_KEYS] },
                 minItems: 1,
               },
               email: { type: ['string', 'null'] },
@@ -116,7 +117,7 @@ export function userRoutes(db: Database) {
               displayName: { type: 'string', minLength: 1 },
               roles: {
                 type: 'array',
-                items: { type: 'string', enum: ['owner', 'office', 'worker', 'bookkeeper'] },
+                items: { type: 'string', enum: [...ROLE_KEYS] },
                 minItems: 1,
               },
               email: { type: ['string', 'null'] },

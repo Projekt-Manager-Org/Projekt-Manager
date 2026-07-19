@@ -38,6 +38,22 @@ export type Role =
   // map stays the single source of truth.
   | '__test_data_restore_only';
 
+/**
+ * Single-source classification of every `Role` (AC-343). A new `Role`
+ * variant forces an update to this map — otherwise `tsc` errors with a
+ * missing key — mirroring `ROLE_CLASSIFICATION` in
+ * `src/server/repositories/scope.ts`. `ROLE_KEYS` (src/config/roleKeys.ts)
+ * and the generated permission matrix (docs/spec/api.md §14.3) both derive
+ * their production-role set from this map rather than hand-listing roles.
+ */
+export const IS_TEST_ONLY_ROLE: Record<Role, boolean> = {
+  owner: false,
+  office: false,
+  worker: false,
+  bookkeeper: false,
+  __test_data_restore_only: true,
+};
+
 // data:export gates the unified business-data export (api.md §14.2.4).
 // data:restore gates the unified import — owner-only because a restore
 // replaces all business data in a single transaction (api.md §14.3).
@@ -49,7 +65,7 @@ export type Role =
 // was dropped when workers lost audit:read — the audit surface is
 // administrative, not worker-facing, and a scoped-worker view never got
 // meaningful daily use.
-const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
+export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   owner: [
     'project:read',
     'project:create',
