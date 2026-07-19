@@ -216,6 +216,16 @@ jobs:
       - name: Check theme token hygiene
         run: npm run check:tokens
 
+      # Enforce AC-343 — the role-permission matrix in docs/spec/api.md
+      # §14.3 is generated from ROLE_PERMISSIONS (src/config/permissions.ts),
+      # not hand-authored. Fails the build when the published table and the
+      # source config diverge.
+      - name: Permissions doc drift check (AC-343)
+        run: npm run check:permissions-doc
+
+      - name: Permissions doc drift check — self-test
+        run: bash scripts/__tests__/check-permissions-doc.test.sh
+
       - name: Type check
         run: npx tsc --noEmit
 
