@@ -5,11 +5,13 @@
  * and all route plugins registered.
  */
 
+import { readFileSync } from 'node:fs';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
 import type { FastifyInstance } from 'fastify';
 import type { Database } from './db/connection.js';
 import { authRoutes } from './routes/auth.js';
@@ -44,6 +46,18 @@ export interface AppOptions {
   db?: Database;
   /** Set false to disable rate limiting (useful in tests). Defaults to true. */
   rateLimit?: boolean;
+  /**
+   * Register `@fastify/swagger` in OpenAPI-collection mode. Off by
+   * default — production (start.ts) and every existing test leave this
+   * unset, so this option changes nothing about their behavior.
+   * `@fastify/swagger` itself never adds an HTTP route or a UI (that
+   * would be `@fastify/swagger-ui`, not registered here); it only hooks
+   * `onRoute` to build an in-memory document from each route's native
+   * `schema:` block, retrievable via `app.swagger()`. The only caller
+   * that sets this is `scripts/generate-openapi.ts` (spike — see
+   * docs/spec/openapi.json).
+   */
+  openapi?: boolean;
 }
 
 /**
@@ -235,6 +249,25 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   if (opts.rateLimit !== false) {
     app.register(rateLimit, {
       global: false, // Only routes with explicit config are limited
+    });
+  }
+
+  // OpenAPI document collection (spike/openapi-emit) — see the
+  // `openapi` option's doc comment above. Registered before the route
+  // plugins below so its `onRoute` hook is attached before any route
+  // (including the ones gated on `opts.db`) is added.
+  if (opts.openapi) {
+    const pkg = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
+    ) as { version: string };
+    app.register(swagger, {
+      openapi: {
+        openapi: '3.0.3',
+        info: {
+          title: 'Projekt-Manager API',
+          version: pkg.version,
+        },
+      },
     });
   }
 

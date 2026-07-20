@@ -12,5 +12,5 @@
       "@/*": ["../src/*"]
     }
   },
-  "include": ["*.ts", "../src/server/db/schema.ts"]
+  "include": ["*.ts", "../src/server/db/schema.ts", "../src/types"]
 }

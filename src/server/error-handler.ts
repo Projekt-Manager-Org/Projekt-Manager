@@ -10,6 +10,12 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+// Type-only: pulls in `@fastify/static`'s FastifyReply augmentation for
+// `reply.sendFile` below. The plugin itself is registered by the caller
+// (start.ts, via staticCache.ts) — this file only needs the declaration.
+// Without it, any tsconfig whose program does not happen to also include
+// staticCache.ts fails on `sendFile` (scripts/tsconfig.json does not).
+import type {} from '@fastify/static';
 import {
   AppError,
   mapFastify4xx,
