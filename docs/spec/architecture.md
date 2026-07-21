@@ -144,7 +144,7 @@ Any deployed environment must exercise all four components end-to-end. A topolog
 
 ### 11.7 Continuous Delivery Pipeline
 
-- **CI gate**: runs on every push and PR to protected branches. Pipeline: dependency audit, lint, format check, type check, env-drift check, unit + component + API-integration tests against real database and real object storage, and build. Image is built and pushed to the container registry on push events (not on PRs). E2E tests are **not** part of this gate.
+- **CI gate**: runs on every push and PR to protected branches. Pipeline: dependency audit, lint, format check, type check, env-drift check, unit + component + API-integration tests against real database and real object storage, and build. The image is built and pushed to the container registry on demand ahead of merge; merging to the protected branch promotes (re-tags) that already-built image rather than rebuilding, falling back to a rebuild only if the promotion's integrity guards fail. E2E tests are **not** part of this gate.
 - **On-demand E2E gate**: the E2E test framework runs on manual trigger, with the same database + object storage + seed shape as the CI gate. Intended to be run before a manual deploy. AC-37 in [verification.md §15.7](verification.md#157-engineering) documents the topology from the acceptance-criteria side.
 - **Deploy:** manual, pull-based. The operator promotes a CI-built image to the hosted environment over VPN. See [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md).
 - A failed deployment must not take down the currently running system. The deploy script polls the health endpoint after container swap.

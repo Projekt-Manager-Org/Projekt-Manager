@@ -77,7 +77,6 @@ The original ADR treated infrastructure/structural ACs as "untiered". Every AC i
 
 ## References
 
-- [CONTRIBUTING.md § Acceptance Criteria](../../CONTRIBUTING.md#acceptance-criteria): tier definitions and classification test
+- [docs/spec/verification.md §15](../spec/verification.md#15-acceptance-criteria): the tier legend (definitions and classification test) and the tiered AC list
 - [CONTRIBUTING.md § Testing](../../CONTRIBUTING.md#testing): UI-mode workflow for `[vis]` review
 - [docs/testing/traceability.md](../testing/traceability.md): the traceability matrix
-- [docs/spec/verification.md §15](../spec/verification.md#15-acceptance-criteria): tiered AC list
