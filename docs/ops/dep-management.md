@@ -35,7 +35,15 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 2. **No onboarding PR is expected.** Per the [Renovate docs](https://docs.renovatebot.com/getting-started/installing-onboarding/), when `.github/renovate.json` is already committed at the default branch, Renovate skips the "Configure Renovate" onboarding PR and goes straight to opening dep PRs (or queuing them in the Dependency Dashboard if a `schedule` window applies). If an onboarding PR DOES appear, it means the config wasn't detected — investigate before merging.
 3. **Enable auto-merge at the repo level.** Repo Settings → General → "Allow auto-merge" must be checked, otherwise `automerge: true` in the config silently no-ops.
-4. **Configure branch protection on `main` via a Ruleset.** Classic branch protection is on GitHub's deprecation path — the banner at the top of Settings → Branches points at the replacement. Rulesets are now the single source of truth: Settings → **Rules → Rulesets → New branch ruleset**.
+4. **Create the labels the config references, with colors.** `.github/renovate.json` applies `dependencies` (`labels`) and `security` (`vulnerabilityAlerts.labels`). GitHub's add-labels endpoint **auto-creates** an unknown label as grey `#ededed` with no description, so a missing one is cosmetic, not a failure — Renovate PRs still land. Creating them up front just gives them a real color and description:
+
+   ```bash
+   gh label create security --color D93F0B --description "Vulnerability fix — out-of-band, bypasses the weekly dep batch"
+   ```
+
+   `security` is what makes out-of-band vuln PRs filterable apart from the routine weekly batch. Note the `gh` CLI is stricter than the API: `gh pr create --label <unknown>` aborts without creating the PR.
+
+5. **Configure branch protection on `main` via a Ruleset.** Classic branch protection is on GitHub's deprecation path — the banner at the top of Settings → Branches points at the replacement. Rulesets are now the single source of truth: Settings → **Rules → Rulesets → New branch ruleset**.
    - **Name:** `main protection`. **Enforcement:** Active. **Bypass list:** empty (admins included). **Target:** `Default branch`.
    - **Rules to enable:**
      - **Restrict deletions** + **Block force pushes** — prevent `main` loss / history rewrite.
@@ -47,16 +55,16 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
        - **`docker`** is path-filtered (Dockerfile / docker-compose / package-lock / patches / tsconfig / workflow changes) and pull-request-only. On non-image PRs the `if:` evaluates false → GitHub reports the job as **skipped**, which [counts as a successful required check](https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution) — adding `docker` as required does NOT block non-image PRs. On image-affecting PRs, `docker` runs and the image-vuln scan blocks merge on HIGH/CRITICAL findings.
        - Do **NOT** add `check-shard`: matrix jobs surface as `check-shard (1)` / `check-shard (2)`, names that change when shard count changes — the aggregator `check` exists precisely so the Ruleset isn't entangled with the matrix shape.
        - Do **NOT** add `build-and-push`: it only fires on `push` / `workflow_dispatch` events; its post-merge image-scan-then-push step is the deploy-time safety net, not a PR gate.
-       - **Tick the sub-option "Require branches to be up to date before merging"** — the `strict_required_status_checks_policy` flag. This is the active safety net against semantic merge conflicts (two PRs that pass their own CI but break main when both land). Without it, a `package-lock.json` collision between a human PR and a concurrent Renovate PR can ship a stale lockfile to `main`. The trade is a rebase + re-CI cycle on any PR that lands behind a just-merged peer; per step 5 below, at this repo's volume that tax is acceptable.
+       - **Tick the sub-option "Require branches to be up to date before merging"** — the `strict_required_status_checks_policy` flag. This is the active safety net against semantic merge conflicts (two PRs that pass their own CI but break main when both land). Without it, a `package-lock.json` collision between a human PR and a concurrent Renovate PR can ship a stale lockfile to `main`. The trade is a rebase + re-CI cycle on any PR that lands behind a just-merged peer; per step 6 below, at this repo's volume that tax is acceptable.
        - **Renovate must perform that rebase, not a human** — which is why `renovate.json` sets `rebaseWhen: "behind-base-branch"` _explicitly_. The default `auto` upgrades to `behind-base-branch` only when it detects "require branches up to date" via **classic** branch protection; it is blind to this repo's **Ruleset**, so it falls back to `conflicted` and leaves merely-behind PRs untouched. They then sit `BEHIND` until someone clicks "Update branch" — which stamps a non-`renovate[bot]` author on the branch and trips Renovate's edited-PR guard ("does not recognize the last commit author"), permanently disabling auto-rebase for that PR. Explicit `behind-base-branch` keeps the rebase on the bot and the serial tax automatic and hands-off.
 
    Without `lint`, `check`, and `docker` all as required contexts, Renovate's auto-merge bypasses the safety net this ADR adds; without `docker`, image-vuln gating becomes informational-only on PRs (the post-merge `build-and-push` scan is still the backstop). The full gating rationale is in [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational).
 
    **After saving the Ruleset**, delete the classic branch protection rule for `main` (Settings → Branches → ⋯ → Delete on the classic rule). Two protection layers are avoidable maintenance burden; the Ruleset is the supported path forward.
 
-5. **Merge queue: evaluated, off at this scale.** GitHub's merge queue (`merge_queue` Ruleset rule) was enabled 2026-05-19 and turned back off 2026-05-20 after measuring per-PR cost against repo volume.
+6. **Merge queue: evaluated, off at this scale.** GitHub's merge queue (`merge_queue` Ruleset rule) was enabled 2026-05-19 and turned back off 2026-05-20 after measuring per-PR cost against repo volume.
 
-   **Decision:** strict `required_status_checks_policy` (step 4) is the active safety net; no `merge_queue` rule on the Ruleset.
+   **Decision:** strict `required_status_checks_policy` (step 5) is the active safety net; no `merge_queue` rule on the Ruleset.
 
    **Why:** the queue's value is "test on the synthetic post-merge state before merging" — equivalent to strict's "rebase + re-CI before merging", paid at different times.
 
@@ -82,7 +90,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
    - Turn `strict_required_status_checks_policy` OFF at the same time — queue and strict are alternatives; running both reintroduces the per-PR rebase tax that the queue is meant to eliminate.
    - Workflow already supports it: `.github/workflows/ci.yml` listens on `merge_group` and the `docker` job's `if:` reports SUCCESS on `merge_group` events (required — branch protection treats skipped as success, the queue does not). No `ci.yml` change needed on re-enable.
 
-6. **Pin the Dependency Dashboard issue.** Renovate auto-creates an issue titled "Dependency Dashboard" listing queue state; pin it so the weekly wrangler can find it without searching.
+7. **Pin the Dependency Dashboard issue.** Renovate auto-creates an issue titled "Dependency Dashboard" listing queue state; pin it so the weekly wrangler can find it without searching.
 
 ## Cadence
 
