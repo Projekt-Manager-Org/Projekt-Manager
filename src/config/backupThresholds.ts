@@ -6,13 +6,20 @@
  *   - backup age: amber when stale-but-fresh, red when stale-past-red.
  *   - drill age:  amber when verifier is late, red when severely late.
  *
- * All four values are [C] customer-configurable per architecture.md §12.2.
- * The defaults below are calibrated to the once-daily cadence described
- * in ADR-0020 (Layer 2 encrypted R2 backups with operator-loaded drills):
+ * All four values are [C] customer-configurable per architecture.md §12.2
+ * — as a source constant, not an env var: changing them is a code edit
+ * plus a redeploy.
  *
- *   - backupAmberDays=2  — two missed cadence windows is noticeable but
- *     not alarming on its own (a maintenance pause is plausible).
- *   - backupRedDays=4    — four missed windows exceeds any ordinary
+ * The backup pair is expressed in DAYS, while the actual cadence is five
+ * runs per weekday and one per weekend day (`SCHEDULES` in
+ * `src/server/backup-runner.ts`). So these are "days of silence"
+ * thresholds, not "N missed windows" — at the real cadence a 2-day
+ * amber is already ~10 missed weekday runs:
+ *
+ *   - backupAmberDays=2  — two days without a successful backup is
+ *     noticeable but not alarming on its own (a maintenance pause or a
+ *     weekend-plus-holiday gap is plausible).
+ *   - backupRedDays=4    — four days of silence exceeds any ordinary
  *     maintenance pause; the backup cycle is functionally broken.
  *   - drillAmberDays=14  — two weeks without a Tier 2 verification is
  *     the point where the backup cycle is no longer known-restorable.
