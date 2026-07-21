@@ -5,7 +5,7 @@
 
 Runs the full production stack (app image, Caddy, Postgres, MinIO) in Docker over plain HTTP. Unlike [local development](local-dev.md) (`npm run dev` with Node directly), this mode exercises the Docker image and the Caddy reverse proxy -- the same components that run in production, minus TLS and VPN.
 
-See [README § Quick Start](../../README.md#quick-start) for how this fits alongside local dev and production.
+See [README § How to run](../../README.md#how-to-run) for how this fits alongside local dev and production.
 
 ## Quick start
 

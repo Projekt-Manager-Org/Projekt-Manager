@@ -52,7 +52,7 @@ age -d -i ~/secrets/age-backup.key "${TS}.dump.age"         > "${TS}.dump"
 age -d -i ~/secrets/age-backup.key "${TS}.manifest.json.age" > "${TS}.manifest.json"
 ```
 
-If either decrypt fails with `no identity matched any of the recipients`, the dump was encrypted to a different public key. You are either holding the wrong identity file, or the key was rotated (see [setup.md § Rotating credentials](setup.md#rotating-credentials)) and these objects predate the current pair.
+If either decrypt fails with `no identity matched any of the recipients`, the dump was encrypted to a different public key. You are either holding the wrong identity file, or the key was rotated (see [setup.md § Push R2 credentials + recipient to the VPS](setup.md#3-push-r2-credentials--recipient-to-the-vps)) and these objects predate the current pair.
 
 ## 4. Restore into a scratch Postgres
 
@@ -174,4 +174,4 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
 - [ ] `meta_backup_status` row exists and is fresh (the first post-restore scheduled tick will overwrite it).
 - [ ] Freshness badge renders green after the next backup run.
 - [ ] Shred local copies: `shred -u ~/restore/${TS}.dump ~/restore/${TS}.manifest.json`.
-- [ ] Rotate any credentials that may have been exposed during the incident ([setup.md § Rotating credentials](setup.md#rotating-credentials)).
+- [ ] Rotate any credentials that may have been exposed during the incident ([setup.md § Push R2 credentials + recipient to the VPS](setup.md#3-push-r2-credentials--recipient-to-the-vps)).

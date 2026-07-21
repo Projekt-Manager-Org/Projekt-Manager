@@ -108,7 +108,7 @@ The monthly drill ([drills.md](drills.md)) failed at step 3 (`age -d`) or step 4
 `age -d` failure (`no identity matched any of the recipients`):
 
 - The custody copy you loaded does not match the deployed `BINARY_AGE_RECIPIENT`. Either the custody copy is from a previous keypair (rotation gap — the custody copy predates the most recent rotation) or the custody copy is corrupted.
-- **Action:** test the _other_ off-system custody copy immediately per [recovery.md § Drill-failure escalation](recovery.md#drill-failure-escalation). If both copies fail, you are in a custody emergency — extract the in-tmpfs identity per recovery.md before any reboot.
+- **Action:** test the _other_ off-system custody copy immediately per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation). If both copies fail, you are in a custody emergency — extract the in-tmpfs identity per recovery.md before any reboot.
 
 AES-GCM `InvalidTag` (decrypt step):
 
@@ -122,7 +122,7 @@ If you cannot decrypt the most recent test upload using the current workstation 
 
 Next steps depend on the failure surface:
 
-1. **If the workstation identity is gone but the VPS tmpfs has the correct identity** (i.e., the deployed app is still serving uploads/downloads correctly): see [recovery.md § Drill-failure escalation](recovery.md#drill-failure-escalation) — extract the tmpfs identity to the workstation before any reboot.
+1. **If the workstation identity is gone but the VPS tmpfs has the correct identity** (i.e., the deployed app is still serving uploads/downloads correctly): see [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation) — extract the tmpfs identity to the workstation before any reboot.
 2. **If the deployed app is also broken** (uploads or downloads failing): the in-tmpfs identity may be wrong or the recipient drifted. Reload from the workstation working copy per [load.md](load.md). If the workstation copy doesn't match either, [recovery.md § Burn-and-restart](recovery.md#4-burn-and-restart-both-copies-lost-no-working-tmpfs) is the last-resort path.
 
 ## Owner / escalation contact

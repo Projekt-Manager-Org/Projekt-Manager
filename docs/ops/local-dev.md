@@ -98,4 +98,4 @@ Integration tests wipe and re-seed per file -- do not run against a database you
 
 ## Deploying to a VPS
 
-Local development does not require a VPS. When ready to deploy, see the [production quick start](../../README.md#production) for the full path, or [HTTP-only evaluation](http-only-evaluation.md) for a quick test without a domain.
+Local development does not require a VPS. When ready to deploy, see the [production quick start](../../README.md#run-in-production) for the full path, or [HTTP-only evaluation](http-only-evaluation.md) for a quick test without a domain.

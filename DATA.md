@@ -2,7 +2,7 @@
 
 Bird's-eye map of how data survives in this system. This file is a navigation aid; all procedures, schemas, and rationale live in the files linked below.
 
-The kickoff commits to automated DB backup ([kickoff line 72](docs/project/kickoff.md#L72)) but declares "a backup concept and system beyond that" out of scope ([kickoff line 80](docs/project/kickoff.md#L80)). The design here is framed accordingly — **mitigation of an unreliable project, not long-term archaeology.** If a data-integrity problem slips past the retention window undetected, recovery is out of scope.
+The kickoff commits to automated DB backup ([kickoff § Done when](docs/project/kickoff.md#done-when-final-product)) but declares "a backup concept and system beyond that" out of scope ([kickoff § Not Doing](docs/project/kickoff.md#not-doing)). The design here is framed accordingly — **mitigation of an unreliable project, not long-term archaeology.** If a data-integrity problem slips past the retention window undetected, recovery is out of scope.
 
 ---
 
