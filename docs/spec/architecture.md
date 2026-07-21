@@ -179,7 +179,7 @@ The Layer 2 implementation of [§11.9](#119-data-persistence-and-recovery) is a 
 
 **Topology.**
 
-- The `backup` compose service is scheduled by an in-process `croner` registered by `src/server/backup-runner.ts`'s `schedule` subcommand; the compose file is the source of truth ([ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)). The backup interval is configurable **[C]**.
+- The `backup` compose service is scheduled by an in-process `croner` registered by `src/server/backup-runner.ts`'s `schedule` subcommand; the compose file is the source of truth ([ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)). The backup interval is a **[C]** value — the `SCHEDULES` source constant in `src/server/backup-runner.ts`, not an env var ([§12.2](#122-company-configurable-settings)).
 - Each run produces the backup artifact (a full-state database dump, encrypted) and its manifest sidecar (per-table row count and deterministic content checksum, encrypted). The manifest checksum is computed as specified in [ADR-0020 §Decision](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#decision).
 - Retention is linear (provider-enforced bucket lock + lifecycle rule, canonical values at [ADR-0020 §Retention](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention)). No in-container rotation, no weekly/monthly promotion, no object versioning. Scope rationale in the same section.
 
@@ -347,7 +347,14 @@ Rules that apply to all installations:
 
 ### 12.2 Company-Configurable Settings
 
-The following values are centralized as single-source constants and may vary per deployment without code changes elsewhere. Each corresponds to a `[C]` marker somewhere in this spec.
+The following values are centralized as single-source constants: each has exactly one definition site, so changing it never means hunting call sites. Each corresponds to a `[C]` marker somewhere in this spec.
+
+`[C]` marks a value as deliberately not hardcoded at its use sites. It does **not** by itself promise an operator-facing knob — the catalogue carries two surfaces:
+
+- **Env-var-backed** — settable per deployment without touching source. The entry names the variable (`AGE_RECIPIENT`, `SSE_HEARTBEAT_INTERVAL_MS`, `STORAGE_OBJECT_LOCK_DAYS`, …).
+- **Source constant** — one definition site in the codebase; changing it is a code edit plus a redeploy. The entry names no variable.
+
+Entries state which. Promoting a source constant to an env var is a normal change when a deployment actually needs to vary it — it is not a spec change.
 
 - App name, branding, footer text
 - Brand accent color — explicit light and dark values (see [§12.5](#125-theming-model))
@@ -360,10 +367,10 @@ The following values are centralized as single-source constants and may vary per
 - Role set and per-role permission matrix
 - Seed default password
 - Restore confirmation phrase — typed by the caller to confirm an override-restore into a non-empty database (see [api.md §14.2.4](api.md#1424-unified-data-exchange))
-- Layer 2 backup interval — cadence of the `backup` compose service ([§11.10](#1110-full-state-backup-layer-2))
+- Layer 2 backup interval — cadence of the `backup` compose service ([§11.10](#1110-full-state-backup-layer-2)). Source constant: `SCHEDULES` in `src/server/backup-runner.ts` (four cron expressions — weekday/weekend backup, weekday/weekend drill). No env var
 - Layer 2 freshness thresholds — age of `lastBackupAt` and `lastDrillAt` at which the owner-facing badge switches to amber and to red ([§11.10](#1110-full-state-backup-layer-2))
 - Layer 2 backup public recipient — operator-managed `age` X25519 public recipient string used by the `backup` compose service to encrypt each `pg_dump` artifact and per-table manifest before upload to R2 ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). No default — the deploy must supply a value; the `backup` service refuses to run without it. Env var: `AGE_RECIPIENT`. The matching private identity stays on the operator workstation and is loaded into a tmpfs mount on the `backup` service only when the operator wants Tier 2 verification (see [§11.10 "Encryption surface"](#1110-full-state-backup-layer-2)). The matching private key never appears anywhere else and is not a `[C]` value — the recipient string in this catalogue is what couples the deployed `backup` service to the operator's keypair. Parity with `BINARY_AGE_RECIPIENT` below.
-- Audit log retention window — rolling age at which `audit_log` entries are removed by the scheduled cleanup (default 90 days; see [data-model.md §6.10](data-model.md#610-audit-log-retention))
+- Audit log retention window — rolling age at which `audit_log` entries are removed by the scheduled cleanup (default 90 days; see [data-model.md §6.10](data-model.md#610-audit-log-retention)). Env var: `AUDIT_RETENTION_WINDOW_DAYS`; unset falls back to the build-time default in `src/config/auditRetention.ts`
 - Audit activity-feed rendering — mapping from audit entry (`action`, `payload`) ([data-model.md §5.10](data-model.md#510-audit-log-entity)) to the German display string in the activity feed ([ui/workflow-views.md §8.4.1](ui/workflow-views.md#841-activity-feed)) and global Aktivität view ([ui/management.md §8.13](ui/management.md#813-audit-view)). Covers each [`NotificationEventClass`](data-model.md#511-notification-rule) — every catalog event has an `(action, payload)` projection.
 - Realtime invalidation heartbeat — interval of `:` keepalive comment lines on `/api/events` ([§11.13](#1113-realtime-invalidation-channel), [api.md §14.2.13](api.md#14213-realtime-events)). Default 25 seconds; bounded 1 s … 600 s. Env var: `SSE_HEARTBEAT_INTERVAL_MS`.
 - List page size — default row count for paginated list endpoints (projects, customers, users, audit) and their management views

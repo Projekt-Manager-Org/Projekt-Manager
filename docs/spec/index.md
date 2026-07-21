@@ -5,7 +5,7 @@ This spec defines **what** the application does — not how it does it, how it w
 - **How** (implementation): [ARCHITECTURE.md](../../ARCHITECTURE.md) at the repo root — the navigation guide to the codebase. Major decisions with context and rationale live in [ADRs](../adr/index.md).
 - **Why** (vision, final scope, out-of-scope): [Kickoff](../project/kickoff.md).
 - **Conventions** (rules the spec must satisfy): [review/conventions-spec.md](../../review/conventions-spec.md).
-- **`[C]`** marks values deliberately made configurable so the application can be adjusted to a real company's needs.
+- **`[C]`** marks values deliberately made configurable so the application can be adjusted to a real company's needs. Catalogue, and which are env vars vs. source constants: [architecture.md §12.2](architecture.md#122-company-configurable-settings).
 
 ---
 
