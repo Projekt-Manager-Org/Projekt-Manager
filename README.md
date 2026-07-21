@@ -81,7 +81,7 @@ The business data is regarded in layers ([ADR-0018](docs/adr/0018-data-persisten
    - Text rows and binaries, eligible for import/export through the UI as a single takeout zip (round-trip: text rows + attachments + thumbnails regenerated on import).
 
 2. Full DB state
-   - Automatically exported to R2 at regular intervals - 4 times/daily on weekdays, 1/daily at weekends;
+   - Automatically exported to R2 at regular intervals - 5 times/daily on weekdays, 1/daily at weekends;
    - Regular automated drills check recoverability;
    - Object lock is enforced by the provider to prevent deleting for a set amount of days.
 
