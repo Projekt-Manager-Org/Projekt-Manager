@@ -4,7 +4,7 @@
 
 ## 15. Acceptance Criteria
 
-The system is accepted when all of the following are true.
+The system is accepted when all of the following are true. Which test discharges which criterion is mapped in [docs/testing/traceability.md](../testing/traceability.md).
 
 Every criterion carries exactly one tier marker:
 
@@ -183,7 +183,7 @@ Every criterion carries exactly one tier marker:
 ### 15.15 Navigation
 
 - **AC-74** `[vis]`: Navigation between all views (Meine Projekte, Kanban, Calendar, Projects, Customers, Users, Daten, Aktivität, Benachrichtigungen) works without page reload. Shared state is preserved across navigation.
-- **AC-75** `[vis]`: Views that require specific permissions are hidden from navigation for unauthorized users. Per-role nav matrix (default role set — see [ui/index.md §8.7.1](ui/index.md#871-views) and [api.md §14.3](api.md#143-authorization-rules)): owner sees Kanban, Kalender, Projekte, Kunden, Benutzer, Daten, Aktivität, Benachrichtigungen; office sees everything except Benutzer and Benachrichtigungen; worker sees Meine Projekte + Kanban + Kalender (all scoped — see [AC-145](#1521-role-scoping), [AC-146](#1521-role-scoping); Meine Projekte is worker-only by nav matrix); bookkeeper sees Projekte + Kunden. A role-scoping visual-regression run must walk each role and confirm the nav set matches the matrix exactly.
+- **AC-75** `[vis]`: Views that require specific permissions are hidden from navigation for unauthorized users. Per-role nav matrix (default role set — see [ui/index.md §8.7.1](ui/index.md#871-views) and [api.md §14.3](api.md#143-authorization-rules)): owner sees Kanban, Kalender, Projekte, Kunden, Rechnungen, Benutzer, Daten, Aktivität, Benachrichtigungen; office sees everything except Benutzer and Benachrichtigungen; worker sees Meine Projekte + Kanban + Kalender (all scoped — see [AC-145](#1521-role-scoping), [AC-146](#1521-role-scoping); Meine Projekte is worker-only by nav matrix); bookkeeper sees Projekte + Kunden + Rechnungen. A role-scoping visual-regression run must walk each role and confirm the nav set matches the matrix exactly.
 
 ### 15.16 Management Views
 
