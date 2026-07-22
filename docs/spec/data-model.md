@@ -147,6 +147,8 @@ Session validation must verify that the referenced user is still active (`active
 
 **Password-change session side effects:** when a user changes their own password, all **other** sessions for that user are invalidated (the current session survives). When an administrator resets another user's password, **all** sessions for the target user are invalidated.
 
+**Session termination.** A session ends on: expiry (`expiresAt` reached), explicit logout — which invalidates that one session only, not the user's other sessions ([api.md §14.2.1](api.md#1421-authentication)) — the password-change / admin-reset side effects above, or account deactivation, which invalidates all of the user's sessions ([api.md §14.2.3](api.md#1423-user-management)).
+
 ### 5.5 Audit Metadata
 
 All persisted entities follow a common audit metadata pattern:
