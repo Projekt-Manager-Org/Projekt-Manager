@@ -4,7 +4,8 @@
  * support multi-select (one dispatch per file, shared label `foto`).
  *
  * The "Foto aufnehmen" camera-capture affordance has moved to the
- * detail page's floating button — it's not rendered here anymore.
+ * detail page's floating button in `ProjectDetailPage.tsx` — it's not
+ * rendered here anymore.
  */
 
 import { useMemo, useRef, useState } from 'react';
