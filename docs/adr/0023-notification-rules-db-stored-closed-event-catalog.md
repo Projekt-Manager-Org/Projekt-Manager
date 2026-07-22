@@ -17,12 +17,12 @@ Forces:
 
 ## Decision
 
-Notification rules live in a DB-stored table, editable by admins through a minimal CRUD UI. The event catalog is code-defined and closed — adding an event class is a code change plus a migration. A single per-user push-mute toggle controls transient push delivery; the activity feed is the retained history.
+Notification rules live in a DB-stored table, editable by admins through a minimal CRUD UI. The event catalog is code-defined and closed — adding an event class is a code change plus a migration. A single per-user push-mute toggle controls transient push delivery; the [activity feed](0021-audit-log-and-notifications-single-write-path.md) is the retained history.
 
 Shape:
 
 - **Rule entity** (`notification_rule`): `event_class` (closed enum), `state_filter` (nullable; meaningful only for transition events), `recipient_spec`, `enabled`. Rule CRUD is a direct repository write — it does **not** route through `mutate()`. Rule edits are infrequent admin configuration, not domain events; auditing them dilutes the activity feed for no observed consumer.
-- **Event catalog** — code-defined, closed. Initial set: `project.transition_forward`, `project.transition_backward`, `project.archived`, `project.assignment_changed`, `backup.failed`, `disk.threshold_reached`. Adding an event class is a code change plus a migration.
+- **Event catalog** — code-defined, closed. Initial set: `project.transition_forward`, `project.transition_backward`, `project.archived`, `project.assignment_changed`, `backup.failed`, `disk.threshold_reached`. Adding an event class is a code change plus a migration. The live catalog is code-owned (SSOT) and has since grown — see [`src/config/notificationEvents.ts`](../../src/config/notificationEvents.ts) for the current classes (`project.attachment_added` was added later).
 - **Recipient spec** — three-part additive union: role set, `include_assigned_workers` flag (project-scoped events only), explicit user-id list. Resolved recipients = union, deduplicated.
 - **Matching semantics** — publisher collects every enabled rule whose `event_class` matches and whose `state_filter` is null or equals `after.status`. Recipients are unioned across matching rules. No priority, no override, no AND/OR trees.
 - **Admin CRUD UI** — list + single rule form, gated by `notifications:manage`. The permission gate is the only bar; rule reads are not row-scoped.
