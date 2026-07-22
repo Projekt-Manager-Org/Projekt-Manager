@@ -85,7 +85,7 @@ The business data is regarded in layers ([ADR-0018](docs/adr/0018-data-persisten
    - Regular automated drills check recoverability;
    - Object lock is enforced by the provider to prevent deleting for a set amount of days.
 
-3. Binary attachments
+3. Binary attachments ([Backblaze B2](docs/adr/0022-binary-storage-b2-compliance-object-lock.md))
    - Follows the same principle - provider-enforced object lock, provider-controlled lifecycle;
    - A "recycle-bin" concept: "deleting" a file only marks it for deletion, real deletion happens only through the provider after the set amount of days spent in the "bin". The app has no way of deleting data through a scoped API key.
 
@@ -135,6 +135,7 @@ This project makes heavy use of modern LLMs, mostly Claude Code. A "fully automa
 
 - Docker Engine + Compose plugin, pinned version -- see [docs/ops/local-dev.md § Prerequisites](docs/ops/local-dev.md#prerequisites)
 - Node.js (pinned in `.nvmrc` - use `nvm install`)
+- `age` -- the file-encryption CLI; `scripts/binary-key/init-local-key.sh` hard-fails without it. See [docs/ops/local-dev.md § Prerequisites](docs/ops/local-dev.md#prerequisites)
 
 **Running**:
 
@@ -180,14 +181,14 @@ Check `docs/ops` for the full runbook.
 4. [Bootstrap TLS](docs/ops/caddy-tls-bootstrap.md) - first Let's Encrypt cert via DNS-01 ACME (staging -> production); interleaves with first deploy;
 5. [Provision object storage](docs/ops/object-storage-provisioning.md) - Backblaze B2 bucket + capability-restricted app key + CORS rule (required for attachment uploads);
 6. [Deploy](docs/ops/manual-deploy.md) - pull image from GHCR, start the stack, run first-admin bootstrap;
-7. [Backups](docs/ops/backup/) - encrypted R2 backups + drills.
+7. [Backups](docs/ops/backup/overview.md) - encrypted R2 backups + drills.
 
 ## Tests
 
 Tests require the [local dev](#run-locally) setup (DB and MinIO exposed on host ports). They do not run against the full-stack Docker variants.
 
 ```bash
-npm test             # unit + component tests (vitest)
+npm test             # unit + component + integration (vitest; needs DB + MinIO up — see above)
 npm run test:e2e     # Playwright E2E tests
 ```
 
