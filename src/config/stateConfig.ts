@@ -2,12 +2,24 @@ import { STRINGS } from './strings.js';
 
 export type StateType = 'action' | 'buffer' | 'active' | 'done';
 
+/**
+ * Auto-collapse priority for Kanban columns as the board narrows (see
+ * `useCollapseTier.ts`). Lower tier = higher priority = stays expanded
+ * longer: a column collapses when `activeTier > 0 && collapseTier >=
+ * activeTier`, so tier-3 columns collapse first (widest boards), tier-2
+ * next, and tier-1 last (only on the narrowest boards).
+ */
 export type CollapseTier = 1 | 2 | 3;
 
 /**
- * Single source of truth for workflow states.
- * To add or remove a state: update this array only.
- * WorkflowState type and all downstream config derive from it.
+ * Single source of truth for the workflow-state set. The `WorkflowState`
+ * type and all downstream config derive from this array.
+ *
+ * Adding, renaming, or removing a state is NOT a config-only change: the
+ * DB CHECK constraint (`projects_valid_status`) enumerates every state and
+ * needs a regenerated migration, and `src/domain/transitions.ts` hardcodes
+ * the first/last boundary literals. See ARCHITECTURE.md § "Adding a new
+ * workflow state" for the full checklist.
  */
 export const STATE_KEYS = [
   'anfrage',
