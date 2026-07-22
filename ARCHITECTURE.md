@@ -479,7 +479,7 @@ Spec contract: [docs/spec/data-model.md §5.15–§5.17](docs/spec/data-model.md
 
 ### Immutable snapshot at issuance
 
-`InvoiceIssueService.issue` opens a single transaction that allocates the number, freezes the content, flips the project, renders the PDF/A-3, writes the binary descriptor, and emits the audit row + `invoice_changed` SSE frame. The wire shape sealed on issuance — `issuer` (copied from `company_profile`), `recipient` (copied from the project's customer), `lines`, `taxMode`, `profile`, `totals`, `performanceDate` — is then immutable for GoBD. Subsequent PATCH attempts return `INVOICE_FROZEN`; DELETE on issued is refused at the service layer. Cancellation produces a Stornorechnung as a sibling row (`cancellationOf` points to the original) — the original stays untouched. A correction is a fresh draft → issue cycle, never an edit.
+`InvoiceIssueService.issue` opens a single transaction that allocates the number, freezes the content, flips the project, renders the PDF/A-3, writes the binary descriptor, and emits the audit row + `invoice_changed` SSE frame. The wire shape sealed on issuance — `issuer` (copied from `company_profile`), `recipient` (copied from the project's customer), `lines`, `taxMode`, `profile`, `totals`, `performanceDate` — is then immutable for GoBD. Subsequent PATCH attempts return `INVOICE_FROZEN` and DELETE on issued is refused at the service layer; beneath both, a Postgres `BEFORE UPDATE` trigger (`invoices_enforce_immutability` in `src/server/db/migrations/0000_baseline.sql`) is the persistence-layer backstop — it rejects every column change on an `issued` row except the `status → cancelled` flip, so even a raw SQL write that bypasses the route and service layers cannot mutate a frozen invoice. The spec keeps the mechanism abstract ([AC-294](docs/spec/verification.md#1530-invoices) — trigger, constraint, or invariant); the trigger is the concrete choice today. Cancellation produces a Stornorechnung as a sibling row (`cancellationOf` points to the original) — the original stays untouched. A correction is a fresh draft → issue cycle, never an edit.
 
 ### Gapless year-scoped sequence
 
@@ -487,7 +487,7 @@ Spec contract: [docs/spec/data-model.md §5.15–§5.17](docs/spec/data-model.md
 
 ### Service split
 
-`src/server/services/InvoiceService.ts` is the route-facing facade; four focused services own the moving parts:
+`src/server/services/InvoiceService.ts` is the route-facing facade; four focused services own the issuance/cancellation moving parts (read-only bulk export lives separately in `InvoiceExportService.ts` — see the `archiver` row under [Dep lifecycle health](#dep-lifecycle-health-as-of-2026-05-15)):
 
 - **`InvoiceIssueService`** — draft CRUD + the issue transaction (sequence allocation, content freeze, project status flip to `abgerechnet`, render via `InvoiceRenderer`, binary write via `InvoiceBinaryService`, audit + SSE).
 - **`InvoiceCancelService`** — Storno-sibling creation, audit + SSE. Does NOT auto-revert project state ([AC-290](docs/spec/verification.md#1530-invoices) trailing clause): a user staring at an `abgerechnet` project with a cancelled invoice sees the gap and acts on it manually.
