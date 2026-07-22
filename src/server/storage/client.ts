@@ -88,7 +88,8 @@ export interface UploadResult {
    * S3 VersionId minted by this PUT, when the bucket has versioning
    * enabled (ADR-0022). Server-side write paths that persist an
    * attachment row capture it as `version_id` / `thumb_version_id` so the
-   * Papierkorb restore flow can later `copyFromVersion(key, versionId)`.
+   * Papierkorb (per-project trash; docs/spec/ui/project-detail.md §8.15.10)
+   * restore flow can later `copyFromVersion(key, versionId)`.
    * Undefined on unversioned buckets or when the provider omits the
    * field. Mirrors `HeadObjectResult.versionId` (the complete()-time
    * source for browser-uploaded blobs).
