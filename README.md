@@ -78,7 +78,7 @@ _The above scary statement actually lays the groundwork for decisions and workfl
 The business data is regarded in layers ([ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md)), each of which gets special attention:
 
 1. Business data (app-level)
-   - Text rows and binaries, eligible for import/export through the UI as a single takeout zip (round-trip: text rows + attachments + thumbnails regenerated on import).
+   - Text rows and binaries, eligible for import/export through the UI as a single **takeout zip** — one archive holding the whole account (round-trip: text rows + attachments + thumbnails regenerated on import).
 
 2. Full DB state
    - Automatically exported to R2 at regular intervals - 5 times/daily on weekdays, 1/daily at weekends;
@@ -109,12 +109,13 @@ This project makes heavy use of modern LLMs, mostly Claude Code. A "fully automa
 
 - `docs/project/` - the vision document and the (constantly readjusted) plan;
 - [ARCHITECTURE](./ARCHITECTURE.md) - navigation guide for the codebase, incl. [CI/CD](./ARCHITECTURE.md#cicd-pipeline);
+- [DATA.md](./DATA.md) - how data persists and is recovered: the three backup layers and the UI export/import round-trip;
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - dev setup, testing, code style, CI gate;
 - [CLAUDE.md](./CLAUDE.md) - instructions for Claude Code. Includes categories of trust - human made | strict human control | AI made with less human control;
 - `review/` - guardrails and guidelines, used when instructing agents on what to focus on;
-- `docs/spec/` - specification;
+- `docs/spec/` - specification; configuration boundaries (where env vars come from, what happens when one is missing) live in [architecture.md §12](docs/spec/architecture.md#12-configuration-boundaries);
 - `docs/ops/` - runbooks with operator instructions;
-- `docs/adr/` - bigger decisions with some background and rationale;
+- `docs/adr/` - Architecture Decision Records (ADRs) - bigger decisions with some background and rationale;
 - `src/` - code. See the [module map](./ARCHITECTURE.md#module-map) for details.
 
 ## How to run
