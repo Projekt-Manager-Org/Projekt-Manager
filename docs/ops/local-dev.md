@@ -15,10 +15,12 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 
 ### Installing Docker
 
-Same pinned versions as the VPS -- follow [server-setup.md](server-setup.md) Phase 4 for the apt repo, version table, and install/hold commands. Two differences for a workstation:
+The pinned-version flow below is apt-based and assumes a **Debian/Ubuntu-family workstation** (matching the VPS). Follow [server-setup.md](server-setup.md) Phase 4 for the apt repo, version table, and install/hold commands, with two differences for a workstation:
 
 - Install for your own interactive user, not `deploy` -- add yourself to the `docker` group instead: `sudo usermod -aG docker $USER` (log out/in to apply).
 - Skip step 4 (UDP socket buffer tuning) -- that's Caddy/HTTP3-specific and only applies to the VPS.
+
+On any other platform (macOS, Windows, non-Debian Linux), install Docker Engine + Compose plugin from [Docker's official install docs](https://docs.docker.com/engine/install/) -- Docker Desktop on macOS/Windows, your distro's own packages on other Linux. The [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) version pin is enforced by `apt-mark hold`; off apt, match the pinned major version best-effort.
 
 ## First-time setup
 
