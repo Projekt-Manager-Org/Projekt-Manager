@@ -45,7 +45,7 @@ For the full product specification, see [docs/spec/](docs/spec/index.md). `AC-NN
 | Cloudflare R2 | S3-compatible | Encrypted DB-backup destination (Layer 2)                        | [r2 docs](https://developers.cloudflare.com/r2/)                    |
 | Caddy         | 2             | Reverse proxy, automatic HTTPS                                   | [caddyserver.com](https://caddyserver.com/)                         |
 | Vitest        | 4             | Unit and component tests                                         | [vitest.dev](https://vitest.dev/)                                   |
-| Playwright    | 1.59          | End-to-end tests                                                 | [playwright.dev](https://playwright.dev/)                           |
+| Playwright    | 1.60          | End-to-end tests                                                 | [playwright.dev](https://playwright.dev/)                           |
 
 Stack decisions are recorded in ADRs: [ADR-0002](docs/adr/0002-tech-stack-typescript-react-vite-zustand.md) (frontend), [ADR-0003](docs/adr/0003-deployment-infrastructure-vps-docker-compose-github-actions.md) (infra), [ADR-0004](docs/adr/0004-backend-stack-fastify-drizzle-node-postgres.md) (backend).
 

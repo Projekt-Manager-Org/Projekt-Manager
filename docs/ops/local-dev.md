@@ -4,7 +4,7 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 
 ## Prerequisites
 
-- **Node 22.22.3** (pinned in `.nvmrc`) -- `nvm install`
+- **Node** (version pinned in `.nvmrc`) -- `nvm install` reads it
 - **Docker Engine + Compose plugin**, pinned version ([ADR-0009](../adr/0009-pin-docker-versions-across-environments.md)) -- see [Installing Docker](#installing-docker) below
 - **`age`** -- see [CONTRIBUTING.md § Runtime Requirements](../../CONTRIBUTING.md#runtime-requirements). Required before the first `npm run dev` boots (`scripts/binary-key/init-local-key.sh`, ADR-0024).
 - **`shellcheck`** -- see [CONTRIBUTING.md § Runtime Requirements](../../CONTRIBUTING.md#runtime-requirements). Checked by `.husky/pre-push` (local, warns if missing) and CI's `lint` job (hard fail).
