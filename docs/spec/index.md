@@ -5,7 +5,7 @@ This spec defines **what** the application does — not how it does it, how it w
 - **How** (implementation): [ARCHITECTURE.md](../../ARCHITECTURE.md) at the repo root — the navigation guide to the codebase. Major decisions with context and rationale live in [ADRs](../adr/index.md).
 - **Why** (vision, final scope, out-of-scope): [Kickoff](../project/kickoff.md).
 - **Conventions** (rules the spec must satisfy): [review/conventions-spec.md](../../review/conventions-spec.md).
-- **`[C]`** marks values deliberately made configurable so the application can be adjusted to a real company's needs.
+- **`[C]`** marks values deliberately made configurable so the application can be adjusted to a real company's needs. Catalogue, and which are env vars vs. source constants: [architecture.md §12.2](architecture.md#122-company-configurable-settings).
 
 ---
 
@@ -69,7 +69,7 @@ All views are role-gated. The system enforces that every pending action (unanswe
 
 ## 3. Workflow States
 
-The Kanban board reflects the full company workflow. The number and definition of states are driven by configuration — the system does not hardcode a specific state count or state names.
+The Kanban board reflects the full company workflow. The number and definition of states are driven by a single configuration array from which the `WorkflowState` type derives. This is not hardcoded at the rendering use-sites, but changing the set is a code change, not a zero-code reconfiguration — the database pins the valid states in a CHECK constraint (see the note below).
 
 The current configuration defines 9 states:
 
@@ -87,7 +87,7 @@ The current configuration defines 9 states:
 
 Three action states, four buffer states, one active, one terminal. The Kanban board makes action states naturally visible — items accumulating in an action column signal that work is falling behind.
 
-**[C]** The state set (names, types, order, count) is defined in a single configuration array; the `WorkflowState` type is derived from it. Adding or removing states requires updating the array and any boundary-state references in the domain layer, plus a database migration if the default status changes.
+**[C]** The state set (names, types, order, count) is defined in a single configuration array; the `WorkflowState` type is derived from it. Because the database pins the valid states in a CHECK constraint, adding, renaming, or removing a state requires regenerating the migration — not only when the default status changes — plus updating the boundary-state references in the domain layer. See [ARCHITECTURE.md § Adding a new workflow state](../../ARCHITECTURE.md#adding-a-new-workflow-state).
 
 ---
 

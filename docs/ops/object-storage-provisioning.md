@@ -320,5 +320,5 @@ This catches drift between the runbook and live bucket state — e.g., an operat
 - [B2 Object Lock](https://www.backblaze.com/docs/cloud-storage-object-lock)
 - [B2 Lifecycle Rules](https://www.backblaze.com/docs/cloud-storage-lifecycle-rules)
 - [B2 Application Keys](https://www.backblaze.com/docs/cloud-storage-application-keys)
-- [docs/wip/verify-b2-objectlock.sh](../../docs/wip/verify-b2-objectlock.sh) — throwaway-bucket verification (Compliance lock blocks even max-capability key).
-- [docs/wip/verify-hide-capability-split.sh](../../docs/wip/verify-hide-capability-split.sh) — capability split verification (`writeFiles`-only key cannot destroy).
+- Throwaway-bucket verification (Compliance lock blocks even max-capability key) — verified manually against a scratch bucket; not committed as a script.
+- Capability split verification (`writeFiles`-only key cannot destroy) — verified manually against a scratch bucket; not committed as a script.

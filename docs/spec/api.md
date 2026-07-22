@@ -198,7 +198,7 @@ Design notes:
 
 #### 14.2.7 Backup Status
 
-The Layer 2 backup-freshness badge ([verification.md §15.22](verification.md#1522-backup-and-recovery), [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)) is consumed only by the authenticated owner. The status fields piggyback on the two session-establishment responses, `POST /api/auth/login` and `GET /api/auth/me` (see [§14.2.1](#1421-authentication--user-profile)) — no dedicated route. The earlier unauthenticated `GET /api/backup/status` endpoint was removed together with the login-screen badge surface.
+The Layer 2 backup-freshness badge ([verification.md §15.22](verification.md#1522-backup-and-recovery), [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)) is consumed only by the authenticated owner. The status fields piggyback on the two session-establishment responses, `POST /api/auth/login` and `GET /api/auth/me` (see [§14.2.1](#1421-authentication)) — no dedicated route. The earlier unauthenticated `GET /api/backup/status` endpoint was removed together with the login-screen badge surface.
 
 Design notes:
 

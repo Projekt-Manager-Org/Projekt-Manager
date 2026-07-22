@@ -67,24 +67,25 @@ _The above scary statement actually lays the groundwork for decisions and workfl
 - There is _no_ exposure to the open internet, as the whole deployment stays strictly behind a VPN (WireGuard). The only accessible ports are SSH and WireGuard. The WireGuard client onboarding is operator-driven - the app never sees the keys;
 - HTTPS is enforced everywhere in deployment anyway;
 - Business data is stored in encrypted form on the external object storage providers;
-- Sensitive information is never stored unencrypted on disk. Deployment and server restart are operator-driven;
+- Everything that leaves the box is encrypted before it does (attachment ciphertext, backup dumps), as are the deployment secrets at rest on it. The live VPS itself is inside the trust circle: the Postgres data directory is plaintext, protected by VPN isolation rather than at-rest encryption — root on the box is a full compromise regardless ([ADR-0008](docs/adr/0008-vpn-first-network-access.md));
+- Deployment and server restart are operator-driven;
 - Authentication is username + password, bcrypt-hashed under a NIST SP 800-63B policy with a local common-password blocklist; sessions are server-side records in Postgres (24h, `HttpOnly; Secure; SameSite=Strict`). Login is rate-limited;
 - Authorization is two-layered: route-level RBAC across four roles (owner, office, worker, bookkeeper) and resource-level scoping enforced as SQL predicates - for example workers see only their assigned projects;
 - Every domain-entity mutation goes through a single write path that records an audit log entry.
 
 ### Data
 
-The business data is regarded in layers, each of which gets special attention:
+The business data is regarded in layers ([ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md)), each of which gets special attention:
 
-1. App level data
-   - Contains business data and binaries, eligible for import/export through the UI as a single takeout zip (round-trip: text rows + attachments + thumbnails regenerated on import).
+1. Business data (app-level)
+   - Text rows and binaries, eligible for import/export through the UI as a single **takeout zip** — one archive holding the whole account (round-trip: text rows + attachments + thumbnails regenerated on import).
 
-2. DB dumps
-   - Automatically exported to R2 at regular intervals - 4 times/daily on weekdays, 1/daily at weekends;
+2. Full DB state
+   - Automatically exported to R2 at regular intervals - 5 times/daily on weekdays, 1/daily at weekends;
    - Regular automated drills check recoverability;
    - Object lock is enforced by the provider to prevent deleting for a set amount of days.
 
-3. Object storage
+3. Binary attachments ([Backblaze B2](docs/adr/0022-binary-storage-b2-compliance-object-lock.md))
    - Follows the same principle - provider-enforced object lock, provider-controlled lifecycle;
    - A "recycle-bin" concept: "deleting" a file only marks it for deletion, real deletion happens only through the provider after the set amount of days spent in the "bin". The app has no way of deleting data through a scoped API key.
 
@@ -107,13 +108,14 @@ This project makes heavy use of modern LLMs, mostly Claude Code. A "fully automa
 ## Navigation
 
 - `docs/project/` - the vision document and the (constantly readjusted) plan;
-- [ARCHITECTURE](./ARCHITECTURE.md) - navigation guide for the codebase;
-- [CONTRIBUTING.md](./CONTRIBUTING.md) - workflow;
+- [ARCHITECTURE](./ARCHITECTURE.md) - navigation guide for the codebase, incl. [CI/CD](./ARCHITECTURE.md#cicd-pipeline);
+- [DATA.md](./DATA.md) - how data persists and is recovered: the three backup layers and the UI export/import round-trip;
+- [CONTRIBUTING.md](./CONTRIBUTING.md) - dev setup, testing, code style, CI gate;
 - [CLAUDE.md](./CLAUDE.md) - instructions for Claude Code. Includes categories of trust - human made | strict human control | AI made with less human control;
 - `review/` - guardrails and guidelines, used when instructing agents on what to focus on;
-- `docs/spec/` - specification;
+- `docs/spec/` - specification; configuration boundaries (where env vars come from, what happens when one is missing) live in [architecture.md §12](docs/spec/architecture.md#12-configuration-boundaries);
 - `docs/ops/` - runbooks with operator instructions;
-- `docs/adr/` - bigger decisions with some background and rationale;
+- `docs/adr/` - Architecture Decision Records (ADRs) - bigger decisions with some background and rationale;
 - `src/` - code. See the [module map](./ARCHITECTURE.md#module-map) for details.
 
 ## How to run
@@ -134,6 +136,7 @@ This project makes heavy use of modern LLMs, mostly Claude Code. A "fully automa
 
 - Docker Engine + Compose plugin, pinned version -- see [docs/ops/local-dev.md § Prerequisites](docs/ops/local-dev.md#prerequisites)
 - Node.js (pinned in `.nvmrc` - use `nvm install`)
+- `age` -- the file-encryption CLI; `scripts/binary-key/init-local-key.sh` hard-fails without it. See [docs/ops/local-dev.md § Prerequisites](docs/ops/local-dev.md#prerequisites)
 
 **Running**:
 
@@ -141,7 +144,8 @@ This project makes heavy use of modern LLMs, mostly Claude Code. A "fully automa
 # first time only:
 nvm install                           # installs the Node.js version pinned in `.nvmrc`
 cp .env.example .env
-scripts/binary-key/init-local-key.sh  # generates the dev age identity, writes it into .env
+scripts/binary-key/init-local-key.sh  # generates the dev `age` identity, writes it into .env
+                                      # (age = the file-encryption tool used for attachments — ADR-0024)
 npm install
 # run:
 docker compose up -d                  # Postgres + MinIO (the app runs on the host via npm run dev)
@@ -178,14 +182,14 @@ Check `docs/ops` for the full runbook.
 4. [Bootstrap TLS](docs/ops/caddy-tls-bootstrap.md) - first Let's Encrypt cert via DNS-01 ACME (staging -> production); interleaves with first deploy;
 5. [Provision object storage](docs/ops/object-storage-provisioning.md) - Backblaze B2 bucket + capability-restricted app key + CORS rule (required for attachment uploads);
 6. [Deploy](docs/ops/manual-deploy.md) - pull image from GHCR, start the stack, run first-admin bootstrap;
-7. [Backups](docs/ops/backup/) - encrypted R2 backups + drills.
+7. [Backups](docs/ops/backup/overview.md) - encrypted R2 backups + drills.
 
 ## Tests
 
 Tests require the [local dev](#run-locally) setup (DB and MinIO exposed on host ports). They do not run against the full-stack Docker variants.
 
 ```bash
-npm test             # unit + component tests (vitest)
+npm test             # unit + component + integration (vitest; needs DB + MinIO up — see above)
 npm run test:e2e     # Playwright E2E tests
 ```
 

@@ -8,7 +8,7 @@ Concept map: [overview.md](overview.md). Design rationale: [ADR-0024 §Decision 
 
 The binary identity's only proof-of-life is the working app — every successful upload + render exercises the wrap path on the VPS, but never the off-system custody copy. A corrupted USB, a faded paper printout, or a forgotten encrypted-vault password is invisible until the day a recovery needs the identity. The monthly drill closes the gap: pull a real ciphertext from B2, fetch its real wrapped envelope from the DB, decrypt with the off-system identity copy, verify the bytes round-trip.
 
-If the drill passes, the off-system custody copy is known-good as of today. If it fails, escalate per [recovery.md § Drill-failure escalation](recovery.md#drill-failure-escalation) — a failed drill on the **only** off-system copy that matters is a custody emergency, not a routine bug.
+If the drill passes, the off-system custody copy is known-good as of today. If it fails, escalate per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation) — a failed drill on the **only** off-system copy that matters is a custody emergency, not a routine bug.
 
 ## Procedure
 
@@ -56,7 +56,7 @@ age -d -i ~/binary-drill/identity-from-custody.txt wrapped-dek.age > dek.bin
 test "$(wc -c < dek.bin)" -eq 32 && echo "DEK length OK (32 bytes)"
 ```
 
-If `age -d` fails with `no identity matched any of the recipients`, the off-system identity does **not** match the deployed `BINARY_AGE_RECIPIENT`. Two possibilities: the custody copy is from a previous keypair (rotation gap — see [rotation.md](rotation.md)), or the custody copy is corrupted. Either way, this drill is a fail and the custody copy needs immediate attention — escalate per [recovery.md § Drill-failure escalation](recovery.md#drill-failure-escalation).
+If `age -d` fails with `no identity matched any of the recipients`, the off-system identity does **not** match the deployed `BINARY_AGE_RECIPIENT`. Two possibilities: the custody copy is from a previous keypair (rotation gap — see [rotation.md](rotation.md)), or the custody copy is corrupted. Either way, this drill is a fail and the custody copy needs immediate attention — escalate per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation).
 
 ### 4. AES-256-GCM-decrypt the bytes
 

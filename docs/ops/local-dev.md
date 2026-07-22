@@ -4,7 +4,7 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 
 ## Prerequisites
 
-- **Node 22.22.3** (pinned in `.nvmrc`) -- `nvm install`
+- **Node** (version pinned in `.nvmrc`) -- `nvm install` reads it
 - **Docker Engine + Compose plugin**, pinned version ([ADR-0009](../adr/0009-pin-docker-versions-across-environments.md)) -- see [Installing Docker](#installing-docker) below
 - **`age`** -- see [CONTRIBUTING.md § Runtime Requirements](../../CONTRIBUTING.md#runtime-requirements). Required before the first `npm run dev` boots (`scripts/binary-key/init-local-key.sh`, ADR-0024).
 - **`shellcheck`** -- see [CONTRIBUTING.md § Runtime Requirements](../../CONTRIBUTING.md#runtime-requirements). Checked by `.husky/pre-push` (local, warns if missing) and CI's `lint` job (hard fail).
@@ -15,10 +15,12 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 
 ### Installing Docker
 
-Same pinned versions as the VPS -- follow [server-setup.md](server-setup.md) Phase 4 for the apt repo, version table, and install/hold commands. Two differences for a workstation:
+The pinned-version flow below is apt-based and assumes a **Debian/Ubuntu-family workstation** (matching the VPS). Follow [server-setup.md](server-setup.md) Phase 4 for the apt repo, version table, and install/hold commands, with two differences for a workstation:
 
 - Install for your own interactive user, not `deploy` -- add yourself to the `docker` group instead: `sudo usermod -aG docker $USER` (log out/in to apply).
 - Skip step 4 (UDP socket buffer tuning) -- that's Caddy/HTTP3-specific and only applies to the VPS.
+
+On any other platform (macOS, Windows, non-Debian Linux), install Docker Engine + Compose plugin from [Docker's official install docs](https://docs.docker.com/engine/install/) -- Docker Desktop on macOS/Windows, your distro's own packages on other Linux. The [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) version pin is enforced by `apt-mark hold`; off apt, match the pinned major version best-effort.
 
 ## First-time setup
 
@@ -98,4 +100,4 @@ Integration tests wipe and re-seed per file -- do not run against a database you
 
 ## Deploying to a VPS
 
-Local development does not require a VPS. When ready to deploy, see the [production quick start](../../README.md#production) for the full path, or [HTTP-only evaluation](http-only-evaluation.md) for a quick test without a domain.
+Local development does not require a VPS. When ready to deploy, see the [production quick start](../../README.md#run-in-production) for the full path, or [HTTP-only evaluation](http-only-evaluation.md) for a quick test without a domain.

@@ -1,8 +1,9 @@
 /**
  * Architecture-level invariants for the storage module (ADR-0022).
  *
- * The capability split is the actual enforcement: the app's B2 key has
- * `writeFiles, readFiles, listFiles` only, so any call that resolves to
+ * The capability split is the actual enforcement: the app's B2 key holds
+ * the canonical seven-cap set (see `docs/ops/object-storage-provisioning.md`)
+ * but NOT `deleteFiles`, so any call that resolves to
  * `b2_delete_file_version` (i.e. `DeleteObjectCommand` carrying a
  * `VersionId`) is refused at the provider's capability layer regardless
  * of what the code says. This test is the structural visibility belt:

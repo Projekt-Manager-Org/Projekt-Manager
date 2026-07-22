@@ -61,5 +61,5 @@ Two pastes after every reboot is the canonical post-restart workflow. See [load.
 - [ADR-0024](../../adr/0024-binary-attachment-e2e-encryption.md) — design, alternatives, consequences.
 - [ADR-0020](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md) — operator-loaded-key precedent for the backup domain.
 - [ADR-0022](../../adr/0022-binary-storage-b2-compliance-object-lock.md) — durability layer (unchanged by ADR-0024; bucket primitives operate on opaque bytes).
-- [DATA.md §Layer 3](../../../DATA.md#layer-3--binary-attachments-provider-enforced-durability) — bird's-eye map across all three data layers.
+- [DATA.md §Layer 3](../../../DATA.md#layer-3--binary-attachments-provider-enforced-durability--e2e) — bird's-eye map across all three data layers.
 - [docs/ops/backup/](../backup/overview.md) — sibling runbook for the backup drill identity.

@@ -5,13 +5,15 @@
  *   - Per-user landing choice (the "default view" after login, §8.1.2)
  *
  * Both the nav renderer (`Header`) and the route guard (`App`) consume
- * this table, so the per-role matrix in `docs/spec/ui/index.md §8.7.1` cannot
- * drift between what the user sees and what the guard allows.
+ * this table, so what the user sees and what the guard allows cannot
+ * disagree. Agreement with the per-role matrix in
+ * `docs/spec/ui/index.md §8.7.1` is maintained by hand — unlike the
+ * permission matrix, nothing generates or CI-checks it (see #286).
  *
  * Design echoes ADR-0019: explicit, declarative predicate functions
  * over hidden role branching. The spec mixes role-based gating (Kanban,
  * Kalender, Projekte, Kunden) with permission-based gating (Benutzer →
- * `user:read`, Daten → `data:export`), so one predicate shape covers
+ * `user:manage`, Daten → `data:export`), so one predicate shape covers
  * both uniformly.
  *
  * Note on layering: this module sits in the config layer per

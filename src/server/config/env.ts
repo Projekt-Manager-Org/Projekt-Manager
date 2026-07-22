@@ -79,6 +79,10 @@ export const envSchema = z.object({
       )
       .optional(),
   ),
+  // MinIO SigV4 credentials. Optional in the shared schema so the
+  // backup-runner path (which never reads them) isn't rejected; mandatory
+  // for the app server — presence enforced by `assertAppServerEnv()` /
+  // `checkAppServerEnv()`.
   STORAGE_ACCESS_KEY: z.string().optional(),
   STORAGE_SECRET_KEY: z.string().optional(),
   // S3 region used for SigV4 signing. MinIO accepts any value (`us-east-1`

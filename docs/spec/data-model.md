@@ -147,6 +147,8 @@ Session validation must verify that the referenced user is still active (`active
 
 **Password-change session side effects:** when a user changes their own password, all **other** sessions for that user are invalidated (the current session survives). When an administrator resets another user's password, **all** sessions for the target user are invalidated.
 
+**Session termination.** A session ends on: expiry (`expiresAt` reached), explicit logout — which invalidates that one session only, not the user's other sessions ([api.md §14.2.1](api.md#1421-authentication)) — the password-change / admin-reset side effects above, or account deactivation, which invalidates all of the user's sessions ([api.md §14.2.3](api.md#1423-user-management)).
+
 ### 5.5 Audit Metadata
 
 All persisted entities follow a common audit metadata pattern:
@@ -438,8 +440,8 @@ Design notes:
 - **`stateFilter` semantics.** Non-null only on the two transition event classes. Matches when `after.status` equals the filter; null means match regardless of target state. A non-null filter on a non-transition class is rejected at validation time.
 - **`recipientSpec` is additive.** `roles`, `includeAssignedWorkers`, and `userIds` are unioned. An empty spec is rejected at validation so an enabled rule always has a non-empty candidate set before dedup.
 - **`includeAssignedWorkers` scope.** Only meaningful when the event carries a `projectId` (`project.transition_*`, `project.archived`, `project.assignment_changed`, `project.attachment_added`). Rejected at validation for `backup.failed` and `disk.threshold_reached`.
-- **No templates in the model.** Per-event German message templates are code-owned in the config layer. See [ADR-0023 Alternatives](../adr/0023-notification-rules-db-stored-closed-event-catalog.md#full-freeform-predicate-dsl-with-user-editable-message-templates).
-- **No priority / no override.** Multiple matches produce a recipient **union**, deduplicated by `UserAccount.id`. No priority field, override flag, or AND/OR tree — see [ADR-0023 Alternatives](../adr/0023-notification-rules-db-stored-closed-event-catalog.md#rule-matching-with-priority--override--and-or-trees).
+- **No templates in the model.** Per-event German message templates are code-owned in the config layer. See [ADR-0023 Alternatives](../adr/0023-notification-rules-db-stored-closed-event-catalog.md#freeform-predicate-dsl-over-payload).
+- **No priority / no override.** Multiple matches produce a recipient **union**, deduplicated by `UserAccount.id`. No priority field, override flag, or AND/OR tree — see [ADR-0023 Alternatives](../adr/0023-notification-rules-db-stored-closed-event-catalog.md#rule-matching-with-priority--override).
 - **Invalid-recipient resilience.** A resolved recipient whose `UserAccount` is missing or `active = false` is skipped at dispatch; remaining recipients proceed. Zero live recipients completes without error.
 - **Rule take-effect.** A rule change affects the next event committed after the change; in-flight events use the rule set read at their own commit.
 - **Configuration layering.** Each `NotificationEventClass`'s German activity-feed description lives in the `[C]` catalogue ([architecture.md §12.2](architecture.md#122-company-configurable-settings)) under the audit activity-feed rendering entry — already keyed on `(action, payload)`, the per-event identity the publisher emits.
