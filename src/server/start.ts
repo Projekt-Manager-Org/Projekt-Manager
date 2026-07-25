@@ -10,7 +10,6 @@
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fastifyStatic from '@fastify/static';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { buildApp } from './app.js';
@@ -44,7 +43,7 @@ import { assertBinaryIdentityLoaded } from './storage/binaryIdentity.js';
 import { createStorageClient } from './storage/client.js';
 import { assertStorageBucketSafe } from './storage/safety.js';
 import { probeStagingDurability } from './config/assertStagingDurable.js';
-import { staticCacheControl } from './staticCache.js';
+import { registerStaticAssets } from './staticCache.js';
 
 const HOST = '0.0.0.0';
 
@@ -389,14 +388,7 @@ async function start(): Promise<void> {
         `dist/ not found at ${distFolder}. Run 'npm run build' before starting in production.`,
       );
     }
-    await app.register(fastifyStatic, {
-      root: distFolder,
-      wildcard: false,
-      cacheControl: false,
-      setHeaders: (reply, filePath) => {
-        reply.header('Cache-Control', staticCacheControl(filePath));
-      },
-    });
+    await registerStaticAssets(app, distFolder);
 
     installSpaAwareNotFoundHandler(app);
   } else {
