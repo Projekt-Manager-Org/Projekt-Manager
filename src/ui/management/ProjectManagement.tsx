@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import { STATE_CONFIGS, STATE_FALLBACK_COLOR } from '@/config/stateConfig';
 import type { Project } from '@/domain/types';

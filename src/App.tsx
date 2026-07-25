@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
-import { Routes, Route, Navigate, useInRouterContext, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useInRouterContext, useLocation } from 'react-router';
 import { useAuthStore } from '@/state/authStore';
 import { useProjectStore } from '@/state/projectStore';
 import { useUIStore } from '@/state/uiStore';

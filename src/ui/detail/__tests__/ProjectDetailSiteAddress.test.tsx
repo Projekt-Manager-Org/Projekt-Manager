@@ -21,7 +21,7 @@
 
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import type { ApiResult } from '@/api/client';
 import type { Address, Customer, Project } from '@/domain/types';

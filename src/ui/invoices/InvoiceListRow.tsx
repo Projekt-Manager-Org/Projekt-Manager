@@ -28,7 +28,7 @@
  * project), which is the per-project block's responsibility.
  */
 
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import { buildInvoiceDownloadFilename, type Invoice } from '@/domain/invoice';
 import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';

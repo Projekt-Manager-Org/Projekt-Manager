@@ -25,7 +25,7 @@
  * union mirrored from `src/domain/types.ts`'s `ViewMode` — the
  * `ROUTE_VIEWS` const below asserts exact mirror at compile time.
  */
-import { matchPath } from 'react-router-dom';
+import { matchPath } from 'react-router';
 import type { Role } from '@/config/permissions';
 import { hasPermission } from '@/config/permissions';
 import { STRINGS } from '@/config/strings';

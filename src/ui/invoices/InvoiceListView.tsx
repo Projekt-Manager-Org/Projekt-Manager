@@ -27,7 +27,7 @@
  */
 
 import { useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import { usePermission } from '@/hooks/usePermission';
 import { orderInvoicesWithStornoGrouping } from '@/domain/invoiceGrouping';

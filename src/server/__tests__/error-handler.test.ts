@@ -19,13 +19,13 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import fastifyStatic from '@fastify/static';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from '../app.js';
 import { installNotFoundHandler, installSpaAwareNotFoundHandler } from '../error-handler.js';
+import { registerStaticAssets } from '../staticCache.js';
 
 const TINY_BODY_LIMIT = 100;
 
@@ -198,7 +198,9 @@ describe('production composition — SPA-aware not-found handler', () => {
     writeFileSync(join(distDir, 'index.html'), '<!doctype html><body>SPA</body>');
 
     app = buildApp({ logger: false, rateLimit: false });
-    await app.register(fastifyStatic, { root: distDir, wildcard: false });
+    // Production helper, not a hand-rolled option set — otherwise this
+    // proves the fallback under options start.ts does not use.
+    await registerStaticAssets(app, distDir);
     installSpaAwareNotFoundHandler(app);
     await app.ready();
   });
@@ -243,9 +245,9 @@ describe('start.ts call-site pin — dist/ serving gated on isProduction, not ex
   // unrelated `if (isProduction)` used earlier in start.ts for cookie config.
   const distGateIdx = stripped.indexOf('existsSync(distFolder)');
   const ifProdIdx = stripped.lastIndexOf('if (isProduction)', distGateIdx);
-  const registerIdx = stripped.indexOf('app.register(fastifyStatic', distGateIdx);
+  const registerIdx = stripped.indexOf('registerStaticAssets(app', distGateIdx);
 
-  it('gates both the missing-dist throw and the fastifyStatic registration on isProduction', () => {
+  it('gates both the missing-dist throw and the static registration on isProduction', () => {
     expect(distGateIdx).toBeGreaterThan(-1);
     expect(ifProdIdx).toBeGreaterThan(-1);
     expect(registerIdx).toBeGreaterThan(-1);

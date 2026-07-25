@@ -29,7 +29,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import type { WorkflowState } from '@/config/stateConfig';
 import type { Invoice } from '@/domain/invoice';

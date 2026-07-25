@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import { STATE_CONFIG_MAP } from '@/config/stateConfig';
 import { useProjectStore, type FetchProjectOutcome } from '@/state/projectStore';

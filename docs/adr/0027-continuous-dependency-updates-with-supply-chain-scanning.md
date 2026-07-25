@@ -28,7 +28,7 @@ Constraints:
 
 - **No commercial budget.** Snyk / Mend / Sonatype IQ tiers are out of scope for an LLM-driven solo project.
 - **Single-tenant dev/eval environment.** SLSA / SBOM / `cosign` provenance are appropriate when shipping to enterprise customers or distributing artifacts publicly; the trigger for adopting them is going multi-tenant or third-party-distributing, neither of which is the current state.
-- **Test confidence is high.** Unit + integration + Playwright E2E gates every PR. Auto-merge on green CI is a credible default for non-major bumps.
+- **Test confidence is high for unit + integration, absent for E2E.** `ci.yml`'s `lint` + `check` gate unit + integration on every PR. Playwright is `workflow_dispatch`-only ([`e2e.yml`](../../.github/workflows/e2e.yml)), so **no PR carries an E2E signal**. Auto-merge on green CI is a credible default for patch/minor; majors need the E2E run performed by hand ([dep-management.md § Weekly wrangler](../ops/dep-management.md#weekly-wrangler) step 4).
 - **Dependabot Alerts is already on** at the repo Security tab.
 
 Forces:
@@ -102,7 +102,7 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
 ### Negative
 
 - **PR queue volume.** A weekly window with grouping should land 3–8 PRs/week in steady state. The "weekly wrangler" hat is ~30 min/week.
-- **Auto-merge depends on CI confidence.** If Playwright E2E flakes, auto-merge produces false-green merges. No flake-quarantine practice is documented today — explicit gap. Interim mitigation: auto-merge stays off for major PRs (the highest-risk class). A future iteration revisits this once a quarter of CI history is available, at which point a tuning rule and its implementing mechanism land together — committing to a numeric threshold here without the calculator that enforces it would be exactly the placeholder-as-policy class the project avoids.
+- **Auto-merge runs with no E2E signal.** Playwright is not in the PR gate, so an auto-merged patch/minor lands on unit + integration evidence alone; a browser-level regression reaches `main` and surfaces only at the next manual E2E run. Mitigations today: auto-merge stays off for majors (the highest-risk class), and § Weekly wrangler step 4 makes the manual E2E run mandatory for them — both leave the patch/minor stream uncovered. **Open gap, not a settled trade:** the real fix is Playwright in the PR gate, blocked on the runtime + flake-surface argument recorded in `e2e.yml`'s header, which in turn is blocked on a flake-quarantine practice that does not exist yet.
 - **Renovate config drift.** A `.github/renovate.json` that goes stale (new dep types, ecosystem changes) silently degrades coverage. Mitigated by the quarterly review explicitly checking the config.
 - **OSV-Scanner / Trivy false positives** for advisories on dead code paths (cf. the original ADR-0007 case). Mitigated by a structured allowlist — never a blanket `--omit=dev`. The two scanners use different file formats but the same review-contract fields; both are enforced in CI by `scripts/check-allowlist-schema.sh` (~100ms; runs before the scanner gates so a sloppy entry fails fast). Required fields per entry:
   - **`id`** — the advisory or rule identifier (any non-empty string; Trivy and OSV-Scanner validate the ID shape themselves).
@@ -140,6 +140,12 @@ Acknowledged tradeoff: PR-time image-vuln gating coverage is the union of `docke
 
 - The `vv-adr` skill template is updated; retrofits to the existing ADRs in the included set land in the same change as this ADR.
 - No env-var or schema impact.
+
+## Amendments
+
+### 2026-07-25 — E2E is not a PR gate
+
+§Constraints and §Negative both assumed Playwright gates every PR. It does not — [`e2e.yml`](../../.github/workflows/e2e.yml) is `workflow_dispatch`-only, so auto-merged patch/minor bumps carry no E2E signal. Both passages corrected in-place; no decision changed.
 
 ## Dep lifecycle health (as of 2026-05-15)
 

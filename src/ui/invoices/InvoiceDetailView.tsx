@@ -30,7 +30,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import type { Invoice } from '@/domain/invoice';
 import { buildInvoiceDownloadFilename, labelForTaxMode } from '@/domain/invoice';
