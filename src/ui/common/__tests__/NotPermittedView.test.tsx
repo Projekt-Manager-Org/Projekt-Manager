@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router';
 import type { AuthUser } from '@/api/client';
 import { STRINGS } from '@/config/strings';
 

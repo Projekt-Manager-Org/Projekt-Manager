@@ -11,7 +11,7 @@
  * `NotPermittedView` before this component mounts).
  */
 import { useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useAuthStore } from '@/state/authStore';
 import { useProjectStore } from '@/state/projectStore';
 import { STATE_CONFIG_MAP } from '@/config/stateConfig';

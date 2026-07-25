@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { STATE_CONFIG_MAP } from '@/config/stateConfig';
 import { STRINGS } from '@/config/strings';
 import type { Project } from '@/domain/types';

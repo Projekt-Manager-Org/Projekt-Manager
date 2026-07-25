@@ -10,7 +10,7 @@
  * existing callers keep a single import site.
  */
 
-import { useInRouterContext, useNavigate, useLocation } from 'react-router-dom';
+import { useInRouterContext, useNavigate, useLocation } from 'react-router';
 import { useUIStore } from '@/state/uiStore';
 import { viewFromPath, pathFromView, type RouteView } from '@/config/routes';
 import type { ViewMode } from '@/domain/types';

@@ -393,8 +393,8 @@ async function start(): Promise<void> {
       root: distFolder,
       wildcard: false,
       cacheControl: false,
-      setHeaders: (res, filePath) => {
-        res.setHeader('Cache-Control', staticCacheControl(filePath));
+      setHeaders: (reply, filePath) => {
+        reply.header('Cache-Control', staticCacheControl(filePath));
       },
     });
 
