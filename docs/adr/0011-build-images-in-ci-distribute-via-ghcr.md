@@ -73,7 +73,7 @@ Trade-offs accepted:
 - **Smoke runs only on dispatch.** Promote re-tags identical bytes; the smoke that ran against those bytes is the smoke for the artifact. A runner-environment difference between dispatch and merge runners is theoretically possible but the bytes are the same.
 - **Trivy DB binds to dispatch time.** CVEs published between dispatch and merge slip past until the daily `security-scheduled.yml` catches them. Dispatch-to-merge is typically minutes to hours.
 - **GHCR tag count.** New `sha-<pr-tip>` tags accumulate per dispatched PR in addition to `sha-<merge-sha>` per merge. ~2× under existing retention.
-- **Smoke runs after the push.** The composite pushes both images, then smokes — deliberately, so the smoke exercises the real `compose pull` path rather than local tags. A smoke failure therefore leaves a drawable `sha-<commit>` on GHCR: the run goes red, but `scripts/deploy.sh <sha>` would still resolve it. Trivy, by contrast, gates before the push.
+- **Smoke runs after the push.** The composite pushes both images, then smokes — deliberately, so the smoke exercises the real `compose pull` path rather than local tags. A smoke failure therefore leaves a pullable `sha-<commit>` on GHCR: the run goes red, but `scripts/deploy.sh <sha>` would still resolve it. Trivy gates its own image's push, so a scan failure never reaches that state — an app-scan failure pushes nothing, and a backup-scan failure leaves the app tag published but no backup tag, which `deploy.sh` (`compose --profile backup pull app backup`) refuses.
 
 **Tagging:**
 

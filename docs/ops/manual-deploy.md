@@ -16,7 +16,7 @@ operator (over WireGuard):                        v
     -> drill-key reload prompt (when /run/drill-key/identity is empty)
 ```
 
-The merge-time `promote` job re-tags the dispatched artifact instead of rebuilding (~30s, no rescan, no smoke — the bytes were validated end-to-end during dispatch). It only fires when GHCR holds an image for the **final** PR tip, so **re-dispatch after the last commit lands** — a dispatch fired mid-PR is orphaned by every subsequent review fix, rebase, or force-push. Otherwise — dispatch skipped (Renovate auto-merge, direct push to main) or stale — `promote` falls through to a full rebuild via the same composite action: ~5 min, with a `::warning::` in the run log naming the failed guard. See ADR-0011 §"Build once, promote on merge" for the full topology.
+The merge-time `promote` job re-tags the dispatched artifact instead of rebuilding (~30s, no rescan, no smoke — the bytes were validated end-to-end during dispatch). It only fires when GHCR holds an image for the **final** PR tip, so **re-dispatch after the last commit lands**. Otherwise — dispatch skipped (Renovate auto-merge, direct push to main) or stale — `promote` falls through to a full rebuild via the same composite action: ~5 min, with a `::warning::` in the run log naming the failed guard. See ADR-0011 §"Build once, promote on merge" for the full topology.
 
 Have `~/secrets/age-backup.key` open on the operator workstation before invoking the deploy — when the backup container was recreated by the deploy, the script will prompt to paste the age private identity into the container's tmpfs (AC-175). See [backup/drills.md](backup/drills.md) for the threat model.
 
