@@ -25,7 +25,7 @@ A `backup` compose service that, on every scheduled tick, produces three R2 obje
 └──────────────────────┘                            └──────────────────────────┘
 ```
 
-Every backup is verified before it is uploaded, and again from R2 whenever the operator's key is loaded — see [Verify tiers](#verify-tiers).
+Every backup is verified before it is uploaded (**Tier 1**). A separate drill re-verifies the _newest_ R2 artifact whenever the operator's key is loaded (**Tier 2**) — see [Verify tiers](#verify-tiers).
 
 **Retention is linear.** R2 bucket lock on `daily/` + R2 lifecycle rule give a rolling window of encrypted history. No GFS (grandfather-father-son tiered promotion), no rotation script. Canonical values and rationale: [ADR-0020 §Retention](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention); the GFS alternative and why it was ruled out: [ADR-0020 §GFS-style rotation](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#gfs-style-rotation-7-daily-4-weekly-12-monthly).
 
@@ -49,7 +49,8 @@ croner reads `timezone: 'Europe/Berlin'` explicitly, so the schedule stays corre
 A weekday 09:00 tick, end to end:
 
 ```
-09:00  manifest + pg_dump -Fc          one REPEATABLE READ snapshot, TimeZone UTC
+09:00  manifest   REPEATABLE READ, read-only, TimeZone UTC
+       pg_dump -Fc   separate connection, its own snapshot (#297)
        └─ Tier 1  pg_restore into an ephemeral Postgres (initdb, socket in /tmp)
                   inside this container → recompute manifest → compare
           ✗ mismatch → nothing is uploaded; lastBackupOk=false, lastError names the table
@@ -59,9 +60,10 @@ A weekday 09:00 tick, end to end:
                      → ephemeral Postgres → compare against the decrypted sidecar
 ```
 
-Three consequences that change how the status row reads:
+Four consequences that change how the status row reads:
 
 - **Tier 1 is a gate, not a receipt.** It runs _before_ the upload, so a corrupt dump never reaches R2 ([AC-165](../../spec/verification.md#1522-backup-and-recovery)).
+- **A Tier 1 mismatch is not proof of corruption.** The manifest transaction commits before `pg_dump` takes its own snapshot, so an ordinary write in that window (`sessions`, `audit_log`) diverges the two and fails the tick — [#297](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/297). Re-run before treating it as a data-integrity event: [troubleshooting.md](troubleshooting.md).
 - **Tier 2 is decoupled from the tick before it.** It verifies the lexically-newest `daily/` key, which is the 09:00 artifact only if 09:00 succeeded. `lastDrillOk=true` does not imply `lastBackupOk=true` — read both.
 - **Tier 2 is off until the key is loaded.** The identity lives in tmpfs and dies with the container, so every deploy or restart disables drills until it is re-pasted ([drills.md](drills.md)). A skip writes no status at all; it is not a failure.
 
