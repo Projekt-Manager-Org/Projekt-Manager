@@ -7,14 +7,14 @@ Operator navigation page for the Layer 2 full-state backup feature ([ADR-0020](.
 A `backup` compose service that, on every scheduled tick, produces three R2 objects and updates a status row in the application database:
 
 ```
-┌──────────────────────┐   pg_dump -Fc + manifest   ┌──────────────────────────┐
-│  backup container    │ ─────────────────────────▶ │  Cloudflare R2 bucket    │
-│  croner schedule     │  age-encrypt (recipient)   │  projekt-manager-backups │
-│  Tier 1 verify       │                            │                          │
-│   (ephemeral pg)     │ ─── status/latest.json ──▶ │  ├ daily/*.dump.age      │
-│  Tier 2 verify       │                            │  ├ daily/*.manifest.age  │
-│   (if key loaded)    │                            │  └ status/latest.json    │
-└──────────────────────┘                            └──────────────────────────┘
+┌──────────────────────┐   pg_dump -Fc + manifest   ┌──────────────────────────────┐
+│  backup container    │ ─────────────────────────▶ │  Cloudflare R2 bucket        │
+│  croner schedule     │  age-encrypt (recipient)   │  projekt-manager-backups     │
+│  Tier 1 verify       │                            │                              │
+│   (ephemeral pg)     │ ─── status/latest.json ──▶ │  ├ daily/*.dump.age          │
+│  Tier 2 verify       │                            │  ├ daily/*.manifest.json.age │
+│   (if key loaded)    │                            │  └ status/latest.json        │
+└──────────────────────┘                            └──────────────────────────────┘
            │
            │ upsert meta_backup_status
            ▼
@@ -25,7 +25,7 @@ A `backup` compose service that, on every scheduled tick, produces three R2 obje
 └──────────────────────┘                            └──────────────────────────┘
 ```
 
-Every backup is verified immediately after creation (**Tier 1**). Whenever the operator's decryption key is loaded into the VPS tmpfs, every backup is also verified end-to-end from the encrypted R2 artifact (**Tier 2**). A missing key makes Tier 2 skip gracefully; it is not a failure.
+Every backup is verified before it is uploaded, and again from R2 whenever the operator's key is loaded — see [Verify tiers](#verify-tiers).
 
 **Retention is linear.** R2 bucket lock on `daily/` + R2 lifecycle rule give a rolling window of encrypted history. No GFS (grandfather-father-son tiered promotion), no rotation script. Canonical values and rationale: [ADR-0020 §Retention](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention); the GFS alternative and why it was ruled out: [ADR-0020 §GFS-style rotation](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#gfs-style-rotation-7-daily-4-weekly-12-monthly).
 
@@ -40,9 +40,30 @@ Every backup is verified immediately after creation (**Tier 1**). Whenever the o
 
 ## Cadence
 
-The in-process `croner` (npm in-process cron scheduler) schedule registered by `src/server/backup-runner.ts` (`schedule` subcommand — the container's PID 1) runs the backup five times on weekdays (09:00, 12:00, 15:00, 18:00, 21:00 Europe/Berlin) and once on weekends (12:00). The drill service follows the same schedule, offset by 2 minutes so it never starts in the same second as the backup it verifies. Interval is a **[C]** value per [spec architecture.md §11.10](../../spec/architecture.md#1110-full-state-backup-layer-2) — the `SCHEDULES` constant in that file, not an env var. Changing the cadence is a code edit plus a redeploy, not an operator setting.
+The in-process `croner` (npm in-process cron scheduler) schedule registered by `src/server/backup-runner.ts` (`schedule` subcommand — the container's PID 1) runs the backup five times on weekdays (09:00, 12:00, 15:00, 18:00, 21:00 Europe/Berlin) and once on weekends (12:00). The drill follows the same schedule, offset by 2 minutes so it never starts in the same second as the backup tick. Interval is a **[C]** value per [spec architecture.md §11.10](../../spec/architecture.md#1110-full-state-backup-layer-2) — the `SCHEDULES` constant in that file, not an env var. Changing the cadence is a code edit plus a redeploy, not an operator setting.
 
 croner reads `timezone: 'Europe/Berlin'` explicitly, so the schedule stays correct across DST regardless of the container's `TZ` env var. `TZ=Europe/Berlin` is still set on the service for human-readable log timestamps.
+
+## Verify tiers
+
+A weekday 09:00 tick, end to end:
+
+```
+09:00  manifest + pg_dump -Fc          one REPEATABLE READ snapshot, TimeZone UTC
+       └─ Tier 1  pg_restore into an ephemeral Postgres (initdb, socket in /tmp)
+                  inside this container → recompute manifest → compare
+          ✗ mismatch → nothing is uploaded; lastBackupOk=false, lastError names the table
+          ✓ → age-encrypt → PUT daily/* → meta_backup_status → status/latest.json
+
+09:02  Tier 2 drill  GET newest daily/*.dump.age → age -d (tmpfs identity)
+                     → ephemeral Postgres → compare against the decrypted sidecar
+```
+
+Three consequences that change how the status row reads:
+
+- **Tier 1 is a gate, not a receipt.** It runs _before_ the upload, so a corrupt dump never reaches R2 ([AC-165](../../spec/verification.md#1522-backup-and-recovery)).
+- **Tier 2 is decoupled from the tick before it.** It verifies the lexically-newest `daily/` key, which is the 09:00 artifact only if 09:00 succeeded. `lastDrillOk=true` does not imply `lastBackupOk=true` — read both.
+- **Tier 2 is off until the key is loaded.** The identity lives in tmpfs and dies with the container, so every deploy or restart disables drills until it is re-pasted ([drills.md](drills.md)). A skip writes no status at all; it is not a failure.
 
 ## References
 
