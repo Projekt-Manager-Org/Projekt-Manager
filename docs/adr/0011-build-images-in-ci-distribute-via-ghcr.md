@@ -54,6 +54,9 @@ Industry pattern (Vercel, Netlify, Cloudflare Pages, AWS CodePipeline, Heroku): 
 Flow:
 
 1. Operator opens PR, fires `workflow_dispatch` on the PR branch. `build-and-push` runs the composite: app + backup built, Trivy-scanned, smoke-tested end-to-end, pushed to GHCR as `sha-<pr-tip>` + `<branch-slug>`. Operator deploys to VPS for validation.
+
+   **Precondition: the promotable artifact is the one built from the _final_ PR tip.** Guard 3 resolves `sha-<pr-tip>` at merge time, so any commit pushed after a dispatch — review fix, rebase, force-push — orphans that artifact and sends the merge down the rebuild path. Re-dispatch once the PR is final. Mid-PR dispatches for VPS testing stay useful; they are simply not the ones that get promoted.
+
 2. PR merges to `main` (squash by convention). `promote` fires on `push: main`. Three guards:
    - **PR discovery** — `gh api repos/.../commits/${GITHUB_SHA}/pulls` must return the PR's head SHA. Direct pushes to `main` (hot-fix) return empty → fallback.
    - **Tree equality** — `tree(merge-sha) == tree(pr-tip)`. Squash merges preserve trees; merge-commit / rebase strategies (also enabled on the repo) may pull in `main` and diverge → fallback.
@@ -62,6 +65,8 @@ Flow:
 4. Fallback: call the same composite the dispatch ran. ~5 min on main's (cold-ish) cache scope. Operators see a `::warning::` in the run log explaining which guard failed.
 
 PR-tip discovery is via GitHub's merge metadata (`gh api .../commits/<sha>/pulls`) and not via a PR label. A label channel would persist past a force-push-then-merge and could promote stale bytes; using the API ties discovery to the actual merge.
+
+Promotion is exact-artifact only. `GIT_SHA` is baked into the client bundle for the footer version chip, so every commit yields distinct image bytes — there is no "close enough" ancestor to promote. Guard 3's exact-SHA lookup is the only sound key, and a rebuild after a post-dispatch commit is correct behavior, not waste.
 
 Trade-offs accepted:
 
