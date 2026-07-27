@@ -582,6 +582,11 @@ jobs:
           # Exercise the backup profile once so variable substitution
           # inside the backup service's environment block is covered.
           check "prod compose, backup profile" -f docker-compose.yml --profile backup
+          # …and once with the dev overlay, which is where the backup
+          # service's `build:` stanza lives. The prod-only case above
+          # never renders it, so a typo in its context/args would ship
+          # unnoticed until a developer ran the build by hand.
+          check "dev overlays, backup profile" -f docker-compose.yml -f docker-compose.minio.yml -f docker-compose.dev.yml --profile backup
           echo "Compose files validated."
 
       - name: Set up Docker Buildx

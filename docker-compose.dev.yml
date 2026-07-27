@@ -1,5 +1,6 @@
 # Development overlay — exposes service ports directly, builds the app
-# image from source, and gates Caddy off (no DNS-01 token in dev).
+# and backup images from source, and gates Caddy off (no DNS-01 token
+# in dev).
 #
 # The MinIO mirror that stands in for B2 in dev lives in its own file
 # (`docker-compose.minio.yml`) so the CI smoke test can attach the same
@@ -36,6 +37,38 @@ services:
     # is unaffected.
     profiles:
       - containerised-app
+
+  backup:
+    # Build from source in dev instead of pulling the prod image from
+    # GHCR, mirroring the `app` entry above. Without this, exercising
+    # the backup image locally means waiting for a merge: CI pushes
+    # `projekt-manager-backup:sha-<sha>` only on push/dispatch, so a
+    # feature branch has no tag to pull.
+    #
+    # Unlike `app`, this build is NOT self-contained. Dockerfile.backup's
+    # first stage is `FROM ghcr.io/.../projekt-manager:${APP_IMAGE_TAG}`,
+    # which resolves from the LOCAL image store when the `app` build
+    # above has already produced that exact tag, and otherwise falls
+    # through to a GHCR pull that 401s on a tag which does not exist yet.
+    # Compose has no build-ordering primitive (`depends_on` orders
+    # startup, not builds), so the order is the caller's:
+    #
+    #   docker compose build app
+    #   docker compose --profile backup build backup
+    #
+    # CI does not use this path. The `docker` job aliases the same
+    # `FROM` to an OCI layout exported from its own app build, via
+    # buildx `build-contexts` (ADR-0027 §"Backup image at PR time") —
+    # a named-context form compose cannot express.
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+      # Not inherited: compose passes no build args implicitly, and the
+      # Dockerfile deliberately declares `ARG APP_IMAGE_TAG` with no
+      # default (H2 audit — a stale mutable default could ship the wrong
+      # code), so an omitted arg fails the build rather than resolving.
+      args:
+        APP_IMAGE_TAG: ${APP_IMAGE_TAG}
 
   db:
     ports:
