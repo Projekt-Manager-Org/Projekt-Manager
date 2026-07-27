@@ -49,8 +49,8 @@ croner reads `timezone: 'Europe/Berlin'` explicitly, so the schedule stays corre
 A weekday 09:00 tick, end to end:
 
 ```
-09:00  manifest   REPEATABLE READ, read-only, TimeZone UTC
-       pg_dump -Fc   separate connection, its own snapshot (#297)
+09:00  manifest   REPEATABLE READ, read-only, TimeZone UTC — snapshot exported
+       pg_dump -Fc   separate connection, --snapshot=<id> → same view
        └─ Tier 1  pg_restore into an ephemeral Postgres (initdb, socket in /tmp)
                   inside this container → recompute manifest → compare
           ✗ mismatch → nothing is uploaded; lastBackupOk=false, lastError names the table
@@ -63,7 +63,7 @@ A weekday 09:00 tick, end to end:
 Four consequences that change how the status row reads:
 
 - **Tier 1 is a gate, not a receipt.** It runs _before_ the upload, so a corrupt dump never reaches R2 ([AC-165](../../spec/verification.md#1522-backup-and-recovery)).
-- **A Tier 1 mismatch is not proof of corruption.** The manifest transaction commits before `pg_dump` takes its own snapshot, so an ordinary write in that window (`sessions`, `audit_log`) diverges the two and fails the tick — [#297](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/297). Re-run before treating it as a data-integrity event: [troubleshooting.md](troubleshooting.md).
+- **A Tier 1 mismatch means the dump diverged, not that traffic was busy.** The manifest transaction exports its snapshot and `pg_dump` imports it, so ordinary writes during the tick land on both sides or neither ([AC-344](../../spec/verification.md#1522-backup-and-recovery)). Treat a mismatch as a data-integrity event: [troubleshooting.md](troubleshooting.md).
 - **Tier 2 is decoupled from the tick before it.** It verifies the lexically-newest `daily/` key, which is the 09:00 artifact only if 09:00 succeeded. `lastDrillOk=true` does not imply `lastBackupOk=true` — read both.
 - **Tier 2 is off until the key is loaded.** The identity lives in tmpfs and dies with the container, so every deploy or restart disables drills until it is re-pasted ([drills.md](drills.md)). A skip writes no status at all; it is not a failure.
 

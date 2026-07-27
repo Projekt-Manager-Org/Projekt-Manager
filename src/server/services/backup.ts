@@ -5,10 +5,13 @@
  * and ADR-0020. This service:
  *
  *   1. Computes the per-table manifest (row count + deterministic content
- *      checksum) inside a serializable read transaction. The checksum
- *      formula follows ADR-0020 §Decision verbatim so two runs on the
- *      same DB produce byte-equal manifests (AC-174).
- *   2. Runs `pg_dump -Fc` via a subprocess to produce the DB dump.
+ *      checksum) inside a REPEATABLE READ read-only transaction. The
+ *      checksum formula follows ADR-0020 §Decision verbatim so two runs
+ *      on the same DB produce byte-equal manifests (AC-174).
+ *   2. Exports that transaction's snapshot and runs `pg_dump -Fc
+ *      --snapshot=<id>` inside it, so the dump and the manifest observe
+ *      one DB state and an ordinary concurrent write cannot fake a
+ *      Tier 1 mismatch (AC-344).
  *   3. Restores the dump into an ephemeral Postgres (spawned in-process
  *      via `initdb` + `postgres -k /tmp`) and recomputes the manifest to
  *      verify Tier 1 — mismatch fails the run, no upload (AC-165).
@@ -88,8 +91,18 @@ export type Encryptor = (plaintext: Uint8Array) => Promise<Uint8Array>;
  * tests omit this and fall back to the manifest-bytes stand-in described
  * in `defaultDumpSource`. Exposed as an injection point so tests or
  * alternative implementations can substitute without pulling a process.
+ *
+ * `snapshotId` comes from `pg_export_snapshot()` on the still-open
+ * manifest transaction. An implementation reading the DB MUST import it
+ * so its view matches the source manifest (AC-344); one that fabricates
+ * bytes may ignore it.
+ *
+ * Called while that transaction holds a pooled client, so an
+ * implementation that checks out several clients of its own from the
+ * same pool is a starvation risk. The production one is a subprocess
+ * with its own connection.
  */
-export type DumpSource = () => Promise<Uint8Array>;
+export type DumpSource = (snapshotId: string) => Promise<Uint8Array>;
 
 /**
  * Ephemeral-DB verify surface. Production: restore the dump into a
@@ -112,7 +125,8 @@ export interface RunBackupOptions {
    */
   manifestPerturb?: (m: Manifest) => Manifest;
   /**
-   * Injectable dump source. When omitted, the service re-serializes the
+   * Injectable dump source, invoked with the manifest transaction's
+   * exported snapshot id. When omitted, the service re-serializes the
    * manifest bytes as the "dump" — enough for integration tests that
    * only assert the upload surface. Production wiring passes
    * `pgDumpSource(databaseUrl)`.
@@ -218,13 +232,15 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
   await ensureBackupStatusRow(opts.db);
 
   // ---------------------------------------------------------------
-  // Source manifest — computed in a REPEATABLE READ snapshot so the
-  // dump and the manifest observe the same DB state (AC-174).
+  // Source manifest + dump — one REPEATABLE READ snapshot, exported to
+  // the dump so both observe the same DB state (AC-344). The
+  // transaction has to outlive the dump: an exported snapshot is
+  // importable only until the transaction that exported it ends.
   // ---------------------------------------------------------------
   let sourceManifest: Manifest;
   let dump: Uint8Array;
   try {
-    sourceManifest = await opts.db.transaction(
+    ({ manifest: sourceManifest, dump } = await opts.db.transaction(
       async (tx) => {
         // Pin the transaction's session TimeZone to UTC. The manifest
         // checksum is `md5(row(t.*)::text)`, which serializes
@@ -237,15 +253,36 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
         // LOCAL` scopes the change to this transaction so we never
         // leak a TimeZone mutation back to the pooled connection.
         await tx.execute(sql`SET LOCAL TIME ZONE 'UTC'`);
-        return computeManifest(tx);
+
+        // A REPEATABLE READ transaction keeps one snapshot for its whole
+        // lifetime, so what is exported here and what `computeManifest`
+        // reads below are the same view by construction — the order of
+        // the two is free.
+        const exported = await tx.execute(sql`SELECT pg_export_snapshot() AS id`);
+        const snapshotId = (exported.rows[0] as { id: string } | undefined)?.id;
+        if (!snapshotId) {
+          throw new Error('pg_export_snapshot() returned no snapshot id');
+        }
+
+        const manifest = await computeManifest(tx);
+        const dumpSource = opts.dumpSource ?? (async () => defaultDumpSource(manifest));
+
+        // Awaited inside the transaction on purpose. Committing once the
+        // dump is merely spawned would race its `SET TRANSACTION
+        // SNAPSHOT`, and there is no clean signal for "the dump has
+        // attached" short of polling `pg_stat_activity`.
+        //
+        // Cost: this holds the cluster's xmin horizon back until the
+        // dump finishes. `pg_dump` pins it for its own duration either
+        // way; the fix only extends that pin backwards across the
+        // manifest scan.
+        return { manifest, dump: await dumpSource(snapshotId) };
       },
       {
         isolationLevel: 'repeatable read',
         accessMode: 'read only',
       },
-    );
-    const dumpSource = opts.dumpSource ?? (() => defaultDumpSource(sourceManifest));
-    dump = await dumpSource();
+    ));
   } catch (err) {
     const message = errorMessage(err);
     await updateBackupStatus(opts.db, {
@@ -435,7 +472,40 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
 // ---------------------------------------------------------------
 
 /**
- * Production dump source: spawn `pg_dump -Fc` with discrete libpq env
+ * How long `pg_dump` may wait for a table lock before it gives up and
+ * fails the run. Milliseconds — the one format every server version
+ * accepts for `--lock-wait-timeout`.
+ *
+ * Bounded on purpose, and load-bearing. The manifest transaction holds
+ * ACCESS SHARE on every table while it waits for the dump, so an ACCESS
+ * EXCLUSIVE request arriving in that window (deploy migration, VACUUM
+ * FULL, REINDEX, TRUNCATE) queues behind it — and pg_dump's own ACCESS
+ * SHARE then queues behind that. Postgres documents this exact shape as
+ * "a classic deadlock situation", but the cycle closes through this
+ * process rather than the DB, so the deadlock detector never sees it.
+ * Unbounded, pg_dump waits forever, the transaction never commits, and
+ * croner's `protect: true` suppresses every later tick — a silent,
+ * permanent backup outage. Failing is the cheap outcome: the run is
+ * recorded failed and the next tick retries.
+ */
+const PG_DUMP_LOCK_WAIT_TIMEOUT_MS = 30_000;
+
+/**
+ * argv for the production dump. `--snapshot` makes pg_dump read the
+ * manifest transaction's snapshot instead of taking its own (AC-344);
+ * the id is an opaque token from `pg_export_snapshot()`, passed as an
+ * argv element — no shell, so no interpolation surface.
+ *
+ * Split out of `pgDumpSource` so a test can pin both flags without
+ * spawning the binary: drop either one and the failure is silent, with
+ * every DB-level test still green.
+ */
+export function pgDumpArgs(snapshotId: string): string[] {
+  return ['-Fc', `--snapshot=${snapshotId}`, `--lock-wait-timeout=${PG_DUMP_LOCK_WAIT_TIMEOUT_MS}`];
+}
+
+/**
+ * Production dump source: spawn `pg_dump` with discrete libpq env
  * vars (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE) parsed from
  * DATABASE_URL. Never shell-interpolates the connection string — args
  * stay empty of credentials AND we deliberately do NOT forward
@@ -448,7 +518,7 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
  * error surface.
  */
 export function pgDumpSource(databaseUrl: string): DumpSource {
-  return async () => {
+  return async (snapshotId: string) => {
     const pg = parsePgEnv(databaseUrl);
     // Start from a clean env that strips DATABASE_URL and legacy PG*
     // values (which might hold a previous password). Only forward
@@ -456,7 +526,7 @@ export function pgDumpSource(databaseUrl: string): DumpSource {
     const childEnv: NodeJS.ProcessEnv = { ...process.env };
     delete childEnv.DATABASE_URL;
     Object.assign(childEnv, pg);
-    return spawnCollect('pg_dump', ['-Fc'], {
+    return spawnCollect('pg_dump', pgDumpArgs(snapshotId), {
       env: childEnv,
       sanitizeSubstrings: [pg.PGPASSWORD].filter(
         (s): s is string => typeof s === 'string' && s.length > 0,
