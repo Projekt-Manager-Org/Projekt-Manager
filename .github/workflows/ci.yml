@@ -333,6 +333,18 @@ jobs:
       - name: Doc path drift check — self-test
         run: bash scripts/__tests__/check-doc-paths.test.sh
 
+      # Static check: every source file in a directory that ARCHITECTURE.md
+      # gives a `#### <dir>` Directory Detail subsection must be named
+      # there (AC-350). Coverage only — the `Owns` / `Must NOT` prose is
+      # not derivable and is never generated. Ratcheted against
+      # scripts/module-map-baseline.txt so new files are gated from day
+      # one while #306 burns the existing backlog down.
+      - name: Module Map coverage check (AC-350)
+        run: npm run check:module-map
+
+      - name: Module Map coverage check — self-test
+        run: bash scripts/__tests__/check-module-map.test.sh
+
       # Static check: every relative file link and `#anchor` fragment
       # across tracked *.md must resolve (AC-348). 25 broken internal
       # links accumulated undetected before #289 — neither `lint` nor
