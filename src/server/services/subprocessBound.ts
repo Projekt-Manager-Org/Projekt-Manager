@@ -1,16 +1,18 @@
 /**
  * Spawn hardening for the external processes a Layer 2 run starts:
- * a wall-clock bound (verification.md §15.22 AC-345) and a stdin writer
- * that survives the child dying mid-write (AC-346).
+ * a wall-clock bound (verification.md §15.22 AC-345), a stdin writer
+ * that survives the child dying mid-write (AC-346), and the two
+ * run-to-completion wrappers built on both.
  *
- * Both exist for the same reason — a Layer 2 run must always end, and
- * always end by *reporting*. One hangs the tick; the other kills the
- * process before it can write the status row. Either way the operator
- * sees a backup surface still green on its last success.
+ * The bound and the stdin writer exist for the same reason — a Layer 2
+ * run must always end, and always end by *reporting*. One hangs the
+ * tick; the other kills the process before it can write the status row.
+ * Either way the operator sees a backup surface still green on its last
+ * success.
  *
- * Shared by the three spawn wrappers in the backup surface —
- * `spawnCollect` (pg_dump, age encrypt), `ephemeralPg`'s `runSubprocess`
- * / `runSubprocessWithStdin` (initdb, pg_restore), and the drill's
+ * Shared by every spawn site in the backup surface — `spawnCollect`
+ * (pg_dump, age encrypt), `ephemeralPg`'s initdb / pg_restore calls via
+ * `runSubprocess` / `runSubprocessWithStdin` below, and the drill's
  * `ageDecrypt`. Lives in its own module so the bound is one
  * implementation rather than four copies of a `setTimeout` dance.
  *
@@ -24,11 +26,13 @@
  * success. Failing is the cheap outcome; the run is recorded failed and
  * the next tick retries.
  *
- * The ephemeral verify *server* is deliberately not bounded here — it is
- * long-lived by contract and torn down by `stop()`.
+ * The ephemeral verify *server* is deliberately not bounded by
+ * `boundRuntime` — it is long-lived by contract. Its teardown is
+ * `terminateChild` below, which carries the same SIGTERM → SIGKILL
+ * escalation without the wall-clock trigger.
  */
 
-import type { ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 
 /**
  * Ceiling for any single backup subprocess.
@@ -134,4 +138,120 @@ export function boundRuntime(
       return new Error(`${label} exceeded its ${timeoutMs}ms runtime bound and was terminated`);
     },
   };
+}
+
+// ---------------------------------------------------------------
+// Run-to-completion wrappers
+// ---------------------------------------------------------------
+
+export interface SubprocessCommand {
+  cmd: string;
+  args: ReadonlyArray<string>;
+}
+
+/**
+ * Run a subprocess to completion, discarding its stdout. Resolves on
+ * exit code 0; rejects with a typed Error carrying the stderr tail on
+ * any other exit code, on a spawn failure, or when the runtime bound
+ * fired.
+ *
+ * `label` — not `command.cmd` — names the failure, because the operator
+ * reads it off `meta_backup_status.lastError` where "initdb" is the
+ * useful word and the full argv is noise.
+ *
+ * Use `spawnCollect` in `backup.ts` instead when the child's stdout IS
+ * the result (pg_dump, age). This one exists for the children whose
+ * only outputs are an exit code and a diagnostic.
+ */
+export function runSubprocess(command: SubprocessCommand, label: string): Promise<void> {
+  return runToCompletion(command, label, undefined);
+}
+
+/**
+ * Like `runSubprocess` but pipes a byte buffer into the child's stdin.
+ * Used for `pg_restore`, where the dump bytes are streamed in.
+ */
+export function runSubprocessWithStdin(
+  command: SubprocessCommand,
+  stdin: Uint8Array,
+  label: string,
+): Promise<void> {
+  return runToCompletion(command, label, stdin);
+}
+
+function runToCompletion(
+  command: SubprocessCommand,
+  label: string,
+  stdin: Uint8Array | undefined,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(command.cmd, [...command.args], {
+      stdio: [stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+    });
+    const bound = boundRuntime(child);
+    const stderr: string[] = [];
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr.push(chunk.toString('utf-8'));
+    });
+    child.stdout?.on('data', () => {
+      /* drain — a full pipe would deadlock the child */
+    });
+    child.once('error', (err) => {
+      bound.release();
+      reject(new Error(`${label} failed to spawn: ${err.message}`));
+    });
+    child.once('close', (code) => {
+      bound.release();
+      // AC-345: a hung binary must fail the run, not park the scheduler.
+      if (bound.expired()) return reject(bound.error(label));
+      if (code === 0) return resolve();
+      reject(new Error(`${label} exited ${code}: ${stderr.join('').trim()}`));
+    });
+    if (stdin) writeStdin(child, stdin);
+  });
+}
+
+/**
+ * Stop a long-lived child: SIGTERM, then SIGKILL after `graceMs` if it
+ * is still alive. Resolves once the child is gone, or once the grace
+ * has elapsed — never blocks indefinitely on a process that ignores
+ * both signals and never closes its pipes.
+ *
+ * Separate from `boundRuntime` because the trigger is different: this
+ * one is called deliberately at teardown, not fired by a wall clock.
+ * The ephemeral verify Postgres is the only caller — it is exempt from
+ * the runtime bound (long-lived by contract), so without this it would
+ * be the one child a Layer 2 run cannot guarantee it outlives.
+ */
+export function terminateChild(
+  child: ChildProcess,
+  graceMs: number = SUBPROCESS_SIGKILL_GRACE_MS,
+): Promise<void> {
+  // `exitCode` alone is not "has it ended": a child killed by a signal
+  // reports `exitCode === null` with `signalCode` set. Checking only the
+  // former made a crashed instance (postgres dying on SIGSEGV, or on an
+  // earlier SIGKILL from here) fall through to the wait below, where the
+  // `exit` event had already fired — so teardown parked for the full
+  // grace period on exactly the path that is already going badly.
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+
+  child.kill('SIGTERM');
+  return new Promise<void>((resolve) => {
+    const onExit = (): void => {
+      clearTimeout(hardKillTimer);
+      resolve();
+    };
+    child.once('exit', onExit);
+    const hardKillTimer = setTimeout(() => {
+      child.off('exit', onExit);
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+      }
+      resolve();
+    }, graceMs);
+    // Do not hold the event loop open for the backstop — the caller is
+    // already awaiting this promise, and a lingering timer would keep a
+    // one-shot `backup-runner run` alive past its own exit.
+    hardKillTimer.unref();
+  });
 }

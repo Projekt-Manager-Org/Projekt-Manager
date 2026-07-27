@@ -37,7 +37,12 @@ import path from 'node:path';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { computeManifest, type Manifest, type VerifyManifestFn } from './backup.js';
-import { boundRuntime, writeStdin } from './subprocessBound.js';
+import {
+  runSubprocess,
+  runSubprocessWithStdin,
+  terminateChild,
+  type SubprocessCommand,
+} from './subprocessBound.js';
 import { attachPoolErrorHandler } from '../db/connection.js';
 import * as schema from '../db/schema.js';
 
@@ -150,22 +155,9 @@ async function startEphemeralPostgres(): Promise<EphemeralInstance> {
     dataDir,
     socketDir,
     port,
-    stop: async () => {
-      if (postgres.exitCode !== null) return;
-      postgres.kill('SIGTERM');
-      await new Promise<void>((resolve) => {
-        const done = (): void => resolve();
-        postgres.once('exit', done);
-        // Worst-case backstop so a hung postgres cannot keep the
-        // backup runner alive past the lock's natural expiry.
-        setTimeout(() => {
-          if (postgres.exitCode === null) {
-            postgres.kill('SIGKILL');
-          }
-          resolve();
-        }, 5000).unref();
-      });
-    },
+    // SIGTERM, with a SIGKILL backstop so a hung postgres cannot keep
+    // the backup runner alive past the lock's natural expiry.
+    stop: () => terminateChild(postgres),
   };
 }
 
@@ -234,16 +226,26 @@ async function computeManifestInInstance(instance: EphemeralInstance): Promise<M
 
 // ---------------------------------------------------------------
 // Subprocess builders (run as the current uid — postgres in the container)
+//
+// Both are exported for the same reason `pgDumpArgs` is: the binaries
+// they drive ship only in the backup image, so on the host suite the
+// argv is the whole testable surface. Drop `-c TimeZone=UTC` or put
+// quotes back around `listen_addresses=` and nothing else in the suite
+// notices — see the invariants pinned in `ephemeral-pg.test.ts`.
 // ---------------------------------------------------------------
 
-function buildInitdbCommand(dataDir: string): SubprocessCommand {
+export function buildInitdbCommand(dataDir: string): SubprocessCommand {
   return {
     cmd: 'initdb',
     args: ['-D', dataDir, '--auth=trust', '--username=postgres'],
   };
 }
 
-function buildPostgresArgv(dataDir: string, socketDir: string, port: number): SubprocessCommand {
+export function buildPostgresArgv(
+  dataDir: string,
+  socketDir: string,
+  port: number,
+): SubprocessCommand {
   // TCP listener disabled; only local socket accepts connections. The
   // combination of `initdb --auth=trust` and a TCP listener was an open
   // security hole — anything that could reach 127.0.0.1:<port> inside
@@ -405,13 +407,8 @@ function sleep(ms: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------
-// Subprocess helpers
+// Teardown
 // ---------------------------------------------------------------
-
-interface SubprocessCommand {
-  cmd: string;
-  args: ReadonlyArray<string>;
-}
 
 async function cleanupDir(dir: string): Promise<void> {
   try {
@@ -419,72 +416,4 @@ async function cleanupDir(dir: string): Promise<void> {
   } catch {
     // Best-effort; a leftover tmp dir is noisy but not fatal.
   }
-}
-
-/**
- * Run a subprocess to completion. Resolves with `undefined` on exit
- * code 0; rejects with a typed Error carrying the stderr tail on any
- * other exit code or spawn error.
- */
-function runSubprocess(command: SubprocessCommand, label: string): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(command.cmd, [...command.args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const bound = boundRuntime(child);
-    const stderr: string[] = [];
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr.push(chunk.toString('utf-8'));
-    });
-    child.stdout?.on('data', () => {
-      /* drain */
-    });
-    child.once('error', (err) => {
-      bound.release();
-      reject(new Error(`${label} failed to spawn: ${err.message}`));
-    });
-    child.once('close', (code) => {
-      bound.release();
-      // AC-345: a hung binary must fail the run, not park the scheduler.
-      if (bound.expired()) return reject(bound.error(label));
-      if (code === 0) return resolve();
-      reject(new Error(`${label} exited ${code}: ${stderr.join('').trim()}`));
-    });
-  });
-}
-
-/**
- * Like `runSubprocess` but pipes a byte buffer into the child's stdin.
- * Used for `pg_restore` where we stream the dump bytes in.
- */
-function runSubprocessWithStdin(
-  command: SubprocessCommand,
-  stdin: Uint8Array,
-  label: string,
-): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(command.cmd, [...command.args], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const bound = boundRuntime(child);
-    const stderr: string[] = [];
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr.push(chunk.toString('utf-8'));
-    });
-    child.stdout?.on('data', () => {
-      /* drain */
-    });
-    child.once('error', (err) => {
-      bound.release();
-      reject(new Error(`${label} failed to spawn: ${err.message}`));
-    });
-    child.once('close', (code) => {
-      bound.release();
-      // AC-345: a hung binary must fail the run, not park the scheduler.
-      if (bound.expired()) return reject(bound.error(label));
-      if (code === 0) return resolve();
-      reject(new Error(`${label} exited ${code}: ${stderr.join('').trim()}`));
-    });
-    writeStdin(child, stdin);
-  });
 }
