@@ -5,10 +5,13 @@
  * and ADR-0020. This service:
  *
  *   1. Computes the per-table manifest (row count + deterministic content
- *      checksum) inside a serializable read transaction. The checksum
- *      formula follows ADR-0020 §Decision verbatim so two runs on the
- *      same DB produce byte-equal manifests (AC-174).
- *   2. Runs `pg_dump -Fc` via a subprocess to produce the DB dump.
+ *      checksum) inside a REPEATABLE READ read-only transaction. The
+ *      checksum formula follows ADR-0020 §Decision verbatim so two runs
+ *      on the same DB produce byte-equal manifests (AC-174).
+ *   2. Exports that transaction's snapshot and runs `pg_dump -Fc
+ *      --snapshot=<id>` inside it, so the dump and the manifest observe
+ *      one DB state and an ordinary concurrent write cannot fake a
+ *      Tier 1 mismatch (AC-344).
  *   3. Restores the dump into an ephemeral Postgres (spawned in-process
  *      via `initdb` + `postgres -k /tmp`) and recomputes the manifest to
  *      verify Tier 1 — mismatch fails the run, no upload (AC-165).
@@ -32,6 +35,7 @@
 import { sql } from 'drizzle-orm';
 import { spawn } from 'node:child_process';
 import type { Database, TransactionalDatabase } from '../db/connection.js';
+import { boundRuntime, writeStdin } from './subprocessBound.js';
 import {
   getBackupStatus,
   updateBackupStatus,
@@ -88,8 +92,18 @@ export type Encryptor = (plaintext: Uint8Array) => Promise<Uint8Array>;
  * tests omit this and fall back to the manifest-bytes stand-in described
  * in `defaultDumpSource`. Exposed as an injection point so tests or
  * alternative implementations can substitute without pulling a process.
+ *
+ * `snapshotId` comes from `pg_export_snapshot()` on the still-open
+ * manifest transaction. An implementation reading the DB MUST import it
+ * so its view matches the source manifest (AC-344); one that fabricates
+ * bytes may ignore it.
+ *
+ * Called while that transaction holds a pooled client, so an
+ * implementation that checks out several clients of its own from the
+ * same pool is a starvation risk. The production one is a subprocess
+ * with its own connection.
  */
-export type DumpSource = () => Promise<Uint8Array>;
+export type DumpSource = (snapshotId: string) => Promise<Uint8Array>;
 
 /**
  * Ephemeral-DB verify surface. Production: restore the dump into a
@@ -112,7 +126,15 @@ export interface RunBackupOptions {
    */
   manifestPerturb?: (m: Manifest) => Manifest;
   /**
-   * Injectable dump source. When omitted, the service re-serializes the
+   * Test hook. Overrides how long the manifest transaction waits for a
+   * table lock (AC-345). Defaults to `MANIFEST_LOCK_TIMEOUT_MS`. Exists
+   * so the lock-contention path can be asserted in milliseconds instead
+   * of parking a test for the production bound.
+   */
+  manifestLockTimeoutMs?: number;
+  /**
+   * Injectable dump source, invoked with the manifest transaction's
+   * exported snapshot id. When omitted, the service re-serializes the
    * manifest bytes as the "dump" — enough for integration tests that
    * only assert the upload surface. Production wiring passes
    * `pgDumpSource(databaseUrl)`.
@@ -207,6 +229,28 @@ export async function computeManifest(db: TransactionalDatabase): Promise<Manife
 }
 
 /**
+ * How long anything in a run waits for a table lock before it gives up
+ * (AC-345): the manifest transaction, `pg_dump` via
+ * `--lock-wait-timeout`, and every other statement the runner issues via
+ * the pool's session default (`createDatabase({ lockTimeoutMs })` in
+ * `backup-runner.ts`).
+ *
+ * One constant on purpose. Both sides of the shared snapshot must
+ * tolerate exactly the same amount of lock contention, or a contended
+ * run fails at two unrelated bounds instead of one predictable one.
+ */
+export const LOCK_WAIT_TIMEOUT_MS = 30_000;
+
+/**
+ * Backstop for a manifest statement that is neither waiting on a lock
+ * nor finishing. Deliberately far above any real scan — the manifest
+ * measures in milliseconds on this dataset — so that growth never turns
+ * it into a de-facto performance budget that starts failing sound
+ * backups.
+ */
+const MANIFEST_STATEMENT_TIMEOUT_MS = 5 * 60_000;
+
+/**
  * Execute a full Tier 1 backup run. See module header.
  */
 export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult> {
@@ -218,13 +262,15 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
   await ensureBackupStatusRow(opts.db);
 
   // ---------------------------------------------------------------
-  // Source manifest — computed in a REPEATABLE READ snapshot so the
-  // dump and the manifest observe the same DB state (AC-174).
+  // Source manifest + dump — one REPEATABLE READ snapshot, exported to
+  // the dump so both observe the same DB state (AC-344). The
+  // transaction has to outlive the dump: an exported snapshot is
+  // importable only until the transaction that exported it ends.
   // ---------------------------------------------------------------
   let sourceManifest: Manifest;
   let dump: Uint8Array;
   try {
-    sourceManifest = await opts.db.transaction(
+    ({ manifest: sourceManifest, dump } = await opts.db.transaction(
       async (tx) => {
         // Pin the transaction's session TimeZone to UTC. The manifest
         // checksum is `md5(row(t.*)::text)`, which serializes
@@ -237,15 +283,67 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
         // LOCAL` scopes the change to this transaction so we never
         // leak a TimeZone mutation back to the pooled connection.
         await tx.execute(sql`SET LOCAL TIME ZONE 'UTC'`);
-        return computeManifest(tx);
+
+        // AC-345: bound this transaction's own waits, not just the
+        // subprocesses it starts. `computeManifest` takes ACCESS SHARE
+        // on every manifest table; an ACCESS EXCLUSIVE holder (deploy
+        // migration, VACUUM FULL, REINDEX) blocks it indefinitely, which
+        // parks the tick — and croner's `protect: true` then suppresses
+        // every later run. That is the same silent outage the subprocess
+        // bound exists to prevent, reached through the database instead
+        // of through a subprocess.
+        //
+        // `lock_timeout` is the precise instrument: it fires only on
+        // lock contention, so a legitimately slow scan on a grown
+        // dataset is never failed merely for being slow.
+        // `statement_timeout` is the coarse backstop for a wait that is
+        // neither a lock nor making progress; sized far above any real
+        // manifest scan so it stays a backstop rather than a budget.
+        //
+        // Neither bounds the dump. `statement_timeout` does not run
+        // while the transaction sits idle awaiting `pg_dump` — that gap
+        // is what `boundRuntime` covers.
+        //
+        // `set_config(..., is_local => true)` rather than `SET LOCAL`:
+        // `SET` is parsed before parameter binding, so it cannot take a
+        // placeholder, and building it by interpolation would put a
+        // number into raw SQL for no gain.
+        await tx.execute(
+          sql`SELECT set_config('lock_timeout', ${String(opts.manifestLockTimeoutMs ?? LOCK_WAIT_TIMEOUT_MS)}, true)`,
+        );
+        await tx.execute(
+          sql`SELECT set_config('statement_timeout', ${String(MANIFEST_STATEMENT_TIMEOUT_MS)}, true)`,
+        );
+
+        // A REPEATABLE READ transaction keeps one snapshot for its whole
+        // lifetime, so what is exported here and what `computeManifest`
+        // reads below are the same view by construction — the order of
+        // the two is free.
+        const exported = await tx.execute(sql`SELECT pg_export_snapshot() AS id`);
+        const snapshotId = (exported.rows[0] as { id: string } | undefined)?.id;
+        if (!snapshotId) {
+          throw new Error('pg_export_snapshot() returned no snapshot id');
+        }
+
+        const manifest = await computeManifest(tx);
+        const dumpSource = opts.dumpSource ?? (async () => defaultDumpSource(manifest));
+
+        // Awaited inside the transaction on purpose. Committing once the
+        // dump is merely spawned would race its `SET TRANSACTION
+        // SNAPSHOT`, and there is no clean signal for "the dump has
+        // attached" short of polling `pg_stat_activity`.
+        //
+        // Cost: this holds the cluster's xmin horizon back until the
+        // dump finishes. `pg_dump` pins it for its own duration either
+        // way; the fix only extends that pin backwards across the
+        // manifest scan.
+        return { manifest, dump: await dumpSource(snapshotId) };
       },
       {
         isolationLevel: 'repeatable read',
         accessMode: 'read only',
       },
-    );
-    const dumpSource = opts.dumpSource ?? (() => defaultDumpSource(sourceManifest));
-    dump = await dumpSource();
+    ));
   } catch (err) {
     const message = errorMessage(err);
     await updateBackupStatus(opts.db, {
@@ -404,8 +502,22 @@ function firstDivergingTable(source: Manifest, restore: Manifest): string | null
  * connection string or similar.
  */
 function errorMessage(err: unknown): string {
-  const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : 'unknown';
-  return sanitizeErrorMessage(raw);
+  if (typeof err === 'string') return sanitizeErrorMessage(err);
+  if (!(err instanceof Error)) return sanitizeErrorMessage('unknown');
+
+  // Walk the cause chain. Drizzle wraps driver errors: its own message
+  // is "Failed query: SELECT …" and the reason Postgres actually gave
+  // ("canceling statement due to lock timeout") sits on `cause`. Taking
+  // only the top message records *which* statement failed but never
+  // *why* — and the why is the half an operator needs off the status row
+  // (AC-345). Bounded depth because a cause chain can be cyclic.
+  const seen: string[] = [];
+  let current: Error | undefined = err;
+  for (let depth = 0; current && depth < 4; depth++) {
+    if (current.message && !seen.includes(current.message)) seen.push(current.message);
+    current = current.cause instanceof Error ? current.cause : undefined;
+  }
+  return sanitizeErrorMessage(seen.join(': ') || 'unknown');
 }
 
 /**
@@ -435,7 +547,61 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
 // ---------------------------------------------------------------
 
 /**
- * Production dump source: spawn `pg_dump -Fc` with discrete libpq env
+ * `pg_dump`'s share of `LOCK_WAIT_TIMEOUT_MS`, rendered for
+ * `--lock-wait-timeout`. Milliseconds — the one format every server
+ * version accepts.
+ *
+ * Bounded on purpose, and load-bearing. The manifest transaction holds
+ * ACCESS SHARE on every table while it waits for the dump, so an ACCESS
+ * EXCLUSIVE request arriving in that window (deploy migration, VACUUM
+ * FULL, REINDEX, TRUNCATE) queues behind it — and pg_dump's own ACCESS
+ * SHARE then queues behind that. Postgres documents this exact shape as
+ * "a classic deadlock situation", but the cycle closes through this
+ * process rather than the DB, so the deadlock detector never sees it.
+ * Unbounded, pg_dump waits forever, the transaction never commits, and
+ * croner's `protect: true` suppresses every later tick — a silent,
+ * permanent backup outage. Failing is the cheap outcome: the run is
+ * recorded failed and the next tick retries.
+ */
+const PG_DUMP_LOCK_WAIT_TIMEOUT_MS = LOCK_WAIT_TIMEOUT_MS;
+
+/**
+ * Wall-clock bound for `pg_dump` specifically, tighter than the shared
+ * `SUBPROCESS_TIMEOUT_MS`.
+ *
+ * The dump is the only subprocess a run awaits *inside* an open
+ * transaction, so this value is not just "how late may the tick be" — it
+ * is also the ceiling on how long the manifest transaction stays open,
+ * and therefore on how long the run pins the cluster's xmin horizon
+ * (blocking vacuum) and holds ACCESS SHARE on every table (blocking
+ * DDL). Every other bounded subprocess costs only the tick.
+ *
+ * `--lock-wait-timeout` already covers the contended case, so this fires
+ * only when the dump hangs for a reason Postgres cannot see — a network
+ * black hole to the `db` container, say. Five minutes against a dump
+ * that measures in milliseconds on this dataset (attachment binaries
+ * live in R2, so the database itself stays small) is ample headroom
+ * while keeping a wedged run's collateral to minutes rather than a
+ * quarter of an hour.
+ */
+const PG_DUMP_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * argv for the production dump. `--snapshot` makes pg_dump read the
+ * manifest transaction's snapshot instead of taking its own (AC-344);
+ * the id is an opaque token from `pg_export_snapshot()`, passed as an
+ * argv element — no shell, so no interpolation surface.
+ *
+ * Split out of `pgDumpSource` so a test can pin both flags without
+ * spawning the binary: drop either one and the failure is silent, with
+ * every DB-level test still green.
+ */
+export function pgDumpArgs(snapshotId: string): string[] {
+  return ['-Fc', `--snapshot=${snapshotId}`, `--lock-wait-timeout=${PG_DUMP_LOCK_WAIT_TIMEOUT_MS}`];
+}
+
+/**
+ * Production dump source: spawn `pg_dump` with discrete libpq env
  * vars (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE) parsed from
  * DATABASE_URL. Never shell-interpolates the connection string — args
  * stay empty of credentials AND we deliberately do NOT forward
@@ -448,7 +614,7 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
  * error surface.
  */
 export function pgDumpSource(databaseUrl: string): DumpSource {
-  return async () => {
+  return async (snapshotId: string) => {
     const pg = parsePgEnv(databaseUrl);
     // Start from a clean env that strips DATABASE_URL and legacy PG*
     // values (which might hold a previous password). Only forward
@@ -456,8 +622,9 @@ export function pgDumpSource(databaseUrl: string): DumpSource {
     const childEnv: NodeJS.ProcessEnv = { ...process.env };
     delete childEnv.DATABASE_URL;
     Object.assign(childEnv, pg);
-    return spawnCollect('pg_dump', ['-Fc'], {
+    return spawnCollect('pg_dump', pgDumpArgs(snapshotId), {
       env: childEnv,
+      timeoutMs: PG_DUMP_TIMEOUT_MS,
       sanitizeSubstrings: [pg.PGPASSWORD].filter(
         (s): s is string => typeof s === 'string' && s.length > 0,
       ),
@@ -561,6 +728,12 @@ interface SpawnOptions {
   env?: NodeJS.ProcessEnv;
   stdin?: Uint8Array;
   /**
+   * Wall-clock bound for this child (AC-345). Omitted = the shared
+   * `SUBPROCESS_TIMEOUT_MS`; set it only where the cost of overrunning
+   * differs from "the tick is late", as it does for `pg_dump`.
+   */
+  timeoutMs?: number;
+  /**
    * Literal substrings to strip from captured stderr before it lands in
    * the rejection Error. Used by the pg_dump path to defensively scrub
    * PGPASSWORD in case a future libpq build decides to echo it.
@@ -584,6 +757,7 @@ function spawnCollect(
       env: options.env ?? process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    const bound = boundRuntime(child, options.timeoutMs);
 
     const stdout: Uint8Array[] = [];
     const stderr: Uint8Array[] = [];
@@ -593,8 +767,18 @@ function spawnCollect(
     child.stderr.on('data', (chunk: Buffer) => {
       stderr.push(new Uint8Array(chunk));
     });
-    child.on('error', (err) => reject(err));
+    child.on('error', (err) => {
+      bound.release();
+      reject(err);
+    });
     child.on('close', (code) => {
+      bound.release();
+      // AC-345: distinguish "we killed it" from an ordinary non-zero
+      // exit, so `lastError` names the real failure.
+      if (bound.expired()) {
+        reject(bound.error(cmd));
+        return;
+      }
       if (code !== 0) {
         const rawErrText = Buffer.concat(stderr).toString('utf-8').trim();
         const errText = sanitizeErrorMessage(rawErrText, options.sanitizeSubstrings ?? []);
@@ -613,10 +797,6 @@ function spawnCollect(
       resolve(out);
     });
 
-    if (options.stdin) {
-      child.stdin.end(options.stdin);
-    } else {
-      child.stdin.end();
-    }
+    writeStdin(child, options.stdin);
   });
 }

@@ -16,9 +16,6 @@
  * to keep each file under the 250-line cap in the test conventions, and
  * because the dual-write + determinism story is a separate failure mode
  * from the "run outcome" suite.
- *
- * Written ahead of implementation (TDD). Fails at import today because
- * `../services/backup.js` is Phase 3's contract surface.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
@@ -38,7 +35,6 @@ import {
   type BackupUploader,
 } from '../../test/backupTestHarness.js';
 
-// Phase 3 contract surface — unresolvable at import today.
 import { runBackup, computeManifest, type Manifest } from '../services/backup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

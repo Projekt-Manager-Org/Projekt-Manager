@@ -12,31 +12,8 @@
  * mixing the skip-branch into the tier-1 suite obscured which
  * artifact failed when both were red.
  *
- * Written ahead of implementation (TDD). Fails at import today —
- * `../services/backup-drill.js` is the Phase 3 contract surface.
- *
- * Module contract Phase 3 must provide:
- *
- *   src/server/services/backup-drill.ts
- *     export interface DrillResult {
- *       outcome: 'ok' | 'failed' | 'skipped';
- *       reason?: string;         // populated when outcome !== 'ok'
- *       mismatchedTable?: string; // populated when outcome === 'failed'
- *     }
- *     export interface DrillOptions {
- *       db: Database;
- *       // Path to the tmpfs-resident decryption identity. When the file
- *       // does not exist (or is empty), the drill MUST return
- *       // { outcome: 'skipped', reason: 'key-absent' } and must NOT
- *       // touch `meta_backup_status.lastDrillAt` or `lastDrillOk`.
- *       identityPath: string;
- *       // Downloader + decryptor — both stubbed in test; production
- *       // wires R2 + age.
- *       downloadLatestDump: () => Promise<Uint8Array>;
- *       decrypt: (ciphertext: Uint8Array, identity: string) => Promise<Uint8Array>;
- *       now?: Date;
- *     }
- *     export function runDrill(opts: DrillOptions): Promise<DrillResult>;
+ * The contract under test is `runDrill` in
+ * `src/server/services/backup-drill.ts`.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -52,7 +29,6 @@ import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
 
-// Phase 3 contract surface — unresolvable at import today.
 import { runDrill } from '../services/backup-drill.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

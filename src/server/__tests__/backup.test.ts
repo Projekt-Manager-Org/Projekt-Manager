@@ -18,10 +18,6 @@
  * (manifest determinism) live in `backup-status.test.ts` so this file
  * stays under the 250-line cap in the test conventions.
  *
- * Written ahead of implementation (TDD). Fails at import today —
- * `../services/backup.js` is Phase 3's contract surface. That is the
- * intended failure mode.
- *
  * Shared test harness (fixtures + stub uploader + fake encrypt) lives in
  * `src/test/backupTestHarness.ts` so both backup test files import from
  * the same source and cannot drift.
@@ -46,7 +42,6 @@ import {
   type Manifest,
 } from '../../test/backupTestHarness.js';
 
-// Phase 3 contract surface — unresolvable at import today.
 import { runBackup } from '../services/backup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

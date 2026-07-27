@@ -324,6 +324,26 @@ describe('Authentication & Session Management', () => {
       expect(body.user.roles).toEqual(expect.arrayContaining([...SEED_USERS.owner.roles]));
       expect(body.user).not.toHaveProperty('passwordHash');
     });
+
+    // AC-176: the freshness badge's only source is the owner-only
+    // `backupStatus` field on this response — there is no public
+    // `/api/backup/status` endpoint to fall back to. Scope here is the
+    // security-relevant half: an owner gets the field, nobody else does.
+    it('carries backupStatus for owner callers and omits it for others (AC-176)', async () => {
+      const ownerRes = await authGet(
+        await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD),
+        '/api/auth/me',
+      );
+      expect(ownerRes.statusCode).toBe(200);
+      expect(ownerRes.json()).toHaveProperty('backupStatus');
+
+      const officeRes = await authGet(
+        await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD),
+        '/api/auth/me',
+      );
+      expect(officeRes.statusCode).toBe(200);
+      expect(officeRes.json()).not.toHaveProperty('backupStatus');
+    });
   });
 
   // ---------------------------------------------------------------

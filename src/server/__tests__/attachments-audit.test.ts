@@ -296,7 +296,7 @@ describe('Attachment audit contract (AC-219)', () => {
   });
 
   // -------------------------------------------------------------------
-  // delete → exactly one `attachment:hide` audit row
+  // delete → exactly one `attachment:hide` audit row (AC-232)
   // -------------------------------------------------------------------
   it('delete writes exactly one attachment:hide row with before payload fields', async () => {
     // Seed directly — we don't need the real upload path here; the

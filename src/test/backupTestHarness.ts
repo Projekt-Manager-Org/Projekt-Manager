@@ -8,19 +8,12 @@
  * Kept separate from the tests so both files import the same fake
  * encrypt + stub uploader and cannot drift on behaviors like upload
  * recording or the encryption envelope shape.
- *
- * The Phase 3 module `src/server/services/backup.ts` must export the
- * `BackupUploader` type these stubs implement. Until Phase 3 lands,
- * the test harness re-declares the shape here — the tests themselves
- * will fail at import (module not found) before the stub's type
- * compatibility is evaluated.
  */
 
 /**
- * Minimal re-declaration of the Phase 3 upload contract. Keep in
- * sync with `src/server/services/backup.ts::BackupUploader`. If the
- * Phase 3 contract drifts, the test imports fail at resolution and
- * the drift surfaces there — not here.
+ * Minimal re-declaration of the upload contract. Keep in sync with
+ * `src/server/services/backup.ts::BackupUploader` — a drift surfaces
+ * as a type error at the tests' `runBackup` call sites, not here.
  */
 export interface BackupUploader {
   upload(key: string, data: Uint8Array, contentType: string): Promise<void>;
@@ -29,13 +22,12 @@ export interface BackupUploader {
 
 /**
  * Shape of the per-table manifest the backup service emits and the
- * tests perturb for Tier 1 mismatch scenarios. Mirrors the Phase 3
- * contract documented in
+ * tests perturb for Tier 1 mismatch scenarios. Mirrors the contract
+ * documented in
  * [ADR-0020 §Decision](../../docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#decision):
  * one entry per table keyed by table name, carrying the row count and
- * the deterministic content checksum. Phase 3's `services/backup.ts`
- * re-exports this as the authoritative type; until then the harness
- * owns the declaration so the tests can annotate callback params
+ * the deterministic content checksum. `services/backup.ts` owns the
+ * authoritative type; this copy lets the tests annotate callback params
  * without falling back to implicit `any`.
  */
 export type Manifest = Record<string, { rowCount: number; checksum: string }>;
@@ -73,8 +65,8 @@ export function makeStubUploader(overrides: Partial<BackupUploader> = {}): {
  * Test-side encryption stub. Produces an "age-like" envelope —
  * enough for AC-167 to assert "not plaintext pg_dump" and "not
  * plaintext JSON" without coupling the test to age's exact header
- * bytes. Swap to real age in Phase 3: this stub's shape is
- * documented in the module header.
+ * bytes. Production encrypts with real age (`ageEncrypt`); this stub
+ * exists so the suite needs no key material.
  */
 export async function fakeEncrypt(plaintext: Uint8Array): Promise<Uint8Array> {
   const header = new TextEncoder().encode(`${AGE_ARMOR_PREFIX}v1\n`);
