@@ -7,7 +7,10 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@/*": ["../src/*"]
+    }
   },
   "include": ["*.ts", "../src/server/db/schema.ts"]
 }
