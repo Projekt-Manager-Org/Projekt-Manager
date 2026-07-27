@@ -222,7 +222,14 @@ services:
       POSTGRES_USER: pm
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U pm -d projekt_manager']
+      # `-h 127.0.0.1` — TCP, not pg_isready's default unix socket. The
+      # image's entrypoint runs an init-phase temporary server with
+      # `listen_addresses=''` to create the role and database, so a socket
+      # probe reports healthy while TCP is still closed. Every consumer of
+      # this healthcheck (`app` via depends_on: service_healthy) connects
+      # over the network, so the socket form can release them into a window
+      # where the connection is refused.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U pm -d projekt_manager']
       interval: 5s
       timeout: 3s
       retries: 5

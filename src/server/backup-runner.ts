@@ -55,6 +55,24 @@ import {
   type R2Config,
 } from './services/r2Uploader.js';
 
+/**
+ * Re-exported so the shipped bundle exposes it.
+ *
+ * `build:server` esbuilds this file with `--bundle`, so the image holds
+ * one `dist/server/backup-runner.js` and no per-module files — there is no
+ * `services/ephemeralPg.js` to import inside the container. The Tier 1
+ * container round-trip (`scripts/backup/verify-tier1-artifact.mjs`, #301)
+ * drives the real `initdb` / `pg_restore` path, which exists only in that
+ * image, so it needs a handle on this function from the bundle.
+ *
+ * Same reason `SCHEDULES` / `buildScheduleJobs` below are exported: this
+ * file is the only entry point into the backup surface, so anything a test
+ * must reach has to be reachable through it. Importing this module has no
+ * side effects — `main()` runs only under the `import.meta.url` guard at
+ * the bottom.
+ */
+export { ephemeralPgVerify };
+
 const USAGE =
   'usage: backup-runner <run|drill|schedule|--help>\n' +
   '  run       — execute one Layer 2 backup cycle (pg_dump + Tier 1 verify + encrypt + upload)\n' +

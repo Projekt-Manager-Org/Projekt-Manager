@@ -30,9 +30,13 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
 
-    # Same postgres service container as ci.yml's `check` job — the
-    # same env values. Kept in sync by hand for now; a shared reusable
-    # workflow would be the next cleanup but is out of scope here.
+    # Byte-for-byte the same postgres service container as ci.yml's
+    # `check-shard` job, comments aside. It has to be duplicated — Actions
+    # has no include mechanism for a service block (composite actions have
+    # no `services` key; reusable workflows reuse a whole job, and these
+    # two jobs share nothing else) — so the invariant is machine-enforced
+    # instead: scripts/check-workflow-service-drift.sh, a step in ci.yml's
+    # `lint` job, fails the build when the two diverge. Edit both together.
     services:
       postgres:
         image: postgres:17-alpine
@@ -46,8 +50,11 @@ jobs:
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
+        # `-h 127.0.0.1` — TCP, not the unix socket. See the identical
+        # probe in ci.yml's `check-shard` job for the init-phase
+        # temporary-server window this avoids.
         options: >-
-          --health-cmd "pg_isready -U pm -d pm"
+          --health-cmd "pg_isready -h 127.0.0.1 -U pm -d pm"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5
