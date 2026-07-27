@@ -286,6 +286,17 @@ jobs:
       - name: Env drift check (env.ts ↔ docker-compose.yml)
         run: bash scripts/check-env-drift.sh
 
+      # Static check: this workflow's postgres service container and
+      # e2e.yml's are one decision written twice — Actions has no include
+      # mechanism for a service block (see the script header). e2e.yml is
+      # `workflow_dispatch` only, so an unsynced edit there stays invisible
+      # until an operator runs it before a manual deploy.
+      - name: Workflow service drift check (ci.yml ↔ e2e.yml)
+        run: bash scripts/check-workflow-service-drift.sh
+
+      - name: Workflow service drift check — self-test
+        run: bash scripts/__tests__/check-workflow-service-drift.test.sh
+
       # Static check: every raw INSERT/UPDATE/DELETE on an audited
       # table (project, customer, user, project_worker) must be
       # authored inside the service-layer `mutate()` helper or on the
@@ -325,6 +336,10 @@ jobs:
       matrix:
         shard: [1, 2]
 
+    # Duplicated verbatim in e2e.yml, comments aside — Actions cannot
+    # factor a service block out of two jobs that share nothing else, so
+    # scripts/check-workflow-service-drift.sh (a step in the `lint` job)
+    # fails the build when they diverge. Edit both blocks together.
     services:
       postgres:
         image: postgres:17-alpine
