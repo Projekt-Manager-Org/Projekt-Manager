@@ -49,7 +49,20 @@ We will adopt **three coupled changes**:
 - **Per-major-version PRs.** No grouping across majors; each major bump gets its own PR with the changelog inline.
 - **Auto-merge** for patch + minor (plus digest/pin/lockfile) when CI is green, including the lockstep clusters — grouping consolidates one PR per cluster, it does not gate the merge. Majors never auto-merge.
 - **Lockfile maintenance** PR weekly to bound transitive drift.
-- **Managers:** `npm`, `dockerfile`, `docker-compose`, `github-actions`, and four `customManagers` of type `regex`: Caddy version (`xcaddy build vN.N.N` in `docker/caddy/Dockerfile`), the `caddy-dns/cloudflare` plugin SHA in the same Dockerfile, and MinIO `mc`/`minio` image tags in `scripts/sync-*.sh` and `.github/workflows/*.yml` (Renovate's built-in `github-actions` manager doesn't see Docker images inside `run:` blocks). **Out of scope for Renovate:** Alpine `apk add` packages on top of base images (unpinned versions; surface enumerated and walked in [`docs/ops/dep-management.md` § Quarterly lifecycle review](../ops/dep-management.md#quarterly-lifecycle-review)) and Docker Engine apt packages on the VPS (tracked manually per [ADR-0009](0009-pin-docker-versions-across-environments.md) lifecycle table).
+- **Managers:** `npm`, `dockerfile`, `docker-compose`, `github-actions`, and six `customManagers` of type `regex`, each covering a pin the built-in managers cannot see:
+
+  | #   | Surface                                                                                            | Datasource                   |
+  | --- | -------------------------------------------------------------------------------------------------- | ---------------------------- |
+  | 1   | Caddy version (`xcaddy build vN.N.N`, `docker/caddy/Dockerfile`)                                   | `docker`                     |
+  | 2   | `caddy-dns/cloudflare` plugin SHA, same Dockerfile                                                 | `git-refs`                   |
+  | 3   | MinIO `mc` image tag in `scripts/sync-*.sh`                                                        | `docker`                     |
+  | 4   | MinIO `minio`/`mc` image tags in `.github/workflows/*.yml` and `.github/actions/<name>/*.{yml,sh}` | `docker`                     |
+  | 5   | PostgreSQL major in `Dockerfile.backup` apk pins                                                   | `docker`                     |
+  | 6   | CLI binaries installed by URL + SHA256 in a workflow step (OSV-Scanner, actionlint)                | `github-release-attachments` |
+
+  Manager 6 closes a gap this ADR had left open: a binary pinned by checksum with no update path is the same "adopted-already-dying" failure this ADR was written to retire, and it is worse on a **scanner** — a stale OSV-Scanner keeps reporting green while no longer knowing about new advisories. The `github-release-attachments` datasource locates the release's checksums asset from the current digest and re-reads it on the next release, so version and SHA256 advance in one PR; no checksum is ever hand-edited. It is driven by an inline `# renovate:` annotation at the call site, and requires `currentValue` to be the literal git tag (`v2.3.8`) because the digest lookup calls `GET /releases/tags/{currentValue}` verbatim.
+
+  **Out of scope for Renovate:** Alpine `apk add` packages on top of base images (unpinned versions; surface enumerated and walked in [`docs/ops/dep-management.md` § Quarterly lifecycle review](../ops/dep-management.md#quarterly-lifecycle-review)) and Docker Engine apt packages on the VPS (tracked manually per [ADR-0009](0009-pin-docker-versions-across-environments.md) lifecycle table). Both are deliberate exclusions with a documented manual review; **no pin is left both unautomated and unreviewed.**
 
 Dependabot Alerts stays on at the GH Security tab — it remains the CVE notification surface; Renovate is the **action** surface. The Renovate config also enables `osvVulnerabilityAlerts: true`, so Renovate raises vulnerability PRs against the OSV database in parallel — slight overlap with Dependabot is intentional belt-and-braces.
 
@@ -147,15 +160,16 @@ Acknowledged tradeoff: PR-time image-vuln gating coverage is the union of `docke
 
 §Constraints and §Negative both assumed Playwright gates every PR. It does not — [`e2e.yml`](../../.github/workflows/e2e.yml) is `workflow_dispatch`-only, so auto-merged patch/minor bumps carry no E2E signal. Both passages corrected in-place; no decision changed.
 
-## Dep lifecycle health (as of 2026-05-15)
+## Dep lifecycle health (as of 2026-07-27)
 
-Renovate, OSV-Scanner, and Trivy are the adopted _tooling_; the choice is reversible (move to Dependabot-only or to commercial SCA later). Concrete tool-version pinning lives in `.github/workflows/*.yml` and `.github/renovate.json` and is tracked by Renovate's own self-update path.
+Renovate, OSV-Scanner, Trivy and actionlint are the adopted _tooling_; the choice is reversible (move to Dependabot-only or to commercial SCA later). Concrete tool-version pinning lives in `.github/workflows/*.yml` and `.github/renovate.json`, and every pin is now on a Renovate update path (customManager 6 above closed the last gap).
 
-| Dep                                | Last release     | License    | Maintainership                   | Notes                                                                                |
-| ---------------------------------- | ---------------- | ---------- | -------------------------------- | ------------------------------------------------------------------------------------ |
-| Renovate (`renovatebot/renovate`)  | active, weekly   | AGPL-3.0   | Mend, very active                | [deps.dev](https://deps.dev/npm/renovate) — industry default; self-hosted optional   |
-| OSV-Scanner (`google/osv-scanner`) | active           | Apache-2.0 | Google OSS Security Team, active | [OSV-Scanner repo](https://github.com/google/osv-scanner) — backed by OSV.dev DB     |
-| Trivy (`aquasecurity/trivy`)       | active, frequent | Apache-2.0 | Aqua Security, very active       | [Trivy repo](https://github.com/aquasecurity/trivy) — de-facto OSS container scanner |
+| Dep                                | Last release        | License    | Maintainership                   | Notes                                                                                                                                                                                                                                                                             |
+| ---------------------------------- | ------------------- | ---------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Renovate (`renovatebot/renovate`)  | active, weekly      | AGPL-3.0   | Mend, very active                | [deps.dev](https://deps.dev/npm/renovate) — industry default; self-hosted optional                                                                                                                                                                                                |
+| OSV-Scanner (`google/osv-scanner`) | v2.4.0, 2026-06-18  | Apache-2.0 | Google OSS Security Team, active | [OSV-Scanner repo](https://github.com/google/osv-scanner) — backed by OSV.dev DB                                                                                                                                                                                                  |
+| Trivy (`aquasecurity/trivy`)       | active, frequent    | Apache-2.0 | Aqua Security, very active       | [Trivy repo](https://github.com/aquasecurity/trivy) — de-facto OSS container scanner                                                                                                                                                                                              |
+| actionlint (`rhysd/actionlint`)    | v1.7.12, 2026-03-30 | MIT        | **single maintainer** (`rhysd`)  | 4.1k stars, repo active (pushed 2026-07-16). Bus factor is the risk, not abandonment: next human contributor is 19 commits to rhysd's 2030. Exit ramp is cheap — it gates workflow files only, so dropping the step costs no runtime behaviour. Re-check at the quarterly review. |
 
 ## References
 

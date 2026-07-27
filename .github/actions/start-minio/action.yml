@@ -1,0 +1,66 @@
+name: Start MinIO
+description: >
+  Starts a pinned MinIO container and provisions it with
+  docker/init-storage.sh — the same script the dev compose stack runs, so
+  CI and dev stay in lockstep (versioning, Compliance Object Lock,
+  lifecycle, capability-restricted app user; #45 / ADR-0022).
+
+  MinIO runs as a container started from the runner rather than a service
+  container because service containers cannot override `command`, and
+  minio/minio needs `server /data` as its argv. The container is named
+  `storage` and joined to a user-defined bridge network alongside the mc
+  one-shot so the script's hardcoded `mc alias set minio
+  http://storage:9000` resolves via Docker's container-name DNS. Port
+  9000 is published so callers on the host (vitest, the dev server)
+  reach MinIO at http://localhost:9000.
+
+  Readiness is fail-loud: a container that dies or never answers the
+  health endpoint aborts the step with container logs attached, instead
+  of letting the job continue into a misleading downstream error.
+
+  The procedure lives in the sibling start-minio.sh — a real script file
+  so CI's shellcheck gate covers it (actionlint does not read composite
+  action.yml files).
+
+inputs:
+  storage_bucket:
+    description: Dev bucket (STORAGE_BUCKET). Always provisioned.
+    required: true
+  storage_bucket_test:
+    description: Isolated vitest-integration bucket (STORAGE_BUCKET_TEST). Empty = not provisioned.
+    required: false
+    default: ''
+  storage_bucket_e2e:
+    description: Isolated Playwright bucket (STORAGE_BUCKET_E2E). Empty = not provisioned.
+    required: false
+    default: ''
+  app_access_key:
+    description: >
+      Capability-restricted app user provisioned by init-storage.sh. Must match
+      the caller's STORAGE_ACCESS_KEY — the boot-time capability self-test
+      asserts the running credential cannot destroy versions, so callers must
+      never run as root.
+    required: true
+  app_secret_key:
+    description: Password for `app_access_key`. Must match the caller's STORAGE_SECRET_KEY.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Start MinIO and provision buckets
+      shell: bash
+      env:
+        # Root creds run the MinIO process and are used by init-storage.sh for
+        # admin operations only — callers NEVER run as root. Hardcoded
+        # ephemeral CI values; no secret material.
+        MINIO_ROOT_USER: minioadmin
+        MINIO_ROOT_PASSWORD: changeme
+        MINIO_APP_ACCESS_KEY: ${{ inputs.app_access_key }}
+        MINIO_APP_SECRET_KEY: ${{ inputs.app_secret_key }}
+        STORAGE_BUCKET: ${{ inputs.storage_bucket }}
+        # init-storage.sh treats both as optional and skips an empty one, so
+        # passing them unconditionally keeps the call sites symmetric.
+        STORAGE_BUCKET_TEST: ${{ inputs.storage_bucket_test }}
+        STORAGE_BUCKET_E2E: ${{ inputs.storage_bucket_e2e }}
+      run: bash "${GITHUB_ACTION_PATH}/start-minio.sh"
