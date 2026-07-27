@@ -37,6 +37,7 @@ import path from 'node:path';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { computeManifest, type Manifest, type VerifyManifestFn } from './backup.js';
+import { boundRuntime } from './subprocessBound.js';
 import { attachPoolErrorHandler } from '../db/connection.js';
 import * as schema from '../db/schema.js';
 
@@ -430,6 +431,7 @@ function runSubprocess(command: SubprocessCommand, label: string): Promise<void>
     const child = spawn(command.cmd, [...command.args], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+    const bound = boundRuntime(child);
     const stderr: string[] = [];
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr.push(chunk.toString('utf-8'));
@@ -438,9 +440,13 @@ function runSubprocess(command: SubprocessCommand, label: string): Promise<void>
       /* drain */
     });
     child.once('error', (err) => {
+      bound.release();
       reject(new Error(`${label} failed to spawn: ${err.message}`));
     });
     child.once('close', (code) => {
+      bound.release();
+      // AC-345: a hung binary must fail the run, not park the scheduler.
+      if (bound.expired()) return reject(bound.error(label));
       if (code === 0) return resolve();
       reject(new Error(`${label} exited ${code}: ${stderr.join('').trim()}`));
     });
@@ -460,6 +466,7 @@ function runSubprocessWithStdin(
     const child = spawn(command.cmd, [...command.args], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    const bound = boundRuntime(child);
     const stderr: string[] = [];
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr.push(chunk.toString('utf-8'));
@@ -468,9 +475,13 @@ function runSubprocessWithStdin(
       /* drain */
     });
     child.once('error', (err) => {
+      bound.release();
       reject(new Error(`${label} failed to spawn: ${err.message}`));
     });
     child.once('close', (code) => {
+      bound.release();
+      // AC-345: a hung binary must fail the run, not park the scheduler.
+      if (bound.expired()) return reject(bound.error(label));
       if (code === 0) return resolve();
       reject(new Error(`${label} exited ${code}: ${stderr.join('').trim()}`));
     });

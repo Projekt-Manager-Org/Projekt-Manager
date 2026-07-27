@@ -35,6 +35,7 @@
 import { sql } from 'drizzle-orm';
 import { spawn } from 'node:child_process';
 import type { Database, TransactionalDatabase } from '../db/connection.js';
+import { boundRuntime } from './subprocessBound.js';
 import {
   getBackupStatus,
   updateBackupStatus,
@@ -654,6 +655,7 @@ function spawnCollect(
       env: options.env ?? process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    const bound = boundRuntime(child);
 
     const stdout: Uint8Array[] = [];
     const stderr: Uint8Array[] = [];
@@ -663,8 +665,18 @@ function spawnCollect(
     child.stderr.on('data', (chunk: Buffer) => {
       stderr.push(new Uint8Array(chunk));
     });
-    child.on('error', (err) => reject(err));
+    child.on('error', (err) => {
+      bound.release();
+      reject(err);
+    });
     child.on('close', (code) => {
+      bound.release();
+      // AC-345: distinguish "we killed it" from an ordinary non-zero
+      // exit, so `lastError` names the real failure.
+      if (bound.expired()) {
+        reject(bound.error(cmd));
+        return;
+      }
       if (code !== 0) {
         const rawErrText = Buffer.concat(stderr).toString('utf-8').trim();
         const errText = sanitizeErrorMessage(rawErrText, options.sanitizeSubstrings ?? []);

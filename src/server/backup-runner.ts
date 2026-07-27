@@ -44,6 +44,7 @@ import {
   type VerifyManifestFn,
 } from './services/backup.js';
 import { runDrill } from './services/backup-drill.js';
+import { boundRuntime } from './services/subprocessBound.js';
 import { ephemeralPgVerify } from './services/ephemeralPg.js';
 import {
   createR2Uploader,
@@ -451,6 +452,7 @@ function ageDecrypt(ciphertext: Uint8Array, identityPath: string): Promise<Uint8
     const child = spawn('age', ['-d', '-i', identityPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+    const bound = boundRuntime(child);
     const stdout: Uint8Array[] = [];
     const stderr: string[] = [];
     child.stdout.on('data', (chunk: Buffer) => {
@@ -459,8 +461,17 @@ function ageDecrypt(ciphertext: Uint8Array, identityPath: string): Promise<Uint8
     child.stderr.on('data', (chunk: Buffer) => {
       stderr.push(chunk.toString('utf-8'));
     });
-    child.once('error', (err) => reject(new Error(`age -d failed to spawn: ${err.message}`)));
+    child.once('error', (err) => {
+      bound.release();
+      reject(new Error(`age -d failed to spawn: ${err.message}`));
+    });
     child.once('close', (code) => {
+      bound.release();
+      // AC-345: a hung decrypt must fail the drill, not park the tick.
+      if (bound.expired()) {
+        reject(bound.error('age -d'));
+        return;
+      }
       if (code !== 0) {
         reject(new Error(`age -d exited ${code}: ${stderr.join('').trim()}`));
         return;
