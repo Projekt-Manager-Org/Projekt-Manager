@@ -190,7 +190,17 @@ docker run -d --name "$MINIO_CONTAINER" --network "$NETWORK" \
 
 READY_TIMEOUT=60
 started=$SECONDS
-until docker exec "$DB_CONTAINER" pg_isready -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; do
+# `-h 127.0.0.1` — a TCP probe, deliberately not pg_isready's default unix
+# socket. The official entrypoint's init phase runs a temporary server with
+# `listen_addresses=''` (docker-entrypoint.sh `docker_temp_server_start`) to
+# create the role and database: socket up, TCP closed. A socket probe reports
+# ready inside that window while the very next step — psql from another
+# container, over the network — gets ECONNREFUSED and fails the run for a
+# reason that has nothing to do with backups. Measured window ~0.3s against a
+# 1s poll interval, so it is rare, timing-dependent, and reddens a merge gate
+# when it hits. Only the TCP form asserts what this gate claims to assert.
+until docker exec "$DB_CONTAINER" \
+  pg_isready -h 127.0.0.1 -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; do
   if [ $((SECONDS - started)) -ge "$READY_TIMEOUT" ]; then
     echo "ERROR: Postgres did not accept connections within ${READY_TIMEOUT}s" >&2
     exit 1
