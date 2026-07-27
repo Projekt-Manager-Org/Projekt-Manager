@@ -58,7 +58,7 @@ runs:
     # ~5s. The split exists to keep a failing image scan from
     # publishing the bad tag to GHCR — `scripts/deploy.sh <sha>`
     # resolves images by SHA tag, so a published-then-fails-scan
-    # sequence would leave a draw-able bad image behind.
+    # sequence would leave a pullable bad image behind.
     #
     # `cache-to` carries `ignore-error=true` on every site below:
     # the GHA cache backend returns transient 502s under load (the

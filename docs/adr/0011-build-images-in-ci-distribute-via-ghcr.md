@@ -54,6 +54,9 @@ Industry pattern (Vercel, Netlify, Cloudflare Pages, AWS CodePipeline, Heroku): 
 Flow:
 
 1. Operator opens PR, fires `workflow_dispatch` on the PR branch. `build-and-push` runs the composite: app + backup built, Trivy-scanned, smoke-tested end-to-end, pushed to GHCR as `sha-<pr-tip>` + `<branch-slug>`. Operator deploys to VPS for validation.
+
+   **Precondition: the promotable artifact is the one built from the _final_ PR tip.** Guard 3 resolves `sha-<pr-tip>` at merge time, so any commit pushed after a dispatch — review fix, rebase, force-push — orphans that artifact and sends the merge down the rebuild path. Re-dispatch once the PR is final. Mid-PR dispatches for VPS testing stay useful; they are simply not the ones that get promoted.
+
 2. PR merges to `main` (squash by convention). `promote` fires on `push: main`. Three guards:
    - **PR discovery** — `gh api repos/.../commits/${GITHUB_SHA}/pulls` must return the PR's head SHA. Direct pushes to `main` (hot-fix) return empty → fallback.
    - **Tree equality** — `tree(merge-sha) == tree(pr-tip)`. Squash merges preserve trees; merge-commit / rebase strategies (also enabled on the repo) may pull in `main` and diverge → fallback.
@@ -63,11 +66,14 @@ Flow:
 
 PR-tip discovery is via GitHub's merge metadata (`gh api .../commits/<sha>/pulls`) and not via a PR label. A label channel would persist past a force-push-then-merge and could promote stale bytes; using the API ties discovery to the actual merge.
 
+Promotion is exact-artifact only. `GIT_SHA` is baked into the client bundle for the footer version chip, so every commit yields distinct image bytes — there is no "close enough" ancestor to promote. Guard 3's exact-SHA lookup is the only sound key, and a rebuild after a post-dispatch commit is correct behavior, not waste.
+
 Trade-offs accepted:
 
 - **Smoke runs only on dispatch.** Promote re-tags identical bytes; the smoke that ran against those bytes is the smoke for the artifact. A runner-environment difference between dispatch and merge runners is theoretically possible but the bytes are the same.
 - **Trivy DB binds to dispatch time.** CVEs published between dispatch and merge slip past until the daily `security-scheduled.yml` catches them. Dispatch-to-merge is typically minutes to hours.
 - **GHCR tag count.** New `sha-<pr-tip>` tags accumulate per dispatched PR in addition to `sha-<merge-sha>` per merge. ~2× under existing retention.
+- **Smoke runs after the push.** The composite pushes both images, then smokes — deliberately, so the smoke exercises the real `compose pull` path rather than local tags. A smoke failure therefore leaves a pullable `sha-<commit>` on GHCR: the run goes red, but `scripts/deploy.sh <sha>` would still resolve it. Trivy gates its own image's push, so a scan failure never reaches that state — an app-scan failure pushes nothing, and a backup-scan failure leaves the app tag published but no backup tag, which `deploy.sh` (`compose --profile backup pull app backup`) refuses.
 
 **Tagging:**
 
