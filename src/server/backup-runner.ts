@@ -44,7 +44,7 @@ import {
   type VerifyManifestFn,
 } from './services/backup.js';
 import { runDrill } from './services/backup-drill.js';
-import { boundRuntime } from './services/subprocessBound.js';
+import { boundRuntime, writeStdin } from './services/subprocessBound.js';
 import { ephemeralPgVerify } from './services/ephemeralPg.js';
 import {
   createR2Uploader,
@@ -485,7 +485,7 @@ function ageDecrypt(ciphertext: Uint8Array, identityPath: string): Promise<Uint8
       }
       resolve(out);
     });
-    child.stdin.end(ciphertext);
+    writeStdin(child, ciphertext);
   });
 }
 

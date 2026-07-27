@@ -213,6 +213,75 @@ describe('Layer 2 backup — source/dump snapshot equality (§15.22 AC-344)', ()
   });
 });
 
+describe('Layer 2 backup — manifest transaction is bounded (§15.22 AC-345)', () => {
+  let db: Database;
+  let pool: pg.Pool;
+
+  beforeAll(async () => {
+    const conn = createDatabase();
+    db = conn.db;
+    pool = conn.pool;
+    await pool.query('SELECT 1');
+    await migrate(db, { migrationsFolder });
+    await seed(db, { force: true });
+  });
+
+  afterAll(async () => {
+    if (pool) {
+      await db.execute(sql`DELETE FROM meta_backup_status`);
+      await db.execute(
+        sql`INSERT INTO meta_backup_status (singleton, last_backup_ok) VALUES (TRUE, FALSE)`,
+      );
+      await pool.end();
+    }
+  });
+
+  it('fails the run instead of blocking forever when a manifest table is locked', async () => {
+    // AC-345's database half. `computeManifest` takes ACCESS SHARE on
+    // every manifest table; an ACCESS EXCLUSIVE holder blocks it. With
+    // no `lock_timeout` the run never returns, the tick never completes,
+    // and croner's `protect: true` suppresses every later run — the same
+    // silent outage the subprocess bound covers, reached through the DB.
+    //
+    // A dedicated connection takes the lock and holds it, so the bound
+    // is the only thing that can end this call.
+    const blocker = await pool.connect();
+    const { uploader, uploads } = makeStubUploader();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE sessions IN ACCESS EXCLUSIVE MODE');
+
+      const result = await runBackup({
+        db,
+        uploader,
+        encrypt: fakeEncrypt,
+        // Production waits 30s; the property is identical at 250ms and
+        // the test does not have to park for it.
+        manifestLockTimeoutMs: 250,
+        // Neither runs: the transaction fails before the manifest is
+        // ever handed on. Both throw so a regression that reaches them
+        // fails loudly rather than passing for the wrong reason.
+        dumpSource: async () => {
+          throw new Error('dump source reached despite a locked manifest table');
+        },
+        verifyManifest: async () => {
+          throw new Error('verify reached despite a locked manifest table');
+        },
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('lock timeout');
+      }
+      // The dump never ran, so nothing can have been uploaded.
+      expect(uploads).toHaveLength(0);
+    } finally {
+      await blocker.query('ROLLBACK');
+      blocker.release();
+    }
+  });
+});
+
 describe('Layer 2 backup — pg_dump argv (§15.22 AC-344)', () => {
   // The two production-path details this fix turns on. Nothing else in
   // the suite reaches `pgDumpSource`, so without these a dropped flag

@@ -35,7 +35,7 @@
 import { sql } from 'drizzle-orm';
 import { spawn } from 'node:child_process';
 import type { Database, TransactionalDatabase } from '../db/connection.js';
-import { boundRuntime } from './subprocessBound.js';
+import { boundRuntime, writeStdin } from './subprocessBound.js';
 import {
   getBackupStatus,
   updateBackupStatus,
@@ -125,6 +125,13 @@ export interface RunBackupOptions {
    * this to force a mismatch without stubbing the ephemeral DB.
    */
   manifestPerturb?: (m: Manifest) => Manifest;
+  /**
+   * Test hook. Overrides how long the manifest transaction waits for a
+   * table lock (AC-345). Defaults to `MANIFEST_LOCK_TIMEOUT_MS`. Exists
+   * so the lock-contention path can be asserted in milliseconds instead
+   * of parking a test for the production bound.
+   */
+  manifestLockTimeoutMs?: number;
   /**
    * Injectable dump source, invoked with the manifest transaction's
    * exported snapshot id. When omitted, the service re-serializes the
@@ -222,6 +229,24 @@ export async function computeManifest(db: TransactionalDatabase): Promise<Manife
 }
 
 /**
+ * How long the manifest transaction waits for a table lock before it
+ * gives up (AC-345). Matched to `PG_DUMP_LOCK_WAIT_TIMEOUT_MS` on
+ * purpose: both sides of the shared snapshot tolerate exactly the same
+ * amount of lock contention, so a contended run fails at one predictable
+ * bound instead of two unrelated ones.
+ */
+const MANIFEST_LOCK_TIMEOUT_MS = 30_000;
+
+/**
+ * Backstop for a manifest statement that is neither waiting on a lock
+ * nor finishing. Deliberately far above any real scan — the manifest
+ * measures in milliseconds on this dataset — so that growth never turns
+ * it into a de-facto performance budget that starts failing sound
+ * backups.
+ */
+const MANIFEST_STATEMENT_TIMEOUT_MS = 5 * 60_000;
+
+/**
  * Execute a full Tier 1 backup run. See module header.
  */
 export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult> {
@@ -254,6 +279,37 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
         // LOCAL` scopes the change to this transaction so we never
         // leak a TimeZone mutation back to the pooled connection.
         await tx.execute(sql`SET LOCAL TIME ZONE 'UTC'`);
+
+        // AC-345: bound this transaction's own waits, not just the
+        // subprocesses it starts. `computeManifest` takes ACCESS SHARE
+        // on every manifest table; an ACCESS EXCLUSIVE holder (deploy
+        // migration, VACUUM FULL, REINDEX) blocks it indefinitely, which
+        // parks the tick — and croner's `protect: true` then suppresses
+        // every later run. That is the same silent outage the subprocess
+        // bound exists to prevent, reached through the database instead
+        // of through a subprocess.
+        //
+        // `lock_timeout` is the precise instrument: it fires only on
+        // lock contention, so a legitimately slow scan on a grown
+        // dataset is never failed merely for being slow.
+        // `statement_timeout` is the coarse backstop for a wait that is
+        // neither a lock nor making progress; sized far above any real
+        // manifest scan so it stays a backstop rather than a budget.
+        //
+        // Neither bounds the dump. `statement_timeout` does not run
+        // while the transaction sits idle awaiting `pg_dump` — that gap
+        // is what `boundRuntime` covers.
+        //
+        // `set_config(..., is_local => true)` rather than `SET LOCAL`:
+        // `SET` is parsed before parameter binding, so it cannot take a
+        // placeholder, and building it by interpolation would put a
+        // number into raw SQL for no gain.
+        await tx.execute(
+          sql`SELECT set_config('lock_timeout', ${String(opts.manifestLockTimeoutMs ?? MANIFEST_LOCK_TIMEOUT_MS)}, true)`,
+        );
+        await tx.execute(
+          sql`SELECT set_config('statement_timeout', ${String(MANIFEST_STATEMENT_TIMEOUT_MS)}, true)`,
+        );
 
         // A REPEATABLE READ transaction keeps one snapshot for its whole
         // lifetime, so what is exported here and what `computeManifest`
@@ -442,8 +498,22 @@ function firstDivergingTable(source: Manifest, restore: Manifest): string | null
  * connection string or similar.
  */
 function errorMessage(err: unknown): string {
-  const raw = err instanceof Error ? err.message : typeof err === 'string' ? err : 'unknown';
-  return sanitizeErrorMessage(raw);
+  if (typeof err === 'string') return sanitizeErrorMessage(err);
+  if (!(err instanceof Error)) return sanitizeErrorMessage('unknown');
+
+  // Walk the cause chain. Drizzle wraps driver errors: its own message
+  // is "Failed query: SELECT …" and the reason Postgres actually gave
+  // ("canceling statement due to lock timeout") sits on `cause`. Taking
+  // only the top message records *which* statement failed but never
+  // *why* — and the why is the half an operator needs off the status row
+  // (AC-345). Bounded depth because a cause chain can be cyclic.
+  const seen: string[] = [];
+  let current: Error | undefined = err;
+  for (let depth = 0; current && depth < 4; depth++) {
+    if (current.message && !seen.includes(current.message)) seen.push(current.message);
+    current = current.cause instanceof Error ? current.cause : undefined;
+  }
+  return sanitizeErrorMessage(seen.join(': ') || 'unknown');
 }
 
 /**
@@ -492,6 +562,27 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
 const PG_DUMP_LOCK_WAIT_TIMEOUT_MS = 30_000;
 
 /**
+ * Wall-clock bound for `pg_dump` specifically, tighter than the shared
+ * `SUBPROCESS_TIMEOUT_MS`.
+ *
+ * The dump is the only subprocess a run awaits *inside* an open
+ * transaction, so this value is not just "how late may the tick be" — it
+ * is also the ceiling on how long the manifest transaction stays open,
+ * and therefore on how long the run pins the cluster's xmin horizon
+ * (blocking vacuum) and holds ACCESS SHARE on every table (blocking
+ * DDL). Every other bounded subprocess costs only the tick.
+ *
+ * `--lock-wait-timeout` already covers the contended case, so this fires
+ * only when the dump hangs for a reason Postgres cannot see — a network
+ * black hole to the `db` container, say. Five minutes against a dump
+ * that measures in milliseconds on this dataset (attachment binaries
+ * live in R2, so the database itself stays small) is ample headroom
+ * while keeping a wedged run's collateral to minutes rather than a
+ * quarter of an hour.
+ */
+const PG_DUMP_TIMEOUT_MS = 5 * 60_000;
+
+/**
  * argv for the production dump. `--snapshot` makes pg_dump read the
  * manifest transaction's snapshot instead of taking its own (AC-344);
  * the id is an opaque token from `pg_export_snapshot()`, passed as an
@@ -529,6 +620,7 @@ export function pgDumpSource(databaseUrl: string): DumpSource {
     Object.assign(childEnv, pg);
     return spawnCollect('pg_dump', pgDumpArgs(snapshotId), {
       env: childEnv,
+      timeoutMs: PG_DUMP_TIMEOUT_MS,
       sanitizeSubstrings: [pg.PGPASSWORD].filter(
         (s): s is string => typeof s === 'string' && s.length > 0,
       ),
@@ -632,6 +724,12 @@ interface SpawnOptions {
   env?: NodeJS.ProcessEnv;
   stdin?: Uint8Array;
   /**
+   * Wall-clock bound for this child (AC-345). Omitted = the shared
+   * `SUBPROCESS_TIMEOUT_MS`; set it only where the cost of overrunning
+   * differs from "the tick is late", as it does for `pg_dump`.
+   */
+  timeoutMs?: number;
+  /**
    * Literal substrings to strip from captured stderr before it lands in
    * the rejection Error. Used by the pg_dump path to defensively scrub
    * PGPASSWORD in case a future libpq build decides to echo it.
@@ -655,7 +753,7 @@ function spawnCollect(
       env: options.env ?? process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const bound = boundRuntime(child);
+    const bound = boundRuntime(child, options.timeoutMs);
 
     const stdout: Uint8Array[] = [];
     const stderr: Uint8Array[] = [];
@@ -695,10 +793,6 @@ function spawnCollect(
       resolve(out);
     });
 
-    if (options.stdin) {
-      child.stdin.end(options.stdin);
-    } else {
-      child.stdin.end();
-    }
+    writeStdin(child, options.stdin);
   });
 }

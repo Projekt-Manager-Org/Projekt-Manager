@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { spawn } from 'node:child_process';
 
-import { boundRuntime, SUBPROCESS_TIMEOUT_MS } from '../services/subprocessBound.js';
+import { boundRuntime, writeStdin, SUBPROCESS_TIMEOUT_MS } from '../services/subprocessBound.js';
 
 /** Resolve once the child is fully gone, with how it ended. */
 function waitForClose(
@@ -65,6 +65,30 @@ describe('Layer 2 subprocess runtime bound (§15.22 AC-345)', () => {
 
     expect(signal).toBe('SIGKILL');
     expect(bound.expired()).toBe(true);
+  });
+
+  it('settles on close when the child dies before draining stdin (AC-346)', async () => {
+    // `age` on a malformed recipient and `pg_restore` on a corrupt
+    // archive both exit after reading only a few bytes. The rest of the
+    // dump is still queued in the pipe, which then errors EPIPE — and
+    // with no listener that is an uncaught exception, fatal in the
+    // backup runner, which registers no guard. The run would die before
+    // writing `lastError`, leaving the badge green on its last success.
+    const child = spawn('sh', ['-c', 'head -c 4096 >/dev/null; exit 1'], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    child.stdout?.on('data', () => {});
+    child.stderr?.on('data', () => {});
+
+    // 2 MB — comfortably past the 64KB pipe buffer, so the write is
+    // still outstanding when the child goes. A payload small enough to
+    // fit in the buffer reproduces nothing.
+    writeStdin(child, new Uint8Array(2 * 1024 * 1024));
+
+    // Reaching this line at all is the assertion: the failure mode is a
+    // dead process, not a wrong value.
+    const { code } = await waitForClose(child);
+    expect(code).toBe(1);
   });
 
   it('defaults to a bound that is finite', () => {

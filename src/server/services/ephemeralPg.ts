@@ -37,7 +37,7 @@ import path from 'node:path';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { computeManifest, type Manifest, type VerifyManifestFn } from './backup.js';
-import { boundRuntime } from './subprocessBound.js';
+import { boundRuntime, writeStdin } from './subprocessBound.js';
 import { attachPoolErrorHandler } from '../db/connection.js';
 import * as schema from '../db/schema.js';
 
@@ -485,6 +485,6 @@ function runSubprocessWithStdin(
       if (code === 0) return resolve();
       reject(new Error(`${label} exited ${code}: ${stderr.join('').trim()}`));
     });
-    child.stdin.end(stdin);
+    writeStdin(child, stdin);
   });
 }

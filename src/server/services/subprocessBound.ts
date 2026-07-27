@@ -1,6 +1,12 @@
 /**
- * Wall-clock bound for the external processes a Layer 2 run spawns
- * (verification.md §15.22 AC-345).
+ * Spawn hardening for the external processes a Layer 2 run starts:
+ * a wall-clock bound (verification.md §15.22 AC-345) and a stdin writer
+ * that survives the child dying mid-write (AC-346).
+ *
+ * Both exist for the same reason — a Layer 2 run must always end, and
+ * always end by *reporting*. One hangs the tick; the other kills the
+ * process before it can write the status row. Either way the operator
+ * sees a backup surface still green on its last success.
  *
  * Shared by the three spawn wrappers in the backup surface —
  * `spawnCollect` (pg_dump, age encrypt), `ephemeralPg`'s `runSubprocess`
@@ -41,6 +47,37 @@ export const SUBPROCESS_TIMEOUT_MS = 15 * 60_000;
 
 /** Grace between SIGTERM and SIGKILL for a child that ignores the former. */
 export const SUBPROCESS_SIGKILL_GRACE_MS = 5_000;
+
+/**
+ * Hand `bytes` to the child's stdin, tolerating the child going away
+ * before it has read them (AC-346).
+ *
+ * A child that exits early — `age` on a malformed recipient,
+ * `pg_restore` rejecting a corrupt archive — leaves the write queued in
+ * the pipe, which then errors EPIPE. Nothing else consumes errors on
+ * `stdin`, and an `'error'` event with no listener is an uncaught
+ * exception. It is also asynchronous, so the `try`/`catch` around
+ * `runBackup` never sees it, and `backup-runner.ts` is a separate
+ * entrypoint that registers no `uncaughtException` handler (the one in
+ * `start.ts` covers the app only). The process would exit before the
+ * status row is written: no `lastBackupOk=false`, no `lastError`, and a
+ * freshness badge still green on the previous success — the
+ * misleading-state class ADR-0014 rules out.
+ *
+ * Swallowing the error is the right call rather than a shortcut: `close`
+ * already carries the real outcome (exit code plus stderr), so the pipe
+ * error is redundant detail about a failure the caller is about to
+ * report anyway. Dropping it costs nothing; letting it escape costs the
+ * whole run's reporting.
+ */
+export function writeStdin(child: ChildProcess, bytes?: Uint8Array): void {
+  child.stdin?.on('error', () => {});
+  if (bytes) {
+    child.stdin?.end(bytes);
+  } else {
+    child.stdin?.end();
+  }
+}
 
 export interface RuntimeBound {
   /** Clear both timers. Call from the child's `close` / `error` handler. */
