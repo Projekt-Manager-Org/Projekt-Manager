@@ -312,6 +312,17 @@ jobs:
       - name: Audit single-write-path check (mutate() bypass)
         run: bash scripts/check-audit-mutations.sh
 
+      # Static check: every repository path cited in a code span across
+      # tracked *.md must exist (AC-347). Renames and deletions leave the
+      # prose behind — #289, #292 and #306 each fixed a batch of these by
+      # hand. Markdown LINK targets are out of scope here; they belong to
+      # the link-checker step.
+      - name: Doc path drift check (cited paths exist)
+        run: npm run check:doc-paths
+
+      - name: Doc path drift check — self-test
+        run: bash scripts/__tests__/check-doc-paths.test.sh
+
       # Build also lives in `lint` (not in `check-shard`) so it doesn't
       # pad the test shards' critical path. `npm run build` is
       # `tsc --noEmit && vite build && build:server` — the tsc step

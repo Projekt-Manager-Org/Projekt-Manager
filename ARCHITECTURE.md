@@ -398,7 +398,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 6. **API client**: add a `supplierApi` block in `src/api/client.ts` (same shape as `projectApi`).
 7. **State**: `src/state/supplierStore.ts` (model on `projectStore.ts`, optimistic updates with rollback).
 8. **UI**: components under `src/ui/suppliers/`.
-9. **Tests**: domain in `src/domain/__tests__/`, integration in `src/server/__tests__/` (copy `projects-list.test.ts`), component in `src/ui/__tests__/`.
+9. **Tests**: domain in `src/domain/__tests__/`, integration in `src/server/__tests__/` (copy `projects-list.test.ts`), component in the feature's own `__tests__/` (e.g. `src/ui/detail/__tests__/`).
 10. **Seed**: extend the relevant loader under `src/server/seed/` (`users.ts` for new user records; `business.ts` for customer/project-like entities that should flow through `ImportService`).
 11. **Spec**: update `docs/spec/data-model.md`, `docs/spec/api.md §14.2`, `docs/spec/verification.md`.
 
@@ -410,7 +410,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 2. Create component under `src/ui/<view>/`. Reads from `useProjectStore`, filters client-side.
 3. Add a `RouteEntry` to `ROUTES` in `src/config/routes.ts` with `canAccess` and `isDefaultFor` predicates (mirrors the spec's per-role nav matrix — [spec ui/index.md §8.7.1](docs/spec/ui/index.md#871-views)). The `Header` nav and the `ProtectedRoute` guard both derive from this entry automatically.
 4. Wire the component into the `VIEW_ELEMENTS` lookup in `src/App.tsx` so `<Routes>` knows what to render for the new key.
-5. Tests: copy structure from `src/ui/__tests__/KanbanBoard.test.tsx`.
+5. Tests: copy structure from `src/ui/detail/__tests__/ProjectDetailPage.test.tsx`.
 
 Backend changes are usually not needed — the store exposes the full project list. If the view needs a query the store can't answer, add it to `projectStore.ts` (keeps the cache coherent) rather than a new store.
 
