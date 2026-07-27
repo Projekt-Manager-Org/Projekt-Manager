@@ -314,83 +314,28 @@ jobs:
       - name: Install apt prerequisites
         run: sudo apt-get update && sudo apt-get install -y age
 
-      # MinIO runs as a step (not a service container) because GitHub service
-      # containers do not support overriding `command`, and minio/minio needs
-      # `server /data` as its argv. Versions are pinned to match
-      # docker-compose.yml (ADR-0009 — version pinning across environments).
-      #
-      # Bucket provisioning is delegated to docker/init-storage.sh so the dev
-      # compose recipe and CI stay in lockstep — versioning, Compliance
-      # Object Lock, lifecycle, AND a capability-restricted MinIO app user
-      # (#45 / ADR-0022). The boot-time bucket-safety probe in
-      # src/server/storage/safety.ts plus the integration arm of
-      # src/server/__tests__/storage-safety.test.ts both run end-to-end
-      # against this MinIO; without the full provisioning the probe
-      # correctly fail-closes and CI stops before any test executes.
-      #
-      # The script hardcodes `http://storage:9000` as its mc alias target
-      # (the compose service hostname). To reuse the script unchanged, MinIO
-      # is named `storage` and attached to a user-defined bridge network
-      # alongside the mc one-shot — Docker auto-creates DNS entries for
-      # container names on user-defined networks. Port 9000 is still
-      # published to the runner so vitest (running on the host) reaches
-      # MinIO at http://localhost:9000.
+      # Storage — MinIO + full bucket/IAM provisioning. Rationale, image
+      # pins and readiness handling live in the action; see
+      # .github/actions/start-minio/action.yml. The boot-time bucket-safety
+      # probe in src/server/storage/safety.ts plus the integration arm of
+      # src/server/__tests__/storage-safety.test.ts run end-to-end against
+      # this MinIO — without the full provisioning the probe correctly
+      # fail-closes and CI stops before any test executes.
       - name: Start MinIO
-        env:
-          # Root creds run the MinIO process and are used by the init script
-          # for admin operations only — the app NEVER runs as root. Hardcoded
-          # ephemeral test values; no secret material.
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: changeme
-          # Capability-restricted app user (#45 / ADR-0022). The init script
-          # provisions this user with a bucket-scoped policy that allows
-          # write/read/list/hide but denies s3:DeleteObjectVersion. The
-          # boot-time capability self-test (and the integration arm of
-          # storage-safety.test.ts) asserts this credential cannot destroy
-          # versions, so vitest must run with these creds, not the root ones.
-          MINIO_APP_ACCESS_KEY: pmappci
-          MINIO_APP_SECRET_KEY: pmappcisecret
-          STORAGE_BUCKET: projekt-manager
+        uses: ./.github/actions/start-minio
+        with:
+          storage_bucket: projekt-manager
           # Isolated bucket the vitest integration suite targets via
-          # src/test/integration-setup.ts. Provisioned alongside
-          # STORAGE_BUCKET by docker/init-storage.sh below; the app user's
-          # IAM policy gains the matching ARN so the boot-time bucket-
-          # safety probe (which runs against the test bucket once the
-          # suite overrides STORAGE_BUCKET) doesn't fail-close with
-          # AccessDenied. Mirrors STORAGE_BUCKET_E2E in e2e.yml.
-          STORAGE_BUCKET_TEST: projekt-manager-test
-        run: |
-          docker network create pm-storage-net
-          docker run -d --name storage \
-            --network pm-storage-net \
-            -p 9000:9000 \
-            -e MINIO_ROOT_USER \
-            -e MINIO_ROOT_PASSWORD \
-            minio/minio:RELEASE.2025-09-07T16-13-09Z \
-            server /data
-          # Wait for MinIO to become ready (max 30s).
-          for i in {1..30}; do
-            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
-              echo "MinIO ready after ${i}s"
-              break
-            fi
-            sleep 1
-          done
-          # Provision the bucket and the capability-restricted app user via
-          # the same script the dev compose stack runs. Mounted read-only;
-          # the script itself is idempotent. Network-attached so the
-          # script's `mc alias set minio http://storage:9000 ...` resolves.
-          docker run --rm --network pm-storage-net \
-            -v "$PWD/docker/init-storage.sh:/init-storage.sh:ro" \
-            -e MINIO_ROOT_USER \
-            -e MINIO_ROOT_PASSWORD \
-            -e MINIO_APP_ACCESS_KEY \
-            -e MINIO_APP_SECRET_KEY \
-            -e STORAGE_BUCKET \
-            -e STORAGE_BUCKET_TEST \
-            --entrypoint /bin/sh \
-            minio/mc:RELEASE.2025-08-13T08-35-41Z \
-            /init-storage.sh
+          # src/test/integration-setup.ts. The app user's IAM policy gains the
+          # matching ARN so the boot-time bucket-safety probe (which runs
+          # against the test bucket once the suite overrides STORAGE_BUCKET)
+          # doesn't fail-close with AccessDenied.
+          storage_bucket_test: projekt-manager-test
+          # Must match STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY below — the
+          # capability self-test asserts vitest runs as the restricted app
+          # user, not as MinIO root.
+          app_access_key: pmappci
+          app_secret_key: pmappcisecret
 
       # `--shard=N/M` partitions the file list across runners. Vitest's
       # built-in sharder is path-hash stable across runs so a flake is

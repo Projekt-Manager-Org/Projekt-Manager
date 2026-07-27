@@ -142,8 +142,11 @@
     },
     {
       "customType": "regex",
-      "description": "MinIO `minio` and `mc` images hardcoded in `docker run …` shell steps inside .github/workflows/*.yml — Renovate's github-actions manager doesn't parse docker images inside run: blocks, so a custom regex keeps them in lockstep with the docker-compose copies",
-      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "description": "MinIO `minio` and `mc` images hardcoded in `docker run …` shell inside .github/workflows/<name>.yml and .github/actions/<name>/<file>.{yml,sh} (one directory level only — a nested action dir would silently drop out of tracking) — Renovate's github-actions manager doesn't parse docker images inside run: blocks or sibling scripts, so a custom regex keeps them in lockstep with the docker-compose copies",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/",
+        "/^\\.github/actions/[^/]+/[^/]+\\.(ya?ml|sh)$/"
+      ],
       "matchStrings": [
         "minio/(?<depName>minio|mc):(?<currentValue>RELEASE\\.[0-9TZ-]+)"
       ],
