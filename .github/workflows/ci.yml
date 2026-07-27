@@ -277,6 +277,13 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      # The root config's `include` stops at `src` — nothing under
+      # `scripts/` was type-checked anywhere, so `scripts/tsconfig.json`
+      # was editor-only and free to rot (#283: its missing `@/*` mapping
+      # went unnoticed until a script reached for an aliased module).
+      - name: Type check (scripts)
+        run: npx tsc -p scripts/tsconfig.json --noEmit
+
       # Static check: every var declared in src/server/config/env.ts must
       # be forwarded to the app container via docker-compose.yml's
       # services.app.environment. Regression guard for the #57 failure
