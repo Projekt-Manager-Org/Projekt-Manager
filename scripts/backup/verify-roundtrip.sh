@@ -39,14 +39,20 @@
 #   form compose cannot express, and at PR time no GHCR tag exists to pull.
 #
 # USAGE
-#   BACKUP_IMAGE=projekt-manager-backup:ci scripts/backup/verify-roundtrip.sh
-#
-#   Locally, build that image first (order matters — compose has no
-#   build-ordering primitive, see docker-compose.dev.yml):
+#   Locally, via the npm entry point — it supplies the dev image tag as the
+#   BACKUP_IMAGE default, nothing else. Build that image first (order
+#   matters; compose has no build-ordering primitive, see
+#   docker-compose.dev.yml):
 #     docker compose build app
 #     docker compose --profile backup build backup
-#     BACKUP_IMAGE=ghcr.io/projekt-manager-org/projekt-manager-backup:dev \
-#       scripts/backup/verify-roundtrip.sh
+#     npm run test:backup-roundtrip
+#
+#   CI, and any run against a different tag, calls this script directly:
+#     BACKUP_IMAGE=projekt-manager-backup:ci scripts/backup/verify-roundtrip.sh
+#
+#   BACKUP_IMAGE stays REQUIRED here rather than defaulting in-script: CI
+#   must fail loudly if its tag ever goes missing, instead of silently
+#   testing whatever stale dev image happens to sit in the local store.
 #
 # No skip path. A missing Docker daemon fails the run loudly — Docker is
 # already a prerequisite for `npm run test` (CONTRIBUTING.md § Testing),
@@ -60,6 +66,23 @@ set -euo pipefail
 if [ -z "${BACKUP_IMAGE:-}" ]; then
   echo "ERROR: BACKUP_IMAGE is required (a prebuilt backup image tag)." >&2
   echo "       CI passes projekt-manager-backup:ci; see the header for local use." >&2
+  exit 1
+fi
+
+# The image must already be in the local store — this script builds nothing
+# (see the header). Without this check the first `docker run` below reaches
+# for a registry and reports "pull access denied", which reads as a
+# credentials problem rather than "you have not built the image yet". CI is
+# unaffected: the `docker` job loads projekt-manager-backup:ci one step up.
+if ! docker image inspect "$BACKUP_IMAGE" >/dev/null 2>&1; then
+  echo "ERROR: image '$BACKUP_IMAGE' is not in the local Docker image store." >&2
+  echo "       This script builds nothing. Build it first — order matters," >&2
+  echo "       compose has no build-ordering primitive:" >&2
+  echo "" >&2
+  echo "         docker compose build app" >&2
+  echo "         docker compose --profile backup build backup" >&2
+  echo "" >&2
+  echo "       See docs/ops/backup/overview.md." >&2
   exit 1
 fi
 

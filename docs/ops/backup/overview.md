@@ -76,8 +76,14 @@ runs it in the `docker` job; locally it needs a prebuilt image:
 
 ```bash
 docker compose build app && docker compose --profile backup build backup
-BACKUP_IMAGE=ghcr.io/projekt-manager-org/projekt-manager-backup:dev \
-  scripts/backup/verify-roundtrip.sh
+npm run test:backup-roundtrip
+```
+
+The npm script supplies the dev image tag as the `BACKUP_IMAGE` default and
+nothing else. Against any other tag, call the script directly:
+
+```bash
+BACKUP_IMAGE=<tag> scripts/backup/verify-roundtrip.sh
 ```
 
 It owns its own Postgres and MinIO with no published ports, so it needs no
