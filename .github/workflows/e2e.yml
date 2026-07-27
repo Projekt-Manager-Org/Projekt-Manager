@@ -46,8 +46,11 @@ jobs:
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
+        # `-h 127.0.0.1` — TCP, not the unix socket. See the identical
+        # probe in ci.yml's `check` job for the init-phase temporary-server
+        # window this avoids.
         options: >-
-          --health-cmd "pg_isready -U pm -d pm"
+          --health-cmd "pg_isready -h 127.0.0.1 -U pm -d pm"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5

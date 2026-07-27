@@ -339,8 +339,15 @@ jobs:
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
+        # `-h 127.0.0.1` — TCP, not pg_isready's default unix socket. The
+        # image's entrypoint runs an init-phase temporary server with
+        # `listen_addresses=''` to create the role and database, so a socket
+        # probe reports healthy while TCP is still closed. The runner gates
+        # the steps below on this probe and then connects over the mapped
+        # port, so the socket form can release the job into a refused
+        # connection — a red `check` for a reason unrelated to the diff.
         options: >-
-          --health-cmd "pg_isready -U pm -d pm"
+          --health-cmd "pg_isready -h 127.0.0.1 -U pm -d pm"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 5
