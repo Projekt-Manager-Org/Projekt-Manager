@@ -37,12 +37,13 @@ The trigger question: **"Does this change affect how the system authenticates, a
 
 ## Testing
 
-| Layer              | Command                                     |
-| ------------------ | ------------------------------------------- |
-| Unit + integration | `npm run test`                              |
-| E2E headless       | `npm run test:e2e`                          |
-| E2E interactive    | `npx playwright test --ui --project=<name>` |
-| Trace review       | `npx playwright show-trace <zip>`           |
+| Layer                | Command                                     |
+| -------------------- | ------------------------------------------- |
+| Unit + integration   | `npm run test`                              |
+| Tier 1 backup verify | `npm run test:backup-roundtrip`             |
+| E2E headless         | `npm run test:e2e`                          |
+| E2E interactive      | `npx playwright test --ui --project=<name>` |
+| Trace review         | `npx playwright show-trace <zip>`           |
 
 **Design ACs** The functional E2E specs (`management-flows`, `kanban-flows`, `permission-visibility`, …) remain the automated behavioral gate.
 
