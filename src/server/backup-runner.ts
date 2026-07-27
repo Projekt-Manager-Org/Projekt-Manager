@@ -38,6 +38,7 @@ import {
   pgDumpSource,
   ageEncrypt,
   sanitizeErrorMessage,
+  LOCK_WAIT_TIMEOUT_MS,
   type BackupUploader,
   type DumpSource,
   type Encryptor,
@@ -89,7 +90,7 @@ async function main(): Promise<number> {
 // ---------------------------------------------------------------
 
 async function runSubcommand(env: Env): Promise<number> {
-  const { db, pool } = createDatabase();
+  const { db, pool } = createDatabase({ lockTimeoutMs: LOCK_WAIT_TIMEOUT_MS });
   try {
     const handler = createBackupHandler(buildBackupDeps(env, db));
     const exitCode = await handler();
@@ -104,7 +105,7 @@ async function runSubcommand(env: Env): Promise<number> {
 // ---------------------------------------------------------------
 
 async function drillSubcommand(env: Env): Promise<number> {
-  const { db, pool } = createDatabase();
+  const { db, pool } = createDatabase({ lockTimeoutMs: LOCK_WAIT_TIMEOUT_MS });
   try {
     const handler = createDrillHandler(buildDrillDeps(env, db));
     const exitCode = await handler();
@@ -201,7 +202,7 @@ async function scheduleSubcommand(env: Env): Promise<number> {
   }
   process.stdout.write(`backup-runner: schedule: R2 reachable bucket=${r2.bucket}\n`);
 
-  const { db, pool } = createDatabase();
+  const { db, pool } = createDatabase({ lockTimeoutMs: LOCK_WAIT_TIMEOUT_MS });
 
   const backupHandler = createBackupHandler(buildBackupDeps(env, db));
   const drillHandler = createDrillHandler(buildDrillDeps(env, db));

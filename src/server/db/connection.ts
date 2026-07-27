@@ -40,6 +40,24 @@ export type MutatingDatabase = TxHandle;
 
 export interface ConnectionOptions {
   connectionString?: string;
+  /**
+   * Session default for `lock_timeout`, in milliseconds, applied to
+   * every connection this pool opens (node-postgres puts it in the
+   * startup packet). Omitted = Postgres' default of "wait forever".
+   *
+   * The backup runner sets it (AC-345): every statement a run issues —
+   * including the status-row write that reports the failure — must give
+   * up rather than block behind an ACCESS EXCLUSIVE holder, because a
+   * parked tick suppresses every later run through croner's
+   * `protect: true`. A `SET LOCAL` inside the one transaction cannot
+   * cover the writes that happen outside it, and a session-level `SET`
+   * on a pooled client would leak into the next checkout.
+   *
+   * Not set for the app: a request that waits on a lock returns a slow
+   * response, not a silent outage, and the timeout would surface as
+   * user-visible errors during any migration.
+   */
+  lockTimeoutMs?: number;
 }
 
 /**
@@ -63,7 +81,7 @@ export function createDatabase(opts: ConnectionOptions = {}): {
   const env = validateEnvRuntime();
   const connectionString = opts.connectionString ?? env.DATABASE_URL;
 
-  const pool = new Pool({ connectionString });
+  const pool = new Pool({ connectionString, lock_timeout: opts.lockTimeoutMs });
   attachPoolErrorHandler(pool);
   const db = drizzle(pool, { schema });
 

@@ -168,7 +168,44 @@ export function createR2Downloader(config: R2Config): BackupDownloader {
 // Private helpers
 // ---------------------------------------------------------------
 
-function buildClient(config: R2Config): S3Client {
+/**
+ * Wall-clock bound for a single R2 request (AC-345).
+ *
+ * The SDK's default is no bound at all: `@smithy/node-http-handler`
+ * ships `requestTimeout`, `connectionTimeout` and `socketTimeout` all
+ * at `0`. A black-holed connection to R2 therefore parks the tick
+ * exactly as a hung `pg_dump` would — and croner's `protect: true` then
+ * suppresses every later run, with the freshness badge still green on
+ * its last success. R2 is the run's only off-host dependency, so it is
+ * the likeliest thing here to hang.
+ *
+ * `throwOnRequestTimeout` is not optional garnish: without it the
+ * handler only logs a warning at the bound and keeps waiting.
+ *
+ * Sized like `PG_DUMP_TIMEOUT_MS` — unreachable in normal operation
+ * (attachment binaries live in R2 under Layer 3, so the dump itself
+ * stays small) while keeping a wedged run's collateral to minutes. The
+ * SDK's default 3 attempts put the worst case per object at 15 minutes;
+ * a run touches three objects and the tick interval is three hours.
+ */
+const R2_REQUEST_TIMEOUT_MS = 5 * 60_000;
+
+/** Bound on establishing the TCP+TLS connection, before any request. */
+const R2_CONNECTION_TIMEOUT_MS = 10_000;
+
+const R2_REQUEST_HANDLER = {
+  requestTimeout: R2_REQUEST_TIMEOUT_MS,
+  connectionTimeout: R2_CONNECTION_TIMEOUT_MS,
+  throwOnRequestTimeout: true,
+} as const;
+
+/**
+ * Exported so the bound is asserted without a network round trip — same
+ * reason `pgDumpArgs` is extracted in `backup.ts`. Drop the
+ * `requestHandler` here, or `throwOnRequestTimeout` from it, and every
+ * other test stays green while the client silently stops bounding.
+ */
+export function buildClient(config: R2Config): S3Client {
   return new S3Client({
     endpoint: config.endpoint,
     region: config.region ?? 'auto',
@@ -180,6 +217,7 @@ function buildClient(config: R2Config): S3Client {
     // accept virtual-host style too. Path-style is the safe default and
     // matches what `storage/client.ts` already uses for MinIO.
     forcePathStyle: true,
+    requestHandler: R2_REQUEST_HANDLER,
   });
 }
 

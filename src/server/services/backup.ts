@@ -229,13 +229,17 @@ export async function computeManifest(db: TransactionalDatabase): Promise<Manife
 }
 
 /**
- * How long the manifest transaction waits for a table lock before it
- * gives up (AC-345). Matched to `PG_DUMP_LOCK_WAIT_TIMEOUT_MS` on
- * purpose: both sides of the shared snapshot tolerate exactly the same
- * amount of lock contention, so a contended run fails at one predictable
- * bound instead of two unrelated ones.
+ * How long anything in a run waits for a table lock before it gives up
+ * (AC-345): the manifest transaction, `pg_dump` via
+ * `--lock-wait-timeout`, and every other statement the runner issues via
+ * the pool's session default (`createDatabase({ lockTimeoutMs })` in
+ * `backup-runner.ts`).
+ *
+ * One constant on purpose. Both sides of the shared snapshot must
+ * tolerate exactly the same amount of lock contention, or a contended
+ * run fails at two unrelated bounds instead of one predictable one.
  */
-const MANIFEST_LOCK_TIMEOUT_MS = 30_000;
+export const LOCK_WAIT_TIMEOUT_MS = 30_000;
 
 /**
  * Backstop for a manifest statement that is neither waiting on a lock
@@ -305,7 +309,7 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
         // placeholder, and building it by interpolation would put a
         // number into raw SQL for no gain.
         await tx.execute(
-          sql`SELECT set_config('lock_timeout', ${String(opts.manifestLockTimeoutMs ?? MANIFEST_LOCK_TIMEOUT_MS)}, true)`,
+          sql`SELECT set_config('lock_timeout', ${String(opts.manifestLockTimeoutMs ?? LOCK_WAIT_TIMEOUT_MS)}, true)`,
         );
         await tx.execute(
           sql`SELECT set_config('statement_timeout', ${String(MANIFEST_STATEMENT_TIMEOUT_MS)}, true)`,
@@ -543,9 +547,9 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
 // ---------------------------------------------------------------
 
 /**
- * How long `pg_dump` may wait for a table lock before it gives up and
- * fails the run. Milliseconds — the one format every server version
- * accepts for `--lock-wait-timeout`.
+ * `pg_dump`'s share of `LOCK_WAIT_TIMEOUT_MS`, rendered for
+ * `--lock-wait-timeout`. Milliseconds — the one format every server
+ * version accepts.
  *
  * Bounded on purpose, and load-bearing. The manifest transaction holds
  * ACCESS SHARE on every table while it waits for the dump, so an ACCESS
@@ -559,7 +563,7 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
  * permanent backup outage. Failing is the cheap outcome: the run is
  * recorded failed and the next tick retries.
  */
-const PG_DUMP_LOCK_WAIT_TIMEOUT_MS = 30_000;
+const PG_DUMP_LOCK_WAIT_TIMEOUT_MS = LOCK_WAIT_TIMEOUT_MS;
 
 /**
  * Wall-clock bound for `pg_dump` specifically, tighter than the shared
