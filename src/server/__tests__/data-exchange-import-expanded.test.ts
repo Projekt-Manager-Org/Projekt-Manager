@@ -476,7 +476,6 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // -------------------------------------------------------------------
   // AC-312 — numbering continues from the imported peak.
   //
   // The verbatim-restore half is already pinned above (the expanded
