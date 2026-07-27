@@ -20,13 +20,14 @@
 #
 # WHAT IT ASSERTS
 #   1. `backup-runner run` exits 0 against a seeded DB.
-#   2. `meta_backup_status.last_backup_ok` is true with `last_error` NULL —
-#      the DB row AND the status mirror both landed (AC-169).
-#   3. The uploaded artifact decrypts to bytes starting with `PGDMP`.
-#   4. Restoring that artifact through the production `ephemeralPgVerify()`
+#   2. `meta_backup_status.last_backup_ok` is true with `last_error` NULL.
+#   3. The off-site `status/latest.json` mirror carries the same verdict —
+#      AC-169's other half, read from the bucket rather than inferred.
+#   4. The uploaded artifact decrypts to bytes starting with `PGDMP`.
+#   5. Restoring that artifact through the production `ephemeralPgVerify()`
 #      reproduces the uploaded source manifest, table by table, with the
 #      fixture rows present (verify-tier1-artifact.mjs arm 1).
-#   5. A corrupted artifact is rejected by the real `pg_restore` — AC-165's
+#   6. A corrupted artifact is rejected by the real `pg_restore` — AC-165's
 #      failure branch, reached without `manifestPerturb` (arm 2).
 #
 # OWNS ITS OWN ENVIRONMENT
@@ -325,13 +326,13 @@ docker run --rm --network "$NETWORK" \
   -e NODE_ENV="production" \
   "$BACKUP_IMAGE" run
 
-# --- 6. Status row ---------------------------------------------------
+# --- 6. Status dual-write: DB row + off-site mirror -------------------
 
 step "Asserting meta_backup_status"
 # `last_error IS NULL` as well as ok=true on purpose: a status-mirror
 # failure after the artifacts land still returns ok:true from runBackup and
 # records the reason here (AC-169 orphan-artifact semantics), so ok alone
-# would not prove the mirror write happened.
+# would not prove the mirror write was even attempted.
 #
 # `true`, not psql's `t`: the `||` renders the boolean through
 # `boolean::text` rather than through psql's own column formatting.
@@ -341,6 +342,30 @@ if [ "$status" != "true|<null>" ]; then
   exit 1
 fi
 echo "last_backup_ok=true, last_error IS NULL"
+
+# The row above only proves the mirror write did not raise. Read the object
+# itself: AC-169 is a DUAL-write, and half of it lives in the bucket, under
+# `status/latest.json` (r2Uploader.ts STATUS_MIRROR_KEY) — outside the
+# `daily/` prefix step 7 mirrors, so nothing else here would ever touch it.
+#
+# Unencrypted by design (ADR-0020: operators read freshness without holding
+# age material), so it is greppable as-is. Verdict fields only — field-by-
+# field equality with the row is backup-status.test.ts's job, and pinning
+# the timestamp rendering here would buy a second copy of that assertion at
+# the cost of a merge gate that reddens on a format nuance.
+step "Asserting the off-site status mirror"
+mirror="$(docker run --rm --network "$NETWORK" --user "$HOST_UID_GID" \
+  -e MC_HOST_minio="http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@storage:9000" \
+  --entrypoint mc "$MC_IMAGE" \
+  --config-dir /tmp/.mc \
+  cat "minio/${STORAGE_BUCKET}/status/latest.json")"
+for field in '"lastBackupOk":true' '"lastError":null'; do
+  if ! printf '%s' "$mirror" | grep -qF "$field"; then
+    echo "ERROR: status mirror does not carry ${field}: ${mirror}" >&2
+    exit 1
+  fi
+done
+echo "status/latest.json carries lastBackupOk=true, lastError=null"
 
 # --- 7. Fetch + decrypt the artifact ---------------------------------
 
