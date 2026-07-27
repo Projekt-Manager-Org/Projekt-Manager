@@ -323,6 +323,28 @@ jobs:
       - name: Doc path drift check — self-test
         run: bash scripts/__tests__/check-doc-paths.test.sh
 
+      # Static check: every relative file link and `#anchor` fragment
+      # across tracked *.md must resolve (AC-348). 25 broken internal
+      # links accumulated undetected before #289 — neither `lint` nor
+      # `format:check` resolves links.
+      #
+      # Flags live in lychee.toml, shared with scripts/check-links.sh so
+      # a local run and this one cannot diverge; only the input glob is
+      # passed here, and it mirrors that script's `exec` line.
+      #
+      # `offline = true` in the config means no network calls: a flaky
+      # third-party host cannot fail the lint job.
+      - name: Markdown link check (AC-348)
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # renovate: datasource=github-releases depName=lycheeverse/lychee extractVersion=^lychee-(?<version>.*)$
+          lycheeVersion: v0.24.2
+          args: --config lychee.toml './**/*.md'
+          # A run that finds zero links means the glob missed the docs —
+          # green for the wrong reason. Fail instead.
+          failIfEmpty: true
+          jobSummary: false
+
       # Build also lives in `lint` (not in `check-shard`) so it doesn't
       # pad the test shards' critical path. `npm run build` is
       # `tsc --noEmit && vite build && build:server` — the tsc step
