@@ -104,7 +104,7 @@ for (const table of expectedTables) {
 
 // Non-vacuity gate. Every checksum on an empty table is md5(''), so a
 // restore that produced nothing satisfies the loop above for every table.
-// The seed (verify-roundtrip-seed.sql) populates these four; if the rows
+// The seed (verify-roundtrip-seed.sql) populates these five; if the rows
 // are missing here, the comparison proved nothing and the run is a
 // failure, not a pass.
 const SEEDED_TABLES = ['audit_log', 'customers', 'invoice_sequence', 'projects', 'users'];
@@ -149,8 +149,11 @@ const reason = rejection instanceof Error ? rejection.message : String(rejection
 // `meta_backup_status.lastError` as `verify: pg_restore exited 1: …`. A
 // rejection that does not carry it means the run failed for some other
 // reason — a missing binary, a readiness timeout — and this arm would
-// pass without ever testing the corruption path.
-if (!/pg_restore (exited|failed to spawn)/.test(reason)) {
+// pass without ever testing the corruption path. `exited` only, not
+// `failed to spawn`: a pg_restore that is not on PATH rejects every
+// input, corrupt or not, so accepting it here would let the packaging
+// regression this arm is supposed to notice satisfy it instead.
+if (!/pg_restore exited/.test(reason)) {
   fail(`corrupted artifact was rejected, but not by pg_restore: ${reason}`);
 }
 

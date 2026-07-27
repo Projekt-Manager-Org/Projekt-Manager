@@ -144,11 +144,14 @@ VALUES
 COMMIT;
 
 -- Fail loudly rather than let the script assert against a manifest of
--- empty tables. `\if` needs a boolean from a one-column, one-row query;
--- ON_ERROR_STOP turns the \echo+exit path into a non-zero psql exit.
-SELECT count(*) = 2 AS ok FROM "audit_log" \gset
-\if :ok
-\else
-\echo 'seed did not land — audit_log does not hold the 2 fixture rows'
-\quit 1
-\endif
+-- empty tables. `RAISE EXCEPTION` rather than psql's `\if` + `\quit`:
+-- `\quit` takes no exit-status argument, so `\quit 1` warns "extra
+-- argument \"1\" ignored" and psql still exits 0 — the caller's `set -e`
+-- sails past a guard that printed its own failure message. A server-side
+-- error is what ON_ERROR_STOP actually acts on.
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM "audit_log") <> 2 THEN
+    RAISE EXCEPTION 'seed did not land — audit_log does not hold the 2 fixture rows';
+  END IF;
+END $$;
