@@ -479,6 +479,17 @@ jobs:
               # on the PR that introduces them, not on the next
               # Docker-touching PR.
               - '.github/workflows/ci.yml'
+              # The Tier 1 container round-trip and the two inputs it
+              # cannot be right without (#301). A narrow list, not
+              # `src/**`: the rest of the app changes on nearly every PR
+              # and does not change what this job proves, but these three
+              # paths ARE what it proves. `ephemeralPg.ts` and the
+              # baseline schema run nowhere else against the real
+              # binaries, so without them here a regression in either
+              # only surfaces on the next Docker-touching PR.
+              - 'scripts/backup/**'
+              - 'src/server/services/ephemeralPg.ts'
+              - 'src/server/db/migrations/**'
 
   # ---------------------------------------------------------------
   # Docker validation — runs when container-relevant files changed
@@ -711,6 +722,24 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           trivyignores: .trivyignore
+
+      # Tier 1 round-trip against the real initdb / pg_dump / pg_restore
+      # (#301 scope C). This job is the only place those binaries exist:
+      # they ship in the backup image and on no runner, so the host suite
+      # can pin their argv but never execute them.
+      #
+      # Here rather than in `check`, and as a script rather than a vitest
+      # case, for the reasons in the script header — `check-shard` has no
+      # compose stack, and this needs the image the step above just built.
+      #
+      # No postgres/MinIO service containers and no start-minio call: the
+      # script owns its own on a private network with no published ports,
+      # which is what lets the identical command run on a dev machine.
+      # ~10s, entirely container-to-container.
+      - name: Tier 1 round-trip (real Postgres binaries)
+        env:
+          BACKUP_IMAGE: projekt-manager-backup:ci
+        run: bash scripts/backup/verify-roundtrip.sh
 
   # ---------------------------------------------------------------
   # Build, scan, smoke, and push the production images to GHCR.
