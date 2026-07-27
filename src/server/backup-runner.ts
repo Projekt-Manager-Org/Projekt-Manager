@@ -71,7 +71,7 @@ import {
  * side effects — `main()` runs only under the `import.meta.url` guard at
  * the bottom.
  */
-export { ephemeralPgVerify } from './services/ephemeralPg.js';
+export { ephemeralPgVerify };
 
 const USAGE =
   'usage: backup-runner <run|drill|schedule|--help>\n' +

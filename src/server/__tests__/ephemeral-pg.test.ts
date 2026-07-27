@@ -17,7 +17,8 @@
  * host or a CI runner, and Alpine-musl builds are what production runs —
  * a host-installed PGDG glibc build would exercise different packaging.
  * The round-trip against the real binaries therefore has to run as the
- * shipped image — the container half of #301, still open. Everything
+ * shipped image, which is `scripts/backup/verify-roundtrip.sh` (CI's
+ * `docker` job; `npm run test:backup-roundtrip` locally). Everything
  * below is what the host suite can pin without a new toolchain
  * requirement, and it does not substitute for that round-trip: nothing
  * here executes `initdb`, `pg_dump` or `pg_restore`.
