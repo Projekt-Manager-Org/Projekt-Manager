@@ -486,16 +486,21 @@ jobs:
               # on the PR that introduces them, not on the next
               # Docker-touching PR.
               - '.github/workflows/ci.yml'
-              # The Tier 1 container round-trip and the two inputs it
-              # cannot be right without (#301). A narrow list, not
-              # `src/**`: the rest of the app changes on nearly every PR
-              # and does not change what this job proves, but these three
-              # paths ARE what it proves. `ephemeralPg.ts` and the
-              # baseline schema run nowhere else against the real
-              # binaries, so without them here a regression in either
-              # only surfaces on the next Docker-touching PR.
+              # The Tier 1 container round-trip and the inputs it cannot
+              # be right without (#301). A narrow list, not `src/**`: the
+              # rest of the app changes on nearly every PR and does not
+              # change what this job proves, but these paths ARE what it
+              # proves. `ephemeralPg.ts` and the baseline schema run
+              # nowhere else against the real binaries, so without them
+              # here a regression in either only surfaces on the next
+              # Docker-touching PR. `backup.ts` is listed for the same
+              # reason one step removed: the round-trip's verdict is an
+              # equality between two `computeManifest` outputs, so
+              # `MANIFEST_TABLES` and the checksum formula decide what it
+              # compares at all.
               - 'scripts/backup/**'
               - 'src/server/services/ephemeralPg.ts'
+              - 'src/server/services/backup.ts'
               - 'src/server/db/migrations/**'
 
   # ---------------------------------------------------------------
@@ -743,7 +748,12 @@ jobs:
       # script owns its own on a private network with no published ports,
       # which is what lets the identical command run on a dev machine.
       # ~10s, entirely container-to-container.
+      # Bounded because every wait *inside* the script is (60s readiness,
+      # 30s bucket provisioning, SUBPROCESS_TIMEOUT_MS per binary) but the
+      # `docker run` calls themselves are not — a wedged daemon would
+      # otherwise burn the job's 360-minute default before reporting.
       - name: Tier 1 round-trip (real Postgres binaries)
+        timeout-minutes: 10
         env:
           BACKUP_IMAGE: projekt-manager-backup:ci
         run: bash scripts/backup/verify-roundtrip.sh
