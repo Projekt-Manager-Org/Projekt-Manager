@@ -197,14 +197,55 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # H5 audit: shellcheck on every .sh under scripts/. Calls the
-      # runner's pre-installed shellcheck binary directly — the
+      # H5 audit: shellcheck on every .sh under scripts/ and
+      # .github/actions/ (composite-action procedures live in real script
+      # files precisely so this gate reaches them). Calls the runner's
+      # pre-installed shellcheck binary directly — the
       # ludeeus/action-shellcheck wrapper was abandoned upstream
       # (2023-01-29) and added nothing over `find | shellcheck`.
+      # Mirrored in .husky/pre-push.
       - name: Shellcheck
         run: |
           shellcheck --version
-          find scripts -name '*.sh' -print0 | xargs -0 -r shellcheck --severity=warning
+          find scripts .github/actions -name '*.sh' -print0 | xargs -0 -r shellcheck --severity=warning
+
+      # actionlint — the workflow-file counterpart to the shellcheck step
+      # above: expression type-checking, `needs:`/`uses:` graph validation,
+      # `with:` inputs cross-checked against local composite actions, plus
+      # shellcheck over every `run:` block. Nothing validated these before,
+      # so a typo'd expression or a renamed action input only surfaced as a
+      # red run.
+      #
+      # Scope: .github/workflows/ ONLY. actionlint does not read composite
+      # action.yml files — auto-discovery skips them, and passing one
+      # explicitly parses it as a workflow (`"jobs" section is missing`).
+      # The shell inside .github/actions/ is covered by the step above.
+      #
+      # --severity=warning matches the shellcheck step's threshold; without
+      # it actionlint reports `info`-level noise the project does not gate on.
+      #
+      # Binary pinned by SHA256 from the official v1.7.12 release, same
+      # pattern (and same reason) as the OSV-Scanner install above:
+      # upstream ships only a Docker action, which cannot be SHA-pinned in
+      # `uses:`. The pin is maintained by hand — Renovate cannot bump the
+      # version and the checksum together (see Open Items in #300).
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          url="https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          expected_sha="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+          curl -fsSL -o /tmp/actionlint.tar.gz "$url"
+          actual_sha=$(sha256sum /tmp/actionlint.tar.gz | awk '{print $1}')
+          if [ "$actual_sha" != "$expected_sha" ]; then
+            echo "::error::actionlint tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
+            exit 1
+          fi
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          sudo mv /tmp/actionlint /usr/local/bin/actionlint
+          actionlint --version
+
+      - name: Actionlint (workflows)
+        run: actionlint -shellcheck 'shellcheck --severity=warning'
 
       - name: Format check
         run: npm run format:check
