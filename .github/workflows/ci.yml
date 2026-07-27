@@ -115,7 +115,10 @@ jobs:
       # google/osv-scanner-action because that action only ships reusable
       # workflows (separate jobs) and a composite Docker action documented
       # as "not intended to be used directly" — neither fits an inline step.
-      # Binary pinned by SHA256 from the official v2.3.8 release.
+      # Binary pinned by SHA256; version + checksum are Renovate-tracked
+      # via the `# renovate:` annotation below, so the pin cannot rot
+      # silently (ADR-0027 §Decision.1). A stale scanner reports green
+      # while no longer knowing about new advisories.
       #
       # Scans the lockfile only (PR-time gate). Full-tree scheduled scan
       # lives in .github/workflows/security-scheduled.yml.
@@ -124,8 +127,10 @@ jobs:
       - name: Install OSV-Scanner CLI
         run: |
           set -euo pipefail
-          url="https://github.com/google/osv-scanner/releases/download/v2.3.8/osv-scanner_linux_amd64"
+          # renovate: datasource=github-release-attachments depName=google/osv-scanner
+          version="v2.3.8"
           expected_sha="bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc"
+          url="https://github.com/google/osv-scanner/releases/download/${version}/osv-scanner_linux_amd64"
           curl -fsSL -o /tmp/osv-scanner "$url"
           actual_sha=$(sha256sum /tmp/osv-scanner | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
@@ -224,16 +229,18 @@ jobs:
       # --severity=warning matches the shellcheck step's threshold; without
       # it actionlint reports `info`-level noise the project does not gate on.
       #
-      # Binary pinned by SHA256 from the official v1.7.12 release, same
-      # pattern (and same reason) as the OSV-Scanner install above:
-      # upstream ships only a Docker action, which cannot be SHA-pinned in
-      # `uses:`. The pin is maintained by hand — Renovate cannot bump the
-      # version and the checksum together (see Open Items in #300).
+      # Binary pinned by SHA256, same pattern (and same reason) as the
+      # OSV-Scanner install above: upstream ships only a Docker action,
+      # which cannot be SHA-pinned in `uses:`. Version + checksum are
+      # Renovate-tracked via the `# renovate:` annotation below.
       - name: Install actionlint
         run: |
           set -euo pipefail
-          url="https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          # renovate: datasource=github-release-attachments depName=rhysd/actionlint
+          version="v1.7.12"
           expected_sha="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+          # Tag carries the `v`, the asset name does not.
+          url="https://github.com/rhysd/actionlint/releases/download/${version}/actionlint_${version#v}_linux_amd64.tar.gz"
           curl -fsSL -o /tmp/actionlint.tar.gz "$url"
           actual_sha=$(sha256sum /tmp/actionlint.tar.gz | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then

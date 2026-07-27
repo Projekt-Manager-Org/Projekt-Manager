@@ -165,6 +165,15 @@
       "datasourceTemplate": "docker",
       "versioningTemplate": "loose",
       "extractVersionTemplate": "^(?<version>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "CLI binaries installed in a workflow step by download URL + SHA256 verification (OSV-Scanner, actionlint). Both upstreams ship only a Docker action or a reusable workflow, so neither fits an inline step and the github-actions manager never sees them — leaving a pin with no update path, the failure mode ADR-0027 exists to retire. The github-release-attachments datasource locates the release's checksums asset from the current digest and re-reads it on the next release, so version and SHA256 advance in the SAME PR — a hand-edited checksum is never required. Driven by an inline `# renovate:` annotation so the dep is declared at the call site rather than inferred from a URL shape. `currentValue` MUST be the literal git tag (`v2.3.8`, not `2.3.8`): the digest lookup calls `GET /releases/tags/{currentValue}` verbatim, and an extractVersion-stripped value 404s there. Steps must therefore reference the version through the `version` variable exactly once, deriving any unprefixed form (`${version#v}`) — Renovate rewrites the matched span only.",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)\\s+version=\"(?<currentValue>[^\"]+)\"\\s+expected_sha=\"(?<currentDigest>[a-f0-9]{64})\""
+      ],
+      "versioningTemplate": "semver"
     }
   ]
 }
