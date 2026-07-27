@@ -46,6 +46,7 @@ import {
   users,
 } from '../db/schema.js';
 import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
+import { allocateInvoiceNumber } from '../repositories/invoice-read.js';
 import type { Database } from '../db/connection.js';
 import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
 import { AppError } from '../errors.js';
@@ -475,11 +476,54 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // Invoice two-pass self-FK. The envelope arrives ordered by the
-  // exporter `(cancellation_of NULLS FIRST, id)` but the importer
+  // -------------------------------------------------------------------
+  // AC-312 — numbering continues from the imported peak.
+  //
+  // The verbatim-restore half is already pinned above (the expanded
+  // import asserts `invoice_sequence.nextValue` round-trips). That does
+  // not cover the half the AC exists for: what the *next* issuance on
+  // the importing instance allocates. `next_value` is stored
+  // post-increment and the allocator hands out `post - 1`, so a restored
+  // 42 must produce 0042 — a restart (0001) reuses numbers already
+  // issued on the source, and an off-by-one (0043) leaves a gap. Both
+  // are defects in a legally-numbered invoice series, and neither is
+  // visible from the restored counter value alone.
+  // -------------------------------------------------------------------
+  describe('invoice_sequence continues numbering after an import (AC-312)', () => {
+    it('allocates the next-number-after-peak, not a restart and not peak+1', async () => {
+      await wipeBusinessDataExceptUsers();
+      try {
+        const env = buildExpandedEnvelope();
+        // Well past 1 in both sub-sequences so restart, correct and
+        // off-by-one are three distinguishable values rather than
+        // neighbours.
+        env.invoice_sequence = [
+          { year: 2026, kind: 'invoice', nextValue: 42, updatedAt: '2026-01-15T00:00:00.000Z' },
+          { year: 2026, kind: 'storno', nextValue: 7, updatedAt: '2026-01-20T00:00:00.000Z' },
+        ];
+        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+
+        const allocated = await db.transaction(async (tx) => ({
+          invoice: await allocateInvoiceNumber(tx, 2026, 'invoice'),
+          storno: await allocateInvoiceNumber(tx, 2026, 'storno'),
+        }));
+
+        // The two sub-sequences are independent — a Storno does not
+        // consume an invoice number — so both are asserted.
+        expect(allocated.invoice.number).toBe('RE-2026-0042');
+        expect(allocated.storno.number).toBe('ST-2026-0007');
+      } finally {
+        await reseed();
+      }
+    });
+  });
+
+  // Invoice two-pass self-FK (AC-309). The envelope arrives ordered by
+  // the exporter `(cancellation_of NULLS FIRST, id)` but the importer
   // re-slices on its own. Test both: (a) the documented order, and
   // (b) a hand-reordered envelope where the Storno comes first.
-  // Both must restore without FK error.
+  // Both must restore without FK error. The Storno-of-Storno chain is
+  // rejected at envelope validation (422), per the same AC.
   // -------------------------------------------------------------------
   describe('invoice two-pass insert is robust to input ordering', () => {
     it('imports originals → Stornos when the envelope is in documented order', async () => {
@@ -663,7 +707,7 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // Single-row import audit. On a successful commit one audit row lands
+  // Single-row import audit (AC-311). On a successful commit one audit row lands
   // with `entity_type='data_import'`, `actor_kind='system'`,
   // `actor_reason='data_import'`, `action='import_restored'`,
   // `entity_id=<synthetic batch UUID>`, `entity_label='Import: <N>

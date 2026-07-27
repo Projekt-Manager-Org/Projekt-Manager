@@ -1313,6 +1313,12 @@ describe('Attachment routes — integration (issue #108)', () => {
   // -------------------------------------------------------------------
   // Papierkorb — soft-hide round-trip (ADR-0022).
   //
+  // Covers AC-232 (delete is a soft-hide: status flips ready→hidden with
+  // hiddenAt stamped), AC-233 (restore flips hidden→ready and re-issues
+  // version-ids via copyFromVersion, and is allowed on archived projects
+  // where hide is not), and AC-235 (the trash listing surfaces hidden
+  // rows, gated on `attachment:trash`).
+  //
   // Verifies the full hide→trash→restore cycle exercises the new wire:
   // delete writes status='hidden' + hiddenAt; the trash listing surfaces
   // it; restore returns it to ready with freshly-issued version-ids.
