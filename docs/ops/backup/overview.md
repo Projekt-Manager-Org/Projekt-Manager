@@ -67,6 +67,24 @@ Four consequences that change how the status row reads:
 - **Tier 2 is decoupled from the tick before it.** It verifies the lexically-newest `daily/` key, which is the 09:00 artifact only if 09:00 succeeded. `lastDrillOk=true` does not imply `lastBackupOk=true` — read both.
 - **Tier 2 is off until the key is loaded.** The identity lives in tmpfs and dies with the container, so every deploy or restart disables drills until it is re-pasted ([drills.md](drills.md)). A skip writes no status at all; it is not a failure.
 
+## Exercising Tier 1 outside production
+
+`scripts/backup/verify-roundtrip.sh` runs one full cycle against the real
+`initdb` / `pg_dump` / `pg_restore` — the binaries that ship in the backup
+image and nowhere else, which is why this is not part of `npm run test`. CI
+runs it in the `docker` job; locally it needs a prebuilt image:
+
+```bash
+docker compose build app && docker compose --profile backup build backup
+BACKUP_IMAGE=ghcr.io/projekt-manager-org/projekt-manager-backup:dev \
+  scripts/backup/verify-roundtrip.sh
+```
+
+It owns its own Postgres and MinIO with no published ports, so it needs no
+dev stack and does not disturb a running one. Build order matters — see
+[docker-compose.dev.yml](../../../docker-compose.dev.yml). What it asserts,
+and why each assertion is non-vacuous, is in the script header.
+
 ## References
 
 - [ADR-0020](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md) — design, alternatives, consequences.
