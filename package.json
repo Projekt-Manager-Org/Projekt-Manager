@@ -30,6 +30,7 @@
     "demo:hero": "node scripts/demo/encode.mjs --hero",
     "check:tokens": "bash scripts/check-theme-tokens.sh",
     "check:permissions-doc": "tsx scripts/generate-permissions-doc.ts --check",
+    "check:nav-doc": "tsx scripts/generate-nav-doc.ts --check",
     "check:doc-paths": "bash scripts/check-doc-paths.sh",
     "check:links": "bash scripts/check-links.sh",
     "prepare": "husky || true",

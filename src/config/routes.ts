@@ -6,15 +6,24 @@
  *
  * Both the nav renderer (`Header`) and the route guard (`App`) consume
  * this table, so what the user sees and what the guard allows cannot
- * disagree. Agreement with the per-role matrix in
- * `docs/spec/ui/index.md §8.7.1` is maintained by hand — unlike the
- * permission matrix, nothing generates or CI-checks it (see #286).
+ * disagree. The per-role matrix in `docs/spec/ui/index.md §8.7.1` is
+ * generated from this table, not hand-authored, and CI fails on drift
+ * (AC-349) — the same guarantee the permission matrix carries.
  *
- * Design echoes ADR-0019: explicit, declarative predicate functions
- * over hidden role branching. The spec mixes role-based gating (Kanban,
+ * Access rules are DATA, not closures (`RouteAccess` below). A
+ * predicate can be evaluated but not read: `(u) => hasPermission(u.roles,
+ * 'invoice:read')` resolves to a role set and loses the rule that
+ * produced it, so a generated matrix could only ever publish the
+ * outcome. Declaring the rule and deriving the predicate from it —
+ * policy-as-data, the shape IAM policy documents and OPA/Rego use —
+ * means one source answers both "may this caller enter?" and "what does
+ * the spec say gates this view?".
+ *
+ * Design echoes ADR-0019: explicit, declarative access rules over
+ * hidden role branching. The spec mixes role-based gating (Kanban,
  * Kalender, Projekte, Kunden) with permission-based gating (Benutzer →
- * `user:manage`, Daten → `data:export`), so one predicate shape covers
- * both uniformly.
+ * `user:manage`, Daten → `data:export`), so one rule shape covers both
+ * uniformly.
  *
  * Note on layering: this module sits in the config layer per
  * `eslint.config.js` CONFIG_BANNED, so the predicate parameter is a
@@ -23,10 +32,11 @@
  * `RouteCaller`, so callers in the state/UI layers can pass their
  * `authUser` directly. The `view` key is likewise a string literal
  * union mirrored from `src/domain/types.ts`'s `ViewMode` — the
- * `ROUTE_VIEWS` const below asserts exact mirror at compile time.
+ * conditional-type pair in `src/hooks/useRouterNav.ts` asserts exact
+ * mirror at compile time.
  */
 import { matchPath } from 'react-router';
-import type { Role } from '@/config/permissions';
+import type { Permission, Role } from '@/config/permissions';
 import { hasPermission } from '@/config/permissions';
 import { STRINGS } from '@/config/strings';
 
@@ -58,19 +68,38 @@ export type RouteView =
   | 'benachrichtigungen'
   | 'projektDetail';
 
-export interface RouteEntry {
+/**
+ * What gates a route. Two kinds, because the spec gates two ways:
+ * directly on role (Kanban, Kalender, Projekte, Kunden) or on a
+ * permission the role matrix grants (Benutzer → `user:manage`).
+ *
+ * Readable by construction — `scripts/generate-nav-doc.ts` publishes
+ * the rule verbatim, and resolves it against `ROLE_KEYS` to publish the
+ * role set alongside. Neither is hand-transcribed into the spec.
+ */
+export type RouteAccess =
+  | { readonly kind: 'role'; readonly roles: readonly Role[] }
+  | { readonly kind: 'permission'; readonly permission: Permission };
+
+/** A route as declared. `ROUTES` compiles these into `RouteEntry`. */
+interface RouteDefinition {
   /** Stable view key. */
-  view: RouteView;
+  readonly view: RouteView;
   /** URL path segment (absolute, single level — no parameters today). */
-  path: string;
+  readonly path: string;
   /** German label used in navigation. Reuses `STRINGS.ui.view*`. */
-  label: string;
-  /** True iff this caller may enter the route (nav + guard). */
+  readonly label: string;
+  /** Access rule — see `RouteAccess`. */
+  readonly access: RouteAccess;
+}
+
+export interface RouteEntry extends RouteDefinition {
+  /** True iff this caller may enter the route (nav + guard). Derived from `access`. */
   canAccess: (caller: RouteCaller) => boolean;
   /**
-   * True iff this is the landing entry for this caller. Exactly one
-   * entry returns true for any given caller (enforced by
-   * `assertSingleLanding`).
+   * True iff this is the landing entry for this caller. At most one
+   * entry returns true for any given caller — `LANDING_ORDER` is
+   * first-match, so overlap is not expressible.
    */
   isDefaultFor: (caller: RouteCaller) => boolean;
 }
@@ -85,41 +114,55 @@ function hasRole(caller: RouteCaller, ...roles: Role[]): boolean {
   return caller.roles.some((r) => (roles as readonly string[]).includes(r));
 }
 
-/**
- * Owner / office landing: Kanban (ui/index.md §8.1.2). Worker has its
- * own personal landing — see `landsOnMeineProjekte` below. Kept
- * explicit so a future role that also has Kanban access (e.g. a new
- * "supervisor") does not accidentally inherit the landing.
- */
-function landsOnKanban(caller: RouteCaller): boolean {
-  return hasRole(caller, 'owner', 'office');
+/** True iff this caller satisfies the rule. The `RouteAccess` interpreter. */
+function allows(access: RouteAccess, caller: RouteCaller): boolean {
+  return access.kind === 'role'
+    ? hasRole(caller, ...access.roles)
+    : hasPermission(caller.roles, access.permission);
 }
 
 /**
- * Worker landing: a personal "Meine Projekte" list. Workers spend most
- * of their app time on phones; the kanban board is a manager's view.
- * The dedicated list is one tap away from any of their projects'
- * detail pages, with no horizontal scroll and no per-state column
- * collapse. Kanban + Kalender remain available as secondary nav.
+ * Per-role landing choice (ui/index.md §8.1.2), **first match wins**.
+ *
+ * Order is the whole rule. A caller holding several roles lands on the
+ * first entry that matches, which is why `bookkeeper` sits last: an
+ * owner who is also the bookkeeper lands on Kanban, not the invoice
+ * register. Expressing that as three independent predicates meant
+ * hand-writing the exclusions (`hasRole('bookkeeper') && !landsOnKanban
+ * && !landsOnMeineProjekte`) and re-deriving them on every new role;
+ * as an ordered list, overlap is not expressible.
+ *
+ * - **worker → Meine Projekte.** Workers spend most of their app time
+ *   on phones; the kanban board is a manager's view. The personal list
+ *   is one tap from any of their projects' detail pages, with no
+ *   horizontal scroll and no per-state column collapse. Kanban and
+ *   Kalender remain available as secondary nav.
+ * - **owner / office → Kanban.** The board is the shared operational
+ *   surface.
+ * - **bookkeeper → Rechnungen.** The invoice register
+ *   (search/filter/export) is their primary workflow.
  */
-function landsOnMeineProjekte(caller: RouteCaller): boolean {
-  return hasRole(caller, 'worker');
-}
+const LANDING_ORDER: readonly { readonly roles: readonly Role[]; readonly view: RouteView }[] = [
+  { roles: ['worker'], view: 'meineProjekte' },
+  { roles: ['owner', 'office'], view: 'kanban' },
+  { roles: ['bookkeeper'], view: 'rechnungen' },
+];
 
-/**
- * Bookkeeper landing: Rechnungen list. Their primary workflow is the
- * invoice register — search/filter/export — so they should land there
- * directly after login.
- */
-function landsOnRechnungen(caller: RouteCaller): boolean {
-  return hasRole(caller, 'bookkeeper') && !landsOnKanban(caller) && !landsOnMeineProjekte(caller);
+/** The caller's landing view, or `undefined` when no rule matches. */
+function landingViewFor(caller: RouteCaller): RouteView | undefined {
+  return LANDING_ORDER.find((entry) => hasRole(caller, ...entry.roles))?.view;
 }
 
 /**
  * Route table — ordered to match the nav matrix in `docs/spec/ui/index.md
- * §8.7.1`. The Header renders in this order.
+ * §8.7.1`. The Header renders in this order, and the generator publishes
+ * the table in this order, so the spec and the nav agree on sequence too.
+ *
+ * Declarations only. `ROUTES` below compiles each into a `RouteEntry` by
+ * deriving `canAccess` from `access` and `isDefaultFor` from
+ * `LANDING_ORDER`.
  */
-export const ROUTES: readonly RouteEntry[] = [
+const ROUTE_DEFINITIONS: readonly RouteDefinition[] = [
   {
     view: 'meineProjekte',
     path: '/meine-projekte',
@@ -127,37 +170,32 @@ export const ROUTES: readonly RouteEntry[] = [
     // Worker-only surface — owner/office have richer tools and don't
     // need a personal "what am I assigned to" view as their first
     // screen. If office ever needs a personal view, gate via a new
-    // permission rather than widening this role check.
-    canAccess: (u) => hasRole(u, 'worker'),
-    isDefaultFor: landsOnMeineProjekte,
+    // permission rather than widening this role rule.
+    access: { kind: 'role', roles: ['worker'] },
   },
   {
     view: 'kanban',
     path: '/kanban',
     label: STRINGS.ui.viewKanban,
-    canAccess: (u) => hasRole(u, 'owner', 'office', 'worker'),
-    isDefaultFor: landsOnKanban,
+    access: { kind: 'role', roles: ['owner', 'office', 'worker'] },
   },
   {
     view: 'kalender',
     path: '/calendar',
     label: STRINGS.ui.viewCalendar,
-    canAccess: (u) => hasRole(u, 'owner', 'office', 'worker'),
-    isDefaultFor: () => false,
+    access: { kind: 'role', roles: ['owner', 'office', 'worker'] },
   },
   {
     view: 'projekte',
     path: '/projects',
     label: STRINGS.ui.viewProjects,
-    canAccess: (u) => hasRole(u, 'owner', 'office', 'bookkeeper'),
-    isDefaultFor: () => false,
+    access: { kind: 'role', roles: ['owner', 'office', 'bookkeeper'] },
   },
   {
     view: 'kunden',
     path: '/customers',
     label: STRINGS.ui.viewCustomers,
-    canAccess: (u) => hasRole(u, 'owner', 'office', 'bookkeeper'),
-    isDefaultFor: () => false,
+    access: { kind: 'role', roles: ['owner', 'office', 'bookkeeper'] },
   },
   {
     // Standalone Rechnungen list view (ui/invoices.md §8.16.1) — gated
@@ -168,8 +206,7 @@ export const ROUTES: readonly RouteEntry[] = [
     view: 'rechnungen',
     path: '/rechnungen',
     label: STRINGS.ui.viewInvoices,
-    canAccess: (u) => hasPermission(u.roles, 'invoice:read'),
-    isDefaultFor: landsOnRechnungen,
+    access: { kind: 'permission', permission: 'invoice:read' },
   },
   {
     // Per-invoice viewer (ui/invoices.md §8.16.3) — gated on
@@ -181,8 +218,7 @@ export const ROUTES: readonly RouteEntry[] = [
     view: 'rechnungDetail',
     path: '/rechnungen/:id',
     label: STRINGS.ui.viewInvoices,
-    canAccess: (u) => hasPermission(u.roles, 'invoice:read'),
-    isDefaultFor: () => false,
+    access: { kind: 'permission', permission: 'invoice:read' },
   },
   {
     view: 'benutzer',
@@ -192,15 +228,13 @@ export const ROUTES: readonly RouteEntry[] = [
     // the default role set, matching the nav matrix in §8.7.1.
     // Office holds `user:read` for worker-assignment dropdowns, not
     // administration, and is not admitted here.
-    canAccess: (u) => hasPermission(u.roles, 'user:manage'),
-    isDefaultFor: () => false,
+    access: { kind: 'permission', permission: 'user:manage' },
   },
   {
     view: 'daten',
     path: '/daten',
     label: STRINGS.ui.viewData,
-    canAccess: (u) => hasPermission(u.roles, 'data:export'),
-    isDefaultFor: () => false,
+    access: { kind: 'permission', permission: 'data:export' },
   },
   {
     // View gated on `audit:read` per ui/index.md §8.7.1 — owner and
@@ -212,8 +246,7 @@ export const ROUTES: readonly RouteEntry[] = [
     view: 'aktivitaet',
     path: '/audit',
     label: STRINGS.ui.viewAudit,
-    canAccess: (u) => hasPermission(u.roles, 'audit:read'),
-    isDefaultFor: () => false,
+    access: { kind: 'permission', permission: 'audit:read' },
   },
   {
     // Notification rules admin view (ui/management.md §8.14) — gated on
@@ -223,40 +256,64 @@ export const ROUTES: readonly RouteEntry[] = [
     view: 'benachrichtigungen',
     path: '/benachrichtigungen',
     label: STRINGS.ui.viewNotifications,
-    canAccess: (u) => hasPermission(u.roles, 'notifications:manage'),
-    isDefaultFor: () => false,
+    access: { kind: 'permission', permission: 'notifications:manage' },
   },
   {
     view: 'projektDetail',
     path: '/projects/:id',
     label: STRINGS.ui.viewProjects,
-    canAccess: (u) => hasPermission(u.roles, 'project:read'),
-    isDefaultFor: () => false,
+    access: { kind: 'permission', permission: 'project:read' },
   },
 ] as const;
 
 /**
- * Dev-time invariant: a caller with access to at least one route must
- * land on exactly one. Catches a bug where two `isDefaultFor` predicates
- * overlap, or where a role with route access has no landing. Callers
- * with no route access at all (empty roles, unknown roles) legitimately
- * have no landing — the fallback branch in `landingPathForUser` handles
- * that, and the route guard then renders `NotPermittedView`.
+ * The compiled table. Consumers keep calling `entry.canAccess(user)` /
+ * `entry.isDefaultFor(user)`; the difference is that both now come from
+ * data a generator can read.
  */
-export function assertSingleLanding(caller: RouteCaller): void {
+export const ROUTES: readonly RouteEntry[] = ROUTE_DEFINITIONS.map((definition) => ({
+  ...definition,
+  canAccess: (caller: RouteCaller) => allows(definition.access, caller),
+  isDefaultFor: (caller: RouteCaller) => landingViewFor(caller) === definition.view,
+}));
+
+/**
+ * Dev-time invariant on the landing choice. Two failure modes, both of
+ * which produce an unrecoverable or wrong login:
+ *
+ *  1. A caller with route access has no landing rule — `LANDING_ORDER`
+ *     forgot a role that `ROUTE_DEFINITIONS` admits.
+ *  2. A caller's landing view is one they may not enter — the failure
+ *     mode created by declaring landing separately from access. Narrow
+ *     a view's `access` without revisiting `LANDING_ORDER` and the
+ *     affected role logs straight into `NotPermittedView`.
+ *
+ * "Exactly one landing" is not checked because it is not expressible:
+ * `LANDING_ORDER` is first-match, so `landingViewFor` returns at most
+ * one view.
+ *
+ * Callers with no route access at all (empty roles, unknown roles)
+ * legitimately have no landing — the fallback branch in
+ * `landingPathForUser` handles that, and the route guard then renders
+ * `NotPermittedView`.
+ */
+export function assertLandingCoherent(caller: RouteCaller): void {
   if (process.env.NODE_ENV === 'production') return;
-  const landings = ROUTES.filter((r) => r.isDefaultFor(caller));
-  if (landings.length > 1) {
-    const names = landings.map((r) => r.view).join(', ');
-    throw new Error(
-      `routes: expected at most one landing route for caller with roles ` +
-        `[${caller.roles.join(', ')}], got ${landings.length} (${names})`,
-    );
+  const landing = ROUTES.find((r) => r.isDefaultFor(caller));
+  if (!landing) {
+    if (ROUTES.some((r) => r.canAccess(caller))) {
+      throw new Error(
+        `routes: caller with roles [${caller.roles.join(', ')}] has route ` +
+          `access but no landing route`,
+      );
+    }
+    return;
   }
-  if (landings.length === 0 && ROUTES.some((r) => r.canAccess(caller))) {
+  if (!landing.canAccess(caller)) {
     throw new Error(
-      `routes: caller with roles [${caller.roles.join(', ')}] has route ` +
-        `access but no landing route`,
+      `routes: caller with roles [${caller.roles.join(', ')}] lands on ` +
+        `'${landing.view}' but cannot access it — LANDING_ORDER and the ` +
+        `route's access rule disagree`,
     );
   }
 }
@@ -299,9 +356,10 @@ export function pathFromView(view: RouteView): string {
  * Kunden, which matches the `docs/spec/ui/invoices.md §8.16` "primary for
  * bookkeeper" line.
  *
- * Exported so Header and MobileTabBar consume a single source of truth;
- * keep this list and the per-role nav matrix in `docs/spec/ui/index.md
- * §8.7.1` in lockstep.
+ * Exported so Header and MobileTabBar consume a single source of truth.
+ * Unlike the nav matrix itself, this grouping is NOT generated — it is
+ * hand-synced with the "Primary / secondary header grouping" paragraph
+ * in `docs/spec/ui/index.md §8.7.1`, below the generated block.
  */
 export const SECONDARY_VIEWS: readonly RouteView[] = [
   'rechnungen',
@@ -320,9 +378,9 @@ export function visibleRoutesForUser(caller: RouteCaller): readonly RouteEntry[]
 export function landingPathForUser(caller: RouteCaller): string {
   // Dev-time invariant check — throws if two `isDefaultFor` predicates
   // overlap or none matches. Self-guarded on NODE_ENV so prod is a no-op.
-  assertSingleLanding(caller);
+  assertLandingCoherent(caller);
   const match = ROUTES.find((r) => r.isDefaultFor(caller));
-  // In dev, `assertSingleLanding` has already caught this; in prod,
+  // In dev, `assertLandingCoherent` has already caught this; in prod,
   // fall back to the first accessible route so an unseen role
   // combination cannot produce an unrecoverable login.
   if (match) return match.path;

@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ROUTES,
-  assertSingleLanding,
+  assertLandingCoherent,
   landingPathForUser,
   routeByPath,
   routeByView,
@@ -99,10 +99,34 @@ describe('ROUTES — landing (ui/index.md §8.1.2)', () => {
   for (const role of Object.keys(LANDINGS) as RoleName[]) {
     it(`role '${role}' has exactly one landing entry at ${LANDINGS[role]}`, () => {
       const c = caller(role);
-      expect(() => assertSingleLanding(c)).not.toThrow();
+      expect(() => assertLandingCoherent(c)).not.toThrow();
       expect(landingPathForUser(c)).toBe(LANDINGS[role]);
     });
   }
+
+  it('a multi-role caller lands on the first matching rule, not the last', () => {
+    // `LANDING_ORDER` is first-match: worker, then owner/office, then
+    // bookkeeper. The ordering IS the exclusion rule — an owner who is
+    // also the bookkeeper belongs on the board, not the invoice
+    // register. Pins the semantics that replaced the hand-written
+    // `!landsOnKanban && !landsOnMeineProjekte` guard.
+    expect(landingPathForUser({ roles: ['owner', 'bookkeeper'] })).toBe('/kanban');
+    expect(landingPathForUser({ roles: ['bookkeeper', 'owner'] })).toBe('/kanban');
+    expect(landingPathForUser({ roles: ['worker', 'bookkeeper'] })).toBe('/meine-projekte');
+    expect(landingPathForUser({ roles: ['worker', 'owner'] })).toBe('/meine-projekte');
+  });
+
+  it('every landing view is one the landing role may actually enter', () => {
+    // The failure mode created by declaring landing separately from
+    // access: narrow a view's `access` without revisiting
+    // `LANDING_ORDER` and that role logs straight into NotPermittedView.
+    for (const role of Object.keys(LANDINGS) as RoleName[]) {
+      const c = caller(role);
+      const landing = ROUTES.find((r) => r.isDefaultFor(c));
+      expect(landing, `role '${role}' has no landing route`).toBeDefined();
+      expect(landing?.canAccess(c), `role '${role}' cannot access its landing view`).toBe(true);
+    }
+  });
 
   it('a caller with no recognized roles still lands somewhere safe', () => {
     // Production defensively falls back to the first accessible route

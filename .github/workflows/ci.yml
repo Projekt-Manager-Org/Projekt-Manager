@@ -274,6 +274,16 @@ jobs:
       - name: Permissions doc drift check — self-test
         run: bash scripts/__tests__/check-permissions-doc.test.sh
 
+      # Enforce AC-349 — the per-role nav matrix in docs/spec/ui/index.md
+      # §8.7.1 is generated from ROUTE_DEFINITIONS (src/config/routes.ts).
+      # Only the derivable columns are generated; the per-view prose below
+      # the end marker is hand-written spec intent and stays untouched.
+      - name: Nav matrix drift check (AC-349)
+        run: npm run check:nav-doc
+
+      - name: Nav matrix drift check — self-test
+        run: bash scripts/__tests__/check-nav-doc.test.sh
+
       - name: Type check
         run: npx tsc --noEmit
 
