@@ -7,6 +7,25 @@
 # documented, or whose file is gone, fails the check.
 #
 # Burn-down tracked in #306.
+#
+# The '# gated:' lines record which directories carried a
+# '#### <dir>' subsection when this was written. Dropping a
+# subsection un-gates that directory; the check fails until the
+# line here goes too, so it lands as a visible diff.
+# gated: src/config/
+# gated: src/domain/
+# gated: src/pwa/
+# gated: src/server/
+# gated: src/server/config/
+# gated: src/server/middleware/
+# gated: src/server/repositories/
+# gated: src/server/routes/
+# gated: src/server/seed/
+# gated: src/server/services/
+# gated: src/server/sse/
+# gated: src/server/storage/
+# gated: src/sse/
+# gated: src/state/
 src/config/attachmentDefaults.ts
 src/config/breakpoints.ts
 src/domain/aging.ts

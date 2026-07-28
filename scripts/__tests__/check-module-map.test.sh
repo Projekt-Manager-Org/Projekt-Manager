@@ -166,6 +166,63 @@ mkdir -p "$d/src/server/services/__tests__" "$d/src/server/services/nested"
 git -C "$d" add -A >/dev/null 2>&1
 assert_case 0 "tests and nested dirs out of scope" "$d"
 
+echo "Case: a basename mentioned as part of a DIFFERENT path"
+# Must fail. `is_named` used to be an unanchored substring test, so prose
+# about `src/server/repositories/BetaService.ts` inside the
+# `src/server/services/` subsection counted the services file as
+# documented. Scoping to one subsection stops that across directories,
+# not within one — which is exactly where cross-references appear.
+d="$(stage)"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- see also `src/server/repositories/BetaService.ts`|' "$d/ARCHITECTURE.md"
+assert_case 1 "basename inside another path" "$d"
+
+echo "Case: a file named by its full repository path"
+# Must pass. The delegated `### Configuration Files` table cites files as
+# `src/config/permissions.ts`, so the anchoring must not reject a leading
+# path — only a leading path belonging to a DIFFERENT directory.
+d="$(stage)"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `src/server/services/AlphaService.ts` — the documented one\n- `src/server/services/BetaService.ts` — also documented|' "$d/ARCHITECTURE.md"
+assert_case 0 "full-path citation counts as documented" "$d"
+
+echo "Case: a longer name must not cover a shorter one"
+# Must fail. `BetaService.ts` is not documented by prose about
+# `SubBetaService.ts`.
+d="$(stage)"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `SubBetaService.ts` — a different file|' "$d/ARCHITECTURE.md"
+assert_case 1 "longer name does not cover shorter" "$d"
+
+echo "Case: deleting a subsection silently un-gates its directory"
+# Must fail. Opting out is allowed — the error message says so — but
+# doing it invisibly is how a gate dies. The stale-entry ratchet only
+# catches this when the directory still has baseline entries, so a fully
+# documented directory could be dropped with no signal at all.
+# Two gated subsections, so removing one leaves the Directory Detail
+# block intact — an empty block is a structural error (exit 2) and would
+# mask the un-gating this case is about.
+stage_two_gated() {
+  local d
+  d="$(stage)"
+  sed -i 's|^### Configuration Files$|#### `src/ungated/`\n\n- `Whatever.ts` — documented\n\n### Configuration Files|' "$d/ARCHITECTURE.md"
+  MODULE_MAP_ROOT="$d" bash "$CHECK" --update-baseline >/dev/null 2>&1
+  echo "$d"
+}
+
+drop_services_subsection() {
+  sed -i '/^#### `src\/server\/services\/`$/,/^#### `src\/ungated\/`$/{/^#### `src\/ungated\/`$/!d}' "$1/ARCHITECTURE.md"
+}
+
+d="$(stage_two_gated)"
+drop_services_subsection "$d"
+assert_case 1 "silently un-gated directory" "$d"
+
+echo "Case: un-gating recorded in the baseline passes"
+# Must pass. The gate is opt-out, not immovable — regenerating the
+# baseline makes the removal a visible diff instead of a silent one.
+d="$(stage_two_gated)"
+drop_services_subsection "$d"
+MODULE_MAP_ROOT="$d" bash "$CHECK" --update-baseline >/dev/null 2>&1
+assert_case 0 "un-gating recorded in baseline" "$d"
+
 echo "Case: --update-baseline makes a failing tree pass"
 d="$(stage)"
 MODULE_MAP_ROOT="$d" bash "$CHECK" --update-baseline >/dev/null 2>&1

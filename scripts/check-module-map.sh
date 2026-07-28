@@ -143,6 +143,20 @@ files_in() {
 
 mapfile -t BASELINE_ENTRIES < <([ -f "$BASELINE" ] && grep -vE '^\s*(#|$)' "$BASELINE" || true)
 
+# The gated directory set at the time the baseline was written.
+#
+# Gating is opt-in by subsection, so the cheapest way to silence this
+# check is to delete a `#### <dir>` heading — which the error message
+# below openly offers as the way to opt out. That escape hatch is fine;
+# doing it silently is not. Recording the set makes un-gating a visible
+# diff in this file rather than an invisible consequence of an
+# ARCHITECTURE.md edit.
+#
+# The stale-entry ratchet only catches this for directories that still
+# have baseline entries; a fully documented directory could be dropped
+# with no signal at all.
+mapfile -t RECORDED_GATED < <([ -f "$BASELINE" ] && sed -n 's/^# gated: //p' "$BASELINE" || true)
+
 in_baseline() {
   local file="$1" entry
   for entry in "${BASELINE_ENTRIES[@]:-}"; do
@@ -153,23 +167,54 @@ in_baseline() {
 
 # `foo.ts` counts as documented when the subsection mentions `foo.ts` or
 # the bare stem `foo` — see the header note on `src/state/`.
+#
+# The basename match is ANCHORED. An unanchored substring test counted a
+# file as documented whenever the subsection happened to mention some
+# OTHER path ending in the same basename: prose about
+# `src/server/repositories/audit.ts` inside the `src/server/services/`
+# subsection silently covered `src/server/services/audit.ts`. Scoping
+# the search to one subsection prevents that across directories but not
+# within one, which is where cross-references actually appear.
+#
+# Three accepted forms, in order:
+#
+#   (a) the full repository path — `src/config/permissions.ts`, which is
+#       how the delegated `### Configuration Files` table cites files.
+#   (b) the bare basename, NOT preceded by `/` (that would make it a file
+#       in another directory) and not glued to a longer name, so
+#       `ledger.ts` does not cover `subledger.ts` and `bus.ts` does not
+#       cover `bus.tsx`.
+#   (c) the bare stem in backticks — `src/state/` documents its stores as
+#       `authStore`, not `authStore.ts`.
 is_named() {
-  local body="$1" base="$2"
+  local body="$1" file="$2" base escaped_file escaped_base stem
+  base="${file##*/}"
+  escaped_file="${file//./\\.}"
+  escaped_base="${base//./\\.}"
+
+  if printf '%s' "$body" |
+    grep -qE "(^|[^[:alnum:]_./-])${escaped_file}([^[:alnum:]_-]|$)"; then
+    return 0
+  fi
+  if printf '%s' "$body" |
+    grep -qE "(^|[^/[:alnum:]_.-])${escaped_base}([^[:alnum:]_-]|$)"; then
+    return 0
+  fi
+  stem="${base%.*}"
   case "$body" in
-    *"$base"*) return 0 ;;
-  esac
-  case "$body" in
-    *"\`${base%.*}\`"*) return 0 ;;
+    *"\`${stem}\`"*) return 0 ;;
   esac
   return 1
 }
 
 undocumented=()
+gated_now=()
 gated_count=0
 
 for dir in "${GATED[@]}"; do
   is_excluded "$dir" && continue
   gated_count=$((gated_count + 1))
+  gated_now+=("$dir")
   body="$(subsection_for "$dir")
 $(delegated_body_for "$dir")"
   while IFS= read -r file; do
@@ -177,7 +222,7 @@ $(delegated_body_for "$dir")"
     case "$file" in
       */__tests__/* | *.test.ts | *.test.tsx | *.d.ts) continue ;;
     esac
-    is_named "$body" "$(basename "$file")" && continue
+    is_named "$body" "$file" && continue
     undocumented+=("$file")
   done < <(files_in "$dir")
 done
@@ -194,6 +239,12 @@ if [ "${1:-}" = "--update-baseline" ]; then
     echo "# documented, or whose file is gone, fails the check."
     echo "#"
     echo "# Burn-down tracked in #306."
+    echo "#"
+    echo "# The '# gated:' lines record which directories carried a"
+    echo "# '#### <dir>' subsection when this was written. Dropping a"
+    echo "# subsection un-gates that directory; the check fails until the"
+    echo "# line here goes too, so it lands as a visible diff."
+    printf '# gated: %s\n' "${gated_now[@]:-}" | sort
     printf '%s\n' "${undocumented[@]:-}" | sort
   } >"$BASELINE"
   echo "Wrote ${#undocumented[@]} entries to $BASELINE."
@@ -204,6 +255,19 @@ findings=""
 
 for file in "${undocumented[@]:-}"; do
   in_baseline "$file" || findings="${findings}  undocumented: ${file}"$'\n'
+done
+
+# The gating ratchet — a directory that was gated must still be gated.
+# An empty record means no history to ratchet against (a fresh baseline),
+# not a passing check.
+ungated=""
+for entry in "${RECORDED_GATED[@]:-}"; do
+  [ -z "$entry" ] && continue
+  found=0
+  for dir in "${gated_now[@]:-}"; do
+    [ "$dir" = "$entry" ] && found=1 && break
+  done
+  [ "$found" -eq 0 ] && ungated="${ungated}  no longer gated: ${entry}"$'\n'
 done
 
 # The ratchet. Without this the baseline would keep entries alive after
@@ -217,7 +281,7 @@ for entry in "${BASELINE_ENTRIES[@]:-}"; do
   [ "$found" -eq 0 ] && stale="${stale}  stale baseline entry: ${entry}"$'\n'
 done
 
-if [ -n "$findings" ] || [ -n "$stale" ]; then
+if [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ]; then
   if [ -n "$findings" ]; then
     echo "ERROR: files in a gated directory are not named in $DOC's Module Map." >&2
     echo "       Add them to the directory's '#### <dir>' subsection under" >&2
@@ -233,6 +297,16 @@ if [ -n "$findings" ] || [ -n "$stale" ]; then
     echo "       \`bash $(basename "$0") --update-baseline\` and commit it." >&2
     echo "" >&2
     printf "%s" "$stale" >&2
+  fi
+  if [ -n "$ungated" ]; then
+    { [ -n "$findings" ] || [ -n "$stale" ]; } && echo "" >&2
+    echo "ERROR: a directory lost its '#### <dir>' subsection in $DOC and is" >&2
+    echo "       no longer gated. Opting out is allowed — doing it silently" >&2
+    echo "       is not. Restore the subsection, or run" >&2
+    echo "       \`bash $(basename "$0") --update-baseline\` so the change" >&2
+    echo "       lands as a visible diff in $BASELINE." >&2
+    echo "" >&2
+    printf "%s" "$ungated" >&2
   fi
   exit 1
 fi
