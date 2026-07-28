@@ -151,6 +151,12 @@ ALLOWLIST=(
   "docs/adr/0011-build-images-in-ci-distribute-via-ghcr.md|docker/build-push-action"
   "docs/adr/0011-build-images-in-ci-distribute-via-ghcr.md|docker/setup-buildx-action"
 
+  # (5) The scratch directory, gitignored and created on demand, so it is
+  # absent from a clean checkout. CLAUDE.md is the document that DEFINES
+  # the convention — it has to be able to name it. This is the only
+  # citation of an ignored path that is not a generated artifact.
+  "CLAUDE.md|docs/wip/"
+
   # (5) Pixabay stock photos and the phone backdrop, gitignored per
   # .gitignore and written by the opt-in demo recording flow.
   "docs/demo/storyboard.md|e2e/fixtures/demo/site-1.jpg"
@@ -213,7 +219,12 @@ if [ -n "$findings" ]; then
   echo "       Update the prose to the current path, or add an" >&2
   echo "       inline-documented \`document|path\` entry to ALLOWLIST in" >&2
   echo "       $(basename "$0") if the citation is illustrative," >&2
-  echo "       historical, or a named coverage gap." >&2
+  echo "       historical, a named coverage gap, an external identifier," >&2
+  echo "       or a gitignored artifact." >&2
+  echo "" >&2
+  echo "       NOTE: run this against a clean checkout. A gitignored path" >&2
+  echo "       that exists in your working tree resolves locally and fails" >&2
+  echo "       in CI." >&2
   echo "" >&2
   printf "%s" "$findings" | sort -u >&2
   exit 1
