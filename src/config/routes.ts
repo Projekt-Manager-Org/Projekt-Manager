@@ -141,8 +141,16 @@ function allows(access: RouteAccess, caller: RouteCaller): boolean {
  *   surface.
  * - **bookkeeper → Rechnungen.** The invoice register
  *   (search/filter/export) is their primary workflow.
+ *
+ * Exported so `scripts/generate-nav-doc.ts` can publish the ORDER, not
+ * just the per-role outcome. Resolving each role on its own loses the
+ * rule — the matrix would show `bookkeeper → Rechnungen` and never say
+ * that an owner who is also the bookkeeper lands on Kanban.
  */
-const LANDING_ORDER: readonly { readonly roles: readonly Role[]; readonly view: RouteView }[] = [
+export const LANDING_ORDER: readonly {
+  readonly roles: readonly Role[];
+  readonly view: RouteView;
+}[] = [
   { roles: ['worker'], view: 'meineProjekte' },
   { roles: ['owner', 'office'], view: 'kanban' },
   { roles: ['bookkeeper'], view: 'rechnungen' },

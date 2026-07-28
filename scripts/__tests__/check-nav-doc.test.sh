@@ -89,6 +89,15 @@ d="$(mktmp_doc)"
 sed -i 's/| bookkeeper *|$/| — |/' "$d"
 assert_case 1 "hand-edited landing column" "$d"
 
+echo "Case: a hand-edited landing ORDER inside the markers fails --check"
+# The Landing column resolves one role at a time and so cannot express
+# first-match. Reordering the published rule — claiming bookkeeper wins
+# over owner — must fail, or the ordering semantics are unguarded and the
+# generator publishes an outcome while dropping the rule.
+d="$(mktmp_doc)"
+sed -i 's/worker → `meineProjekte`; owner \/ office/owner \/ office/' "$d"
+assert_case 1 "hand-edited landing order" "$d"
+
 echo "Case: prose below the end marker changes freely"
 # Must pass. The per-view notes are hand-written spec intent that exists
 # nowhere in the code; a check that fired on them would push the prose

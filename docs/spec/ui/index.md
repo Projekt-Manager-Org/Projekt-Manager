@@ -80,7 +80,9 @@ The authenticated layout provides navigation between all available views. The na
 
 ### 8.7.1 Views
 
-The table below is **generated** from the route table in `src/config/routes.ts`; CI fails on drift (AC-349). Do not edit it by hand. `Access` is the declared rule, `Roles` is that rule resolved against the default role matrix ([api.md §14.3](../api.md#143-authorization-rules)), and `Landing` is the post-login view for that role ([§8.1.2](#812-authenticated-state)).
+The table below is **generated** from the route table in `src/config/routes.ts`; CI fails on drift (AC-349). Do not edit it by hand. `Access` is the declared rule, `Roles` is that rule resolved against the default role matrix ([api.md §14.3](../api.md#143-authorization-rules)), and `Landing` is the post-login view for a caller holding that role alone ([§8.1.2](#812-authenticated-state)) — see the first-match note below the table for multi-role callers.
+
+Because the table is generated, it agrees with the code by construction and cannot by itself catch an unintended change. The binding assertion is the hand-written `MATRIX` in `src/config/__tests__/routes.test.ts`, kept deliberately independent of this table's source: widening a view's access fails that test, not this document.
 
 <!-- GENERATED:nav-matrix:START — do not edit; run `npx tsx scripts/generate-nav-doc.ts` -->
 
@@ -96,6 +98,8 @@ The table below is **generated** from the route table in `src/config/routes.ts`;
 | `daten`              | `/daten`              | "Daten"              | `data:export`                   | owner, office             | —             |
 | `aktivitaet`         | `/audit`              | "Aktivität"          | `audit:read`                    | owner, office             | —             |
 | `benachrichtigungen` | `/benachrichtigungen` | "Benachrichtigungen" | `notifications:manage`          | owner                     | —             |
+
+**Landing is first-match over this order:** worker → `meineProjekte`; owner / office → `kanban`; bookkeeper → `rechnungen`. A caller holding several roles takes the first rule that matches, so the ordering — not a per-role exclusion — is what keeps the choice unambiguous. A caller matching no rule has no landing view and falls back to their first accessible route.
 
 <!-- GENERATED:nav-matrix:END -->
 

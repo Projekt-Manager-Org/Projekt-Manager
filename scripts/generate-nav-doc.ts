@@ -36,7 +36,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as prettier from 'prettier';
-import { ROUTES, type RouteAccess, type RouteEntry } from '../src/config/routes.js';
+import {
+  LANDING_ORDER,
+  ROUTES,
+  type RouteAccess,
+  type RouteEntry,
+} from '../src/config/routes.js';
 import { ROLE_KEYS } from '../src/config/roleKeys.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -61,6 +66,30 @@ function resolveRoles(entry: RouteEntry): string {
 function renderLanding(entry: RouteEntry): string {
   const landing = ROLE_KEYS.filter((role) => entry.isDefaultFor({ roles: [role] }));
   return landing.length > 0 ? landing.join(', ') : '—';
+}
+
+/**
+ * The landing rule itself, not just its per-role outcome.
+ *
+ * The `Landing` column resolves each role on its own, which cannot
+ * express what `LANDING_ORDER` actually says: it is first-match, and the
+ * ORDER is the exclusion rule. A caller holding both `owner` and
+ * `bookkeeper` lands on Kanban — the column shows `kanban | owner,
+ * office` and `rechnungen | bookkeeper` and leaves the reader to guess.
+ * Publishing the outcome while dropping the rule is the same failure
+ * that made `RouteAccess` data instead of a closure.
+ */
+function renderLandingOrder(): string {
+  const rules = LANDING_ORDER.map(
+    (entry) => `${entry.roles.join(' / ')} → \`${entry.view}\``,
+  ).join('; ');
+  return (
+    `**Landing is first-match over this order:** ${rules}. ` +
+    `A caller holding several roles takes the first rule that matches, ` +
+    `so the ordering — not a per-role exclusion — is what keeps the ` +
+    `choice unambiguous. A caller matching no rule has no landing view ` +
+    `and falls back to their first accessible route.\n`
+  );
 }
 
 function renderTable(): string {
@@ -97,7 +126,7 @@ async function buildExpectedDoc(): Promise<string> {
   const startLineEnd = doc.indexOf('\n', startIdx) + 1;
   const before = doc.slice(0, startLineEnd);
   const after = doc.slice(endIdx);
-  const spliced = `${before}\n${renderTable()}\n${after}`;
+  const spliced = `${before}\n${renderTable()}\n${renderLandingOrder()}\n${after}`;
 
   const config = await prettier.resolveConfig(DOC_PATH);
   return prettier.format(spliced, { ...config, filepath: DOC_PATH });
