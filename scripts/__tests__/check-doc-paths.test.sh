@@ -39,18 +39,23 @@ trap cleanup EXIT
 
 # A fresh fixture repository per case, so a mutation cannot leak sideways.
 # Carries a small source tree the docs can cite: a plain file, an
-# extensionless-resolvable module, and a gitignored artifact.
+# extensionless-resolvable module, and a gitignored directory.
+#
+# `review/` exists to exercise prefix DERIVATION. It is not one of the
+# five directories the check used to hardcode, so a case citing a dead
+# path under it fails only if the prefix set really is read from
+# `git ls-files`.
 stage() {
   local d
   d="$(mktemp -d)"
   TMP_DIRS+=("$d")
-  mkdir -p "$d/src/server/db" "$d/src/ui/kanban" "$d/scripts/backup" "$d/docs"
+  mkdir -p "$d/src/server/db" "$d/src/ui/kanban" "$d/scripts/backup" "$d/docs" "$d/review"
   : >"$d/src/server/db/connection.ts"
   : >"$d/src/ui/kanban/KanbanBoard.tsx"
   : >"$d/scripts/backup/load-drill-key.sh"
+  : >"$d/review/conventions-shell.md"
   printf 'docs/generated/\n' >"$d/.gitignore"
   mkdir -p "$d/docs/generated"
-  : >"$d/docs/generated/report.md"
   git -C "$d" init --quiet
   git -C "$d" add -A >/dev/null 2>&1
   echo "$d"
@@ -130,12 +135,38 @@ d="$(stage)"
 write_doc "$d" 'A PR reaching from `src/ui/**` into `src/server/**` fails lint.'
 assert_case 0 "glob expression" "$d"
 
-echo "Case: a gitignored artifact"
-# Must pass. Demo fixtures and generated output are absent from a clean
-# checkout by design; flagging them would fail CI on every fresh clone.
+echo "Case: a gitignored path that does not exist"
+# Must FAIL. Being gitignored used to be an unconditional pass, which
+# exempted every ignored path in the tree. The four demo-asset citations
+# that need it are ALLOWLIST class (5), one line each.
+#
+# The previous version of this case created the file on disk, so `-e`
+# matched and the gitignore branch was never actually exercised — the
+# test passed for a reason unrelated to what it claimed to cover.
 d="$(stage)"
 write_doc "$d" 'The run writes `docs/generated/report.md`.'
-assert_case 0 "gitignored artifact" "$d"
+assert_case 1 "gitignored path does not exist" "$d"
+
+echo "Case: a dead path under a DERIVED top-level directory"
+# Must FAIL. `review/` is tracked but was not in the hardcoded five, so
+# every citation under it went unchecked. Pins that the prefix set comes
+# from the tree.
+d="$(stage)"
+write_doc "$d" 'House style lives in `review/conventions-gone.md`.'
+assert_case 1 "dead path under derived prefix" "$d"
+
+echo "Case: a live path under a DERIVED top-level directory"
+d="$(stage)"
+write_doc "$d" 'House style lives in `review/conventions-shell.md`.'
+assert_case 0 "live path under derived prefix" "$d"
+
+echo "Case: a path under a directory this repository does not track"
+# Must pass. `dist/` holds build output and is not a tracked top-level
+# directory, so it is not this check's business — same for any
+# third-party or runtime path that happens to contain a slash.
+d="$(stage)"
+write_doc "$d" 'The bundle lands at `dist/assets/index.js`.'
+assert_case 0 "untracked top-level directory ignored" "$d"
 
 echo "Case: a dead path inside a markdown LINK, not a code span"
 # Must pass. Link targets are lychee's lane (separate lint step); this

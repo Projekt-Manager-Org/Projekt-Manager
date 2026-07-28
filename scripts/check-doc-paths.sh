@@ -9,11 +9,16 @@
 # #292, #306) all included dead path references.
 #
 # Scope: inline code spans only (`` `like this` ``) whose content looks
-# like a repository path — first segment in {src, scripts, e2e, docs,
-# .github}. Markdown LINK targets are out of scope; `lychee` resolves
-# those in a separate lint step. The two surfaces do not overlap: a
-# path in a code span is never a link, and a link target is never
-# backticked.
+# like a repository path — contains a `/`, and its first segment is a
+# tracked top-level directory. That set is DERIVED from `git ls-files`,
+# not hardcoded: a hardcoded {src, scripts, e2e, docs, .github} silently
+# skipped `assets/`, `docker/`, `.husky/`, `review/`, `fixtures/`,
+# `patches/` and `public/`, and a checker that ignores a directory
+# nobody remembered to list is the drift it exists to catch.
+#
+# Markdown LINK targets are out of scope; `lychee` resolves those in a
+# separate lint step. The two surfaces do not overlap: a path in a code
+# span is never a link, and a link target is never backticked.
 #
 # Deliberately NOT flagged:
 #   - Globs (`src/ui/**`) — the path charset excludes `*`.
@@ -22,10 +27,16 @@
 #     would.
 #   - `path:LINE` / `path:LINE-LINE` citations — the suffix is stripped
 #     before resolution.
-#   - Gitignored artifacts (demo fixtures under `e2e/fixtures/demo/`) —
-#     absent from a clean checkout by design, present after a demo run.
-#   - ALLOWLIST entries — illustrative, historical or proposed paths,
-#     scoped to the one document entitled to cite them. See the list.
+#   - ALLOWLIST entries — see the list.
+#
+# NOT CHECKABLE, by construction: a citation with no `/`. The docs are
+# full of dotted identifiers that are indistinguishable from bare
+# filenames — `ProjectCrudService.purgeProject`, `payload.after`,
+# `projects.updatedBy`, `crypto.subtle`, `10.213.17.1`, `v1.0.0-rc.2`.
+# Any rule broad enough to check `docker-compose.yml` also fires on
+# several hundred of those. So `docker-compose.yml`, `package.json` and
+# `ARCHITECTURE.md` go unverified when cited without a directory. Cite
+# a path if you want it checked.
 #
 # Exit codes:
 #   0 — every cited path resolves
@@ -54,6 +65,28 @@ if [ "${#DOCS[@]}" -eq 0 ]; then
   exit 2
 fi
 
+# Top-level directories that actually hold tracked files. This is the
+# repository-path shape test, derived rather than declared so a new
+# top-level directory is checked the day it lands.
+mapfile -t TOP_DIRS < <(git ls-files | grep '/' | cut -d/ -f1 | sort -u)
+
+if [ "${#TOP_DIRS[@]}" -eq 0 ]; then
+  echo "ERROR: no tracked files under a directory in $PROJECT_ROOT." >&2
+  echo "       Nothing would match the path shape — refusing to run." >&2
+  exit 2
+fi
+
+# True iff the candidate is shaped like a repository path: it names a
+# directory, and that directory is one this repository tracks.
+has_repo_prefix() {
+  local first="${1%%/*}" entry
+  case "$1" in */*) ;; *) return 1 ;; esac
+  for entry in "${TOP_DIRS[@]}"; do
+    [ "$first" = "$entry" ] && return 0
+  done
+  return 1
+}
+
 # Extensions tried when a cited path has none. Mirrors how the prose
 # means it: `src/server/db/connection` is the module, not a file that
 # must literally exist under that name.
@@ -63,7 +96,7 @@ FALLBACK_EXTENSIONS=(".ts" ".tsx" ".js" ".mjs" ".sh" "/index.ts")
 # are `document|path`, both matched exactly — an exemption earned by one
 # ADR does not silently cover the same filename elsewhere.
 #
-# Three legitimate classes, and nothing else belongs here:
+# Five legitimate classes, and nothing else belongs here:
 #
 #   1. Illustrative — a walkthrough over something the project does not
 #      have. The surrounding prose must make the hypothetical obvious.
@@ -72,6 +105,15 @@ FALLBACK_EXTENSIONS=(".ts" ".tsx" ".js" ".mjs" ".sh" "/index.ts")
 #   3. Proposed — a named artifact that should exist and does not yet,
 #      inside an explicit gap marker. These are IOUs: the entry is
 #      removed in the same PR that lands the file.
+#   4. External identifier — an `owner/repo` name that collides with a
+#      tracked top-level directory. `docker/login-action` is a GitHub
+#      Action, not this repository's `docker/` directory.
+#   5. Generated artifact — gitignored, so absent from a clean checkout
+#      and present only after the generating run. Listed one path at a
+#      time on purpose: a blanket "gitignored paths pass" rule used to
+#      live in `resolves()` and exempted every ignored path in the tree,
+#      including all of `docs/wip/` and `dist/`, for the sake of these
+#      four citations.
 #
 # Keep this list small. An entry is a promise that a reader who greps
 # for the path and finds nothing has been told why.
@@ -101,6 +143,20 @@ ALLOWLIST=(
   "docs/testing/traceability.md|e2e/project-detail-page.spec.ts"
   "docs/testing/traceability.md|e2e/project-detail-attachments.spec.ts"
   "docs/testing/traceability.md|src/server/__tests__/project-detail-workers.test.ts"
+
+  # (4) GitHub Actions published by the `docker` org, named in ADR-0011's
+  # comparison of build approaches. Collides with this repo's `docker/`
+  # directory only because the org shares its name.
+  "docs/adr/0011-build-images-in-ci-distribute-via-ghcr.md|docker/login-action"
+  "docs/adr/0011-build-images-in-ci-distribute-via-ghcr.md|docker/build-push-action"
+  "docs/adr/0011-build-images-in-ci-distribute-via-ghcr.md|docker/setup-buildx-action"
+
+  # (5) Pixabay stock photos and the phone backdrop, gitignored per
+  # .gitignore and written by the opt-in demo recording flow.
+  "docs/demo/storyboard.md|e2e/fixtures/demo/site-1.jpg"
+  "docs/testing/demo-recordings.md|e2e/fixtures/demo/site-1.jpg"
+  "docs/testing/demo-recordings.md|e2e/fixtures/demo/site-2.jpg"
+  "docs/testing/demo-recordings.md|scripts/demo/assets/phone-backdrop.jpg"
 )
 
 is_allowlisted() {
@@ -111,16 +167,19 @@ is_allowlisted() {
   return 1
 }
 
-# Resolves iff the path exists as-is, resolves through a fallback
-# extension, or is gitignored (built or generated artifact — absent
-# from a clean checkout, not a dead reference).
+# Resolves iff the path exists as-is or through a fallback extension.
+#
+# Being gitignored is NOT a pass. It used to be, which exempted every
+# ignored path in the tree — `docs/wip/`, `dist/`, `data/` — to cover
+# four demo-asset citations. Documentation should not be pointing at
+# ignored paths in the first place; the four that legitimately do are
+# ALLOWLIST class (5), where each is visible and reviewed.
 resolves() {
   local candidate="$1" ext
   [ -e "$candidate" ] && return 0
   for ext in "${FALLBACK_EXTENSIONS[@]}"; do
     [ -e "${candidate}${ext}" ] && return 0
   done
-  git check-ignore -q "$candidate" 2>/dev/null && return 0
   return 1
 }
 
@@ -137,12 +196,10 @@ for doc in "${DOCS[@]}"; do
     # so cutting at the first one is lossless.
     candidate="${span%%:*}"
 
-    # Repository-path shape: known first segment, no glob metacharacters
-    # (the charset in the extractor already excludes them).
-    case "$candidate" in
-      src/* | scripts/* | e2e/* | docs/* | .github/*) ;;
-      *) continue ;;
-    esac
+    # Repository-path shape: names a tracked top-level directory, and no
+    # glob metacharacters (the extractor's charset already excludes
+    # them).
+    has_repo_prefix "$candidate" || continue
 
     checked=$((checked + 1))
     is_allowlisted "$doc" "$candidate" && continue
