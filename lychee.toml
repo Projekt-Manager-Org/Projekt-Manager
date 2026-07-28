@@ -3,8 +3,27 @@
 # Resolves relative file links and `#anchor` fragments across every
 # tracked `*.md`. Consumed identically by CI (`lychee-action` in the
 # `lint` job) and by `npm run check:links` — every flag lives here so
-# the two paths cannot drift; only the input glob is passed on the
-# command line.
+# the two paths cannot drift; both pass `.` as the only argument.
+#
+# The input is the repository ROOT, not a `**/*.md` glob, and the
+# difference is load-bearing. lychee resolves the two forms down
+# different branches:
+#
+#   - A glob takes `Input::FsGlob` → `glob_with()`, which expands
+#     matches directly and never consults an ignore file.
+#   - A directory takes `Input::FsPath` → `WalkBuilder`, built with
+#     `.git_ignore() .git_global() .git_exclude() .ignore() .parents()
+#     .hidden() .types()`.
+#
+# Only the second honours `.gitignore`. `'./**/*.md'` therefore walked
+# into `node_modules/` and reported 977 broken links in third-party
+# READMEs — 23.5k links across 1143 files instead of 84. The directory
+# form skips `node_modules/`, `docs/wip/`, `test-results/`,
+# `playwright-report/` and `.claude/` because `.gitignore` already
+# lists them, which makes the scanned set exactly `git ls-files '*.md'`
+# — the same set every other doc-drift guard in this repo derives.
+# No tracked `*.md` lives in a hidden directory, so `hidden` filtering
+# costs no coverage.
 #
 # Why lychee and not a script: the two requirements this repo learned
 # the hard way in #289 are the two that are easy to get wrong, and both
@@ -31,5 +50,14 @@ offline = true
 # Resolve `#anchor` fragments. `text-only` (`#:~:text=`) is not a form
 # this repo uses, so anchors alone keep the check narrow.
 include_fragments = "anchor-only"
+
+# Markdown only. The default set is
+# `md,mkd,mdx,mdown,mdwn,mkdn,mkdown,markdown,html,htm,css,txt,xml`,
+# which pulls in `index.html` — whose `/favicon.svg` and
+# `/manifest.webmanifest` are web-root paths that need a `root_dir` to
+# resolve and are correct as written. AC-348 scopes this check to
+# documentation, so narrow the walker rather than configure a root for
+# assets it was never meant to check.
+extensions = ["md"]
 
 no_progress = true

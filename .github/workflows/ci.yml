@@ -351,18 +351,26 @@ jobs:
       # `format:check` resolves links.
       #
       # Flags live in lychee.toml, shared with scripts/check-links.sh so
-      # a local run and this one cannot diverge; only the input glob is
-      # passed here, and it mirrors that script's `exec` line.
+      # a local run and this one cannot diverge. The only argument either
+      # passes is `.` — the repository root, NOT a `**/*.md` glob. lychee
+      # honours `.gitignore` when walking a directory and not when
+      # expanding a glob, so the glob form scanned node_modules/ and
+      # failed on 977 links in third-party READMEs. lychee.toml carries
+      # the full reasoning.
       #
       # `offline = true` in the config means no network calls: a flaky
       # third-party host cannot fail the lint job.
+      #
+      # This step's pinned version is also read by
+      # scripts/check-links.sh's container fallback — keep the input name
+      # `lycheeVersion` if you move it.
       - name: Markdown link check (AC-348)
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           # renovate: datasource=github-releases depName=lycheeverse/lychee extractVersion=^lychee-(?<version>.*)$
           lycheeVersion: v0.24.2
-          args: --config lychee.toml './**/*.md'
-          # A run that finds zero links means the glob missed the docs —
+          args: --config lychee.toml .
+          # A run that finds zero links means the walk missed the docs —
           # green for the wrong reason. Fail instead.
           failIfEmpty: true
           jobSummary: false
