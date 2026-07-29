@@ -128,6 +128,8 @@ Types, transition rules, aging calc, summary computation, session expiry, date f
 
 #### `src/server/config/`
 
+Deployment-tunable values are indexed in [§ Configuration Files](#configuration-files) below — that table is the single list; only non-`[C]` members are listed here.
+
 - `vapid.ts` — VAPID key-material resolver: derive public from private, dev auto-bootstrap
 
 #### `src/server/services/`

@@ -26,6 +26,7 @@
 # gated: src/server/storage/
 # gated: src/sse/
 # gated: src/state/
+# gated: src/ui/
 src/config/attachmentDefaults.ts
 src/config/breakpoints.ts
 src/domain/aging.ts
@@ -42,10 +43,7 @@ src/domain/types.ts
 src/server/attachment-hidden-reaper-scheduler.ts
 src/server/config/assertStagingDurable.ts
 src/server/config/bootstrap-credentials.ts
-src/server/config/env.ts
 src/server/config/features.ts
-src/server/config/index.ts
-src/server/config/password-policy.ts
 src/server/deploy-preflight-cli.ts
 src/server/error-handler.ts
 src/server/format-error-chain.ts

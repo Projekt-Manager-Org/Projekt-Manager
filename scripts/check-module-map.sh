@@ -37,11 +37,23 @@
 # Two rejected alternatives, because both look reasonable:
 #   - Per-file over all of src/**: 345 non-test files, most of them React
 #     components. Naming every component here is inventory, not
-#     architecture — hence EXCLUDED below.
+#     architecture.
 #   - Top-level directory coverage: nearly free, and useless. It was
 #     green while the whole invoices subsystem was missing, because those
 #     files live in `services/`, `routes/` and `state/`, all already
 #     listed.
+#
+# SCOPE LIMIT — coverage reaches direct children only. A nested
+# directory is gated when it takes its own `#### <dir>` subsection, and
+# is otherwise invisible: `src/server/services/invoice/` holds five
+# files (the Factur-X builder, the PDF drawer, the payload crypto, the
+# XSD validator) that this check will never ask about. That is the same
+# opt-in rule applied one level down, not an oversight, but it does mean
+# an empty baseline is not proof the Module Map is complete — only that
+# the directories which opted in are covered.
+#
+# The doc -> file direction has no such limit: a subsection may name a
+# file anywhere beneath it, and every name is resolved.
 #
 # BASELINE — the ratchet. The known-undocumented set at the time this
 # check landed is recorded in scripts/module-map-baseline.txt, generated
@@ -65,9 +77,29 @@
 #
 #   (a) a backticked name carrying a `.ts` / `.tsx` extension, anywhere
 #       in the subsection — an extension is an unambiguous file claim.
-#   (b) a backticked name leading a list item, before the ` — ` gloss
-#       separator. That prefix is the inventory entry; everything after
-#       the dash is prose and is not checked.
+#   (b) the run of backticked names that OPENS a list item, extended
+#       across `,` and `/` separators only. That run is the inventory
+#       entry; everything after it — including the ` — ` gloss — is prose
+#       and is not checked. `src/state/` lists a dozen stores in one
+#       comma-separated run, so the run is taken whole, not just its
+#       first name.
+#
+#       The separator set is closed on purpose. A name joined by a word
+#       ("- `authStore` and `uiStore` — …", or the Oxford comma in
+#       "- `a`, `b`, and `c`") ends the run and goes unchecked, which is
+#       the safe direction but still a hole: separate inventory names
+#       with commas. Extending the set to English conjunctions would
+#       reopen (b) on prose, which is the bug below. Names carrying an
+#       extension are unaffected — (a) is subsection-wide.
+#
+#       "Opens the item" is load-bearing. Matching a backticked name
+#       anywhere before the gloss makes a bulleted SENTENCE an inventory
+#       entry: "- Failure isolation keeps one broken `SseConnection` from
+#       stalling the fan-out." is then reported as a dead file. That
+#       sentence is prose in `src/server/sse/` today and becomes a bullet
+#       the moment #306 rewrites the subsection as an inventory — the
+#       shape was found by probing that burn-down, not by a CI failure.
+#       A bullet is not a citation; leading with the name is.
 #
 # Not checkable, and deliberately so: a bare identifier in prose.
 # `BulkDownloadOrchestrator` named a deleted class, but `MutatingDatabase`,
@@ -78,10 +110,10 @@
 # To cite a name this check should NOT resolve — a file in another
 # directory, or a historical one — write the full repository path. It
 # carries a `/`, so both forms above skip it and `check-doc-paths.sh`
-# resolves it instead. Moving it after the ` — ` separator is enough for
-# a bare stem but not for an extensioned name: (a) is subsection-wide,
-# on purpose, because that is the form the dead `bulk-download-reaper.ts`
-# citation took.
+# resolves it instead. Moving a bare stem out of the item's opening run
+# is enough; moving an extensioned name is not, because (a) is
+# subsection-wide on purpose — that is the form the dead
+# `bulk-download-reaper.ts` citation took.
 #
 # Exit codes:
 #   0 — every gated directory is covered and the baseline is current
@@ -101,24 +133,6 @@ if [ ! -f "$DOC" ]; then
   echo "ERROR: $DOC not found under \$MODULE_MAP_ROOT ($PROJECT_ROOT)." >&2
   exit 2
 fi
-
-# Directories that carry a subsection but are deliberately not gated at
-# file level. Each entry is a reviewed decision, not a convenience.
-EXCLUDED=(
-  # ~90 React components across nine feature groups. The subsection
-  # documents the GROUPS and the handful of components with
-  # cross-cutting behaviour; a per-file gate here would turn the Module
-  # Map into a file listing, which the tree already provides.
-  "src/ui/"
-)
-
-is_excluded() {
-  local dir="$1" entry
-  for entry in "${EXCLUDED[@]}"; do
-    [ "$dir" = "$entry" ] && return 0
-  done
-  return 1
-}
 
 # The `### Directory Detail` block, bounded by the next `### ` heading.
 DETAIL="$(awk '/^### Directory Detail/{f=1;next} f&&/^### /{exit} f' "$DOC")"
@@ -157,17 +171,27 @@ section_body() {
   ' "$DOC"
 }
 
-# Directories whose subsection deliberately delegates its per-file
-# detail elsewhere in the same document. Searching only the subsection
-# would report the delegated files as undocumented — a checker bug, not
-# a doc gap.
+# A subsection may delegate its per-file detail elsewhere in the same
+# document. Searching only the subsection would then report the delegated
+# files as undocumented — a checker bug, not a doc gap.
 #
-#   src/config/ — its subsection says so outright: "Deployment-tunable
-#   values are indexed in § Configuration Files below — that table is
-#   the single list; only non-`[C]` members are listed here."
+# The delegation is DOC-DRIVEN, like the gating above: a subsection that
+# links `### Configuration Files` hands its file list to that table.
+# `src/config/` and `src/server/config/` both open with "Deployment-tunable
+# values are indexed in [§ Configuration Files](#configuration-files)
+# below — that table is the single list; only non-`[C]` members are listed
+# here." The table cites files by full repository path, so it spans both
+# directories and either one reading it is correct.
+#
+# A hard-coded list of delegating directories would be the parallel list
+# this check exists without: the sentence could be deleted from the
+# document while the script kept delegating, silently. Keying on the link
+# costs a rule for doc authors — do not link that table from a subsection
+# unless the subsection really does hand over its file list — and buys
+# the third one landing with no script edit.
 delegated_body_for() {
   case "$1" in
-    "src/config/") section_body "### Configuration Files" ;;
+    *"](#configuration-files)"*) section_body "### Configuration Files" ;;
     *) : ;;
   esac
 }
@@ -250,7 +274,9 @@ is_named() {
 cited_names_in() {
   {
     printf '%s\n' "$1" | grep -oE '`[A-Za-z0-9_.-]+\.tsx?`' || true
-    printf '%s\n' "$1" | sed -n 's/^- //p' | sed 's/ — .*//' | grep -oE '`[A-Za-z0-9_.-]+`' || true
+    printf '%s\n' "$1" |
+      sed -n 's|^- \(`[^`]*`\( *[,/] *`[^`]*`\)*\).*|\1|p' |
+      grep -oE '`[A-Za-z0-9_.-]+`' || true
   } | tr -d '`' | sort -u
 }
 
@@ -260,12 +286,11 @@ gated_now=()
 gated_count=0
 
 for dir in "${GATED[@]}"; do
-  is_excluded "$dir" && continue
   gated_count=$((gated_count + 1))
   gated_now+=("$dir")
   subsection="$(subsection_for "$dir")"
   body="$subsection
-$(delegated_body_for "$dir")"
+$(delegated_body_for "$subsection")"
 
   # file -> doc.
   while IFS= read -r file; do
@@ -401,5 +426,5 @@ if [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ] || [ -n "$dead" ];
 fi
 
 echo "OK: $DOC's Module Map covers every gated directory, and names no file that is gone."
-echo "    gated directories: ${gated_count} (excluded: ${#EXCLUDED[@]})"
+echo "    gated directories: ${gated_count}"
 echo "    baseline entries remaining: ${#BASELINE_ENTRIES[@]} (burn-down: #306)"

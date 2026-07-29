@@ -250,6 +250,26 @@ git -C "$d" add -A >/dev/null 2>&1
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `InvoiceRenderer.ts` — under invoice/|' "$d/ARCHITECTURE.md"
 assert_case 0 "nested file resolves" "$d"
 
+echo "Case: a type name in a bulleted sentence is not a file claim"
+# Must pass, and it is the same rule as the prose case above — a bullet
+# is not automatically an inventory entry. The citation form is a
+# backticked name LEADING the item; a sentence that merely contains one
+# is prose that happens to be bulleted, and `SseConnection` sits in
+# exactly that position in the real `src/server/sse/` subsection.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- Failure isolation keeps one broken `SseConnection` from stalling the fan-out.|' "$d/ARCHITECTURE.md"
+assert_case 0 "type name in a bulleted sentence ignored" "$d"
+
+echo "Case: a leading run of names is claimed in full"
+# Must fail. Anchoring the citation to the START of the item must not
+# shrink it to the first name: `src/state/` lists a dozen stores in one
+# comma-separated run, and every one of them is an inventory entry.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts`, `GhostService` — the documented one and a dead one|' "$d/ARCHITECTURE.md"
+assert_case 1 "dead name inside the leading run" "$d"
+
 echo "Case: a full repository path is left to check-doc-paths.sh"
 # Must pass. The documented escape hatch for citing a file this
 # subsection does not own: a `/` puts it outside both citation forms, and
@@ -258,6 +278,88 @@ d="$(stage)"
 echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `src/server/repositories/GoneRepo.ts` — historical, resolved elsewhere|' "$d/ARCHITECTURE.md"
 assert_case 0 "full path left to the sibling checker" "$d"
+
+echo "Case: a directory whose subsection delegates its file list"
+# Must pass. `src/config/` and `src/server/config/` both hand their
+# per-file detail to the `### Configuration Files` table rather than
+# repeat it. Without the delegation the check reports files as
+# undocumented against a document that documents them — a checker bug
+# that costs three entries of #306's burn-down to spurious duplication.
+#
+# The LINK is the trigger, not the directory name: delegation is
+# doc-driven for the same reason gating is, so that a third delegating
+# subsection needs no script edit. $1 is the subsection's opening
+# sentence — the paired case below drops the link from it.
+stage_delegated() {
+  local d
+  d="$(mktemp -d)"
+  TMP_DIRS+=("$d")
+  mkdir -p "$d/src/server/config" "$d/scripts"
+  : >"$d/src/server/config/env.ts"
+  cat >"$d/ARCHITECTURE.md" <<DOC
+## Module Map
+
+### Directory Detail
+
+#### \`src/server/config/\`
+
+$1
+
+### Configuration Files
+
+| What            | File                        |
+| --------------- | --------------------------- |
+| Env validation  | \`src/server/config/env.ts\` |
+DOC
+  : >"$d/scripts/module-map-baseline.txt"
+  git -C "$d" init --quiet
+  git -C "$d" add -A >/dev/null 2>&1
+  echo "$d"
+}
+assert_case 0 "delegated file list counts as documented" \
+  "$(stage_delegated 'Deployment-tunable values are indexed in [§ Configuration Files](#configuration-files) below.')"
+
+echo "Case: the same table, not linked from the subsection"
+# Must fail, and this is what makes the case above a test of the
+# mechanism rather than of the fixture. A hard-coded list of delegating
+# directories would pass both: the script would keep delegating after the
+# sentence was deleted from ARCHITECTURE.md, silently.
+assert_case 1 "no link, no delegation" \
+  "$(stage_delegated 'Deployment-tunable values live in the Configuration Files table below.')"
+
+echo "Case: a subsection with no direct children is still checked for dead names"
+# Must fail. `src/ui/` holds no files of its own — every component lives
+# in a feature subdirectory — so the file -> doc direction has nothing to
+# say about it either way. The doc -> file direction very much does: the
+# subsection backticks eight component files, and a rename leaves the
+# citation behind. Excluding the directory bought no coverage and cost
+# this check.
+stage_nested_only() {
+  local d
+  d="$(mktemp -d)"
+  TMP_DIRS+=("$d")
+  mkdir -p "$d/src/ui/detail" "$d/scripts"
+  : >"$d/src/ui/detail/PhotoGallery.tsx"
+  cat >"$d/ARCHITECTURE.md" <<'DOC'
+## Module Map
+
+### Directory Detail
+
+#### `src/ui/`
+
+- `PhotoGallery.tsx` — the surviving one
+- `RenamedAway.tsx` — the dead citation
+
+### Configuration Files
+
+Nothing here.
+DOC
+  : >"$d/scripts/module-map-baseline.txt"
+  git -C "$d" init --quiet
+  git -C "$d" add -A >/dev/null 2>&1
+  echo "$d"
+}
+assert_case 1 "dead name in a nested-only directory" "$(stage_nested_only)"
 
 echo "Case: deleting a subsection silently un-gates its directory"
 # Must fail. Opting out is allowed — the error message says so — but
