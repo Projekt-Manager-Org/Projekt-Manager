@@ -186,10 +186,78 @@ assert_case 0 "full-path citation counts as documented" "$d"
 
 echo "Case: a longer name must not cover a shorter one"
 # Must fail. `BetaService.ts` is not documented by prose about
-# `SubBetaService.ts`.
+# `SubBetaService.ts`. The longer file is staged for real so the only
+# reason to fail is the coverage gap — otherwise the doc -> file
+# direction would fail this case too and it would stop isolating the
+# anchoring regression it exists for.
 d="$(stage)"
+: >"$d/src/server/services/SubBetaService.ts"
+git -C "$d" add -A >/dev/null 2>&1
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `SubBetaService.ts` — a different file|' "$d/ARCHITECTURE.md"
 assert_case 1 "longer name does not cover shorter" "$d"
+
+# --- doc -> file: every name the section claims must still exist -------
+#
+# The direction #306 opened with and nothing caught: the Module Map named
+# three deleted files for months. `check-doc-paths.sh` cannot see them —
+# they are bare basenames — so the must-NOT-fire cases below are what
+# keeps this direction from being reverted as noisy.
+
+echo "Case: an extensioned name in prose that no longer exists"
+# Must fail. This is the exact shape of the dead `bulk-download-reaper.ts`
+# citation: prose, not a list item, so a list-only rule would miss it.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n\nThe `GoneService.ts` retires under e2e.|' "$d/ARCHITECTURE.md"
+assert_case 1 "prose names a deleted file" "$d"
+
+echo "Case: a bare stem leading a list item that no longer exists"
+# Must fail. The shape of the dead `dataExchangeStore` citation —
+# `src/state/` documents its stores without the extension.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `GhostService` — gone|' "$d/ARCHITECTURE.md"
+assert_case 1 "list item names a deleted stem" "$d"
+
+echo "Case: a type name in prose is not a file claim"
+# Must pass, and this is the case that decides whether the direction is
+# survivable. `BulkDownloadOrchestrator` named a deleted class, but
+# `MutatingDatabase` and `AppError` sit in the same position and are
+# live types. No lexical rule separates them, so bare prose identifiers
+# are not checked at all.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n\nEvery service takes a `MutatingDatabase` and throws `AppError`.|' "$d/ARCHITECTURE.md"
+assert_case 0 "type name in prose ignored" "$d"
+
+echo "Case: a bare stem after the gloss separator is not a file claim"
+# Must pass. The inventory entry is the prefix before ` — `; everything
+# after it is prose about the entry.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — superseded `legacyAlpha` in the rewrite|' "$d/ARCHITECTURE.md"
+assert_case 0 "stem after the gloss ignored" "$d"
+
+echo "Case: a named file living in a nested directory resolves"
+# Must pass. Coverage stops at direct children — a nested directory opts
+# in through its own subsection — but a subsection may still NAME a file
+# below it, so resolution walks the whole tree.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+mkdir -p "$d/src/server/services/invoice"
+: >"$d/src/server/services/invoice/InvoiceRenderer.ts"
+git -C "$d" add -A >/dev/null 2>&1
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `InvoiceRenderer.ts` — under invoice/|' "$d/ARCHITECTURE.md"
+assert_case 0 "nested file resolves" "$d"
+
+echo "Case: a full repository path is left to check-doc-paths.sh"
+# Must pass. The documented escape hatch for citing a file this
+# subsection does not own: a `/` puts it outside both citation forms, and
+# the sibling checker resolves it repository-wide instead.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `src/server/repositories/GoneRepo.ts` — historical, resolved elsewhere|' "$d/ARCHITECTURE.md"
+assert_case 0 "full path left to the sibling checker" "$d"
 
 echo "Case: deleting a subsection silently un-gates its directory"
 # Must fail. Opting out is allowed — the error message says so — but

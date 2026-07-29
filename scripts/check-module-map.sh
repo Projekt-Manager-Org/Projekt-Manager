@@ -3,8 +3,20 @@
 # Doc-drift check — ARCHITECTURE.md Module Map coverage (AC-350).
 #
 # The Module Map silently omitted the entire invoices and takeout
-# subsystems (#306). A hand-maintained inventory of a few hundred files
-# drifts by default.
+# subsystems, and named three files that had already been deleted (#306).
+# A hand-maintained inventory of a few hundred files drifts by default,
+# in BOTH directions — this check covers both:
+#
+#   file -> doc   every source file in a gated directory is named there
+#   doc -> file   every file this section names still exists
+#
+# The second direction needs its own pass because nothing else can do
+# it. `check-doc-paths.sh` resolves cited paths, but the Module Map
+# cites bare basenames (`bulk-download-reaper.ts`, `authStore`) and a
+# citation with no `/` is not checkable repository-wide — it is
+# indistinguishable from the several hundred dotted identifiers in these
+# docs. Inside a `#### <dir>` subsection that ambiguity is gone: the
+# heading names the directory, so the basename is enough.
 #
 # NOT a generator. The value of that section is the hand-written prose
 # about intent — the `Owns` summary and especially the `Must NOT` column
@@ -46,9 +58,35 @@
 # under `src/server/repositories/` does not also cover a different
 # `audit.ts` elsewhere.
 #
+# INVENTORY CITATIONS — what the doc -> file direction treats as a claim
+# that a file exists. Two forms, both narrow on purpose, because a
+# subsection legitimately backticks plenty of things that are not files
+# (`AppError`, `EventSource`, `storage_usage_changed`, a route path):
+#
+#   (a) a backticked name carrying a `.ts` / `.tsx` extension, anywhere
+#       in the subsection — an extension is an unambiguous file claim.
+#   (b) a backticked name leading a list item, before the ` — ` gloss
+#       separator. That prefix is the inventory entry; everything after
+#       the dash is prose and is not checked.
+#
+# Not checkable, and deliberately so: a bare identifier in prose.
+# `BulkDownloadOrchestrator` named a deleted class, but `MutatingDatabase`,
+# `AttachmentStorageClient` and `SseConnection` are live type names in the
+# same position. No lexical rule separates them, and a check that fires
+# on type names gets muted within a week.
+#
+# To cite a name this check should NOT resolve — a file in another
+# directory, or a historical one — write the full repository path. It
+# carries a `/`, so both forms above skip it and `check-doc-paths.sh`
+# resolves it instead. Moving it after the ` — ` separator is enough for
+# a bare stem but not for an extensioned name: (a) is subsection-wide,
+# on purpose, because that is the form the dead `bulk-download-reaper.ts`
+# citation took.
+#
 # Exit codes:
 #   0 — every gated directory is covered and the baseline is current
-#   1 — undocumented files outside the baseline, or a stale baseline
+#   1 — undocumented files outside the baseline, a stale baseline, or a
+#       named file that does not exist
 #   2 — toolchain error (ARCHITECTURE.md unreadable, no subsections found)
 
 set -euo pipefail
@@ -207,7 +245,17 @@ is_named() {
   return 1
 }
 
+# The names a subsection claims exist — see the header on INVENTORY
+# CITATIONS for the two forms and why nothing wider is safe.
+cited_names_in() {
+  {
+    printf '%s\n' "$1" | grep -oE '`[A-Za-z0-9_.-]+\.tsx?`' || true
+    printf '%s\n' "$1" | sed -n 's/^- //p' | sed 's/ — .*//' | grep -oE '`[A-Za-z0-9_.-]+`' || true
+  } | tr -d '`' | sort -u
+}
+
 undocumented=()
+ghosts=()
 gated_now=()
 gated_count=0
 
@@ -215,8 +263,11 @@ for dir in "${GATED[@]}"; do
   is_excluded "$dir" && continue
   gated_count=$((gated_count + 1))
   gated_now+=("$dir")
-  body="$(subsection_for "$dir")
+  subsection="$(subsection_for "$dir")"
+  body="$subsection
 $(delegated_body_for "$dir")"
+
+  # file -> doc.
   while IFS= read -r file; do
     [ -z "$file" ] && continue
     case "$file" in
@@ -225,6 +276,29 @@ $(delegated_body_for "$dir")"
     is_named "$body" "$file" && continue
     undocumented+=("$file")
   done < <(files_in "$dir")
+
+  # doc -> file. Resolution is by basename anywhere under the directory,
+  # with or without extension: a subsection may name a file that sits in
+  # a nested directory of its own (`src/server/services/invoice/`), and
+  # `src/state/` writes its stores without the `.ts`.
+  #
+  # The delegated body is NOT scanned here. `### Configuration Files`
+  # indexes files across many directories, so a name there is not a claim
+  # about THIS one.
+  unset EXISTING
+  declare -A EXISTING=()
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    base="${file##*/}"
+    EXISTING["$base"]=1
+    EXISTING["${base%.*}"]=1
+  done < <(git ls-files "$dir")
+
+  while IFS= read -r name; do
+    [ -z "$name" ] && continue
+    [ -n "${EXISTING[$name]:-}" ] && continue
+    ghosts+=("${dir} -> ${name}")
+  done < <(cited_names_in "$subsection")
 done
 
 # --update-baseline: freeze the current undocumented set and stop.
@@ -281,7 +355,13 @@ for entry in "${BASELINE_ENTRIES[@]:-}"; do
   [ "$found" -eq 0 ] && stale="${stale}  stale baseline entry: ${entry}"$'\n'
 done
 
-if [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ]; then
+dead=""
+for entry in "${ghosts[@]:-}"; do
+  [ -z "$entry" ] && continue
+  dead="${dead}  names a file that does not exist: ${entry}"$'\n'
+done
+
+if [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ] || [ -n "$dead" ]; then
   if [ -n "$findings" ]; then
     echo "ERROR: files in a gated directory are not named in $DOC's Module Map." >&2
     echo "       Add them to the directory's '#### <dir>' subsection under" >&2
@@ -308,9 +388,18 @@ if [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ]; then
     echo "" >&2
     printf "%s" "$ungated" >&2
   fi
+  if [ -n "$dead" ]; then
+    { [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ]; } && echo "" >&2
+    echo "ERROR: a '#### <dir>' subsection in $DOC names a file that is not" >&2
+    echo "       in the directory. Drop the name, or correct it to the file" >&2
+    echo "       that replaced it. To cite a name this check should not" >&2
+    echo "       resolve, write the full repository path instead." >&2
+    echo "" >&2
+    printf "%s" "$dead" >&2
+  fi
   exit 1
 fi
 
-echo "OK: every gated directory in $DOC's Module Map is covered."
+echo "OK: $DOC's Module Map covers every gated directory, and names no file that is gone."
 echo "    gated directories: ${gated_count} (excluded: ${#EXCLUDED[@]})"
 echo "    baseline entries remaining: ${#BASELINE_ENTRIES[@]} (burn-down: #306)"
