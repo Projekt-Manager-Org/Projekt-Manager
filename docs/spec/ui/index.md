@@ -82,7 +82,7 @@ The authenticated layout provides navigation between all available views. The na
 
 The table below is **generated** from the route table in `src/config/routes.ts`; CI fails on drift (AC-349). Do not edit it by hand. `Access` is the declared rule, `Roles` is that rule resolved against the default role matrix ([api.md §14.3](../api.md#143-authorization-rules)), and `Landing` is the post-login view for a caller holding that role alone ([§8.1.2](#812-authenticated-state)) — see the first-match note below the table for multi-role callers.
 
-Because the table is generated, it agrees with the code by construction and cannot by itself catch an unintended change. The binding assertion is the hand-written `MATRIX` in `src/config/__tests__/routes.test.ts`, kept deliberately independent of this table's source: widening a view's access fails that test, not this document.
+Because the table is generated, it agrees with the code by construction and cannot by itself catch an unintended change. The binding assertion is the hand-written `ROUTE_TABLE` in `src/config/__tests__/routes.test.ts`, kept deliberately independent of this table's source and pinning every column published here — the access rule included, not only the role set it resolves to. Widening a view's access, or restating a permission gate as the list of roles that hold it today, fails that test rather than this document.
 
 <!-- GENERATED:nav-matrix:START — do not edit; run `npx tsx scripts/generate-nav-doc.ts` -->
 
