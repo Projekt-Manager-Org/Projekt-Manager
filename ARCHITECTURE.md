@@ -146,7 +146,7 @@ Types, transition rules, aging calc, summary computation, session expiry, date f
 - `attachment-orphan-reaper.ts` — attachment orphan reaper for `pending` rows past TTL
 - `KeyEnvelopeService.ts` — DEK (data-encryption key) envelope wrap/unwrap against the operator-loaded binary `age` identity (ADR-0024)
 
-The `BulkDownloadOrchestrator`, `bulk-download-reaper.ts`, and `bulk-download-reaper-scheduler.ts` retire under e2e (per ADR-0024 § Decision "Bulk download") — the per-file `bulk-fetch` route returns DEK material + presigned GETs and the browser assembles the zip locally via streaming-zip.
+Bulk download has no server-side orchestrator, reaper or scheduler (per ADR-0024 § Decision "Bulk download") — the per-file `bulk-fetch` route returns DEK material + presigned GETs and the browser assembles the zip locally via streaming-zip.
 
 #### `src/server/repositories/`
 
@@ -213,7 +213,7 @@ Only `src/test/api-helpers.ts` retains a direct-DB user insert, for unit-setup s
 
 Zustand stores, plus barrel re-export (`store.ts`) and the client-side cache.
 
-- `authStore`, `attachmentStore`, `auditStore`, `confirmStore`, `customerStore`, `dataExchangeStore`, `extractionActions`, `notificationRuleStore`, `projectManagementStore`, `projectStore`, `sessionExpired`, `uiStore`, `userStore`
+- `authStore`, `attachmentStore`, `auditStore`, `confirmStore`, `customerStore`, `extractionActions`, `notificationRuleStore`, `projectManagementStore`, `projectStore`, `sessionExpired`, `uiStore`, `userStore`
 - `storageUsageStore` — shared subscription / refresh-trigger fan-in for the Footer badge and the DatenView storage row. Owns the fetch lifecycle for `GET /api/storage-usage` and subscribes to the `storage_usage_changed` SSE event.
 
 #### `src/sse/`
