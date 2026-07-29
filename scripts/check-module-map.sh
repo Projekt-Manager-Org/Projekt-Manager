@@ -160,19 +160,27 @@ section_body() {
   ' "$DOC"
 }
 
-# Directories whose subsection deliberately delegates its per-file
-# detail elsewhere in the same document. Searching only the subsection
-# would report the delegated files as undocumented — a checker bug, not
-# a doc gap.
+# A subsection may delegate its per-file detail elsewhere in the same
+# document. Searching only the subsection would then report the delegated
+# files as undocumented — a checker bug, not a doc gap.
 #
-#   src/config/, src/server/config/ — both subsections say so outright:
-#   "Deployment-tunable values are indexed in § Configuration Files
-#   below — that table is the single list; only non-`[C]` members are
-#   listed here." The table cites files by full repository path, so it
-#   spans both directories and either one reading it is correct.
+# The delegation is DOC-DRIVEN, like the gating above: a subsection that
+# links `### Configuration Files` hands its file list to that table.
+# `src/config/` and `src/server/config/` both open with "Deployment-tunable
+# values are indexed in [§ Configuration Files](#configuration-files)
+# below — that table is the single list; only non-`[C]` members are listed
+# here." The table cites files by full repository path, so it spans both
+# directories and either one reading it is correct.
+#
+# A hard-coded list of delegating directories would be the parallel list
+# this check exists without: the sentence could be deleted from the
+# document while the script kept delegating, silently. Keying on the link
+# costs a rule for doc authors — do not link that table from a subsection
+# unless the subsection really does hand over its file list — and buys
+# the third one landing with no script edit.
 delegated_body_for() {
   case "$1" in
-    "src/config/" | "src/server/config/") section_body "### Configuration Files" ;;
+    *"](#configuration-files)"*) section_body "### Configuration Files" ;;
     *) : ;;
   esac
 }
@@ -271,7 +279,7 @@ for dir in "${GATED[@]}"; do
   gated_now+=("$dir")
   subsection="$(subsection_for "$dir")"
   body="$subsection
-$(delegated_body_for "$dir")"
+$(delegated_body_for "$subsection")"
 
   # file -> doc.
   while IFS= read -r file; do
