@@ -2,6 +2,15 @@ import { defineConfig } from 'vitest/config';
 import { loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { availableParallelism } from 'node:os';
+
+// Worker cap for the `integration` project only — see the rationale on
+// `maxWorkers` below. `- 1` leaves a core for the main vitest process
+// (vitest's own default heuristic); the ceiling of 8 is where the wall
+// clock stops improving (8 → 16 workers measured flat) so everything
+// above it is pure contention. Floor of 2 keeps a single-core runner
+// honest. Resolves to 8 on a 28-core dev box, 3 on a 4-vCPU runner.
+const INTEGRATION_MAX_WORKERS = Math.max(2, Math.min(8, availableParallelism() - 1));
 
 // Load all .env vars (empty prefix = no filter) so process.env
 // has POSTGRES_PASSWORD etc. for server integration tests.
@@ -80,13 +89,44 @@ export default defineConfig({
         // server. The setupFile creates `projekt_manager_test_<pid>` and
         // overrides DATABASE_URL before any test imports — so two
         // parallel runs (different worktrees, different agents) cannot
-        // race each other's seed TRUNCATE. Files within one fork still
-        // run sequentially to keep audit-publisher state coherent.
+        // race each other's seed TRUNCATE.
+        //
+        // Files run in parallel. `isolate` defaults to true, so vitest
+        // gives every test file a freshly forked process — its own PID,
+        // therefore its own database, its own `test-<pid>/` storage
+        // prefix (integration-setup.ts §3) and its own binary `age`
+        // identity (§2). Two files never share any of the three,
+        // whether they run concurrently or back to back.
         extends: true,
         test: {
           name: 'integration',
           environment: 'node',
-          fileParallelism: false,
+          // Bounded, not unbounded, and scoped to this project — the
+          // unit/component projects want every core (586 tests in 6.6s)
+          // and must not inherit this cap. At vitest's default on a
+          // 28-core box the integration suite is genuinely broken, not
+          // merely slow: 24 of 112 files fail on `Hook timed out in
+          // 10000ms`, because `startApp()` — CREATE DATABASE, migrate,
+          // seed, buildApp — is a ~1s beforeAll that stops fitting its
+          // budget once workers outnumber cores. The binding resource is
+          // CPU, not Postgres connections: measured peak was 50 of
+          // `max_connections=100` unbounded, and 25 at this cap.
+          //
+          // `maxWorkers`, not `poolOptions.forks.maxForks` — vitest 4
+          // removed `poolOptions`.
+          maxWorkers: INTEGRATION_MAX_WORKERS,
+          // Required: vitest 4 refuses to start when two projects carry
+          // different `maxWorkers` under the same `groupOrder`. Ordering
+          // this group last is the useful side of that constraint — the
+          // whole unit/component slice (586 tests, ~7s, every core) runs
+          // and reports first, so a broken assertion surfaces in seconds
+          // instead of after the integration suite.
+          sequence: { groupOrder: 1 },
+          // Headroom over that same ~1s beforeAll for a loaded CI runner
+          // or a dev box with a build running alongside. Only bounds a
+          // pathological hang; `testTimeout` keeps its default, so a
+          // genuinely stuck test still fails fast.
+          hookTimeout: 30_000,
           setupFiles: ['src/test/integration-setup.ts'],
           globalSetup: ['src/test/integration-globalsetup.ts'],
           include: ['src/server/__tests__/**/*.test.ts'],
