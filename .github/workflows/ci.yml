@@ -479,11 +479,16 @@ jobs:
 
       # `--shard=N/M` partitions the file list across runners. Vitest's
       # built-in sharder is path-hash stable across runs so a flake is
-      # reproducible on the same shard. Coverage per shard is produced
-      # but not uploaded — there is no coverage gate today; wire an
-      # aggregator (e.g. Codecov action) when one becomes load-bearing.
+      # reproducible on the same shard.
+      #
+      # No `--coverage`: the v8 provider instrumented every run and the
+      # report was then thrown away — nothing uploads it and no gate
+      # reads it. Measured cost on a 4-vCPU runner shape: 86s → 79s per
+      # shard. `npm run test:coverage` stays available locally; when a
+      # coverage gate becomes load-bearing, wire an aggregator (e.g. the
+      # Codecov action) and re-add the flag with a consumer attached.
       - name: Unit and component tests (shard ${{ matrix.shard }}/2)
-        run: npm run test:coverage -- --shard=${{ matrix.shard }}/2
+        run: npm run test -- --shard=${{ matrix.shard }}/2
         env:
           DATABASE_URL: postgresql://pm:postgres@localhost:5432/pm
           # Storage env vars are required by src/server/__tests__/storage.test.ts
