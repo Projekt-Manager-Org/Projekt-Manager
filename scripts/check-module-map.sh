@@ -77,18 +77,29 @@
 #
 #   (a) a backticked name carrying a `.ts` / `.tsx` extension, anywhere
 #       in the subsection — an extension is an unambiguous file claim.
-#   (b) the run of backticked names that OPENS a list item, up to the
-#       first token that is not one. That run is the inventory entry;
-#       everything after it — including the ` — ` gloss — is prose and is
-#       not checked. `src/state/` lists a dozen stores in one
+#   (b) the run of backticked names that OPENS a list item, extended
+#       across `,` and `/` separators only. That run is the inventory
+#       entry; everything after it — including the ` — ` gloss — is prose
+#       and is not checked. `src/state/` lists a dozen stores in one
 #       comma-separated run, so the run is taken whole, not just its
 #       first name.
 #
+#       The separator set is closed on purpose. A name joined by a word
+#       ("- `authStore` and `uiStore` — …", or the Oxford comma in
+#       "- `a`, `b`, and `c`") ends the run and goes unchecked, which is
+#       the safe direction but still a hole: separate inventory names
+#       with commas. Extending the set to English conjunctions would
+#       reopen (b) on prose, which is the bug below. Names carrying an
+#       extension are unaffected — (a) is subsection-wide.
+#
 #       "Opens the item" is load-bearing. Matching a backticked name
-#       anywhere before the gloss made a bulleted SENTENCE an inventory
-#       entry, so "- Failure isolation keeps one broken `SseConnection`
-#       from stalling the fan-out." was reported as a dead file. A bullet
-#       is not a citation; leading with the name is.
+#       anywhere before the gloss makes a bulleted SENTENCE an inventory
+#       entry: "- Failure isolation keeps one broken `SseConnection` from
+#       stalling the fan-out." is then reported as a dead file. That
+#       sentence is prose in `src/server/sse/` today and becomes a bullet
+#       the moment #306 rewrites the subsection as an inventory — the
+#       shape was found by probing that burn-down, not by a CI failure.
+#       A bullet is not a citation; leading with the name is.
 #
 # Not checkable, and deliberately so: a bare identifier in prose.
 # `BulkDownloadOrchestrator` named a deleted class, but `MutatingDatabase`,
