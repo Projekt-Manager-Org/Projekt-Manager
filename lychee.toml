@@ -34,10 +34,10 @@
 #     `HeadingIdGenerator::into_kebab_case` implements exactly that,
 #     duplicate-heading `-1` / `-2` suffixes included.
 #   - Inline HTML anchors. `docs/adr/0020-*.md` carries
-#     `<a id="retention"></a>` on a list item and ten documents cite
-#     `#retention`. lychee folds `Event::Html | Event::InlineHtml` into
-#     the fragment set, so those resolve; a heading-only checker would
-#     flag all ten.
+#     `<a id="retention"></a>` on a list item, cited ten times across
+#     eight documents. lychee folds `Event::Html | Event::InlineHtml`
+#     into the fragment set, so those resolve; a heading-only checker
+#     would flag every one of them.
 #
 # Directory links (`docs/ops/backup/`) are valid — no `index_files` is
 # configured, so a directory that exists on disk resolves.
