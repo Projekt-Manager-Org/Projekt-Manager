@@ -25,6 +25,8 @@
 #   - Extensionless module references (`src/server/db/connection`) —
 #     resolved through FALLBACK_EXTENSIONS below, the way a bundler
 #     would.
+#   - Directory citations (`docs/ops/backup/`) — git has no entry for a
+#     directory, so the prefixes implied by tracked files stand in.
 #   - `path:LINE` / `path:LINE-LINE` citations — the suffix is stripped
 #     before resolution.
 #   - ALLOWLIST entries — see the list.
@@ -37,6 +39,10 @@
 # several hundred of those. So `docker-compose.yml`, `package.json` and
 # `ARCHITECTURE.md` go unverified when cited without a directory. Cite
 # a path if you want it checked.
+#
+# Resolution reads the git INDEX, not the working tree, so the result
+# does not depend on which untracked or gitignored files happen to be
+# lying around. A local run and CI see the same repository.
 #
 # Exit codes:
 #   0 — every cited path resolves
@@ -65,10 +71,28 @@ if [ "${#DOCS[@]}" -eq 0 ]; then
   exit 2
 fi
 
+# The git INDEX, not the filesystem — see `resolves()` for why.
+#
+# TRACKED holds every tracked file; TRACKED_DIRS holds every directory
+# prefix implied by one, since git has no entry for a directory and the
+# docs cite plenty (`docs/ops/backup/`, `src/ui/kanban/`).
+declare -A TRACKED=()
+declare -A TRACKED_DIRS=()
+
+while IFS= read -r tracked_file; do
+  TRACKED["$tracked_file"]=1
+  tracked_dir="${tracked_file%/*}"
+  while [ "$tracked_dir" != "$tracked_file" ] && [ -n "$tracked_dir" ]; do
+    TRACKED_DIRS["$tracked_dir"]=1
+    [ "${tracked_dir%/*}" = "$tracked_dir" ] && break
+    tracked_dir="${tracked_dir%/*}"
+  done
+done < <(git ls-files)
+
 # Top-level directories that actually hold tracked files. This is the
 # repository-path shape test, derived rather than declared so a new
 # top-level directory is checked the day it lands.
-mapfile -t TOP_DIRS < <(git ls-files | grep '/' | cut -d/ -f1 | sort -u)
+mapfile -t TOP_DIRS < <(printf '%s\n' "${!TRACKED_DIRS[@]}" | grep -v '/' | sort -u)
 
 if [ "${#TOP_DIRS[@]}" -eq 0 ]; then
   echo "ERROR: no tracked files under a directory in $PROJECT_ROOT." >&2
@@ -173,18 +197,27 @@ is_allowlisted() {
   return 1
 }
 
-# Resolves iff the path exists as-is or through a fallback extension.
+# Resolves iff the path is TRACKED — in the git index — as a file, as a
+# directory, or through a fallback extension.
 #
-# Being gitignored is NOT a pass. It used to be, which exempted every
-# ignored path in the tree — `docs/wip/`, `dist/`, `data/` — to cover
-# four demo-asset citations. Documentation should not be pointing at
-# ignored paths in the first place; the four that legitimately do are
-# ALLOWLIST class (5), where each is visible and reviewed.
+# Deliberately not `[ -e ]`. The filesystem answers a different question
+# than CI asks: a gitignored or merely-untracked path that happens to sit
+# in your working tree resolves locally and fails on a clean checkout.
+# That is not hypothetical — `docs/wip/` passed every local run and
+# failed in CI, because the scratch directory exists here and nowhere
+# else. Reading the index makes a local pass mean what it says.
+#
+# Being gitignored is therefore not a pass either. It used to be an
+# explicit one, which exempted every ignored path in the tree —
+# `docs/wip/`, `dist/`, `data/` — to cover four demo-asset citations.
+# Documentation should not be pointing at ignored paths; the five that
+# legitimately do are ALLOWLIST class (5), each visible and reviewed.
 resolves() {
-  local candidate="$1" ext
-  [ -e "$candidate" ] && return 0
+  local candidate="${1%/}" ext
+  [ -n "${TRACKED[$candidate]:-}" ] && return 0
+  [ -n "${TRACKED_DIRS[$candidate]:-}" ] && return 0
   for ext in "${FALLBACK_EXTENSIONS[@]}"; do
-    [ -e "${candidate}${ext}" ] && return 0
+    [ -n "${TRACKED[${candidate}${ext}]:-}" ] && return 0
   done
   return 1
 }
@@ -221,10 +254,6 @@ if [ -n "$findings" ]; then
   echo "       $(basename "$0") if the citation is illustrative," >&2
   echo "       historical, a named coverage gap, an external identifier," >&2
   echo "       or a gitignored artifact." >&2
-  echo "" >&2
-  echo "       NOTE: run this against a clean checkout. A gitignored path" >&2
-  echo "       that exists in your working tree resolves locally and fails" >&2
-  echo "       in CI." >&2
   echo "" >&2
   printf "%s" "$findings" | sort -u >&2
   exit 1

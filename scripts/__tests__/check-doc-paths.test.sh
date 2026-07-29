@@ -147,6 +147,30 @@ d="$(stage)"
 write_doc "$d" 'The run writes `docs/generated/report.md`.'
 assert_case 1 "gitignored path does not exist" "$d"
 
+echo "Case: a file present in the working tree but NOT in the index"
+# Must FAIL. Resolution reads the git index, so a local run cannot pass
+# on the strength of an untracked file that CI will never see. This is
+# the trap that let `docs/wip/` through every local run and fail in CI.
+d="$(stage)"
+: >"$d/src/server/db/scratch.ts"
+write_doc "$d" 'The helper lives at `src/server/db/scratch.ts`.'
+assert_case 1 "untracked file on disk does not resolve" "$d"
+
+echo "Case: a tracked directory cited with a trailing slash"
+# Must pass. git has no index entry for a directory, so the prefixes
+# implied by tracked files have to stand in.
+d="$(stage)"
+write_doc "$d" 'Backup scripts live under `scripts/backup/`.'
+assert_case 0 "tracked directory citation" "$d"
+
+echo "Case: a directory that exists on disk but holds no tracked file"
+# Must FAIL, for the same reason as the untracked-file case. `stage`
+# creates docs/generated/ and gitignores it, so it is a real directory
+# with no index entry anywhere beneath it.
+d="$(stage)"
+write_doc "$d" 'Output lands in `docs/generated/`.'
+assert_case 1 "untracked directory does not resolve" "$d"
+
 echo "Case: a dead path under a DERIVED top-level directory"
 # Must FAIL. `review/` is tracked but was not in the hardcoded five, so
 # every citation under it went unchecked. Pins that the prefix set comes
