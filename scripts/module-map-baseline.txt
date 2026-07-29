@@ -26,6 +26,7 @@
 # gated: src/server/storage/
 # gated: src/sse/
 # gated: src/state/
+# gated: src/ui/
 src/config/attachmentDefaults.ts
 src/config/breakpoints.ts
 src/domain/aging.ts

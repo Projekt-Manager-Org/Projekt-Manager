@@ -37,11 +37,23 @@
 # Two rejected alternatives, because both look reasonable:
 #   - Per-file over all of src/**: 345 non-test files, most of them React
 #     components. Naming every component here is inventory, not
-#     architecture — hence EXCLUDED below.
+#     architecture.
 #   - Top-level directory coverage: nearly free, and useless. It was
 #     green while the whole invoices subsystem was missing, because those
 #     files live in `services/`, `routes/` and `state/`, all already
 #     listed.
+#
+# SCOPE LIMIT — coverage reaches direct children only. A nested
+# directory is gated when it takes its own `#### <dir>` subsection, and
+# is otherwise invisible: `src/server/services/invoice/` holds five
+# files (the Factur-X builder, the PDF drawer, the payload crypto, the
+# XSD validator) that this check will never ask about. That is the same
+# opt-in rule applied one level down, not an oversight, but it does mean
+# an empty baseline is not proof the Module Map is complete — only that
+# the directories which opted in are covered.
+#
+# The doc -> file direction has no such limit: a subsection may name a
+# file anywhere beneath it, and every name is resolved.
 #
 # BASELINE — the ratchet. The known-undocumented set at the time this
 # check landed is recorded in scripts/module-map-baseline.txt, generated
@@ -110,24 +122,6 @@ if [ ! -f "$DOC" ]; then
   echo "ERROR: $DOC not found under \$MODULE_MAP_ROOT ($PROJECT_ROOT)." >&2
   exit 2
 fi
-
-# Directories that carry a subsection but are deliberately not gated at
-# file level. Each entry is a reviewed decision, not a convenience.
-EXCLUDED=(
-  # ~90 React components across nine feature groups. The subsection
-  # documents the GROUPS and the handful of components with
-  # cross-cutting behaviour; a per-file gate here would turn the Module
-  # Map into a file listing, which the tree already provides.
-  "src/ui/"
-)
-
-is_excluded() {
-  local dir="$1" entry
-  for entry in "${EXCLUDED[@]}"; do
-    [ "$dir" = "$entry" ] && return 0
-  done
-  return 1
-}
 
 # The `### Directory Detail` block, bounded by the next `### ` heading.
 DETAIL="$(awk '/^### Directory Detail/{f=1;next} f&&/^### /{exit} f' "$DOC")"
@@ -273,7 +267,6 @@ gated_now=()
 gated_count=0
 
 for dir in "${GATED[@]}"; do
-  is_excluded "$dir" && continue
   gated_count=$((gated_count + 1))
   gated_now+=("$dir")
   subsection="$(subsection_for "$dir")"
@@ -414,5 +407,5 @@ if [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ] || [ -n "$dead" ];
 fi
 
 echo "OK: $DOC's Module Map covers every gated directory, and names no file that is gone."
-echo "    gated directories: ${gated_count} (excluded: ${#EXCLUDED[@]})"
+echo "    gated directories: ${gated_count}"
 echo "    baseline entries remaining: ${#BASELINE_ENTRIES[@]} (burn-down: #306)"
