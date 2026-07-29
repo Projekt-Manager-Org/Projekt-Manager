@@ -171,12 +171,14 @@ section_body() {
 # would report the delegated files as undocumented — a checker bug, not
 # a doc gap.
 #
-#   src/config/ — its subsection says so outright: "Deployment-tunable
-#   values are indexed in § Configuration Files below — that table is
-#   the single list; only non-`[C]` members are listed here."
+#   src/config/, src/server/config/ — both subsections say so outright:
+#   "Deployment-tunable values are indexed in § Configuration Files
+#   below — that table is the single list; only non-`[C]` members are
+#   listed here." The table cites files by full repository path, so it
+#   spans both directories and either one reading it is correct.
 delegated_body_for() {
   case "$1" in
-    "src/config/") section_body "### Configuration Files" ;;
+    "src/config/" | "src/server/config/") section_body "### Configuration Files" ;;
     *) : ;;
   esac
 }
