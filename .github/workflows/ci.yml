@@ -274,6 +274,16 @@ jobs:
       - name: Permissions doc drift check — self-test
         run: bash scripts/__tests__/check-permissions-doc.test.sh
 
+      # Enforce AC-349 — the per-role nav matrix in docs/spec/ui/index.md
+      # §8.7.1 is generated from ROUTE_DEFINITIONS (src/config/routes.ts).
+      # Only the derivable columns are generated; the per-view prose below
+      # the end marker is hand-written spec intent and stays untouched.
+      - name: Nav matrix drift check (AC-349)
+        run: npm run check:nav-doc
+
+      - name: Nav matrix drift check — self-test
+        run: bash scripts/__tests__/check-nav-doc.test.sh
+
       - name: Type check
         run: npx tsc --noEmit
 
@@ -311,6 +321,59 @@ jobs:
       # retention cleanup, __tests__). See AC-179 and ADR-0021.
       - name: Audit single-write-path check (mutate() bypass)
         run: bash scripts/check-audit-mutations.sh
+
+      # Static check: every repository path cited in a code span across
+      # tracked *.md must exist (AC-347). Renames and deletions leave the
+      # prose behind — #289, #292 and #306 each fixed a batch of these by
+      # hand. Markdown LINK targets are out of scope here; they belong to
+      # the link-checker step.
+      - name: Doc path drift check (cited paths exist)
+        run: npm run check:doc-paths
+
+      - name: Doc path drift check — self-test
+        run: bash scripts/__tests__/check-doc-paths.test.sh
+
+      # Static check: every source file in a directory that ARCHITECTURE.md
+      # gives a `#### <dir>` Directory Detail subsection must be named
+      # there (AC-350). Coverage only — the `Owns` / `Must NOT` prose is
+      # not derivable and is never generated. Ratcheted against
+      # scripts/module-map-baseline.txt so new files are gated from day
+      # one while #306 burns the existing backlog down.
+      - name: Module Map coverage check (AC-350)
+        run: npm run check:module-map
+
+      - name: Module Map coverage check — self-test
+        run: bash scripts/__tests__/check-module-map.test.sh
+
+      # Static check: every relative file link and `#anchor` fragment
+      # across tracked *.md must resolve (AC-348). 25 broken internal
+      # links accumulated undetected before #289 — neither `lint` nor
+      # `format:check` resolves links.
+      #
+      # Flags live in lychee.toml, shared with scripts/check-links.sh so
+      # a local run and this one cannot diverge. The only argument either
+      # passes is `.` — the repository root, NOT a `**/*.md` glob. lychee
+      # honours `.gitignore` when walking a directory and not when
+      # expanding a glob, so the glob form scanned node_modules/ and
+      # failed on 977 links in third-party READMEs. lychee.toml carries
+      # the full reasoning.
+      #
+      # `offline = true` in the config means no network calls: a flaky
+      # third-party host cannot fail the lint job.
+      #
+      # This step's pinned version is also read by
+      # scripts/check-links.sh's container fallback — keep the input name
+      # `lycheeVersion` if you move it.
+      - name: Markdown link check (AC-348)
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # renovate: datasource=github-releases depName=lycheeverse/lychee extractVersion=^lychee-(?<version>.*)$
+          lycheeVersion: v0.24.2
+          args: --config lychee.toml .
+          # A run that finds zero links means the walk missed the docs —
+          # green for the wrong reason. Fail instead.
+          failIfEmpty: true
+          jobSummary: false
 
       # Build also lives in `lint` (not in `check-shard`) so it doesn't
       # pad the test shards' critical path. `npm run build` is

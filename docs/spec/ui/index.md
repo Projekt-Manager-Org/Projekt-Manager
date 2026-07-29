@@ -80,18 +80,39 @@ The authenticated layout provides navigation between all available views. The na
 
 ### 8.7.1 Views
 
-| View          | Label                | Access                                                                                                                                                                                                                                                                                                                  | Default                                          |
-| ------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| My Projects   | "Meine Projekte"     | Worker only. Owner, office, bookkeeper: hidden. Shows the logged-in worker's assigned projects, grouped Heute / Demnächst / Weitere, each row a single tap target deep-linking to `/projects/:id`. Designed for phone-first field use.                                                                                  | Yes for worker (landing view after login)        |
-| Kanban        | "Kanban"             | Owner, office, worker (scoped — see below). Bookkeeper: hidden.                                                                                                                                                                                                                                                         | Yes for owner, office (landing view after login) |
-| Calendar      | "Kalender"           | Owner, office, worker (scoped — see below). Bookkeeper: hidden.                                                                                                                                                                                                                                                         | No                                               |
-| Projects      | "Projekte"           | Owner, office, bookkeeper. Worker: hidden.                                                                                                                                                                                                                                                                              | No                                               |
-| Customers     | "Kunden"             | Owner, office, bookkeeper. Worker: hidden.                                                                                                                                                                                                                                                                              | No                                               |
-| Invoices      | "Rechnungen"         | `invoice:read` permission required (owner, office, bookkeeper under the default matrix — see [api.md §14.3](../api.md#143-authorization-rules)). Worker: hidden. See [invoices.md §8.16](invoices.md#816-invoices-view).                                                                                                | Yes for bookkeeper (landing view after login)    |
-| Users         | "Benutzer"           | `user:manage` permission required (owner only under the default role set). Everyone else: hidden.                                                                                                                                                                                                                       | No                                               |
-| Daten         | "Daten"              | `data:export` permission required (owner, office under the default role set). Everyone else: hidden. Includes the deployment-wide storage usage row ([daten.md §8.11.3](daten.md#8113-speichernutzung)) and, for the owner, the company-profile form ([daten.md §8.11.4](daten.md#8114-company-profile)).               | No                                               |
-| Audit         | "Aktivität"          | `audit:read` permission required (owner, office under the default matrix). Worker and bookkeeper do not hold `audit:read` — the tab is hidden and `/audit` deep-link returns the not-permitted surface. Office visibility is narrowed by the destructive-action predicate ([api.md §14.2.8](../api.md#1428-audit-log)). | No                                               |
-| Notifications | "Benachrichtigungen" | `notifications:manage` required (owner only under the default matrix — see [api.md §14.3](../api.md#143-authorization-rules)). Everyone else: hidden; `/benachrichtigungen` deep-link returns the not-permitted surface.                                                                                                | No                                               |
+The table below is **generated** from the route table in `src/config/routes.ts`; CI fails on drift (AC-349). Do not edit it by hand. `Access` is the declared rule, `Roles` is that rule resolved against the default role matrix ([api.md §14.3](../api.md#143-authorization-rules)), and `Landing` is the post-login view for a caller holding that role alone ([§8.1.2](#812-authenticated-state)) — see the first-match note below the table for multi-role callers.
+
+Because the table is generated, it agrees with the code by construction and cannot by itself catch an unintended change. The binding assertion is the hand-written `ROUTE_TABLE` in `src/config/__tests__/routes.test.ts`, kept deliberately independent of this table's source and pinning every column published here — the access rule included, not only the role set it resolves to. Widening a view's access, or restating a permission gate as the list of roles that hold it today, fails that test rather than this document.
+
+<!-- GENERATED:nav-matrix:START — do not edit; run `npx tsx scripts/generate-nav-doc.ts` -->
+
+| View                 | Path                  | Label                | Access                          | Roles                     | Landing       |
+| -------------------- | --------------------- | -------------------- | ------------------------------- | ------------------------- | ------------- |
+| `meineProjekte`      | `/meine-projekte`     | "Meine Projekte"     | Role: worker                    | worker                    | worker        |
+| `kanban`             | `/kanban`             | "Kanban"             | Role: owner, office, worker     | owner, office, worker     | owner, office |
+| `kalender`           | `/calendar`           | "Kalender"           | Role: owner, office, worker     | owner, office, worker     | —             |
+| `projekte`           | `/projects`           | "Projekte"           | Role: owner, office, bookkeeper | owner, office, bookkeeper | —             |
+| `kunden`             | `/customers`          | "Kunden"             | Role: owner, office, bookkeeper | owner, office, bookkeeper | —             |
+| `rechnungen`         | `/rechnungen`         | "Rechnungen"         | `invoice:read`                  | owner, office, bookkeeper | bookkeeper    |
+| `benutzer`           | `/users`              | "Benutzer"           | `user:manage`                   | owner                     | —             |
+| `daten`              | `/daten`              | "Daten"              | `data:export`                   | owner, office             | —             |
+| `aktivitaet`         | `/audit`              | "Aktivität"          | `audit:read`                    | owner, office             | —             |
+| `benachrichtigungen` | `/benachrichtigungen` | "Benachrichtigungen" | `notifications:manage`          | owner                     | —             |
+
+**Landing is first-match over this order:** worker → `meineProjekte`; owner / office → `kanban`; bookkeeper → `rechnungen`. A caller holding several roles takes the first rule that matches, so the ordering — not a per-role exclusion — is what keeps the choice unambiguous. A caller matching no rule has no landing view and falls back to their first accessible route.
+
+<!-- GENERATED:nav-matrix:END -->
+
+Parametrized routes (`/projects/:id`, `/rechnungen/:id`) are deep-link targets rather than nav entries and are omitted above; their gating is specified with the surface itself ([project-detail.md §8.15](project-detail.md#815-project-detail-page), [invoices.md §8.16.3](invoices.md#8163-issued-invoice-viewer)).
+
+**Per-view notes.** What the table cannot carry:
+
+- **"Meine Projekte"** — the logged-in worker's assigned projects, grouped Heute / Demnächst / Weitere, each row a single tap target deep-linking to `/projects/:id`. Designed for phone-first field use.
+- **"Kanban"**, **"Kalender"** — worker access is scoped; see **Worker-scoped views** below.
+- **"Rechnungen"** — the invoice register; see [invoices.md §8.16](invoices.md#816-invoices-view).
+- **"Daten"** — includes the deployment-wide storage usage row ([daten.md §8.11.3](daten.md#8113-speichernutzung)) and, for the owner, the company-profile form ([daten.md §8.11.4](daten.md#8114-company-profile)).
+- **"Aktivität"** — office visibility is narrowed further by the destructive-action predicate ([api.md §14.2.8](../api.md#1428-audit-log)); the permission gate above governs tab visibility only.
+- **"Benutzer"**, **"Benachrichtigungen"** — hidden for every other role, and a deep link to `/users` or `/benachrichtigungen` returns the not-permitted surface rather than redirecting.
 
 **Primary / secondary header grouping.** "Benutzer", "Daten", "Aktivität", and "Benachrichtigungen" are lower-frequency admin / observability surfaces. The header groups them under a secondary "Verwaltung" dropdown when a role sees two or more; a single secondary entry renders inline (dropdown chrome is reserved for real grouping). Bookkeeper sees no secondary entries.
 
