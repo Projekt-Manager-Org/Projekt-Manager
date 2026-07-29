@@ -65,9 +65,18 @@
 #
 #   (a) a backticked name carrying a `.ts` / `.tsx` extension, anywhere
 #       in the subsection — an extension is an unambiguous file claim.
-#   (b) a backticked name leading a list item, before the ` — ` gloss
-#       separator. That prefix is the inventory entry; everything after
-#       the dash is prose and is not checked.
+#   (b) the run of backticked names that OPENS a list item, up to the
+#       first token that is not one. That run is the inventory entry;
+#       everything after it — including the ` — ` gloss — is prose and is
+#       not checked. `src/state/` lists a dozen stores in one
+#       comma-separated run, so the run is taken whole, not just its
+#       first name.
+#
+#       "Opens the item" is load-bearing. Matching a backticked name
+#       anywhere before the gloss made a bulleted SENTENCE an inventory
+#       entry, so "- Failure isolation keeps one broken `SseConnection`
+#       from stalling the fan-out." was reported as a dead file. A bullet
+#       is not a citation; leading with the name is.
 #
 # Not checkable, and deliberately so: a bare identifier in prose.
 # `BulkDownloadOrchestrator` named a deleted class, but `MutatingDatabase`,
@@ -78,10 +87,10 @@
 # To cite a name this check should NOT resolve — a file in another
 # directory, or a historical one — write the full repository path. It
 # carries a `/`, so both forms above skip it and `check-doc-paths.sh`
-# resolves it instead. Moving it after the ` — ` separator is enough for
-# a bare stem but not for an extensioned name: (a) is subsection-wide,
-# on purpose, because that is the form the dead `bulk-download-reaper.ts`
-# citation took.
+# resolves it instead. Moving a bare stem out of the item's opening run
+# is enough; moving an extensioned name is not, because (a) is
+# subsection-wide on purpose — that is the form the dead
+# `bulk-download-reaper.ts` citation took.
 #
 # Exit codes:
 #   0 — every gated directory is covered and the baseline is current
@@ -250,7 +259,9 @@ is_named() {
 cited_names_in() {
   {
     printf '%s\n' "$1" | grep -oE '`[A-Za-z0-9_.-]+\.tsx?`' || true
-    printf '%s\n' "$1" | sed -n 's/^- //p' | sed 's/ — .*//' | grep -oE '`[A-Za-z0-9_.-]+`' || true
+    printf '%s\n' "$1" |
+      sed -n 's|^- \(`[^`]*`\( *[,/] *`[^`]*`\)*\).*|\1|p' |
+      grep -oE '`[A-Za-z0-9_.-]+`' || true
   } | tr -d '`' | sort -u
 }
 
