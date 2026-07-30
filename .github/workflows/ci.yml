@@ -107,7 +107,9 @@ jobs:
       - name: Install ripgrep
         run: |
           set -euo pipefail
-          # renovate: datasource=github-releases depName=BurntSushi/ripgrep
+          # renovate: datasource=github-release-attachments depName=BurntSushi/ripgrep
+          # ripgrep's git tag carries no `v` — `version` is the tag verbatim,
+          # as the digest lookup requires, and the asset name embeds it as-is.
           version="15.2.0"
           expected_sha="33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c"
           asset="ripgrep-${version}-x86_64-unknown-linux-musl"
