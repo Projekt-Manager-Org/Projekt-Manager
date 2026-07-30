@@ -1293,10 +1293,10 @@ describe('AT-124: ancestor-scoped filter unions project + nested entities', () =
 // Housekeeping — defensive cleanup of test-created users/customers.
 //
 // The outer `startApp()` / `stopApp()` pair in each `describe` block
-// already re-seeds per-file (vitest.config.ts fileParallelism:false +
-// api-helpers.ts seed(force:true)), so cross-test contamination is
-// not a concern. This block exists only to document that choice — no
-// inter-file fixture handoff is required.
+// already re-seeds per-file (one forked process per file → its own
+// per-PID database, + api-helpers.ts seed(force:true)), so cross-test
+// contamination is not a concern. This block exists only to document
+// that choice — no inter-file fixture handoff is required.
 // ---------------------------------------------------------------------
 void [
   // Reference imported symbols so TS doesn't mark them as unused when
