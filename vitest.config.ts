@@ -8,9 +8,11 @@ import { availableParallelism } from 'node:os';
 // `maxWorkers` below. `- 1` leaves a core for the main vitest process
 // (vitest's own default heuristic); the ceiling of 8 is where the wall
 // clock stops improving (8 → 16 workers measured flat) so everything
-// above it is pure contention. Floor of 2 keeps a single-core runner
-// honest. Resolves to 8 on a 28-core dev box, 3 on a 4-vCPU runner.
-const INTEGRATION_MAX_WORKERS = Math.max(2, Math.min(8, availableParallelism() - 1));
+// above it is pure contention. The floor is 1, not 2: the whole point of
+// the cap is that workers outnumbering cores is what breaks this suite,
+// so forcing a second worker onto a single-core box would invert it.
+// Resolves to 8 on a 28-core dev box, 3 on a 4-vCPU runner.
+const INTEGRATION_MAX_WORKERS = Math.max(1, Math.min(8, availableParallelism() - 1));
 
 // Load all .env vars (empty prefix = no filter) so process.env
 // has POSTGRES_PASSWORD etc. for server integration tests.
@@ -115,17 +117,30 @@ export default defineConfig({
           // `maxWorkers`, not `poolOptions.forks.maxForks` — vitest 4
           // removed `poolOptions`.
           maxWorkers: INTEGRATION_MAX_WORKERS,
-          // Required: vitest 4 refuses to start when two projects carry
-          // different `maxWorkers` under the same `groupOrder`. Ordering
-          // this group last is the useful side of that constraint — the
-          // whole unit/component slice (586 tests, ~7s, every core) runs
-          // and reports first, so a broken assertion surfaces in seconds
-          // instead of after the integration suite.
+          // Forced by the cap above: vitest 4 refuses to start when two
+          // projects carry different `maxWorkers` under the same
+          // `groupOrder`, which is the case wherever the cap actually
+          // binds (8 vs 27 on a 28-core box; on a 4-vCPU runner both
+          // resolve to 3 and the conflict would not arise).
+          //
+          // It does NOT change the ordering. `fileParallelism: false`
+          // resolved `maxWorkers` to 1, and vitest routes an isolated
+          // single-worker project at the default `groupOrder` into a
+          // trailing group of its own — so integration already ran last
+          // and the unit/component slice already reported first.
           sequence: { groupOrder: 1 },
           // Headroom over that same ~1s beforeAll for a loaded CI runner
           // or a dev box with a build running alongside. Only bounds a
           // pathological hang; `testTimeout` keeps its default, so a
           // genuinely stuck test still fails fast.
+          //
+          // The trade is real: at the 10s default a `startApp()` that
+          // regressed to ~8s would fail the suite, and now it passes
+          // silently. Accepted because the parallel scheduler makes hook
+          // wall-clock a function of runner load, not of `startApp()`
+          // alone — so the 10s bound was measuring the wrong thing. A
+          // startup-cost regression needs its own measurement, not a
+          // timeout that fires on a busy runner instead.
           hookTimeout: 30_000,
           setupFiles: ['src/test/integration-setup.ts'],
           globalSetup: ['src/test/integration-globalsetup.ts'],
