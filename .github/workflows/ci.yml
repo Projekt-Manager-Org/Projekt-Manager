@@ -118,7 +118,7 @@ jobs:
           expected_sha="33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c"
           asset="ripgrep-${version}-x86_64-unknown-linux-musl"
           url="https://github.com/BurntSushi/ripgrep/releases/download/${version}/${asset}.tar.gz"
-          curl -fsSL -o /tmp/ripgrep.tar.gz "$url"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/ripgrep.tar.gz "$url"
           actual_sha=$(sha256sum /tmp/ripgrep.tar.gz | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::ripgrep tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
@@ -162,7 +162,7 @@ jobs:
           version="v2.3.8"
           expected_sha="bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc"
           url="https://github.com/google/osv-scanner/releases/download/${version}/osv-scanner_linux_amd64"
-          curl -fsSL -o /tmp/osv-scanner "$url"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/osv-scanner "$url"
           actual_sha=$(sha256sum /tmp/osv-scanner | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::OSV-Scanner binary SHA256 mismatch — expected $expected_sha got $actual_sha"
@@ -272,7 +272,7 @@ jobs:
           expected_sha="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
           # Tag carries the `v`, the asset name does not.
           url="https://github.com/rhysd/actionlint/releases/download/${version}/actionlint_${version#v}_linux_amd64.tar.gz"
-          curl -fsSL -o /tmp/actionlint.tar.gz "$url"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/actionlint.tar.gz "$url"
           actual_sha=$(sha256sum /tmp/actionlint.tar.gz | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::actionlint tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
@@ -511,7 +511,7 @@ jobs:
           version="v1.3.1"
           expected_sha="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
           url="https://github.com/FiloSottile/age/releases/download/${version}/age-${version}-linux-amd64.tar.gz"
-          curl -fsSL -o /tmp/age.tar.gz "$url"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/age.tar.gz "$url"
           actual_sha=$(sha256sum /tmp/age.tar.gz | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::age tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
