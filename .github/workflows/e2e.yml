@@ -35,7 +35,7 @@ jobs:
     # has no include mechanism for a service block (composite actions have
     # no `services` key; reusable workflows reuse a whole job, and these
     # two jobs share nothing else) — so the invariant is machine-enforced
-    # instead: scripts/check-workflow-service-drift.sh, a step in ci.yml's
+    # instead: scripts/check-workflow-drift.sh, a step in ci.yml's
     # `lint` job, fails the build when the two diverge. Edit both together.
     services:
       postgres:

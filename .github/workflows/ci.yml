@@ -107,9 +107,13 @@ jobs:
       - name: Install ripgrep
         run: |
           set -euo pipefail
-          # renovate: datasource=github-release-attachments depName=BurntSushi/ripgrep
           # ripgrep's git tag carries no `v` — `version` is the tag verbatim,
           # as the digest lookup requires, and the asset name embeds it as-is.
+          #
+          # Nothing may sit between the annotation and `version=` — the
+          # customManager regex joins them with `\s+`, so an interposed
+          # comment silently drops the pin out of tracking.
+          # renovate: datasource=github-release-attachments depName=BurntSushi/ripgrep
           version="15.2.0"
           expected_sha="33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c"
           asset="ripgrep-${version}-x86_64-unknown-linux-musl"
@@ -330,16 +334,30 @@ jobs:
       - name: Env drift check (env.ts ↔ docker-compose.yml)
         run: bash scripts/check-env-drift.sh
 
-      # Static check: this workflow's postgres service container and
-      # e2e.yml's are one decision written twice — Actions has no include
-      # mechanism for a service block (see the script header). e2e.yml is
+      # Static check: this workflow's postgres service container and its
+      # `Install age` step are each one decision written twice with
+      # e2e.yml — Actions has no include mechanism for a service block,
+      # and moving the age step into a composite action would hide its
+      # pin from Renovate (see the script header). e2e.yml is
       # `workflow_dispatch` only, so an unsynced edit there stays invisible
       # until an operator runs it before a manual deploy.
-      - name: Workflow service drift check (ci.yml ↔ e2e.yml)
-        run: bash scripts/check-workflow-service-drift.sh
+      - name: Workflow drift check (ci.yml ↔ e2e.yml)
+        run: bash scripts/check-workflow-drift.sh
 
-      - name: Workflow service drift check — self-test
-        run: bash scripts/__tests__/check-workflow-service-drift.test.sh
+      - name: Workflow drift check — self-test
+        run: bash scripts/__tests__/check-workflow-drift.test.sh
+
+      # Static check: every `expected_sha` binary pin in .github/workflows
+      # is actually matched by a Renovate customManager. The manager's
+      # regex joins the `# renovate:` annotation to `version=` with `\s+`,
+      # so an interposed comment drops the pin out of tracking with no
+      # error raised anywhere — it just silently stops advancing, which is
+      # the "adopted-already-dying" failure ADR-0027 exists to retire.
+      - name: Renovate annotation check
+        run: node scripts/check-renovate-annotations.mjs
+
+      - name: Renovate annotation check — self-test
+        run: bash scripts/__tests__/check-renovate-annotations.test.sh
 
       # Static check: every raw INSERT/UPDATE/DELETE on an audited
       # table (project, customer, user, project_worker) must be
@@ -435,7 +453,7 @@ jobs:
 
     # Duplicated verbatim in e2e.yml, comments aside — Actions cannot
     # factor a service block out of two jobs that share nothing else, so
-    # scripts/check-workflow-service-drift.sh (a step in the `lint` job)
+    # scripts/check-workflow-drift.sh (a step in the `lint` job)
     # fails the build when they diverge. Edit both blocks together.
     services:
       postgres:

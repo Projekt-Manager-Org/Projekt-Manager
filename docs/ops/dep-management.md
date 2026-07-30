@@ -129,7 +129,9 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 4. **Major PRs**: read upstream migration guide, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
 5. Red CI: triage the failure, patch or revert.
 
-**Pinned CLI binaries** (OSV-Scanner, actionlint) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing: a new OSV-Scanner build reporting a fresh advisory, or a new actionlint check firing on an existing workflow. Fix the finding, don't pin back.
+**Pinned CLI binaries** (OSV-Scanner, actionlint, ripgrep, age) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing: a new OSV-Scanner build reporting a fresh advisory, or a new actionlint check firing on an existing workflow. Fix the finding, don't pin back.
+
+`age` is installed by both `ci.yml` (`check-shard`) and `e2e.yml`, pinned to the same version in each. Renovate bumps both in one PR because both annotations match; `scripts/check-workflow-drift.sh` fails the build if they ever diverge by hand.
 
 ## CVE handling
 
