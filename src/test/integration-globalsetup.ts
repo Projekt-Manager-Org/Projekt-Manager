@@ -1,8 +1,10 @@
 /**
- * Sweep orphans before and after the integration suite — both per-PID
- * test databases (`projekt_manager_test_<pid>`) and per-PID test bucket
- * key prefixes (`test-<pid>/`). "Orphan" = the PID encoded in the name
- * is no longer alive. Active runs from other agents/worktrees survive.
+ * Sweep orphans before and after the integration suite — per-PID test
+ * databases (`projekt_manager_test_<pid>`), per-PID test bucket key
+ * prefixes (`test-<pid>/`), and per-PID takeout staging directories
+ * (`projekt-manager-takeout-test-<pid>`). "Orphan" = the PID encoded in
+ * the name is no longer alive. Active runs from other agents/worktrees
+ * survive.
  *
  * Runs in the main vitest process (forks/workers have not been spawned
  * yet at setup time and have already exited by teardown time), so it
@@ -22,9 +24,16 @@
 
 import pg from 'pg';
 import { S3Client, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { readdir, rm } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
 
 const TEST_DB_PREFIX = 'projekt_manager_test_';
 const TEST_KEY_PREFIX_PATTERN = /^test-(\d+)\/$/;
+// Anchored, and the `-test-` infix is required — `projekt-manager-takeout`
+// (the zero-config dev default, and what a developer's own server writes to)
+// must never match. A prefix-only check would delete real dev exports.
+const TEST_TAKEOUT_DIR_PATTERN = /^projekt-manager-takeout-test-(\d+)$/;
 
 function adminConnectionString(): string {
   const baseUrl =
@@ -158,8 +167,48 @@ async function sweepOrphanStoragePrefixes(): Promise<void> {
   }
 }
 
+/**
+ * Sweep dead-PID `projekt-manager-takeout-test-<pid>` staging directories.
+ *
+ * Unlike the bucket sweep there is no metadata to reconcile — the whole
+ * directory belongs to one fork, so a dead PID means every file under it is
+ * unreachable. `rm -rf` the directory rather than walking it.
+ *
+ * Reads the same temp root the setup file writes to. When an operator has
+ * pinned TAKEOUT_STAGING_DIR_TEST the per-PID naming does not apply and
+ * nothing here matches — that directory is theirs to manage, by the same
+ * logic as the STORAGE_BUCKET_TEST override.
+ */
+async function sweepOrphanTakeoutDirs(): Promise<void> {
+  const tmpRoot = os.tmpdir();
+  let entries;
+  try {
+    entries = await readdir(tmpRoot, { withFileTypes: true });
+  } catch {
+    // No temp root to read — nothing to sweep.
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const match = TEST_TAKEOUT_DIR_PATTERN.exec(entry.name);
+    if (!match) continue;
+    const pid = Number.parseInt(match[1] ?? '', 10);
+    if (isPidAlive(pid)) continue;
+    try {
+      await rm(path.join(tmpRoot, entry.name), { recursive: true, force: true });
+    } catch {
+      // Best-effort. Another concurrent sweeper may have raced us.
+    }
+  }
+}
+
 async function sweepOrphans(): Promise<void> {
-  await Promise.all([sweepOrphanDatabases(), sweepOrphanStoragePrefixes()]);
+  await Promise.all([
+    sweepOrphanDatabases(),
+    sweepOrphanStoragePrefixes(),
+    sweepOrphanTakeoutDirs(),
+  ]);
 }
 
 export default async function setup(): Promise<() => Promise<void>> {
