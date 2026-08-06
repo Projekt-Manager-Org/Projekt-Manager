@@ -1,11 +1,12 @@
 /**
  * Per-fork test environment isolation for the vitest `integration` project.
  *
- * Three concerns share this file because all must run BEFORE any test
+ * Four concerns share this file because all must run BEFORE any test
  * imports — the per-fork DB, the per-fork binary `age` identity (ADR-0024
- * / AC-239), and the per-fork storage namespace are all consumed by the
- * route layer via `process.env`, and the route layer is reached on the
- * first `startApp()` call which re-parses env each time.
+ * / AC-239), the per-fork storage namespace and the per-fork takeout
+ * staging directory are all consumed by the route layer via `process.env`,
+ * and the route layer is reached on the first `startApp()` call which
+ * re-parses env each time.
  *
  * 1. Per-fork DATABASE_URL
  *    Without this, every fork connects to whatever DATABASE_URL points at
@@ -34,14 +35,19 @@
  *    placeholders fail at the AEAD step under any real implementation.
  *
  *    Each fork generates its own keypair, writes the identity (private
- *    half) to a per-PID tmpfs path, and exports both env vars before any
- *    test import runs. Test seeds wrap a fresh DEK against this same
- *    keypair via `KeyEnvelopeService.wrap()` so the route's per-request
- *    unwrap succeeds for happy-path arms (B1 in the failing-tests
- *    review).
+ *    half) to a per-PID path under the OS temp root, and exports both env
+ *    vars before any test import runs. Test seeds wrap a fresh DEK against
+ *    this same keypair via `KeyEnvelopeService.wrap()` so the route's
+ *    per-request unwrap succeeds for happy-path arms (B1 in the
+ *    failing-tests review).
  *
  *    `age-keygen` is required on the dev box per CONTRIBUTING.md
  *    §Testing — same posture as MinIO.
+ *
+ *    Dead-PID identity-file cleanup lives in `integration-globalsetup.ts`
+ *    for the same `process.exit()` reason as the three below. The
+ *    `process.on('exit')` unlink further down is opportunistic only —
+ *    see the note there.
  *
  * 3. Per-fork storage namespace (STORAGE_BUCKET + STORAGE_KEY_PREFIX)
  *    Without this, every integration fork shares `STORAGE_BUCKET=
@@ -64,6 +70,30 @@
  *    Dead-PID prefix cleanup lives in `integration-globalsetup.ts` for
  *    the same `process.exit()` reason as the DB cleanup. Live forks are
  *    untouched.
+ *
+ * 4. Per-fork takeout staging directory (TAKEOUT_STAGING_DIR)
+ *    Without this, every fork stages export/import archives in the shared
+ *    default (`os.tmpdir()/projekt-manager-takeout`) — the same directory a
+ *    zero-config dev boot uses.
+ *
+ *    Nothing sweeps the leftovers. Every delete on this path is keyed off a
+ *    `data_exchange_job` row: the create-time pre-sweep, the TTL reaper and
+ *    the boot reaper all rebuild the filename from (kind, id) and unlink
+ *    that one file (`takeout-staging.ts`). When the fork's per-PID database
+ *    is dropped at end-of-run, any artifact still `ready` loses the only row
+ *    that referenced it and becomes unreachable garbage. 756 orphaned zips
+ *    had accumulated locally before this fix — the same failure the storage
+ *    namespace above was written to close, on the one resource that did not
+ *    get the treatment.
+ *
+ *    Fix: give each fork `projekt-manager-takeout-test-<pid>`. The `-test-`
+ *    infix is load-bearing — it keeps the sweep's pattern from ever matching
+ *    the bare `projekt-manager-takeout` a developer's own dev server uses.
+ *    No mkdir here: `probeStagingDurability` and the export builder both
+ *    `mkdir -p` before first write.
+ *
+ *    Dead-PID directory cleanup lives in `integration-globalsetup.ts`,
+ *    same `process.exit()` reason as the two above.
  */
 
 import pg from 'pg';
@@ -140,10 +170,17 @@ writeFileSync(binaryIdentityPath, binaryIdentity + '\n', { mode: 0o600 });
 process.env.BINARY_AGE_RECIPIENT = binaryRecipient;
 process.env.BINARY_AGE_IDENTITY_PATH = binaryIdentityPath;
 
-// Best-effort cleanup. The `forks` pool exits workers via `process.exit()`
-// (mirrors the DB-cleanup rationale above), so `process.on('exit', ...)`
-// is the most reliable hook. Tmpfs eviction is the fallback when the
-// hook is skipped. PID-suffix filenames make per-fork collisions unlikely.
+// Opportunistic cleanup, NOT the guarantee. `process.on('exit')` is the
+// best hook available here, but the `forks` pool tears workers down by
+// signal often enough that it mostly does not fire: a full 179-file run
+// leaked 105 of these files with this hook in place. The temp root is not
+// necessarily tmpfs either (ext4 on a stock Linux dev box), so there is no
+// eviction to fall back on.
+//
+// The actual guarantee is the dead-PID sweep in `integration-globalsetup.ts`
+// — same mechanism, and for the same reason, as the per-fork database and
+// takeout directory. This hook just reclaims the file sooner when it does
+// run. PID-suffix filenames make per-fork collisions unlikely.
 process.on('exit', () => {
   try {
     unlinkSync(binaryIdentityPath);
@@ -164,3 +201,15 @@ process.env.STORAGE_BUCKET = process.env.STORAGE_BUCKET_TEST ?? 'projekt-manager
 // Shape matches the STORAGE_KEY_PREFIX schema in `config/env.ts`
 // (`^[a-z0-9][a-z0-9_-]*\/$`).
 process.env.STORAGE_KEY_PREFIX = `test-${process.pid}/`;
+
+// ---------------------------------------------------------------------
+// 4. Per-fork takeout staging directory
+// ---------------------------------------------------------------------
+
+// Honour an operator override when set — `.env` may already pin this
+// somewhere other than the OS temp dir. Otherwise namespace per PID so
+// forks never share a staging keyspace and the sweep can tell a dead
+// fork's directory from a live one's.
+process.env.TAKEOUT_STAGING_DIR =
+  process.env.TAKEOUT_STAGING_DIR_TEST ??
+  path.join(os.tmpdir(), `projekt-manager-takeout-test-${process.pid}`);

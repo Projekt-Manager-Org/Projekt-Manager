@@ -1307,9 +1307,9 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
 
 // AT-113(i) lives in its own describe block so its wipe-and-restore
 // of `company_profile` cannot pollute the sibling (a)-(h) arms above.
-// Each describe block owns its `startApp` lifecycle; the file
-// `fileParallelism: false` in vitest.config.ts integration project
-// ensures sequential execution within a file.
+// Each describe block owns its `startApp` lifecycle; suites and tests
+// within one file run sequentially because `sequence.concurrent`
+// defaults to false, so the blocks cannot interleave.
 describe('Invoice issuance — pre-condition rejections (AT-113(i) / AC-289)', () => {
   let ownerToken: string;
   let projectId: string;

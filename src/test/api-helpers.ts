@@ -36,9 +36,11 @@ const migrationsFolder = path.resolve(__dirname, '../server/db/migrations');
  * Start the test application. Call in `beforeAll`.
  *
  * Connects to the test database, runs migrations, seeds data,
- * and boots a Fastify instance. Test files run sequentially
- * (fileParallelism: false in vitest.config.ts integration project) so each file
- * gets a fresh seed without race conditions.
+ * and boots a Fastify instance. Test files run in parallel; each still
+ * gets a fresh seed without racing the others because `isolate` gives
+ * every file its own forked process, and integration-setup.ts turns
+ * that PID into a private `projekt_manager_test_<pid>` database. The
+ * `seed(force: true)` below therefore wipes only this file's data.
  */
 export async function startApp(): Promise<FastifyInstance> {
   // Validate the env once at startup — consolidation review C-3 removed

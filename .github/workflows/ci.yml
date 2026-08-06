@@ -91,11 +91,42 @@ jobs:
 
       - run: npm ci
 
-      # ripgrep — needed by scripts/check-theme-tokens.sh; without it
-      # the check silently no-ops. age is NOT installed here — only
-      # `check-shard` runs the integration suite that requires it.
-      - name: Install apt prerequisites
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      # ripgrep — needed by scripts/check-theme-tokens.sh, which
+      # fail-closes without it (preflight `command -v rg`). age is NOT
+      # installed here — only `check-shard` runs the integration suite
+      # that requires it.
+      #
+      # Pinned release binary rather than `apt-get update && apt-get
+      # install -y ripgrep`, matching the OSV-Scanner and actionlint
+      # installs below. apt was both slower and erratic: five sampled
+      # runs took 10s, 10s, 15s, 52s and 54s, the long tail being
+      # azure.archive.ubuntu.com stalling on a 1.5 MB download. A
+      # SHA-pinned tarball is ~2s and has no mirror dependency.
+      # Version + checksum are Renovate-tracked via the annotation
+      # below so the pin cannot rot silently (ADR-0027 §Decision.1).
+      - name: Install ripgrep
+        run: |
+          set -euo pipefail
+          # ripgrep's git tag carries no `v` — `version` is the tag verbatim,
+          # as the digest lookup requires, and the asset name embeds it as-is.
+          #
+          # Nothing may sit between the annotation and `version=` — the
+          # customManager regex joins them with `\s+`, so an interposed
+          # comment silently drops the pin out of tracking.
+          # renovate: datasource=github-release-attachments depName=BurntSushi/ripgrep
+          version="15.2.0"
+          expected_sha="33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c"
+          asset="ripgrep-${version}-x86_64-unknown-linux-musl"
+          url="https://github.com/BurntSushi/ripgrep/releases/download/${version}/${asset}.tar.gz"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/ripgrep.tar.gz "$url"
+          actual_sha=$(sha256sum /tmp/ripgrep.tar.gz | awk '{print $1}')
+          if [ "$actual_sha" != "$expected_sha" ]; then
+            echo "::error::ripgrep tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
+            exit 1
+          fi
+          tar -xzf /tmp/ripgrep.tar.gz -C /tmp "${asset}/rg"
+          sudo mv "/tmp/${asset}/rg" /usr/local/bin/rg
+          rg --version
 
       # Allowlist schema gate (ADR-0027 §Negative; runbook §Allowlist).
       # Scanners enforce only the advisory ID; owner/reason/expiry are
@@ -131,7 +162,7 @@ jobs:
           version="v2.3.8"
           expected_sha="bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc"
           url="https://github.com/google/osv-scanner/releases/download/${version}/osv-scanner_linux_amd64"
-          curl -fsSL -o /tmp/osv-scanner "$url"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/osv-scanner "$url"
           actual_sha=$(sha256sum /tmp/osv-scanner | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::OSV-Scanner binary SHA256 mismatch — expected $expected_sha got $actual_sha"
@@ -241,7 +272,7 @@ jobs:
           expected_sha="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
           # Tag carries the `v`, the asset name does not.
           url="https://github.com/rhysd/actionlint/releases/download/${version}/actionlint_${version#v}_linux_amd64.tar.gz"
-          curl -fsSL -o /tmp/actionlint.tar.gz "$url"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/actionlint.tar.gz "$url"
           actual_sha=$(sha256sum /tmp/actionlint.tar.gz | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::actionlint tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
@@ -303,16 +334,30 @@ jobs:
       - name: Env drift check (env.ts ↔ docker-compose.yml)
         run: bash scripts/check-env-drift.sh
 
-      # Static check: this workflow's postgres service container and
-      # e2e.yml's are one decision written twice — Actions has no include
-      # mechanism for a service block (see the script header). e2e.yml is
+      # Static check: this workflow's postgres service container and its
+      # `Install age` step are each one decision written twice with
+      # e2e.yml — Actions has no include mechanism for a service block,
+      # and moving the age step into a composite action would hide its
+      # pin from Renovate (see the script header). e2e.yml is
       # `workflow_dispatch` only, so an unsynced edit there stays invisible
       # until an operator runs it before a manual deploy.
-      - name: Workflow service drift check (ci.yml ↔ e2e.yml)
-        run: bash scripts/check-workflow-service-drift.sh
+      - name: Workflow drift check (ci.yml ↔ e2e.yml)
+        run: bash scripts/check-workflow-drift.sh
 
-      - name: Workflow service drift check — self-test
-        run: bash scripts/__tests__/check-workflow-service-drift.test.sh
+      - name: Workflow drift check — self-test
+        run: bash scripts/__tests__/check-workflow-drift.test.sh
+
+      # Static check: every `expected_sha` binary pin in .github/workflows
+      # is actually matched by a Renovate customManager. The manager's
+      # regex joins the `# renovate:` annotation to `version=` with `\s+`,
+      # so an interposed comment drops the pin out of tracking with no
+      # error raised anywhere — it just silently stops advancing, which is
+      # the "adopted-already-dying" failure ADR-0027 exists to retire.
+      - name: Renovate annotation check
+        run: node scripts/check-renovate-annotations.mjs
+
+      - name: Renovate annotation check — self-test
+        run: bash scripts/__tests__/check-renovate-annotations.test.sh
 
       # Static check: every raw INSERT/UPDATE/DELETE on an audited
       # table (project, customer, user, project_worker) must be
@@ -408,7 +453,7 @@ jobs:
 
     # Duplicated verbatim in e2e.yml, comments aside — Actions cannot
     # factor a service block out of two jobs that share nothing else, so
-    # scripts/check-workflow-service-drift.sh (a step in the `lint` job)
+    # scripts/check-workflow-drift.sh (a step in the `lint` job)
     # fails the build when they diverge. Edit both blocks together.
     services:
       postgres:
@@ -451,8 +496,40 @@ jobs:
       # per-fork binary identity via `age-keygen` before vitest's
       # integration suite runs (ADR-0024). Not preinstalled on
       # ubuntu-latest. ripgrep lives in `lint` only (theme-token check).
-      - name: Install apt prerequisites
-        run: sudo apt-get update && sudo apt-get install -y age
+      #
+      # Pinned release tarball rather than apt, for the same reason as
+      # ripgrep in `lint`: this was the only apt dependency left on the
+      # critical path of the longest job, exposed to the same
+      # azure.archive.ubuntu.com long tail. Upstream ships no checksum
+      # asset (only Sigsum `.proof` files), so the digest is the tarball's
+      # own SHA256 — which is what `github-release-attachments` resolves
+      # by hashing release assets when no checksum file matches.
+      - name: Install age
+        run: |
+          set -euo pipefail
+          # renovate: datasource=github-release-attachments depName=FiloSottile/age
+          version="v1.3.1"
+          expected_sha="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
+          url="https://github.com/FiloSottile/age/releases/download/${version}/age-${version}-linux-amd64.tar.gz"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/age.tar.gz "$url"
+          actual_sha=$(sha256sum /tmp/age.tar.gz | awk '{print $1}')
+          if [ "$actual_sha" != "$expected_sha" ]; then
+            echo "::error::age tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
+            exit 1
+          fi
+          # Tarball roots at `age/`. Both binaries are needed: the suite
+          # shells out to `age-keygen`, the route layer to `age`.
+          #
+          # /usr/bin, NOT /usr/local/bin — the code resolves both by
+          # absolute path (AGE_KEYGEN_BIN in storage/binaryIdentity.ts,
+          # AGE_BINARY in services/KeyEnvelopeService.ts) so a hijacked
+          # PATH cannot swap the crypto binary. That makes the install
+          # location load-bearing: anywhere else and every wrap/unwrap
+          # fails with `spawn /usr/bin/age ENOENT`.
+          tar -xzf /tmp/age.tar.gz -C /tmp age/age-keygen age/age
+          sudo mv /tmp/age/age-keygen /tmp/age/age /usr/bin/
+          /usr/bin/age-keygen --version
+          /usr/bin/age --version
 
       # Storage — MinIO + full bucket/IAM provisioning. Rationale, image
       # pins and readiness handling live in the action; see
@@ -479,11 +556,16 @@ jobs:
 
       # `--shard=N/M` partitions the file list across runners. Vitest's
       # built-in sharder is path-hash stable across runs so a flake is
-      # reproducible on the same shard. Coverage per shard is produced
-      # but not uploaded — there is no coverage gate today; wire an
-      # aggregator (e.g. Codecov action) when one becomes load-bearing.
+      # reproducible on the same shard.
+      #
+      # No `--coverage`: the v8 provider instrumented every run and the
+      # report was then thrown away — nothing uploads it and no gate
+      # reads it. Measured cost on a 4-vCPU runner shape: 86s → 79s per
+      # shard. `npm run test:coverage` stays available locally; when a
+      # coverage gate becomes load-bearing, wire an aggregator (e.g. the
+      # Codecov action) and re-add the flag with a consumer attached.
       - name: Unit and component tests (shard ${{ matrix.shard }}/2)
-        run: npm run test:coverage -- --shard=${{ matrix.shard }}/2
+        run: npm run test -- --shard=${{ matrix.shard }}/2
         env:
           DATABASE_URL: postgresql://pm:postgres@localhost:5432/pm
           # Storage env vars are required by src/server/__tests__/storage.test.ts
