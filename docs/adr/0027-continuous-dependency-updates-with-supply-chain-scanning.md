@@ -64,7 +64,12 @@ We will adopt **three coupled changes**:
 
   **Out of scope for Renovate:** Alpine `apk add` packages on top of base images (unpinned versions; surface enumerated and walked in [`docs/ops/dep-management.md` § Quarterly lifecycle review](../ops/dep-management.md#quarterly-lifecycle-review)) and Docker Engine apt packages on the VPS (tracked manually per [ADR-0009](0009-pin-docker-versions-across-environments.md) lifecycle table). Both are deliberate exclusions with a documented manual review; **no pin is left both unautomated and unreviewed.**
 
-Dependabot Alerts stays on at the GH Security tab — it remains the CVE notification surface; Renovate is the **action** surface. The Renovate config also enables `osvVulnerabilityAlerts: true`, so Renovate raises vulnerability PRs against the OSV database in parallel — slight overlap with Dependabot is intentional belt-and-braces.
+Dependabot Alerts stays on at the GH Security tab as the CVE **notification** surface. Renovate is the **action** surface for **direct** deps only — its vulnerability PRs, whether sourced from GitHub alerts or from `osvVulnerabilityAlerts: true`, are [direct-dependency-only by design](https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts) ("You will only get OSV-based vulnerability alerts for _direct_ dependencies"). Transitive npm deps are owned by two other mechanisms:
+
+- **Dependabot security updates** (the PR-raising half, distinct from Alerts) — for npm it raises a fix PR even when the vulnerable package exists only in the lockfile, [updating the parent dependency when that is the only route](https://docs.github.com/en/code-security/dependabot/dependabot-security-updates/about-dependabot-security-updates).
+- **Daily `lockFileMaintenance`** — bounds transitive drift to ~24h for advisories neither bot files a PR for.
+
+Overlap between the two bots is intentional belt-and-braces.
 
 ### 2. Supply-chain scanning in CI (blocking)
 
@@ -106,7 +111,7 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
 ### Positive
 
 - **Continuous, individually-tested bumps.** Each Renovate PR gets its own CI signal. Regressions surface against the single bump that caused them.
-- **CVE time-to-merge measured in hours.** Vulnerability PRs bypass schedule; with auto-merge on green CI for patch/minor, the median CVE patch lands the same day it is published.
+- **CVE time-to-merge measured in hours — for direct deps.** Vulnerability PRs bypass schedule; with auto-merge on green CI for patch/minor, the median CVE patch lands the same day it is published. Transitive-only advisories run on a different path (Dependabot security updates + daily `lockFileMaintenance`, backstopped by the nightly OSV scan) — see the [2026-08-06 amendment](#2026-08-06--renovate-does-not-remediate-transitive-deps).
 - **Dying-upstream signal at decision time.** The mandatory lifecycle-health section converts "the agent recommended MinIO" into "the agent recommended MinIO; here is its archive flag, last release, license, deps.dev score at adoption time." A future reader has an evaluable trail.
 - **Quarterly review catches BSL/SSPL relicensings and bus-factor erosion** without depending on someone happening to notice during routine work.
 - **Existing artifacts cooperate.** Dependabot Alerts is unchanged. ADR-0009's Docker version table doubles as the lifecycle table for that ADR's deps.
@@ -155,6 +160,19 @@ Acknowledged tradeoff: PR-time image-vuln gating coverage is the union of `docke
 - No env-var or schema impact.
 
 ## Amendments
+
+### 2026-08-06 — Renovate does not remediate transitive deps
+
+Three incidents cleared transitive npm advisories by hand: [#183](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/183) (`fast-uri`), [#272](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/272) (`undici`, 21 days after the alert opened), [#318](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/318) (`brace-expansion`, `fast-uri`, `undici`). §Consequences.Positive promised hours; the measured latency was days to weeks.
+
+Cause, in two parts:
+
+1. Renovate raises vulnerability PRs for **direct** deps only. None of the affected packages are in `package.json`, and none appear in the Dependency Dashboard's Detected Dependencies list — Renovate never saw them. Its `[security]` PRs on this repo ([#290](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/290), [#294](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/294)) were both direct deps.
+2. The only fallback that would have caught them, `lockFileMaintenance`, was starved. One weekly window behind `prConcurrentLimit: 1` yields ~3 PRs/week against a 29-item queue; no lockfile-maintenance PR had landed since 2026-06-03.
+
+Changed: Dependabot **security updates** enabled at the repo (Alerts alone only notify — they fired correctly on all seven and nothing acted on them); `lockFileMaintenance` moved to a daily schedule with its own unlimited PR budget, the same per-branch exemption `vulnerabilityAlerts` uses. §Decision.1 and §Consequences.Positive corrected in-place. The nightly OSV scan is unchanged and remains the backstop — it detected all three incidents.
+
+Global `prConcurrentLimit` deliberately stays at 1. Raising it is a documented merge-queue revisit trigger ([dep-management.md § First-run setup step 6](../ops/dep-management.md#first-run-setup)), and the routine-update backlog it throttles is a throughput question, not a security one. Tracked as open, not closed.
 
 ### 2026-07-25 — E2E is not a PR gate
 
