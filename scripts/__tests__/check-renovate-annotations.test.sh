@@ -131,6 +131,18 @@ d="$(stage)"
 sed -i 's|url="https://github.com/FiloSottile/age/releases/download/${version}/age-${version}-linux-amd64.tar.gz"|url="https://github.com/FiloSottile/age/releases/download/v1.3.1/age-${version}-linux-amd64.tar.gz"|' "$d/workflows/e2e.yml"
 assert_mutated "$d" e2e.yml "hardcoded version in URL" && assert_case 1 "hardcoded version in URL" "$d"
 
+echo "Case: a comment inside the step names the version"
+# Must pass — the mirror of the case above. Renovate rewrites only the
+# `version=` span, but a comment that names the version is prose, not a
+# fetch: leaving it stale is a docs nit, and failing on it would make the
+# rule unsatisfiable short of rewording the comment. The version is read
+# out of the file so this case survives the next bump.
+d="$(stage)"
+ver="$(sed -n 's|^ *version="\([^"]*\)".*|\1|p' "$d/workflows/e2e.yml" | head -1)"
+sed -i "s|^\( *expected_sha=\"[a-f0-9]\{64\}\"\)$|\1\n          # Note: $ver is the first release carrying a Sigsum proof asset.|" \
+  "$d/workflows/e2e.yml"
+assert_mutated "$d" e2e.yml "version named in a comment" && assert_case 0 "version named in a comment" "$d"
+
 echo "Case: the customManager is gone from renovate.json"
 # Structural, not drift. Every pin in every workflow is untracked; the
 # check must say so rather than compare against an empty manager list and

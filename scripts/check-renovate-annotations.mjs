@@ -218,7 +218,13 @@ for (const file of workflowFiles) {
       end += 1;
     }
     const block = lines.slice(versionLineIdx, end);
-    const literalUses = block.filter((l) => l.includes(version)).length;
+    // Comment lines are excluded: prose legitimately names the version it
+    // documents ("no severity flag in CLI v2.3.8"), and Renovate rewriting
+    // only the `version=` span is harmless there — a stale comment is a
+    // docs nit, not a step that fetches the wrong asset. Counting them
+    // would make the rule unsatisfiable short of rewording the comment.
+    // Same reason `check-workflow-drift.sh` strips comments before diffing.
+    const literalUses = block.filter((l) => !/^\s*#/.test(l) && l.includes(version)).length;
     if (literalUses > 1) {
       problems.push(
         `${rel}:${versionLineIdx + 1}  version "${version}" appears ${literalUses} times in ` +
