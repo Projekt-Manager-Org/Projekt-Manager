@@ -102,6 +102,39 @@ if (!process.env.PM_E2E_BINARY_GENERATED) {
 const E2E_BINARY_RECIPIENT = process.env.BINARY_AGE_RECIPIENT!;
 const E2E_BINARY_IDENTITY_PATH = process.env.BINARY_AGE_IDENTITY_PATH!;
 
+// Per-run takeout staging directory. Same isolation argument as the DB, the
+// bucket and the identity above — and the one resource that did not get the
+// treatment. `daten-jobs.spec.ts` drives an export + import roundtrip, so
+// without an override the webServer stages every `<jobId>.zip` in the env
+// default (`<tmpdir>/projekt-manager-takeout`), shared with `npm run dev`.
+// Nothing reclaims them: the TTL reaper only sweeps `ready` rows on a 24h
+// clock and the e2e database is dropped at end-of-run, so the rows naming
+// the archives vanish before anything deletes the files. Measured: 41 zips
+// left behind by a single run.
+//
+// Named for the MAIN runner's PID under the same `projekt-manager-takeout-
+// test-<pid>` convention the vitest suite uses (`integration-setup.ts` §4),
+// so the dead-PID sweep in `integration-globalsetup.ts` reaps whatever the
+// exit hook below misses. The root is a local literal rather than an import
+// for the same reason as the storage-state path below — this config must not
+// pull a project `.ts` file into its resolution.
+//
+// The guard doubles as the worker sentinel (Playwright re-evaluates this
+// config per worker, and workers inherit the value) and honours an operator
+// override from `.env`.
+if (!process.env.TAKEOUT_STAGING_DIR) {
+  const stagingDir = path.join(os.tmpdir(), `projekt-manager-takeout-test-${process.pid}`);
+  process.env.TAKEOUT_STAGING_DIR = stagingDir;
+  process.on('exit', () => {
+    try {
+      fs.rmSync(stagingDir, { recursive: true, force: true });
+    } catch {
+      // Never created or already swept — nothing to clean.
+    }
+  });
+}
+const E2E_TAKEOUT_STAGING_DIR = process.env.TAKEOUT_STAGING_DIR!;
+
 // Ubuntu 24.04's `kernel.apparmor_restrict_unprivileged_userns=1` blocks
 // Chromium's namespace sandbox. Without this, Playwright injects
 // `--no-sandbox` as a fallback and Chromium renders an "unsupported flag"
@@ -333,6 +366,7 @@ export default defineConfig({
       STORAGE_BUCKET: E2E_STORAGE_BUCKET,
       BINARY_AGE_RECIPIENT: E2E_BINARY_RECIPIENT,
       BINARY_AGE_IDENTITY_PATH: E2E_BINARY_IDENTITY_PATH,
+      TAKEOUT_STAGING_DIR: E2E_TAKEOUT_STAGING_DIR,
     },
   },
 });
