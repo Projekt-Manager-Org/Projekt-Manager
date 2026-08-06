@@ -35,14 +35,19 @@
  *    placeholders fail at the AEAD step under any real implementation.
  *
  *    Each fork generates its own keypair, writes the identity (private
- *    half) to a per-PID tmpfs path, and exports both env vars before any
- *    test import runs. Test seeds wrap a fresh DEK against this same
- *    keypair via `KeyEnvelopeService.wrap()` so the route's per-request
- *    unwrap succeeds for happy-path arms (B1 in the failing-tests
- *    review).
+ *    half) to a per-PID path under the OS temp root, and exports both env
+ *    vars before any test import runs. Test seeds wrap a fresh DEK against
+ *    this same keypair via `KeyEnvelopeService.wrap()` so the route's
+ *    per-request unwrap succeeds for happy-path arms (B1 in the
+ *    failing-tests review).
  *
  *    `age-keygen` is required on the dev box per CONTRIBUTING.md
  *    §Testing — same posture as MinIO.
+ *
+ *    Dead-PID identity-file cleanup lives in `integration-globalsetup.ts`
+ *    for the same `process.exit()` reason as the three below. The
+ *    `process.on('exit')` unlink further down is opportunistic only —
+ *    see the note there.
  *
  * 3. Per-fork storage namespace (STORAGE_BUCKET + STORAGE_KEY_PREFIX)
  *    Without this, every integration fork shares `STORAGE_BUCKET=
@@ -165,10 +170,17 @@ writeFileSync(binaryIdentityPath, binaryIdentity + '\n', { mode: 0o600 });
 process.env.BINARY_AGE_RECIPIENT = binaryRecipient;
 process.env.BINARY_AGE_IDENTITY_PATH = binaryIdentityPath;
 
-// Best-effort cleanup. The `forks` pool exits workers via `process.exit()`
-// (mirrors the DB-cleanup rationale above), so `process.on('exit', ...)`
-// is the most reliable hook. Tmpfs eviction is the fallback when the
-// hook is skipped. PID-suffix filenames make per-fork collisions unlikely.
+// Opportunistic cleanup, NOT the guarantee. `process.on('exit')` is the
+// best hook available here, but the `forks` pool tears workers down by
+// signal often enough that it mostly does not fire: a full 179-file run
+// leaked 105 of these files with this hook in place. The temp root is not
+// necessarily tmpfs either (ext4 on a stock Linux dev box), so there is no
+// eviction to fall back on.
+//
+// The actual guarantee is the dead-PID sweep in `integration-globalsetup.ts`
+// — same mechanism, and for the same reason, as the per-fork database and
+// takeout directory. This hook just reclaims the file sooner when it does
+// run. PID-suffix filenames make per-fork collisions unlikely.
 process.on('exit', () => {
   try {
     unlinkSync(binaryIdentityPath);
