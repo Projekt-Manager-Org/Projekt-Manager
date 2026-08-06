@@ -13,8 +13,11 @@
   "rebaseWhen": "behind-base-branch",
   "labels": ["dependencies"],
   "lockFileMaintenance": {
+    "description": "Daily, and exempt from the global PR limits. This is the ONLY Renovate mechanism that refreshes transitive npm deps — vulnerability PRs cover direct deps only (https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts). On the weekly window behind prConcurrentLimit=1 it was starved for 9 weeks while transitive advisories sat open; the per-branch limit calc (calcLimit in lib/workers/global/limits.ts) treats 0 as 'no limit', same exemption vulnerabilityAlerts uses.",
     "enabled": true,
-    "schedule": ["before 9am on monday"]
+    "schedule": ["before 9am"],
+    "prConcurrentLimit": 0,
+    "prHourlyLimit": 0
   },
   "vulnerabilityAlerts": {
     "labels": ["security", "dependencies"],

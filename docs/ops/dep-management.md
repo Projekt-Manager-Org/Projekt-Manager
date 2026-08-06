@@ -92,14 +92,34 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 7. **Pin the Dependency Dashboard issue.** Renovate auto-creates an issue titled "Dependency Dashboard" listing queue state; pin it so the weekly wrangler can find it without searching.
 
+8. **Enable the GitHub security surface — all three switches.** Settings → Advanced Security. Alerts alone only notify; the third switch is what opens PRs, and it is the only automated path for transitive npm advisories (see [§Cadence](#cadence)).
+
+   | Switch                          | Why                                                                                                                       |
+   | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+   | Dependency graph                | Prerequisite for the other two, and for Renovate reading GitHub alerts                                                    |
+   | Dependabot alerts               | CVE notification surface; also the input Renovate's `vulnerabilityAlerts` reads (needs the app's `read` permission on it) |
+   | **Dependabot security updates** | Raises the fix PR. For npm it bumps a lockfile-only dep, updating the parent if that is the only route                    |
+
+   Verify (both must report enabled — the second returned `{"enabled":false}` from install until 2026-08-06, which is why three transitive advisories were cleared by hand):
+
+   ```bash
+   gh api repos/{owner}/{repo}/vulnerability-alerts --silent && echo "alerts: enabled"
+   gh api repos/{owner}/{repo}/automated-security-fixes
+   ```
+
 ## Cadence
 
-| Trigger                                          | Result                               | Latency                |
-| ------------------------------------------------ | ------------------------------------ | ---------------------- |
-| Renovate weekly window (Mon 09:00 Europe/Berlin) | Routine bumps as individual PRs      | ~30 min/week wrangler  |
-| Dependabot Alert                                 | Renovate opens a vuln PR out-of-band | Hours from publication |
-| OSV-Scanner / Trivy CI fail                      | PR merge blocked                     | Per-PR                 |
-| Quarterly review                                 | Walk strategic-dep list (below)      | ~1 hour, 4×/year       |
+| Trigger                                          | Result                                     | Latency                |
+| ------------------------------------------------ | ------------------------------------------ | ---------------------- |
+| Renovate weekly window (Mon 09:00 Europe/Berlin) | Routine bumps as individual PRs            | ~30 min/week wrangler  |
+| Advisory on a **direct** dep                     | Renovate opens a vuln PR out-of-band       | Hours from publication |
+| Advisory on a **transitive** dep                 | Dependabot security-update PR              | Hours from publication |
+| `lockFileMaintenance` (daily, before 9am)        | Transitive drift refreshed wholesale       | ≤24h                   |
+| OSV-Scanner / Trivy CI fail                      | PR merge blocked                           | Per-PR                 |
+| Nightly full-tree OSV scan                       | Schedule goes red → manual bump (backstop) | ≤24h from publication  |
+| Quarterly review                                 | Walk strategic-dep list (below)            | ~1 hour, 4×/year       |
+
+**Renovate does not cover transitive deps.** Its vulnerability PRs are [direct-dependency-only by design](https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts) — a package that exists only in `package-lock.json` is invisible to it. That class is covered by Dependabot security updates and daily lockfile maintenance instead ([ADR-0027 § 2026-08-06 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-06--renovate-does-not-remediate-transitive-deps)).
 
 ## Weekly wrangler
 
@@ -115,6 +135,13 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 - **High/Critical** — bypass schedule; merge on green CI even off-hours.
 - **Medium/Low** — roll into the weekly batch.
+- **Transitive-only npm dep** (vulnerable package is in `package-lock.json`, absent from `package.json`) — Renovate will never file this PR. Expect Dependabot's; if it hasn't appeared by the time the nightly OSV scan goes red, bump by hand — `npm update <pkg>…`, which touches the lockfile only. Confirm the new version is clean before opening the PR:
+
+  ```bash
+  curl -s -X POST https://api.osv.dev/v1/query \
+    -d '{"package":{"name":"undici","ecosystem":"npm"},"version":"7.29.0"}'
+  ```
+
 - **False-positive on dead code** (cf. the original [ADR-0007](../adr/0007-suppress-esbuild-dev-server-advisory.md) case): add the advisory to the OSV-Scanner allowlist with a documented review trigger. Never `--omit=dev` blanket-suppress.
 - **No-fix-yet OS-package CVE in a base image** (Alpine `node:22-alpine`, `postgresql17-alpine`, etc., where the upstream distro hasn't shipped a patched build yet): Trivy blocks the `docker` and `build-and-push` image scans on every run because `ignore-unfixed: true` is deliberately not set (per [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational); see also [§Allowlist](#allowlist-osv-scanner--trivy) for the schema). The deploy pipeline halts until either Alpine ships the fix or an operator writes a deliberate, time-bounded allowlist entry:
 
@@ -266,7 +293,7 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 
 ## Files
 
-- `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
+- `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin; `lockFileMaintenance` runs daily and exempt from the PR limits), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). The two binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 6. Editing either step: keep the version in the `version` variable exactly once, as the literal `v`-prefixed tag.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist-osv-scanner--trivy) above.
