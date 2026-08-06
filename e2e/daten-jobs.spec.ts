@@ -316,16 +316,32 @@ async function exportJobZip(page: Page): Promise<Buffer> {
   await page.getByTestId('export-job-start').click();
 
   // Progress readout — files-done/total, bytes-done/total, current item. A
-  // small seed may flip to `ready` before we can observe `progress`, so accept
-  // either the progress readout OR the ready state having already surfaced.
+  // small seed may flip to `ready` before we can observe `progress`, so each
+  // readout accepts `ready` as the alternative.
+  //
+  // Every assertion carries its own `.or(ready)` rather than sitting inside an
+  // `if (await progress.isVisible())` branch: that samples the phase once and
+  // then asserts against a state that may already be gone. The phase is short
+  // enough for that to matter — the sibling import arm below was measured
+  // living 13-32ms, against 1-8ms per round-trip — and each assertion inside
+  // such a branch spends more of the remaining budget than the last.
+  //
+  // A readout missing while `progress` is up would now be masked by `ready`
+  // arriving. That is deliberate: whether the three readouts render at all is
+  // structural, and `VollstaendigerExportDialog.test.tsx` pins it against a
+  // fixed job DTO with no clock involved. What only e2e can show is that the
+  // real job walks preflight → progress → ready, which is what stays here.
   const progress = page.getByTestId('export-job-progress');
   const ready = page.getByTestId('export-job-ready');
-  await expect(progress.or(ready).first()).toBeVisible({ timeout: 60_000 });
-  if (await progress.isVisible()) {
-    await expect(progress.getByTestId('export-job-progress-counter')).toBeVisible();
-    await expect(progress.getByTestId('export-job-progress-bytes')).toBeVisible();
-    await expect(progress.getByTestId('export-job-current-item')).toBeVisible();
-  }
+  await expect(progress.getByTestId('export-job-progress-counter').or(ready).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(progress.getByTestId('export-job-progress-bytes').or(ready).first()).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(progress.getByTestId('export-job-current-item').or(ready).first()).toBeVisible({
+    timeout: 60_000,
+  });
 
   // Ready → a download affordance (`<a>` GETting /api/export-jobs/:id/download).
   await expect(ready).toBeVisible({ timeout: 60_000 });
@@ -470,14 +486,23 @@ test('AC-335 / AC-328 / AC-161: job-driven export → import roundtrip preserves
     await startBtn.click();
 
     // Resumable upload (client→VPS bytes) → server processing. The upload of a
-    // small seed archive is fast; accept either the uploading readout OR
-    // processing having already surfaced.
+    // small seed archive is fast, so accept `processing` having already
+    // surfaced — but when the uploading phase IS caught, its byte readout must
+    // be there (it renders unconditionally inside that view).
+    //
+    // One assertion, not a sampled `if (await uploading.isVisible())` branch:
+    // the phase was measured living only 13-32ms against 1-8ms per round-trip,
+    // so the view could unmount between the sample and the assertion, leaving
+    // it retrying a locator that would never resolve again.
+    //
+    // As in the export arm, a missing readout would be masked by `processing`
+    // arriving; `VollstaendigerImportDialog.test.tsx` is what pins the readout
+    // itself, deterministically. Here the point is that the phase progresses.
     const uploading = page.getByTestId('import-job-uploading');
     const processing = page.getByTestId('import-job-processing');
-    await expect(uploading.or(processing).first()).toBeVisible({ timeout: 60_000 });
-    if (await uploading.isVisible()) {
-      await expect(uploading.getByTestId('import-job-upload-bytes')).toBeVisible();
-    }
+    await expect(
+      uploading.getByTestId('import-job-upload-bytes').or(processing).first(),
+    ).toBeVisible({ timeout: 60_000 });
   } finally {
     if (fs.existsSync(tmpZipPath)) fs.unlinkSync(tmpZipPath);
   }
