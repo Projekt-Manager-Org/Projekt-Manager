@@ -29,16 +29,23 @@ import { readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-const TEST_DB_PREFIX = 'projekt_manager_test_';
-const TEST_KEY_PREFIX_PATTERN = /^test-(\d+)\/$/;
+// What this sweeper matches on. Exported so
+// `src/server/__tests__/test-harness-isolation.test.ts` can assert that what
+// `integration-setup.ts` WRITES is what this file REAPS. The two run in
+// separate processes and cannot share a value at runtime, so the names are
+// duplicated literals — drift between them silently disables cleanup, with no
+// failing test and no symptom beyond a temp dir that grows forever. Nothing
+// but that test imports these.
+export const TEST_DB_PREFIX = 'projekt_manager_test_';
+export const TEST_KEY_PREFIX_PATTERN = /^test-(\d+)\/$/;
 // Anchored, and the `-test-` infix is required — `projekt-manager-takeout`
 // (the zero-config dev default, and what a developer's own server writes to)
 // must never match. A prefix-only check would delete real dev exports.
-const TEST_TAKEOUT_DIR_PATTERN = /^projekt-manager-takeout-test-(\d+)$/;
+export const TEST_TAKEOUT_DIR_PATTERN = /^projekt-manager-takeout-test-(\d+)$/;
 // Anchored on both ends, and the PID group is mandatory — only files this
 // suite creates in `integration-setup.ts` §2 can match. An operator-loaded
 // production identity lives on tmpfs at a configured path, never here.
-const TEST_BINARY_IDENTITY_PATTERN = /^projekt-manager-binary-identity-(\d+)\.txt$/;
+export const TEST_BINARY_IDENTITY_PATTERN = /^projekt-manager-binary-identity-(\d+)\.txt$/;
 
 function adminConnectionString(): string {
   const baseUrl =
