@@ -1,0 +1,20 @@
+# Commits that only moved whitespace. `git blame` skips them so the line
+# points at whoever last changed the code, not the last reformat.
+#
+# Enable locally (once):
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub's blame view honours this file with no configuration.
+#
+# Only add a commit whose source changes are provably formatting-only. One
+# that mixes a reformat with a behaviour change must NOT be listed — blame
+# would hide the behaviour change too. Dependency manifests and lockfiles
+# riding along are fine; blame on generated pins carries no information.
+
+# chore(deps): lock file maintenance (#325)
+# Prettier 3.8.3 -> 3.9.6 reformat: union types collapsed onto one line
+# ("Don't break union type when it can fit", prettier/prettier#18827), plus
+# markdown table cell re-padding in docs/testing/traceability.md. Squashed
+# together with the lockfile refresh and the prettier pin that forced it;
+# no source behaviour changed.
+ff172a42be030d596222ca89b294c398a08a648a

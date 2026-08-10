@@ -68,6 +68,12 @@ The trigger question: **"Does this change affect how the system authenticates, a
   - **pre-commit** (`.husky/pre-commit`)
   - **pre-push** (`.husky/pre-push`)
   - **CI** (`ci.yml`)
+- **Formatters and linters are pinned exactly** in `package.json` (`prettier`, `eslint`, `typescript-eslint`, `vitest`). Their output gates CI, so a floating patch release can turn every PR red on code nobody touched. Bumps then arrive as their own PR carrying their own reformat.
+- **Reformats are excluded from blame** via [`.git-blame-ignore-revs`](.git-blame-ignore-revs). Enable it once per clone — GitHub's blame view needs no setup:
+
+  ```bash
+  git config blame.ignoreRevsFile .git-blame-ignore-revs
+  ```
 
 ## Branching Strategy
 
