@@ -81,9 +81,7 @@ export interface AuditEntry {
 }
 
 type AuditGetResult =
-  | { status: 'found'; entry: AuditEntry }
-  | { status: 'forbidden' }
-  | { status: 'not-found' };
+  { status: 'found'; entry: AuditEntry } | { status: 'forbidden' } | { status: 'not-found' };
 
 export class AuditService {
   constructor(private db: Database) {}

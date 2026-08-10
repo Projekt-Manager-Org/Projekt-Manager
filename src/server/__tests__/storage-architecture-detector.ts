@@ -265,9 +265,7 @@ function resolveToCommand(
  * for variable-bound arguments and propagates this helper's `'opaque'`.
  */
 type LiteralWalkResult =
-  | 'clean'
-  | { kind: 'found'; reason: string }
-  | { kind: 'opaque'; reason: string };
+  'clean' | { kind: 'found'; reason: string } | { kind: 'opaque'; reason: string };
 
 function findVersionIdInLiteral(node: ts.Expression, breadcrumb: string): LiteralWalkResult {
   if (ts.isParenthesizedExpression(node)) {
@@ -357,9 +355,7 @@ function findVersionIdInLiteral(node: ts.Expression, breadcrumb: string): Litera
  * over here.
  */
 type ArgumentInspection =
-  | { kind: 'clean' }
-  | { kind: 'found'; reason: string }
-  | { kind: 'opaque'; reason: string };
+  { kind: 'clean' } | { kind: 'found'; reason: string } | { kind: 'opaque'; reason: string };
 
 function inspectArgumentForVersionId(
   argExpr: ts.Expression,

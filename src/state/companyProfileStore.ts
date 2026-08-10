@@ -32,9 +32,7 @@ export type CompanyProfileSavePayload = CompanyProfileInput;
  * on `saveError`.
  */
 export type SaveOutcome =
-  | { status: 'ok' }
-  | { status: 'validation'; missingFields: string[] }
-  | { status: 'error' };
+  { status: 'ok' } | { status: 'validation'; missingFields: string[] } | { status: 'error' };
 
 interface CompanyProfileState {
   data: CompanyProfile | null;
