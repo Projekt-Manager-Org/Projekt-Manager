@@ -321,20 +321,17 @@ async function extractFacturXml(buf: Buffer): Promise<string> {
   const doc = await PDFDocument.load(new Uint8Array(buf));
   const catalog = doc.catalog;
   const namesDict = catalog.lookup(PDFName.of('Names'), PDFDict) as
-    | InstanceType<typeof PDFDict>
-    | undefined;
+    InstanceType<typeof PDFDict> | undefined;
   if (!namesDict) {
     throw new Error('extractFacturXml — /Catalog has no /Names dictionary');
   }
   const embeddedFilesDict = namesDict.lookup(PDFName.of('EmbeddedFiles'), PDFDict) as
-    | InstanceType<typeof PDFDict>
-    | undefined;
+    InstanceType<typeof PDFDict> | undefined;
   if (!embeddedFilesDict) {
     throw new Error('extractFacturXml — /Names has no /EmbeddedFiles subtree');
   }
   const namesArr = embeddedFilesDict.lookup(PDFName.of('Names'), PDFArray) as
-    | InstanceType<typeof PDFArray>
-    | undefined;
+    InstanceType<typeof PDFArray> | undefined;
   if (!namesArr) {
     throw new Error('extractFacturXml — /EmbeddedFiles has no /Names array');
   }

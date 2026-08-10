@@ -48,9 +48,7 @@ import { useToastStore } from './toastStore';
  * makes no sense for a permission denial.
  */
 export type TrashFetchOutcome =
-  | { kind: 'ok' }
-  | { kind: 'forbidden' }
-  | { kind: 'error'; message: string };
+  { kind: 'ok' } | { kind: 'forbidden' } | { kind: 'error'; message: string };
 
 export interface PendingUpload {
   clientId: string;

@@ -322,12 +322,7 @@ export const authApi = {
  * `PROJECT_SORT_KEYS` allowlist — keep them in sync.
  */
 export type ProjectSortKey =
-  | 'number'
-  | 'title'
-  | 'customer'
-  | 'status'
-  | 'plannedStart'
-  | 'estimatedValue';
+  'number' | 'title' | 'customer' | 'status' | 'plannedStart' | 'estimatedValue';
 
 /** Sortable columns for the customer list. Mirrors `CUSTOMER_SORT_KEYS`. */
 export type CustomerSortKey = 'name' | 'phone' | 'email' | 'city';

@@ -97,10 +97,7 @@ export interface ProgressUpdate {
 
 /** The four `data_import`-typed terminal actions the takeout jobs emit. */
 export type TerminalAuditAction =
-  | 'export_built'
-  | 'export_failed'
-  | 'import_restored'
-  | 'import_failed';
+  'export_built' | 'export_failed' | 'import_restored' | 'import_failed';
 
 /**
  * The single terminal `audit_log` row, written ATOMICALLY with the terminal
