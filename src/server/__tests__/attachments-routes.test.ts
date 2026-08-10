@@ -2425,8 +2425,7 @@ async function fetchAttachmentVersions(
       sql`SELECT version_id, thumb_version_id FROM attachments WHERE id = ${id} LIMIT 1`,
     );
     const row = res.rows[0] as
-      | { version_id: string | null; thumb_version_id: string | null }
-      | undefined;
+      { version_id: string | null; thumb_version_id: string | null } | undefined;
     if (!row) return null;
     return { versionId: row.version_id, thumbVersionId: row.thumb_version_id };
   } finally {
@@ -2462,8 +2461,7 @@ async function fetchAttachmentRowSnapshot(id: string): Promise<{
       sql`SELECT wrapped_dek, wrapped_thumb_dek FROM attachments WHERE id = ${id}`,
     );
     const data = row.rows[0] as
-      | { wrapped_dek: string | null; wrapped_thumb_dek: string | null }
-      | undefined;
+      { wrapped_dek: string | null; wrapped_thumb_dek: string | null } | undefined;
     return {
       wrappedDek: data?.wrapped_dek ?? null,
       wrappedThumbDek: data?.wrapped_thumb_dek ?? null,

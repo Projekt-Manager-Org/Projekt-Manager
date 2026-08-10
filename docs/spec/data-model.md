@@ -477,12 +477,7 @@ A file attached to a project. Metadata lives in the database (Layer 1 business d
 
 ```typescript
 type AttachmentLabel =
-  | 'angebot'
-  | 'auftragsbestaetigung'
-  | 'rechnung'
-  | 'aufmass'
-  | 'foto'
-  | 'sonstiges';
+  'angebot' | 'auftragsbestaetigung' | 'rechnung' | 'aufmass' | 'foto' | 'sonstiges';
 
 type AttachmentKind = 'photo' | 'binary';
 

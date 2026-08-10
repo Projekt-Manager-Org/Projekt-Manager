@@ -42,8 +42,7 @@ import styles from './Management.module.css';
  * to express that intent.
  */
 export type SiteAddressDraftReadResult =
-  | { kind: 'valid'; value: Address | null }
-  | { kind: 'partial' };
+  { kind: 'valid'; value: Address | null } | { kind: 'partial' };
 
 export interface SiteAddressGroupHandle {
   read: () => SiteAddressDraftReadResult;

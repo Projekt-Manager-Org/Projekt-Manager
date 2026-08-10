@@ -92,8 +92,7 @@ async function fetchRow(id: string): Promise<{
       sql`SELECT id, created_by, created_at FROM attachments WHERE id = ${id} LIMIT 1`,
     );
     const row = res.rows[0] as
-      | { id: string; created_by: string | null; created_at: Date }
-      | undefined;
+      { id: string; created_by: string | null; created_at: Date } | undefined;
     if (!row) return null;
     return {
       id: row.id,

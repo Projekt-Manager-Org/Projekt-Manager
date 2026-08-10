@@ -49,9 +49,7 @@ import { STRINGS } from '../../config/strings.js';
  *                       `Content-Range: bytes *\/size` (RFC 7233 §4.4).
  */
 type RangeResult =
-  | { kind: 'full' }
-  | { kind: 'range'; start: number; end: number }
-  | { kind: 'unsatisfiable' };
+  { kind: 'full' } | { kind: 'range'; start: number; end: number } | { kind: 'unsatisfiable' };
 
 /**
  * Parse a single-range `Range: bytes=a-b` header against a known total

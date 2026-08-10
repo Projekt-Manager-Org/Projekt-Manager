@@ -124,12 +124,7 @@ export type AttachmentStatus = 'pending' | 'ready' | 'hidden';
 export type AttachmentKind = 'photo' | 'binary';
 
 export type AttachmentLabel =
-  | 'angebot'
-  | 'auftragsbestaetigung'
-  | 'rechnung'
-  | 'aufmass'
-  | 'foto'
-  | 'sonstiges';
+  'angebot' | 'auftragsbestaetigung' | 'rechnung' | 'aufmass' | 'foto' | 'sonstiges';
 
 export interface Attachment {
   id: string;

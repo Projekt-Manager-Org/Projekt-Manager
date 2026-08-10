@@ -824,8 +824,7 @@ async function resolveOwnerAuthUser(db: Database): Promise<AuthUser> {
         WHERE username = ${SEED_USERS.owner.username} LIMIT 1`,
   );
   const r = row.rows[0] as
-    | { id: string; username: string; display_name: string; roles: string[] }
-    | undefined;
+    { id: string; username: string; display_name: string; roles: string[] } | undefined;
   if (!r) throw new Error('seed missing owner user');
   return {
     id: r.id,
