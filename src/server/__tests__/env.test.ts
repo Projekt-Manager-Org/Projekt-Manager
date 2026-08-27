@@ -20,6 +20,7 @@ import {
   assertAppServerEnv,
   assertProductionSafe,
   assertStoragePublicEndpointInProduction,
+  assertTrustedProxyInProduction,
   envSchema,
   validateEnvAggregated,
   validateEnvRuntime,
@@ -41,6 +42,9 @@ function makeEnv(overrides: Partial<Env>): Env {
     DOMAIN: 'localhost',
     SEED: 'false',
     ALLOW_INSECURE_HTTP: 'false',
+    // Left unset so a default makeEnv() (NODE_ENV=production) trips
+    // checkTrustedProxyInProduction — the arm that guard's test needs.
+    TRUSTED_PROXY_CIDRS: undefined,
     BOOTSTRAP_ADMIN_USERNAME: undefined,
     BOOTSTRAP_ADMIN_PASSWORD: undefined,
     BOOTSTRAP_ADMIN_DISPLAY_NAME: undefined,
@@ -526,6 +530,9 @@ describe('dev-default credentials guard in env.ts', () => {
       // wiring; a placeholder keeps the unrelated guard from tripping.
       BINARY_AGE_RECIPIENT: 'age1unused',
       ALLOW_INSECURE_HTTP: 'false',
+      // Reverse-proxy trust boundary, required in production. Present so
+      // this block's arms trip only the dev-default credential guard.
+      TRUSTED_PROXY_CIDRS: '172.16.0.0/16',
       ...extra,
     };
   }
@@ -645,6 +652,7 @@ describe('guard predicates: throw helper and aggregator agree', () => {
         STORAGE_SECRET_KEY: 'sk',
         STORAGE_BUCKET: 'pm',
         ALLOW_INSECURE_HTTP: 'true',
+        TRUSTED_PROXY_CIDRS: '172.16.0.0/16',
       }),
     );
     expect(aggregatedMsg, 'expected validateEnvAggregated to throw').not.toBeNull();
@@ -701,6 +709,38 @@ describe('guard predicates: throw helper and aggregator agree', () => {
         STORAGE_SECRET_KEY: 'sk',
         STORAGE_BUCKET: 'pm',
         ALLOW_INSECURE_HTTP: 'false',
+        TRUSTED_PROXY_CIDRS: '172.16.0.0/16',
+      }),
+    );
+    expect(aggregatedMsg, 'expected validateEnvAggregated to throw').not.toBeNull();
+    expect(aggregatedMsg).toContain(throwMsg!);
+  });
+
+  it('checkTrustedProxyInProduction: same message in throw and aggregated paths', () => {
+    // Input that ONLY trips the reverse-proxy guard: storage is fully
+    // configured and ALLOW_INSECURE_HTTP=false, so the other production
+    // guards stay quiet. makeEnv leaves TRUSTED_PROXY_CIDRS undefined.
+    const env = makeEnv({
+      NODE_ENV: 'production',
+      STORAGE_ENDPOINT: 'https://storage.example.com',
+      STORAGE_PUBLIC_ENDPOINT: 'https://storage.example.com',
+      STORAGE_ACCESS_KEY: 'ak',
+      STORAGE_SECRET_KEY: 'sk',
+      ALLOW_INSECURE_HTTP: 'false',
+    });
+    const throwMsg = captureMessage(() => assertTrustedProxyInProduction(env));
+    expect(throwMsg, 'expected assertTrustedProxyInProduction to throw').not.toBeNull();
+
+    const aggregatedMsg = captureMessage(() =>
+      validateEnvAggregated({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://prod',
+        STORAGE_ENDPOINT: 'https://storage.example.com',
+        STORAGE_PUBLIC_ENDPOINT: 'https://storage.example.com',
+        STORAGE_ACCESS_KEY: 'ak',
+        STORAGE_SECRET_KEY: 'sk',
+        STORAGE_BUCKET: 'pm',
+        ALLOW_INSECURE_HTTP: 'false',
       }),
     );
     expect(aggregatedMsg, 'expected validateEnvAggregated to throw').not.toBeNull();
@@ -736,6 +776,9 @@ function baseAggregatedInput(extra: Record<string, string>): Record<string, stri
     STORAGE_REGION: 'us-east-1',
     BINARY_AGE_RECIPIENT: 'age1unused',
     ALLOW_INSECURE_HTTP: 'false',
+    // Required in production (checkTrustedProxyInProduction). Part of the
+    // "fully valid prod input" baseline so each arm trips only its guard.
+    TRUSTED_PROXY_CIDRS: '172.16.0.0/16',
     ...extra,
   };
 }

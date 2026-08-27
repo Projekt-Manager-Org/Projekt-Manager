@@ -111,6 +111,12 @@ services:
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       BOOTSTRAP_ADMIN_DISPLAY_NAME: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:-}
       ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-false}
+      # Reverse-proxy trust boundary for X-Forwarded-For. MUST stay in sync
+      # with the `networks.default` subnet pinned at the bottom of this file
+      # — that block exists so this literal has a fixed value to name. The
+      # app refuses to start in production when this is unset (see
+      # assertTrustedProxyInProduction in src/server/config/env.ts).
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-172.16.0.0/16}
       # OpenRouter LLM extraction (ADR-0016). Optional — feature is
       # disabled when the key is absent.
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
@@ -404,6 +410,29 @@ services:
       - app
     restart: unless-stopped
     logging: *default-logging
+
+# The app trusts X-Forwarded-For only from the address Caddy reaches it on,
+# so that address must be deterministic. Left to Docker, the compose network
+# draws from the daemon's default address pool (172.17.0.0/16 upward) and the
+# subnet shifts with whatever else is running on the host — turning the
+# TRUSTED_PROXY_CIDRS boundary into a guess that fails silently (every
+# request attributed to Caddy) when it misses.
+#
+# 172.16.0.0/16 sits *below* Docker's default pool, so the daemon never
+# auto-assigns it to another project's network, and it is disjoint from the
+# WireGuard client range 10.213.0.0/22 (ADR-0008) — a client address can
+# therefore never satisfy the proxy trust check.
+#
+# Changing this subnet is not a hot edit: compose (v5.3.1, verified) stops
+# the containers, removes the network and recreates it on the next `up`, so
+# the deploy carries a short outage. TRUSTED_PROXY_CIDRS must change in the
+# same commit — a subnet the app does not trust means every request is
+# attributed to Caddy.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.16.0.0/16
 
 volumes:
   pgdata:

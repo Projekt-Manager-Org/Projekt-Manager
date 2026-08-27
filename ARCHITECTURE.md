@@ -287,6 +287,7 @@ Vite dev proxy  (dev: localhost:5173 -> :3000)
 Caddy           (prod: HTTPS termination, reverse_proxy -> app:3000)
   v
 Fastify
+  |  trustProxy = TRUSTED_PROXY_CIDRS -> request.ip
   |  @fastify/cookie parses session cookie
   |  auth middleware validates session via session repository
   |  -> 401 if missing/expired
@@ -312,6 +313,10 @@ Zustand store
   v
 React re-renders affected components
 ```
+
+**Client IP attribution.** `request.ip` keys the login rate limiter and the login audit trail, so it must be the client — not Caddy. Fastify believes `X-Forwarded-For` only from the addresses in `TRUSTED_PROXY_CIDRS`, which names the `networks.default` subnet pinned in `docker-compose.yml` (`172.16.0.0/16`); that subnet is pinned precisely so the trust boundary has a fixed address to name, and it is disjoint from the WireGuard client range (ADR-0008). Unset means trust nothing — correct for dev, which bypasses Caddy — and the app refuses to start in production without it, because the silent fallback attributes every request to the proxy and collapses the rate limiter into one global bucket.
+
+> Not a hop count. Fastify 5.12.1 removed the numeric `trustProxy` form (GHSA-3m5p-2c4r-xxw2): a hop count never validated _which_ peer connected.
 
 ---
 

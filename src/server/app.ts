@@ -85,16 +85,27 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     'req.body.confirmation_phrase',
   ];
   const logger = opts.logger === true ? { redact: REDACT_PATHS } : (opts.logger ?? false);
+  // Read once, before the Fastify factory — `trustProxy` below needs it.
+  const env = getEnv();
   const app = Fastify({
     logger,
-    // Trust exactly one proxy hop — Caddy in production (terminating
-    // TLS and forwarding to the app container), nothing in dev. With
-    // trustProxy: true, Fastify would accept any X-Forwarded-For header
-    // from any upstream, which would let a client spoof the rate-limit
-    // key or the log-visible IP by setting X-Forwarded-For directly.
-    // One hop is the tightest value that still gives the real client
-    // IP through the Caddy → app chain. See consolidation review G F-4.
-    trustProxy: 1,
+    // Trust X-Forwarded-For only from the addresses that are actually the
+    // reverse proxy: the pinned compose network subnet Caddy reaches the
+    // app from (ADR-0008, docker-compose.yml `networks.default`). With
+    // trustProxy: true, Fastify would believe any upstream, letting a
+    // client spoof the rate-limit key or the log-visible IP outright.
+    //
+    // Unset ⇒ false ⇒ trust nothing, so `request.ip` is the socket peer.
+    // That is correct for dev, which bypasses Caddy; in production
+    // assertTrustedProxyInProduction() refuses to start without a value,
+    // because the silent fallback would attribute every request to Caddy.
+    //
+    // This was `trustProxy: 1` until fastify 5.12.1 removed the numeric
+    // hop-count form (GHSA-3m5p-2c4r-xxw2) — a hop count never validated
+    // *which* peer connected, so a direct client could forge the header by
+    // supplying enough hops. See consolidation review G F-4 for the
+    // original single-hop intent, which this preserves by address instead.
+    trustProxy: env.TRUSTED_PROXY_CIDRS ?? false,
   });
 
   // Global error handler — preserves 4xx HTTP statusCode and only
@@ -116,7 +127,6 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // Reads from validated env (see env.ts) — not process.env — so ADR-0013
   // and the assertProductionSafe() guard in start.ts share a single source
   // of truth for ALLOW_INSECURE_HTTP. See consolidation review C-3.
-  const env = getEnv();
   const insecureHttp = env.ALLOW_INSECURE_HTTP === 'true';
   // The browser talks to object storage on a DIFFERENT origin — presigned
   // POST for uploads (`connect-src`) and presigned GET for thumbnails /
