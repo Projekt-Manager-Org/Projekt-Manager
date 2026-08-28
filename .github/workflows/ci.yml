@@ -1159,9 +1159,16 @@ jobs:
   # Assignment produces a "Participating" notification, which is
   # delivered regardless of who triggered the run and regardless of
   # repo watch state — the two conditions that suppress the built-in
-  # Actions email. It is also idempotent: a re-run, or Renovate's
-  # weekly force-push, re-assigns an already-assigned user as a no-op
-  # and does not re-notify.
+  # Actions email.
+  #
+  # Assigning an already-assigned user is a no-op: it returns 200 but
+  # writes no `assigned` timeline event, so it raises no second
+  # notification. That cuts BOTH ways — it absorbs Renovate's weekly
+  # force-push without spamming, but on its own it would also mean one
+  # notification per PR for the PR's entire life: red, fixed, red
+  # again for an unrelated reason, silence. `unassign-on-green` below
+  # is what makes the signal repeatable — it clears the assignment on
+  # every green run, so the next failure notifies again.
   #
   # NOT a required check — the "main protection" Ruleset requires
   # `check`, `docker` and `lint`. This job only ever runs on failure,
@@ -1205,3 +1212,58 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/assignees" \
             -f "assignees[]=vlzware" > /dev/null
           echo "::notice::CI is red — assigned PR #${PR_NUMBER} to vlzware"
+
+  # ---------------------------------------------------------------
+  # The other half of `notify-failure`: clear the assignment when the
+  # PR is green.
+  #
+  # Without this, "assigned to me" decays from *needs attention now*
+  # into *was red at some point*, and — because re-assigning an
+  # already-assigned user raises no notification — a PR that goes
+  # red, gets fixed, then goes red again for an unrelated reason
+  # notifies exactly once, on the first failure. Clearing on green
+  # restores one notification per incident.
+  #
+  # ASSUMPTION: assignment on a PR in this repo means "CI is red",
+  # nothing else. Nothing else assigns today — `.github/renovate.json`
+  # sets no `assignees`, and review requests are a separate field —
+  # so there is no human assignment for this to trample. If PR
+  # assignment ever takes on a second meaning, this job has to learn
+  # to distinguish them (the `assigned` timeline event carries the
+  # actor) or move to a label.
+  # ---------------------------------------------------------------
+  unassign-on-green:
+    needs: [lint, check, docker]
+    # NOT `success()`. `docker` is skipped on PRs that touch no
+    # container files, and a skipped dependency does not satisfy
+    # `success()` — the job would silently never run on exactly the
+    # PRs that skip the image build. Test the results directly
+    # instead: no failure and no cancellation among the needs, which
+    # treats `skipped` as the non-event it is. `!cancelled()` is the
+    # status function that stops the default skip propagation.
+    if: |
+      !cancelled() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Clear maintainer assignment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # DELETE on a PR that is not assigned is a harmless no-op
+          # (200, unchanged), so this runs unconditionally on green
+          # rather than reading the current assignees first.
+          # Unassigning raises no notification, so the green path
+          # stays silent.
+          gh api -X DELETE \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/assignees" \
+            -f "assignees[]=vlzware" > /dev/null
+          echo "::notice::CI is green — cleared assignment on PR #${PR_NUMBER}"
