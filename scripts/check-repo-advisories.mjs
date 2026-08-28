@@ -100,15 +100,15 @@
  *   before choosing a word.
  *
  *   The global database is public, so the first permissions-403 downgrades
- *   the remaining probes to anonymous requests. That works, at a cost worth
- *   knowing: anonymous quota is 60/hour per IP, and a run costs one probe
- *   per advisory naming an installed direct dep — 24 today. Two runs from
- *   one runner IP inside an hour would exhaust it and exit 2.
+ *   the remaining probes to anonymous requests. Anonymous quota is 60/hour
+ *   per IP, which is why the probe is lazy: only advisories whose
+ *   repo-level range already matched get one. That is 1 request per run
+ *   today, not one per candidate advisory (24).
  *
- *   The clean fix is a scopeless PAT in `secrets`: it grants nothing beyond
- *   anonymous access and lifts the ceiling to 5000/hour. Not done here
- *   because it needs a secret only a repo admin can create. Until then the
- *   failure is loud, not silent.
+ *   If it ever does approach 60, the fix is a scopeless PAT in `secrets`:
+ *   it grants nothing beyond anonymous access and lifts the ceiling to
+ *   5000/hour. Not done here because it needs a secret only a repo admin
+ *   can create. Until then the failure is loud, not silent.
  *
  *   The repo listing keeps the token: an installation token IS permitted
  *   there, and 50 repos does not fit in the anonymous 60.
@@ -271,6 +271,10 @@ async function ghFetch(urlPath, token) {
         lastError = `HTTP ${res.status} on ${urlPath}`;
       }
     } catch (err) {
+      // Must escape the retry loop intact: it is the signal the caller
+      // matches on to downgrade to an anonymous request, and re-wrapping it
+      // as a generic failure turns a recoverable 403 into a dead run.
+      if (err instanceof ForbiddenError) throw err;
       lastError = `${err.message} on ${urlPath}`;
     }
     if (attempt < RETRIES) await new Promise((r) => setTimeout(r, 500 * attempt));
@@ -490,7 +494,23 @@ for (const slug of slugs) {
 
 // --- resolve ranges against the global DB -----------------------------------
 
-const globalIds = [...new Set(candidates.map((c) => c.ghsa))];
+// Probe ONLY the advisories whose repo-level range actually matches. The
+// global record is consulted to CORRECT a repo-level match — publishers
+// write ranges unbounded below — not to find one. Detection against the
+// global database is layer 2's job: OSV.dev ingests GHSA, and OSV-Scanner
+// runs in this same job. Probing the rest would re-ask a question already
+// answered, and it is the difference between 24 requests per run and 1,
+// which matters because CI cannot authenticate against this endpoint at
+// all (see GLOBAL PROBES) and anonymous quota is 60/hour per IP.
+//
+// Residual: a global record whose curated range is WIDER than the
+// publisher's, during the window before OSV ingests it. Documented in
+// ADR-0027's "does NOT cover" table rather than paid for on every run.
+const adjudicated = candidates
+  .map((c) => ({ ...c, repoMatch: firstMatch(c.version, c.repoRanges) }))
+  .filter((c) => c.repoMatch);
+
+const globalIds = [...new Set(adjudicated.map((c) => c.ghsa))];
 let globalById;
 try {
   const probed = await mapPool(globalIds, async (id) => {
@@ -527,7 +547,9 @@ const findings = [];
 const allowlisted = [];
 const overriddenByGlobal = [];
 
-for (const c of candidates) {
+// Every entry here already matched its repo-level range; the loop decides
+// whether the curated record overturns that.
+for (const c of adjudicated) {
   const global = globalById.get(c.ghsa);
   // The GLOBAL advisory schema types `first_patched_version` as a string or
   // null. The `{ identifier }` object belongs to the Dependabot ALERTS API,
@@ -540,15 +562,14 @@ for (const c of candidates) {
   // Global ranges are curated and bounded on both ends; the repo-level ones
   // are what the publisher wrote. Prefer the former when it exists.
   const useGlobal = globalRanges.length > 0;
-  const matched = firstMatch(c.version, useGlobal ? globalRanges : c.repoRanges);
-  const repoMatch = useGlobal ? firstMatch(c.version, c.repoRanges) : matched;
+  const matched = useGlobal ? firstMatch(c.version, globalRanges) : c.repoMatch;
 
   if (!matched) {
     // Repo says vulnerable, global says patched. Usually the curated record
     // adding the lower bound the publisher omitted — but the premise of this
     // whole layer is that the global DB lags, so a disagreement it resolves
     // in favour of "clean" is exactly the thing not to swallow.
-    if (repoMatch) overriddenByGlobal.push({ ...c, repoRange: repoMatch.range });
+    overriddenByGlobal.push({ ...c, repoRange: c.repoMatch.range });
     continue;
   }
 
@@ -574,7 +595,7 @@ console.log(`Repo-level advisory scan: ${slugs.length} repos, ${directDeps.lengt
 console.log(`  published advisories seen: ${advisoryCount}`);
 if (globalProbeAnonymous) {
   console.log(
-    `  global DB probed anonymously (${globalIds.length} requests, 60/h per IP): the token ` +
+    `  global DB probed anonymously (${globalIds.length} request${globalIds.length === 1 ? '' : 's'}, 60/h per IP): the token ` +
       'is not permitted on /advisories/{ghsa_id}. Expected under ${{ github.token }}.',
   );
 }
