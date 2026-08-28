@@ -245,6 +245,42 @@ cat >"$d/fixtures/advisories/GHSA-gpj5-g38j-94v9.json" <<'JSON'
 JSON
 assert_output 1 "global record still matches" "$d" "patched: 0.45.3"
 
+echo "Case: global record carries a null vulnerable range"
+# GitHub types the GLOBAL `vulnerable_version_range` as string-or-null, same
+# as the repo-level one. Mapping a null straight into the range list threw
+# out of the top level, so a structural failure exited 1 — the code this
+# script reserves for "a matching advisory" — printing a stack trace and no
+# finding. Null entries drop out, so the publisher's range is what judges.
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+cat >"$d/fixtures/advisories/GHSA-gpj5-g38j-94v9.json" <<'JSON'
+{
+  "ghsa_id": "GHSA-gpj5-g38j-94v9",
+  "vulnerabilities": [
+    {
+      "package": { "ecosystem": "npm", "name": "drizzle-orm" },
+      "vulnerable_version_range": null,
+      "first_patched_version": null
+    }
+  ]
+}
+JSON
+assert_output 1 "null global vulnerable range" "$d" "range from: repo-level advisory"
+
+echo "Case: advisory for an installed dep is filed on a sibling repo"
+# Orgs that publish one package per repo still file some advisories centrally.
+# Requiring the filing repo to BE the package's own repo discarded those in
+# silence and printed OK — a false negative in the gate whose subject is
+# false negatives. The link must point at the repo that holds the advisory,
+# not at the package's own repo, or triage lands on a 404.
+d="$(stage)"
+add_dep "$d" "fastify" "5.12.0" '"fastify/fastify"'
+add_dep "$d" "@fastify/rate-limit" "10.0.0" '"fastify/fastify-rate-limit"'
+write_repo_advisory "$d" "$(repo_vuln '<= 10.0.0' '10.0.1' '@fastify/rate-limit')" \
+  published "fastify__fastify" "GHSA-sibl-ing0-0000"
+assert_output 1 "advisory filed on a sibling repo" "$d" \
+  "https://github.com/fastify/fastify/security/advisories/GHSA-sibl-ing0-0000"
+
 echo "Case: repo-level only, split release lines"
 # Documented false positive. Same two-entry advisory, no global record to
 # supply the lower bound, so `<= 1.0.0-beta.19` matches the patched 0.45.2.

@@ -35,7 +35,10 @@
  *
  *   Monorepos resolve correctly: many packages map to one repo
  *   (`@aws-sdk/*` → `aws/aws-sdk-js-v3`), and the match is on the
- *   advisory's own `vulnerabilities[].package.name`, not on the repo.
+ *   advisory's own `vulnerabilities[].package.name`, not on the repo. An
+ *   advisory filed on a SIBLING repo counts too — orgs that split one
+ *   package per repo still file some advisories centrally, and requiring
+ *   the filing repo to be the package's own repo dropped those in silence.
  *
  * WHICH RANGE IS AUTHORITATIVE
  *   Repo-level ranges are written by the publisher; global ones are
@@ -478,7 +481,10 @@ for (const slug of slugs) {
       if (vuln.package?.ecosystem?.toLowerCase() !== 'npm') continue;
       const dep = byName.get(vuln.package.name);
       // The repo may publish advisories for sibling packages we don't use.
-      if (!dep || dep.slug !== slug) continue;
+      // Only that. Also demanding `dep.slug === slug` would drop packages we
+      // DO use whose advisory the org filed on a different repo — a silent
+      // false negative in the gate whose whole subject is false negatives.
+      if (!dep) continue;
       if (!vuln.vulnerable_version_range) continue;
 
       if (!rangesByDep.has(dep.name)) rangesByDep.set(dep.name, []);
@@ -492,6 +498,9 @@ for (const slug of slugs) {
       candidates.push({
         ...byName.get(name),
         ghsa: adv.ghsa_id,
+        // The repo that HOLDS the advisory, which is not always the package's
+        // own repo (`slug` on the dep). The finding's link needs this one.
+        advisorySlug: slug,
         severity: adv.severity,
         summary: adv.summary,
         repoRanges,
@@ -563,8 +572,20 @@ for (const c of adjudicated) {
   // null. The `{ identifier }` object belongs to the Dependabot ALERTS API,
   // which this script never calls — reading `.identifier` here silently
   // dropped the patched version from every global-sourced finding.
+  //
+  // It types `vulnerable_version_range` as string-or-null too, same as the
+  // repo-level shape guarded above. Passing a null through to semver threw
+  // out of the top level, so a structural failure exited 1 — this script's
+  // code for "a matching advisory" — with a stack trace and no finding.
+  // Dropping the entry leaves no global range, so the publisher's range
+  // stands and the candidate is still judged.
   const globalRanges = (global?.vulnerabilities ?? [])
-    .filter((v) => v.package?.ecosystem?.toLowerCase() === 'npm' && v.package.name === c.name)
+    .filter(
+      (v) =>
+        v.package?.ecosystem?.toLowerCase() === 'npm' &&
+        v.package.name === c.name &&
+        v.vulnerable_version_range,
+    )
     .map((v) => ({ range: v.vulnerable_version_range, patched: v.first_patched_version ?? null }));
 
   // Global ranges are curated and bounded on both ends; the repo-level ones
@@ -653,7 +674,14 @@ for (const f of findings) {
   console.error(`    vulnerable: ${f.range}${f.patched ? `   patched: ${f.patched}` : ''}`);
   console.error(`    range from: ${f.rangeSource}`);
   console.error(`    visibility: ${visibility}`);
-  console.error(`    https://github.com/${f.slug}/security/advisories/${f.ghsa}`);
+  console.error(`    https://github.com/${f.advisorySlug}/security/advisories/${f.ghsa}`);
+  if (f.advisorySlug !== f.slug) {
+    console.error(
+      `    NOTE: filed on ${f.advisorySlug}, not on ${f.name}'s own repo ` +
+        `(${f.slug}). Central filing in the same org — the advisory names ` +
+        'this package, so it still counts.',
+    );
+  }
   if (f.unparseable) {
     console.error(
       '    NOTE: the vulnerable range could not be parsed as semver, so this is ' +
