@@ -82,6 +82,10 @@ export default defineConfig({
             'src/ui/**/__tests__/**/*.test.{ts,tsx}',
             'src/hooks/**/__tests__/**/*.test.{ts,tsx}',
             'src/sw/__tests__/**/*.test.ts',
+            // The shared test doubles themselves (`src/test/matchMediaStub.ts`).
+            // A stub that silently misbehaves turns real failures green, so it
+            // gets the same coverage as the code it stands in for.
+            'src/test/__tests__/**/*.test.{ts,tsx}',
           ],
           setupFiles: ['src/test/component-setup.ts'],
         },

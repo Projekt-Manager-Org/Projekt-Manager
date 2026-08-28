@@ -37,7 +37,10 @@ export interface MatchMediaStub {
    * single-query consumer; use `changeQuery` when queries must diverge.
    */
   change(matches: boolean): void;
-  /** Flip ONE query and dispatch `change` to its listeners. */
+  /**
+   * Flip ONE query and dispatch `change` to its listeners. THROWS on a query
+   * the stub does not know — see `installMatchMedia`'s `initial` param.
+   */
   changeQuery(query: string, matches: boolean): void;
   /**
    * Live listener count across every handed-out object, or for one query.
@@ -55,10 +58,17 @@ export interface MatchMediaStub {
  * query separately. In record form an unlisted query THROWS rather than
  * defaulting — a query string the test did not anticipate is a bug in the
  * test, and a silent `false` turns it into a confusing assertion failure
- * somewhere else.
+ * somewhere else. `changeQuery` throws on an unknown query in BOTH forms:
+ * under a boolean `initial` there is no list to check against, so the rule
+ * is "a query the stub has handed out at least once".
  */
 export function installMatchMedia(initial: boolean | Record<string, boolean>): MatchMediaStub {
-  const previous = Object.getOwnPropertyDescriptor(globalThis, 'matchMedia');
+  // The VALUE, not the descriptor. Vitest's jsdom environment defines
+  // `matchMedia` on `globalThis` as an accessor pair, so the install below
+  // writes through its setter and leaves the descriptor untouched —
+  // re-defining that descriptor in `restore()` hands back a getter that
+  // reads this stub, and nothing is restored at all.
+  const previous = (globalThis as { matchMedia?: unknown }).matchMedia;
   const registrations: Registration[] = [];
   const state = new Map<string, boolean>(
     typeof initial === 'boolean' ? [] : Object.entries(initial),
@@ -73,6 +83,14 @@ export function installMatchMedia(initial: boolean | Record<string, boolean>): M
     }
     state.set(query, fallback);
     return fallback;
+  };
+
+  const assertKnown = (query: string): void => {
+    if (state.has(query)) return;
+    const known = [...state.keys()].map((q) => JSON.stringify(q)).join(', ') || '(none yet)';
+    throw new Error(
+      `installMatchMedia: cannot change unknown query ${JSON.stringify(query)}. Known: ${known}`,
+    );
   };
 
   const create = (query: string): MediaQueryList => {
@@ -95,14 +113,6 @@ export function installMatchMedia(initial: boolean | Record<string, boolean>): M
       removeEventListener: (type: string, listener: ChangeListener): void => {
         if (type === 'change') registration.listeners.delete(listener);
       },
-      // Deprecated pair, kept because `component-setup.ts`'s stub carries it
-      // and a consumer may still call it.
-      addListener: (listener: ChangeListener): void => {
-        registration.listeners.add(listener);
-      },
-      removeListener: (listener: ChangeListener): void => {
-        registration.listeners.delete(listener);
-      },
       dispatchEvent: (): boolean => false,
     };
     return mql as unknown as MediaQueryList;
@@ -122,12 +132,17 @@ export function installMatchMedia(initial: boolean | Record<string, boolean>): M
 
   return {
     change(matches: boolean): void {
-      for (const query of [...state.keys()]) {
-        state.set(query, matches);
-        dispatch(query, matches);
-      }
+      // Flip every query BEFORE dispatching any of them. A real viewport
+      // change is already fully applied when the first `change` fires, so a
+      // consumer holding several queries (`useCollapseTier`) must never see
+      // a half-updated combination — and it would, since React reads the
+      // snapshot synchronously inside the listener.
+      const queries = [...state.keys()];
+      for (const query of queries) state.set(query, matches);
+      for (const query of queries) dispatch(query, matches);
     },
     changeQuery(query: string, matches: boolean): void {
+      assertKnown(query);
       state.set(query, matches);
       dispatch(query, matches);
     },
@@ -137,11 +152,7 @@ export function installMatchMedia(initial: boolean | Record<string, boolean>): M
         .reduce((total, r) => total + r.listeners.size, 0);
     },
     restore(): void {
-      if (previous) {
-        Object.defineProperty(globalThis, 'matchMedia', previous);
-      } else {
-        delete (globalThis as { matchMedia?: unknown }).matchMedia;
-      }
+      (globalThis as { matchMedia?: unknown }).matchMedia = previous;
     },
   };
 }
