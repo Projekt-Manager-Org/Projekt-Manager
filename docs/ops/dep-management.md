@@ -116,11 +116,33 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 | Advisory on a **transitive** dep                 | Dependabot security-update PR              | Hours from publication |
 | `lockFileMaintenance` (daily, before 9am)        | Transitive drift refreshed wholesale       | ≤24h                   |
 | OSV-Scanner / Trivy CI fail                      | PR merge blocked                           | Per-PR                 |
+| Repo-level advisory match (direct dep)           | PR merge blocked; nightly run goes red     | Per-PR, else ≤24h      |
 | Nightly full-tree OSV scan                       | Schedule goes red → manual bump (backstop) | ≤24h from publication  |
 | Quarterly review                                 | Walk strategic-dep list (below)            | ~1 hour, 4×/year       |
 | Any npm release (direct or transitive)           | Held from resolution until 3 days old      | +3 days (see below)    |
 
 **Renovate does not cover transitive deps.** Its vulnerability PRs are [direct-dependency-only by design](https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts) — a package that exists only in `package-lock.json` is invisible to it. That class is covered by Dependabot security updates and daily lockfile maintenance instead ([ADR-0027 § 2026-08-06 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-06--renovate-does-not-remediate-transitive-deps)).
+
+## Repo-level advisories
+
+`scripts/check-repo-advisories.mjs` reads each direct dep's `GET /repos/{owner}/{repo}/security-advisories` and blocks the PR on a published advisory whose vulnerable range the installed version satisfies. It runs in `lint` and nightly in `security-scheduled.yml`.
+
+It exists because OSV-Scanner and `npm audit` both key on `(ecosystem, name, version)`, so an advisory with no npm-ecosystem record is invisible to both — [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--repo-level-advisories-and-what-no-layer-covers) has the fastify worked example.
+
+Run it locally:
+
+```bash
+GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs
+```
+
+**Triage.** Bump past the patched version — that is nearly always the fix. Two wrinkles show up more often than with the global-DB scanners:
+
+- **The fix may only exist on a newer major.** Publishers patch the current line and let old ones lapse; `@fastify/rate-limit`'s IPv6 bypass was fixed in 11.2.0 with no 10.x patch. Renovate never auto-merges majors, so this lands as manual work.
+- **A finding on a version the global DB considers patched** means the coarse repo-level range is being used, and the global record has probably not caught up. Check the advisory page before allowlisting — the script already prefers global ranges when they exist, so this should be rare.
+
+No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason + `ignoreUntil` (≤90 days) per [§ Allowlist](#allowlist-osv-scanner--trivy). Do not weaken the check.
+
+**Read the "NOT CHECKED" lines.** Every run prints the direct deps with no GitHub repository and the repos whose advisories endpoint 404s. Those are live coverage gaps, not noise. The amendment above carries the full list of what no layer covers — transitive deps most notably.
 
 ## Release-age cooldown
 
@@ -340,5 +362,6 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 6. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `.npmrc` — `min-release-age=3`, the npm-side half of the release-age cooldown. See [§ Release-age cooldown](#release-age-cooldown).
+- `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` + nightly). See [§ Repo-level advisories](#repo-level-advisories).
 - `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist-osv-scanner--trivy) above.
 - `.trivyignore` — allowlist for Trivy (container image scan). Same schema discipline; comments carry the owner handle.
