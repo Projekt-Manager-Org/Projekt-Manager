@@ -1137,3 +1137,71 @@ jobs:
           branch_slug_tag: ${{ steps.fallback_tags.outputs.branch_slug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
+
+  # ---------------------------------------------------------------
+  # Red-PR notification.
+  #
+  # GitHub emails a workflow failure only to the run's TRIGGERING
+  # ACTOR, so a red run on a bot-opened PR reaches nobody here.
+  # Renovate opens the PR, force-pushes the branch AND enables
+  # auto-merge, so both `triggering_actor` and `auto_merge.enabled_by`
+  # are `renovate[bot]`. The other channels are equally dead: a check
+  # failure posts nothing to the PR thread, and the Dependency
+  # Dashboard (#201) lists the PR under plain "Open" whether it is
+  # green or red — its "Errored" section is for Renovate's own
+  # failures, not CI's.
+  #
+  # Combined with `automerge: true` in .github/renovate.json that
+  # makes BOTH outcomes silent: green squash-merges unattended, red
+  # just stalls. #342 sat red for 9 days that way; 6 bot-triggered
+  # failures (3 Renovate, 3 Dependabot) went unseen before it.
+  #
+  # Assignment produces a "Participating" notification, which is
+  # delivered regardless of who triggered the run and regardless of
+  # repo watch state — the two conditions that suppress the built-in
+  # Actions email. It is also idempotent: a re-run, or Renovate's
+  # weekly force-push, re-assigns an already-assigned user as a no-op
+  # and does not re-notify.
+  #
+  # NOT a required check — the "main protection" Ruleset requires
+  # `check`, `docker` and `lint`. This job only ever runs on failure,
+  # so making it required would gate every green PR on a skipped job.
+  # ---------------------------------------------------------------
+  notify-failure:
+    needs: [lint, check, docker]
+    # `failure()` is true when ANY job in `needs` failed. Naming a
+    # status function is also what stops this job being skipped
+    # outright on the runs where `docker` is skipped by its path
+    # filter — the default behaviour propagates a skipped `needs`.
+    #
+    # Fork PRs get a read-only GITHUB_TOKEN, so the assign below
+    # would 403; skip them rather than paint a second red job. No
+    # fork PRs exist today (Renovate and Dependabot both push
+    # branches into this repo), so this is a guard, not a path.
+    if: |
+      failure() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      # Assignment on a pull request is served by the Issues
+      # assignees endpoint, and the docs describe the required scope
+      # in terms of the target type. Grant both rather than bet on
+      # which one is checked — the default GITHUB_TOKEN in this repo
+      # grants neither (see the `changes` job for the same problem
+      # with `pull-requests: read`).
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Assign maintainer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Hardcoded, not derived: `github.repository_owner` is the
+          # ORG (Projekt-Manager-Org) and assigning an org 422s.
+          gh api -X POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/assignees" \
+            -f "assignees[]=vlzware" > /dev/null
+          echo "::notice::CI is red — assigned PR #${PR_NUMBER} to vlzware"
