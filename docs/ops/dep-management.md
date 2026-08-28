@@ -118,8 +118,32 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 | OSV-Scanner / Trivy CI fail                      | PR merge blocked                           | Per-PR                 |
 | Nightly full-tree OSV scan                       | Schedule goes red → manual bump (backstop) | ≤24h from publication  |
 | Quarterly review                                 | Walk strategic-dep list (below)            | ~1 hour, 4×/year       |
+| Any npm release (direct or transitive)           | Held from resolution until 3 days old      | +3 days (see below)    |
 
 **Renovate does not cover transitive deps.** Its vulnerability PRs are [direct-dependency-only by design](https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts) — a package that exists only in `package-lock.json` is invisible to it. That class is covered by Dependabot security updates and daily lockfile maintenance instead ([ADR-0027 § 2026-08-06 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-06--renovate-does-not-remediate-transitive-deps)).
+
+## Release-age cooldown
+
+A newly-published npm version is not resolvable here until it is **3 days** old. This is the malicious-publish window (`event-stream`, `ua-parser-js`, `chalk`+`debug`), not the buggy-release window — the point is to let researchers and scanners see the package before we do.
+
+Two halves, because neither covers the other's path:
+
+| Half                                                   | Set where                              | Covers                                                                                |
+| ------------------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------- |
+| Renovate `minimumReleaseAge: 3 days` + `strict` filter | inherited from `config:best-practices` | Whether a **direct**-dep bump PR is raised at all. No branch until the age passes.    |
+| npm `min-release-age=3`                                | `.npmrc`                               | What **npm itself resolves** — lockfile maintenance, transitives, local + CI installs |
+
+Renovate cannot enforce its half on `lockFileMaintenance` (or `pin`, `bump`, `rollback`, `lockfileUpdate`, `replacement`): those update types are [documented as unsupported](https://docs.renovatebot.com/key-concepts/minimum-release-age/) because it delegates the resolution to the package manager. `lockFileMaintenance` runs daily here, is exempt from the PR limits, and auto-merges — so it is precisely the path that needs the npm-side half.
+
+Editing rules:
+
+- **Never** add `minimumReleaseAge` to a `packageRules` entry matching `lockFileMaintenance` or `pin`. The preset sets it to `null` there on purpose; a local rule sorts after the preset and overrides the carve-out, and under `minimumReleaseAgeBehaviour=timestamp-required` a missing timestamp reads as not-yet-passed — the branch is never created and the daily transitive refresh stops silently.
+- **Keep both values at 3.** Renovate skips its `--before` flag when it sees `min-release-age` in `.npmrc` and lets npm own the cutoff, so they should not disagree. Raising the npm value alone ETARGETs at resolve time as soon as a direct range's floor is newer than the cutoff (`min-release-age=60` fails on `@fastify/static@^10.1.2` today).
+- Security updates bypass the cooldown on both halves, which is the point — the delay must not slow the fixes it exists to protect.
+
+`npm ci` replays the lockfile and ignores the setting, so image builds and CI installs are unaffected.
+
+**Not covered:** the cooldown is npm-only. Docker base images, digest-pinned Actions, and the checksum-pinned CLI binaries have no release-age delay — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
 ## Weekly wrangler
 
@@ -298,5 +322,6 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 - `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin; `lockFileMaintenance` runs daily and exempt from the PR limits), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 6. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
+- `.npmrc` — `min-release-age=3`, the npm-side half of the release-age cooldown. See [§ Release-age cooldown](#release-age-cooldown).
 - `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist-osv-scanner--trivy) above.
 - `.trivyignore` — allowlist for Trivy (container image scan). Same schema discipline; comments carry the owner handle.

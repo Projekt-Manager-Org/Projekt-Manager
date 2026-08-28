@@ -48,7 +48,8 @@ We will adopt **three coupled changes**:
 - **Grouping:** seven lockstep clusters, one PR per cluster — AWS SDK (`@aws-sdk/**`), ESLint cluster (`eslint` + `@eslint/js` + `globals` + `typescript-eslint` + `eslint-plugin-react-hooks` + `eslint-plugin-react-refresh`), Vitest pair (`vitest` + `@vitest/coverage-v8`), React quartet (`react` + `react-dom` + `@types/react` + `@types/react-dom`), Fastify family (`fastify` + `@fastify/**`), Drizzle pair (`drizzle-orm` + `drizzle-kit`), and Caddy (the two `caddy` base-image FROM tags and the `xcaddy build` version all track the `caddy` Docker image, grouped into one PR so all three advance to the same version together; sharing one datasource keeps them in lockstep. The `caddy-dns/cloudflare` plugin SHA tracks separately via git-refs).
 - **Per-major-version PRs.** No grouping across majors; each major bump gets its own PR with the changelog inline.
 - **Auto-merge** for patch + minor (plus digest/pin/lockfile) when CI is green, including the lockstep clusters — grouping consolidates one PR per cluster, it does not gate the merge. Majors never auto-merge.
-- **Lockfile maintenance** PR weekly to bound transitive drift.
+- **Release-age cooldown, 3 days, npm only.** Inherited from `config:best-practices` → `security:minimumReleaseAgeNpm` on the Renovate side; set again in `.npmrc` (`min-release-age=3`) for the resolution paths Renovate hands to npm. Security updates bypass it. See the [2026-08-28 amendment](#2026-08-28--release-age-cooldown-and-its-limits) for why both halves are needed and why non-npm datasources are excluded.
+- **Lockfile maintenance** PR daily to bound transitive drift, exempt from the PR limits (see the [2026-08-06 amendment](#2026-08-06--renovate-does-not-remediate-transitive-deps)).
 - **Managers:** `npm`, `dockerfile`, `docker-compose`, `github-actions`, and six `customManagers` of type `regex`, each covering a pin the built-in managers cannot see:
 
   | #   | Surface                                                                                            | Datasource                   |
@@ -162,6 +163,22 @@ Acknowledged tradeoff: PR-time image-vuln gating coverage is the union of `docke
 - No env-var or schema impact.
 
 ## Amendments
+
+### 2026-08-28 — Release-age cooldown, and its limits
+
+Raised in [#345](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/345) §2 as "no release-age cooldown under auto-merge". Half of it was already there; the other half was in a place Renovate structurally cannot reach.
+
+**Already covered.** `config:best-practices` extends `security:minimumReleaseAgeNpm` (`minimumReleaseAge: 3 days` + `internalChecksFilter: strict` for the npm datasource). This repo has extended `config:best-practices` since the ADR landed, so direct npm bumps have never been raised inside the 3-day window.
+
+**The actual gap.** Renovate's `security:minimumReleaseAgeNpm` sets `minimumReleaseAge: null` for `lockFileMaintenance`, `pin`, `bump`, `rollback`, `lockfileUpdate` and `replacement`, because it delegates those to the package manager and has no release timestamp to age against. `lockFileMaintenance` is the daily, PR-limit-exempt, auto-merged path this project relies on for **all** transitive refresh (§2026-08-06 amendment) — so the one update type carrying the most unreviewed surface had no cooldown at all.
+
+**Changed.** `.npmrc` sets `min-release-age=3`. npm applies it during resolution, which is the step Renovate hands off, so it covers the paths the preset carves out — plus local and CI installs. Renovate detects the key and skips its own `--before` flag rather than conflicting. Measured on the lockfile at `a32d900`: a full regeneration under `min-release-age=3` resolves 63 packages to older versions than an unconstrained run, transitives included.
+
+**Rejected: adding `minimumReleaseAge` to a local `packageRule` matching `lockFileMaintenance`** (the fix #345 proposed). Local `packageRules` sort after preset rules, so it overrides the carve-out rather than complementing it; with `minimumReleaseAgeBehaviour=timestamp-required` (default since Renovate 42) an absent timestamp counts as not-yet-passed, and `internalChecksFilter: strict` then suppresses branch creation entirely. The likely outcome is lockfile maintenance silently stopping — reopening the exact gap §2026-08-06 was written to close. `.github/renovate.json`'s top-level `description` carries this warning at the config itself.
+
+**Documented non-goal: non-npm cooldown.** `docker`, `github-tags`, `github-release-attachments` and `git-refs` pins carry no release-age delay. Docker Hub and `github-tags` do expose timestamps, so extending is technically possible, but GHCR and Quay do not — and under `timestamp-required` an un-ageable digest is held _indefinitely_ rather than raised, which turns a hardening step into a stalled update path. Revisit if a pin's threat profile changes; do not extend blindly.
+
+The cooldown does not apply to security updates on either half — Renovate bypasses `minimumReleaseAge` for vulnerability PRs by design. That exemption is load-bearing: a cooldown that delayed CVE fixes would work against itself.
 
 ### 2026-08-06 — Renovate does not remediate transitive deps
 

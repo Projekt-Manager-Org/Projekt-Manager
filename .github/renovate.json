@@ -1,5 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "Release-age cooldown is inherited, not configured here: config:best-practices extends security:minimumReleaseAgeNpm, which sets minimumReleaseAge=3 days + internalChecksFilter=strict for the npm datasource.",
+    "DO NOT restate minimumReleaseAge on a packageRule that matches lockFileMaintenance or pin. That preset deliberately sets it to null for those update types because Renovate cannot age them; a rule here sorts AFTER the preset and would override the carve-out. With minimumReleaseAgeBehaviour=timestamp-required (default since Renovate 42) a missing timestamp counts as not-yet-passed, so the branch is never created — silently stopping the daily lockFileMaintenance run that is this repo's only transitive-dep refresh path (ADR-0027 § 2026-08-06 amendment).",
+    "The npm-side cooldown for those paths lives in .npmrc (min-release-age=3). Non-npm datasources — docker, github-tags, github-release-attachments, git-refs — carry NO cooldown; see ADR-0027 § 2026-08-28 amendment for why that is a documented non-goal rather than an oversight."
+  ],
   "extends": [
     "config:best-practices",
     ":dependencyDashboard",
