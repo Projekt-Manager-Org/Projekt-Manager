@@ -70,6 +70,15 @@ jobs:
       # tree, so the install is a prerequisite, not a convenience.
       - run: npm ci
 
+      # Not optional here. check-repo-advisories.mjs scrapes ids out of
+      # osv-scanner.toml and does not read `ignoreUntil` — that expiry is
+      # owned by this script. OSV-Scanner honours the date itself, so the
+      # osv-scan job above needs no equivalent; this one does. Without it a
+      # lapsed entry suppresses a match indefinitely, in the steady-state
+      # backstop, which is the exact place a stale allowlist matters.
+      - name: Check allowlist schema (osv-scanner.toml + .trivyignore)
+        run: bash scripts/check-allowlist-schema.sh
+
       - name: Repo-level advisory check
         env:
           GITHUB_TOKEN: ${{ github.token }}

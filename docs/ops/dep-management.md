@@ -138,7 +138,9 @@ GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs
 **Triage.** Bump past the patched version — that is nearly always the fix. Two wrinkles show up more often than with the global-DB scanners:
 
 - **The fix may only exist on a newer major.** Publishers patch the current line and let old ones lapse; `@fastify/rate-limit`'s IPv6 bypass was fixed in 11.2.0 with no 10.x patch. Renovate never auto-merges majors, so this lands as manual work.
-- **A finding on a version the global DB considers patched** means the coarse repo-level range is being used, and the global record has probably not caught up. Check the advisory page before allowlisting — the script already prefers global ranges when they exist, so this should be rare.
+- **A finding on a version the global DB considers patched.** Publishers split release lines but write each range unbounded below, so a `<= 2.x` written for the newer line also matches every `1.x` under semver. The curated global record adds the missing lower bound; when there is no global record — the case this gate exists for — nothing does, and the gate reds on a patched version. The finding says `NOTE: this advisory files N ranges` when that shape is in play. Verify the line you are on is really affected, then allowlist.
+
+Runs also print **`cleared by the global DB, repo-level range still matches`** — the reverse: the publisher says vulnerable, the curated record says patched, and the curated one won. Usually correct. But this layer exists because the global DB lags, so read the line rather than skipping past it.
 
 No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason + `ignoreUntil` (≤90 days) per [§ Allowlist](#allowlist-osv-scanner--trivy). Do not weaken the check.
 
