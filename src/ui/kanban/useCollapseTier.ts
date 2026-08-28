@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import type { CollapseTier } from '@/config/stateConfig';
 
 /*
@@ -14,25 +14,40 @@ const BREAKPOINTS: { maxWidth: number; tier: CollapseTier }[] = [
   { maxWidth: 1350, tier: 2 },
   { maxWidth: 1780, tier: 3 },
 ];
+
+const queryFor = (maxWidth: number): string => `(max-width: ${maxWidth}px)`;
+
+/**
+ * Collapse tier for the current viewport, re-derived on every breakpoint
+ * transition. `0` = nothing collapsed.
+ *
+ * `useSyncExternalStore` re-reads the snapshot immediately after subscribing,
+ * so a transition landing between the render-time read and the subscription
+ * is not dropped (issue #327). It also supplies the SSR branch that the bare
+ * `window.matchMedia` reads below would otherwise crash on.
+ *
+ * Not built on `useMediaQuery`: that would mean one hook call per breakpoint,
+ * and hooks cannot be mapped over `BREAKPOINTS`. Hard-coding three calls
+ * would leave a fourth entry silently unsubscribed. Subscribing to the table
+ * keeps it the single source of truth.
+ */
 export function useCollapseTier(): number {
-  const [activeTier, setActiveTier] = useState(() => computeTier());
-
-  useEffect(() => {
-    const queries = BREAKPOINTS.map(({ maxWidth }) =>
-      window.matchMedia(`(max-width: ${maxWidth}px)`),
-    );
-
-    const update = () => setActiveTier(computeTier());
-    queries.forEach((mq) => mq.addEventListener('change', update));
-    return () => queries.forEach((mq) => mq.removeEventListener('change', update));
+  // Empty deps: `BREAKPOINTS` is module-level, so the subscription set is
+  // fixed. An unstable `subscribe` would resubscribe on every commit.
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    const queries = BREAKPOINTS.map(({ maxWidth }) => window.matchMedia(queryFor(maxWidth)));
+    queries.forEach((mq) => mq.addEventListener('change', onStoreChange));
+    return () => queries.forEach((mq) => mq.removeEventListener('change', onStoreChange));
   }, []);
 
-  return activeTier;
+  // `computeTier` returns a number — a stable identity across reads, so no
+  // snapshot caching is needed.
+  return useSyncExternalStore(subscribe, computeTier, () => 0);
 }
 
 function computeTier(): number {
   for (const { maxWidth, tier } of BREAKPOINTS) {
-    if (window.matchMedia(`(max-width: ${maxWidth}px)`).matches) {
+    if (window.matchMedia(queryFor(maxWidth)).matches) {
       return tier;
     }
   }
