@@ -38,14 +38,23 @@
  *   advisory's own `vulnerabilities[].package.name`, not on the repo.
  *
  * WHICH RANGE IS AUTHORITATIVE
- *   Repo-level ranges are written by the publisher and are frequently
- *   coarser than the curated ones the advisory gets when it is promoted to
- *   the global database. GHSA-gpj5-g38j-94v9 is the worked example: the
- *   repo-level entry says `<= 1.0.0-beta.19` — one range spanning both
- *   release lines — while the global record splits it into `< 0.45.2`
- *   (patched 0.45.2) and `>= 1.0.0-beta.2, < 1.0.0-beta.20`. The installed
- *   drizzle-orm@0.45.2 satisfies the coarse range and is in fact the
- *   patched release on its line.
+ *   Repo-level ranges are written by the publisher; global ones are
+ *   curated on promotion. They are usually the same split, written
+ *   differently — and the difference decides the verdict.
+ *
+ *   GHSA-gpj5-g38j-94v9 is the worked example. Both records split
+ *   drizzle-orm's two release lines; only the global one bounds them:
+ *
+ *     repo-level:  <= 0.45.1          patched 0.45.2
+ *                  <= 1.0.0-beta.19   patched 1.0.0-beta.20
+ *     global:      < 0.45.2                      (first patched 0.45.2)
+ *                  >= 1.0.0-beta.2, < 1.0.0-beta.20
+ *
+ *   `<= 1.0.0-beta.19` is unbounded below, so under plain semver it also
+ *   covers every 0.x release — `semver.satisfies('0.45.2',
+ *   '<=1.0.0-beta.19')` is `true`. The installed drizzle-orm@0.45.2 is the
+ *   PATCHED release on its own line, and the global record's lower bound
+ *   (`>= 1.0.0-beta.2`) is what says so.
  *
  *   So: when a global record exists, its ranges win. When it does not — the
  *   case this gate exists for — the repo-level range is all there is, and
@@ -53,12 +62,28 @@
  *   skipped, because OSV-Scanner replaced `npm audit` here and the two
  *   databases are not supersets of one another either.
  *
+ *   KNOWN FALSE POSITIVE, unmitigated on purpose. An unbounded `<= X` on a
+ *   newer release line matches every older version. When the advisory is
+ *   repo-level-only there is no curated record to correct it, so the gate
+ *   reds on a version that is in fact patched. The finding output flags the
+ *   shape ("this advisory splits into N ranges") so triage is quick; the
+ *   allowlist is the only escape. Narrowing it automatically would mean
+ *   guessing a lower bound the publisher did not write — and guessing wrong
+ *   in the direction of a false NEGATIVE, which is the failure #345 was
+ *   about. See ADR-0027 § 2026-08-28 amendment.
+ *
  * ALLOWLIST
  *   Reuses `osv-scanner.toml`'s `[[IgnoredVulns]]` ids rather than
  *   introducing a third allowlist file — same advisory namespace, same
  *   owner/reason/ignoreUntil contract, already gated by
  *   scripts/check-allowlist-schema.sh. This script only scrapes the ids;
  *   that script owns schema validation, including expiry.
+ *
+ *   That split only holds where both run. Every caller MUST run
+ *   check-allowlist-schema.sh first, or an expired `ignoreUntil` suppresses
+ *   a match forever — unlike OSV-Scanner, which honours the date itself.
+ *   Enforced in ci.yml (`lint`) and security-scheduled.yml
+ *   (`repo-advisories`).
  *
  * FAIL-CLOSED
  *   A network error, a missing token, or an unparseable response exits 2.
@@ -70,6 +95,10 @@
  *   disabled, are listed explicitly in the output. ADR-0027's complaint
  *   about its own vulnerability layer was that it "reads as complete" —
  *   this one states what it did not check.
+ *
+ *   Listings are paginated to exhaustion rather than capped at one page,
+ *   and a 200 whose body is not an array exits 2. Both are cases where a
+ *   truncated read would have printed the same "OK" as a complete one.
  *
  * EXIT CODES
  *   0  no matching advisory
@@ -108,15 +137,37 @@ function readJson(file) {
 }
 
 /**
- * `git+https://github.com/fastify/fastify.git` → `fastify/fastify`.
- * Returns null for anything not on github.com, which is a coverage gap to
- * report rather than an error.
+ * Upstream repo → `owner/repo`, or null when it is not on GitHub.
+ *
+ * npm's `repository` field has four shapes in the installed tree and three
+ * of them omit the host entirely, because GitHub is npm's default:
+ *
+ *   git+https://github.com/fastify/fastify.git   → fastify/fastify
+ *   git@github.com:fastify/fastify.git           → fastify/fastify
+ *   github:ds300/patch-package                   → ds300/patch-package
+ *   eslint/eslint                                → eslint/eslint
+ *
+ * Matching only the literal `github.com` dropped the last two silently,
+ * which cost coverage on six direct deps including `tsx` and `eslint`.
+ *
+ * Other hosts always carry their own prefix (`gitlab:`, `bitbucket:`) or a
+ * full URL, so neither can reach the shorthand branch. A null is a coverage
+ * gap to report, not an error.
  */
 function toGitHubSlug(repository) {
   const raw = typeof repository === 'string' ? repository : repository?.url;
   if (typeof raw !== 'string') return null;
-  const m = /github\.com[/:]([^/]+)\/([^/#?]+?)(?:\.git)?(?:[/#?]|$)/.exec(raw);
-  return m ? `${m[1]}/${m[2]}` : null;
+  const value = raw.trim();
+
+  const url = /github\.com[/:]([^/]+)\/([^/#?]+?)(?:\.git)?(?:[/#?]|$)/.exec(value);
+  if (url) return `${url[1]}/${url[2]}`;
+
+  // `owner/repo`, optionally `github:`-prefixed and `#committish`-suffixed.
+  // `[\w.-]` cannot match the `:` in another host's prefix or in a scheme.
+  const shorthand = /^(?:github:)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:#.*)?$/.exec(value);
+  if (shorthand) return `${shorthand[1]}/${shorthand[2]}`;
+
+  return null;
 }
 
 /**
@@ -130,14 +181,29 @@ function toSemverRange(vulnerableVersionRange) {
 async function ghFetch(urlPath, token) {
   // Fixture mode. A missing file is a deliberate 404 — that is how the
   // self-test expresses "advisories disabled" and "not in the global DB".
+  // Page 2+ of a listing is the exception: a missing file there is the end
+  // of the listing, not a disabled endpoint. Stage `owner__repo.p2.json` to
+  // exercise pagination.
   if (fixtureDir) {
-    const repo = /^\/repos\/([^/]+)\/([^/]+)\/security-advisories/.exec(urlPath);
-    const advisory = /^\/advisories\/([^/?]+)/.exec(urlPath);
+    const [pathname, query] = urlPath.split('?');
+    const page = Number(new URLSearchParams(query ?? '').get('page') ?? '1');
+    const repo = /^\/repos\/([^/]+)\/([^/]+)\/security-advisories$/.exec(pathname);
+    const advisory = /^\/advisories\/([^/]+)$/.exec(pathname);
     let file;
-    if (repo) file = path.join(fixtureDir, 'repos', `${repo[1]}__${repo[2]}.json`);
-    else if (advisory) file = path.join(fixtureDir, 'advisories', `${advisory[1]}.json`);
-    else throw new Error(`no fixture mapping for ${urlPath}`);
-    if (!existsSync(file)) return { status: 404, body: null };
+    if (repo) {
+      file = path.join(
+        fixtureDir,
+        'repos',
+        `${repo[1]}__${repo[2]}${page > 1 ? `.p${page}` : ''}.json`,
+      );
+      if (!existsSync(file))
+        return page > 1 ? { status: 200, body: [] } : { status: 404, body: null };
+    } else if (advisory) {
+      file = path.join(fixtureDir, 'advisories', `${advisory[1]}.json`);
+      if (!existsSync(file)) return { status: 404, body: null };
+    } else {
+      throw new Error(`no fixture mapping for ${urlPath}`);
+    }
     return { status: 200, body: readJson(file) };
   }
 
@@ -167,6 +233,43 @@ async function ghFetch(urlPath, token) {
     if (attempt < RETRIES) await new Promise((r) => setTimeout(r, 500 * attempt));
   }
   throw new Error(lastError);
+}
+
+/**
+ * Read a paginated listing to exhaustion.
+ *
+ * `per_page=100` alone caps the read at 100 and says nothing about it. The
+ * busiest repo in this dependency set files 35 advisories today, so the cap
+ * is not live — but a silently truncated listing prints the same "OK" as a
+ * complete one, which is the failure mode this whole file exists to remove.
+ *
+ * Anything other than a list, or a listing that will not terminate, throws
+ * and is handled as a structural failure (exit 2).
+ */
+async function ghFetchList(basePath, token) {
+  const PER_PAGE = 100;
+  const MAX_PAGES = 20;
+  const all = [];
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const res = await ghFetch(`${basePath}?per_page=${PER_PAGE}&page=${page}`, token);
+    // Only the first page can legitimately 404 (advisories disabled, repo
+    // renamed or deleted). Later on it would mean the listing moved mid-read.
+    if (res.status === 404) {
+      if (page === 1) return { status: 404, body: null };
+      throw new Error(`${basePath} 404'd on page ${page} after returning pages 1..${page - 1}`);
+    }
+    if (!Array.isArray(res.body)) {
+      throw new Error(`${basePath} page ${page} returned ${typeof res.body}, not a list`);
+    }
+    all.push(...res.body);
+    if (res.body.length < PER_PAGE) return { status: 200, body: all };
+  }
+
+  throw new Error(
+    `${basePath} still had results after ${MAX_PAGES} pages (${all.length} entries). ` +
+      'Refusing to report a truncated listing as complete.',
+  );
 }
 
 /** Run `worker` over `items` with a bounded pool, preserving input order. */
@@ -244,15 +347,15 @@ const byName = new Map(resolved.map((d) => [d.name, d]));
 let advisoriesBySlug;
 try {
   const fetched = await mapPool(slugs, async (slug) => {
-    const res = await ghFetch(`/repos/${slug}/security-advisories?per_page=100`, token);
+    const res = await ghFetchList(`/repos/${slug}/security-advisories`, token);
     return [slug, res];
   });
   advisoriesBySlug = new Map(fetched);
 } catch (err) {
   fail(
-    `could not reach the GitHub advisories API: ${err.message}. Failing closed — ` +
-      'a gate that reports "no advisories" because the API was unreachable is ' +
-      'indistinguishable from a passing one.',
+    `could not read the GitHub advisories API: ${err.message}. Failing closed — ` +
+      'a gate that reports "no advisories" because the listing was unreachable or ' +
+      'incomplete is indistinguishable from a passing one.',
     2,
   );
 }
@@ -277,20 +380,24 @@ if (existsSync(allowlistPath)) {
 
 // --- candidates -------------------------------------------------------------
 
-// Every (advisory, installed dep) pair, before any range evaluation. Ranges
-// are resolved in the next step, where the global record may override.
+// One entry per (advisory, installed dep), carrying ALL of that advisory's
+// ranges for the package — publishers split by release line, and the count
+// is what tells a triager whether an unbounded upper range is meaningful.
+// Ranges are evaluated in the next step, where the global record may win.
 const candidates = [];
 let advisoryCount = 0;
 
 for (const slug of slugs) {
-  const { body } = advisoriesBySlug.get(slug);
-  if (!Array.isArray(body)) continue;
+  const { status, body } = advisoriesBySlug.get(slug);
+  // 404 only — ghFetchList guarantees an array on 200 or throws.
+  if (status === 404) continue;
 
   for (const adv of body) {
     // Drafts and withdrawn advisories are not claims about shipped code.
     if (adv.state !== 'published' || adv.withdrawn_at) continue;
     advisoryCount += 1;
 
+    const rangesByDep = new Map();
     for (const vuln of adv.vulnerabilities ?? []) {
       if (vuln.package?.ecosystem?.toLowerCase() !== 'npm') continue;
       const dep = byName.get(vuln.package.name);
@@ -298,13 +405,20 @@ for (const slug of slugs) {
       if (!dep || dep.slug !== slug) continue;
       if (!vuln.vulnerable_version_range) continue;
 
+      if (!rangesByDep.has(dep.name)) rangesByDep.set(dep.name, []);
+      rangesByDep.get(dep.name).push({
+        range: vuln.vulnerable_version_range,
+        patched: vuln.patched_versions ?? null,
+      });
+    }
+
+    for (const [name, repoRanges] of rangesByDep) {
       candidates.push({
-        ...dep,
+        ...byName.get(name),
         ghsa: adv.ghsa_id,
         severity: adv.severity,
         summary: adv.summary,
-        repoRange: vuln.vulnerable_version_range,
-        repoPatched: vuln.patched_versions,
+        repoRanges,
       });
     }
   }
@@ -329,39 +443,50 @@ try {
   );
 }
 
+/**
+ * First range the installed version satisfies, or the first that cannot be
+ * parsed. Unparseable counts as a match on purpose: an advisory this script
+ * could not evaluate must not pass silently.
+ */
+function firstMatch(version, ranges) {
+  for (const r of ranges) {
+    const semverRange = toSemverRange(r.range);
+    if (!semver.validRange(semverRange)) return { ...r, unparseable: true };
+    if (semver.satisfies(version, semverRange, { includePrerelease: true })) {
+      return { ...r, unparseable: false };
+    }
+  }
+  return null;
+}
+
 const findings = [];
 const allowlisted = [];
+const overriddenByGlobal = [];
 
 for (const c of candidates) {
   const global = globalById.get(c.ghsa);
+  // The GLOBAL advisory schema types `first_patched_version` as a string or
+  // null. The `{ identifier }` object belongs to the Dependabot ALERTS API,
+  // which this script never calls — reading `.identifier` here silently
+  // dropped the patched version from every global-sourced finding.
   const globalRanges = (global?.vulnerabilities ?? [])
     .filter((v) => v.package?.ecosystem?.toLowerCase() === 'npm' && v.package.name === c.name)
-    .map((v) => ({ range: v.vulnerable_version_range, patched: v.first_patched_version?.identifier }));
+    .map((v) => ({ range: v.vulnerable_version_range, patched: v.first_patched_version ?? null }));
 
-  // Global ranges are curated per release line; the repo-level one is what
-  // the publisher wrote. Prefer the former when it exists.
+  // Global ranges are curated and bounded on both ends; the repo-level ones
+  // are what the publisher wrote. Prefer the former when it exists.
   const useGlobal = globalRanges.length > 0;
-  const ranges = useGlobal ? globalRanges : [{ range: c.repoRange, patched: c.repoPatched }];
+  const matched = firstMatch(c.version, useGlobal ? globalRanges : c.repoRanges);
+  const repoMatch = useGlobal ? firstMatch(c.version, c.repoRanges) : matched;
 
-  let matched = null;
-  let unparseable = false;
-
-  for (const r of ranges) {
-    const semverRange = toSemverRange(r.range);
-    if (!semver.validRange(semverRange)) {
-      // Do not skip: an unparseable range is an unevaluated advisory, and
-      // silently passing one is the failure mode this gate exists to fix.
-      unparseable = true;
-      matched = r;
-      break;
-    }
-    if (semver.satisfies(c.version, semverRange, { includePrerelease: true })) {
-      matched = r;
-      break;
-    }
+  if (!matched) {
+    // Repo says vulnerable, global says patched. Usually the curated record
+    // adding the lower bound the publisher omitted — but the premise of this
+    // whole layer is that the global DB lags, so a disagreement it resolves
+    // in favour of "clean" is exactly the thing not to swallow.
+    if (repoMatch) overriddenByGlobal.push({ ...c, repoRange: repoMatch.range });
+    continue;
   }
-
-  if (!matched) continue;
 
   const finding = {
     ...c,
@@ -369,7 +494,11 @@ for (const c of candidates) {
     patched: matched.patched,
     rangeSource: useGlobal ? 'global advisory DB' : 'repo-level advisory',
     inGlobalDb: Boolean(global),
-    unparseable,
+    unparseable: matched.unparseable,
+    // A repo-level-only advisory that splits release lines writes each range
+    // unbounded below, so the newest line's range also covers every older
+    // version. Flagged, not auto-narrowed — see the header.
+    splitLines: !useGlobal && c.repoRanges.length > 1,
   };
   if (allowlist.has(c.ghsa)) allowlisted.push(finding);
   else findings.push(finding);
@@ -389,6 +518,16 @@ if (noGitHubRepo.length > 0) {
 if (advisoriesDisabled.length > 0) {
   console.log(`  NOT CHECKED — advisories disabled or repo moved (${advisoriesDisabled.length}):`);
   console.log(`    ${advisoriesDisabled.join(', ')}`);
+}
+if (overriddenByGlobal.length > 0) {
+  console.log(
+    `  cleared by the global DB, repo-level range still matches (${overriddenByGlobal.length}):`,
+  );
+  for (const o of overriddenByGlobal) {
+    console.log(`    ${o.ghsa}  ${o.name}@${o.version}  repo range: ${o.repoRange}`);
+  }
+  console.log('    Global ranges won. If the global record is the stale one, this is a MISS —');
+  console.log('    check the advisory page before trusting the pass.');
 }
 if (allowlisted.length > 0) {
   console.log(`  allowlisted via osv-scanner.toml (${allowlisted.length}):`);
@@ -421,6 +560,15 @@ for (const f of findings) {
       '    NOTE: the vulnerable range could not be parsed as semver, so this is ' +
         'reported unevaluated. Check by hand and widen toSemverRange() if the ' +
         'syntax is legitimate.',
+    );
+  }
+  if (f.splitLines) {
+    console.error(
+      `    NOTE: this advisory files ${f.repoRanges.length} ranges for ${f.name} ` +
+        `(${f.repoRanges.map((r) => r.range).join(' | ')}) and has no global record ` +
+        'to bound them. A range like `<= 2.x` written for a newer release line also ' +
+        'matches every older version under semver, so verify the line you are on is ' +
+        'really affected before treating this as real.',
     );
   }
   console.error('');
