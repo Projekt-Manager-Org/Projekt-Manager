@@ -76,7 +76,8 @@ Overlap between the two bots is intentional belt-and-braces.
 
 ### 2. Supply-chain scanning in CI (blocking)
 
-- **OSV-Scanner** (CLI v2.3.8 pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`. **Blocks merge on any vuln**: the v2.3.8 CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
+- **OSV-Scanner** (CLI v2.3.8 pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`, but **not a superset of it** — both key on `(ecosystem, name, version)` and each carries records the other lacks (see the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers)). **Blocks merge on any vuln**: the v2.3.8 CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
+- **Repo-level GitHub advisories** (`scripts/check-repo-advisories.mjs`) — reads each direct dep's `/security-advisories` endpoint, where advisories that were never promoted to the global database do exist. Covers what neither lockfile scanner structurally can. **Blocks merge on a match**; fails closed on API errors. Added by the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers), which also states what all three layers leave uncovered.
 - **Trivy** (`aquasecurity/trivy-action`) — scans the built Docker image, including OS packages (`apk`, `apt`) that OSV-Scanner can't see; plus filesystem secret scan and IaC misconfig scan. **Blocks merge on `HIGH` / `CRITICAL`** (Trivy supports `--severity` and the noisier surfaces it scans benefit from the filter). Runs on PRs that touch image-affecting paths (`Dockerfile*`, `package.json`, `package-lock.json`, `docker-compose*`, `docker/**`, `.github/workflows/ci.yml`); post-merge backstop in `build-and-push`.
 
 Exceptions to blocking go in a documented allowlist with a review trigger (the pattern from the superseded [ADR-0007](0007-suppress-esbuild-dev-server-advisory.md) is the right shape).
@@ -163,6 +164,35 @@ Acknowledged tradeoff: PR-time image-vuln gating coverage is the union of `docke
 - No env-var or schema impact.
 
 ## Amendments
+
+### 2026-08-28 — Repo-level advisories, and what no layer covers
+
+Raised in [#345](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/345) §1. `main` ran a fastify release with a known high-impact advisory and every gate was green.
+
+**Why both scanners missed it.** OSV-Scanner and `npm audit` key on `(ecosystem, name, version)`. `CVE-2026-16732` (trustProxy hop-count `X-Forwarded-*` spoofing, the exact `trustProxy: 1` shape `main` was running) has an OSV record carrying a **GIT range and no `package` field at all** — `POST /v1/query` for `npm/fastify@5.12.0` returns `{}`. `GHSA-3m5p-2c4r-xxw2` 404s on GitHub's _global_ advisory API because it is still a repo-level advisory, so the GitHub Advisory DB does not carry it either. What caught it was `tsc` rejecting a removed type-union member. Luck, not a control.
+
+Not a fluke: the same fastify release fixed a second repo-level-only advisory, `GHSA-w2qp-rph6-63g4`.
+
+**§Decision.2's premise was wrong.** It described OSV as a strict superset of `npm audit` for npm. Neither database is a superset of the other, and neither is a superset of what upstream publishes at its own repo. A GIT-only OSV record is invisible to lockfile scanning by construction. Corrected in-place, along with the same claim in `ci.yml`'s comment.
+
+**Added.** `scripts/check-repo-advisories.mjs`, gating `lint` on every PR and running nightly in `security-scheduled.yml`. For each direct dependency whose upstream is on GitHub it reads `GET /repos/{owner}/{repo}/security-advisories` and fails on a published, non-withdrawn advisory whose vulnerable range the installed version satisfies. Monorepos resolve correctly — the match is on the advisory's own `vulnerabilities[].package.name`, not on the repo. It fails closed: a network error or missing token exits 2, never "clean".
+
+Allowlisting reuses `osv-scanner.toml`'s `[[IgnoredVulns]]` ids rather than adding a third allowlist file — same advisory namespace, same owner/reason/`ignoreUntil` contract, already gated by `scripts/check-allowlist-schema.sh`.
+
+**Range precedence.** Publisher-written repo-level ranges are often coarser than the curated global record. `GHSA-gpj5-g38j-94v9` files one `<= 1.0.0-beta.19` range spanning both `drizzle-orm` release lines, while the global record splits it into `< 0.45.2` and `>= 1.0.0-beta.2, < 1.0.0-beta.20` — the installed `0.45.2` is the patched release on its line. So when a global record exists its ranges win; when it does not, the repo-level range is all there is and is used. Advisories with a global record are still evaluated rather than skipped, because OSV-Scanner replaced `npm audit` here and the two databases are not supersets of one another either.
+
+**What this layer does NOT cover.** §Decision.2 previously read as complete; it was not, and neither is this. Stated plainly so the next reader does not have to rediscover it:
+
+| Not covered                                         | Why                                                                                                                                          |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Transitive** deps                                 | Only direct deps are walked. A repo-level advisory on a lockfile-only package is invisible.                                                  |
+| Packages with no GitHub repository                  | 6 today (`eslint`, `prettier`, `tsx`, `globals`, `patch-package`, `eslint-plugin-react-refresh`). The check lists them by name on every run. |
+| Repos with advisories disabled, renamed, or deleted | The endpoint 404s; listed by name on every run.                                                                                              |
+| Advisories upstream never files anywhere            | A silently-patched bug is invisible to all three layers. Nothing in CI can close this.                                                       |
+| Non-npm ecosystems                                  | Docker images, pinned Actions and CLI binaries have no equivalent gate. Trivy covers published OS/image CVEs only.                           |
+| Malicious publishes with no advisory at all         | Different threat, different control — the release-age cooldown below.                                                                        |
+
+**Landed red, deliberately.** The gate found two live repo-level-only advisories on its first real run — `GHSA-grpc-p53c-r64v` (`@fastify/rate-limit`, rate-limit bypass via IPv6 address rotation, fixed only in the 11.x line) and `GHSA-82fw-gwwq-j7x9` (`vitest`, path traversal, fixed in 4.1.11). Both had been open with CI green. Tracked and fixed alongside this change; a gate that ships with its own findings suppressed is not a gate.
 
 ### 2026-08-28 — Release-age cooldown, and its limits
 
