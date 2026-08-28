@@ -138,10 +138,27 @@ Renovate cannot enforce its half on `lockFileMaintenance` (or `pin`, `bump`, `ro
 Editing rules:
 
 - **Never** add `minimumReleaseAge` to a `packageRules` entry matching `lockFileMaintenance` or `pin`. The preset sets it to `null` there on purpose; a local rule sorts after the preset and overrides the carve-out, and under `minimumReleaseAgeBehaviour=timestamp-required` a missing timestamp reads as not-yet-passed — the branch is never created and the daily transitive refresh stops silently.
-- **Keep both values at 3.** Renovate skips its `--before` flag when it sees `min-release-age` in `.npmrc` and lets npm own the cutoff, so they should not disagree. Raising the npm value alone ETARGETs at resolve time as soon as a direct range's floor is newer than the cutoff (`min-release-age=60` fails on `@fastify/static@^10.1.2` today).
-- Security updates bypass the cooldown on both halves, which is the point — the delay must not slow the fixes it exists to protect.
+- **Keep both values at 3.** Renovate skips its `--before` flag when it sees `min-release-age` in `.npmrc` and lets npm own the cutoff, so they should not disagree. Raising the npm value widens the ETARGET window below (`min-release-age=60` fails on `@fastify/static@^10.1.2` today).
+- **Security updates bypass the Renovate half only.** npm has no exemption — `min-release-age` flattens to `before = now - 3 days` for every resolution. A fix published inside the window ETARGETs.
 
 `npm ci` replays the lockfile and ignores the setting, so image builds and CI installs are unaffected.
+
+### When resolution ETARGETs
+
+```
+npm error code ETARGET
+npm error notarget No matching version found for <pkg>@<range> with a date before <date>.
+```
+
+A direct range's floor is newer than the cutoff — most often a security bump Renovate raised inside the 3-day window.
+
+**There is no automatic recovery.** Renovate retries without `--before` on ETARGET, but the retry is guarded on that flag being set and Renovate deliberately leaves it empty when `.npmrc` carries `min-release-age`. The PR stays broken until someone acts.
+
+```bash
+npm install --min-release-age=0
+```
+
+Then commit the lockfile onto the Renovate branch. `--before` is refused (npm marks the two mutually exclusive). Waiting out the window works too, and is the right call when the bump is not a CVE fix.
 
 **Not covered:** the cooldown is npm-only. Docker base images, digest-pinned Actions, and the checksum-pinned CLI binaries have no release-age delay — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
