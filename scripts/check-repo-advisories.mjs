@@ -85,33 +85,41 @@
  *   Enforced in ci.yml (`lint`) and security-scheduled.yml
  *   (`repo-advisories`).
  *
- * GLOBAL PROBES: TOKEN OPTIONAL, AND REFUSED IN CI
- *   The two endpoints do not accept the same credential:
+ * GLOBAL PROBES: THE CI TOKEN CANNOT SAY "NOT IN THE GLOBAL DB"
+ *   `${{ github.token }}` is a GitHub App installation token, and on
+ *   /advisories/{ghsa_id} it does not answer the way a PAT does. Measured,
+ *   same three ids, PAT and anonymous locally, App token in CI:
  *
- *     /repos/{owner}/{repo}/security-advisories   token required
- *     /advisories/{ghsa_id}                       PAT ok, App token 403s
+ *                          in global DB   NOT in global DB
+ *     PAT / anonymous           200             404
+ *     App installation token    200             403
  *
- *   `${{ github.token }}` is a GitHub App installation token. GitHub's
- *   "Permissions required for GitHub Apps" table lists the repo- and
- *   org-scoped advisory endpoints and NOT the global one — an App cannot
- *   hold a permission for the global database, so the request is refused.
- *   This gate's first CI run died on exactly that, and reported it as a
- *   rate limit, which is why the 403 branch now reads the quota header
- *   before choosing a word.
+ *   "Not in the global database" is this gate's whole subject matter — a
+ *   repo-level-only advisory is exactly one that 404s there. Under
+ *   ${{ github.token }} that answer arrives as 403 instead, so a run that
+ *   should have fallen back to the publisher's range died at exit 2. The
+ *   first CI run failed on GHSA-3m5p-2c4r-xxw2, which is one of the two
+ *   fastify advisories in WHY THIS EXISTS above.
  *
- *   The global database is public, so the first permissions-403 downgrades
- *   the remaining probes to anonymous requests. Anonymous quota is 60/hour
- *   per IP, which is why the probe is lazy: only advisories whose
- *   repo-level range already matched get one. That is 1 request per run
- *   today, not one per candidate advisory (24).
+ *   Likely cause rather than confirmed: GitHub's "Permissions required for
+ *   GitHub Apps" table lists the repo- and org-scoped advisory endpoints
+ *   and no global one, and 403-instead-of-404 is the usual shape of
+ *   "cannot confirm this does not exist". The 200s show the endpoint
+ *   itself is reachable, so it is not a blanket refusal.
  *
- *   If it ever does approach 60, the fix is a scopeless PAT in `secrets`:
- *   it grants nothing beyond anonymous access and lifts the ceiling to
- *   5000/hour. Not done here because it needs a secret only a repo admin
- *   can create. Until then the failure is loud, not silent.
+ *   Handling: the global DB is public, so a 403 that is not a quota answer
+ *   downgrades the probe to an anonymous request, which returns the honest
+ *   404. Anonymous quota is 60/hour per IP, so the probe is also lazy —
+ *   only advisories whose repo-level range already matched get one. That
+ *   is 1 request per run today rather than one per candidate (24).
  *
- *   The repo listing keeps the token: an installation token IS permitted
- *   there, and 50 repos does not fit in the anonymous 60.
+ *   If it ever approaches 60, the fix is a scopeless PAT in `secrets`: it
+ *   grants nothing beyond anonymous access and lifts the ceiling to
+ *   5000/hour. Not done here because only a repo admin can create it.
+ *   Until then the failure is loud, not silent.
+ *
+ *   The repo listing keeps the token: it needs one, and 50 repos does not
+ *   fit in the anonymous 60.
  *
  * FAIL-CLOSED
  *   A network error, a missing token, or an unparseable response exits 2.
