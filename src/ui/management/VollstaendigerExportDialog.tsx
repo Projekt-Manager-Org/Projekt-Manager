@@ -22,8 +22,9 @@
  * selection.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useExportJobStore } from '@/state/exportJobStore';
 import { useDialogA11y } from '@/ui/common/useDialogA11y';
 import {
@@ -37,14 +38,10 @@ interface VollstaendigerExportDialogProps {
   onClose: () => void;
 }
 
-function probeIsMobile(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia(`(max-width: ${ATTACHMENT_CONFIG.exportAllMobileWarningBreakpointPx}px)`)
-    .matches;
-}
-
 export function VollstaendigerExportDialog({ onClose }: VollstaendigerExportDialogProps) {
-  const [isMobile, setIsMobile] = useState<boolean>(probeIsMobile);
+  const isMobile = useMediaQuery(
+    `(max-width: ${ATTACHMENT_CONFIG.exportAllMobileWarningBreakpointPx}px)`,
+  );
   const [startClicked, setStartClicked] = useState<boolean>(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const buttonFocusRef = useRef<HTMLButtonElement>(null);
@@ -59,16 +56,6 @@ export function VollstaendigerExportDialog({ onClose }: VollstaendigerExportDial
   // pending/running) resumes straight to progress; a fresh open (Export button,
   // job null or terminal) shows preflight first.
   const [jobStatusAtMount] = useState(() => job?.status);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mql = window.matchMedia(
-      `(max-width: ${ATTACHMENT_CONFIG.exportAllMobileWarningBreakpointPx}px)`,
-    );
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
-  }, []);
 
   const onStart = useCallback(() => {
     setStartClicked(true);
