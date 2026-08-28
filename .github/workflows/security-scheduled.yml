@@ -47,3 +47,39 @@ jobs:
         --config=./osv-scanner.toml
         ./
       fail-on-vuln: true
+
+  # Same steady-state argument as the OSV scan above, for the layer OSV
+  # cannot reach: an advisory filed at the upstream repo and never promoted
+  # to the global database is invisible to every lockfile scanner
+  # (ADR-0027 § 2026-08-28 amendment). The PR gate in ci.yml only fires
+  # when someone opens a PR — on a dep nobody is touching, this nightly run
+  # is the only thing that will ever notice.
+  repo-advisories:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      # The check reads installed versions and upstream repo URLs from the
+      # tree, so the install is a prerequisite, not a convenience.
+      - run: npm ci
+
+      # Not optional here. check-repo-advisories.mjs scrapes ids out of
+      # osv-scanner.toml and does not read `ignoreUntil` — that expiry is
+      # owned by this script. OSV-Scanner honours the date itself, so the
+      # osv-scan job above needs no equivalent; this one does. Without it a
+      # lapsed entry suppresses a match indefinitely, in the steady-state
+      # backstop, which is the exact place a stale allowlist matters.
+      - name: Check allowlist schema (osv-scanner.toml + .trivyignore)
+        run: bash scripts/check-allowlist-schema.sh
+
+      - name: Repo-level advisory check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-repo-advisories.mjs

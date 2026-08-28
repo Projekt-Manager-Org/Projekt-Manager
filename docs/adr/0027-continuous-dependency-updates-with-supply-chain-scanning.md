@@ -76,7 +76,8 @@ Overlap between the two bots is intentional belt-and-braces.
 
 ### 2. Supply-chain scanning in CI (blocking)
 
-- **OSV-Scanner** (CLI v2.3.8 pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`. **Blocks merge on any vuln**: the v2.3.8 CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
+- **OSV-Scanner** (CLI v2.3.8 pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`, but **not a superset of it** — both key on `(ecosystem, name, version)` and each carries records the other lacks (see the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers)). **Blocks merge on any vuln**: the v2.3.8 CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
+- **Repo-level GitHub advisories** (`scripts/check-repo-advisories.mjs`) — reads each direct dep's `/security-advisories` endpoint, where advisories that were never promoted to the global database do exist. Covers what neither lockfile scanner structurally can. **Blocks merge on a match**; fails closed on API errors. Added by the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers), which also states what all three layers leave uncovered.
 - **Trivy** (`aquasecurity/trivy-action`) — scans the built Docker image, including OS packages (`apk`, `apt`) that OSV-Scanner can't see; plus filesystem secret scan and IaC misconfig scan. **Blocks merge on `HIGH` / `CRITICAL`** (Trivy supports `--severity` and the noisier surfaces it scans benefit from the filter). Runs on PRs that touch image-affecting paths (`Dockerfile*`, `package.json`, `package-lock.json`, `docker-compose*`, `docker/**`, `.github/workflows/ci.yml`); post-merge backstop in `build-and-push`.
 
 Exceptions to blocking go in a documented allowlist with a review trigger (the pattern from the superseded [ADR-0007](0007-suppress-esbuild-dev-server-advisory.md) is the right shape).
@@ -164,6 +165,59 @@ Acknowledged tradeoff: PR-time image-vuln gating coverage is the union of `docke
 
 ## Amendments
 
+### 2026-08-28 — Repo-level advisories, and what no layer covers
+
+Raised in [#345](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/345) §1. `main` ran a fastify release with a known high-impact advisory and every gate was green.
+
+**Why both scanners missed it.** OSV-Scanner and `npm audit` key on `(ecosystem, name, version)`. `CVE-2026-16732` (trustProxy hop-count `X-Forwarded-*` spoofing, the exact `trustProxy: 1` shape `main` was running) has an OSV record carrying a **GIT range and no `package` field at all** — `POST /v1/query` for `npm/fastify@5.12.0` returns `{}`. `GHSA-3m5p-2c4r-xxw2` 404s on GitHub's _global_ advisory API because it is still a repo-level advisory, so the GitHub Advisory DB does not carry it either. What caught it was `tsc` rejecting a removed type-union member. Luck, not a control.
+
+Not a fluke: the same fastify release fixed a second repo-level-only advisory, `GHSA-w2qp-rph6-63g4`.
+
+**§Decision.2's premise was wrong.** It described OSV as a strict superset of `npm audit` for npm. Neither database is a superset of the other, and neither is a superset of what upstream publishes at its own repo. A GIT-only OSV record is invisible to lockfile scanning by construction. Corrected in-place, along with the same claim in `ci.yml`'s comment.
+
+**Added.** `scripts/check-repo-advisories.mjs`, gating `lint` on every PR and running nightly in `security-scheduled.yml`. For each direct dependency whose upstream is on GitHub it reads `GET /repos/{owner}/{repo}/security-advisories` and fails on a published, non-withdrawn advisory whose vulnerable range the installed version satisfies. Monorepos resolve correctly — the match is on the advisory's own `vulnerabilities[].package.name`, not on the repo. It fails closed: a network error or missing token exits 2, never "clean".
+
+Resolving "whose upstream is on GitHub" is the load-bearing step, and three of npm's four `repository` shapes omit the host because GitHub is npm's default (`eslint/eslint`, `github:ds300/patch-package`). Matching the literal `github.com` alone silently skips them.
+
+Allowlisting reuses `osv-scanner.toml`'s `[[IgnoredVulns]]` ids rather than adding a third allowlist file — same advisory namespace, same owner/reason/`ignoreUntil` contract, already gated by `scripts/check-allowlist-schema.sh`. That script owns the expiry: unlike OSV-Scanner, this gate does not read `ignoreUntil`, so **every caller must run it first** or a lapsed entry suppresses a match forever. Both callers do.
+
+**Range precedence.** Repo-level ranges are publisher-written; global ones are curated on promotion. Usually the same split, written differently — and the difference decides the verdict. `GHSA-gpj5-g38j-94v9` on `drizzle-orm` splits the two release lines in **both** records; only the global one bounds them:
+
+| Source     | Ranges for `drizzle-orm`                        |
+| ---------- | ----------------------------------------------- |
+| repo-level | `<= 0.45.1` · `<= 1.0.0-beta.19`                |
+| global     | `< 0.45.2` · `>= 1.0.0-beta.2, < 1.0.0-beta.20` |
+
+`<= 1.0.0-beta.19` is unbounded below, so under plain semver it also covers every `0.x` release — `semver.satisfies('0.45.2', '<=1.0.0-beta.19')` is `true`. The installed `0.45.2` is the patched release on its own line, and the global record's `>= 1.0.0-beta.2` is what says so. When a global record exists its ranges win; when it does not, the repo-level range is all there is and is used. Advisories with a global record are still evaluated rather than skipped, because OSV-Scanner replaced `npm audit` here and the two databases are not supersets of one another either.
+
+The corollary is a false positive with no mitigation: when a split-line advisory is **repo-level-only** — the case this gate exists for — nothing supplies the missing lower bound, and the gate reds on a version that is in fact patched. Left unmitigated on purpose. Inferring a bound the publisher did not write would guess in the false-**negative** direction, and `@fastify/rate-limit`'s unbounded `< 11.2.0` below was a true positive of exactly that shape. The finding output flags the shape and the allowlist is the escape.
+
+**What this layer does NOT cover.** §Decision.2 previously read as complete; it was not, and neither is this. Stated plainly so the next reader does not have to rediscover it:
+
+| Not covered                                         | Why                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Transitive** deps                                 | Only direct deps are walked. A repo-level advisory on a lockfile-only package is invisible.                                                                                                                                                                                                                                          |
+| Packages with no GitHub repository                  | **0 today** — all 58 direct deps resolve to 50 GitHub repos. The check lists any that stop resolving, by name, on every run.                                                                                                                                                                                                         |
+| Repos with advisories disabled, renamed, or deleted | The endpoint 404s; listed by name on every run. 0 today.                                                                                                                                                                                                                                                                             |
+| A stale **global** record overriding a repo match   | Global ranges win, so a global record that has not caught up silently clears a repo-level match. The run prints every such disagreement rather than passing in silence; nothing auto-fails it.                                                                                                                                       |
+| A global range **wider** than the publisher's       | The global record is probed only to correct a repo-level match, never to find one — detection against the global DB is OSV-Scanner's job, in the same CI job. A curated range widened before OSV ingests it falls between the two. Keeps the probe at 1 request/run instead of 24, which matters given the anonymous fallback below. |
+| Advisories upstream never files anywhere            | A silently-patched bug is invisible to all three layers. Nothing in CI can close this.                                                                                                                                                                                                                                               |
+| Non-npm ecosystems                                  | Docker images, pinned Actions and CLI binaries have no equivalent gate. Trivy covers published OS/image CVEs only.                                                                                                                                                                                                                   |
+| Malicious publishes with no advisory at all         | Different threat, different control — the release-age cooldown below.                                                                                                                                                                                                                                                                |
+
+**The CI token cannot express "not in the global database."** `${{ github.token }}` is a GitHub App installation token, and on `/advisories/{ghsa_id}` it answers differently from a PAT. Measured on the same three ids — PAT and anonymous locally, App token in CI:
+
+|                        | in global DB | **not** in global DB |
+| ---------------------- | ------------ | -------------------- |
+| PAT / anonymous        | 200          | 404                  |
+| App installation token | 200          | **403**              |
+
+A repo-level-only advisory is by definition one that 404s there, so the gate's own subject matter is the case CI cannot read. The first CI run died at exit 2 on `GHSA-3m5p-2c4r-xxw2` — one of the two fastify advisories that motivated this amendment. Likely cause rather than confirmed: GitHub's App-permissions table lists no global-advisory permission, and 403-instead-of-404 is the usual shape of "cannot confirm this does not exist"; the 200s show the endpoint is not refused outright.
+
+Handled by downgrading a non-quota 403 to an anonymous request, which returns the honest 404. Anonymous quota is 60/h per IP, hence the lazy probe above. A scopeless PAT in `secrets` would lift it to 5000/h; not added, since only a repo admin can create one and 1 request/run is far from the ceiling.
+
+**Landed red, deliberately.** The gate found two live repo-level-only advisories on its first real run — `GHSA-grpc-p53c-r64v` (`@fastify/rate-limit`, rate-limit bypass via IPv6 address rotation, fixed only in the 11.x line) and `GHSA-82fw-gwwq-j7x9` (`vitest`, path traversal, fixed in 4.1.11). Both had been open with CI green. Tracked and fixed alongside this change; a gate that ships with its own findings suppressed is not a gate.
+
 ### 2026-08-28 — Release-age cooldown, and its limits
 
 Raised in [#345](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/345) §2 as "no release-age cooldown under auto-merge". Half of it was already there; the other half was in a place Renovate structurally cannot reach.
@@ -178,7 +232,16 @@ Raised in [#345](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/3
 
 **Documented non-goal: non-npm cooldown.** `docker`, `github-tags`, `github-release-attachments` and `git-refs` pins carry no release-age delay. Docker Hub and `github-tags` do expose timestamps, so extending is technically possible, but GHCR and Quay do not — and under `timestamp-required` an un-ageable digest is held _indefinitely_ rather than raised, which turns a hardening step into a stalled update path. Revisit if a pin's threat profile changes; do not extend blindly.
 
-The cooldown does not apply to security updates on either half — Renovate bypasses `minimumReleaseAge` for vulnerability PRs by design. That exemption is load-bearing: a cooldown that delayed CVE fixes would work against itself.
+**Accepted cost: the security-update bypass only exists on the Renovate half.** Renovate skips `minimumReleaseAge` for vulnerability PRs by design. npm has no equivalent — `min-release-age` flattens to `before = now - 3 days` with no exclusion list, and is `exclusive` with `--before`. So a fix published inside the window still resolves against the cutoff:
+
+```
+npm error code ETARGET
+npm error notarget No matching version found for <pkg>@<range> with a date before <date>.
+```
+
+Renovate's own recovery is dead here. It retries lockfile generation without `--before` on ETARGET, but the retry is guarded on the flag being set (`if (beforeFlag && …)`) — and it deliberately leaves the flag empty when it sees `min-release-age` in `.npmrc`. The PR just stays broken until a human runs `npm install --min-release-age=0` (`--before` is refused as exclusive) or waits out the window.
+
+Accepted because the alternative is worse: dropping `.npmrc` reopens the `lockFileMaintenance` gap, which is the daily auto-merged path carrying the most unreviewed surface. The failure is loud, bounded at 3 days, and has a one-command manual override. Revisit if it fires in practice.
 
 ### 2026-08-06 — Renovate does not remediate transitive deps
 

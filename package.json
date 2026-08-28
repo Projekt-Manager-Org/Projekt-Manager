@@ -62,7 +62,7 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
-    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/rate-limit": "^11.2.0",
     "@fastify/static": "^10.1.2",
     "@noble/hashes": "^2.2.0",
     "@uploadcare/image-shrink": "^6.18.4",
@@ -97,7 +97,7 @@
     "@types/react-dom": "19.2.4",
     "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^6.0.2",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "4.1.11",
     "concurrently": "^10.0.0",
     "drizzle-kit": "0.31.10",
     "eslint": "10.4.1",
@@ -109,11 +109,12 @@
     "lint-staged": "^17.0.5",
     "patch-package": "^8.0.1",
     "prettier": "3.9.6",
+    "semver": "7.8.5",
     "tsx": "^4.22.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "8.60.0",
     "unpdf": "^1.6.2",
     "vite": "^8.0.13",
-    "vitest": "4.1.10"
+    "vitest": "4.1.11"
   }
 }

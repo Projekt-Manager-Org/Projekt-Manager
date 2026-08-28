@@ -140,9 +140,18 @@ jobs:
         run: bash scripts/__tests__/check-allowlist-schema.test.sh
 
       # OSV-Scanner (ADR-0027 §Decision.2) — replaces `npm audit`. OSV.dev
-      # ingests GHSA, so OSV is a strict superset of npm audit for npm
-      # advisories AND covers transitive OS-level CVEs the registry index
-      # does not surface. Inline-in-the-job CLI install instead of
+      # ingests GHSA and covers transitive OS-level CVEs the registry index
+      # does not surface.
+      #
+      # It is NOT a strict superset of npm audit, which this comment used
+      # to claim. Both key on (ecosystem, name, version), so neither can
+      # see an advisory that has no npm-ecosystem record — and the two
+      # databases ingest at different times, so each carries records the
+      # other lacks. The "Repo-level advisory check" step below is the
+      # layer that covers what neither reaches (#345, ADR-0027
+      # § 2026-08-28 amendment).
+      #
+      # Inline-in-the-job CLI install instead of
       # google/osv-scanner-action because that action only ships reusable
       # workflows (separate jobs) and a composite Docker action documented
       # as "not intended to be used directly" — neither fits an inline step.
@@ -185,6 +194,34 @@ jobs:
         # principle (CLAUDE.md). False positives go through
         # osv-scanner.toml with the documented owner/reason/expiry schema.
         run: osv-scanner scan source --lockfile=./package-lock.json --config=./osv-scanner.toml
+
+      # Repo-level advisory layer (ADR-0027 § 2026-08-28 amendment).
+      # OSV-Scanner and npm audit both key on (ecosystem, name, version),
+      # so an advisory that never gets an npm-ecosystem record is invisible
+      # to both. #345 is the proof: fastify's CVE-2026-16732 reached `main`
+      # with every gate green, because its OSV record carries a GIT range
+      # and no package field, and its GHSA is repo-level only. This step
+      # reads each direct dep's repo-level advisories, which is where such
+      # an advisory does exist.
+      #
+      # Needs a token for the per-repo listing: 50 repos does not fit in
+      # the anonymous 60 req/h. github.token is read-only on public repo
+      # data and is not exposed to the checkout.
+      #
+      # On the global /advisories/{ghsa_id} probe, github.token answers
+      # 403 where a PAT answers 404 — i.e. exactly for the repo-level-only
+      # advisories this gate is about. The script downgrades those probes
+      # to anonymous requests (the DB is public) and reports when it does.
+      # See its GLOBAL PROBES header.
+      #
+      # Fails closed — a network error exits 2 rather than reporting clean.
+      - name: Repo-level advisory check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-repo-advisories.mjs
+
+      - name: Repo-level advisory check — self-test
+        run: bash scripts/__tests__/check-repo-advisories.test.sh
 
       # Trivy source-tree scans land in `lint` (not in `docker`) so they
       # run on every PR regardless of which paths changed. The `docker`
