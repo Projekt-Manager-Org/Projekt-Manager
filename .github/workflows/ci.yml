@@ -204,9 +204,15 @@ jobs:
       # reads each direct dep's repo-level advisories, which is where such
       # an advisory does exist.
       #
-      # Needs a token: the endpoint allows 60 req/h unauthenticated, which
-      # does not cover the dependency set. github.token is read-only on
-      # public repo data and is not exposed to the checkout.
+      # Needs a token for the per-repo listing: 50 repos does not fit in
+      # the anonymous 60 req/h. github.token is read-only on public repo
+      # data and is not exposed to the checkout.
+      #
+      # It does NOT work for the global /advisories/{ghsa_id} probe —
+      # github.token is an App installation token and GitHub grants Apps
+      # no permission on the global database, so it 403s. The script
+      # downgrades those probes to anonymous requests and says so in its
+      # output. See its GLOBAL PROBES header for the scopeless-PAT upgrade.
       #
       # Fails closed — a network error exits 2 rather than reporting clean.
       - name: Repo-level advisory check

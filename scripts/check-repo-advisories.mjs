@@ -85,6 +85,34 @@
  *   Enforced in ci.yml (`lint`) and security-scheduled.yml
  *   (`repo-advisories`).
  *
+ * GLOBAL PROBES: TOKEN OPTIONAL, AND REFUSED IN CI
+ *   The two endpoints do not accept the same credential:
+ *
+ *     /repos/{owner}/{repo}/security-advisories   token required
+ *     /advisories/{ghsa_id}                       PAT ok, App token 403s
+ *
+ *   `${{ github.token }}` is a GitHub App installation token. GitHub's
+ *   "Permissions required for GitHub Apps" table lists the repo- and
+ *   org-scoped advisory endpoints and NOT the global one — an App cannot
+ *   hold a permission for the global database, so the request is refused.
+ *   This gate's first CI run died on exactly that, and reported it as a
+ *   rate limit, which is why the 403 branch now reads the quota header
+ *   before choosing a word.
+ *
+ *   The global database is public, so the first permissions-403 downgrades
+ *   the remaining probes to anonymous requests. That works, at a cost worth
+ *   knowing: anonymous quota is 60/hour per IP, and a run costs one probe
+ *   per advisory naming an installed direct dep — 24 today. Two runs from
+ *   one runner IP inside an hour would exhaust it and exit 2.
+ *
+ *   The clean fix is a scopeless PAT in `secrets`: it grants nothing beyond
+ *   anonymous access and lifts the ceiling to 5000/hour. Not done here
+ *   because it needs a secret only a repo admin can create. Until then the
+ *   failure is loud, not silent.
+ *
+ *   The repo listing keeps the token: an installation token IS permitted
+ *   there, and 50 repos does not fit in the anonymous 60.
+ *
  * FAIL-CLOSED
  *   A network error, a missing token, or an unparseable response exits 2.
  *   A scanner that reports "no advisories" because it could not reach the
@@ -178,6 +206,10 @@ function toSemverRange(vulnerableVersionRange) {
   return vulnerableVersionRange.split(',').join(' ').trim();
 }
 
+/** A 403 that more quota will not fix. Distinguished so the global probe
+ *  can fall back to an anonymous call instead of failing the run. */
+class ForbiddenError extends Error {}
+
 async function ghFetch(urlPath, token) {
   // Fixture mode. A missing file is a deliberate 404 — that is how the
   // self-test expresses "advisories disabled" and "not in the global DB".
@@ -213,7 +245,8 @@ async function ghFetch(urlPath, token) {
       const res = await fetch(`https://api.github.com${urlPath}`, {
         headers: {
           accept: 'application/vnd.github+json',
-          authorization: `Bearer ${token}`,
+          // Omitted entirely when null — see GLOBAL PROBES RUN UNAUTHENTICATED.
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
           'user-agent': 'projekt-manager-advisory-check',
           'x-github-api-version': '2022-11-28',
         },
@@ -222,8 +255,18 @@ async function ghFetch(urlPath, token) {
       // was renamed, or (for the global-DB probe) the advisory is repo-only.
       if (res.status === 404) return { status: 404, body: null };
       if (res.ok) return { status: res.status, body: await res.json() };
-      if (res.status === 403 || res.status === 429) {
+      // 403 is quota ONLY when the remaining count is actually zero.
+      // Otherwise it is a permissions answer, and labelling it "rate
+      // limited" sends the next reader chasing the wrong thing — which is
+      // exactly what happened on this gate's first CI run.
+      const remaining = res.headers.get('x-ratelimit-remaining');
+      if (res.status === 429 || (res.status === 403 && remaining === '0')) {
         lastError = `rate limited (${res.status}) on ${urlPath}`;
+      } else if (res.status === 403) {
+        // Not transient — retrying a permissions answer just burns quota.
+        throw new ForbiddenError(
+          `forbidden (403) on ${urlPath} — this token is not permitted on that endpoint`,
+        );
       } else {
         lastError = `HTTP ${res.status} on ${urlPath}`;
       }
@@ -270,6 +313,27 @@ async function ghFetchList(basePath, token) {
     `${basePath} still had results after ${MAX_PAGES} pages (${all.length} entries). ` +
       'Refusing to report a truncated listing as complete.',
   );
+}
+
+// Flipped by the first permissions-403 off the global endpoint, so the
+// remaining probes go straight to the anonymous call instead of each
+// re-learning that the token is unwelcome.
+let globalProbeAnonymous = false;
+
+/**
+ * Read one global advisory, downgrading to an anonymous request when the
+ * token is not permitted on that endpoint. See GLOBAL PROBES.
+ */
+async function fetchGlobalAdvisory(id, token) {
+  if (token && !globalProbeAnonymous) {
+    try {
+      return await ghFetch(`/advisories/${id}`, token);
+    } catch (err) {
+      if (!(err instanceof ForbiddenError)) throw err;
+      globalProbeAnonymous = true;
+    }
+  }
+  return ghFetch(`/advisories/${id}`, null);
 }
 
 /** Run `worker` over `items` with a bounded pool, preserving input order. */
@@ -430,7 +494,7 @@ const globalIds = [...new Set(candidates.map((c) => c.ghsa))];
 let globalById;
 try {
   const probed = await mapPool(globalIds, async (id) => {
-    const res = await ghFetch(`/advisories/${id}`, token);
+    const res = await fetchGlobalAdvisory(id, token);
     return [id, res.status === 404 ? null : res.body];
   });
   globalById = new Map(probed);
@@ -508,6 +572,12 @@ for (const c of candidates) {
 
 console.log(`Repo-level advisory scan: ${slugs.length} repos, ${directDeps.length} direct deps`);
 console.log(`  published advisories seen: ${advisoryCount}`);
+if (globalProbeAnonymous) {
+  console.log(
+    `  global DB probed anonymously (${globalIds.length} requests, 60/h per IP): the token ` +
+      'is not permitted on /advisories/{ghsa_id}. Expected under ${{ github.token }}.',
+  );
+}
 
 // State what was NOT checked. A layer that reads as complete is the exact
 // complaint #345 raised against the existing two.
