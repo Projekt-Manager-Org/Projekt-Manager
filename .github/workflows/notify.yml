@@ -31,19 +31,30 @@
 #   - **A run that never queues.** No run, no event. Only a cron
 #     watchdog catches that; `docs/ops/dep-management.md` § Weekly
 #     wrangler is the standing backstop and says so.
-#   - **`startup_failure` of ci.yml itself.** Whether `workflow_run`
-#     fires at all when the triggering run never started is
-#     undocumented by GitHub and unverified here (500 runs of repo
-#     history contain zero `startup_failure`, so there is no local
-#     evidence either way). Treat defect (1) above as addressed for
-#     runner outages and job-level failures, and UNPROVEN for a
-#     malformed ci.yml. Note also that the `workflows:` filter matches
-#     on workflow NAME, which an unparseable file may not have.
-#     Mitigating this from the other side: `lint` runs actionlint over
+#   - **`startup_failure` of a monitored workflow.** MEASURED, not
+#     assumed: `workflow_run` does NOT fire. Two probes on #349 broke
+#     `ci.yml` deliberately — once unparseable, once valid YAML with an
+#     invalid schema — and neither produced a `Notify` run. The name
+#     filter is not the reason: the workflow ENTITY keeps its
+#     registered name (`CI`), so `workflows: [CI]` would have matched.
+#     No configuration change fixes this; the event is simply not
+#     delivered for a run that never started. Treat defect (1) above as
+#     addressed for runner outages and job-level failures, and NOT
+#     addressed for a workflow that fails to start.
+#
+#     Two observations from the same probes, worth knowing:
+#     the failed RUN is named by its file path
+#     (`.github/workflows/ci.yml`) rather than by `name:`, even when
+#     the YAML parses; and an unparseable file has no readable `on:`
+#     either, so GitHub queues a run for whatever event occurred,
+#     ignoring the branch filters.
+#
+#     Left uncovered deliberately rather than worked around, because
+#     the case cannot reach `main`: `lint` runs actionlint over
 #     `.github/workflows/`, and the "main protection" Ruleset requires
-#     `lint`/`check`/`docker` — a PR whose ci.yml does not parse can
-#     never report those checks, so it can never merge. Malformed YAML
-#     reaching `main` is blocked before this workflow would matter.
+#     `lint`/`check`/`docker`. A PR whose ci.yml does not parse reports
+#     NO checks at all — verified on #349, which sat `BLOCKED` with an
+#     empty check list — so it can never merge.
 #
 # DELIBERATELY NOT MONITORED
 #   - `E2E (manual)` — flaky, `workflow_dispatch`-only, deliberately
