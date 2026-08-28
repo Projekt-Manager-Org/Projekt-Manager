@@ -127,7 +127,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 2. **Abandonment flags**: scan the dashboard's "Abandoned Dependencies" list for new entries. Verify each per [§ Abandonment-flag verdicts](#abandonment-flag-verdicts); record a verdict + (for false positives) add the package to `.github/renovate.json` `packageRules` in the same commit.
 3. **Auto-merged PRs** (patch/minor/digest + green CI — grouped clusters and lockfile maintenance included) need no action; spot-check for surprises.
 4. **Major PRs**: read upstream migration guide, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
-5. Red CI: triage the failure, patch or revert.
+5. Red CI: triage the failure, patch or revert. A red PR assigns itself to the maintainer (`notify-failure` in `ci.yml`) and clears the assignment once green (`unassign-on-green`), so **assigned to you = red right now**, not "was red at some point". The wrangler pass is the backstop, not the discovery mechanism. Do not rely on GitHub's Actions email here: it reaches only the run's triggering actor, which on a bot PR is the bot.
 
 **Pinned CLI binaries** (OSV-Scanner, actionlint, ripgrep, age) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing: a new OSV-Scanner build reporting a fresh advisory, or a new actionlint check firing on an existing workflow. Fix the finding, don't pin back.
 

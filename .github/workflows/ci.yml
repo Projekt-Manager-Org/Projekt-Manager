@@ -1137,3 +1137,133 @@ jobs:
           branch_slug_tag: ${{ steps.fallback_tags.outputs.branch_slug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
+
+  # ---------------------------------------------------------------
+  # Red-PR notification.
+  #
+  # GitHub emails a workflow failure only to the run's TRIGGERING
+  # ACTOR, so a red run on a bot-opened PR reaches nobody here.
+  # Renovate opens the PR, force-pushes the branch AND enables
+  # auto-merge, so both `triggering_actor` and `auto_merge.enabled_by`
+  # are `renovate[bot]`. The other channels are equally dead: a check
+  # failure posts nothing to the PR thread, and the Dependency
+  # Dashboard (#201) lists the PR under plain "Open" whether it is
+  # green or red — its "Errored" section is for Renovate's own
+  # failures, not CI's.
+  #
+  # Combined with `automerge: true` in .github/renovate.json that
+  # makes BOTH outcomes silent: green squash-merges unattended, red
+  # just stalls. #342 sat red for 9 days that way; 6 bot-triggered
+  # failures (3 Renovate, 3 Dependabot) went unseen before it.
+  #
+  # Assignment produces a "Participating" notification, which is
+  # delivered regardless of who triggered the run and regardless of
+  # repo watch state — the two conditions that suppress the built-in
+  # Actions email.
+  #
+  # Assigning an already-assigned user is a no-op: it returns 200 but
+  # writes no `assigned` timeline event, so it raises no second
+  # notification. That cuts BOTH ways — it absorbs Renovate's weekly
+  # force-push without spamming, but on its own it would also mean one
+  # notification per PR for the PR's entire life: red, fixed, red
+  # again for an unrelated reason, silence. `unassign-on-green` below
+  # is what makes the signal repeatable — it clears the assignment on
+  # every green run, so the next failure notifies again.
+  #
+  # NOT a required check — the "main protection" Ruleset requires
+  # `check`, `docker` and `lint`. This job only ever runs on failure,
+  # so making it required would gate every green PR on a skipped job.
+  # ---------------------------------------------------------------
+  notify-failure:
+    needs: [lint, check, docker]
+    # `failure()` is true when ANY job in `needs` failed. Naming a
+    # status function is also what stops this job being skipped
+    # outright on the runs where `docker` is skipped by its path
+    # filter — the default behaviour propagates a skipped `needs`.
+    #
+    # Fork PRs get a read-only GITHUB_TOKEN, so the assign below
+    # would 403; skip them rather than paint a second red job. No
+    # fork PRs exist today (Renovate and Dependabot both push
+    # branches into this repo), so this is a guard, not a path.
+    if: |
+      failure() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      # Assignment on a pull request is served by the Issues
+      # assignees endpoint, and the docs describe the required scope
+      # in terms of the target type. Grant both rather than bet on
+      # which one is checked — the default GITHUB_TOKEN in this repo
+      # grants neither (see the `changes` job for the same problem
+      # with `pull-requests: read`).
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Assign maintainer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Hardcoded, not derived: `github.repository_owner` is the
+          # ORG (Projekt-Manager-Org) and assigning an org 422s.
+          gh api -X POST \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/assignees" \
+            -f "assignees[]=vlzware" > /dev/null
+          echo "::notice::CI is red — assigned PR #${PR_NUMBER} to vlzware"
+
+  # ---------------------------------------------------------------
+  # The other half of `notify-failure`: clear the assignment when the
+  # PR is green.
+  #
+  # Without this, "assigned to me" decays from *needs attention now*
+  # into *was red at some point*, and — because re-assigning an
+  # already-assigned user raises no notification — a PR that goes
+  # red, gets fixed, then goes red again for an unrelated reason
+  # notifies exactly once, on the first failure. Clearing on green
+  # restores one notification per incident.
+  #
+  # ASSUMPTION: assignment on a PR in this repo means "CI is red",
+  # nothing else. Nothing else assigns today — `.github/renovate.json`
+  # sets no `assignees`, and review requests are a separate field —
+  # so there is no human assignment for this to trample. If PR
+  # assignment ever takes on a second meaning, this job has to learn
+  # to distinguish them (the `assigned` timeline event carries the
+  # actor) or move to a label.
+  # ---------------------------------------------------------------
+  unassign-on-green:
+    needs: [lint, check, docker]
+    # NOT `success()`. `docker` is skipped on PRs that touch no
+    # container files, and a skipped dependency does not satisfy
+    # `success()` — the job would silently never run on exactly the
+    # PRs that skip the image build. Test the results directly
+    # instead: no failure and no cancellation among the needs, which
+    # treats `skipped` as the non-event it is. `!cancelled()` is the
+    # status function that stops the default skip propagation.
+    if: |
+      !cancelled() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Clear maintainer assignment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # DELETE on a PR that is not assigned is a harmless no-op
+          # (200, unchanged), so this runs unconditionally on green
+          # rather than reading the current assignees first.
+          # Unassigning raises no notification, so the green path
+          # stays silent.
+          gh api -X DELETE \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/assignees" \
+            -f "assignees[]=vlzware" > /dev/null
+          echo "::notice::CI is green — cleared assignment on PR #${PR_NUMBER}"
