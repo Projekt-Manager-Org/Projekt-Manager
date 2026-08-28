@@ -31,9 +31,10 @@
  * selection.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ATTACHMENT_CONFIG } from '@/config/attachmentConfig';
 import { restorePhraseMatches } from '@/config/dataExchangeConfig';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useImportJobStore } from '@/state/importJobStore';
 import { useDialogA11y } from '@/ui/common/useDialogA11y';
 import {
@@ -50,14 +51,10 @@ interface VollstaendigerImportDialogProps {
   onClose: () => void;
 }
 
-function probeIsMobile(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.matchMedia(`(max-width: ${ATTACHMENT_CONFIG.exportAllMobileWarningBreakpointPx}px)`)
-    .matches;
-}
-
 export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImportDialogProps) {
-  const [isMobile, setIsMobile] = useState<boolean>(probeIsMobile);
+  const isMobile = useMediaQuery(
+    `(max-width: ${ATTACHMENT_CONFIG.exportAllMobileWarningBreakpointPx}px)`,
+  );
   const [phraseInput, setPhraseInput] = useState<string>('');
   const [confirmClicked, setConfirmClicked] = useState<boolean>(false);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -75,16 +72,6 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
   // shows `confirm` first — even if a PRIOR terminal job still sits in the
   // store.
   const [jobStatusAtMount] = useState(() => job?.status);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mql = window.matchMedia(
-      `(max-width: ${ATTACHMENT_CONFIG.exportAllMobileWarningBreakpointPx}px)`,
-    );
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
-  }, []);
 
   // Create → upload (the load-bearing sequence). Always `override: true` — a
   // full-account restore is always destructive. A create-time rejection

@@ -49,11 +49,15 @@ if (typeof globalThis.EventSource === 'undefined') {
   (globalThis as { EventSource: unknown }).EventSource = EventSourceStub;
 }
 
-// jsdom does not implement window.matchMedia. Components that probe
-// media queries at construction (VollstaendigerExportDialog's mobile
-// probe, for instance) would crash any test that mounts them
-// indirectly via the Daten view. Stub returns "no match" — the desktop
-// branch in every consumer.
+// jsdom does not implement window.matchMedia. Components that read a
+// media query during render (anything on `useMediaQuery`, plus
+// `useCollapseTier`) would crash any test that mounts them indirectly
+// via the Daten view. Stub returns "no match" — the desktop branch in
+// every consumer.
+//
+// Its listeners are inert, so it can only pin the steady state. Tests
+// that drive a TRANSITION need `installMatchMedia` from
+// `src/test/matchMediaStub.ts` instead.
 if (typeof globalThis.matchMedia === 'undefined') {
   (globalThis as { matchMedia: unknown }).matchMedia = (query: string) => ({
     matches: false,
