@@ -23,10 +23,42 @@
  *     Used by the deploy pre-flight CLI and by tests.
  */
 import { z } from 'zod';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { checkBootstrapCredentialPair } from './bootstrap-credentials.js';
 import { derivePublicKey } from './vapid.js';
+
+/**
+ * Splits and validates a `TRUSTED_PROXY_CIDRS` value.
+ *
+ * Accepts a comma-separated list of IPv4/IPv6 addresses or CIDR blocks —
+ * the subset of `proxy-addr` syntax that names a concrete peer. proxy-addr's
+ * presets (`loopback`, `linklocal`, `uniquelocal`) are deliberately rejected:
+ * `uniquelocal` trusts every RFC1918 address, which would let a VPN peer
+ * (`10.213.17.0/24`, ADR-0008) forge X-Forwarded-For and shift `request.ip`
+ * off itself. Only an explicit address or block that names the reverse proxy
+ * is a trust boundary.
+ *
+ * Returns null when the value is malformed so the schema rejects it at boot,
+ * rather than letting proxy-addr throw on the first request.
+ */
+function parseTrustedProxyCidrs(raw: string): string[] | null {
+  const entries = raw.split(',').map((e) => e.trim());
+  if (entries.some((e) => e.length === 0)) return null;
+  for (const entry of entries) {
+    const slash = entry.indexOf('/');
+    const addr = slash === -1 ? entry : entry.slice(0, slash);
+    const family = net.isIP(addr);
+    if (family === 0) return null;
+    if (slash !== -1) {
+      const prefix = entry.slice(slash + 1);
+      if (!/^\d{1,3}$/.test(prefix)) return null;
+      if (Number(prefix) > (family === 4 ? 32 : 128)) return null;
+    }
+  }
+  return entries;
+}
 
 export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
@@ -103,6 +135,34 @@ export const envSchema = z.object({
   // over plain HTTP. Intended for evaluation deployments without a domain/TLS.
   // See docs/ops/http-only-evaluation.md.
   ALLOW_INSECURE_HTTP: z.enum(['true', 'false']).default('false'),
+  // Reverse proxies whose `X-Forwarded-For` the app is willing to believe.
+  // Comma-separated IPs / CIDR blocks; must match the pinned
+  // `networks.default` subnet in docker-compose.yml, which is the only
+  // address Caddy can reach the app from (ADR-0008 topology).
+  //
+  // Unset ⇒ trust nothing, so `request.ip` is the socket peer — correct for
+  // local dev, which bypasses Caddy and hits the app directly.
+  // `checkTrustedProxyInProduction()` requires it in production: behind a
+  // proxy an unset value silently pins every request to Caddy's container
+  // IP, which collapses the login rate limiter into one global bucket and
+  // records the proxy instead of the client in the login audit trail.
+  //
+  // Fastify 5.12.1 removed the numeric hop-count form this used to be set
+  // to (`trustProxy: 1`) — see GHSA-3m5p-2c4r-xxw2: a hop count never
+  // validated *which* peer connected, so anything reaching the app directly
+  // could spoof X-Forwarded-*. An address/CIDR is the documented migration.
+  TRUSTED_PROXY_CIDRS: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z
+      .string()
+      .refine((v) => parseTrustedProxyCidrs(v) !== null, {
+        message:
+          'TRUSTED_PROXY_CIDRS must be a comma-separated list of IP addresses or CIDR ' +
+          'blocks (e.g. "172.16.0.0/16"). proxy-addr presets such as "uniquelocal" are ' +
+          'rejected — they trust every private address, not just the reverse proxy.',
+      })
+      .optional(),
+  ),
   BOOTSTRAP_ADMIN_USERNAME: z.string().optional(),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
   BOOTSTRAP_ADMIN_DISPLAY_NAME: z.string().optional(),
@@ -481,6 +541,7 @@ type GuardResult = { ok: true } | { ok: false; message: string };
 type GuardSource = {
   NODE_ENV?: string | undefined;
   ALLOW_INSECURE_HTTP?: string | undefined;
+  TRUSTED_PROXY_CIDRS?: string | undefined;
   STORAGE_ENDPOINT?: string | undefined;
   STORAGE_PUBLIC_ENDPOINT?: string | undefined;
   STORAGE_ACCESS_KEY?: string | undefined;
@@ -491,6 +552,13 @@ type GuardSource = {
   BOOTSTRAP_ADMIN_PASSWORD?: string | undefined;
   VAPID_PRIVATE_KEY?: string | undefined;
 };
+
+const TRUSTED_PROXY_MISSING_MSG =
+  'Refusing to start: TRUSTED_PROXY_CIDRS is unset in production. ' +
+  'The app serves behind Caddy (ADR-0008), so without it every request is ' +
+  'attributed to the proxy container IP — the login rate limiter degrades to ' +
+  'one global bucket and the audit trail records the proxy, not the client. ' +
+  'Set it to the pinned networks.default subnet in docker-compose.yml.';
 
 const ALLOW_INSECURE_HTTP_IN_PROD_MSG =
   'Refusing to start: ALLOW_INSECURE_HTTP=true in production. ' +
@@ -544,6 +612,30 @@ function checkAppServerEnv(source: GuardSource): GuardResult {
   if (!source.STORAGE_REGION) missing.push('STORAGE_REGION');
   if (!source.BINARY_AGE_RECIPIENT) missing.push('BINARY_AGE_RECIPIENT');
   return missing.length === 0 ? { ok: true } : { ok: false, message: appServerMissingMsg(missing) };
+}
+
+/**
+ * Reverse-proxy trust predicate: refuses to start in production when the
+ * X-Forwarded-For trust boundary is unconfigured.
+ *
+ * Production always runs behind Caddy (ADR-0008), so `request.ip` is only
+ * the real client if the app trusts the proxy's address. With
+ * `TRUSTED_PROXY_CIDRS` unset, Fastify falls back to the socket peer and
+ * every request is attributed to Caddy's container IP — the login rate
+ * limiter ([C] LOGIN_RATE_LIMIT_MAX) degrades to a single global bucket,
+ * so one client can lock out every user, and the login audit trail records
+ * the proxy rather than the client.
+ *
+ * That failure is silent — the app serves normally — which is exactly the
+ * case this project refuses to ship: fail the deploy instead.
+ *
+ * Dev and test do not trip this guard: they bypass Caddy, so the socket
+ * peer already IS the client and trusting nothing is the correct posture.
+ */
+function checkTrustedProxyInProduction(source: GuardSource): GuardResult {
+  if (source.NODE_ENV !== 'production') return { ok: true };
+  if (source.TRUSTED_PROXY_CIDRS) return { ok: true };
+  return { ok: false, message: TRUSTED_PROXY_MISSING_MSG };
 }
 
 /**
@@ -626,6 +718,7 @@ function checkVapidKeyShape(source: GuardSource): GuardResult {
 const CROSS_FIELD_GUARDS: ReadonlyArray<(source: GuardSource) => GuardResult> = [
   checkProductionSafe,
   checkAppServerEnv,
+  checkTrustedProxyInProduction,
   checkStoragePublicEndpointInProduction,
   checkBootstrapCredentials,
   checkVapidKeyShape,
@@ -685,6 +778,15 @@ export type AppServerEnv = Env & {
  */
 export function assertAppServerEnv(env: Env): asserts env is AppServerEnv {
   const r = checkAppServerEnv(env);
+  if (!r.ok) throw new Error(r.message);
+}
+
+/**
+ * Refuses to start in production when the reverse-proxy trust boundary
+ * (`TRUSTED_PROXY_CIDRS`) is unconfigured.
+ */
+export function assertTrustedProxyInProduction(env: Env): void {
+  const r = checkTrustedProxyInProduction(env);
   if (!r.ok) throw new Error(r.message);
 }
 

@@ -19,6 +19,7 @@ import {
   assertAppServerEnv,
   assertProductionSafe,
   assertStoragePublicEndpointInProduction,
+  assertTrustedProxyInProduction,
   validateEnvRuntime,
 } from './config/env.js';
 import { emitFeatureManifest } from './config/features.js';
@@ -96,6 +97,10 @@ async function start(): Promise<void> {
   // the same validator but doesn't use MinIO); the app server cannot run
   // without them, so enforce here.
   assertAppServerEnv(env);
+  // Refuse to start in production without a reverse-proxy trust boundary.
+  // Unset behind Caddy, `request.ip` silently becomes the proxy's container
+  // IP, collapsing the login rate limiter into one global bucket.
+  assertTrustedProxyInProduction(env);
   // Refuse to start in production when the storage client would sign
   // presigned URLs against a container-only hostname — the browser
   // cannot resolve those, so every upload fails silently.
