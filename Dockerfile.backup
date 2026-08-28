@@ -99,7 +99,12 @@ FROM node:24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd2
 # postgres:17-alpine (docker-compose.yml) — pg_restore / pg_dump must
 # speak the same major as that server. Everything else tracks Alpine
 # 3.24.
-RUN apk add --no-cache \
+#
+# `apk upgrade` first, for the reason spelled out at the same call site
+# in Dockerfile: this image shares that base digest, so it inherits the
+# same lag behind alpine v3.24/main and the same Trivy gate.
+RUN apk upgrade --no-cache \
+ && apk add --no-cache \
       postgresql17 \
       postgresql17-client \
       postgresql17-contrib \

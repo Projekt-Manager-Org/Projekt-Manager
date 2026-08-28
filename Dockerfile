@@ -55,7 +55,23 @@ COPY --from=build /app/src/server/services/invoice/xsd ./dist/server/xsd
 # `read -d`, `set -o pipefail`); rather than rewrite to POSIX and lose
 # byte-for-byte parity with load-drill-key.sh, install bash like the
 # backup image does (Dockerfile.backup).
-RUN apk add --no-cache age findmnt bash
+# `apk upgrade` before the add: the pinned base digest is whatever Docker
+# Hub last built, so it lags Alpine's security repo by however long it
+# takes upstream to rebuild the tag. That lag is not hypothetical — the
+# digest below currently ships openssl 3.5.7-r0 while alpine v3.24/main
+# has the patched 3.5.8-r0 (CVE-2026-14456, HIGH), which fails the
+# Trivy gate on every PR until upstream rebuilds. Upgrading at build
+# time takes the fix from the branch the base image already pins, so a
+# base-image CVE stops blocking merges without an .trivyignore waiver.
+#
+# Scope is bounded by that pinned branch (v3.24), not the internet: the
+# delta today is 4 packages (libcrypto3, libssl3 + apk-tools, libapk).
+# The tradeoff is that two builds of the same commit can differ if
+# Alpine publishes in between — accepted, because a stale-but-identical
+# image with a known-fixed HIGH is the worse of the two failure modes
+# (ADR-0027 §Decision.2, refuse-or-block-never-downgrade).
+RUN apk upgrade --no-cache \
+ && apk add --no-cache age findmnt bash
 
 # Remove npm + npx from the production image. The runtime invokes only
 # `node dist/server/start.js` — npm is build-time tooling that, once
