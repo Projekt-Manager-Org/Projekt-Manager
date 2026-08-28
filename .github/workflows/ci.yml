@@ -1,4 +1,5 @@
 name: CI
+startup-failure-probe-b: true
 
 on:
   push:
@@ -48,7 +49,6 @@ jobs:
   # dependency and we want the test shards' critical path to be
   # tests only.
   # ---------------------------------------------------------------
-  startup-failure-probe: [unclosed
   lint:
     runs-on: ubuntu-latest
 
