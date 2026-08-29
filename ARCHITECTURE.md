@@ -378,16 +378,24 @@ Route definitions live in `src/server/routes/`. The health endpoint is registere
 
 ### OpenAPI Document Generation
 
-`docs/spec/openapi.json` is generated from the native Fastify `schema:` blocks already on every route — no hand-authored OpenAPI annotations (AC-351). `scripts/generate-openapi.ts` builds the app via `buildApp({ openapi: true })` (the flag `@fastify/swagger` registers behind; off everywhere else, so this changes nothing about production or test behavior), calls `app.swagger()`, and writes the Prettier-formatted result; `--check` mode fails CI on drift (`npm run check:openapi`, folded into the `npm run check:generated` umbrella alongside the permissions-doc check).
+`docs/api/openapi.json` is generated from the native Fastify `schema:` blocks already on every route — no hand-authored OpenAPI annotations (AC-351). `scripts/generate-openapi.ts` builds the app via `buildApp({ openapi: true })` (the flag `@fastify/swagger` registers behind), calls `app.swagger()`, and writes the Prettier-formatted result; `--check` mode fails CI on drift (`npm run check:openapi`, plus the scenario harness `scripts/__tests__/check-openapi-doc.test.sh`).
 
-The document targets OpenAPI **3.1.x**, not 3.0.x: 3.0's Draft-4-based Schema Object rejects array-valued `type` (the `type: ['string', 'null']` nullable idiom used throughout the route schemas) and numeric `exclusiveMinimum`, both of which 3.1's JSON Schema 2020-12 Schema Object accepts natively.
+**Not in `docs/spec/`, deliberately.** The spec is the upstream contract the app must fulfil; this artifact is derived from the code, so it is downstream by construction (A-TRDO). Filing it under `docs/spec/` would point CI at enforcing that an upstream contract matches the implementation — a route schema regressing would silently drag the "spec" along with it. [api.md §14.2](docs/spec/api.md#142-operations) stays normative and hand-authored; `openapi.json` is a machine-readable view of the request surface only, and where the two disagree, api.md wins.
+
+The document targets OpenAPI **3.1.x**, not 3.0.x, for two reasons: 3.0's Draft-4-based Schema Object rejects array-valued `type` (the `type: ['string', 'null']` nullable idiom used throughout the route schemas) and numeric `exclusiveMinimum`, both of which 3.1's JSON Schema 2020-12 Schema Object accepts natively; and 3.1 makes `responses` optional on the Operation Object, which 3.0 required.
+
+That second point is what keeps the artifact honest. No route declares a `response:` schema today, and `@fastify/swagger` fills the gap with a synthetic `200 Default Response` derived from nothing — false for every operation (nine routes return 201, eight return 204, four sites return 405). The generator strips it, so the document is silent about responses rather than wrong about them, and **documents requests only** is literally true. An all-empty `components` is dropped for the same reason.
+
+`@fastify/swagger` is a **devDependency**, imported lazily inside the `opts.openapi` branch in `src/server/app.ts`. A static top-level import survives bundling verbatim (esbuild `--packages=external`) and would be evaluated on every production boot, putting a doc-generation package in the runtime image and in OSV-Scanner/Trivy's lockfile scope. The branch is a build-tooling seam, not dead code (C-DEAD): its caller is the generator, and CI exercises it on every run.
 
 Two seams are permanently hand-maintained, not generated, and tracked incrementally in #282 (never big-bang):
 
 - **`securitySchemes`** — session-cookie auth is enforced by a `preHandler` hook (`createAuthMiddleware`), invisible to schema-based tooling; the doc cannot state that auth is required without a hand-written security block.
-- **Response/error schemas** — no route declares a `response:` schema today, so the doc documents requests only. As routes gain real response schemas, `api.md`'s per-endpoint request/response prose retires one route at a time (strangler); its normative design notes stay hand-written.
+- **Response/error schemas** — as routes gain real `response:` schemas the generator emits them automatically, and `api.md`'s per-endpoint request/response prose retires one route at a time (strangler); its normative design notes stay hand-written.
 
-`scripts/tsconfig.json`'s missing `@/*` path-alias mapping — surfaced by this generator, the first script to import deep into `src/server` — is separate, unrelated tooling debt tracked in #283.
+`info.version` is a fixed constant in `app.ts`, not `package.json`'s version: the app's release version says nothing about whether the HTTP surface changed, and coupling them would turn every release bump into a red build until someone regenerated the artifact.
+
+`lint-staged` is deliberately **not** extended to run this check on commit. The generator boots the whole Fastify app; that is seconds of latency on every commit touching `src/server/`, against a guard CI already enforces on every push.
 
 ---
 

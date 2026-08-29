@@ -3,12 +3,19 @@
 # Scenario tests for scripts/generate-openapi.ts --check (AC-351).
 #
 # Unlike the permissions-doc check (markers inside a hand-authored file),
-# docs/spec/openapi.json is entirely generated, so "drift" means the whole
+# docs/api/openapi.json is entirely generated, so "drift" means the whole
 # file differs from a fresh generation. Each case points the generator at
 # a fixture path via $OPENAPI_DOC_PATH; the route schemas themselves are
 # always read from the real src/server/routes/ — that's the source of
 # truth the check protects, not something to fake. Exits 0 when every
 # case matches its expected exit code; 1 otherwise.
+#
+# $OPENAPI_DOC_PATH redirects the destination only. Prettier's config is
+# resolved from the canonical in-repo path regardless, so a fixture in
+# `mktemp -d` is byte-identical to the published artifact — otherwise
+# these cases would pass against a document formatted at Prettier's
+# default printWidth 80 rather than the repo's 100, and "in-sync" would
+# be validating something CI never sees.
 #
 # Usage:
 #   bash scripts/__tests__/check-openapi-doc.test.sh
@@ -73,9 +80,11 @@ echo "Case: hand-edited doc fails --check"
 drifted_dir="$(mktmp_dir)"
 drifted="$drifted_dir/openapi.json"
 cp "$in_sync" "$drifted"
-# Mutate a value that only exists because it came out of the generator
-# (the published title) — a hand-edit that would silently misrepresent
-# the API surface.
+# The check compares the whole file, so any byte-level difference is
+# equivalent evidence — the cheapest stable anchor wins, and info.title
+# is the one string guaranteed present regardless of which routes exist.
+# It is not a stand-in for a route-schema edit; whole-file comparison is
+# what makes the two indistinguishable here.
 sed -i 's/"Projekt-Manager API"/"Hand-Edited API"/' "$drifted"
 assert_case 1 "drifted doc" "$drifted"
 

@@ -2,10 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Projekt-Manager API",
-    "version": "0.1.0"
-  },
-  "components": {
-    "schemas": {}
+    "version": "0.1.0",
+    "description": "GENERATED FILE — do not edit by hand. Produced from the route definitions by `npx tsx scripts/generate-openapi.ts`; CI fails on drift. Describes requests only — responses and auth are not yet declared (#282). The normative API contract is docs/spec/api.md §14.2."
   },
   "paths": {
     "/api/auth/login": {
@@ -31,31 +29,14 @@
               }
             }
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
         }
       }
     },
     "/api/auth/logout": {
-      "post": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
+      "post": {}
     },
     "/api/auth/me": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
+      "get": {},
       "patch": {
         "requestBody": {
           "required": true,
@@ -76,11 +57,6 @@
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
           }
         }
       }
@@ -108,11 +84,6 @@
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
           }
         }
       }
@@ -216,12 +187,7 @@
             "name": "sortDir",
             "required": false
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "post": {
         "requestBody": {
@@ -296,11 +262,6 @@
               }
             }
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
         }
       }
     },
@@ -316,12 +277,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "patch": {
         "requestBody": {
@@ -388,12 +344,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "delete": {
         "parameters": [
@@ -406,12 +357,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/transition/forward": {
@@ -454,12 +400,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/transition/backward": {
@@ -502,12 +443,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/dates": {
@@ -543,12 +479,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/purge": {
@@ -563,12 +494,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/restore": {
@@ -583,12 +509,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/customers": {
@@ -639,12 +560,7 @@
             "name": "sortDir",
             "required": false
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "post": {
         "requestBody": {
@@ -697,11 +613,6 @@
               }
             }
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
         }
       }
     },
@@ -717,12 +628,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "patch": {
         "requestBody": {
@@ -782,12 +688,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "delete": {
         "parameters": [
@@ -800,12 +701,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/users": {
@@ -830,12 +726,7 @@
             "name": "limit",
             "required": false
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "post": {
         "requestBody": {
@@ -874,11 +765,6 @@
               }
             }
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
         }
       }
     },
@@ -894,12 +780,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "patch": {
         "requestBody": {
@@ -941,12 +822,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "delete": {
         "parameters": [
@@ -959,12 +835,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/users/{id}/deactivate": {
@@ -979,12 +850,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/users/{id}/reactivate": {
@@ -999,12 +865,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/users/{id}/reset-password": {
@@ -1037,38 +898,15 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/workers": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
+      "get": {}
     },
     "/api/export-jobs": {
-      "post": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
+      "post": {},
+      "get": {}
     },
     "/api/export-jobs/{id}": {
       "get": {
@@ -1082,12 +920,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/export-jobs/{id}/download": {
@@ -1102,29 +935,12 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/import-jobs": {
-      "post": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
+      "post": {},
+      "get": {}
     },
     "/api/import-jobs/{id}": {
       "get": {
@@ -1138,12 +954,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/import-jobs/{id}/archive": {
@@ -1158,12 +969,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/extract": {
@@ -1185,11 +991,6 @@
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
           }
         }
       }
@@ -1349,12 +1150,7 @@
             "name": "recipientScope",
             "required": false
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/audit/{id}": {
@@ -1369,22 +1165,11 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/notification-rules": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
+      "get": {},
       "post": {
         "requestBody": {
           "required": true,
@@ -1394,11 +1179,6 @@
                 "type": "object"
               }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
           }
         }
       }
@@ -1415,12 +1195,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "patch": {
         "requestBody": {
@@ -1443,12 +1218,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "delete": {
         "parameters": [
@@ -1461,12 +1231,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/push-subscriptions": {
@@ -1509,11 +1274,6 @@
               }
             }
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
         }
       },
       "delete": {
@@ -1526,12 +1286,7 @@
             "name": "endpoint",
             "required": false
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/push-subscriptions/{id}": {
@@ -1546,12 +1301,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/attachments": {
@@ -1566,12 +1316,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/attachments/init": {
@@ -1669,12 +1414,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/attachments/{attId}/complete": {
@@ -1698,12 +1438,7 @@
             "name": "attId",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/attachments/{attId}": {
@@ -1727,12 +1462,7 @@
             "name": "attId",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/attachments/trash": {
@@ -1747,12 +1477,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/attachments/{attId}/restore": {
@@ -1776,12 +1501,7 @@
             "name": "attId",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/attachments/{attId}/download-url": {
@@ -1813,12 +1533,7 @@
             "name": "attId",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/attachments/bulk-fetch": {
@@ -1854,12 +1569,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/projects/{id}/storage-usage": {
@@ -1874,12 +1584,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "post": {
         "parameters": [
@@ -1891,12 +1596,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "put": {
         "parameters": [
@@ -1908,12 +1608,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "patch": {
         "parameters": [
@@ -1925,12 +1620,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "delete": {
         "parameters": [
@@ -1942,50 +1632,15 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/storage-usage": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "post": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "put": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "patch": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "delete": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
+      "get": {},
+      "post": {},
+      "put": {},
+      "patch": {},
+      "delete": {}
     },
     "/api/invoices": {
       "get": {
@@ -2063,12 +1718,7 @@
             "name": "search",
             "required": false
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "post": {
         "requestBody": {
@@ -2167,22 +1817,11 @@
               }
             }
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
         }
       }
     },
     "/api/invoices/years": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
+      "get": {}
     },
     "/api/invoices/{id}": {
       "get": {
@@ -2196,12 +1835,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "patch": {
         "requestBody": {
@@ -2306,12 +1940,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       },
       "delete": {
         "parameters": [
@@ -2324,12 +1953,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/invoices/{id}/issue": {
@@ -2344,12 +1968,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/invoices/{id}/cancel": {
@@ -2381,12 +2000,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/invoices/{id}/pdf": {
@@ -2401,12 +2015,7 @@
             "name": "id",
             "required": true
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
+        ]
       }
     },
     "/api/invoices/export": {
@@ -2461,22 +2070,11 @@
               }
             }
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
         }
       }
     },
     "/api/company-profile": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
+      "get": {},
       "put": {
         "requestBody": {
           "required": true,
@@ -2543,87 +2141,27 @@
               }
             }
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
         }
       }
     },
     "/api/events": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "post": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "put": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "patch": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "delete": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
+      "get": {},
+      "post": {},
+      "put": {},
+      "patch": {},
+      "delete": {}
     },
     "/api/push/vapid-public-key": {
-      "get": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "post": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "put": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "patch": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      },
-      "delete": {
-        "responses": {
-          "200": {
-            "description": "Default Response"
-          }
-        }
-      }
+      "get": {},
+      "post": {},
+      "put": {},
+      "patch": {},
+      "delete": {}
     }
-  }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ]
 }

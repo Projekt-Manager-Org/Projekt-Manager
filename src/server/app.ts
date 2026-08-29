@@ -5,13 +5,11 @@
  * and all route plugins registered.
  */
 
-import { readFileSync } from 'node:fs';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import swagger from '@fastify/swagger';
 import type { FastifyInstance } from 'fastify';
 import type { Database } from './db/connection.js';
 import { authRoutes } from './routes/auth.js';
@@ -41,6 +39,16 @@ import { getEnv } from './config/env.js';
 import { resolveVapidKeyMaterial, type VapidKeyMaterial } from './config/vapid.js';
 import { installErrorHandler } from './error-handler.js';
 
+/**
+ * `info.version` of the generated OpenAPI document — the version of the
+ * API contract, deliberately NOT `package.json`'s version. Coupling the
+ * two would turn every release bump into a CI failure until someone
+ * regenerated the artifact, and the app's release version says nothing
+ * about whether the HTTP surface changed. Bump this when the contract
+ * changes.
+ */
+const OPENAPI_DOC_VERSION = '0.1.0';
+
 export interface AppOptions {
   logger?: boolean;
   db?: Database;
@@ -55,8 +63,14 @@ export interface AppOptions {
    * `onRoute` to build an in-memory document from each route's native
    * `schema:` block, retrievable via `app.swagger()`. The only caller
    * that sets this is `scripts/generate-openapi.ts` (AC-351 — see
-   * docs/spec/openapi.json and ARCHITECTURE.md § OpenAPI Document
+   * docs/api/openapi.json and ARCHITECTURE.md § OpenAPI Document
    * Generation).
+   *
+   * This is a build-tooling seam, not dead code (C-DEAD): the branch has
+   * a real caller and is exercised on every CI run, both by the drift
+   * check and by its scenario harness. The `@fastify/swagger` import is
+   * lazy so the devDependency never reaches the production runtime — see
+   * the registration site below.
    *
    * Document targets OpenAPI **3.1.x**, not 3.0.x — 3.0's Schema Object
    * (Draft-4-based) rejects array-valued `type` (the `type: ['string',
@@ -266,16 +280,31 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // `onRoute` hook is attached before any route (including the ones
   // gated on `opts.db`) is added.
   if (opts.openapi) {
-    const pkg = JSON.parse(
-      readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
-    ) as { version: string };
-    app.register(swagger, {
+    // Lazy `import()` inside the branch, not a static top-level import:
+    // `@fastify/swagger` is a devDependency, and a static import would
+    // survive bundling (esbuild `--packages=external` keeps it verbatim)
+    // and be evaluated on every production boot — a doc-generation
+    // package permanently in the runtime image and in the lockfile scope
+    // that OSV-Scanner and Trivy audit. Fastify's `register` accepts a
+    // module promise, so the module is only ever loaded when a caller
+    // asks for the document.
+    app.register(import('@fastify/swagger'), {
       openapi: {
         openapi: '3.1.0',
         info: {
           title: 'Projekt-Manager API',
-          version: pkg.version,
+          version: OPENAPI_DOC_VERSION,
+          description:
+            'GENERATED FILE — do not edit by hand. Produced from the route ' +
+            'definitions by `npx tsx scripts/generate-openapi.ts`; CI fails ' +
+            'on drift. Describes requests only — responses and auth are ' +
+            'not yet declared (#282). The normative API contract is ' +
+            'docs/spec/api.md §14.2.',
         },
+        // Same-origin: the API is served by the app that serves the SPA.
+        // Also silences Redocly's `no-empty-servers`, which otherwise
+        // errors on a document with no `servers` at all.
+        servers: [{ url: '/' }],
       },
     });
   }
