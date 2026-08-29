@@ -374,13 +374,15 @@ Requests to session-protected endpoints without a valid session return `401 UNAU
 
 Route definitions live in `src/server/routes/`, and every one of them is registered by `buildApp()` in `src/server/app.ts` — including `/api/health`, whose probe dependencies (`pg.Pool`, `StorageClient`) `start.ts` passes in. A route mounted on the instance `buildApp()` returns would be invisible to the generated OpenAPI document below, so `eslint.config.js` fails the build on one.
 
+**One exception, deliberate and bounded:** in production `start.ts` calls `registerStaticAssets` (`src/server/staticCache.ts`), and `@fastify/static` registers a HEAD+GET pair per built file under `dist/` on the returned instance. Those are the compiled SPA's own assets, not API surface, so the document does not describe them; the call carries an inline `eslint-disable` naming the reason rather than slipping past a selector that happens not to match it.
+
 **Keep this table in sync** when adding or changing endpoints. It is the onboarding reference and is cross-checked by the spec (`docs/spec/api.md`) for abstract-operation coverage.
 
 ### OpenAPI Document Generation
 
 `docs/api/openapi.json` is generated from the native Fastify `schema:` blocks the routes already carry — no hand-authored OpenAPI annotations (AC-351). `scripts/generate-openapi.ts` builds the app via `buildApp({ openapi: true })` (the flag `@fastify/swagger` registers behind), calls `app.swagger()`, and writes the Prettier-formatted result; `--check` mode fails CI on drift (`npm run check:openapi`, plus the scenario harness `scripts/__tests__/check-openapi-doc.test.sh`).
 
-**Coverage is exactly `buildApp()`.** `app.swagger()` reports the routes registered on the instance the generator built, so the endpoint surface is complete only while every route is registered by the factory — which the `no-restricted-syntax` rule in `eslint.config.js` enforces (see § API Surface). A route with no `schema:` block still appears, as a bare operation: `/api/health` publishes `{"get": {}}`, which says the endpoint exists and nothing more.
+**Coverage is exactly `buildApp()`.** `app.swagger()` reports the routes registered on the instance the generator built, so the API surface is complete only while every API route is registered by the factory — which the `no-restricted-syntax` rule in `eslint.config.js` enforces (see § API Surface), with the static-asset registration as its one stated exception. A route with no `schema:` block still appears, as a bare operation: `/api/health` publishes `{"get": {}}`, which says the endpoint exists and nothing more.
 
 **Not in `docs/spec/`, deliberately.** The spec is the upstream contract the app must fulfil; this artifact is derived from the code, so it is downstream by construction (A-TRDO). Filing it under `docs/spec/` would point CI at enforcing that an upstream contract matches the implementation — a route schema regressing would silently drag the "spec" along with it. [api.md §14.2](docs/spec/api.md#142-operations) stays normative and hand-authored; `openapi.json` is a machine-readable view of the request surface only, and where the two disagree, api.md wins.
 

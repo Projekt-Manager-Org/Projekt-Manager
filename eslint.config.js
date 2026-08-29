@@ -152,6 +152,21 @@ export default tseslint.config(
   // document from what `buildApp()` registers, so a route mounted in
   // `start.ts` is a public endpoint the artifact never mentions and no
   // check can notice — the hole `/api/health` sat in until #284.
+  //
+  // Two things the selector has to get right, both found by probing it
+  // rather than by reading it:
+  //
+  //   - The receiver is matched against a small allowlist, not pinned to
+  //     `app`. `server.get(...)` is the same mistake under a different
+  //     variable name and used to pass clean. Dropping the pin entirely
+  //     is stricter still, but `.get`/`.delete` on a Drizzle query
+  //     builder or a Map is the same syntax — 61 false positives across
+  //     `repositories/` and `services/`, so the allowlist is where the
+  //     rule stops costing more than it catches.
+  //   - `register` is in the method list because a plugin mounts routes
+  //     no HTTP verb names: `@fastify/static` registers one HEAD+GET per
+  //     built file. That is the one legitimate case, and it carries an
+  //     inline disable with its reason in `staticCache.ts`.
   {
     files: ['src/server/**/*.ts'],
     ignores: ['src/server/routes/**', 'src/server/app.ts', 'src/server/**/__tests__/**'],
@@ -160,7 +175,7 @@ export default tseslint.config(
         'error',
         {
           selector:
-            "CallExpression[callee.object.name='app'][callee.property.name=/^(get|post|put|patch|delete|head|options|all|route)$/]",
+            'CallExpression[callee.object.name=/^(app|server|fastify|instance)$/][callee.property.name=/^(get|post|put|patch|delete|head|options|all|route|register)$/]',
           message:
             'Register HTTP routes inside buildApp() (src/server/app.ts) — the generated OpenAPI document only sees the app factory. See ARCHITECTURE.md § OpenAPI Document Generation.',
         },
