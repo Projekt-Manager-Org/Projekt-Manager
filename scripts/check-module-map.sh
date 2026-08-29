@@ -95,18 +95,33 @@
 # a subsection-scoped rule every one of them would sit unchecked —
 # precisely where the three dead names of #306 would land today.
 #
-# So form (a) below runs over the whole document and resolves against
-# every tracked `.ts` / `.tsx` file in the repository. Form (b) stays
+# So form (a) below runs over the whole document. Form (b) stays
 # structural: a bare stem opening a list item is an inventory entry, and
 # inventory only appears in the two Module Map blocks, so it is scanned
 # there and nowhere else. Widening (b) to the whole document would fire
 # on prose — see the note on "opens the item" below.
 #
-# Cross-directory false positives are not a risk in this direction. A
-# name that resolves ANYWHERE is alive; only a name that resolves
-# nowhere is dead. That is the opposite of the file -> doc direction,
-# where an unanchored match wrongly grants coverage and scoping is what
-# prevents it.
+# WHERE EACH NAME IS RESOLVED. Reach and strictness are separate knobs.
+# Both Module Map blocks carry a directory in their own structure, so a
+# name in either resolves under that directory and nowhere else:
+#
+#   `#### `src/server/routes/``      heading  -> scoped to the heading
+#   `**`src/server/storage/`** — …`  note key -> scoped to the key
+#   everything else in the document           -> repository-wide
+#
+# Scoping the notes is what makes "a note cannot outlive the file it
+# describes" true. Repository-wide resolution there would let ANY
+# same-named file keep a note alive: `src/server/services/events.ts`
+# could be deleted and its note would still resolve, against
+# `src/server/routes/events.ts` — the very file that note exists to say
+# it is NOT. Basenames collide by the dozen in this tree (`client.ts`,
+# `auth.ts`, `events.ts`), so this is the common case, not a corner one.
+#
+# Repository-wide resolution is right for the rest of the document
+# precisely because those sections name no directory: prose in
+# `## How to Extend` about `mutate.ts` is a claim that the file exists,
+# not a claim about where. A name that resolves ANYWHERE is alive there;
+# only a name that resolves nowhere is dead.
 #
 # INVENTORY CITATIONS — what the doc -> file direction treats as a claim
 # that a file exists. Two forms, both narrow on purpose, because a
@@ -163,7 +178,8 @@
 #   0 — every gated directory is covered and the baseline is current
 #   1 — undocumented files outside the baseline, a stale baseline, or a
 #       named file that does not exist
-#   2 — toolchain error (ARCHITECTURE.md unreadable, no subsections found)
+#   2 — toolchain error (ARCHITECTURE.md unreadable, a Module Map block
+#       missing so its scan would pass over nothing)
 
 set -euo pipefail
 
@@ -213,6 +229,17 @@ section_body() {
     f && (/^### / || /^## /) { exit }
     f { print }
   ' "$DOC"
+}
+
+# One `### Directory Notes` entry: from its bold key to the next one,
+# exclusive. The key line carries the entry's opening prose, so it is
+# part of the body — unlike a `#### ` heading, which carries none.
+note_entry_for() {
+  printf '%s\n' "$NOTES" | awk -v h="**\`$1\`**" '
+    index($0, h) == 1 { f = 1; print; next }
+    f && /^\*\*`[^`]+\/`\*\*/ { exit }
+    f { print }
+  '
 }
 
 # Subsection delegation to `### Configuration Files` used to live here:
@@ -330,6 +357,36 @@ done < <(git ls-files '*.ts' '*.tsx')
 # not each report the same one.
 declare -A REPORTED_GHOSTS=()
 
+# doc -> file, scoped to one directory. Resolution is by basename
+# anywhere under it, with or without extension: a block may name a file
+# that sits in a nested directory of its own.
+#
+# Stricter than the document-wide pass — a block claiming `toastStore.ts`
+# fails here even though the file exists, because it does not exist *in
+# that directory*. That is the whole point of a scoped block: it says
+# where the file is, not merely that it is.
+#
+# Already-reported names are marked, not skipped: two blocks may both be
+# wrong about the same name, and each has its own broken claim to report.
+check_scoped_names() {
+  local dir="$1" body="$2" label="$3" file base name
+  local -A existing=()
+
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    base="${file##*/}"
+    existing["$base"]=1
+    existing["${base%.*}"]=1
+  done < <(git ls-files "$dir")
+
+  while IFS= read -r name; do
+    [ -z "$name" ] && continue
+    [ -n "${existing[$name]:-}" ] && continue
+    ghosts+=("${label} -> ${name}")
+    REPORTED_GHOSTS["$name"]=1
+  done < <(cited_names_in "$body")
+}
+
 for dir in "${GATED[@]}"; do
   gated_count=$((gated_count + 1))
   gated_now+=("$dir")
@@ -346,64 +403,79 @@ for dir in "${GATED[@]}"; do
     undocumented+=("$file")
   done < <(files_in "$dir")
 
-  # doc -> file, scoped. Resolution is by basename anywhere under the
-  # directory, with or without extension: a subsection may name a file
-  # that sits in a nested directory of its own.
-  #
-  # Scoped resolution is STRICTER than the document-wide pass below —
-  # a gated subsection claiming `toastStore.ts` fails here even though
-  # the file exists, because it does not exist *in that directory*.
-  unset EXISTING
-  declare -A EXISTING=()
-  while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    base="${file##*/}"
-    EXISTING["$base"]=1
-    EXISTING["${base%.*}"]=1
-  done < <(git ls-files "$dir")
-
-  while IFS= read -r name; do
-    [ -z "$name" ] && continue
-    [ -n "${EXISTING[$name]:-}" ] && continue
-    ghosts+=("${dir} -> ${name}")
-    REPORTED_GHOSTS["$name"]=1
-  done < <(cited_names_in "$subsection")
+  # doc -> file, scoped to the heading's directory.
+  check_scoped_names "$dir" "$subsection" "$dir"
 done
 
-# doc -> file, document-wide — see the DOCUMENT-WIDE header note.
+# `### Directory Notes` — prose, and no coverage obligation in the
+# file -> doc direction. The doc -> file direction applies in full, and
+# it is scoped: every entry is keyed by a bold path, that key is a
+# directory, so the entry's names resolve under it. See WHERE EACH NAME
+# IS RESOLVED above for why repository-wide would be wrong here.
 #
-# A name the scoped pass already reported is skipped: a dead name inside
-# a gated subsection resolves nowhere, so both passes see it, and the
-# scoped report is the more useful of the two because it names the
-# directory whose contract was broken.
-#
-# Form (a) over the entire document: a backticked name carrying a source
-# extension is an unambiguous file claim wherever it appears, and the
-# sections that carry the most prose about files are the ones no
-# subsection covers.
+# The block is also the one place outside the gated subsections where
+# form (b)'s extension-less inventory (`dataExchangeStore`) can
+# legitimately appear — the shape that survived longest in #306. Losing
+# the block loses that scan silently, so its absence is structural, the
+# same as `### Directory Detail` above.
+NOTES="$(section_body "### Directory Notes")"
+
+if [ -z "$NOTES" ]; then
+  echo "ERROR: no '### Directory Notes' block found in $DOC." >&2
+  echo "       It is where extension-less inventory lives outside the" >&2
+  echo "       gated subsections, and the only place those names are" >&2
+  echo "       resolved against the directory that owns them. Without it" >&2
+  echo "       that scan passes over nothing — refusing to run." >&2
+  exit 2
+fi
+
+# The bold path opening each entry. A key is a DIRECTORY — it ends in
+# `/`. This block is prose first, so a bold backticked opener naming
+# something else (`**`Bulk download`** — …`) is not a key: scoping to it
+# would resolve every name in the entry against an empty file set and
+# report the lot dead. Such an entry is unscoped, like the rest of the
+# document.
+mapfile -t NOTE_KEYS < <(printf '%s\n' "$NOTES" | grep -oE '^\*\*`[^`]+/`\*\*' | sed 's/^\*\*`//; s/`\*\*$//')
+
+for key in "${NOTE_KEYS[@]:-}"; do
+  [ -z "$key" ] && continue
+  check_scoped_names "$key" "$(note_entry_for "$key")" "### Directory Notes ${key}"
+done
+
+# The block's own preamble belongs to no entry, so it has no directory
+# to be scoped to and resolves repository-wide. Running this over the
+# whole block rather than the preamble alone costs nothing: every keyed
+# name that resolves nowhere was already reported by the scoped pass
+# above, with its directory attached.
 while IFS= read -r name; do
   [ -z "$name" ] && continue
   [ -n "${REPO_FILES[$name]:-}" ] && continue
   [ -n "${REPORTED_GHOSTS[$name]:-}" ] && continue
-  ghosts+=("${DOC} -> ${name}")
+  ghosts+=("### Directory Notes -> ${name}")
   REPORTED_GHOSTS["$name"]=1
-done < <(grep -oE '`[A-Za-z0-9_.-]+\.tsx?`' "$DOC" | tr -d '`' | sort -u)
+done < <(cited_names_in "$NOTES")
 
-# Form (b) over `### Directory Notes` only. Extension-less inventory
-# (`dataExchangeStore`) is the shape that survived longest in #306, and
-# the notes block is the one place outside the gated subsections where
-# such a run can legitimately appear. Resolution is repository-wide: the
-# block spans every directory, so a name is not a claim about any one.
-NOTES="$(section_body "### Directory Notes")"
-if [ -n "$NOTES" ]; then
-  while IFS= read -r name; do
-    [ -z "$name" ] && continue
-    [ -n "${REPO_FILES[$name]:-}" ] && continue
-    [ -n "${REPORTED_GHOSTS[$name]:-}" ] && continue
-    ghosts+=("### Directory Notes -> ${name}")
-    REPORTED_GHOSTS["$name"]=1
-  done < <(cited_names_in "$NOTES")
-fi
+# doc -> file, document-wide — see the DOCUMENT-WIDE header note.
+#
+# A name a scoped pass already reported is skipped: it resolves nowhere,
+# so both passes see it, and the scoped report is the more useful of the
+# two because it names the directory whose claim was broken.
+#
+# Form (a) over the entire document: a backticked name carrying a source
+# extension is an unambiguous file claim wherever it appears, and the
+# sections that carry the most prose about files are the ones no
+# subsection covers. Reported with the line number — the first of them,
+# since a name is reported once — because `ARCHITECTURE.md -> Foo.ts`
+# alone leaves the author grepping a 680-line document.
+while IFS= read -r match; do
+  [ -z "$match" ] && continue
+  line="${match%%:*}"
+  name="${match#*:}"
+  [ -n "${REPO_FILES[$name]:-}" ] && continue
+  [ -n "${REPORTED_GHOSTS[$name]:-}" ] && continue
+  ghosts+=("${DOC}:${line} -> ${name}")
+  REPORTED_GHOSTS["$name"]=1
+done < <(grep -noE '`[A-Za-z0-9_.-]+\.tsx?`' "$DOC" | tr -d '`')
 
 # --update-baseline: freeze the current undocumented set and stop.
 if [ "${1:-}" = "--update-baseline" ]; then
@@ -494,9 +566,11 @@ if [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ] || [ -n "$dead" ];
   fi
   if [ -n "$dead" ]; then
     { [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ]; } && echo "" >&2
-    echo "ERROR: $DOC names a source file that does not exist. A" >&2
-    echo "       '#### <dir>' prefix means the name is not in THAT" >&2
-    echo "       directory; a '$DOC' prefix means it is nowhere in the" >&2
+    echo "ERROR: $DOC names a source file that does not exist. A prefix" >&2
+    echo "       naming a directory means the name is not in THAT" >&2
+    echo "       directory — the gated subsection or the notes entry that" >&2
+    echo "       cites it says where the file is, not merely that it is." >&2
+    echo "       A '$DOC:<line>' prefix means it is nowhere in the" >&2
     echo "       repository. Drop the name, or correct it to the file that" >&2
     echo "       replaced it. To cite a historical or hypothetical name," >&2
     echo "       write the full repository path instead — check-doc-paths.sh" >&2

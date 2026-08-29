@@ -80,36 +80,39 @@ Seven responsibility layers. Dependency flows left-to-right only, never reversed
 
 ## Module Map
 
-Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directory-detail) carries a complete file list for the directories where the set of files _is_ the architecture, and [§ Directory Notes](#directory-notes) carries what a filename cannot tell you about the rest.
+Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directory-detail) carries the file list for the directories where the set of files _is_ the architecture, and [§ Directory Notes](#directory-notes) carries what a filename cannot tell you about the rest.
 
-| Directory                  | Owns                                                                                                                                  | Must NOT                                                |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `src/config/`              | Deployment-tunable constants and catalogs. Every `[C]` value is indexed in [§ Configuration Files](#configuration-files).             | Import anything outside `src/config/`                   |
-| `src/domain/`              | Framework-free types and pure rules: transitions, aging, summaries, dates, envelopes, image pipeline.                                 | Import from state, API, storage, or UI                  |
-| `src/server/config/`       | Env validation (Zod), centralized policy constants (auth, rate limits, storage), VAPID key material.                                  | Contain business logic or import from layers above      |
-| `src/server/db/`           | Drizzle schema, connection, SQL migrations, named constraints (`constraints.ts`).                                                     | Contain business logic                                  |
-| `src/server/services/`     | Business logic orchestration — one service per entity, plus the audit, backup, notification, attachment, and key-envelope subsystems. | Know about HTTP, Fastify, or request objects            |
-| `src/server/repositories/` | Database queries, one module per entity, plus the role-based read-scope predicates.                                                   | Know about HTTP or contain business rules               |
-| `src/server/storage/`      | S3/MinIO client, presign / upload / download / hide / restore ops, boot-time safety probes.                                           | Be called outside routes and `start.ts` (client wiring) |
-| `src/server/middleware/`   | Cookie parsing, session auth, request decoration.                                                                                     | Contain route handlers or business logic                |
-| `src/server/routes/`       | Route definitions, request validation, response serialization.                                                                        | Access repositories directly (must go through services) |
-| `src/server/sse/`          | In-process SSE bus — typed pub/sub fan-out to subscribed connections.                                                                 | Know about HTTP, Fastify, or request objects            |
-| `src/server/seed/`         | Seed data split per data class, shipped through the public restore contract.                                                          | Contain app logic; run in production                    |
-| `src/server/data/`         | Static data files (e.g. common-passwords list).                                                                                       | Contain logic or import from other modules              |
-| `src/server/` (root files) | App assembly, entry point, bootstrap, schedulers and reapers, error factories.                                                        | -                                                       |
-| `src/state/`               | Zustand stores (one per domain slice), barrel re-export, client-side cache.                                                           | Access the database or import server code               |
-| `src/sse/`                 | Browser-side SSE primitive — `onSseEvent` over an `EventSource`.                                                                      | Contain business logic or import server code            |
-| `src/api/`                 | Centralized API client, typed fetch wrappers.                                                                                         | Contain business logic or UI concerns                   |
-| `src/hooks/`               | Shared React hooks (transitions, routing, permission gating).                                                                         | Contain API calls directly (must use stores)            |
-| `src/pwa/`                 | Web Push client-side plumbing and the service-worker bundle.                                                                          | Contain business logic; import server code              |
-| `src/ui/`                  | React components, grouped by feature area.                                                                                            | Contain business logic beyond dispatching to state      |
-| `src/test/`                | Shared test setup, API test helpers, and seed fixtures.                                                                               | Be imported in production code                          |
+| Directory                      | Owns                                                                                                                                 | Must NOT                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `src/config/`                  | Deployment-tunable constants and catalogs. Every `[C]` value is indexed in [§ Configuration Files](#configuration-files).            | Import anything outside `src/config/`                   |
+| `src/domain/`                  | Framework-free types and pure rules: transitions, aging, summaries, dates, envelopes, image pipeline.                                | Import from state, API, storage, or UI                  |
+| `src/server/config/`           | Env validation (Zod), centralized policy constants (auth, rate limits, storage), VAPID key material.                                 | Contain business logic or import from layers above      |
+| `src/server/db/`               | Drizzle schema, connection, SQL migrations, named constraints (`constraints.ts`).                                                    | Contain business logic                                  |
+| `src/server/services/`         | Business logic orchestration — one service per entity, plus the audit, backup, notification, attachment and key-envelope subsystems. | Know about HTTP, Fastify, or request objects            |
+| `src/server/services/invoice/` | The EN 16931 e-invoicing core (ADR-0026) — Factur-X builder, PDF/A-3 drawer, payload crypto, XSD validation.                         | Know about HTTP, Fastify, or request objects            |
+| `src/server/repositories/`     | Database queries, one module per entity, plus the role-based read-scope predicates.                                                  | Know about HTTP or contain business rules               |
+| `src/server/storage/`          | S3/MinIO client, presign / upload / download / hide / restore ops, boot-time safety probes.                                          | Be called outside routes and `start.ts` (client wiring) |
+| `src/server/middleware/`       | Cookie parsing, session auth, request decoration.                                                                                    | Contain route handlers or business logic                |
+| `src/server/routes/`           | Route definitions, request validation, response serialization.                                                                       | Access repositories directly (must go through services) |
+| `src/server/sse/`              | In-process SSE bus — typed pub/sub fan-out to subscribed connections.                                                                | Know about HTTP, Fastify, or request objects            |
+| `src/server/seed/`             | Seed data split per data class, shipped through the public restore contract.                                                         | Contain app logic; run in production                    |
+| `src/server/data/`             | Static data files (e.g. common-passwords list).                                                                                      | Contain logic or import from other modules              |
+| `src/server/` (root files)     | App assembly, entry point, bootstrap, schedulers and reapers, error factories.                                                       | -                                                       |
+| `src/state/`                   | Zustand stores (one per domain slice), barrel re-export, client-side cache.                                                          | Access the database or import server code               |
+| `src/sse/`                     | Browser-side SSE primitive — `onSseEvent` over an `EventSource`.                                                                     | Contain business logic or import server code            |
+| `src/api/`                     | Centralized API client, typed fetch wrappers.                                                                                        | Contain business logic or UI concerns                   |
+| `src/hooks/`                   | Shared React hooks (transitions, routing, permission gating).                                                                        | Contain API calls directly (must use stores)            |
+| `src/pwa/`                     | Web Push client-side plumbing and the service-worker bundle.                                                                         | Contain business logic; import server code              |
+| `src/ui/`                      | React components, grouped by feature area.                                                                                           | Contain business logic beyond dispatching to state      |
+| `src/test/`                    | Shared test setup, API test helpers, and seed fixtures.                                                                              | Be imported in production code                          |
 
 ### Directory Detail
 
-**A subsection here is a coverage contract**: it names every source file directly inside that directory, and `scripts/check-module-map.sh` (AC-350) fails the build on a file it omits or a name whose file is gone. Adding a `#### <dir>` heading is the act of accepting that contract; the document's own structure is the checker's configuration, so no parallel list exists.
+**A subsection here is a coverage contract**: every source file directly inside that directory is named, and `scripts/check-module-map.sh` (AC-350) fails the build on a file it omits or a name whose file is gone. Adding a `#### <dir>` heading is the act of accepting that contract; the document's own structure is the checker's configuration, so no parallel list exists.
 
-Only three directories earn it — the ones where the _set_ of files is itself architecture: the HTTP surface, the process entry points, and the e-invoicing core. Everywhere else, a complete file list would be inventory rather than architecture, and what is worth saying about those directories is in [§ Directory Notes](#directory-notes) below.
+The contract binds new files from day one. Files that were already undocumented when their directory opted in are frozen in `scripts/module-map-baseline.txt` — 21 today, none of them named below — and that list only shrinks; burn-down is #306. So a subsection is complete up to its baseline, not yet outright.
+
+A directory earns a subsection when the _set_ of files is itself architecture and a missing one is a missing subsystem. Everywhere else a complete file list would be inventory rather than architecture, and what is worth saying about those directories is in [§ Directory Notes](#directory-notes) below.
 
 #### `src/server/routes/`
 
@@ -144,7 +147,7 @@ The EN 16931 e-invoicing core (ADR-0026) — Factur-X builder, PDF/A-3 drawer, p
 
 What a filename does not tell you: disambiguation, invariants, and negative space. **No entry here claims to be a complete file list** — for that, read the directory. An entry exists because something about it would otherwise surprise you; a file with nothing surprising about it is deliberately absent.
 
-Names carrying a source extension are still resolved by `scripts/check-module-map.sh`, so a note cannot outlive the file it describes.
+Every entry is keyed by a directory, and `scripts/check-module-map.sh` resolves the names it cites — with or without a source extension — under that key. So a note cannot outlive the file it describes, and cannot be propped up by a same-named file elsewhere: `events.ts` under `src/server/services/` means that file, not the sibling the entry exists to distinguish it from.
 
 **`src/config/`** — deployment-tunable values are indexed in [§ Configuration Files](#configuration-files) below; that table is the single list. `sseEvents.ts` is not one of them: it is the realtime SSE event catalog, the wire vocabulary shared by `src/server/sse/` and `src/sse/`, and its `SSE_EVENT_NAMES` backs the AC-338 subscriber-coverage guard.
 
