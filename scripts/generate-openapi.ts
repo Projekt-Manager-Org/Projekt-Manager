@@ -16,9 +16,11 @@
  * so a fixture written outside the repo is byte-identical to the
  * published artifact rather than silently reformatted.
  *
- * This is the only caller that passes `openapi: true`; production
- * (start.ts) and every test leave it off, so the script cannot change
- * runtime behavior elsewhere.
+ * This is the only caller that passes `openapi:` at all — production
+ * (start.ts) and every test omit it — so the script cannot change
+ * runtime behavior elsewhere. `DOC_OPTIONS` below is what it passes:
+ * the document's own header lives here rather than in `app.ts`, which
+ * ships in the production bundle.
  *
  * Route registration requires a truthy `db` (`buildApp`'s `if (opts.db)`
  * gate), but no route plugin queries the database at registration time —
@@ -49,7 +51,7 @@ import * as prettier from 'prettier';
 import { Validator } from '@seriousme/openapi-schema-validator';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
-import { buildApp } from '../src/server/app.js';
+import { buildApp, type OpenApiDocOptions } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -142,8 +144,43 @@ function stripUnsupportedClaims(doc: DocLike): DocLike {
   return doc;
 }
 
-/** The `openapi:` version the document is required to declare and validate as. */
+/**
+ * The `openapi:` version the document declares, and the major.minor the
+ * validator is required to report back for it (`Validator.version` is
+ * major.minor only).
+ */
+const DECLARED_OAS_VERSION = '3.1.0';
 const TARGET_OAS_VERSION = '3.1';
+
+/**
+ * The document's header. Lives here, not in `src/server/app.ts`: what
+ * the artifact says about itself is a documentation decision, and
+ * `app.ts` ships in the production bundle.
+ *
+ * `info.version` is the version of the API contract, deliberately NOT
+ * `package.json`'s — a release bump says nothing about whether the HTTP
+ * surface changed, and coupling them would turn every release into a red
+ * build until someone regenerated the artifact. Bump it when the HTTP
+ * surface changes.
+ *
+ * `servers` is same-origin: the API is served by the app that serves the
+ * SPA. It also silences Redocly's `no-empty-servers`, which errors on a
+ * document carrying no `servers` at all.
+ */
+const DOC_OPTIONS: OpenApiDocOptions = {
+  openapi: DECLARED_OAS_VERSION,
+  info: {
+    title: 'Projekt-Manager API',
+    version: '0.1.0',
+    description:
+      'GENERATED FILE — do not edit by hand. Produced from the routes ' +
+      'registered by buildApp() via `npx tsx scripts/generate-openapi.ts`; ' +
+      'CI fails on drift. Describes requests only — responses and auth are ' +
+      'not declared yet. The normative API contract is docs/spec/api.md ' +
+      '§14.2; see ARCHITECTURE.md § OpenAPI Document Generation.',
+  },
+  servers: [{ url: '/' }],
+};
 
 /**
  * Fail unless the document is valid OpenAPI 3.1 — the second of the two
@@ -177,7 +214,7 @@ async function buildExpectedDoc(): Promise<string> {
     const conn = createDatabase();
     pool = conn.pool;
 
-    app = buildApp({ logger: false, db: conn.db, rateLimit: false, openapi: true });
+    app = buildApp({ logger: false, db: conn.db, rateLimit: false, openapi: DOC_OPTIONS });
     await app.ready();
 
     const doc = stripUnsupportedClaims(app.swagger() as DocLike);

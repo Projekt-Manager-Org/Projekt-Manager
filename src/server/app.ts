@@ -41,12 +41,21 @@ import { resolveVapidKeyMaterial, type VapidKeyMaterial } from './config/vapid.j
 import { installErrorHandler } from './error-handler.js';
 
 /**
- * `info.version` of the generated OpenAPI document — the version of the
- * API contract, deliberately NOT `package.json`'s. Bump it when the HTTP
- * surface changes. Rationale: ARCHITECTURE.md § OpenAPI Document
- * Generation.
+ * Header of the generated OpenAPI document (AC-351) — the version it
+ * declares, its `info` block, its `servers` list.
+ *
+ * Owned by `scripts/generate-openapi.ts`, which is the only caller and
+ * the only place the values live: what the artifact says about itself is
+ * a documentation decision, and this file ships in the production
+ * bundle. Structurally a subset of the OpenAPI Document Object, declared
+ * locally so the factory's signature does not depend on a
+ * devDependency's types.
  */
-const OPENAPI_DOC_VERSION = '0.1.0';
+export interface OpenApiDocOptions {
+  openapi: string;
+  info: { title: string; version: string; description: string };
+  servers: { url: string }[];
+}
 
 export interface AppOptions {
   logger?: boolean;
@@ -60,21 +69,22 @@ export interface AppOptions {
    */
   health?: HealthDeps;
   /**
-   * Register `@fastify/swagger` in OpenAPI-collection mode (AC-351).
-   * `@fastify/swagger` adds no HTTP route and no UI (that would be
-   * `@fastify/swagger-ui`, not registered here); it hooks `onRoute` to
-   * build an in-memory document from each route's native `schema:`
-   * block, retrievable via `app.swagger()`.
+   * When present, register `@fastify/swagger` in OpenAPI-collection mode
+   * (AC-351) and publish this as the document's header. The plugin adds
+   * no HTTP route and no UI (that would be `@fastify/swagger-ui`, not
+   * registered here); it hooks `onRoute` to build an in-memory document
+   * from each route's native `schema:` block, retrievable via
+   * `app.swagger()`.
    *
-   * Off by default — production (start.ts) and every test leave it
-   * unset, so this changes nothing about their behavior. A build-tooling
-   * seam, not dead code (C-DEAD): its one caller,
-   * `scripts/generate-openapi.ts`, runs on every CI run.
+   * Omitted by production (start.ts) and every test, so this changes
+   * nothing about their behavior. A build-tooling seam, not dead code
+   * (C-DEAD): its one caller, `scripts/generate-openapi.ts`, runs on
+   * every CI run.
    *
    * Everything else — the 3.1 target, the validity gate, why the import
    * below is lazy — is ARCHITECTURE.md § OpenAPI Document Generation.
    */
-  openapi?: boolean;
+  openapi?: OpenApiDocOptions;
 }
 
 /**
@@ -278,26 +288,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     // that is what keeps this devDependency out of the production
     // runtime (ARCHITECTURE.md § OpenAPI Document Generation). Fastify's
     // `register` accepts a module promise.
-    app.register(import('@fastify/swagger'), {
-      openapi: {
-        openapi: '3.1.0',
-        info: {
-          title: 'Projekt-Manager API',
-          version: OPENAPI_DOC_VERSION,
-          description:
-            'GENERATED FILE — do not edit by hand. Produced from the routes ' +
-            'registered by buildApp() via `npx tsx ' +
-            'scripts/generate-openapi.ts`; CI fails on drift. Describes ' +
-            'requests only — responses and auth are not declared yet. The ' +
-            'normative API contract is docs/spec/api.md §14.2; see ' +
-            'ARCHITECTURE.md § OpenAPI Document Generation.',
-        },
-        // Same-origin: the API is served by the app that serves the SPA.
-        // Also silences Redocly's `no-empty-servers`, which otherwise
-        // errors on a document with no `servers` at all.
-        servers: [{ url: '/' }],
-      },
-    });
+    app.register(import('@fastify/swagger'), { openapi: opts.openapi });
   }
 
   // Liveness probe. Registered unconditionally — it is a public

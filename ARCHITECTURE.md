@@ -380,7 +380,7 @@ Route definitions live in `src/server/routes/`, and every one of them is registe
 
 ### OpenAPI Document Generation
 
-`docs/api/openapi.json` is generated from the native Fastify `schema:` blocks the routes already carry — no hand-authored OpenAPI annotations (AC-351). `scripts/generate-openapi.ts` builds the app via `buildApp({ openapi: true })` (the flag `@fastify/swagger` registers behind), calls `app.swagger()`, and writes the Prettier-formatted result; `--check` mode fails CI on drift (`npm run check:openapi`, plus the scenario harness `scripts/__tests__/check-openapi-doc.test.sh`).
+`docs/api/openapi.json` is generated from the native Fastify `schema:` blocks the routes already carry — no hand-authored OpenAPI annotations (AC-351). `scripts/generate-openapi.ts` builds the app via `buildApp({ openapi: … })` (the option `@fastify/swagger` registers behind, carrying the document's header), calls `app.swagger()`, and writes the Prettier-formatted result; `--check` mode fails CI on drift (`npm run check:openapi`, plus the scenario harness `scripts/__tests__/check-openapi-doc.test.sh`).
 
 **Coverage is exactly `buildApp()`.** `app.swagger()` reports the routes registered on the instance the generator built, so the API surface is complete only while every API route is registered by the factory — which the `no-restricted-syntax` rule in `eslint.config.js` enforces (see § API Surface), with the static-asset registration as its one stated exception. A route with no `schema:` block still appears, as a bare operation: `/api/health` publishes `{"get": {}}`, which says the endpoint exists and nothing more.
 
@@ -401,7 +401,7 @@ Two seams are permanently hand-maintained, not generated, and tracked incrementa
 - **`securitySchemes`** — session-cookie auth is enforced by a `preHandler` hook (`createAuthMiddleware`), invisible to schema-based tooling; the doc cannot state that auth is required without a hand-written security block.
 - **Response/error schemas** — as routes gain real `response:` schemas the generator emits them automatically, and `api.md`'s per-endpoint request/response prose retires one route at a time (strangler); its normative design notes stay hand-written.
 
-`info.version` is a fixed constant in `app.ts`, not `package.json`'s version: the app's release version says nothing about whether the HTTP surface changed, and coupling them would turn every release bump into a red build until someone regenerated the artifact.
+The document's header — the version it declares, `info`, `servers` — lives in `scripts/generate-openapi.ts` and reaches the factory as `buildApp({ openapi: … })`. `app.ts` only wires it through: what the artifact says about itself is a documentation decision, and `app.ts` ships in the production bundle. `info.version` is a fixed constant there, not `package.json`'s version: the app's release version says nothing about whether the HTTP surface changed, and coupling them would turn every release bump into a red build until someone regenerated the artifact.
 
 `lint-staged` is deliberately **not** extended to run this check on commit. The generator boots the whole Fastify app; that is seconds of latency on every commit touching `src/server/`, against a guard CI already enforces on every push.
 
