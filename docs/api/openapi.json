@@ -3,7 +3,7 @@
   "info": {
     "title": "Projekt-Manager API",
     "version": "0.1.0",
-    "description": "GENERATED FILE — do not edit by hand. Produced from the route definitions by `npx tsx scripts/generate-openapi.ts`; CI fails on drift. Describes requests only — responses and auth are not yet declared (#282). The normative API contract is docs/spec/api.md §14.2."
+    "description": "GENERATED FILE — do not edit by hand. Produced from the routes registered by buildApp() via `npx tsx scripts/generate-openapi.ts`; CI fails on drift. Describes requests only — responses and auth are not declared yet. The normative API contract is docs/spec/api.md §14.2; see ARCHITECTURE.md § OpenAPI Document Generation."
   },
   "paths": {
     "/api/health": {

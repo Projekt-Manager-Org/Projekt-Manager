@@ -1,12 +1,9 @@
 /**
- * Emits `docs/api/openapi.json` — an OpenAPI 3.1 document generated from
- * the native Fastify `schema:` blocks already on every route (no
- * hand-authored OpenAPI annotations, AC-351).
- *
- * The document is a downstream, code-derived view of the request
- * surface. It is NOT the API contract: `docs/spec/api.md` §14.2 is
- * normative and hand-authored, which is why this artifact lives outside
- * `docs/spec/`. See ARCHITECTURE.md § OpenAPI Document Generation.
+ * Emits `docs/api/openapi.json` — the OpenAPI 3.1 document AC-351
+ * publishes, built from the routes `buildApp()` registers and their
+ * native Fastify `schema:` blocks. What the artifact is for, why 3.1,
+ * why it is not in `docs/spec/`, and why validity is gated separately
+ * from drift: ARCHITECTURE.md § OpenAPI Document Generation.
  *
  * Usage:
  *   npx tsx scripts/generate-openapi.ts           # write in place
@@ -19,32 +16,25 @@
  * so a fixture written outside the repo is byte-identical to the
  * published artifact rather than silently reformatted.
  *
- * Builds the app via `buildApp()` (src/server/app.ts) with `openapi: true`
- * — the only caller that turns that option on; production (start.ts) and
- * every test leave it off, so this script cannot change runtime behavior
- * elsewhere. Route registration requires a truthy `db` (see `buildApp`'s
- * `if (opts.db)` gate), but no route plugin queries the database at
- * registration time — constructors only store the handle, and schemas are
- * attached synchronously via `app.post(...)`/`app.get(...)`. So this
- * script points `DATABASE_URL` at a deliberately unreachable address
- * (port 1 — connection refused immediately) instead of a real Postgres
- * instance: if some future route DOES query the database at boot, this
- * script fails loudly instead of silently touching a real database.
+ * This is the only caller that passes `openapi: true`; production
+ * (start.ts) and every test leave it off, so the script cannot change
+ * runtime behavior elsewhere.
  *
- * `createInvoiceService` (invoices.ts route plugin) is the one exception
- * to "registration never touches config beyond presence checks" — it
- * calls `buildInvoiceBinaryDeps()` at registration time, which throws
- * unless STORAGE_ENDPOINT / STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY /
- * BINARY_AGE_RECIPIENT are non-empty (mirroring `assertAppServerEnv`,
- * which normally guards this at boot). It only checks presence and
- * constructs an `S3Client` (no I/O at construction) — so placeholder
- * non-empty values below satisfy it without needing a reachable MinIO or
- * Postgres. This is also why the CI check needs no DB/MinIO services.
+ * Route registration requires a truthy `db` (`buildApp`'s `if (opts.db)`
+ * gate), but no route plugin queries the database at registration time —
+ * constructors only store the handle, and schemas are attached
+ * synchronously. So `DATABASE_URL` points at a deliberately unreachable
+ * address (port 1 — connection refused immediately): if some future
+ * route DOES query at boot, this fails loudly instead of silently
+ * touching a real database.
  *
- * The generated document is validated against the OpenAPI 3.1 schema
- * before it is written or compared — `--check` alone would stay green on
- * a structurally invalid document, since it only compares generated
- * against committed. See `assertValid`.
+ * `createInvoiceService` (invoices.ts) is the one exception to
+ * "registration never touches config beyond presence checks" — it calls
+ * `buildInvoiceBinaryDeps()`, which throws unless STORAGE_ENDPOINT /
+ * STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY / BINARY_AGE_RECIPIENT are
+ * non-empty. It only checks presence and constructs an `S3Client` (no
+ * I/O at construction), so the placeholder values below satisfy it —
+ * which is also why the CI check needs no DB/MinIO services.
  *
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (missing/unreadable target in --check mode, or the app
@@ -125,21 +115,13 @@ function isSyntheticResponses(responses: Record<string, unknown> | undefined): b
 }
 
 /**
- * Strip claims the route schemas do not support.
+ * Strip claims the route schemas do not support: the synthetic 200, and
+ * an all-empty `components` (today `{"schemas": {}}`). Both are derived
+ * from nothing, and 3.1 lets the document stay silent about them —
+ * ARCHITECTURE.md § OpenAPI Document Generation.
  *
- * The synthetic 200 is derived from nothing, and no route actually
- * returns only 200 — nine return 201, eight return 204, and four sites
- * exist solely to return 405 — so publishing it would make the document
- * assert something false for every operation. OpenAPI 3.1 lists
- * `responses` without the REQUIRED marker on the Operation Object (3.0
- * required it — one more reason for the 3.1 target), so omitting it is
- * valid: the document then says *nothing* about responses instead of
- * something wrong. Real response schemas, once routes declare them,
- * flow through untouched.
- *
- * An all-empty `components` (today `{"schemas": {}}`) is dropped for the
- * same reason — it is noise, not information. It reappears the moment
- * the hand-maintained `securitySchemes` seam lands (#282).
+ * Real response schemas, once routes declare them, flow through
+ * untouched.
  */
 function stripUnsupportedClaims(doc: DocLike): DocLike {
   for (const item of Object.values(doc.paths ?? {})) {
@@ -164,22 +146,13 @@ function stripUnsupportedClaims(doc: DocLike): DocLike {
 const TARGET_OAS_VERSION = '3.1';
 
 /**
- * Fail unless the document is valid OpenAPI 3.1.
+ * Fail unless the document is valid OpenAPI 3.1 — the second of the two
+ * gates (ARCHITECTURE.md § OpenAPI Document Generation).
  *
- * `check:openapi` on its own only compares generated against committed —
- * it would stay green on a structurally invalid document, because both
- * sides would be equally wrong. This is the gate that makes
- * ARCHITECTURE.md's validity claim an enforced property instead of a
- * one-off manual verification recorded as fact.
- *
- * The detected version is asserted too: the validator picks its schema
- * from the document's own `openapi:` field, so without this a document
- * that silently declared 3.0 would be validated against 3.0's schema and
- * pass — a green check that no longer means what it says.
- *
- * A linter (`@redocly/cli`) is deliberately not used here. Its rules are
- * style and completeness — `operation-summary`, `security-defined`,
- * `operation-operationId` — which are #282's work, not spec conformance.
+ * The detected version is asserted too, not just validity: the validator
+ * picks its schema from the document's own `openapi:` field, so a
+ * document that silently declared 3.0 would be checked against 3.0's
+ * schema and pass — a green check that no longer means what it says.
  */
 async function assertValid(doc: DocLike): Promise<void> {
   const validator = new Validator();
