@@ -54,8 +54,17 @@ export interface AppOptions {
    * would be `@fastify/swagger-ui`, not registered here); it only hooks
    * `onRoute` to build an in-memory document from each route's native
    * `schema:` block, retrievable via `app.swagger()`. The only caller
-   * that sets this is `scripts/generate-openapi.ts` (spike — see
-   * docs/spec/openapi.json).
+   * that sets this is `scripts/generate-openapi.ts` (AC-351 — see
+   * docs/spec/openapi.json and ARCHITECTURE.md § OpenAPI Document
+   * Generation).
+   *
+   * Document targets OpenAPI **3.1.x**, not 3.0.x — 3.0's Schema Object
+   * (Draft-4-based) rejects array-valued `type` (the `type: ['string',
+   * 'null']` nullable idiom used throughout the route schemas) and
+   * numeric `exclusiveMinimum`; 3.1 adopted JSON Schema 2020-12, which
+   * accepts both natively. Verified via `@redocly/cli lint` (0
+   * structural errors) and `@seriousme/openapi-schema-validator`
+   * (`valid: true`) — see the AC-351 promotion PR.
    */
   openapi?: boolean;
 }
@@ -252,17 +261,17 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     });
   }
 
-  // OpenAPI document collection (spike/openapi-emit) — see the
-  // `openapi` option's doc comment above. Registered before the route
-  // plugins below so its `onRoute` hook is attached before any route
-  // (including the ones gated on `opts.db`) is added.
+  // OpenAPI document collection (AC-351) — see the `openapi` option's
+  // doc comment above. Registered before the route plugins below so its
+  // `onRoute` hook is attached before any route (including the ones
+  // gated on `opts.db`) is added.
   if (opts.openapi) {
     const pkg = JSON.parse(
       readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
     ) as { version: string };
     app.register(swagger, {
       openapi: {
-        openapi: '3.0.3',
+        openapi: '3.1.0',
         info: {
           title: 'Projekt-Manager API',
           version: pkg.version,

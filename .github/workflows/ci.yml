@@ -352,6 +352,15 @@ jobs:
       - name: Nav matrix drift check — self-test
         run: bash scripts/__tests__/check-nav-doc.test.sh
 
+      # Enforce AC-351 — docs/spec/openapi.json is generated from the native
+      # Fastify route `schema:` blocks, not hand-authored. The generator
+      # self-provisions its env placeholders, so this needs no DB/MinIO.
+      - name: OpenAPI doc drift check (AC-351)
+        run: npm run check:openapi
+
+      - name: OpenAPI doc drift check — self-test
+        run: bash scripts/__tests__/check-openapi-doc.test.sh
+
       - name: Type check
         run: npx tsc --noEmit
 
