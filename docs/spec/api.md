@@ -16,6 +16,8 @@ The API is the boundary between the front end and all persistent state ([archite
 - **Stable list order.** List operations return rows in a deterministic order — a second fetch yields the same sequence, and pagination pages do not overlap or skip rows.
 - **Timestamps managed server-side.** `createdAt`, `updatedAt`, `statusChangedAt` are set by the server, never by clients.
 
+**Precedence.** This document is the normative contract. [`docs/api/openapi.json`](../../docs/api/openapi.json) is a machine-readable artifact _generated from the implementation_ (AC-351) covering the request surface only; it is a derived view, not a second contract. Where the two disagree, this document wins and the divergence is a defect in the code or in §14.2 — never a reason to edit the generated file. See [ARCHITECTURE.md § OpenAPI Document Generation](../../ARCHITECTURE.md#openapi-document-generation).
+
 ---
 
 ### 14.2 Operations

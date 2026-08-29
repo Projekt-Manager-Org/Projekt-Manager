@@ -31,6 +31,7 @@
     "check:tokens": "bash scripts/check-theme-tokens.sh",
     "check:permissions-doc": "tsx scripts/generate-permissions-doc.ts --check",
     "check:nav-doc": "tsx scripts/generate-nav-doc.ts --check",
+    "check:openapi": "tsx scripts/generate-openapi.ts --check",
     "check:doc-paths": "bash scripts/check-doc-paths.sh",
     "check:module-map": "bash scripts/check-module-map.sh",
     "check:links": "bash scripts/check-links.sh",
@@ -88,7 +89,9 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@fastify/swagger": "^9.8.1",
     "@playwright/test": "^1.60.0",
+    "@seriousme/openapi-schema-validator": "^2.9.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

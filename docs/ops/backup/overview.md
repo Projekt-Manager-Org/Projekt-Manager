@@ -19,9 +19,9 @@ A `backup` compose service that, on every scheduled tick, produces three R2 obje
            │ upsert meta_backup_status
            ▼
 ┌──────────────────────┐
-│  app DB              │   GET /api/backup/status   ┌──────────────────────────┐
-│  meta_backup_status  │ ─────────────────────────▶ │  login-screen + owner    │
-│  (single row)        │                            │  landing view — badge    │
+│  app DB              │    GET /api/auth/me        ┌──────────────────────────┐
+│  meta_backup_status  │ ─────────────────────────▶ │  owner landing view      │
+│  (single row)        │   (owner-only field)       │  — badge                 │
 └──────────────────────┘                            └──────────────────────────┘
 ```
 

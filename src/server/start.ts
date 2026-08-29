@@ -26,7 +26,6 @@ import { emitFeatureManifest } from './config/features.js';
 import { formatErrorChain } from './format-error-chain.js';
 import { assertBaselineLedgerMatchesFile } from './db/baseline-guard.js';
 import { createDatabase } from './db/connection.js';
-import { probeHealth } from './health.js';
 import { seed } from './seed.js';
 import { pruneBucketOrphans, createBucketKeyLister } from './storage/pruneBucketOrphans.js';
 import { deleteExpiredSessions } from './repositories/session.js';
@@ -355,8 +354,6 @@ async function start(): Promise<void> {
     },
   });
 
-  const app = buildApp({ logger: true, db });
-
   // Storage client for the health probe. Instantiated once at startup and
   // reused across health requests. The existing routes do not use storage
   // yet (walking skeleton), but #48 still wants MinIO liveness surfaced by
@@ -371,16 +368,10 @@ async function start(): Promise<void> {
     keyPrefix: env.STORAGE_KEY_PREFIX,
   });
 
-  // Health-check endpoint (outside auth-guarded routes). Real probe — runs
-  // a trivial DB query and a HeadBucket against MinIO. Returns 503 if
-  // either check fails, so the Docker healthcheck, smoke-test scripts, and
-  // any future load balancer all see the actual state of the app's
-  // dependencies instead of a hard-coded `ok`. See #48.
-  app.get('/api/health', async (_request, reply) => {
-    const health = await probeHealth(pool, storageClient);
-    const code = health.status === 'ok' ? 200 : 503;
-    return reply.code(code).send(health);
-  });
+  // The probe itself lives in `src/server/routes/health.ts` and is
+  // registered by buildApp — routes mounted here would be invisible to
+  // the generated OpenAPI document (AC-351).
+  const app = buildApp({ logger: true, db, health: { pool, storage: storageClient } });
 
   // Serve the Vite-built frontend from dist/ — production only. Gate on
   // isProduction, not just existsSync: a stray dist/ left over from an

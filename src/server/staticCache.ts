@@ -47,8 +47,21 @@ export function staticCacheControl(filePath: string): string {
  *
  * `setHeaders` receives a `FastifyReply`, not a raw `http.ServerResponse`;
  * `reply.header()` is the setter.
+ *
+ * **The one route registration outside `buildApp()`.** With
+ * `wildcard: false`, `@fastify/static` globs `root` at registration time
+ * and registers a HEAD+GET pair per built file, plus the index routes —
+ * on the instance `buildApp()` returned, from `start.ts`, in production
+ * only. So the generated OpenAPI document (AC-351) does not describe
+ * them, and the completeness rule below is disabled for this one call
+ * rather than silently not matching it.
+ *
+ * The exception is bounded and stays that way: these are the compiled
+ * SPA's own assets under a filesystem root, never API surface. Anything
+ * a client calls belongs in `src/server/routes/` behind the factory.
  */
 export async function registerStaticAssets(app: FastifyInstance, root: string): Promise<void> {
+  // eslint-disable-next-line no-restricted-syntax -- static assets, not API surface; see above
   await app.register(fastifyStatic, {
     root,
     wildcard: false,

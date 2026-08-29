@@ -1,9 +1,9 @@
 /**
- * Tests for the health probe (#48).
+ * Tests for the health probe and its route (#48).
  *
  * The probe runs DB and storage checks in parallel and maps the outcome
- * to `{status, checks}`. The HTTP status code (200 vs 503) is decided
- * by the route handler in start.ts, not by the probe itself.
+ * to `{status, checks}`; the route in `src/server/routes/health.ts`
+ * turns that into 200 or 503.
  *
  * These tests mock pg.Pool and StorageClient so we can exercise every
  * branch (both ok, db fail, storage fail, both fail) without standing
@@ -12,9 +12,11 @@
  * but they do not require a live database or storage backend.
  */
 
+import Fastify from 'fastify';
 import { describe, it, expect, vi } from 'vitest';
 import type pg from 'pg';
 import { probeHealth } from '../health.js';
+import { healthRoutes, type HealthDeps } from '../routes/health.js';
 import type { StorageClient } from '../storage/client.js';
 
 function mockPool(query: () => Promise<unknown>): pg.Pool {
@@ -127,5 +129,50 @@ describe('probeHealth', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('GET /api/health', () => {
+  async function inject(deps: HealthDeps | null) {
+    const app = Fastify({ logger: false });
+    await app.register(healthRoutes(deps));
+    await app.ready();
+    try {
+      return await app.inject({ method: 'GET', url: '/api/health' });
+    } finally {
+      await app.close();
+    }
+  }
+
+  it('answers 200 when both dependencies are reachable', async () => {
+    const res = await inject({
+      pool: mockPool(async () => ({ rows: [{ '?column?': 1 }] })),
+      storage: mockStorage(async () => undefined),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: 'ok', checks: { db: 'ok', storage: 'ok' } });
+  });
+
+  it('answers 503 when a dependency is down', async () => {
+    const res = await inject({
+      pool: mockPool(async () => ({ rows: [{ '?column?': 1 }] })),
+      storage: mockStorage(async () => {
+        throw new Error('NoSuchBucket');
+      }),
+    });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ status: 'degraded', checks: { db: 'ok', storage: 'fail' } });
+  });
+
+  it('answers 503 when the app was built without probe dependencies', async () => {
+    // An app with no database and no object store is degraded, so the
+    // dependency-less branch reports it rather than passing a healthcheck
+    // it cannot substantiate.
+    const res = await inject(null);
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({ status: 'degraded', checks: { db: 'fail', storage: 'fail' } });
   });
 });

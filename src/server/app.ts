@@ -27,6 +27,7 @@ import { pushPublicRoutes } from './routes/push.js';
 import { attachmentRoutes } from './routes/attachments.js';
 import { storageUsageRoutes } from './routes/storage-usage.js';
 import { eventsRoutes } from './routes/events.js';
+import { healthRoutes, type HealthDeps } from './routes/health.js';
 import { invoiceRoutes } from './routes/invoices.js';
 import { companyProfileRoutes } from './routes/company-profile.js';
 import { configureSseBus } from './sse/bus.js';
@@ -39,11 +40,51 @@ import { getEnv } from './config/env.js';
 import { resolveVapidKeyMaterial, type VapidKeyMaterial } from './config/vapid.js';
 import { installErrorHandler } from './error-handler.js';
 
+/**
+ * Header of the generated OpenAPI document (AC-351) — the version it
+ * declares, its `info` block, its `servers` list.
+ *
+ * Owned by `scripts/generate-openapi.ts`, which is the only caller and
+ * the only place the values live: what the artifact says about itself is
+ * a documentation decision, and this file ships in the production
+ * bundle. Structurally a subset of the OpenAPI Document Object, declared
+ * locally so the factory's signature does not depend on a
+ * devDependency's types.
+ */
+export interface OpenApiDocOptions {
+  openapi: string;
+  info: { title: string; version: string; description: string };
+  servers: { url: string }[];
+}
+
 export interface AppOptions {
   logger?: boolean;
   db?: Database;
   /** Set false to disable rate limiting (useful in tests). Defaults to true. */
   rateLimit?: boolean;
+  /**
+   * Pool + storage client the `/api/health` probe reports on. The route
+   * is registered either way (see below); without these it answers 503
+   * `degraded`.
+   */
+  health?: HealthDeps;
+  /**
+   * When present, register `@fastify/swagger` in OpenAPI-collection mode
+   * (AC-351) and publish this as the document's header. The plugin adds
+   * no HTTP route and no UI (that would be `@fastify/swagger-ui`, not
+   * registered here); it hooks `onRoute` to build an in-memory document
+   * from each route's native `schema:` block, retrievable via
+   * `app.swagger()`.
+   *
+   * Omitted by production (start.ts) and every test, so this changes
+   * nothing about their behavior. A build-tooling seam, not dead code
+   * (C-DEAD): its one caller, `scripts/generate-openapi.ts`, runs on
+   * every CI run.
+   *
+   * Everything else — the 3.1 target, the validity gate, why the import
+   * below is lazy — is ARCHITECTURE.md § OpenAPI Document Generation.
+   */
+  openapi?: OpenApiDocOptions;
 }
 
 /**
@@ -237,6 +278,24 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
       global: false, // Only routes with explicit config are limited
     });
   }
+
+  // OpenAPI document collection (AC-351) — see the `openapi` option's
+  // doc comment above. Registered before the route plugins below so its
+  // `onRoute` hook is attached before any route (including the ones
+  // gated on `opts.db`) is added.
+  if (opts.openapi) {
+    // Lazy `import()` inside the branch, never a static top-level one —
+    // that is what keeps this devDependency out of the production
+    // runtime (ARCHITECTURE.md § OpenAPI Document Generation). Fastify's
+    // `register` accepts a module promise.
+    app.register(import('@fastify/swagger'), { openapi: opts.openapi });
+  }
+
+  // Liveness probe. Registered unconditionally — it is a public
+  // production endpoint, so it must be part of the factory's route
+  // surface no matter which dependencies a caller wires, or the
+  // generated OpenAPI document (AC-351) omits it.
+  app.register(healthRoutes(opts.health ?? null));
 
   if (opts.db) {
     // Resolve VAPID material once at boot: derives the public key from
