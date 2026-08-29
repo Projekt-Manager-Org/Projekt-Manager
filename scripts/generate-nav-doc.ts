@@ -26,7 +26,11 @@
  *
  * $NAV_DOC_PATH overrides the target file — used by
  * scripts/__tests__/check-nav-doc.test.sh to point at a fixture copy
- * without touching the real doc.
+ * without touching the real doc. It overrides *only* the destination:
+ * Prettier's configuration is always resolved from CANONICAL_DOC_PATH,
+ * so a fixture written outside the repo is byte-identical to the
+ * published doc rather than silently reformatted with Prettier's
+ * built-in defaults.
  *
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (doc file unreadable or markers missing) so the
@@ -45,7 +49,12 @@ import {
 import { ROLE_KEYS } from '../src/config/roleKeys.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DOC_PATH = process.env.NAV_DOC_PATH ?? path.join(REPO_ROOT, 'docs/spec/ui/index.md');
+/**
+ * The published doc. Also the path Prettier's configuration is always
+ * resolved from, even when writing elsewhere — see `buildExpectedDoc`.
+ */
+const CANONICAL_DOC_PATH = path.join(REPO_ROOT, 'docs/spec/ui/index.md');
+const DOC_PATH = process.env.NAV_DOC_PATH ?? CANONICAL_DOC_PATH;
 
 const START_MARKER = '<!-- GENERATED:nav-matrix:START';
 const END_MARKER = '<!-- GENERATED:nav-matrix:END -->';
@@ -128,8 +137,10 @@ async function buildExpectedDoc(): Promise<string> {
   const after = doc.slice(endIdx);
   const spliced = `${before}\n${renderTable()}\n${renderLandingOrder()}\n${after}`;
 
-  const config = await prettier.resolveConfig(DOC_PATH);
-  return prettier.format(spliced, { ...config, filepath: DOC_PATH });
+  // CANONICAL_DOC_PATH, never DOC_PATH — see the $NAV_DOC_PATH note in
+  // the file header.
+  const config = await prettier.resolveConfig(CANONICAL_DOC_PATH);
+  return prettier.format(spliced, { ...config, filepath: CANONICAL_DOC_PATH });
 }
 
 const checkOnly = process.argv.includes('--check');
