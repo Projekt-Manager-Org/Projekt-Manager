@@ -41,15 +41,22 @@
  * non-empty values below satisfy it without needing a reachable MinIO or
  * Postgres. This is also why the CI check needs no DB/MinIO services.
  *
+ * The generated document is validated against the OpenAPI 3.1 schema
+ * before it is written or compared — `--check` alone would stay green on
+ * a structurally invalid document, since it only compares generated
+ * against committed. See `assertValid`.
+ *
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (missing/unreadable target in --check mode, or the app
- * failed to build/ready / the doc could not be generated) so the
- * caller's `set -e` trips loudly instead of silently no-op'ing.
+ * failed to build/ready, or the doc could not be generated or is not
+ * valid OpenAPI 3.1) so the caller's `set -e` trips loudly instead of
+ * silently no-op'ing.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as prettier from 'prettier';
+import { Validator } from '@seriousme/openapi-schema-validator';
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import { buildApp } from '../src/server/app.js';
@@ -153,6 +160,42 @@ function stripUnsupportedClaims(doc: DocLike): DocLike {
   return doc;
 }
 
+/** The `openapi:` version the document is required to declare and validate as. */
+const TARGET_OAS_VERSION = '3.1';
+
+/**
+ * Fail unless the document is valid OpenAPI 3.1.
+ *
+ * `check:openapi` on its own only compares generated against committed —
+ * it would stay green on a structurally invalid document, because both
+ * sides would be equally wrong. This is the gate that makes
+ * ARCHITECTURE.md's validity claim an enforced property instead of a
+ * one-off manual verification recorded as fact.
+ *
+ * The detected version is asserted too: the validator picks its schema
+ * from the document's own `openapi:` field, so without this a document
+ * that silently declared 3.0 would be validated against 3.0's schema and
+ * pass — a green check that no longer means what it says.
+ *
+ * A linter (`@redocly/cli`) is deliberately not used here. Its rules are
+ * style and completeness — `operation-summary`, `security-defined`,
+ * `operation-operationId` — which are #282's work, not spec conformance.
+ */
+async function assertValid(doc: DocLike): Promise<void> {
+  const validator = new Validator();
+  const result = await validator.validate(doc as Record<string, unknown>);
+  if (!result.valid) {
+    const detail =
+      typeof result.errors === 'string' ? result.errors : JSON.stringify(result.errors, null, 2);
+    throw new Error(`generated document is not valid OpenAPI:\n${detail}`);
+  }
+  if (validator.version !== TARGET_OAS_VERSION) {
+    throw new Error(
+      `generated document validated as OpenAPI ${validator.version}, expected ${TARGET_OAS_VERSION}`,
+    );
+  }
+}
+
 /** Build the app, collect the OpenAPI document, and Prettier-format it. */
 async function buildExpectedDoc(): Promise<string> {
   let app: FastifyInstance | undefined;
@@ -165,6 +208,17 @@ async function buildExpectedDoc(): Promise<string> {
     await app.ready();
 
     const doc = stripUnsupportedClaims(app.swagger() as DocLike);
+
+    // Fault-injection seam for scripts/__tests__/check-openapi-doc.test.sh.
+    // The document is generated from the real routes and is (correctly)
+    // always valid, so this is the only way to exercise the gate's
+    // failure path and prove it is wired rather than assumed. Same shape
+    // as `buildApp`'s `openapi` flag: dev-only, one caller, CI coverage.
+    if (process.env.OPENAPI_INJECT_INVALID === '1') {
+      delete (doc as Record<string, unknown>).info;
+    }
+
+    await assertValid(doc);
     const raw = JSON.stringify(doc, null, 2);
 
     // Resolve Prettier's config from CANONICAL_OUT_PATH, never OUT_PATH.

@@ -76,9 +76,13 @@ export interface AppOptions {
    * (Draft-4-based) rejects array-valued `type` (the `type: ['string',
    * 'null']` nullable idiom used throughout the route schemas) and
    * numeric `exclusiveMinimum`; 3.1 adopted JSON Schema 2020-12, which
-   * accepts both natively. Verified via `@redocly/cli lint` (0
-   * structural errors) and `@seriousme/openapi-schema-validator`
-   * (`valid: true`) — see the AC-351 promotion PR.
+   * accepts both natively. 3.1 also makes `responses` optional on the
+   * Operation Object, which is what lets the generator omit undeclared
+   * responses rather than publish a synthetic one.
+   *
+   * Validity is enforced, not asserted: `scripts/generate-openapi.ts`
+   * validates every generated document against the 3.1 schema and fails
+   * the build if it does not pass.
    */
   openapi?: boolean;
 }

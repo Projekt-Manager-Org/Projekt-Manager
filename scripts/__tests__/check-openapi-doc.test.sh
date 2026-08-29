@@ -51,11 +51,18 @@ pass=0
 fail=0
 failures=()
 
+# Set INJECT_INVALID=1 before a call to corrupt the generated document
+# inside the generator; cleared after each case.
 assert_case() {
   local expected="$1" label="$2" doc="$3"
   local actual
-  (cd "$REPO_ROOT" && OPENAPI_DOC_PATH="$doc" npx --no-install tsx "$GENERATOR" --check) >/dev/null 2>&1
+  (
+    cd "$REPO_ROOT" || exit 2
+    [[ -n "${INJECT_INVALID:-}" ]] && export OPENAPI_INJECT_INVALID=1
+    OPENAPI_DOC_PATH="$doc" npx --no-install tsx "$GENERATOR" --check
+  ) >/dev/null 2>&1
   actual=$?
+  unset INJECT_INVALID
   if [[ "$actual" == "$expected" ]]; then
     pass=$((pass + 1))
     echo "  PASS — $label (exit $actual)"
@@ -92,6 +99,24 @@ echo "Case: missing target fails with a toolchain error, not a false pass"
 missing_dir="$(mktmp_dir)"
 missing="$missing_dir/does-not-exist.json"
 assert_case 2 "missing target" "$missing"
+
+echo "Case: a structurally invalid document fails the validity gate"
+# The drift check alone would stay green on an invalid document — it only
+# compares generated against committed, and both sides would be equally
+# wrong. $OPENAPI_INJECT_INVALID drops `info` from the generated document
+# so the 3.1 schema rejects it. Without that seam the gate is
+# unfalsifiable: the document is built from the real routes and is always
+# valid, so a broken or silently-removed validator would look exactly
+# like a working one.
+#
+# Expects 2 (toolchain error), not 1 (drift): the target file is
+# byte-identical to what a clean run produces, so a pass here would mean
+# the validator never ran.
+invalid_dir="$(mktmp_dir)"
+invalid="$invalid_dir/openapi.json"
+cp "$in_sync" "$invalid"
+INJECT_INVALID=1
+assert_case 2 "invalid document" "$invalid"
 
 echo
 echo "Results: $pass passed, $fail failed"
