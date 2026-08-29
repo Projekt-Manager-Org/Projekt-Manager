@@ -440,12 +440,17 @@ jobs:
       - name: Doc path drift check — self-test
         run: bash scripts/__tests__/check-doc-paths.test.sh
 
-      # Static check: every source file in a directory that ARCHITECTURE.md
-      # gives a `#### <dir>` Directory Detail subsection must be named
-      # there (AC-350). Coverage only — the `Owns` / `Must NOT` prose is
-      # not derivable and is never generated. Ratcheted against
-      # scripts/module-map-baseline.txt so new files are gated from day
-      # one while #306 burns the existing backlog down.
+      # Static check, both directions (AC-350). Tree -> doc is opt-in:
+      # every source file in a directory that ARCHITECTURE.md gives a
+      # `#### <dir>` Directory Detail subsection must be named there.
+      # Three subsystem directories carry that contract; the rest
+      # document themselves in `### Directory Notes`, which gates
+      # nothing. Doc -> tree is neither opt-in nor scoped: any backticked
+      # name with a source extension, anywhere in the document, must
+      # resolve to a file that exists. Coverage only — the `Owns` /
+      # `Must NOT` prose is not derivable and is never generated.
+      # Ratcheted against scripts/module-map-baseline.txt so new files
+      # are gated from day one while #306 burns the backlog down.
       - name: Module Map coverage check (AC-350)
         run: npm run check:module-map
 

@@ -26,34 +26,50 @@
 # all this checks. Mirrors `check-audit-mutations.sh`: derive the
 # expected set from the tree, scan, fail on anything uncovered.
 #
-# Granularity: opt-in by subsection. A directory is gated iff
-# ARCHITECTURE.md gives it a `#### <dir>` subsection under
-# `### Directory Detail`. Directories documented at table level only —
-# the file itself names `src/server/db/`, `src/server/data/`, `src/api/`,
-# `src/hooks/`, `src/test/` — are skipped. The doc's own structure is
-# the configuration; there is no parallel list to keep in sync, and
-# adding a subsection is the act of opting that directory in.
+# Granularity: opt-in by subsection, at SUBSYSTEM level. A directory is
+# gated iff ARCHITECTURE.md gives it a `#### <dir>` subsection under
+# `### Directory Detail`. The doc's own structure is the configuration;
+# there is no parallel list to keep in sync, and adding a subsection is
+# the act of opting that directory in.
 #
-# Two rejected alternatives, because both look reasonable:
+# Three directories carry that contract: `src/server/routes/` (the HTTP
+# surface, one module per API resource), `src/server/` root (process
+# entry points, schedulers, reapers) and `src/server/services/invoice/`
+# (the EN 16931 core). In each, the SET of files is itself architecture
+# — a missing one is a missing subsystem, which is the defect #306
+# opened with.
+#
+# Everything else documents itself in `### Directory Notes`, which
+# carries no coverage obligation. That block is prose about what a
+# filename cannot tell you; a complete file list there would be
+# inventory.
+#
+# THREE REJECTED ALTERNATIVES, because all look reasonable:
+#
 #   - Per-file over all of src/**: 345 non-test files, most of them React
 #     components. Naming every component here is inventory, not
 #     architecture.
+#   - Per-file over every documented directory — what this check did
+#     until #306. Its endgame was ARCHITECTURE.md naming 187 files and
+#     growing, and the metric measured typing: appending
+#     "- `bus.ts`, `emitters.ts`" with no prose, no `Owns`, no
+#     `Must NOT`, burned down two baseline entries and turned CI green.
+#     It also gated `toastStore.ts` while leaving the Factur-X builder
+#     invisible, because coverage reaches direct children only —
+#     obligation ran inversely to architectural significance.
 #   - Top-level directory coverage: nearly free, and useless. It was
 #     green while the whole invoices subsystem was missing, because those
 #     files live in `services/`, `routes/` and `state/`, all already
 #     listed.
 #
 # SCOPE LIMIT — coverage reaches direct children only. A nested
-# directory is gated when it takes its own `#### <dir>` subsection, and
-# is otherwise invisible: `src/server/services/invoice/` holds five
-# files (the Factur-X builder, the PDF drawer, the payload crypto, the
-# XSD validator) that this check will never ask about. That is the same
-# opt-in rule applied one level down, not an oversight, but it does mean
-# an empty baseline is not proof the Module Map is complete — only that
-# the directories which opted in are covered.
+# directory is gated when it takes its own `#### <dir>` subsection, as
+# `src/server/services/invoice/` now does. An empty baseline therefore
+# means the directories that opted in are covered, not that the Module
+# Map is complete.
 #
-# The doc -> file direction has no such limit: a subsection may name a
-# file anywhere beneath it, and every name is resolved.
+# The doc -> file direction has no such limit and is not opt-in at all:
+# it runs over the WHOLE document (see DOCUMENT-WIDE below).
 #
 # BASELINE — the ratchet. The known-undocumented set at the time this
 # check landed is recorded in scripts/module-map-baseline.txt, generated
@@ -69,6 +85,28 @@
 # `authStore.ts`. Scoping means a generic name like `audit.ts` mentioned
 # under `src/server/repositories/` does not also cover a different
 # `audit.ts` elsewhere.
+#
+# DOCUMENT-WIDE — where the doc -> file direction looks.
+#
+# Scoping resolution to gated subsections was right while every
+# documented directory had one. Narrowing the gate to three subsystems
+# makes it wrong: `### Directory Notes`, `## Attachments Module`,
+# `## Invoices Module` and `## How to Extend` all name files, and under
+# a subsection-scoped rule every one of them would sit unchecked —
+# precisely where the three dead names of #306 would land today.
+#
+# So form (a) below runs over the whole document and resolves against
+# every tracked `.ts` / `.tsx` file in the repository. Form (b) stays
+# structural: a bare stem opening a list item is an inventory entry, and
+# inventory only appears in the two Module Map blocks, so it is scanned
+# there and nowhere else. Widening (b) to the whole document would fire
+# on prose — see the note on "opens the item" below.
+#
+# Cross-directory false positives are not a risk in this direction. A
+# name that resolves ANYWHERE is alive; only a name that resolves
+# nowhere is dead. That is the opposite of the file -> doc direction,
+# where an unanchored match wrongly grants coverage and scoping is what
+# prevents it.
 #
 # INVENTORY CITATIONS — what the doc -> file direction treats as a claim
 # that a file exists. Two forms, both narrow on purpose, because a
@@ -90,7 +128,7 @@
 #       the safe direction but still a hole: separate inventory names
 #       with commas. Extending the set to English conjunctions would
 #       reopen (b) on prose, which is the bug below. Names carrying an
-#       extension are unaffected — (a) is subsection-wide.
+#       extension are unaffected — (a) is document-wide.
 #
 #       "Opens the item" is load-bearing. Matching a backticked name
 #       anywhere before the gloss makes a bulleted SENTENCE an inventory
@@ -107,13 +145,19 @@
 # same position. No lexical rule separates them, and a check that fires
 # on type names gets muted within a week.
 #
-# To cite a name this check should NOT resolve — a file in another
-# directory, or a historical one — write the full repository path. It
-# carries a `/`, so both forms above skip it and `check-doc-paths.sh`
-# resolves it instead. Moving a bare stem out of the item's opening run
-# is enough; moving an extensioned name is not, because (a) is
-# subsection-wide on purpose — that is the form the dead
-# `bulk-download-reaper.ts` citation took.
+# To cite a name this check should NOT resolve — a historical file, or
+# a hypothetical one in a walkthrough — write the full repository path.
+# It carries a `/`, so both forms above skip it, and `check-doc-paths.sh`
+# resolves it instead against an allowlist that already carries the five
+# legitimate classes of non-existent citation. That handoff is why this
+# script needs no allowlist of its own.
+#
+# Moving a bare stem out of the item's opening run is enough; moving an
+# extensioned name is not, because (a) is document-wide on purpose —
+# that is the form the dead `bulk-download-reaper.ts` citation took, and
+# the form `§ How to Extend`'s Supplier walkthrough took until it was
+# rewritten as `src/server/repositories/supplier-read.ts` to join its
+# three siblings in that allowlist.
 #
 # Exit codes:
 #   0 — every gated directory is covered and the baseline is current
@@ -171,31 +215,17 @@ section_body() {
   ' "$DOC"
 }
 
-# A subsection may delegate its per-file detail elsewhere in the same
-# document. Searching only the subsection would then report the delegated
-# files as undocumented — a checker bug, not a doc gap.
+# Subsection delegation to `### Configuration Files` used to live here:
+# `src/config/` and `src/server/config/` handed their file lists to that
+# table rather than repeat it, and the script keyed on the link so the
+# delegation could not outlive the sentence that declared it.
 #
-# The delegation is DOC-DRIVEN, like the gating above: a subsection that
-# links `### Configuration Files` hands its file list to that table.
-# `src/config/` and `src/server/config/` both open with "Deployment-tunable
-# values are indexed in [§ Configuration Files](#configuration-files)
-# below — that table is the single list; only non-`[C]` members are listed
-# here." The table cites files by full repository path, so it spans both
-# directories and either one reading it is correct.
+# Both directories moved to `### Directory Notes` when the gate narrowed
+# to subsystems, so no gated subsection delegates anything and the branch
+# had no live caller. It is deleted rather than kept warm for a
+# hypothetical third delegator — an unexercised branch in a guard is the
+# guard's own drift.
 #
-# A hard-coded list of delegating directories would be the parallel list
-# this check exists without: the sentence could be deleted from the
-# document while the script kept delegating, silently. Keying on the link
-# costs a rule for doc authors — do not link that table from a subsection
-# unless the subsection really does hand over its file list — and buys
-# the third one landing with no script edit.
-delegated_body_for() {
-  case "$1" in
-    *"](#configuration-files)"*) section_body "### Configuration Files" ;;
-    *) : ;;
-  esac
-}
-
 # Files a subsection is responsible for: directly inside the directory
 # (nested directories opt in through their own subsection), source only.
 files_in() {
@@ -240,8 +270,8 @@ in_baseline() {
 #
 # Three accepted forms, in order:
 #
-#   (a) the full repository path — `src/config/permissions.ts`, which is
-#       how the delegated `### Configuration Files` table cites files.
+#   (a) the full repository path — `src/server/routes/invoices.ts`. A
+#       subsection may cite its own files either way.
 #   (b) the bare basename, NOT preceded by `/` (that would make it a file
 #       in another directory) and not glued to a longer name, so
 #       `ledger.ts` does not cover `subledger.ts` and `bus.ts` does not
@@ -285,12 +315,26 @@ ghosts=()
 gated_now=()
 gated_count=0
 
+# Every tracked source basename and stem, for the document-wide scan.
+# A name that resolves ANYWHERE is alive; only one that resolves nowhere
+# is a dead citation, so this index is deliberately unscoped.
+declare -A REPO_FILES=()
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  base="${file##*/}"
+  REPO_FILES["$base"]=1
+  REPO_FILES["${base%.*}"]=1
+done < <(git ls-files '*.ts' '*.tsx')
+
+# Names already reported dead, so the scoped and document-wide passes do
+# not each report the same one.
+declare -A REPORTED_GHOSTS=()
+
 for dir in "${GATED[@]}"; do
   gated_count=$((gated_count + 1))
   gated_now+=("$dir")
   subsection="$(subsection_for "$dir")"
-  body="$subsection
-$(delegated_body_for "$subsection")"
+  body="$subsection"
 
   # file -> doc.
   while IFS= read -r file; do
@@ -302,14 +346,13 @@ $(delegated_body_for "$subsection")"
     undocumented+=("$file")
   done < <(files_in "$dir")
 
-  # doc -> file. Resolution is by basename anywhere under the directory,
-  # with or without extension: a subsection may name a file that sits in
-  # a nested directory of its own (`src/server/services/invoice/`), and
-  # `src/state/` writes its stores without the `.ts`.
+  # doc -> file, scoped. Resolution is by basename anywhere under the
+  # directory, with or without extension: a subsection may name a file
+  # that sits in a nested directory of its own.
   #
-  # The delegated body is NOT scanned here. `### Configuration Files`
-  # indexes files across many directories, so a name there is not a claim
-  # about THIS one.
+  # Scoped resolution is STRICTER than the document-wide pass below —
+  # a gated subsection claiming `toastStore.ts` fails here even though
+  # the file exists, because it does not exist *in that directory*.
   unset EXISTING
   declare -A EXISTING=()
   while IFS= read -r file; do
@@ -323,8 +366,44 @@ $(delegated_body_for "$subsection")"
     [ -z "$name" ] && continue
     [ -n "${EXISTING[$name]:-}" ] && continue
     ghosts+=("${dir} -> ${name}")
+    REPORTED_GHOSTS["$name"]=1
   done < <(cited_names_in "$subsection")
 done
+
+# doc -> file, document-wide — see the DOCUMENT-WIDE header note.
+#
+# A name the scoped pass already reported is skipped: a dead name inside
+# a gated subsection resolves nowhere, so both passes see it, and the
+# scoped report is the more useful of the two because it names the
+# directory whose contract was broken.
+#
+# Form (a) over the entire document: a backticked name carrying a source
+# extension is an unambiguous file claim wherever it appears, and the
+# sections that carry the most prose about files are the ones no
+# subsection covers.
+while IFS= read -r name; do
+  [ -z "$name" ] && continue
+  [ -n "${REPO_FILES[$name]:-}" ] && continue
+  [ -n "${REPORTED_GHOSTS[$name]:-}" ] && continue
+  ghosts+=("${DOC} -> ${name}")
+  REPORTED_GHOSTS["$name"]=1
+done < <(grep -oE '`[A-Za-z0-9_.-]+\.tsx?`' "$DOC" | tr -d '`' | sort -u)
+
+# Form (b) over `### Directory Notes` only. Extension-less inventory
+# (`dataExchangeStore`) is the shape that survived longest in #306, and
+# the notes block is the one place outside the gated subsections where
+# such a run can legitimately appear. Resolution is repository-wide: the
+# block spans every directory, so a name is not a claim about any one.
+NOTES="$(section_body "### Directory Notes")"
+if [ -n "$NOTES" ]; then
+  while IFS= read -r name; do
+    [ -z "$name" ] && continue
+    [ -n "${REPO_FILES[$name]:-}" ] && continue
+    [ -n "${REPORTED_GHOSTS[$name]:-}" ] && continue
+    ghosts+=("### Directory Notes -> ${name}")
+    REPORTED_GHOSTS["$name"]=1
+  done < <(cited_names_in "$NOTES")
+fi
 
 # --update-baseline: freeze the current undocumented set and stop.
 if [ "${1:-}" = "--update-baseline" ]; then
@@ -415,10 +494,13 @@ if [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ] || [ -n "$dead" ];
   fi
   if [ -n "$dead" ]; then
     { [ -n "$findings" ] || [ -n "$stale" ] || [ -n "$ungated" ]; } && echo "" >&2
-    echo "ERROR: a '#### <dir>' subsection in $DOC names a file that is not" >&2
-    echo "       in the directory. Drop the name, or correct it to the file" >&2
-    echo "       that replaced it. To cite a name this check should not" >&2
-    echo "       resolve, write the full repository path instead." >&2
+    echo "ERROR: $DOC names a source file that does not exist. A" >&2
+    echo "       '#### <dir>' prefix means the name is not in THAT" >&2
+    echo "       directory; a '$DOC' prefix means it is nowhere in the" >&2
+    echo "       repository. Drop the name, or correct it to the file that" >&2
+    echo "       replaced it. To cite a historical or hypothetical name," >&2
+    echo "       write the full repository path instead — check-doc-paths.sh" >&2
+    echo "       resolves those, against an allowlist." >&2
     echo "" >&2
     printf "%s" "$dead" >&2
   fi
