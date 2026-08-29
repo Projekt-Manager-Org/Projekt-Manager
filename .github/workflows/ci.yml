@@ -466,6 +466,16 @@ jobs:
           failIfEmpty: true
           jobSummary: false
 
+      # Static check (S-ACTR): every AC in docs/spec/verification.md §15
+      # has a row in docs/testing/traceability.md, and vice versa (stale
+      # rows are a warning, not an error). [crit] ACs additionally warn
+      # when they carry no UT/AT/E2E reference. Exits 1 only on a
+      # missing/stale-AC error; warnings alone still exit 0. Was not
+      # CI-wired before — the gap that let AC-351 ship without its
+      # traceability row past review.
+      - name: AC traceability check
+        run: bash scripts/check-traceability.sh
+
       # Build also lives in `lint` (not in `check-shard`) so it doesn't
       # pad the test shards' critical path. `npm run build` is
       # `tsc --noEmit && vite build && build:server` — the tsc step
