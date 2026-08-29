@@ -6,6 +6,9 @@
     "description": "GENERATED FILE — do not edit by hand. Produced from the route definitions by `npx tsx scripts/generate-openapi.ts`; CI fails on drift. Describes requests only — responses and auth are not yet declared (#282). The normative API contract is docs/spec/api.md §14.2."
   },
   "paths": {
+    "/api/health": {
+      "get": {}
+    },
     "/api/auth/login": {
       "post": {
         "requestBody": {

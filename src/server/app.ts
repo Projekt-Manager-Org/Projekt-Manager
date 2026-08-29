@@ -27,6 +27,7 @@ import { pushPublicRoutes } from './routes/push.js';
 import { attachmentRoutes } from './routes/attachments.js';
 import { storageUsageRoutes } from './routes/storage-usage.js';
 import { eventsRoutes } from './routes/events.js';
+import { healthRoutes, type HealthDeps } from './routes/health.js';
 import { invoiceRoutes } from './routes/invoices.js';
 import { companyProfileRoutes } from './routes/company-profile.js';
 import { configureSseBus } from './sse/bus.js';
@@ -54,6 +55,12 @@ export interface AppOptions {
   db?: Database;
   /** Set false to disable rate limiting (useful in tests). Defaults to true. */
   rateLimit?: boolean;
+  /**
+   * Pool + storage client the `/api/health` probe reports on. The route
+   * is registered either way (see below); without these it answers 503
+   * `degraded`.
+   */
+  health?: HealthDeps;
   /**
    * Register `@fastify/swagger` in OpenAPI-collection mode. Off by
    * default — production (start.ts) and every existing test leave this
@@ -312,6 +319,12 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
       },
     });
   }
+
+  // Liveness probe. Registered unconditionally — it is a public
+  // production endpoint, so it must be part of the factory's route
+  // surface no matter which dependencies a caller wires, or the
+  // generated OpenAPI document (AC-351) omits it.
+  app.register(healthRoutes(opts.health ?? null));
 
   if (opts.db) {
     // Resolve VAPID material once at boot: derives the public key from

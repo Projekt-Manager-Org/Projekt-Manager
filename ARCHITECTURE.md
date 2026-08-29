@@ -89,7 +89,7 @@ Each `Owns` cell is a one-line summary. Per-file detail lives in [§ Directory D
 | `src/server/db/`           | Drizzle schema, connection, SQL migrations, named constraints (`constraints.ts`).                                                     | Contain business logic                                  |
 | `src/server/services/`     | Business logic orchestration — one service per entity, plus the audit, backup, notification, attachment, and key-envelope subsystems. | Know about HTTP, Fastify, or request objects            |
 | `src/server/repositories/` | Database queries, one module per entity, plus the role-based read-scope predicates.                                                   | Know about HTTP or contain business rules               |
-| `src/server/storage/`      | S3/MinIO client, presign / upload / download / hide / restore ops, boot-time safety probes.                                           | Be called outside routes and `start.ts` (health probe)  |
+| `src/server/storage/`      | S3/MinIO client, presign / upload / download / hide / restore ops, boot-time safety probes.                                           | Be called outside routes and `start.ts` (client wiring) |
 | `src/server/middleware/`   | Cookie parsing, session auth, request decoration.                                                                                     | Contain route handlers or business logic                |
 | `src/server/routes/`       | Route definitions, request validation, response serialization.                                                                        | Access repositories directly (must go through services) |
 | `src/server/sse/`          | In-process SSE bus — typed pub/sub fan-out to subscribed connections.                                                                 | Know about HTTP, Fastify, or request objects            |
@@ -178,6 +178,7 @@ Write functions on audited tables accept `MutatingDatabase` (a transaction-only 
 - `notification-rules.ts` — CRUD for notification rules (ADR-0023)
 - `push-subscriptions.ts` — subscribe/unsubscribe VAPID endpoints
 - `push.ts` — VAPID public-key endpoint
+- `health.ts` — `GET /api/health`; delegates to the probe in `src/server/health.ts`
 - `attachments.ts` — init / complete / delete / list / download-url / `bulk-fetch` under `/api/projects/:id/attachments/…`
 - `storage-usage.ts` — `GET /api/projects/:id/storage-usage` and `GET /api/storage-usage` per [api.md §14.2.12](docs/spec/api.md#14212-storage-usage)
 - `events.ts` — `GET /api/events` SSE channel per [api.md §14.2.13](docs/spec/api.md#14213-realtime-events) and ADR-0025
@@ -372,13 +373,15 @@ All HTTP endpoints exposed by the Fastify server. Concrete URL structure lives h
 
 Requests to session-protected endpoints without a valid session return `401 UNAUTHENTICATED` (`"Nicht angemeldet."`). Authenticated requests lacking the required permission return `403 NOT_PERMITTED` (`"Keine Berechtigung."`). Authentication is enforced by `createAuthMiddleware(db)` in `src/server/middleware/auth.ts` as a plugin-level `preHandler` hook on auth-gated plugins; public endpoints (`/api/health`, `/api/backup/status`, `/api/auth/login`) omit it. **Permission** is enforced at the **route level** by `requirePermission('...')` preHandlers defined in `src/server/middleware/auth.ts` and checked against the role matrix in `src/config/permissions.ts` — see [spec §14.3](docs/spec/api.md#143-authorization-rules).
 
-Route definitions live in `src/server/routes/`. The health endpoint is registered in `src/server/start.ts`.
+Route definitions live in `src/server/routes/`, and every one of them is registered by `buildApp()` in `src/server/app.ts` — including `/api/health`, whose probe dependencies (`pg.Pool`, `StorageClient`) `start.ts` passes in. A route mounted on the instance `buildApp()` returns would be invisible to the generated OpenAPI document below, so `eslint.config.js` fails the build on one.
 
 **Keep this table in sync** when adding or changing endpoints. It is the onboarding reference and is cross-checked by the spec (`docs/spec/api.md`) for abstract-operation coverage.
 
 ### OpenAPI Document Generation
 
-`docs/api/openapi.json` is generated from the native Fastify `schema:` blocks already on every route — no hand-authored OpenAPI annotations (AC-351). `scripts/generate-openapi.ts` builds the app via `buildApp({ openapi: true })` (the flag `@fastify/swagger` registers behind), calls `app.swagger()`, and writes the Prettier-formatted result; `--check` mode fails CI on drift (`npm run check:openapi`, plus the scenario harness `scripts/__tests__/check-openapi-doc.test.sh`).
+`docs/api/openapi.json` is generated from the native Fastify `schema:` blocks the routes already carry — no hand-authored OpenAPI annotations (AC-351). `scripts/generate-openapi.ts` builds the app via `buildApp({ openapi: true })` (the flag `@fastify/swagger` registers behind), calls `app.swagger()`, and writes the Prettier-formatted result; `--check` mode fails CI on drift (`npm run check:openapi`, plus the scenario harness `scripts/__tests__/check-openapi-doc.test.sh`).
+
+**Coverage is exactly `buildApp()`.** `app.swagger()` reports the routes registered on the instance the generator built, so the endpoint surface is complete only while every route is registered by the factory — which the `no-restricted-syntax` rule in `eslint.config.js` enforces (see § API Surface). A route with no `schema:` block still appears, as a bare operation: `/api/health` publishes `{"get": {}}`, which says the endpoint exists and nothing more.
 
 **Not in `docs/spec/`, deliberately.** The spec is the upstream contract the app must fulfil; this artifact is derived from the code, so it is downstream by construction (A-TRDO). Filing it under `docs/spec/` would point CI at enforcing that an upstream contract matches the implementation — a route schema regressing would silently drag the "spec" along with it. [api.md §14.2](docs/spec/api.md#142-operations) stays normative and hand-authored; `openapi.json` is a machine-readable view of the request surface only, and where the two disagree, api.md wins.
 

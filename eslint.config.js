@@ -147,6 +147,26 @@ export default tseslint.config(
       ],
     },
   },
+  // HTTP routes belong to the app factory, never to the instance it
+  // returns. `scripts/generate-openapi.ts` (AC-351) builds the published
+  // document from what `buildApp()` registers, so a route mounted in
+  // `start.ts` is a public endpoint the artifact never mentions and no
+  // check can notice — the hole `/api/health` sat in until #284.
+  {
+    files: ['src/server/**/*.ts'],
+    ignores: ['src/server/routes/**', 'src/server/app.ts', 'src/server/**/__tests__/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.object.name='app'][callee.property.name=/^(get|post|put|patch|delete|head|options|all|route)$/]",
+          message:
+            'Register HTTP routes inside buildApp() (src/server/app.ts) — the generated OpenAPI document only sees the app factory. See ARCHITECTURE.md § OpenAPI Document Generation.',
+        },
+      ],
+    },
+  },
   // UI must not import the client API wrapper directly; must dispatch via state.
   // AC-33 in verification.md.
   {
