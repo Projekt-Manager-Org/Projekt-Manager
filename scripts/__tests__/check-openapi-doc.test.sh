@@ -10,12 +10,10 @@
 # truth the check protects, not something to fake. Exits 0 when every
 # case matches its expected exit code; 1 otherwise.
 #
-# $OPENAPI_DOC_PATH redirects the destination only. Prettier's config is
-# resolved from the canonical in-repo path regardless, so a fixture in
-# `mktemp -d` is byte-identical to the published artifact — otherwise
-# these cases would pass against a document formatted at Prettier's
-# default printWidth 80 rather than the repo's 100, and "in-sync" would
-# be validating something CI never sees.
+# $OPENAPI_DOC_PATH redirects the destination only — Prettier's config is
+# resolved from the canonical in-repo path regardless, which is what makes
+# a fixture in `mktemp -d` byte-identical to the published artifact. Why
+# that matters: the $OPENAPI_DOC_PATH note in the generator's header.
 #
 # Usage:
 #   bash scripts/__tests__/check-openapi-doc.test.sh

@@ -231,12 +231,8 @@ async function buildExpectedDoc(): Promise<string> {
     await assertValid(doc);
     const raw = JSON.stringify(doc, null, 2);
 
-    // Resolve Prettier's config from CANONICAL_OUT_PATH, never OUT_PATH.
-    // The scenario harness points $OPENAPI_DOC_PATH at a `mktemp -d`
-    // outside the repo, where no `.prettierrc` resolves — Prettier would
-    // silently fall back to its default printWidth 80 instead of the
-    // repo's 100, and the self-test would validate a differently
-    // formatted document from the one CI checks.
+    // CANONICAL_OUT_PATH, never OUT_PATH — see the $OPENAPI_DOC_PATH note
+    // in the file header.
     const config = await prettier.resolveConfig(CANONICAL_OUT_PATH);
     return await prettier.format(raw, {
       ...config,
