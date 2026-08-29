@@ -361,6 +361,13 @@ jobs:
       - name: OpenAPI doc drift check — self-test
         run: bash scripts/__tests__/check-openapi-doc.test.sh
 
+      # AC-351's API-surface-completeness clause rests on one ESLint
+      # selector, which fails open: a typo or a widened `ignores:` leaves
+      # `npm run lint` green while the document silently goes incomplete.
+      # Same reason the validity gate carries $OPENAPI_INJECT_INVALID.
+      - name: Route-registration rule — self-test
+        run: bash scripts/__tests__/check-route-registration.test.sh
+
       - name: Type check
         run: npx tsc --noEmit
 

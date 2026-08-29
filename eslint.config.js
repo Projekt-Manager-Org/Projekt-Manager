@@ -167,6 +167,8 @@ export default tseslint.config(
   //     no HTTP verb names: `@fastify/static` registers one HEAD+GET per
   //     built file. That is the one legitimate case, and it carries an
   //     inline disable with its reason in `staticCache.ts`.
+  //
+  // Scenario coverage: `scripts/__tests__/check-route-registration.test.sh`.
   {
     files: ['src/server/**/*.ts'],
     ignores: ['src/server/routes/**', 'src/server/app.ts', 'src/server/**/__tests__/**'],
