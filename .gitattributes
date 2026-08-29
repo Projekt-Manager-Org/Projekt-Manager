@@ -1,0 +1,6 @@
+# Generated artifacts. `linguist-generated=true` collapses the file in
+# GitHub diffs by default and keeps it out of language statistics — a
+# 2000-line regeneration is noise in every PR that touches a route
+# schema, and reviewing it line by line is not the point: the guard is
+# `npm run check:openapi` (AC-351), not a human reading the diff.
+docs/api/openapi.json linguist-generated=true
