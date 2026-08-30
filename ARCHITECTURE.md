@@ -116,6 +116,15 @@ A directory earns a subsection when the _set_ of files is itself architecture an
 
 #### `src/server/routes/`
 
+- `auth.ts` — login / logout / `me` / change-password. The only module that sets the session cookie; `GET /api/auth/me` also carries the owner-only backup badge, omitting the field rather than faking a value when the status row is unreachable (AC-171).
+- `users.ts` — user CRUD, deactivate / reactivate, admin password reset
+- `workers.ts` — the assignee pool. Separate from `users.ts` because it is gated by `project:read` rather than admin-only `user:read`, and returns only `{userId, displayName}` so no admin-only field can leak into a filter dropdown.
+- `customers.ts` — customer CRUD
+- `projects.ts` — project CRUD, forward / backward transitions, date edits, archive, restore and purge; delegates to the three services behind `src/server/services/project.ts`
+- `invoices.ts` — per-project draft CRUD plus issue / cancel / PDF download and the year list (ADR-0026). The PDF handler unwraps the row's DEK server-side and streams plaintext inline rather than returning a presigned GET.
+- `company-profile.ts` — singleton `GET` + owner-only `PUT`. `POST` and `DELETE` are deliberately unregistered — the row is a DB-enforced singleton. The owner check is inline because the spec allocates no `company_profile:*` permission key.
+- `audit.ts` — read-only list + get-by-id, with the three-way 200 / 403 / 404 result; per-role response shaping lives in `AuditService`, scope in the repository predicates
+- `extract.ts` — `POST /api/extract`, LLM email-to-structured-data via OpenRouter (ADR-0016)
 - `notification-rules.ts` — CRUD for notification rules (ADR-0023)
 - `push-subscriptions.ts` — subscribe/unsubscribe VAPID endpoints
 - `push.ts` — VAPID public-key endpoint
@@ -127,7 +136,13 @@ A directory earns a subsection when the _set_ of files is itself architecture an
 
 #### `src/server/services/invoice/`
 
-The EN 16931 e-invoicing core (ADR-0026) — Factur-X builder, PDF/A-3 drawer, payload crypto, XSD validation against the canonical schemas under `src/server/services/invoice/xsd/`. Gated on its own rather than inherited from `src/server/services/`: coverage reaches direct children only, so a nested directory is invisible until it takes a subsection.
+The EN 16931 e-invoicing core (ADR-0026). Gated on its own rather than inherited from `src/server/services/`: coverage reaches direct children only, so a nested directory is invisible until it takes a subsection.
+
+- `facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile). A hand-rolled serializer, because EN 16931 pins element order; the snapshotted tax mode selects the CategoryCode and the statutory exemption reason.
+- `pdfDrawer.ts` — the human-readable A4 body the XML rides in. Standard-14 fonts only, so the glyph repertoire is WinAnsi and anything outside it normalizes to `?` rather than crashing the encoder. Structurally correct PDF/A-3, not certified: no XMP packet is written.
+- `xsdValidator.ts` — validates every render against the canonical Factur-X 1.07.2 schemas under `src/server/services/invoice/xsd/`, inside the issuance transaction. A payload that fails rolls the issuance back instead of reaching storage.
+- `payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, one single-use DEK per render. Byte-identical on the wire to the browser's `nonce(12) || ct || tag(16)` in `src/domain/clientEncryption.ts`; duplicated rather than shared because this path runs synchronously inside `mutate()`.
+- `boilerplate.ts` — the statutory per-tax-mode footer paragraph. The `§ 19 UStG` / `§ 13b UStG` anchors are pinned by AT-116; the German copy around them is not. `standard` mode has none — its legal anchor is the VAT breakdown in the layout.
 
 #### `src/server/` (root files)
 
@@ -137,11 +152,18 @@ The EN 16931 e-invoicing core (ADR-0026) — Factur-X builder, PDF/A-3 drawer, p
 - `health.ts` — health probe
 - `seed.ts` — seed orchestrator, delegates to `src/server/seed/`
 - `password.ts` — password hashing; thin `bcryptjs` wrapper. bcrypt's silent 72-UTF-8-byte truncation is fenced off by the ceiling in `src/server/config/password-policy.ts`.
-- `session-reaper.ts` — periodic session reaper
+- `staticCache.ts` — the `@fastify/static` registration plus its three Cache-Control tiers: content-hashed `/assets/*` immutable for a year, `index.html` and `sw.js` no-cache so deploys propagate, everything else a day.
+- `deploy-preflight-cli.ts` — deploy pre-flight, run by `scripts/deploy.sh` in a one-shot container against the pulled image _before_ `docker compose up`. Probes env, storage reachability and the upload / copy verbs, so a credential or provider failure aborts the deploy while the previous replica is still running (AC-230/231).
+- `periodicSweeper.ts` — the shared factory behind the four retention and reaper schedulers: timer drive, overlap guard, sustained-failure backoff, and a `stop()` that drains the in-flight sweep. Deliberately topology-agnostic — the single-process invariant (ADR-0021) lives on its callers, not here.
+- `session-reaper.ts` — periodic session reaper. Predates the factory above and still carries its own copy of that plumbing.
 - `audit-retention-scheduler.ts` — audit retention scheduler (ADR-0021)
 - `attachment-orphan-reaper-scheduler.ts` — attachment orphan reaper scheduler
+- `attachment-hidden-reaper-scheduler.ts` — hidden-attachment reaper scheduler ([data-model.md §6.12](docs/spec/data-model.md#612-attachment-hidden-reaper))
+- `takeout-staging-reaper-scheduler.ts` — takeout staging reaper scheduler ([data-model.md §6.15](docs/spec/data-model.md#615-takeout-staging-reaper)). Schedule only; the sweep itself is a service one layer down, listed in [§ Directory Notes](#directory-notes).
 - `backup-runner.ts` — Layer 2 backup CLI entry with `schedule` / `run` / `drill` subcommands. `schedule` is the `backup` container's PID 1 and registers the cron jobs via croner, per ADR-0020.
 - `errors.ts` — error factories: `notFound()`, `validationError()`, `bulkLimitExceeded()`, etc. return `AppError` instances
+- `error-handler.ts` — the global error and 404 handlers that turn those into responses. A 4xx keeps its native status and stable code; only a 5xx or status-less failure collapses to `SERVER_ERROR` and logs at `error`, so 5xx log alerting means genuine server failure (AC-247).
+- `format-error-chain.ts` — walks `err.cause` at boot so a wrapped driver failure surfaces its real cause and SQLSTATE, instead of drizzle's bare `Failed query: …`
 
 ### Directory Notes
 
