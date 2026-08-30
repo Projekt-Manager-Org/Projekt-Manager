@@ -125,7 +125,7 @@ A directory earns a subsection when the _set_ of files is itself architecture an
 - `projects.ts` — project CRUD, forward / backward transitions, date edits, archive, restore and purge; delegates to the three services behind `src/server/services/project.ts`
 - `invoices.ts` — per-project draft CRUD plus issue / cancel / PDF download, the bulk export and the year list (ADR-0026). The PDF handler unwraps the row's DEK server-side and returns the plaintext in the response body rather than a presigned GET. `POST /api/invoices/export` is the ZIP takeout: every PDF is decrypted _before_ the first header is written, because once `archiver` starts writing a fault can only be a truncated stream — hence the 5000-invoice cap on both request shapes. Drafts never enter the archive: 422 `DRAFT_NOT_EXPORTABLE` in ids-mode, silently omitted in filter-mode.
 - `company-profile.ts` — singleton `GET` + owner-only `PUT`. `POST` and `DELETE` are deliberately unregistered — the row is a DB-enforced singleton. The owner check is inline because the spec allocates no `company_profile:*` permission key.
-- `audit.ts` — read-only list + get-by-id, with the three-way 200 / 403 / 404 result; per-role response shaping lives in `AuditService`, scope in the repository predicates
+- `audit.ts` — read-only list + get-by-id, with the three-way 200 / 403 / 404 result; response shaping lives in `AuditService` — by actor kind, not by role — scope in the repository predicates
 - `extract.ts` — `POST /api/extract`, LLM email-to-structured-data via OpenRouter (ADR-0016)
 - `notification-rules.ts` — CRUD for notification rules (ADR-0023)
 - `push-subscriptions.ts` — subscribe/unsubscribe VAPID endpoints

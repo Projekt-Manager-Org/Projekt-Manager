@@ -142,12 +142,11 @@ function auditRecipientScopePredicate(caller: AuthUser, enabled: boolean): SQL |
 
 /**
  * Joined audit row shape returned from the repository, before the
- * service-layer redacts it per role. Carries the raw DB column values
- * plus the joined actor display name (when the actor is a user).
+ * service layer shapes it by actor kind. Carries the raw DB column
+ * values plus the joined actor display name (when the actor is a user).
  *
- * The service layer decides what to expose to each caller — the
- * repository returns the full set so both unscoped and scoped read
- * paths share one query shape.
+ * The repository returns the full column set so both unscoped and
+ * scoped read paths share one query shape.
  */
 export interface AuditRow {
   id: string;

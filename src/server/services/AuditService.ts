@@ -52,9 +52,10 @@ export type { AuditAction };
 /**
  * The API-facing audit entry shape per `data-model.md §5.10`.
  *
- * `actorDisplayName` and `payload` are conditionally present per role
- * (see class doc). Absent fields are represented as `null`, not omitted,
- * so a typed client sees a stable key set across roles.
+ * `actorDisplayName` is present on user-actor rows only and
+ * `actorReason` on system-actor rows (see class doc); `payload` is
+ * exposed as-is to every caller. Absent fields are represented as
+ * `null`, not omitted, so a typed client sees a stable key set.
  */
 export interface AuditEntry {
   id: string;
