@@ -118,7 +118,7 @@ A directory earns a subsection when the _set_ of files is itself architecture an
 
 #### `src/server/routes/`
 
-- `auth.ts` — login / logout / `me` / change-password. The only module that sets the session cookie; `POST /api/auth/login` and `GET /api/auth/me` both carry the owner-only backup badge, omitting the field rather than faking a value when the status row is unreachable (AC-176). The two session-establishment paths are kept symmetric; the reason is in [api.md §14.2.1](docs/spec/api.md#1421-authentication).
+- `auth.ts` — login / logout / `me` / change-password. The only module that sets the session cookie; `POST /api/auth/login` and `GET /api/auth/me` both carry the owner-only backup badge, omitting the field rather than faking a value when the status row is unreachable (AC-176). The two session-establishment paths are kept symmetric; the reason is in [api.md §14.2.7](docs/spec/api.md#1427-backup-status).
 - `users.ts` — user CRUD, deactivate / reactivate, admin password reset
 - `workers.ts` — the assignee pool. Separate from `users.ts` because it is gated by `project:read` rather than admin-only `user:read`, and returns only `{userId, displayName}` so no admin-only field can leak into a filter dropdown.
 - `customers.ts` — customer CRUD
@@ -165,7 +165,7 @@ The EN 16931 e-invoicing core (ADR-0026). Gated on its own rather than inherited
 - `backup-runner.ts` — Layer 2 backup CLI entry with `schedule` / `run` / `drill` subcommands. `schedule` is the `backup` container's PID 1 and registers the cron jobs via croner, per ADR-0020.
 - `errors.ts` — error factories: `notFound()`, `validationError()`, `bulkLimitExceeded()`, etc. return `AppError` instances
 - `error-handler.ts` — the global error and 404 handlers that turn those into responses. The 4xx pass-through rule is in [§ Design Decisions](#design-decisions-not-adr-worthy).
-- `format-error-chain.ts` — walks `err.cause` at boot so a wrapped driver failure surfaces its real cause and SQLSTATE, instead of drizzle's bare `Failed query: …`
+- `format-error-chain.ts` — walks `err.cause` so a wrapped driver failure surfaces its real cause and SQLSTATE, instead of drizzle's bare `Failed query: …`. Used by the startup catch and by the process-level handlers, both in `start.ts`.
 
 ### Directory Notes
 
