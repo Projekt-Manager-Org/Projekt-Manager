@@ -4,7 +4,7 @@ Navigation guide to the implementation. Use it to locate modules, understand dep
 
 For the full product specification, see [docs/spec/](docs/spec/index.md). `AC-NNN` references throughout point to numbered Acceptance Criteria in [verification.md §15](docs/spec/verification.md#15-acceptance-criteria).
 
-**Length — a standing D-BLSI exception** (review/conventions-docs-general.md). An index is worth reading because one file answers "where does this live?" for the whole tree; splitting it by section puts half the answers behind a link and reintroduces the drift the [§ Module Map](#module-map) gate exists to catch. Depth is what is delegated instead: [docs/spec/](docs/spec/index.md) and [docs/adr/](docs/adr/index.md) carry the reasoning, this file the map.
+**Length — a standing D-BLSI exception** ([review/conventions-docs-general.md](review/conventions-docs-general.md)). An index is worth reading because one file answers "where does this live?" for the whole tree; splitting it by section puts half the answers behind a link and reintroduces the drift the [§ Module Map](#module-map) gate exists to catch. Depth is what is delegated instead: [docs/spec/](docs/spec/index.md) and [docs/adr/](docs/adr/index.md) carry the reasoning, this file the map.
 
 ## Contents
 
@@ -140,11 +140,11 @@ A directory earns a subsection when the _set_ of files is itself architecture an
 
 The EN 16931 e-invoicing core (ADR-0026). Gated on its own rather than inherited from `src/server/services/`: coverage reaches direct children only, so a nested directory is invisible until it takes a subsection.
 
-- `facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile). A hand-rolled serializer, because EN 16931 pins element order; the snapshotted tax mode selects the CategoryCode and the statutory exemption reason.
+- `facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile). A hand-rolled serializer, because EN 16931 pins element order; the snapshotted tax mode selects the CategoryCode and the statutory exemption reason, both mapped in `boilerplate.ts`.
 - `pdfDrawer.ts` — the human-readable A4 body the XML rides in. Standard-14 fonts only, so the glyph repertoire is WinAnsi and anything outside it normalizes to `?` rather than crashing the encoder. Structurally correct PDF/A-3, not certified: no XMP packet is written.
 - `xsdValidator.ts` — validates every render against the canonical Factur-X 1.07.2 schemas under `src/server/services/invoice/xsd/`, inside the issuance transaction. A payload that fails rolls the issuance back instead of reaching storage.
 - `payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, one single-use DEK per render. Byte-identical on the wire to the browser's `nonce(12) || ct || tag(16)` in `src/domain/clientEncryption.ts`; duplicated rather than shared because this path runs synchronously inside `mutate()`.
-- `boilerplate.ts` — the statutory per-tax-mode footer paragraph. The `§ 19 UStG` / `§ 13b UStG` anchors are pinned by AT-116; the German copy around them is not. `standard` mode has none — its legal anchor is the VAT breakdown in the layout.
+- `boilerplate.ts` — every per-tax-mode mapping in one place: the statutory footer paragraph, the EN 16931 CategoryCode (`S` / `E` / `AE`) and the BT-120 exemption reason. The `§ 19 UStG` / `§ 13b UStG` anchors are pinned by AT-116; the German copy around them is not. `standard` mode has no paragraph and no exemption reason — its legal anchor is the VAT breakdown in the layout.
 
 #### `src/server/` (root files)
 
