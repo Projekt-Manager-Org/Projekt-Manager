@@ -75,6 +75,11 @@ Nothing here.
 DOC
   git -C "$d" init --quiet
   git -C "$d" add -A >/dev/null 2>&1
+  # The gating record is a required input — a fixture without one is
+  # exit 2, so every case would fail on a missing file rather than on
+  # what it is about. Generated rather than hand-written so it tracks
+  # the fixture's own subsections.
+  MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
   echo "$d"
 }
 
@@ -470,6 +475,7 @@ Nothing here.
 DOC
   git -C "$d" init --quiet
   git -C "$d" add -A >/dev/null 2>&1
+  MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
   echo "$d"
 }
 assert_case 1 "dead name in a nested-only directory" "$(stage_nested_only)"
@@ -514,6 +520,54 @@ echo "Case: --update-gated does not excuse an undocumented file"
 d="$(stage)"
 MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
 assert_case 1 "regenerated record does not defer coverage" "$d"
+
+echo "Case: deleting the gating record does not un-gate anything"
+# Must fail, and structurally (exit 2), not merely differ. Dropping a
+# subsection AND deleting the record is the bypass shape: the ratchet
+# read a missing file as "no history", so the pair went green while
+# either alone failed. With the baseline retired this file is the only
+# artifact between a dropped heading and a passing build, so it is a
+# required input — same posture as a missing ARCHITECTURE.md.
+d="$(stage_two_gated)"
+drop_services_subsection "$d"
+rm "$d/scripts/module-map-gated.txt"
+assert_case 2 "record deleted alongside the subsection" "$d"
+
+echo "Case: emptying the gating record does not un-gate anything either"
+# Must fail, exit 2, for the same reason as the deletion above — and it
+# is the shape a guard that tests EXISTENCE leaves open. The entries are
+# what the ratchet compares against, so truncating the file disarms it
+# exactly as `rm` does, while the file itself is still there.
+d="$(stage_two_gated)"
+drop_services_subsection "$d"
+: >"$d/scripts/module-map-gated.txt"
+assert_case 2 "record truncated alongside the subsection" "$d"
+
+echo "Case: a comments-only gating record is empty"
+# Must fail, exit 2. The parser drops comments and blank lines, so a
+# record stripped to its own header records nothing — the file being
+# non-empty on disk is not the property that matters.
+d="$(stage_two_gated)"
+drop_services_subsection "$d"
+printf '# Module Map gating record\n#\n\n' >"$d/scripts/module-map-gated.txt"
+assert_case 2 "comments-only record alongside the subsection" "$d"
+
+echo "Case: the gating record is missing on an otherwise-green tree"
+# Must fail too. The absence is refused on its own, without waiting for
+# a second edit to make it exploitable.
+d="$(stage)"
+cover_beta "$d"
+rm "$d/scripts/module-map-gated.txt"
+assert_case 2 "missing gating record" "$d"
+
+echo "Case: --update-gated bootstraps a missing record"
+# Must pass. The required-input rule cannot lock out the one invocation
+# that creates the file.
+d="$(stage)"
+cover_beta "$d"
+rm "$d/scripts/module-map-gated.txt"
+MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
+assert_case 0 "record regenerated from scratch" "$d"
 
 echo "Case: the Directory Detail block is missing"
 # Structural, not drift. Without a dedicated code the run would gate

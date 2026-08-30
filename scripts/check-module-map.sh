@@ -80,6 +80,21 @@
 # change too makes un-gating a reviewable diff rather than an invisible
 # consequence of an ARCHITECTURE.md edit.
 #
+# The record is a REQUIRED INPUT, not an optional one: missing — or
+# present and listing no directory — is exit 2, the same posture as a
+# missing ARCHITECTURE.md. Reading either as "no history to ratchet
+# against" would make `rm` or `: >` a one-line bypass of the whole gate
+# — with the coverage baseline retired, this file is the only artifact
+# between a dropped subsection and a green build.
+#
+# Emptiness is refused rather than tolerated because there is no
+# legitimate empty record: a document that gates nothing is already
+# exit 2 below, so `--update-gated` cannot write one. Testing existence
+# alone left the sibling shape open — truncate the file, or strip it to
+# comments, and the ratchet compared against nothing while the run
+# reported green. `--update-gated` is how the record is created, so
+# that invocation is exempt.
+#
 # There is no coverage baseline. One existed while #306's 68-file
 # backlog was being burned down — the ratchet pattern, a quality gate
 # on new code over a frozen legacy set. It reached zero, so it is gone:
@@ -185,7 +200,9 @@
 #   1 — an undocumented file, a directory that lost its gate, or a
 #       named file that does not exist
 #   2 — toolchain error (ARCHITECTURE.md unreadable, a Module Map block
-#       missing so its scan would pass over nothing)
+#       missing so its scan would pass over nothing, or the gating
+#       record missing or empty so the ratchet would compare against
+#       nothing)
 
 set -euo pipefail
 
@@ -197,6 +214,28 @@ GATED_RECORD="${MODULE_MAP_GATED:-scripts/module-map-gated.txt}"
 
 if [ ! -f "$DOC" ]; then
   echo "ERROR: $DOC not found under \$MODULE_MAP_ROOT ($PROJECT_ROOT)." >&2
+  exit 2
+fi
+
+# The gated directory set as of the last `--update-gated` — see GATING
+# RECORD above. Parsed before the guard below so the guard tests what
+# the ratchet will actually compare against, not merely whether a file
+# is there: comments and blank lines are not entries, so a truncated or
+# comments-only record disarms the ratchet exactly as a deleted one
+# does.
+mapfile -t RECORDED_GATED < <(grep -vE '^[[:space:]]*(#|$)' "$GATED_RECORD" 2>/dev/null || true)
+
+# The gating record is a required input — see GATING RECORD above.
+# `--update-gated` is what writes it, so that invocation is exempt.
+if [ "${1:-}" != "--update-gated" ] && [ "${#RECORDED_GATED[@]}" -eq 0 ]; then
+  echo "ERROR: gating record $GATED_RECORD is missing, or records no" >&2
+  echo "       directories. It is the only record of which directories" >&2
+  echo "       were gated, so with nothing in it the ratchet compares" >&2
+  echo "       against nothing: a dropped '#### <dir>' subsection" >&2
+  echo "       un-gates its directory and the run still reports green —" >&2
+  echo "       refusing to run. Restore the file from version control," >&2
+  echo "       or run \`bash $(basename "$0") --update-gated\` if the" >&2
+  echo "       current gated set is the intended one." >&2
   exit 2
 fi
 
@@ -265,11 +304,6 @@ files_in() {
   git ls-files "$1*.ts" "$1*.tsx" 2>/dev/null |
     awk -v d="$1" 'substr($0, 1, length(d)) == d && index(substr($0, length(d) + 1), "/") == 0'
 }
-
-# The gated directory set as of the last `--update-gated` — see GATING
-# RECORD above. A missing file means no history to ratchet against, not
-# a passing check.
-mapfile -t RECORDED_GATED < <([ -f "$GATED_RECORD" ] && grep -vE '^\s*(#|$)' "$GATED_RECORD" || true)
 
 # `foo.ts` counts as documented when the subsection mentions `foo.ts` or
 # the bare stem `foo` — see the header note on `src/state/`.
