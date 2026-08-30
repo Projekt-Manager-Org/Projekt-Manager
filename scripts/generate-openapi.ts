@@ -126,6 +126,11 @@ function isSyntheticResponses(responses: Record<string, unknown> | undefined): b
  * from nothing, and 3.1 lets the document stay silent about them —
  * ARCHITECTURE.md § OpenAPI Document Generation.
  *
+ * The published document does carry a `components` block regardless:
+ * `applySecurity` runs after this and puts `securitySchemes` back. What
+ * this drops is the empty `schemas` map that would otherwise sit beside
+ * it.
+ *
  * Real response schemas, once routes declare them, flow through
  * untouched.
  */
