@@ -52,9 +52,10 @@ failures=()
 
 # assert_case <expected-exit> <label> <doc-path> [expected-output-substring]
 #
-# Set any of INJECT_INVALID / INJECT_ORPHAN / INJECT_DROP / INJECT_GATE to
-# 1 before a call to corrupt the generated document (or the route set)
-# inside the generator; all four are cleared after each case.
+# Set any of INJECT_INVALID / INJECT_ORPHAN / INJECT_DROP / INJECT_GATE /
+# INJECT_MISORDER to 1 before a call to corrupt the generated document
+# (or the route set) inside the generator; all five are cleared after
+# each case.
 #
 # Every guard here fails with exit 2, so the code alone cannot say WHICH
 # one fired — a case could pass for the wrong reason, or because the app
@@ -69,10 +70,11 @@ assert_case() {
     [[ -n "${INJECT_ORPHAN:-}" ]] && export OPENAPI_INJECT_ORPHAN_OPERATION=1
     [[ -n "${INJECT_DROP:-}" ]] && export OPENAPI_INJECT_DROP_OPERATION=1
     [[ -n "${INJECT_GATE:-}" ]] && export OPENAPI_INJECT_ORPHAN_GATE=1
+    [[ -n "${INJECT_MISORDER:-}" ]] && export OPENAPI_INJECT_MISORDERED_GATE=1
     OPENAPI_DOC_PATH="$doc" npx --no-install tsx "$GENERATOR" --check 2>&1
   )"
   actual=$?
-  unset INJECT_INVALID INJECT_ORPHAN INJECT_DROP INJECT_GATE
+  unset INJECT_INVALID INJECT_ORPHAN INJECT_DROP INJECT_GATE INJECT_MISORDER
   if [[ "$actual" != "$expected" ]]; then
     fail=$((fail + 1))
     failures+=("$label: expected exit $expected, got $actual")
@@ -181,6 +183,30 @@ gate="$gate_dir/openapi.json"
 cp "$in_sync" "$gate"
 INJECT_GATE=1
 assert_case 2 "unauthenticated access gate" "$gate" "no session gate reaches"
+
+echo "Case: a session gate listed AFTER the access gate fails the wiring guard"
+# AC-353 says "without a session gate ahead of it", and the order is the
+# whole property: Fastify runs a route's `preHandler` array in
+# declaration order, so `[requirePermission(…), authenticate]` carries
+# both gates and still answers 401 to every caller — the access gate runs
+# first and finds no `request.user`.
+#
+# A guard testing only for PRESENCE sees a correctly protected route
+# here, which is why this is a case of its own and not a variant of the
+# one above: the two differ in what the document would say, too. The
+# orphan above publishes a dead route as `security: []`; this one
+# publishes it as requiring `sessionCookie`, an endpoint advertised as
+# reachable-with-a-session that no session can reach.
+#
+# $OPENAPI_INJECT_MISORDERED_GATE builds exactly that chain from the two
+# real gates. Swap `accessGatesAuthenticate`'s index comparison back to
+# the presence test it replaced and this case alone turns red — verified,
+# it drops to exit 1 (plain drift), the guard never firing.
+misorder_dir="$(mktmp_dir)"
+misorder="$misorder_dir/openapi.json"
+cp "$in_sync" "$misorder"
+INJECT_MISORDER=1
+assert_case 2 "misordered session gate" "$misorder" "no session gate reaches"
 
 echo
 echo "Results: $pass passed, $fail failed"

@@ -54,6 +54,10 @@ function isSessionGate(fn: unknown): boolean {
  * Both halves are load-bearing: a plugin-level `preHandler` is invisible
  * to `onRoute`, so the marker is what makes group gating readable at all,
  * and routes that gate themselves never get one.
+ *
+ * Presence, not position — what both artifacts publish is whether a
+ * session is required, and a gate that runs too late still requires one.
+ * `assertGatesAuthenticate` is what refuses to publish that route at all.
  */
 export function isSessionGated(route: RouteOptions): boolean {
   return route.config?.auth === 'session' || routeLevelPreHandlers(route).some(isSessionGate);
@@ -108,33 +112,61 @@ export function withoutAutoHeadRoutes(routes: RouteOptions[]): RouteOptions[] {
 }
 
 /**
- * Fail on a route an access gate reaches but no session gate does.
+ * True when every access gate on this route runs with an authenticated
+ * user already attached — the ordering AC-353 words as "a session gate
+ * ahead of it", not merely one somewhere on the route.
+ *
+ * Order is the whole property: `preHandler: [requirePermission('x'),
+ * authenticate]` carries both gates, and still answers 401 to every
+ * caller, because the access gate runs first and finds no `request.user`.
+ * A presence test cannot tell that route from a working one.
+ *
+ * The `auth: 'session'` marker needs no index: `requireSession` installs
+ * its gate as an INSTANCE `preHandler`, and Fastify runs every instance
+ * hook before any route-level one, so a marked route is authenticated
+ * ahead of anything its own declaration lists.
+ */
+function accessGatesAuthenticate(route: RouteOptions): boolean {
+  const chain = routeLevelPreHandlers(route);
+  const firstAccessGate = chain.findIndex((fn) => readAccessRule(fn) !== null);
+  if (firstAccessGate === -1) return true;
+  if (route.config?.auth === 'session') return true;
+  const firstSessionGate = chain.findIndex(isSessionGate);
+  return firstSessionGate !== -1 && firstSessionGate < firstAccessGate;
+}
+
+/**
+ * Fail on a route whose access gate no session gate reaches first.
  *
  * `requirePermission` and `requireRole` both reject a request carrying no
  * `request.user` with 401, and only `createAuthMiddleware` ever sets one.
  * So the combination is not a documentation defect but a dead route: it
  * answers 401 to every caller, including one holding the permission.
  *
- * It is also the fail-open direction of both generated artifacts —
- * `Auth: none` beside a populated `Access` column, `security: []` on an
- * operation the server refuses — which is why the guard lives with the
- * introspection rather than inside either one. The orphan-operation check
- * in `generate-openapi.ts` closes the same door from the document side;
- * this closes it from the route side, where the bug actually is.
+ * It is also the fail-open direction of both generated artifacts, in
+ * either of its two shapes: no session gate at all publishes the route as
+ * public (`Auth: none` beside a populated `Access` column, `security: []`
+ * on an operation the server refuses), and one that runs too late
+ * publishes it as reachable with a session no session can satisfy. Both
+ * are claims about access, which is why the guard lives with the
+ * introspection rather than inside either generator. The orphan-operation
+ * check in `generate-openapi.ts` closes the same door from the document
+ * side; this closes it from the route side, where the bug actually is.
  */
 export function assertGatesAuthenticate(routes: RouteOptions[]): void {
   const orphaned = withoutAutoHeadRoutes(routes)
-    .filter((route) => accessRules(route).length > 0 && !isSessionGated(route))
+    .filter((route) => !accessGatesAuthenticate(route))
     .map((route) => `${methodsOf(route).join(', ')} ${route.url}`);
 
   if (orphaned.length > 0) {
     throw new Error(
-      `route(s) carry a permission/role gate that no session gate reaches: ` +
+      `route(s) carry a permission/role gate that no session gate reaches ahead of it: ` +
         `${orphaned.join('; ')}. \`requirePermission\` / \`requireRole\` reject a ` +
         `request with no authenticated user, so these answer 401 to every caller ` +
-        `while the generated documents publish them as public. Gate the plugin with ` +
-        `\`requireSession(app, db)\`, or put \`createAuthMiddleware(db)\` ahead of the ` +
-        `access gate in the route's own preHandler chain.`,
+        `while the generated documents publish them as reachable. Gate the plugin with ` +
+        `\`requireSession(app, db)\`, or put \`createAuthMiddleware(db)\` EARLIER in the ` +
+        `route's own preHandler chain than the access gate — a session gate listed ` +
+        `after it never runs.`,
     );
   }
 }

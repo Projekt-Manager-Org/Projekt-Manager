@@ -63,7 +63,7 @@ import type { FastifyInstance, RouteOptions } from 'fastify';
 import type pg from 'pg';
 import { buildApp, type OpenApiDocOptions } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
-import { requirePermission } from '../src/server/middleware/auth.js';
+import { createAuthMiddleware, requirePermission } from '../src/server/middleware/auth.js';
 import { assertGatesAuthenticate, methodsOf } from './lib/route-introspection.js';
 import {
   applySecurity,
@@ -185,6 +185,18 @@ async function buildExpectedDoc(): Promise<string> {
     if (process.env.OPENAPI_INJECT_ORPHAN_GATE === '1') {
       const target = routes.find((r) => r.url === '/api/health' && methodsOf(r).includes('GET'));
       if (target) target.preHandler = requirePermission('project:read');
+    }
+
+    // The ordering half of the same guard. Both gates are present here,
+    // so a presence test sees a correctly protected route; the access
+    // gate still runs first and answers 401 to every caller, because
+    // Fastify runs a route's `preHandler` array in declaration order.
+    // Real gates on both sides again — the bug is the order, not the
+    // shapes.
+    if (process.env.OPENAPI_INJECT_MISORDERED_GATE === '1') {
+      const target = routes.find((r) => r.url === '/api/health' && methodsOf(r).includes('GET'));
+      if (target)
+        target.preHandler = [requirePermission('project:read'), createAuthMiddleware(conn.db)];
     }
 
     // Route wiring before document coverage: an access gate no session
