@@ -4,6 +4,8 @@ Navigation guide to the implementation. Use it to locate modules, understand dep
 
 For the full product specification, see [docs/spec/](docs/spec/index.md). `AC-NNN` references throughout point to numbered Acceptance Criteria in [verification.md §15](docs/spec/verification.md#15-acceptance-criteria).
 
+**Length — a standing D-BLSI exception** (review/conventions-docs-general.md). An index is worth reading because one file answers "where does this live?" for the whole tree; splitting it by section puts half the answers behind a link and reintroduces the drift the [§ Module Map](#module-map) gate exists to catch. Depth is what is delegated instead: [docs/spec/](docs/spec/index.md) and [docs/adr/](docs/adr/index.md) carry the reasoning, this file the map.
+
 ## Contents
 
 - [Tech Stack](#tech-stack)
