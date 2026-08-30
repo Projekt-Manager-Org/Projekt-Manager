@@ -8,15 +8,14 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import { requirePermission, requireSession } from '../middleware/auth.js';
 import { NotificationRuleService } from '../services/NotificationRuleService.js';
 
 export function notificationRuleRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const service = new NotificationRuleService(db);
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     app.get(
       '/api/notification-rules',

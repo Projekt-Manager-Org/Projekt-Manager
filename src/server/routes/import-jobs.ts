@@ -42,7 +42,7 @@ import { pipeline } from 'node:stream/promises';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import { requirePermission, requireSession } from '../middleware/auth.js';
 import { DataExchangeJobService, toExchangeJobDto } from '../services/DataExchangeJobService.js';
 import { ImportService } from '../services/ImportService.js';
 import { runTakeoutImport } from '../services/takeout-import-runner.js';
@@ -75,7 +75,6 @@ const UPLOAD_BODY_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 
 export function importJobRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const jobs = new DataExchangeJobService(db);
     const env = getEnv();
     // Storage client — same construction convention as export-jobs.ts.
@@ -88,7 +87,7 @@ export function importJobRoutes(db: Database) {
       region: env.STORAGE_REGION,
     });
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     // Register a content-type parser for the resumable upload PATCH body.
     // Fastify's built-in parsers cover `application/json` and

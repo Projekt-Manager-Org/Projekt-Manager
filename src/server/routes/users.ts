@@ -4,16 +4,15 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import { requirePermission, requireSession } from '../middleware/auth.js';
 import { UserService } from '../services/UserService.js';
 import { ROLE_KEYS } from '../../config/roleKeys.js';
 
 export function userRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const userService = new UserService(db);
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     // GET /api/users — list all users (including deactivated)
     app.get(

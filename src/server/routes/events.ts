@@ -35,7 +35,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware } from '../middleware/auth.js';
+import { requireSession } from '../middleware/auth.js';
 import { subscribe, unsubscribe, type SseConnection } from '../sse/bus.js';
 import { AuthService } from '../services/AuthService.js';
 import { getEnv } from '../config/env.js';
@@ -44,11 +44,10 @@ const HEARTBEAT_FRAME = ': keepalive\n\n';
 
 export function eventsRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const authService = new AuthService(db);
     const heartbeatIntervalMs = getEnv().SSE_HEARTBEAT_INTERVAL_MS;
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     app.get('/api/events', async (request, reply) => {
       // Stream headers — explicitly NOT setting Cache-Control. The
