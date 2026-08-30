@@ -6,9 +6,9 @@
  * API calls. This module is safe to import from config, state, and
  * UI layers.
  *
- * The server applies per-role response shaping (actorId / payload
- * stripping for worker callers), so every optional field below has a
- * documented "may be null" reason tied to the API contract.
+ * The server shapes responses by actor kind, not by caller role, so
+ * every optional field below has a documented "may be null" reason
+ * tied to the API contract.
  */
 
 /**

@@ -68,7 +68,8 @@ export function authRoutes(db: Database) {
         // "Status unbekannt" until the next /me refresh (full page
         // reload). Keeping the two establishment paths symmetric
         // removes the cross-path staleness. The omission/presence
-        // contract (AC-170, AC-171) is identical.
+        // contract (AC-170 owner-only, AC-176 omit-when-unreachable) is
+        // identical.
         const response: { user: typeof result.user; backupStatus?: BackupStatus } = {
           user: result.user,
         };
@@ -123,9 +124,9 @@ export function authRoutes(db: Database) {
         if (status !== null) {
           response.backupStatus = status;
         }
-        // Misleading-state guard (AC-171): if the status row is
+        // Misleading-state guard (AC-176): if the status row is
         // unreachable, the omitted `backupStatus` field drives the
-        // client-side `deriveBadgeState(undefined, ...)` branch which
+        // client-side `deriveBadgeState(undefined, ...)` branch (AC-171) which
         // renders "Status unbekannt" — the unknown state surfaces
         // explicitly rather than silently hiding the badge.
       }

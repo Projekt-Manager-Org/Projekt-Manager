@@ -6,10 +6,9 @@
 # stages a fixture repository — a small source tree plus a synthetic
 # ARCHITECTURE.md — and points the check at it via $MODULE_MAP_ROOT.
 #
-# The ratchet cases matter most. A baseline that never shrinks is a
-# permanent exemption list wearing a burn-down costume, so "an entry that
-# is documented now must fail" gets the same weight as "an undocumented
-# file must fail".
+# The must-NOT-fire cases matter most. A guard that fires on prose gets
+# muted within a week, so "a type name is not a file claim" gets the same
+# weight as "a dead citation must fail".
 #
 # Exits 0 when every case matches its expected code; 1 otherwise.
 #
@@ -74,9 +73,13 @@ stage() {
 
 Nothing here.
 DOC
-  : >"$d/scripts/module-map-baseline.txt"
   git -C "$d" init --quiet
   git -C "$d" add -A >/dev/null 2>&1
+  # The gating record is a required input — a fixture without one is
+  # exit 2, so every case would fail on a missing file rather than on
+  # what it is about. Generated rather than hand-written so it tracks
+  # the fixture's own subsections.
+  MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
   echo "$d"
 }
 
@@ -85,6 +88,13 @@ DOC
 # inserting before the following `### ` heading lands inside it.
 add_note_item() {
   sed -i "s|^### Configuration Files\$|${2}\n\n### Configuration Files|" "$1/ARCHITECTURE.md"
+}
+
+# Close the fixture's one coverage gap, so a case about something else
+# is not also failing on `BetaService.ts`. The `AlphaService.ts` line
+# survives, so cases that sed on it still match afterwards.
+cover_beta() {
+  sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `BetaService.ts` — the other one|' "$1/ARCHITECTURE.md"
 }
 
 pass=0
@@ -131,40 +141,26 @@ echo "Case: an undocumented file in a gated directory"
 # exactly this, at scale.
 assert_case 1 "undocumented file" "$(stage)"
 
-echo "Case: the same file, recorded in the baseline"
-# Must pass. The ratchet freezes the existing backlog so new files are
-# gated from day one.
+echo "Case: the same file, once the subsection names it"
+# Must pass — and it is the only way out. #306's burn-down retired the
+# coverage baseline, so there is no longer a list to defer a file to.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
-assert_case 0 "baselined file" "$d"
+cover_beta "$d"
+assert_case 0 "documented file" "$d"
 
-echo "Case: a NEW undocumented file alongside a baselined one"
-# Must fail. This is the whole point of a ratchet: the frozen set does
-# not shelter files added after it.
+echo "Case: a NEW undocumented file in a covered directory"
+# Must fail. Completing a subsection does not exempt what lands after it.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 : >"$d/src/server/services/GammaService.ts"
 git -C "$d" add -A >/dev/null 2>&1
-assert_case 1 "new file beside a baselined one" "$d"
-
-echo "Case: a baseline entry that is documented now"
-# Must fail. Without this the baseline never shrinks and the burn-down
-# is invisible.
-d="$(stage)"
-echo "src/server/services/AlphaService.ts" >"$d/scripts/module-map-baseline.txt"
-assert_case 1 "stale baseline — file documented" "$d"
-
-echo "Case: a baseline entry whose file was deleted"
-# Same ratchet, other direction.
-d="$(stage)"
-printf 'src/server/services/BetaService.ts\nsrc/server/services/Gone.ts\n' >"$d/scripts/module-map-baseline.txt"
-assert_case 1 "stale baseline — file deleted" "$d"
+assert_case 1 "new file in a covered directory" "$d"
 
 echo "Case: a directory with no Directory Detail subsection"
 # Must pass. Coverage is opt-in by subsection: `src/ungated/` is
 # documented at table level only and carries no per-file obligation.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 : >"$d/src/ungated/Another.ts"
 git -C "$d" add -A >/dev/null 2>&1
 assert_case 0 "ungated directory ignored" "$d"
@@ -175,7 +171,7 @@ echo "Case: adding a subsection opts the directory in"
 # Inserted INSIDE the Directory Detail block: the block ends at the next
 # `### ` heading, so a subsection appended past it is out of scope.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^### Directory Notes$|#### `src/ungated/`\n\nNo files named here.\n\n### Directory Notes|' "$d/ARCHITECTURE.md"
 assert_case 1 "new subsection gates its directory" "$d"
 
@@ -184,7 +180,7 @@ echo "Case: a subsection past the end of the Directory Detail block"
 # heading under some later `### ` section is not part of the Directory
 # Detail structure and gates nothing.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 printf '\n#### `src/ungated/`\n\nNo files named here.\n' >>"$d/ARCHITECTURE.md"
 assert_case 0 "subsection outside the Detail block" "$d"
 
@@ -192,7 +188,7 @@ echo "Case: tests and nested directories are out of scope"
 # Must pass. `__tests__/` is not architecture, and a nested directory
 # opts in through its own subsection rather than its parent's.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 mkdir -p "$d/src/server/services/__tests__" "$d/src/server/services/nested"
 : >"$d/src/server/services/__tests__/AlphaService.test.ts"
 : >"$d/src/server/services/nested/Deep.ts"
@@ -240,7 +236,7 @@ echo "Case: an extensioned name in prose that no longer exists"
 # Must fail. This is the exact shape of the dead `bulk-download-reaper.ts`
 # citation: prose, not a list item, so a list-only rule would miss it.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n\nThe `GoneService.ts` retires under e2e.|' "$d/ARCHITECTURE.md"
 assert_case 1 "prose names a deleted file" "$d"
 
@@ -248,7 +244,7 @@ echo "Case: a bare stem leading a list item that no longer exists"
 # Must fail. The shape of the dead `dataExchangeStore` citation —
 # `src/state/` documents its stores without the extension.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `GhostService` — gone|' "$d/ARCHITECTURE.md"
 assert_case 1 "list item names a deleted stem" "$d"
 
@@ -259,7 +255,7 @@ echo "Case: a type name in prose is not a file claim"
 # live types. No lexical rule separates them, so bare prose identifiers
 # are not checked at all.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n\nEvery service takes a `MutatingDatabase` and throws `AppError`.|' "$d/ARCHITECTURE.md"
 assert_case 0 "type name in prose ignored" "$d"
 
@@ -267,7 +263,7 @@ echo "Case: a bare stem after the gloss separator is not a file claim"
 # Must pass. The inventory entry is the prefix before ` — `; everything
 # after it is prose about the entry.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — superseded `legacyAlpha` in the rewrite|' "$d/ARCHITECTURE.md"
 assert_case 0 "stem after the gloss ignored" "$d"
 
@@ -276,7 +272,7 @@ echo "Case: a named file living in a nested directory resolves"
 # in through its own subsection — but a subsection may still NAME a file
 # below it, so resolution walks the whole tree.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 mkdir -p "$d/src/server/services/invoice"
 : >"$d/src/server/services/invoice/InvoiceRenderer.ts"
 git -C "$d" add -A >/dev/null 2>&1
@@ -290,7 +286,7 @@ echo "Case: a type name in a bulleted sentence is not a file claim"
 # is prose that happens to be bulleted, and `SseConnection` sits in
 # exactly that position in the real `src/server/sse/` subsection.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- Failure isolation keeps one broken `SseConnection` from stalling the fan-out.|' "$d/ARCHITECTURE.md"
 assert_case 0 "type name in a bulleted sentence ignored" "$d"
 
@@ -299,7 +295,7 @@ echo "Case: a leading run of names is claimed in full"
 # shrink it to the first name: `src/state/` lists a dozen stores in one
 # comma-separated run, and every one of them is an inventory entry.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts`, `GhostService` — the documented one and a dead one|' "$d/ARCHITECTURE.md"
 assert_case 1 "dead name inside the leading run" "$d"
 
@@ -308,7 +304,7 @@ echo "Case: a full repository path is left to check-doc-paths.sh"
 # subsection does not own: a `/` puts it outside both citation forms, and
 # the sibling checker resolves it repository-wide instead.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `src/server/repositories/GoneRepo.ts` — historical, resolved elsewhere|' "$d/ARCHITECTURE.md"
 assert_case 0 "full path left to the sibling checker" "$d"
 
@@ -328,7 +324,7 @@ echo "Case: a dead name in a section with no subsection at all"
 # Must fail. `### Configuration Files` gates nothing, so under the old
 # scoped rule a dead citation there was invisible.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^Nothing here.$|Nothing here, but `VanishedConfig.ts` is cited.|' "$d/ARCHITECTURE.md"
 assert_case 1 "dead name outside every subsection" "$d"
 
@@ -339,7 +335,7 @@ echo "Case: a live name outside every subsection resolves repository-wide"
 # exists at all. A name that resolves anywhere is alive; only one that
 # resolves nowhere is a dead citation.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^Nothing here.$|Nothing here, but `Whatever.ts` is cited.|' "$d/ARCHITECTURE.md"
 assert_case 0 "live name outside every subsection" "$d"
 
@@ -348,7 +344,7 @@ echo "Case: a dead name is reported once, by the scoped pass"
 # still exits 1 — so only the report shows the dedup. The scoped line is
 # the one worth keeping: it names the directory whose claim broke.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `GoneService.ts` — gone|' "$d/ARCHITECTURE.md"
 assert_report_case 1 'GoneService\.ts' "dead name reported exactly once" "$d"
 assert_report_case 1 'src/server/services/ -> GoneService\.ts' "scoped report wins over the document-wide one" "$d"
@@ -358,7 +354,7 @@ echo "Case: the scoped pass stays stricter than the document-wide one"
 # still breaking its own contract — the document-wide pass must not
 # soften that into a pass.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `Whatever.ts` — lives in src/ungated/|' "$d/ARCHITECTURE.md"
 assert_case 1 "live file cited by the wrong subsection" "$d"
 
@@ -374,7 +370,7 @@ echo "Case: Directory Notes does not gate its directories"
 # obligation and adding a file to it stays green. This is what keeps the
 # Module Map from being a 187-file inventory.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 : >"$d/src/ungated/Another.ts"
 git -C "$d" add -A >/dev/null 2>&1
 assert_case 0 "notes block gates nothing" "$d"
@@ -385,7 +381,7 @@ echo "Case: a dead bare stem leading a Directory Notes item"
 # such runs now live. Form (a) cannot see it — there is no extension —
 # so form (b) has to run over this block too.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 add_note_item "$d" '- `GhostStore` — gone'
 assert_case 1 "dead stem in Directory Notes" "$d"
 
@@ -393,7 +389,7 @@ echo "Case: a live bare stem under its own note key"
 # Must pass. `Whatever.ts` is in `src/ungated/`, which is the key this
 # entry is filed under, so the citation resolves.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 add_note_item "$d" '- `Whatever` — alive'
 assert_case 0 "live stem under its own note key" "$d"
 
@@ -406,7 +402,7 @@ echo "Case: a note naming a live file owned by a DIFFERENT directory"
 # version: the `src/server/services/` note describes `events.ts` and
 # exists precisely to say it is NOT `src/server/routes/events.ts`.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 add_note_item "$d" '- `AlphaService.ts` — lives in src/server/services/'
 assert_case 1 "note names a file from another directory" "$d"
 
@@ -417,7 +413,7 @@ echo "Case: a bold opener that is not a directory does not scope its entry"
 # names to an empty file set and report every one of them dead —
 # `Whatever.ts` here, which exists.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 add_note_item "$d" '**`Bulk download`** — no orchestrator, by decision; see `Whatever.ts`.'
 assert_case 0 "non-directory bold opener is not a key" "$d"
 
@@ -428,7 +424,7 @@ echo "Case: a Directory Notes key that is not a real directory"
 # only because the report carries the key: the label is what separates a
 # misspelled key from a genuine batch of dead citations.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 sed -i 's|^\*\*`src/ungated/`\*\* — the others\.$|**`src/ungatedd/`** — the others.|' "$d/ARCHITECTURE.md"
 add_note_item "$d" '- `Whatever.ts` — alive; the key above is misspelled'
 assert_case 1 "misspelled notes key reports live names dead" "$d"
@@ -439,7 +435,7 @@ echo "Case: a note naming a file in a nested directory of its own key"
 # holds no files of its own and every component it names sits a level
 # down.
 d="$(stage)"
-echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+cover_beta "$d"
 mkdir -p "$d/src/ungated/nested"
 : >"$d/src/ungated/nested/Deep.ts"
 git -C "$d" add -A >/dev/null 2>&1
@@ -477,26 +473,27 @@ stage_nested_only() {
 
 Nothing here.
 DOC
-  : >"$d/scripts/module-map-baseline.txt"
   git -C "$d" init --quiet
   git -C "$d" add -A >/dev/null 2>&1
+  MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
   echo "$d"
 }
 assert_case 1 "dead name in a nested-only directory" "$(stage_nested_only)"
 
 echo "Case: deleting a subsection silently un-gates its directory"
 # Must fail. Opting out is allowed — the error message says so — but
-# doing it invisibly is how a gate dies. The stale-entry ratchet only
-# catches this when the directory still has baseline entries, so a fully
-# documented directory could be dropped with no signal at all.
+# doing it invisibly is how a gate dies, and nothing else notices: a
+# directory that is fully documented leaves no other trace behind when
+# its heading goes.
 # Two gated subsections, so removing one leaves the Directory Detail
 # block intact — an empty block is a structural error (exit 2) and would
 # mask the un-gating this case is about.
 stage_two_gated() {
   local d
   d="$(stage)"
+  cover_beta "$d"
   sed -i 's|^### Directory Notes$|#### `src/ungated/`\n\n- `Whatever.ts` — documented\n\n### Directory Notes|' "$d/ARCHITECTURE.md"
-  MODULE_MAP_ROOT="$d" bash "$CHECK" --update-baseline >/dev/null 2>&1
+  MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
   echo "$d"
 }
 
@@ -508,18 +505,69 @@ d="$(stage_two_gated)"
 drop_services_subsection "$d"
 assert_case 1 "silently un-gated directory" "$d"
 
-echo "Case: un-gating recorded in the baseline passes"
+echo "Case: un-gating recorded in the gating record passes"
 # Must pass. The gate is opt-out, not immovable — regenerating the
-# baseline makes the removal a visible diff instead of a silent one.
+# record makes the removal a visible diff instead of a silent one.
 d="$(stage_two_gated)"
 drop_services_subsection "$d"
-MODULE_MAP_ROOT="$d" bash "$CHECK" --update-baseline >/dev/null 2>&1
-assert_case 0 "un-gating recorded in baseline" "$d"
+MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
+assert_case 0 "un-gating recorded" "$d"
 
-echo "Case: --update-baseline makes a failing tree pass"
+echo "Case: --update-gated does not excuse an undocumented file"
+# Must fail. The record covers which directories are gated, nothing
+# more — regenerating it is not a way to defer coverage, and there is
+# no longer a baseline that is.
 d="$(stage)"
-MODULE_MAP_ROOT="$d" bash "$CHECK" --update-baseline >/dev/null 2>&1
-assert_case 0 "regenerated baseline" "$d"
+MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
+assert_case 1 "regenerated record does not defer coverage" "$d"
+
+echo "Case: deleting the gating record does not un-gate anything"
+# Must fail, and structurally (exit 2), not merely differ. Dropping a
+# subsection AND deleting the record is the bypass shape: the ratchet
+# read a missing file as "no history", so the pair went green while
+# either alone failed. With the baseline retired this file is the only
+# artifact between a dropped heading and a passing build, so it is a
+# required input — same posture as a missing ARCHITECTURE.md.
+d="$(stage_two_gated)"
+drop_services_subsection "$d"
+rm "$d/scripts/module-map-gated.txt"
+assert_case 2 "record deleted alongside the subsection" "$d"
+
+echo "Case: emptying the gating record does not un-gate anything either"
+# Must fail, exit 2, for the same reason as the deletion above — and it
+# is the shape a guard that tests EXISTENCE leaves open. The entries are
+# what the ratchet compares against, so truncating the file disarms it
+# exactly as `rm` does, while the file itself is still there.
+d="$(stage_two_gated)"
+drop_services_subsection "$d"
+: >"$d/scripts/module-map-gated.txt"
+assert_case 2 "record truncated alongside the subsection" "$d"
+
+echo "Case: a comments-only gating record is empty"
+# Must fail, exit 2. The parser drops comments and blank lines, so a
+# record stripped to its own header records nothing — the file being
+# non-empty on disk is not the property that matters.
+d="$(stage_two_gated)"
+drop_services_subsection "$d"
+printf '# Module Map gating record\n#\n\n' >"$d/scripts/module-map-gated.txt"
+assert_case 2 "comments-only record alongside the subsection" "$d"
+
+echo "Case: the gating record is missing on an otherwise-green tree"
+# Must fail too. The absence is refused on its own, without waiting for
+# a second edit to make it exploitable.
+d="$(stage)"
+cover_beta "$d"
+rm "$d/scripts/module-map-gated.txt"
+assert_case 2 "missing gating record" "$d"
+
+echo "Case: --update-gated bootstraps a missing record"
+# Must pass. The required-input rule cannot lock out the one invocation
+# that creates the file.
+d="$(stage)"
+cover_beta "$d"
+rm "$d/scripts/module-map-gated.txt"
+MODULE_MAP_ROOT="$d" bash "$CHECK" --update-gated >/dev/null 2>&1
+assert_case 0 "record regenerated from scratch" "$d"
 
 echo "Case: the Directory Detail block is missing"
 # Structural, not drift. Without a dedicated code the run would gate
