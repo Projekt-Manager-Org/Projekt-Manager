@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Scenario tests for scripts/generate-openapi.ts --check (AC-351).
+# Scenario tests for scripts/generate-openapi.ts --check (AC-351, AC-353).
 #
 # Unlike the permissions-doc check (markers inside a hand-authored file),
 # docs/api/openapi.json is entirely generated, so "drift" means the whole
@@ -8,7 +8,8 @@
 # a fixture path via $OPENAPI_DOC_PATH; the route schemas themselves are
 # always read from the real src/server/routes/ — that's the source of
 # truth the check protects, not something to fake. Exits 0 when every
-# case matches its expected exit code; 1 otherwise.
+# case matches its expected exit code and the message naming the guard
+# that fired; 1 otherwise.
 #
 # $OPENAPI_DOC_PATH redirects the destination only — Prettier's config is
 # resolved from the canonical in-repo path regardless, which is what makes
@@ -49,28 +50,42 @@ pass=0
 fail=0
 failures=()
 
-# Set INJECT_INVALID=1 or INJECT_ORPHAN=1 before a call to corrupt the
-# generated document inside the generator; both cleared after each case.
+# assert_case <expected-exit> <label> <doc-path> [expected-output-substring]
+#
+# Set any of INJECT_INVALID / INJECT_ORPHAN / INJECT_DROP to 1 before a
+# call to corrupt the generated document inside the generator; all three
+# are cleared after each case.
+#
+# Every guard here fails with exit 2, so the code alone cannot say WHICH
+# one fired — a case could pass for the wrong reason, or because the app
+# simply failed to boot. The fourth argument grepped against the
+# generator's combined output is what makes each case falsifiable.
 assert_case() {
-  local expected="$1" label="$2" doc="$3"
-  local actual
-  (
+  local expected="$1" label="$2" doc="$3" pattern="${4:-}"
+  local actual output
+  output="$(
     cd "$REPO_ROOT" || exit 2
     [[ -n "${INJECT_INVALID:-}" ]] && export OPENAPI_INJECT_INVALID=1
     [[ -n "${INJECT_ORPHAN:-}" ]] && export OPENAPI_INJECT_ORPHAN_OPERATION=1
     [[ -n "${INJECT_DROP:-}" ]] && export OPENAPI_INJECT_DROP_OPERATION=1
-    OPENAPI_DOC_PATH="$doc" npx --no-install tsx "$GENERATOR" --check
-  ) >/dev/null 2>&1
+    OPENAPI_DOC_PATH="$doc" npx --no-install tsx "$GENERATOR" --check 2>&1
+  )"
   actual=$?
   unset INJECT_INVALID INJECT_ORPHAN INJECT_DROP
-  if [[ "$actual" == "$expected" ]]; then
-    pass=$((pass + 1))
-    echo "  PASS — $label (exit $actual)"
-  else
+  if [[ "$actual" != "$expected" ]]; then
     fail=$((fail + 1))
-    failures+=("$label: expected $expected, got $actual")
-    echo "  FAIL — $label (expected $expected, got $actual)"
+    failures+=("$label: expected exit $expected, got $actual")
+    echo "  FAIL — $label (expected exit $expected, got $actual)"
+    return
   fi
+  if [[ -n "$pattern" ]] && ! grep -qF -- "$pattern" <<<"$output"; then
+    fail=$((fail + 1))
+    failures+=("$label: exit $actual is right, but output does not mention '$pattern'")
+    echo "  FAIL — $label (exit $actual, but output does not mention '$pattern')"
+    return
+  fi
+  pass=$((pass + 1))
+  echo "  PASS — $label (exit $actual)"
 }
 
 echo "Case: freshly generated doc passes --check"
@@ -81,7 +96,7 @@ if [[ ! -f "$in_sync" ]]; then
   echo "ERROR: generator did not produce $in_sync — cannot continue." >&2
   exit 2
 fi
-assert_case 0 "in-sync doc" "$in_sync"
+assert_case 0 "in-sync doc" "$in_sync" "is in sync with the route schemas"
 
 echo "Case: hand-edited doc fails --check"
 drifted_dir="$(mktmp_dir)"
@@ -93,12 +108,12 @@ cp "$in_sync" "$drifted"
 # It is not a stand-in for a route-schema edit; whole-file comparison is
 # what makes the two indistinguishable here.
 sed -i 's/"Projekt-Manager API"/"Hand-Edited API"/' "$drifted"
-assert_case 1 "drifted doc" "$drifted"
+assert_case 1 "drifted doc" "$drifted" "is stale"
 
 echo "Case: missing target fails with a toolchain error, not a false pass"
 missing_dir="$(mktmp_dir)"
 missing="$missing_dir/does-not-exist.json"
-assert_case 2 "missing target" "$missing"
+assert_case 2 "missing target" "$missing" "cannot read"
 
 echo "Case: a structurally invalid document fails the validity gate"
 # The drift check alone would stay green on an invalid document — it only
@@ -116,7 +131,7 @@ invalid_dir="$(mktmp_dir)"
 invalid="$invalid_dir/openapi.json"
 cp "$in_sync" "$invalid"
 INJECT_INVALID=1
-assert_case 2 "invalid document" "$invalid"
+assert_case 2 "invalid document" "$invalid" "is not valid OpenAPI"
 
 echo "Case: an operation with no backing route fails the security-coverage gate"
 # AC-353's derivation is total: every published operation must trace back
@@ -133,7 +148,7 @@ orphan_dir="$(mktmp_dir)"
 orphan="$orphan_dir/openapi.json"
 cp "$in_sync" "$orphan"
 INJECT_ORPHAN=1
-assert_case 2 "orphaned operation" "$orphan"
+assert_case 2 "orphaned operation" "$orphan" "matches no route"
 
 echo "Case: a registered route missing from the document fails the coverage gate"
 # The mirror of the case above, and the one AC-351 asserted without
@@ -146,7 +161,7 @@ dropped_dir="$(mktmp_dir)"
 dropped="$dropped_dir/openapi.json"
 cp "$in_sync" "$dropped"
 INJECT_DROP=1
-assert_case 2 "unpublished route" "$dropped"
+assert_case 2 "unpublished route" "$dropped" "absent from the document"
 
 echo
 echo "Results: $pass passed, $fail failed"
