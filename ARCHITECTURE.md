@@ -116,7 +116,7 @@ A directory earns a subsection when the _set_ of files is itself architecture an
 
 #### `src/server/routes/`
 
-- `auth.ts` — login / logout / `me` / change-password. The only module that sets the session cookie; `GET /api/auth/me` also carries the owner-only backup badge, omitting the field rather than faking a value when the status row is unreachable (AC-171).
+- `auth.ts` — login / logout / `me` / change-password. The only module that sets the session cookie; `POST /api/auth/login` and `GET /api/auth/me` both carry the owner-only backup badge, omitting the field rather than faking a value when the status row is unreachable (AC-176). The two session-establishment paths are kept symmetric; the reason is in [api.md §14.2.1](docs/spec/api.md#1421-authentication).
 - `users.ts` — user CRUD, deactivate / reactivate, admin password reset
 - `workers.ts` — the assignee pool. Separate from `users.ts` because it is gated by `project:read` rather than admin-only `user:read`, and returns only `{userId, displayName}` so no admin-only field can leak into a filter dropdown.
 - `customers.ts` — customer CRUD
