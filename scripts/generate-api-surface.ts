@@ -63,8 +63,9 @@
  *
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (doc file unreadable, markers missing, the app failed
- * to build, or a route declares a rate limit this script cannot render)
- * so the caller's `set -e` trips loudly instead of silently no-op'ing.
+ * to build, a route declares a rate limit this script cannot render, or
+ * an access gate reaches a route no session gate does) so the caller's
+ * `set -e` trips loudly instead of silently no-op'ing.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -76,6 +77,7 @@ import { buildApp } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
 import {
   accessRules,
+  assertGatesAuthenticate,
   isSessionGated,
   methodsOf,
   withoutAutoHeadRoutes,
@@ -219,7 +221,12 @@ async function buildExpectedDoc(): Promise<string> {
     process.exit(2);
   }
 
-  const endpoints = withoutAutoHeadRoutes(await collectRoutes()).map(toEndpoint);
+  const routes = await collectRoutes();
+  // A published `Auth: none` row beside a populated `Access` column is
+  // the same fail-open claim the OpenAPI generator refuses to make, so
+  // the shared guard runs on both sides.
+  assertGatesAuthenticate(routes);
+  const endpoints = withoutAutoHeadRoutes(routes).map(toEndpoint);
 
   const startLineEnd = doc.indexOf('\n', startIdx) + 1;
   const before = doc.slice(0, startLineEnd);

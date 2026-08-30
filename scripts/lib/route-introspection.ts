@@ -102,3 +102,35 @@ export function withoutAutoHeadRoutes(routes: RouteOptions[]): RouteOptions[] {
     );
   });
 }
+
+/**
+ * Fail on a route an access gate reaches but no session gate does.
+ *
+ * `requirePermission` and `requireRole` both reject a request carrying no
+ * `request.user` with 401, and only `createAuthMiddleware` ever sets one.
+ * So the combination is not a documentation defect but a dead route: it
+ * answers 401 to every caller, including one holding the permission.
+ *
+ * It is also the fail-open direction of both generated artifacts —
+ * `Auth: none` beside a populated `Access` column, `security: []` on an
+ * operation the server refuses — which is why the guard lives with the
+ * introspection rather than inside either one. The orphan-operation check
+ * in `generate-openapi.ts` closes the same door from the document side;
+ * this closes it from the route side, where the bug actually is.
+ */
+export function assertGatesAuthenticate(routes: RouteOptions[]): void {
+  const orphaned = withoutAutoHeadRoutes(routes)
+    .filter((route) => accessRules(route).length > 0 && !isSessionGated(route))
+    .map((route) => `${methodsOf(route).join(', ')} ${route.url}`);
+
+  if (orphaned.length > 0) {
+    throw new Error(
+      `route(s) carry a permission/role gate that no session gate reaches: ` +
+        `${orphaned.join('; ')}. \`requirePermission\` / \`requireRole\` reject a ` +
+        `request with no authenticated user, so these answer 401 to every caller ` +
+        `while the generated documents publish them as public. Gate the plugin with ` +
+        `\`requireSession(app, db)\`, or put \`createAuthMiddleware(db)\` ahead of the ` +
+        `access gate in the route's own preHandler chain.`,
+    );
+  }
+}

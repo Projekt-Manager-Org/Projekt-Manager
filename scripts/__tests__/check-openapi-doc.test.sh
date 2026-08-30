@@ -52,9 +52,9 @@ failures=()
 
 # assert_case <expected-exit> <label> <doc-path> [expected-output-substring]
 #
-# Set any of INJECT_INVALID / INJECT_ORPHAN / INJECT_DROP to 1 before a
-# call to corrupt the generated document inside the generator; all three
-# are cleared after each case.
+# Set any of INJECT_INVALID / INJECT_ORPHAN / INJECT_DROP / INJECT_GATE to
+# 1 before a call to corrupt the generated document (or the route set)
+# inside the generator; all four are cleared after each case.
 #
 # Every guard here fails with exit 2, so the code alone cannot say WHICH
 # one fired — a case could pass for the wrong reason, or because the app
@@ -68,10 +68,11 @@ assert_case() {
     [[ -n "${INJECT_INVALID:-}" ]] && export OPENAPI_INJECT_INVALID=1
     [[ -n "${INJECT_ORPHAN:-}" ]] && export OPENAPI_INJECT_ORPHAN_OPERATION=1
     [[ -n "${INJECT_DROP:-}" ]] && export OPENAPI_INJECT_DROP_OPERATION=1
+    [[ -n "${INJECT_GATE:-}" ]] && export OPENAPI_INJECT_ORPHAN_GATE=1
     OPENAPI_DOC_PATH="$doc" npx --no-install tsx "$GENERATOR" --check 2>&1
   )"
   actual=$?
-  unset INJECT_INVALID INJECT_ORPHAN INJECT_DROP
+  unset INJECT_INVALID INJECT_ORPHAN INJECT_DROP INJECT_GATE
   if [[ "$actual" != "$expected" ]]; then
     fail=$((fail + 1))
     failures+=("$label: expected exit $expected, got $actual")
@@ -162,6 +163,24 @@ dropped="$dropped_dir/openapi.json"
 cp "$in_sync" "$dropped"
 INJECT_DROP=1
 assert_case 2 "unpublished route" "$dropped" "absent from the document"
+
+echo "Case: an access gate no session gate reaches fails the wiring guard"
+# The third fail-open door, and the one neither coverage check sees:
+# `requirePermission` / `requireRole` reject a request with no
+# authenticated user, so a route carrying one without a session gate
+# answers 401 to every caller while publishing as `security: []` — a
+# protected endpoint advertised as public, reached from the route side
+# rather than the document side.
+#
+# $OPENAPI_INJECT_ORPHAN_GATE puts a real `requirePermission` gate on the
+# ungated `/api/health` route. Every access gate in the real route set
+# sits behind a session gate, so without the seam this guard could be
+# deleted and nothing would notice.
+gate_dir="$(mktmp_dir)"
+gate="$gate_dir/openapi.json"
+cp "$in_sync" "$gate"
+INJECT_GATE=1
+assert_case 2 "unauthenticated access gate" "$gate" "no session gate reaches"
 
 echo
 echo "Results: $pass passed, $fail failed"

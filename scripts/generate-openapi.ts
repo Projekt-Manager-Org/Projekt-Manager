@@ -46,8 +46,9 @@
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (missing/unreadable target in --check mode, or the app
  * failed to build/ready, or the doc could not be generated, is not valid
- * OpenAPI 3.1) so the caller's `set -e` trips loudly instead of silently
- * no-op'ing.
+ * OpenAPI 3.1, does not match the route set in both directions, or the
+ * route set itself gates access without authenticating) so the caller's
+ * `set -e` trips loudly instead of silently no-op'ing.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -58,7 +59,9 @@ import type { FastifyInstance, RouteOptions } from 'fastify';
 import type pg from 'pg';
 import { buildApp, type OpenApiDocOptions } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
+import { requirePermission } from '../src/server/middleware/auth.js';
 import {
+  assertGatesAuthenticate,
   isSessionGated,
   methodsOf,
   withoutAutoHeadRoutes,
@@ -389,6 +392,21 @@ async function buildExpectedDoc(): Promise<string> {
       delete doc.paths?.['/api/health'];
     }
 
+    // The seam for the unauthenticated-access-gate case. Every access
+    // gate today sits behind a session gate, so the guard never fires on
+    // the real route set — same argument as the two seams above. The
+    // real `requirePermission` is used rather than an imitation, so the
+    // case exercises the gate shape the guard actually reads. Mutating
+    // `routeOptions` after `ready()` changes nothing at runtime: the
+    // route's hook chain was compiled at registration.
+    if (process.env.OPENAPI_INJECT_ORPHAN_GATE === '1') {
+      const target = routes.find((r) => r.url === '/api/health' && methodsOf(r).includes('GET'));
+      if (target) target.preHandler = requirePermission('project:read');
+    }
+
+    // Route wiring before document coverage: an access gate no session
+    // gate reaches is a broken route, not a stale document.
+    assertGatesAuthenticate(routes);
     assertEveryRoutePublished(doc, routes);
     applySecurity(doc, routes);
 
