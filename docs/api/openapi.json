@@ -3,11 +3,17 @@
   "info": {
     "title": "Projekt-Manager API",
     "version": "0.1.0",
-    "description": "GENERATED FILE — do not edit by hand. Produced from the routes registered by buildApp() via `npx tsx scripts/generate-openapi.ts`; CI fails on drift. Describes requests only — responses and auth are not declared yet. The normative API contract is docs/spec/api.md §14.2; see ARCHITECTURE.md § OpenAPI Document Generation."
+    "description": "GENERATED FILE — do not edit by hand. Produced from the routes registered by buildApp() via `npx tsx scripts/generate-openapi.ts`; CI fails on drift. Describes requests and the session requirement only — responses are not declared yet. The normative API contract is docs/spec/api.md §14.2; see ARCHITECTURE.md § OpenAPI Document Generation.",
+    "license": {
+      "name": "GNU Affero General Public License v3.0 only",
+      "identifier": "AGPL-3.0-only"
+    }
   },
   "paths": {
     "/api/health": {
-      "get": {}
+      "get": {
+        "security": []
+      }
     },
     "/api/auth/login": {
       "post": {
@@ -32,14 +38,27 @@
               }
             }
           }
-        }
+        },
+        "security": []
       }
     },
     "/api/auth/logout": {
-      "post": {}
+      "post": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
     },
     "/api/auth/me": {
-      "get": {},
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
       "patch": {
         "requestBody": {
           "required": true,
@@ -61,7 +80,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/auth/change-password": {
@@ -88,7 +112,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/projects": {
@@ -190,6 +219,11 @@
             "name": "sortDir",
             "required": false
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       },
       "post": {
@@ -265,7 +299,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/projects/{id}": {
@@ -279,6 +318,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -347,6 +391,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       },
       "delete": {
@@ -359,6 +408,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -403,6 +457,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -446,6 +505,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -482,6 +546,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -497,6 +566,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -511,6 +585,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -562,6 +641,11 @@
             "in": "query",
             "name": "sortDir",
             "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -616,7 +700,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/customers/{id}": {
@@ -630,6 +719,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -691,6 +785,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       },
       "delete": {
@@ -703,6 +802,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -728,6 +832,11 @@
             "in": "query",
             "name": "limit",
             "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -768,7 +877,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/users/{id}": {
@@ -782,6 +896,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -825,6 +944,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       },
       "delete": {
@@ -837,6 +961,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -853,6 +982,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -867,6 +1001,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -901,15 +1040,38 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
     "/api/workers": {
-      "get": {}
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
     },
     "/api/export-jobs": {
-      "post": {},
-      "get": {}
+      "post": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
     },
     "/api/export-jobs/{id}": {
       "get": {
@@ -922,6 +1084,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -938,12 +1105,29 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
     "/api/import-jobs": {
-      "post": {},
-      "get": {}
+      "post": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
     },
     "/api/import-jobs/{id}": {
       "get": {
@@ -956,6 +1140,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -971,6 +1160,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -995,7 +1189,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/audit": {
@@ -1153,6 +1352,11 @@
             "name": "recipientScope",
             "required": false
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -1168,11 +1372,22 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
     "/api/notification-rules": {
-      "get": {},
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
       "post": {
         "requestBody": {
           "required": true,
@@ -1183,7 +1398,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/notification-rules/{id}": {
@@ -1197,6 +1417,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -1221,6 +1446,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       },
       "delete": {
@@ -1233,6 +1463,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -1277,7 +1512,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       },
       "delete": {
         "parameters": [
@@ -1288,6 +1528,11 @@
             "in": "query",
             "name": "endpoint",
             "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -1304,6 +1549,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -1318,6 +1568,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -1417,6 +1672,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -1440,6 +1700,11 @@
             "in": "path",
             "name": "attId",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -1465,6 +1730,11 @@
             "name": "attId",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -1479,6 +1749,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -1503,6 +1778,11 @@
             "in": "path",
             "name": "attId",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -1535,6 +1815,11 @@
             "in": "path",
             "name": "attId",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -1572,6 +1857,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -1587,6 +1877,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       },
       "post": {
@@ -1598,6 +1893,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -1611,6 +1911,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       },
       "patch": {
@@ -1622,6 +1927,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -1635,15 +1945,50 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
     "/api/storage-usage": {
-      "get": {},
-      "post": {},
-      "put": {},
-      "patch": {},
-      "delete": {}
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "put": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "patch": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "delete": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
     },
     "/api/invoices": {
       "get": {
@@ -1720,6 +2065,11 @@
             "in": "query",
             "name": "search",
             "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -1820,11 +2170,22 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/invoices/years": {
-      "get": {}
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
     },
     "/api/invoices/{id}": {
       "get": {
@@ -1837,6 +2198,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       },
@@ -1943,6 +2309,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       },
       "delete": {
@@ -1955,6 +2326,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -1970,6 +2346,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -2003,6 +2384,11 @@
             "name": "id",
             "required": true
           }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
         ]
       }
     },
@@ -2017,6 +2403,11 @@
             "in": "path",
             "name": "id",
             "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
           }
         ]
       }
@@ -2073,11 +2464,22 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/company-profile": {
-      "get": {},
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
       "put": {
         "requestBody": {
           "required": true,
@@ -2144,27 +2546,82 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
       }
     },
     "/api/events": {
-      "get": {},
-      "post": {},
-      "put": {},
-      "patch": {},
-      "delete": {}
+      "get": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "post": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "put": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "patch": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
+      "delete": {
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
     },
     "/api/push/vapid-public-key": {
-      "get": {},
-      "post": {},
-      "put": {},
-      "patch": {},
-      "delete": {}
+      "get": {
+        "security": []
+      },
+      "post": {
+        "security": []
+      },
+      "put": {
+        "security": []
+      },
+      "patch": {
+        "security": []
+      },
+      "delete": {
+        "security": []
+      }
     }
   },
   "servers": [
     {
       "url": "/"
     }
-  ]
+  ],
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session",
+        "description": "Session cookie issued by `POST /api/auth/login`. Set server-side as HttpOnly; it is never read or sent explicitly by client code."
+      }
+    }
+  }
 }

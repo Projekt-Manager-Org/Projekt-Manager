@@ -53,7 +53,12 @@ import { installErrorHandler } from './error-handler.js';
  */
 export interface OpenApiDocOptions {
   openapi: string;
-  info: { title: string; version: string; description: string };
+  info: {
+    title: string;
+    version: string;
+    description: string;
+    license: { name: string; identifier: string };
+  };
   servers: { url: string }[];
 }
 

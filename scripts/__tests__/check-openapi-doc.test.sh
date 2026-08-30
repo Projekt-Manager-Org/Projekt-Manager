@@ -49,18 +49,19 @@ pass=0
 fail=0
 failures=()
 
-# Set INJECT_INVALID=1 before a call to corrupt the generated document
-# inside the generator; cleared after each case.
+# Set INJECT_INVALID=1 or INJECT_ORPHAN=1 before a call to corrupt the
+# generated document inside the generator; both cleared after each case.
 assert_case() {
   local expected="$1" label="$2" doc="$3"
   local actual
   (
     cd "$REPO_ROOT" || exit 2
     [[ -n "${INJECT_INVALID:-}" ]] && export OPENAPI_INJECT_INVALID=1
+    [[ -n "${INJECT_ORPHAN:-}" ]] && export OPENAPI_INJECT_ORPHAN_OPERATION=1
     OPENAPI_DOC_PATH="$doc" npx --no-install tsx "$GENERATOR" --check
   ) >/dev/null 2>&1
   actual=$?
-  unset INJECT_INVALID
+  unset INJECT_INVALID INJECT_ORPHAN
   if [[ "$actual" == "$expected" ]]; then
     pass=$((pass + 1))
     echo "  PASS — $label (exit $actual)"
@@ -115,6 +116,23 @@ invalid="$invalid_dir/openapi.json"
 cp "$in_sync" "$invalid"
 INJECT_INVALID=1
 assert_case 2 "invalid document" "$invalid"
+
+echo "Case: an operation with no backing route fails the security-coverage gate"
+# AC-353's derivation is total: every published operation must trace back
+# to a route the factory registered, or the generator cannot know whether
+# a session is required and would publish it carrying no requirement at
+# all — a protected endpoint advertised as public. That is the fail-open
+# direction, so it exits 2 instead.
+#
+# $OPENAPI_INJECT_ORPHAN_OPERATION adds a path no route backs. Same
+# argument as the invalid-document seam above: every operation in a real
+# run matches by construction, so without the seam a deleted or
+# short-circuited guard would look exactly like a working one.
+orphan_dir="$(mktmp_dir)"
+orphan="$orphan_dir/openapi.json"
+cp "$in_sync" "$orphan"
+INJECT_ORPHAN=1
+assert_case 2 "orphaned operation" "$orphan"
 
 echo
 echo "Results: $pass passed, $fail failed"

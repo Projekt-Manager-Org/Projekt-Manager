@@ -49,7 +49,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as prettier from 'prettier';
 import { Validator } from '@seriousme/openapi-schema-validator';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, RouteOptions } from 'fastify';
 import type pg from 'pg';
 import { buildApp, type OpenApiDocOptions } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
@@ -81,19 +81,11 @@ process.env.STORAGE_ACCESS_KEY = 'openapi-spike-unused';
 process.env.STORAGE_SECRET_KEY = 'openapi-spike-unused';
 process.env.BINARY_AGE_RECIPIENT = 'age1openapispikeunusedplaceholderplaceholderplaceholder';
 
-const HTTP_METHODS = [
-  'get',
-  'put',
-  'post',
-  'delete',
-  'options',
-  'head',
-  'patch',
-  'trace',
-] as const;
+const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const;
 
 interface OperationLike {
   responses?: Record<string, unknown>;
+  security?: Record<string, string[]>[];
 }
 interface DocLike {
   paths?: Record<string, Record<string, unknown>>;
@@ -113,7 +105,9 @@ function isSyntheticResponses(responses: Record<string, unknown> | undefined): b
   const body = responses['200'];
   if (typeof body !== 'object' || body === null) return false;
   const props = Object.keys(body);
-  return props.length === 1 && (body as { description?: unknown }).description === 'Default Response';
+  return (
+    props.length === 1 && (body as { description?: unknown }).description === 'Default Response'
+  );
 }
 
 /**
@@ -141,6 +135,108 @@ function stripUnsupportedClaims(doc: DocLike): DocLike {
   ) {
     delete doc.components;
   }
+  return doc;
+}
+
+/**
+ * The one hand-written seam in the document (AC-353).
+ *
+ * Session auth is a cookie the server sets at login and reads in a
+ * `preHandler`; no route declaration carries "there is a scheme called
+ * this, and it is an apiKey in that cookie", so the scheme itself cannot
+ * be derived from anything. The per-operation REQUIREMENT is derived —
+ * see `applySecurity` — which is the half that would otherwise rot.
+ *
+ * `session` is the cookie name `POST /api/auth/login` sets
+ * (`src/server/routes/auth.ts`) and `createAuthMiddleware` reads.
+ */
+const SESSION_SCHEME_NAME = 'sessionCookie';
+const SECURITY_SCHEMES = {
+  [SESSION_SCHEME_NAME]: {
+    type: 'apiKey',
+    in: 'cookie',
+    name: 'session',
+    description:
+      'Session cookie issued by `POST /api/auth/login`. Set server-side as ' +
+      'HttpOnly; it is never read or sent explicitly by client code.',
+  },
+} as const;
+
+/** A `preHandler` produced by `createAuthMiddleware` (AC-352's tag). */
+function isSessionGate(fn: unknown): boolean {
+  return typeof fn === 'function' && (fn as { requiresSession?: unknown }).requiresSession === true;
+}
+
+/**
+ * True when a session gate reaches this route — either the route-config
+ * marker `requireSession` writes across its whole encapsulation context,
+ * or a session gate installed on the route itself.
+ *
+ * Same two-part read as `toEndpoint` in `generate-api-surface.ts`: a
+ * plugin-level `preHandler` is invisible to `onRoute`, so the marker is
+ * what makes group gating readable at all.
+ */
+function isSessionGated(route: RouteOptions): boolean {
+  if (route.config?.auth === 'session') return true;
+  const { preHandler } = route;
+  const handlers = preHandler ? (Array.isArray(preHandler) ? preHandler : [preHandler]) : [];
+  return handlers.some(isSessionGate);
+}
+
+/**
+ * Fastify's `:param` path syntax to OpenAPI's `{param}`. Mirrors the
+ * conversion `@fastify/swagger` performs on the same URLs — the two have
+ * to agree for `applySecurity` to match an operation to its route, and
+ * the total-coverage check there is what fails the build if they ever
+ * stop agreeing.
+ */
+function toOpenApiPath(url: string): string {
+  return url.replace(/:([^/]+)/g, '{$1}');
+}
+
+/**
+ * Annotate every published operation with its session requirement,
+ * derived from the gates the routes carry (AC-353).
+ *
+ * `[]` — an explicit empty requirement — is how OpenAPI says "no auth
+ * needed", and it is what the eight ungated routes get. Publishing them
+ * by omitting the key instead would be indistinguishable from an
+ * operation this function failed to reach.
+ *
+ * The match is total in the doc→route direction and throws otherwise:
+ * an operation with no route behind it would silently publish without a
+ * requirement, which understates the protection the server enforces.
+ * The reverse direction is not checked here — `@fastify/swagger` drops
+ * HEAD routes and `@fastify/cors` hides its `OPTIONS *` preflight, so
+ * routes legitimately outnumber operations.
+ */
+function applySecurity(doc: DocLike, routes: RouteOptions[]): DocLike {
+  const gatedByKey = new Map<string, boolean>();
+  for (const route of routes) {
+    const gated = isSessionGated(route);
+    for (const method of ([] as string[]).concat(route.method)) {
+      gatedByKey.set(`${method.toLowerCase()} ${toOpenApiPath(route.url)}`, gated);
+    }
+  }
+
+  for (const [path, item] of Object.entries(doc.paths ?? {})) {
+    for (const method of HTTP_METHODS) {
+      const op = item[method] as OperationLike | undefined;
+      if (!op) continue;
+      const gated = gatedByKey.get(`${method} ${path}`);
+      if (gated === undefined) {
+        throw new Error(
+          `published operation \`${method.toUpperCase()} ${path}\` matches no route ` +
+            `buildApp() registered, so its authentication requirement cannot be ` +
+            `derived. Publishing it unannotated would advertise a protected ` +
+            `endpoint as public — fix the path mapping rather than skipping it.`,
+        );
+      }
+      op.security = gated ? [{ [SESSION_SCHEME_NAME]: [] }] : [];
+    }
+  }
+
+  doc.components = { ...doc.components, securitySchemes: SECURITY_SCHEMES };
   return doc;
 }
 
@@ -175,9 +271,13 @@ const DOC_OPTIONS: OpenApiDocOptions = {
     description:
       'GENERATED FILE — do not edit by hand. Produced from the routes ' +
       'registered by buildApp() via `npx tsx scripts/generate-openapi.ts`; ' +
-      'CI fails on drift. Describes requests only — responses and auth are ' +
-      'not declared yet. The normative API contract is docs/spec/api.md ' +
-      '§14.2; see ARCHITECTURE.md § OpenAPI Document Generation.',
+      'CI fails on drift. Describes requests and the session requirement ' +
+      'only — responses are not declared yet. The normative API contract ' +
+      'is docs/spec/api.md §14.2; see ARCHITECTURE.md § OpenAPI Document ' +
+      'Generation.',
+    // 3.1 accepts an SPDX `identifier` in place of 3.0's `url`. Kept in
+    // step with `LICENSE` and package.json's `license` field.
+    license: { name: 'GNU Affero General Public License v3.0 only', identifier: 'AGPL-3.0-only' },
   },
   servers: [{ url: '/' }],
 };
@@ -215,9 +315,31 @@ async function buildExpectedDoc(): Promise<string> {
     pool = conn.pool;
 
     app = buildApp({ logger: false, db: conn.db, rateLimit: false, openapi: DOC_OPTIONS });
+
+    // Attached AFTER `buildApp()` returns and BEFORE `ready()`, and read
+    // only once `ready()` has resolved — the same two-part timing
+    // `collectRoutes` in generate-api-surface.ts documents: `register()`
+    // defers plugin execution to `ready()`, so this still sees routes in
+    // child encapsulation contexts, and `requireSession`'s marker is
+    // written by the plugin's own hook, after this root one has run.
+    const routes: RouteOptions[] = [];
+    app.addHook('onRoute', (routeOptions) => {
+      routes.push(routeOptions);
+    });
     await app.ready();
 
     const doc = stripUnsupportedClaims(app.swagger() as DocLike);
+
+    // Fault-injection seam for the orphaned-operation case in
+    // scripts/__tests__/check-openapi-doc.test.sh. Every operation
+    // matches a route by construction, so this is the only way to
+    // exercise `applySecurity`'s coverage guard — same argument as
+    // $OPENAPI_INJECT_INVALID below.
+    if (process.env.OPENAPI_INJECT_ORPHAN_OPERATION === '1') {
+      (doc.paths ??= {})['/api/__no-such-route__'] = { get: {} };
+    }
+
+    applySecurity(doc, routes);
 
     // Fault-injection seam for scripts/__tests__/check-openapi-doc.test.sh.
     // The document is generated from the real routes and is (correctly)
