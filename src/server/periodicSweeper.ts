@@ -1,9 +1,9 @@
 /**
  * Shared periodic-sweeper factory.
  *
- * All three scheduler callers (audit retention, attachment orphan
- * reaper, bulk-download reaper) had identical timer drive and
- * sustained-failure backoff plumbing:
+ * The scheduler callers (audit retention, attachment orphan reaper,
+ * attachment hidden reaper, takeout staging reaper) had identical timer
+ * drive and sustained-failure backoff plumbing:
  *   - setInterval + handle.unref() so the timer does not hold the
  *     Node event loop open;
  *   - a `currentSweep` guard so overlapping ticks never race;
