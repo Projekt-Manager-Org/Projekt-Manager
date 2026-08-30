@@ -1150,6 +1150,24 @@
       }
     },
     "/api/import-jobs/{id}/archive": {
+      "head": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      },
       "patch": {
         "parameters": [
           {

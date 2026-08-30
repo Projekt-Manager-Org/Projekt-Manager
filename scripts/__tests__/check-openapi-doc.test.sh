@@ -58,10 +58,11 @@ assert_case() {
     cd "$REPO_ROOT" || exit 2
     [[ -n "${INJECT_INVALID:-}" ]] && export OPENAPI_INJECT_INVALID=1
     [[ -n "${INJECT_ORPHAN:-}" ]] && export OPENAPI_INJECT_ORPHAN_OPERATION=1
+    [[ -n "${INJECT_DROP:-}" ]] && export OPENAPI_INJECT_DROP_OPERATION=1
     OPENAPI_DOC_PATH="$doc" npx --no-install tsx "$GENERATOR" --check
   ) >/dev/null 2>&1
   actual=$?
-  unset INJECT_INVALID INJECT_ORPHAN
+  unset INJECT_INVALID INJECT_ORPHAN INJECT_DROP
   if [[ "$actual" == "$expected" ]]; then
     pass=$((pass + 1))
     echo "  PASS — $label (exit $actual)"
@@ -133,6 +134,19 @@ orphan="$orphan_dir/openapi.json"
 cp "$in_sync" "$orphan"
 INJECT_ORPHAN=1
 assert_case 2 "orphaned operation" "$orphan"
+
+echo "Case: a registered route missing from the document fails the coverage gate"
+# The mirror of the case above, and the one AC-351 asserted without
+# enforcing: a route the factory registered that never reaches the
+# document. That is how `HEAD /api/import-jobs/:id/archive` went missing
+# — @fastify/swagger drops HEAD routes unless the route opts in, and
+# nothing was checking. Automatic HEAD companions and routes carrying
+# `schema: { hide: true }` are excluded structurally, not by name.
+dropped_dir="$(mktmp_dir)"
+dropped="$dropped_dir/openapi.json"
+cp "$in_sync" "$dropped"
+INJECT_DROP=1
+assert_case 2 "unpublished route" "$dropped"
 
 echo
 echo "Results: $pass passed, $fail failed"

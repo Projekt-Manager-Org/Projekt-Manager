@@ -199,16 +199,14 @@ function toOpenApiPath(url: string): string {
  * derived from the gates the routes carry (AC-353).
  *
  * `[]` — an explicit empty requirement — is how OpenAPI says "no auth
- * needed", and it is what the eight ungated routes get. Publishing them
+ * needed", and it is what the seven ungated routes get. Publishing them
  * by omitting the key instead would be indistinguishable from an
  * operation this function failed to reach.
  *
  * The match is total in the doc→route direction and throws otherwise:
  * an operation with no route behind it would silently publish without a
  * requirement, which understates the protection the server enforces.
- * The reverse direction is not checked here — `@fastify/swagger` drops
- * HEAD routes and `@fastify/cors` hides its `OPTIONS *` preflight, so
- * routes legitimately outnumber operations.
+ * `assertEveryRoutePublished` covers the other direction.
  */
 function applySecurity(doc: DocLike, routes: RouteOptions[]): DocLike {
   const gatedByKey = new Map<string, boolean>();
@@ -238,6 +236,71 @@ function applySecurity(doc: DocLike, routes: RouteOptions[]): DocLike {
 
   doc.components = { ...doc.components, securitySchemes: SECURITY_SCHEMES };
   return doc;
+}
+
+/**
+ * Every route the factory registered must appear in the document —
+ * the direction that makes AC-351's "endpoint surface is complete for
+ * the API" an enforced property rather than an asserted one.
+ *
+ * It was asserted, and it was false: `@fastify/swagger` drops HEAD
+ * routes unless the route opts in (`config.swagger.exposeHeadRoute`),
+ * which silently omitted `HEAD /api/import-jobs/:id/archive` — the tus
+ * offset probe, normative in api.md §14.2.4 and called by
+ * `src/api/client.ts`. Nothing failed, because nothing was looking.
+ *
+ * Two exclusions, both structural rather than a list of names:
+ *
+ *   - **Automatic HEAD companions.** Fastify exposes one per GET route:
+ *     same URL, and the very same handler reference. Dropped by that
+ *     identity, exactly as `generate-api-surface.ts` drops them — so a
+ *     HEAD route surviving here is one somebody declared on purpose.
+ *   - **Routes that hide themselves.** `schema.hide` is
+ *     `@fastify/swagger`'s own opt-out, and `@fastify/cors` sets it on
+ *     the `OPTIONS *` preflight it registers. A route claiming that
+ *     exclusion has to say so at its registration site.
+ */
+function assertEveryRoutePublished(doc: DocLike, routes: RouteOptions[]): void {
+  const published = new Set<string>();
+  for (const [path, item] of Object.entries(doc.paths ?? {})) {
+    for (const method of HTTP_METHODS) {
+      if (item[method]) published.add(`${method} ${path}`);
+    }
+  }
+
+  const getHandlers = new Map<string, RouteOptions['handler']>();
+  for (const route of routes) {
+    if (([] as string[]).concat(route.method).includes('GET')) {
+      getHandlers.set(route.url, route.handler);
+    }
+  }
+
+  const missing: string[] = [];
+  for (const route of routes) {
+    if ((route.schema as { hide?: unknown } | undefined)?.hide === true) continue;
+    const methods = ([] as string[]).concat(route.method);
+    if (
+      methods.length === 1 &&
+      methods[0] === 'HEAD' &&
+      getHandlers.get(route.url) === route.handler
+    ) {
+      continue;
+    }
+    for (const method of methods) {
+      const key = `${method.toLowerCase()} ${toOpenApiPath(route.url)}`;
+      if (!published.has(key)) missing.push(`${method} ${route.url}`);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      `route(s) registered by buildApp() but absent from the document: ` +
+        `${missing.join(', ')}. The document claims a complete endpoint surface ` +
+        `(AC-351), so publish them — a deliberately declared HEAD route opts in ` +
+        `with \`config: { swagger: { exposeHeadRoute: true } }\` — or hide them ` +
+        `explicitly with \`schema: { hide: true }\` at the registration site.`,
+    );
+  }
 }
 
 /**
@@ -339,6 +402,14 @@ async function buildExpectedDoc(): Promise<string> {
       (doc.paths ??= {})['/api/__no-such-route__'] = { get: {} };
     }
 
+    // The mirror seam, for the unpublished-route case. Same argument:
+    // every registered route reaches the document by construction, so
+    // dropping one is the only way to prove the guard is wired.
+    if (process.env.OPENAPI_INJECT_DROP_OPERATION === '1') {
+      delete doc.paths?.['/api/health'];
+    }
+
+    assertEveryRoutePublished(doc, routes);
     applySecurity(doc, routes);
 
     // Fault-injection seam for scripts/__tests__/check-openapi-doc.test.sh.

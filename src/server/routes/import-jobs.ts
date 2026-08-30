@@ -237,6 +237,12 @@ export function importJobRoutes(db: Database) {
             properties: { id: { type: 'string', format: 'uuid' } },
           },
         },
+        // `@fastify/swagger` drops every HEAD route by default — they are
+        // normally Fastify's automatic GET companions, which nobody wants
+        // duplicated in the document. This one is declared on purpose and
+        // is part of the protocol clients speak (api.md §14.2.4), so it
+        // opts back in. Inert at runtime; only the generator reads it.
+        config: { swagger: { exposeHeadRoute: true } },
         preHandler: requirePermission('data:restore'),
       },
       async (request, reply) => {
