@@ -146,6 +146,7 @@ ALLOWLIST=(
   # walkthrough over an entity the project does not have. The section
   # header names the example, so the paths read as hypothetical.
   "ARCHITECTURE.md|src/server/services/SupplierService.ts"
+  "ARCHITECTURE.md|src/server/repositories/supplier-read.ts"
   "ARCHITECTURE.md|src/server/routes/suppliers.ts"
   "ARCHITECTURE.md|src/state/supplierStore.ts"
   "ARCHITECTURE.md|src/ui/suppliers/"

@@ -12,44 +12,14 @@
 # '#### <dir>' subsection when this was written. Dropping a
 # subsection un-gates that directory; the check fails until the
 # line here goes too, so it lands as a visible diff.
-# gated: src/config/
-# gated: src/domain/
-# gated: src/pwa/
 # gated: src/server/
-# gated: src/server/config/
-# gated: src/server/middleware/
-# gated: src/server/repositories/
 # gated: src/server/routes/
-# gated: src/server/seed/
-# gated: src/server/services/
-# gated: src/server/sse/
-# gated: src/server/storage/
-# gated: src/sse/
-# gated: src/state/
-# gated: src/ui/
-src/config/attachmentDefaults.ts
-src/config/breakpoints.ts
-src/domain/aging.ts
-src/domain/attachmentChecksum.ts
-src/domain/clientEncryption.ts
-src/domain/dateFormat.ts
-src/domain/filename.ts
-src/domain/invoiceGrouping.ts
-src/domain/invoice.ts
-src/domain/session.ts
-src/domain/summary.ts
-src/domain/transitions.ts
-src/domain/types.ts
+# gated: src/server/services/invoice/
 src/server/attachment-hidden-reaper-scheduler.ts
-src/server/config/assertStagingDurable.ts
-src/server/config/bootstrap-credentials.ts
-src/server/config/features.ts
 src/server/deploy-preflight-cli.ts
 src/server/error-handler.ts
 src/server/format-error-chain.ts
 src/server/periodicSweeper.ts
-src/server/repositories/companyProfile.ts
-src/server/repositories/invoice-read.ts
 src/server/routes/audit.ts
 src/server/routes/auth.ts
 src/server/routes/company-profile.ts
@@ -59,39 +29,10 @@ src/server/routes/invoices.ts
 src/server/routes/projects.ts
 src/server/routes/users.ts
 src/server/routes/workers.ts
-src/server/seed/invoices.ts
-src/server/services/attachment-hidden-reaper.ts
-src/server/services/CompanyProfileService.ts
-src/server/services/data-exchange-boot-reaper.ts
-src/server/services/DataExchangeJobService.ts
-src/server/services/InvoiceBinaryService.ts
-src/server/services/InvoiceCancelService.ts
-src/server/services/InvoiceExportService.ts
-src/server/services/InvoiceIssueService.ts
-src/server/services/InvoiceRenderer.ts
-src/server/services/InvoiceService.ts
-src/server/services/serverImagePipeline.ts
-src/server/services/StorageUsageService.ts
-src/server/services/subprocessBound.ts
-src/server/services/takeout-export-builder.ts
-src/server/services/takeout-export-runner.ts
-src/server/services/takeout-import-runner.ts
-src/server/services/takeout-staging-reaper.ts
-src/server/services/takeout-staging.ts
-src/server/services/WebPushDispatcher.ts
-src/server/sse/bus.ts
-src/server/sse/emitters.ts
+src/server/services/invoice/boilerplate.ts
+src/server/services/invoice/facturXmlBuilder.ts
+src/server/services/invoice/payloadCrypto.ts
+src/server/services/invoice/pdfDrawer.ts
+src/server/services/invoice/xsdValidator.ts
 src/server/staticCache.ts
-src/server/storage/binaryIdentity.ts
-src/server/storage/pruneBucketOrphans.ts
 src/server/takeout-staging-reaper-scheduler.ts
-src/state/attachmentSseSubscription.ts
-src/state/companyProfileStore.ts
-src/state/exportJobStore.ts
-src/state/importJobStore.ts
-src/state/invoiceDetailStore.ts
-src/state/invoiceListStore.ts
-src/state/invoiceSseSubscription.ts
-src/state/invoiceStore.ts
-src/state/projectSseSubscription.ts
-src/state/toastStore.ts

@@ -39,6 +39,11 @@ trap cleanup EXIT
 # Fixture: two source files under a gated directory, one under a
 # directory with no subsection (must stay unchecked), and a doc that
 # names only the first.
+#
+# `### Directory Notes` is in the base fixture, not appended by the few
+# cases about it. Its absence is exit 2, so every case runs through the
+# block — and the cases that are not about it still exercise the entry
+# scan, rather than leaving it an unlit branch in a guard.
 stage() {
   local d
   d="$(mktemp -d)"
@@ -61,6 +66,10 @@ stage() {
 
 - `AlphaService.ts` — the documented one
 
+### Directory Notes
+
+**`src/ungated/`** — the others.
+
 ### Configuration Files
 
 Nothing here.
@@ -69,6 +78,13 @@ DOC
   git -C "$d" init --quiet
   git -C "$d" add -A >/dev/null 2>&1
   echo "$d"
+}
+
+# Append a list item to the fixture's one `### Directory Notes` entry.
+# The entry runs to the next bold key or the end of the block, so
+# inserting before the following `### ` heading lands inside it.
+add_note_item() {
+  sed -i "s|^### Configuration Files\$|${2}\n\n### Configuration Files|" "$1/ARCHITECTURE.md"
 }
 
 pass=0
@@ -87,6 +103,23 @@ assert_case() {
     fail=$((fail + 1))
     failures+=("$label: expected $expected, got $actual")
     echo "  FAIL — $label (expected $expected, got $actual)"
+  fi
+}
+
+# Asserts on the REPORT, not the exit code. A name reported twice still
+# exits 1, so dedup between the scoped and the document-wide pass — and
+# the label a report line carries — are invisible to assert_case.
+assert_report_case() {
+  local expected="$1" pattern="$2" label="$3" dir="$4"
+  local actual
+  actual="$(MODULE_MAP_ROOT="$dir" bash "$CHECK" 2>&1 | grep -c -- "$pattern")"
+  if [[ "$actual" == "$expected" ]]; then
+    pass=$((pass + 1))
+    echo "  PASS — $label ($actual matching line(s))"
+  else
+    fail=$((fail + 1))
+    failures+=("$label: expected $expected matching line(s), got $actual")
+    echo "  FAIL — $label (expected $expected matching line(s), got $actual)"
   fi
 }
 
@@ -143,7 +176,7 @@ echo "Case: adding a subsection opts the directory in"
 # `### ` heading, so a subsection appended past it is out of scope.
 d="$(stage)"
 echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
-sed -i 's|^### Configuration Files$|#### `src/ungated/`\n\nNo files named here.\n\n### Configuration Files|' "$d/ARCHITECTURE.md"
+sed -i 's|^### Directory Notes$|#### `src/ungated/`\n\nNo files named here.\n\n### Directory Notes|' "$d/ARCHITECTURE.md"
 assert_case 1 "new subsection gates its directory" "$d"
 
 echo "Case: a subsection past the end of the Directory Detail block"
@@ -279,53 +312,139 @@ echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
 sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `src/server/repositories/GoneRepo.ts` — historical, resolved elsewhere|' "$d/ARCHITECTURE.md"
 assert_case 0 "full path left to the sibling checker" "$d"
 
-echo "Case: a directory whose subsection delegates its file list"
-# Must pass. `src/config/` and `src/server/config/` both hand their
-# per-file detail to the `### Configuration Files` table rather than
-# repeat it. Without the delegation the check reports files as
-# undocumented against a document that documents them — a checker bug
-# that costs three entries of #306's burn-down to spurious duplication.
+# Subsection delegation to `### Configuration Files` had two cases here.
+# The gate now covers three subsystem directories, none of which
+# delegate, so the branch was deleted rather than kept warm for a
+# hypothetical caller — and its tests went with it.
+
+# --- doc -> file: the document-wide pass -------------------------------
 #
-# The LINK is the trigger, not the directory name: delegation is
-# doc-driven for the same reason gating is, so that a third delegating
-# subsection needs no script edit. $1 is the subsection's opening
-# sentence — the paired case below drops the link from it.
-stage_delegated() {
-  local d
-  d="$(mktemp -d)"
-  TMP_DIRS+=("$d")
-  mkdir -p "$d/src/server/config" "$d/scripts"
-  : >"$d/src/server/config/env.ts"
-  cat >"$d/ARCHITECTURE.md" <<DOC
-## Module Map
+# Narrowing the gate to three subsystems moved most of the document's
+# file citations out of any gated subsection. A subsection-scoped
+# resolution rule would leave every one of them unchecked — the blind
+# spot #306 opened with, relocated rather than closed.
 
-### Directory Detail
+echo "Case: a dead name in a section with no subsection at all"
+# Must fail. `### Configuration Files` gates nothing, so under the old
+# scoped rule a dead citation there was invisible.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^Nothing here.$|Nothing here, but `VanishedConfig.ts` is cited.|' "$d/ARCHITECTURE.md"
+assert_case 1 "dead name outside every subsection" "$d"
 
-#### \`src/server/config/\`
+echo "Case: a live name outside every subsection resolves repository-wide"
+# Must pass, and this is what keeps the document-wide pass survivable.
+# Scoped resolution would reject `Whatever.ts` here — it is not in
+# `src/server/services/` — but this pass asks only whether the file
+# exists at all. A name that resolves anywhere is alive; only one that
+# resolves nowhere is a dead citation.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^Nothing here.$|Nothing here, but `Whatever.ts` is cited.|' "$d/ARCHITECTURE.md"
+assert_case 0 "live name outside every subsection" "$d"
 
-$1
+echo "Case: a dead name is reported once, by the scoped pass"
+# Both passes see a name that resolves nowhere, and reporting it twice
+# still exits 1 — so only the report shows the dedup. The scoped line is
+# the one worth keeping: it names the directory whose claim broke.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `GoneService.ts` — gone|' "$d/ARCHITECTURE.md"
+assert_report_case 1 'GoneService\.ts' "dead name reported exactly once" "$d"
+assert_report_case 1 'src/server/services/ -> GoneService\.ts' "scoped report wins over the document-wide one" "$d"
 
-### Configuration Files
+echo "Case: the scoped pass stays stricter than the document-wide one"
+# Must fail. A gated subsection claiming a file that exists ELSEWHERE is
+# still breaking its own contract — the document-wide pass must not
+# soften that into a pass.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `Whatever.ts` — lives in src/ungated/|' "$d/ARCHITECTURE.md"
+assert_case 1 "live file cited by the wrong subsection" "$d"
 
-| What            | File                        |
-| --------------- | --------------------------- |
-| Env validation  | \`src/server/config/env.ts\` |
-DOC
-  : >"$d/scripts/module-map-baseline.txt"
-  git -C "$d" init --quiet
-  git -C "$d" add -A >/dev/null 2>&1
-  echo "$d"
-}
-assert_case 0 "delegated file list counts as documented" \
-  "$(stage_delegated 'Deployment-tunable values are indexed in [§ Configuration Files](#configuration-files) below.')"
+# --- `### Directory Notes`: prose, not a coverage contract --------------
+#
+# No coverage obligation in the file -> doc direction, full obligation in
+# the other one — and scoped, because each entry is keyed by a bold path
+# and that key is a directory.
 
-echo "Case: the same table, not linked from the subsection"
-# Must fail, and this is what makes the case above a test of the
-# mechanism rather than of the fixture. A hard-coded list of delegating
-# directories would pass both: the script would keep delegating after the
-# sentence was deleted from ARCHITECTURE.md, silently.
-assert_case 1 "no link, no delegation" \
-  "$(stage_delegated 'Deployment-tunable values live in the Configuration Files table below.')"
+echo "Case: Directory Notes does not gate its directories"
+# Must pass, and it is the whole point of the block. `src/ungated/` is
+# keyed by a bold path, not a `#### ` heading, so it carries no coverage
+# obligation and adding a file to it stays green. This is what keeps the
+# Module Map from being a 187-file inventory.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+: >"$d/src/ungated/Another.ts"
+git -C "$d" add -A >/dev/null 2>&1
+assert_case 0 "notes block gates nothing" "$d"
+
+echo "Case: a dead bare stem leading a Directory Notes item"
+# Must fail. Extension-less inventory (`dataExchangeStore`) is the shape
+# that outlived its file longest in #306, and the notes block is where
+# such runs now live. Form (a) cannot see it — there is no extension —
+# so form (b) has to run over this block too.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+add_note_item "$d" '- `GhostStore` — gone'
+assert_case 1 "dead stem in Directory Notes" "$d"
+
+echo "Case: a live bare stem under its own note key"
+# Must pass. `Whatever.ts` is in `src/ungated/`, which is the key this
+# entry is filed under, so the citation resolves.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+add_note_item "$d" '- `Whatever` — alive'
+assert_case 0 "live stem under its own note key" "$d"
+
+echo "Case: a note naming a live file owned by a DIFFERENT directory"
+# Must fail, and this is the case the block's own promise rests on: a
+# note cannot outlive the file it describes. Repository-wide resolution
+# here would pass — `AlphaService.ts` exists, in `src/server/services/` —
+# and the note would survive the deletion of the file it is about,
+# propped up by a same-named sibling. The real document has the sharp
+# version: the `src/server/services/` note describes `events.ts` and
+# exists precisely to say it is NOT `src/server/routes/events.ts`.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+add_note_item "$d" '- `AlphaService.ts` — lives in src/server/services/'
+assert_case 1 "note names a file from another directory" "$d"
+
+echo "Case: a bold opener that is not a directory does not scope its entry"
+# Must pass. The notes block is prose first, and a bold backticked
+# opener naming a concept rather than a directory (`**`Bulk download`**`
+# is the real shape) is not a key. Treating it as one would scope its
+# names to an empty file set and report every one of them dead —
+# `Whatever.ts` here, which exists.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+add_note_item "$d" '**`Bulk download`** — no orchestrator, by decision; see `Whatever.ts`.'
+assert_case 0 "non-directory bold opener is not a key" "$d"
+
+echo "Case: a Directory Notes key that is not a real directory"
+# Must fail, and loudly. A typo in the bold key still ends in `/`, so it
+# is taken as a key — and every name in the entry then resolves against
+# an empty file set and is reported dead. That is the safe direction, but
+# only because the report carries the key: the label is what separates a
+# misspelled key from a genuine batch of dead citations.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^\*\*`src/ungated/`\*\* — the others\.$|**`src/ungatedd/`** — the others.|' "$d/ARCHITECTURE.md"
+add_note_item "$d" '- `Whatever.ts` — alive; the key above is misspelled'
+assert_case 1 "misspelled notes key reports live names dead" "$d"
+assert_report_case 1 '### Directory Notes src/ungatedd/ -> Whatever\.ts' "the report names the misspelled key" "$d"
+
+echo "Case: a note naming a file in a nested directory of its own key"
+# Must pass. Scoping is by directory, not by direct children: `src/ui/`
+# holds no files of its own and every component it names sits a level
+# down.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+mkdir -p "$d/src/ungated/nested"
+: >"$d/src/ungated/nested/Deep.ts"
+git -C "$d" add -A >/dev/null 2>&1
+add_note_item "$d" '- `Deep.ts` — one level down'
+assert_case 0 "note names a nested file under its key" "$d"
 
 echo "Case: a subsection with no direct children is still checked for dead names"
 # Must fail. `src/ui/` holds no files of its own — every component lives
@@ -350,6 +469,10 @@ stage_nested_only() {
 - `PhotoGallery.tsx` — the surviving one
 - `RenamedAway.tsx` — the dead citation
 
+### Directory Notes
+
+**`src/ui/`** — the components.
+
 ### Configuration Files
 
 Nothing here.
@@ -372,7 +495,7 @@ echo "Case: deleting a subsection silently un-gates its directory"
 stage_two_gated() {
   local d
   d="$(stage)"
-  sed -i 's|^### Configuration Files$|#### `src/ungated/`\n\n- `Whatever.ts` — documented\n\n### Configuration Files|' "$d/ARCHITECTURE.md"
+  sed -i 's|^### Directory Notes$|#### `src/ungated/`\n\n- `Whatever.ts` — documented\n\n### Directory Notes|' "$d/ARCHITECTURE.md"
   MODULE_MAP_ROOT="$d" bash "$CHECK" --update-baseline >/dev/null 2>&1
   echo "$d"
 }
@@ -404,6 +527,15 @@ echo "Case: the Directory Detail block is missing"
 d="$(stage)"
 sed -i '/^### Directory Detail$/d; /^#### /d' "$d/ARCHITECTURE.md"
 assert_case 2 "missing Directory Detail block" "$d"
+
+echo "Case: the Directory Notes block is missing"
+# Structural for the same reason, in the other direction. The notes block
+# is where extension-less inventory lives outside the gated subsections,
+# and the only place a name is resolved against the directory that owns
+# it. Renaming the heading would take both scans down and report green.
+d="$(stage)"
+sed -i '/^### Directory Notes$/d' "$d/ARCHITECTURE.md"
+assert_case 2 "missing Directory Notes block" "$d"
 
 echo "Case: ARCHITECTURE.md is missing entirely"
 d="$(stage)"

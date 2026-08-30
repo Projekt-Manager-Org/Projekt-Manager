@@ -10,6 +10,7 @@ For the full product specification, see [docs/spec/](docs/spec/index.md). `AC-NN
 - [Architecture Overview](#architecture-overview)
 - [Module Map](#module-map)
   - [Directory Detail](#directory-detail)
+  - [Directory Notes](#directory-notes)
   - [Configuration Files](#configuration-files)
 - [Request Lifecycle](#request-lifecycle)
 - [API Surface](#api-surface)
@@ -79,99 +80,39 @@ Seven responsibility layers. Dependency flows left-to-right only, never reversed
 
 ## Module Map
 
-Each `Owns` cell is a one-line summary. Per-file detail lives in [§ Directory Detail](#directory-detail) below, one file per source line so a `grep` hit returns something readable.
+Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directory-detail) carries the file list for the directories where the set of files _is_ the architecture, and [§ Directory Notes](#directory-notes) carries what a filename cannot tell you about the rest.
 
-| Directory                  | Owns                                                                                                                                  | Must NOT                                                |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `src/config/`              | Deployment-tunable constants and catalogs. Every `[C]` value is indexed in [§ Configuration Files](#configuration-files).             | Import anything outside `src/config/`                   |
-| `src/domain/`              | Framework-free types and pure rules: transitions, aging, summaries, dates, envelopes, image pipeline.                                 | Import from state, API, storage, or UI                  |
-| `src/server/config/`       | Env validation (Zod), centralized policy constants (auth, rate limits, storage), VAPID key material.                                  | Contain business logic or import from layers above      |
-| `src/server/db/`           | Drizzle schema, connection, SQL migrations, named constraints (`constraints.ts`).                                                     | Contain business logic                                  |
-| `src/server/services/`     | Business logic orchestration — one service per entity, plus the audit, backup, notification, attachment, and key-envelope subsystems. | Know about HTTP, Fastify, or request objects            |
-| `src/server/repositories/` | Database queries, one module per entity, plus the role-based read-scope predicates.                                                   | Know about HTTP or contain business rules               |
-| `src/server/storage/`      | S3/MinIO client, presign / upload / download / hide / restore ops, boot-time safety probes.                                           | Be called outside routes and `start.ts` (client wiring) |
-| `src/server/middleware/`   | Cookie parsing, session auth, request decoration.                                                                                     | Contain route handlers or business logic                |
-| `src/server/routes/`       | Route definitions, request validation, response serialization.                                                                        | Access repositories directly (must go through services) |
-| `src/server/sse/`          | In-process SSE bus — typed pub/sub fan-out to subscribed connections.                                                                 | Know about HTTP, Fastify, or request objects            |
-| `src/server/seed/`         | Seed data split per data class, shipped through the public restore contract.                                                          | Contain app logic; run in production                    |
-| `src/server/data/`         | Static data files (e.g. common-passwords list).                                                                                       | Contain logic or import from other modules              |
-| `src/server/` (root files) | App assembly, entry point, bootstrap, schedulers and reapers, error factories.                                                        | -                                                       |
-| `src/state/`               | Zustand stores (one per domain slice), barrel re-export, client-side cache.                                                           | Access the database or import server code               |
-| `src/sse/`                 | Browser-side SSE primitive — `onSseEvent` over an `EventSource`.                                                                      | Contain business logic or import server code            |
-| `src/api/`                 | Centralized API client, typed fetch wrappers.                                                                                         | Contain business logic or UI concerns                   |
-| `src/hooks/`               | Shared React hooks (transitions, routing, permission gating).                                                                         | Contain API calls directly (must use stores)            |
-| `src/pwa/`                 | Web Push client-side plumbing and the service-worker bundle.                                                                          | Contain business logic; import server code              |
-| `src/ui/`                  | React components, grouped by feature area.                                                                                            | Contain business logic beyond dispatching to state      |
-| `src/test/`                | Shared test setup, API test helpers, and seed fixtures.                                                                               | Be imported in production code                          |
+| Directory                      | Owns                                                                                                                                                   | Must NOT                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `src/config/`                  | Deployment-tunable constants and catalogs. Every `[C]` value is indexed in [§ Configuration Files](#configuration-files).                              | Import anything outside `src/config/`                   |
+| `src/domain/`                  | Framework-free types and pure rules: transitions, aging, summaries, dates, envelopes, image pipeline.                                                  | Import from state, API, storage, or UI                  |
+| `src/server/config/`           | Env validation (Zod), centralized policy constants (auth, rate limits, storage), VAPID key material.                                                   | Contain business logic or import from layers above      |
+| `src/server/db/`               | Drizzle schema, connection, SQL migrations, named constraints (`constraints.ts`).                                                                      | Contain business logic                                  |
+| `src/server/services/`         | Business logic orchestration — one service per entity, plus the audit, backup, notification, attachment, key-envelope, invoice and takeout subsystems. | Know about HTTP, Fastify, or request objects            |
+| `src/server/services/invoice/` | The EN 16931 e-invoicing core (ADR-0026) — Factur-X builder, PDF/A-3 drawer, payload crypto, XSD validation.                                           | Know about HTTP, Fastify, or request objects            |
+| `src/server/repositories/`     | Database queries, one module per entity, plus the role-based read-scope predicates.                                                                    | Know about HTTP or contain business rules               |
+| `src/server/storage/`          | S3/MinIO client, presign / upload / download / hide / restore ops, boot-time safety probes.                                                            | Be called outside routes and `start.ts` (client wiring) |
+| `src/server/middleware/`       | Cookie parsing, session auth, request decoration.                                                                                                      | Contain route handlers or business logic                |
+| `src/server/routes/`           | Route definitions, request validation, response serialization.                                                                                         | Access repositories directly (must go through services) |
+| `src/server/sse/`              | In-process SSE bus — typed pub/sub fan-out to subscribed connections.                                                                                  | Know about HTTP, Fastify, or request objects            |
+| `src/server/seed/`             | Seed data split per data class, shipped through the public restore contract.                                                                           | Contain app logic; run in production                    |
+| `src/server/data/`             | Static data files (e.g. common-passwords list).                                                                                                        | Contain logic or import from other modules              |
+| `src/server/` (root files)     | App assembly, entry point, bootstrap, schedulers and reapers, error factories.                                                                         | -                                                       |
+| `src/state/`                   | Zustand stores (one per domain slice), barrel re-export, client-side cache.                                                                            | Access the database or import server code               |
+| `src/sse/`                     | Browser-side SSE primitive — `onSseEvent` over an `EventSource`.                                                                                       | Contain business logic or import server code            |
+| `src/api/`                     | Centralized API client, typed fetch wrappers.                                                                                                          | Contain business logic or UI concerns                   |
+| `src/hooks/`                   | Shared React hooks (transitions, routing, permission gating).                                                                                          | Contain API calls directly (must use stores)            |
+| `src/pwa/`                     | Web Push client-side plumbing and the service-worker bundle.                                                                                           | Contain business logic; import server code              |
+| `src/ui/`                      | React components, grouped by feature area.                                                                                                             | Contain business logic beyond dispatching to state      |
+| `src/test/`                    | Shared test setup, API test helpers, and seed fixtures.                                                                                                | Be imported in production code                          |
 
 ### Directory Detail
 
-Expansion of the table above. Directories whose one-line summary is already complete (`src/server/db/`, `src/server/data/`, `src/api/`, `src/hooks/`, `src/test/`) have no entry here.
+**A subsection here is a coverage contract**: every source file directly inside that directory is named, and `scripts/check-module-map.sh` (AC-350) fails the build on a file it omits or a name whose file is gone. Adding a `#### <dir>` heading is the act of accepting that contract; the document's own structure is the checker's configuration, so no parallel list exists.
 
-#### `src/config/`
+The contract binds new files from day one. Files that were already undocumented when their directory opted in are frozen in `scripts/module-map-baseline.txt` — none of them named below — and that list only shrinks; burn-down is #306. So a subsection is complete up to its baseline, not yet outright.
 
-Deployment-tunable values are indexed in [§ Configuration Files](#configuration-files) below — that table is the single list; only non-`[C]` members are listed here.
-
-- `sseEvents.ts` — realtime SSE event catalog: the wire vocabulary shared by `src/server/sse/` and `src/sse/`. `SSE_EVENT_NAMES` backs the AC-338 subscriber-coverage guard.
-
-#### `src/domain/`
-
-Types, transition rules, aging calc, summary computation, session expiry, date formatting.
-
-- `dataExchange.ts` — unified data-exchange envelope contract (ADR-0018)
-- `backupBadge.ts` — backup-badge state derivation
-- `nameNormalize.ts` — name normalization
-- `audit.ts`, `auditRowDescription.ts` — audit-payload type guards + action-to-German one-liner derivation
-- `notifications.ts` — notification rule + push subscription boundary types
-- `attachments.ts` — attachment label catalog + MIME whitelist + kind classifier + delete-gate helper
-- `imagePipeline.ts` — client-side image pipeline: downscale + WebP thumbnail, EXIF preserved via `@uploadcare/image-shrink` byte-splice
-
-#### `src/server/config/`
-
-Deployment-tunable values are indexed in [§ Configuration Files](#configuration-files) below — that table is the single list; only non-`[C]` members are listed here.
-
-- `vapid.ts` — VAPID key-material resolver: derive public from private, dev auto-bootstrap
-
-#### `src/server/services/`
-
-- `AuthService.ts`, `AuditService.ts`, `CustomerService.ts`, `ExportService.ts`, `ImportService.ts`, `ExtractionService.ts`, `UserService.ts`, `BackupStatusService.ts` — one service per entity or concern
-- `ProjectCrudService.ts`, `ProjectTransitionService.ts`, `ProjectDatesService.ts`, barrel `project.ts` — project split by concern
-- `mutate.ts` — single-write-path audit helper (ADR-0021)
-- `audit-publisher.ts` — post-commit audit publisher (AC-183)
-- `audit-retention.ts` — audit retention cleanup (AC-184)
-- `backup.ts`, `backup-drill.ts`, `ephemeralPg.ts`, `r2Uploader.ts` — Layer 2 backup pipeline (ADR-0020)
-- `idempotency.ts` — idempotent create orchestrator
-- `events.ts` — domain event bus: process-local pub/sub for cross-cutting concerns like audit and notifications. Not the SSE pair `src/server/routes/events.ts` / `src/server/sse/`.
-- `Logger.ts` — service-layer logger interface
-- `NotificationRuleService.ts`, `notificationRuleValidator.ts`, `notification-publisher.ts`, `notificationRecipientResolver.ts`, `pushPayloadComposer.ts` — notification rule CRUD + dispatch (ADR-0023)
-- `PushSubscriptionService.ts`, `PushDispatcher.ts` — push subscription management + VAPID transport
-- `AttachmentService.ts` — attachment orchestration: presigned-PUT init, complete HEAD-verify, delete, list, presigned-GET, per-file `bulk-fetch`
-- `attachment-orphan-reaper.ts` — attachment orphan reaper for `pending` rows past TTL
-- `KeyEnvelopeService.ts` — DEK (data-encryption key) envelope wrap/unwrap against the operator-loaded binary `age` identity (ADR-0024)
-
-Bulk download has no server-side orchestrator, reaper or scheduler (per ADR-0024 § Decision "Bulk download") — the per-file `bulk-fetch` route returns DEK material + presigned GETs and the browser assembles the zip locally via streaming-zip.
-
-#### `src/server/repositories/`
-
-- `project-read.ts`, `project-transitions.ts`, `project-dates.ts`, barrel `project.ts` — project split by concern
-- `customer.ts`, `user.ts`, `session.ts` — per-entity queries
-- `backupStatus.ts` — single-row backup status
-- `audit.ts` — audit-log read surface (ADR-0021)
-- `notificationRule.ts` — notification rule CRUD (ADR-0023)
-- `attachment.ts` — attachment CRUD + scope-aware read
-- `scope.ts` — role-based read-scope predicates, including the two audit predicates and the attachment predicate (ADR-0019)
-
-Write functions on audited tables accept `MutatingDatabase` (a transaction-only handle — see `src/server/db/connection.ts`) so a caller bypassing `mutate()` fails `tsc`.
-
-#### `src/server/storage/`
-
-- `client.ts` — S3/MinIO client + upload/download/hide/restore/presign ops. Includes the `AttachmentStorageClient` surface: `createPresignedPut` (browser uploads; signs Content-Type + Content-Length + Content-MD5 via SigV4 against ciphertext metadata per ADR-0024 — `Content-Type` at the call site is the sentinel `application/octet-stream`, not the plaintext MIME), `createPresignedGet` with optional attachment-disposition filename, `headObject`, `getObject`, `putObject`, `listObjects`, `hide`, `copyFromVersion`, `getBucketSafetyConfig`.
-- `safety.ts` — boot-time bucket-safety probe + binary `age`-identity probe
-- `index.ts` — barrel re-export
-
-#### `src/server/middleware/`
-
-- `auth.ts` — exports `createAuthMiddleware` (cookie-only session validation, applied as a plugin-level `preHandler` on every authenticated route) and `requirePermission` (role→permission check per route)
+A directory earns a subsection when the _set_ of files is itself architecture and a missing one is a missing subsystem. Everywhere else a complete file list would be inventory rather than architecture, and what is worth saying about those directories is in [§ Directory Notes](#directory-notes) below.
 
 #### `src/server/routes/`
 
@@ -184,20 +125,9 @@ Write functions on audited tables accept `MutatingDatabase` (a transaction-only 
 - `events.ts` — `GET /api/events` SSE channel per [api.md §14.2.13](docs/spec/api.md#14213-realtime-events) and ADR-0025
 - `export-jobs.ts` / `import-jobs.ts` — server-side full-account takeout: `POST /api/export-jobs` / `POST /api/import-jobs` plus status, Range-capable download, and resumable-upload endpoints per [api.md §14.2.4](docs/spec/api.md#1424-unified-data-exchange), ADR-0018/0024
 
-#### `src/server/sse/`
+#### `src/server/services/invoice/`
 
-Typed pub/sub fan-out over its own transport-agnostic `SseConnection` interface (`write`, optional `onClose`), one entry per subscribed connection populated by the `/api/events` route handler. Owns the subscriber set, per-subscriber failure isolation, and the post-commit emit primitive consumed by `AttachmentService.completeUpload` / `hide` / `restore` and the `attachment-hidden-reaper`.
-
-Spec contract: [architecture.md §11.13](docs/spec/architecture.md#1113-realtime-invalidation-channel), [api.md §14.2.13](docs/spec/api.md#14213-realtime-events), ADR-0025.
-
-#### `src/server/seed/`
-
-- `users.ts` — fixture parsing + id resolution
-- `business.ts` — full envelope assembly (users, company_profile, customers, projects, assignments), shipped through `ImportService.import` in one call so every seed run exercises the public restore contract for every envelope slot
-- `notificationRules.ts` — default notification rules (ADR-0023)
-- `daysFromNow.ts` — shared date helper
-
-Only `src/test/api-helpers.ts` retains a direct-DB user insert, for unit-setup speed.
+The EN 16931 e-invoicing core (ADR-0026) — Factur-X builder, PDF/A-3 drawer, payload crypto, XSD validation against the canonical schemas under `src/server/services/invoice/xsd/`. Gated on its own rather than inherited from `src/server/services/`: coverage reaches direct children only, so a nested directory is invisible until it takes a subsection.
 
 #### `src/server/` (root files)
 
@@ -213,35 +143,45 @@ Only `src/test/api-helpers.ts` retains a direct-DB user insert, for unit-setup s
 - `backup-runner.ts` — Layer 2 backup CLI entry with `schedule` / `run` / `drill` subcommands. `schedule` is the `backup` container's PID 1 and registers the cron jobs via croner, per ADR-0020.
 - `errors.ts` — error factories: `notFound()`, `validationError()`, `bulkLimitExceeded()`, etc. return `AppError` instances
 
-#### `src/state/`
+### Directory Notes
 
-Zustand stores, plus barrel re-export (`store.ts`) and the client-side cache.
+What a filename does not tell you: disambiguation, invariants, and negative space. **No entry here claims to be a complete file list** — for that, read the directory. An entry exists because something about it would otherwise surprise you; a file with nothing surprising about it is deliberately absent.
 
-- `authStore`, `attachmentStore`, `auditStore`, `confirmStore`, `customerStore`, `extractionActions`, `notificationRuleStore`, `projectManagementStore`, `projectStore`, `sessionExpired`, `uiStore`, `userStore`
-- `storageUsageStore` — shared subscription / refresh-trigger fan-in for the Footer badge and the DatenView storage row. Owns the fetch lifecycle for `GET /api/storage-usage` and subscribes to the `storage_usage_changed` SSE event.
+Every entry is keyed by a directory, and `scripts/check-module-map.sh` resolves the names it cites — with or without a source extension — under that key. So a note cannot outlive the file it describes, and cannot be propped up by a same-named file elsewhere: `events.ts` under `src/server/services/` means that file, not the sibling the entry exists to distinguish it from.
 
-#### `src/sse/`
+**`src/config/`** — deployment-tunable values are indexed in [§ Configuration Files](#configuration-files) below; that table is the single list. `sseEvents.ts` is not one of them: it is the realtime SSE event catalog, the wire vocabulary shared by `src/server/sse/` and `src/sse/`, and its `SSE_EVENT_NAMES` backs the AC-338 subscriber-coverage guard.
 
-- `client.ts` — exposes `onSseEvent` over an `EventSource` opened against `/api/events`. Auto-reconnect uses the WHATWG default; cookies ride along automatically. Consumed by `storageUsageStore` to invalidate on `storage_usage_changed`.
+**`src/domain/`** — framework-free types and pure rules. `imagePipeline.ts` is the client-side downscale + WebP thumbnail pass, preserving EXIF via an `@uploadcare/image-shrink` byte-splice. `dataExchange.ts` holds the unified envelope contract (ADR-0018), `attachments.ts` the label catalog + MIME whitelist + delete-gate helper, `auditRowDescription.ts` the action-to-German one-liner derivation.
 
-Spec contract: [api.md §14.2.13](docs/spec/api.md#14213-realtime-events), ADR-0025.
+**`src/server/config/`** — as above, [§ Configuration Files](#configuration-files) is the single list. `vapid.ts` is the exception: VAPID key-material resolver, deriving the public key from the private one and auto-bootstrapping in dev.
 
-#### `src/pwa/`
+**`src/server/services/`** — one service per entity or concern, plus subsystems. What the filenames hide:
 
-- `pushClient.ts` — subscribe/unsubscribe, VAPID public-key fetch, permission prompt
+- `mutate.ts` — the single write path for audited tables (ADR-0021). Nothing else may write them.
+- `events.ts` — the **domain** event bus: process-local pub/sub for audit and notifications. Not the SSE pair `src/server/routes/events.ts` / `src/server/sse/`, which is a different mechanism with a colliding name.
+- `KeyEnvelopeService.ts` — DEK envelope wrap/unwrap against the operator-loaded binary `age` identity (ADR-0024). The entire crypto perimeter on B2 ciphertext.
+- `backup.ts`, `backup-drill.ts`, `ephemeralPg.ts`, `r2Uploader.ts` — the Layer 2 backup pipeline (ADR-0020), four files that only make sense together.
+- `DataExchangeJobService.ts`, `takeout-export-builder.ts`, `takeout-export-runner.ts`, `takeout-import-runner.ts`, `takeout-staging.ts`, `takeout-staging-reaper.ts`, `data-exchange-boot-reaper.ts` — the server-side takeout subsystem (ADR-0018/0024): job lifecycle, archive build, VPS staging and the two reapers that sweep it. Its scheduler is `src/server/takeout-staging-reaper-scheduler.ts`, one layer up.
+- The invoice service layer — the `InvoiceService.ts` facade plus four focused services — is listed in [§ Invoices Module](#invoices-module); that section is the single list.
+- Bulk download has **no** server-side orchestrator, reaper or scheduler (ADR-0024 § Decision "Bulk download") — the per-file `bulk-fetch` route returns DEK material + presigned GETs and the browser assembles the zip locally via streaming-zip. Absence here is a decision, not a gap.
 
-Service worker bundled from `src/sw/index.ts` → `dist/sw.js`, dev-served at `/sw.js` (push event handler → `showNotification`).
+**`src/server/repositories/`** — one module per entity, project split by concern behind a `project.ts` barrel. Write functions on audited tables accept `MutatingDatabase` (a transaction-only handle — see `src/server/db/connection.ts`) so a caller bypassing `mutate()` fails `tsc`. `scope.ts` holds the role-based read-scope predicates, including the two audit predicates and the attachment predicate (ADR-0019).
 
-#### `src/ui/`
+**`src/server/storage/`** — `client.ts` carries the `AttachmentStorageClient` surface: `createPresignedPut` (browser uploads; signs Content-Type + Content-Length + Content-MD5 via SigV4 against ciphertext metadata per ADR-0024 — `Content-Type` at the call site is the sentinel `application/octet-stream`, not the plaintext MIME), `createPresignedGet` with optional attachment-disposition filename, plus `headObject` / `getObject` / `putObject` / `listObjects` / `hide` / `copyFromVersion` / `getBucketSafetyConfig`. `safety.ts` runs the boot-time bucket-safety and binary `age`-identity probes.
 
-Component groups: `audit`, `auth`, `calendar`, `common`, `detail`, `extraction`, `kanban`, `layout`, `management`.
+**`src/server/middleware/`** — `auth.ts` exports `createAuthMiddleware` (cookie-only session validation, applied as a plugin-level `preHandler` on every authenticated route) and `requirePermission` (role→permission check per route).
 
-- `NotificationRulesManagement.tsx` — rule list + owner-only admin view
-- `NotificationRuleForm.tsx` — create/edit form
-- `NotificationRuleUserPicker.tsx` — user multi-select for rule recipients
-- `detail/ProjectDetailPage.tsx` — project-detail page at `/projects/:id`, with subcomponents `PhotoGallery.tsx`, `BinaryList.tsx`, `AssignedWorkerEditor.tsx`, `UploadCta.tsx`
+**`src/server/sse/`** — typed pub/sub fan-out over its own transport-agnostic `SseConnection` interface (`write`, optional `onClose`), one entry per subscribed connection populated by the `/api/events` route handler. Owns the subscriber set, per-subscriber failure isolation, and the post-commit emit primitive consumed by `AttachmentService.completeUpload` / `hide` / `restore` and the `attachment-hidden-reaper`. Spec contract: [architecture.md §11.13](docs/spec/architecture.md#1113-realtime-invalidation-channel), [api.md §14.2.13](docs/spec/api.md#14213-realtime-events), ADR-0025.
 
-`ProjectDetailPanel.tsx` stays as the quick-glance overlay on Kanban/Calendar and exposes an `Öffnen` affordance to the page.
+**`src/server/seed/`** — `business.ts` assembles the full envelope (users, company_profile, customers, projects, assignments) and ships it through `ImportService.import` in one call, so every seed run exercises the public restore contract for every envelope slot. Only `src/test/api-helpers.ts` retains a direct-DB user insert, for unit-setup speed.
+
+**`src/state/`** — one Zustand store per domain slice, a `store.ts` barrel, the client-side cache, and one `*SseSubscription` module per realtime-invalidated slice. `storageUsageStore` is the odd one: a shared subscription / refresh-trigger fan-in for the Footer badge and the DatenView storage row, owning the fetch lifecycle for `GET /api/storage-usage`.
+
+**`src/sse/`** — `client.ts` exposes `onSseEvent` over an `EventSource` opened against `/api/events`. Auto-reconnect uses the WHATWG default; cookies ride along automatically. Spec contract: [api.md §14.2.13](docs/spec/api.md#14213-realtime-events), ADR-0025.
+
+**`src/pwa/`** — `pushClient.ts` handles subscribe/unsubscribe, VAPID public-key fetch and the permission prompt. The service worker is a separate bundle: `src/sw/index.ts` → `dist/sw.js`, dev-served at `/sw.js` (push event handler → `showNotification`).
+
+**`src/ui/`** — components grouped by feature area: `audit`, `auth`, `calendar`, `common`, `detail`, `extraction`, `kanban`, `layout`, `management`. The one non-obvious split is project detail: `src/ui/detail/ProjectDetailPage.tsx` is the full page at `/projects/:id`, while `ProjectDetailPanel.tsx` stays as the quick-glance overlay on Kanban/Calendar and exposes an `Öffnen` affordance to the page.
 
 ### Configuration Files
 
@@ -436,7 +376,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 
 1. **Schema**: add table in `src/server/db/schema.ts` (same audit-field pattern as `projects`). `npx drizzle-kit generate`. Never edit an existing migration.
 2. **Domain types**: add interface in `src/domain/types.ts`. Optional fields stay optional ([spec §13.5](docs/spec/architecture.md#135-robustness)).
-3. **Repository**: split by concern (`supplier-read.ts`, etc.), barrel re-export. Add a `toSupplier(row)` projection so Drizzle types don't leak upward.
+3. **Repository**: split by concern (`src/server/repositories/supplier-read.ts`, etc.), barrel re-export. Add a `toSupplier(row)` projection so Drizzle types don't leak upward.
 4. **Service**: `src/server/services/SupplierService.ts`. Must not import `fastify` types ([spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries)).
 5. **Routes**: `src/server/routes/suppliers.ts`, register in `app.ts`. Routes go through the service, never call repos directly.
 6. **API client**: add a `supplierApi` block in `src/api/client.ts` (same shape as `projectApi`).
@@ -588,7 +528,7 @@ End-to-end per [ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md). Bu
 - **State machine: `pending → ready ↔ hidden`.** `initUpload` validates the caller-supplied `dekMaterial` / `ciphertextSizeBytes` / `ciphertextContentMd5` per blob, calls `KeyEnvelopeService` to wrap the DEK with the operator's binary `age` recipient, and writes the `pending` row (carrying `wrappedDek` and, for photos, `wrappedThumbDek`) without an audit row — an allowlisted exception; the `attachment:add` row is written later, at `completeUpload`. The presigned-PUT descriptors it returns sign ciphertext metadata (sentinel `application/octet-stream`, `ciphertextSizeBytes`, `ciphertextContentMd5`). `completeUpload` HEADs the objects and asserts ciphertext metadata: `head.size == row.ciphertextSizeBytes` and `head.contentType == 'application/octet-stream'` (per ADR-0024 — the prior plaintext-MIME and prior `startsWith('image/')` thumbnail check are gone). `versionId` / `thumbVersionId` are captured from the HEAD response, the row flips to `ready`, and the `attachment:add` audit row is written through `mutate()` — the authoritative record of the attachment entering the project, with no audit-payload leak of the envelope since `wrappedDek` / `wrappedThumbDek` are schema-level audit-excluded. User-DELETE flips `ready → hidden` via CAS and writes one `attachment:hide` audit row through `mutate()` plus a best-effort delete marker on the versioned bucket; the prior version is the restore source. Restore (`attachment:restore`) flips `hidden → ready` inside `mutate()`, then `copyFromVersion(originalKey, version_id)` (and the thumb counterpart) promotes the prior version back to current. The wrapped-envelope columns are unchanged on restore — the DEK that decrypts the bytes is the same DEK that encrypted them. CAS-loss or `copyFromVersion` failure rolls back both the status flip and the audit row, the user retries.
 - **Per-request DEK fetch for download.** `download-url` and `bulk-fetch` unwrap the wrapped envelope per request via `KeyEnvelopeService` (which reads the operator-loaded binary identity from tmpfs) and return the raw `dekMaterial` to the same-origin Service Worker alongside the presigned GET. The unwrapped DEK never leaves the response and is never persisted; downstream auditing of DEK fetches is out of scope (the read is implicit in any `attachment:read`).
 - **Bulk fetch.** `createBulkFetch` validates caps (≤20 files, ≤20 MB summed plaintext, all rows at `status='ready'`, all same project) and returns one entry per requested attachment: `{ attachmentId, originalUrl, originalDekMaterial, ciphertextSizeBytes, thumbUrl?, thumbDekMaterial?, ciphertextThumbSizeBytes? }` (two-blob — thumbnails are independent ciphertext objects with their own DEKs). The browser fetches each ciphertext from B2 directly, AES-GCM-decrypts in a `ReadableStream` pipeline, and assembles the zip locally via streaming-zip. No server-side zip is staged; the `bulk-downloads/` prefix and the prior `archiver`-based pipeline are gone.
-- **Export-all — server-side job.** The Vollständiger Export action ([docs/spec/ui/daten.md §8.11.1](docs/spec/ui/daten.md#8111-export)) `POST`s `/api/export-jobs`, starting an asynchronous **server-side** build (`export-jobs.ts` → the takeout export runner, [api.md §14.2.4](docs/spec/api.md#1424-unified-data-exchange)). The server decrypts every `status='ready'` attachment and assembles the archive on the VPS: `data.json` (the unified envelope) and `manifest.json` (SHA-256 of every other entry, for offline verification — see [AC-323](docs/spec/verification.md#1514-data-exchange)) at the root, plus every attachment under `attachments/<projektnummer>-<projekt-titel>/<attachment-id>-<dateiname>` (path components sanitised; the `attachment-id` prefix defuses `(projektnummer, dateiname)` collisions). The browser only triggers, polls status, and downloads the finished Range-capable archive via `GET /api/export-jobs/:id/download` — it never assembles the archive or handles plaintext crypto. No thumbnails — plaintext data, not in-app rendering.
+- **Export-all — server-side job.** The Vollständiger Export action ([docs/spec/ui/daten.md §8.11.1](docs/spec/ui/daten.md#8111-export)) `POST`s `/api/export-jobs`, starting an asynchronous **server-side** build (`export-jobs.ts` → `takeout-export-runner.ts`, [api.md §14.2.4](docs/spec/api.md#1424-unified-data-exchange)). The server decrypts every `status='ready'` attachment and assembles the archive on the VPS: `data.json` (the unified envelope) and `manifest.json` (SHA-256 of every other entry, for offline verification — see [AC-323](docs/spec/verification.md#1514-data-exchange)) at the root, plus every attachment under `attachments/<projektnummer>-<projekt-titel>/<attachment-id>-<dateiname>` (path components sanitised; the `attachment-id` prefix defuses `(projektnummer, dateiname)` collisions). The browser only triggers, polls status, and downloads the finished Range-capable archive via `GET /api/export-jobs/:id/download` — it never assembles the archive or handles plaintext crypto. No thumbnails — plaintext data, not in-app rendering.
 - **Import-all is the symmetric mirror — server-side job.** The Vollständiger Import action ([docs/spec/ui/daten.md §8.11.2](docs/spec/ui/daten.md#8112-import)) `POST`s `/api/import-jobs` and uploads the takeout archive to the VPS over a resumable, tus-style chunked `PATCH …/archive` (`import-jobs.ts`; `HEAD` for the resume offset). The **server** validates the envelope, wipes-and-restores the business-data leg in one transaction (override + destructive-confirmation phrase required for a non-empty target, IDs preserved), then re-encrypts and re-uploads every plaintext attachment to B2 — minting a fresh DEK per blob and wrapping it under the importing instance's own `BINARY_AGE_RECIPIENT`. The browser never unzips, hashes, or re-uploads per attachment; the plaintext archive stages only on the VPS, inside the trust radius, per [ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md).
 - **Orphan reaper.** `src/server/services/attachment-orphan-reaper.ts` removes `status='pending'` rows past their TTL together with their backing objects. Scheduled by `src/server/attachment-orphan-reaper-scheduler.ts` and allowlisted in the architecture check.
 
