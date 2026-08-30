@@ -30,15 +30,19 @@ export function methodsOf(route: RouteOptions): string[] {
   return ([] as string[]).concat(route.method);
 }
 
-/** The `preHandler`s declared at the route itself, always as an array. */
-export function routeLevelPreHandlers(route: RouteOptions): unknown[] {
+/**
+ * The `preHandler`s declared at the route itself, in execution order and
+ * always as an array. Plugin-level `preHandler`s are invisible to
+ * `onRoute` and are absent here; `route.config.auth` is what reports them.
+ */
+function routeLevelPreHandlers(route: RouteOptions): unknown[] {
   const { preHandler } = route;
   if (!preHandler) return [];
   return Array.isArray(preHandler) ? [...preHandler] : [preHandler];
 }
 
 /** A `preHandler` produced by `createAuthMiddleware`. */
-export function isSessionGate(fn: unknown): boolean {
+function isSessionGate(fn: unknown): boolean {
   return typeof fn === 'function' && (fn as { requiresSession?: unknown }).requiresSession === true;
 }
 
@@ -63,7 +67,7 @@ export function isSessionGated(route: RouteOptions): boolean {
  * distinction AC-349 draws for the nav matrix, and the reason both gates
  * carry their keys as data instead of hiding them in a closure.
  */
-export function readAccessRule(fn: unknown): string | null {
+function readAccessRule(fn: unknown): string | null {
   if (typeof fn !== 'function') return null;
   const permissions = (fn as { requiredPermissions?: unknown }).requiredPermissions;
   if (Array.isArray(permissions)) {
