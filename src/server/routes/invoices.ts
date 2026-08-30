@@ -26,7 +26,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ZipArchive } from 'archiver';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import { requirePermission, requireSession } from '../middleware/auth.js';
 import { createInvoiceService, type ListInvoicesOpts } from '../services/InvoiceService.js';
 import {
   resolveExportInvoices,
@@ -81,10 +81,9 @@ const recipientSchema = {
 
 export function invoiceRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const service = createInvoiceService(db);
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     // ---------------------------------------------------------------
     // GET /api/invoices — list.

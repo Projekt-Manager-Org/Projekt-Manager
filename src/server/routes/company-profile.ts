@@ -9,18 +9,17 @@
  * Authorization:
  *   - GET: any authenticated role (the profile is referenced by invoice
  *     rendering AND by the Daten view's read surface).
- *   - PUT: owner role only. The spec doesn't allocate dedicated
- *     `company_profile:*` permission keys (a fine-grained key per
- *     singleton would dilute the catalog); the route enforces the role
- *     check directly, parallel to `data:restore` enforcement.
+ *   - PUT: owner role only, via `requireRole('owner')`. The spec doesn't
+ *     allocate dedicated `company_profile:*` permission keys (a
+ *     fine-grained key per singleton would dilute the catalog), so this
+ *     is the one route whose gate names a role instead.
  */
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware } from '../middleware/auth.js';
+import { requireRole, requireSession } from '../middleware/auth.js';
 import { CompanyProfileService } from '../services/CompanyProfileService.js';
 import { TAX_MODES, type TaxMode } from '../../domain/invoice.js';
-import { notPermitted, unauthenticated } from '../errors.js';
 
 const addressSchema = {
   type: 'object',
@@ -67,10 +66,9 @@ const profileBodySchema = {
 
 export function companyProfileRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const service = new CompanyProfileService(db);
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     // ---------------------------------------------------------------
     // GET /api/company-profile — every authenticated role may read.
@@ -83,24 +81,18 @@ export function companyProfileRoutes(db: Database) {
     // ---------------------------------------------------------------
     // PUT /api/company-profile — owner-only upsert (PUT semantics).
     //
-    // The role check runs in the handler (not as a `requirePermission`
-    // pre-handler) because the spec folds the owner-only invariant into
-    // a role check rather than minting a dedicated permission key —
-    // api.md §14.2.15 design note "Owner-only writes".
+    // Gated by `requireRole`, not `requirePermission`, because the spec
+    // folds the owner-only invariant into a role check rather than
+    // minting a dedicated permission key — api.md §14.2.15 design note
+    // "Owner-only writes".
     // ---------------------------------------------------------------
     app.put(
       '/api/company-profile',
       {
         schema: { body: profileBodySchema },
+        preHandler: requireRole('owner'),
       },
       async (request, reply) => {
-        if (!request.user) {
-          throw unauthenticated();
-        }
-        if (!request.user.roles.includes('owner')) {
-          throw notPermitted();
-        }
-
         const body = request.body as {
           companyName: string;
           address: { street: string; zip: string; city: string };
@@ -113,7 +105,7 @@ export function companyProfileRoutes(db: Database) {
           defaultTaxMode: TaxMode;
         };
 
-        const updated = await service.upsert(request.user, body, request.log, request.id ?? null);
+        const updated = await service.upsert(request.user!, body, request.log, request.id ?? null);
         return reply.code(200).send(updated);
       },
     );

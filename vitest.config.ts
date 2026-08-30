@@ -58,6 +58,11 @@ export default defineConfig({
             'src/config/__tests__/**/*.test.ts',
             'src/domain/__tests__/**/*.test.ts',
             'src/state/__tests__/**/*.test.ts',
+            // Server-side units that need neither a database nor a
+            // request — the access gates' published metadata (AC-352).
+            // Everything under `src/server/__tests__/` is integration and
+            // stays in that project.
+            'src/server/middleware/__tests__/**/*.test.ts',
           ],
           exclude: ['src/state/__tests__/storageUsageStore.test.ts'],
         },

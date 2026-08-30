@@ -6,16 +6,15 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import { requirePermission, requireSession } from '../middleware/auth.js';
 import { ExtractionService } from '../services/ExtractionService.js';
 import type { Database } from '../db/connection.js';
 
 export function extractRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const extractionService = new ExtractionService();
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     app.post(
       '/api/extract',

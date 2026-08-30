@@ -9,7 +9,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import { requirePermission, requireSession } from '../middleware/auth.js';
 import {
   ProjectCrudService,
   ProjectTransitionService,
@@ -23,7 +23,6 @@ import { getEnv } from '../config/env.js';
 
 export function projectRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     // Storage client for the purge-cascade's storage-side cleanup
     // (AC-218). Optional — a deployment without storage configured
     // (e.g. test harness without STORAGE_* env) falls back to DB-only
@@ -43,8 +42,7 @@ export function projectRoutes(db: Database) {
     const transitionService = new ProjectTransitionService(db);
     const datesService = new ProjectDatesService(db);
 
-    // Apply auth to all routes in this plugin
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     // ---------------------------------------------------------------
     // GET /api/projects — list with filters

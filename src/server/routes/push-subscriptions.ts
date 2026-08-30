@@ -12,16 +12,15 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware } from '../middleware/auth.js';
+import { requireSession } from '../middleware/auth.js';
 import { getRateLimit } from '../config/index.js';
 import { PushSubscriptionService } from '../services/PushSubscriptionService.js';
 
 export function pushSubscriptionRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const service = new PushSubscriptionService(db);
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     app.post(
       '/api/push-subscriptions',

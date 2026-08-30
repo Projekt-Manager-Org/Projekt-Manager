@@ -4,9 +4,9 @@
  * This plugin is unauthenticated on purpose: the VAPID public key is
  * intentionally public (the private half never leaves the server). A
  * separate plugin keeps the authenticated `push-subscriptions.ts`
- * hook (`app.addHook('preHandler', authenticate)`) from leaking onto
- * this route — Fastify's `preHandler` at the plugin level only
- * applies to routes registered inside the same plugin encapsulation.
+ * session gate (`requireSession`) from leaking onto this route —
+ * Fastify's `preHandler` at the plugin level only applies to routes
+ * registered inside the same plugin encapsulation.
  *
  * Operator-facing contract: set `VAPID_PRIVATE_KEY` in the deploy env
  * and the endpoint starts returning the derived public key; leave it

@@ -14,7 +14,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import { requirePermission, requireSession } from '../middleware/auth.js';
 import {
   AuditService,
   AUDIT_ENTITY_TYPES,
@@ -26,10 +26,9 @@ import { STRINGS } from '../../config/strings.js';
 
 export function auditRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const auditService = new AuditService(db);
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     // ---------------------------------------------------------------
     // GET /api/audit — list with filters and pagination.

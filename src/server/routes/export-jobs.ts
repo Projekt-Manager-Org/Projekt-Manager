@@ -30,7 +30,7 @@ import { stat } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
 
 import type { Database } from '../db/connection.js';
-import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
+import { requirePermission, requireSession } from '../middleware/auth.js';
 import { DataExchangeJobService, toExchangeJobDto } from '../services/DataExchangeJobService.js';
 import { runExportBuild } from '../services/takeout-export-runner.js';
 import { sweepStagedArtifact } from '../services/takeout-staging.js';
@@ -96,7 +96,6 @@ function parseRange(header: string | undefined, size: number): RangeResult {
 
 export function exportJobRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const authenticate = createAuthMiddleware(db);
     const jobs = new DataExchangeJobService(db);
     const env = getEnv();
     // Storage client construction mirrors the data-exchange routes:
@@ -114,7 +113,7 @@ export function exportJobRoutes(db: Database) {
       region: env.STORAGE_REGION,
     });
 
-    app.addHook('preHandler', authenticate);
+    requireSession(app, db);
 
     // ---------------------------------------------------------------
     // POST /api/export-jobs — create + async build.
