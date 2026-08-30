@@ -56,6 +56,9 @@
  * a fixture written outside the repo is byte-identical to the published
  * doc rather than silently reformatted with Prettier's built-in defaults.
  *
+ * $API_SURFACE_INJECT_ORPHAN_GATE is the same harness's fault-injection
+ * seam for the wiring guard — see `buildExpectedDoc`.
+ *
  * Route registration requires a truthy `db`, and the placeholder env
  * below satisfies the presence checks registration performs without any
  * of it being dereferenced — the same seam `generate-openapi.ts`
@@ -75,6 +78,7 @@ import type { FastifyInstance, RouteOptions } from 'fastify';
 import type pg from 'pg';
 import { buildApp } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
+import { requirePermission } from '../src/server/middleware/auth.js';
 import {
   accessRules,
   assertGatesAuthenticate,
@@ -222,6 +226,22 @@ async function buildExpectedDoc(): Promise<string> {
   }
 
   const routes = await collectRoutes();
+
+  // Fault-injection seam for the wiring guard below, used by
+  // scripts/__tests__/check-api-surface.test.sh. Every access gate in the
+  // real route set sits behind a session gate, so the guard never fires
+  // here — without the seam this call could be deleted and every case
+  // would stay green, which is the same argument the OpenAPI harness
+  // makes for its three seams. The real `requirePermission` is used
+  // rather than an imitation, so the case exercises the gate shape the
+  // guard actually reads. Mutating `routeOptions` after `ready()` changes
+  // nothing at runtime: the route's hook chain was compiled at
+  // registration.
+  if (process.env.API_SURFACE_INJECT_ORPHAN_GATE === '1') {
+    const target = routes.find((r) => r.url === '/api/health' && methodsOf(r).includes('GET'));
+    if (target) target.preHandler = requirePermission('project:read');
+  }
+
   // A published `Auth: none` row beside a populated `Access` column is
   // the same fail-open claim the OpenAPI generator refuses to make, so
   // the shared guard runs on both sides.
