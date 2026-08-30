@@ -38,11 +38,16 @@
  * I/O at construction), so the placeholder values below satisfy it —
  * which is also why the CI check needs no DB/MinIO services.
  *
+ * The route reads this shares with `generate-api-surface.ts` — which gate
+ * reaches a route, what rule it enforces, which HEAD routes are Fastify's
+ * automatic companions — live in `scripts/lib/route-introspection.ts`.
+ * Two artifacts describing the same gates must not read them twice.
+ *
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (missing/unreadable target in --check mode, or the app
- * failed to build/ready, or the doc could not be generated or is not
- * valid OpenAPI 3.1) so the caller's `set -e` trips loudly instead of
- * silently no-op'ing.
+ * failed to build/ready, or the doc could not be generated, is not valid
+ * OpenAPI 3.1) so the caller's `set -e` trips loudly instead of silently
+ * no-op'ing.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -53,6 +58,11 @@ import type { FastifyInstance, RouteOptions } from 'fastify';
 import type pg from 'pg';
 import { buildApp, type OpenApiDocOptions } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
+import {
+  isSessionGated,
+  methodsOf,
+  withoutAutoHeadRoutes,
+} from './lib/route-introspection.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /**
@@ -162,27 +172,6 @@ const SECURITY_SCHEMES = {
   },
 } as const;
 
-/** A `preHandler` produced by `createAuthMiddleware` (AC-352's tag). */
-function isSessionGate(fn: unknown): boolean {
-  return typeof fn === 'function' && (fn as { requiresSession?: unknown }).requiresSession === true;
-}
-
-/**
- * True when a session gate reaches this route — either the route-config
- * marker `requireSession` writes across its whole encapsulation context,
- * or a session gate installed on the route itself.
- *
- * Same two-part read as `toEndpoint` in `generate-api-surface.ts`: a
- * plugin-level `preHandler` is invisible to `onRoute`, so the marker is
- * what makes group gating readable at all.
- */
-function isSessionGated(route: RouteOptions): boolean {
-  if (route.config?.auth === 'session') return true;
-  const { preHandler } = route;
-  const handlers = preHandler ? (Array.isArray(preHandler) ? preHandler : [preHandler]) : [];
-  return handlers.some(isSessionGate);
-}
-
 /**
  * Fastify's `:param` path syntax to OpenAPI's `{param}`. Mirrors the
  * conversion `@fastify/swagger` performs on the same URLs — the two have
@@ -212,7 +201,7 @@ function applySecurity(doc: DocLike, routes: RouteOptions[]): DocLike {
   const gatedByKey = new Map<string, boolean>();
   for (const route of routes) {
     const gated = isSessionGated(route);
-    for (const method of ([] as string[]).concat(route.method)) {
+    for (const method of methodsOf(route)) {
       gatedByKey.set(`${method.toLowerCase()} ${toOpenApiPath(route.url)}`, gated);
     }
   }
@@ -252,9 +241,10 @@ function applySecurity(doc: DocLike, routes: RouteOptions[]): DocLike {
  * Two exclusions, both structural rather than a list of names:
  *
  *   - **Automatic HEAD companions.** Fastify exposes one per GET route:
- *     same URL, and the very same handler reference. Dropped by that
- *     identity, exactly as `generate-api-surface.ts` drops them — so a
- *     HEAD route surviving here is one somebody declared on purpose.
+ *     same URL, and the very same handler reference. Dropped by
+ *     `withoutAutoHeadRoutes`, the same filter the API-surface table
+ *     applies — so a HEAD route surviving here is one somebody declared
+ *     on purpose.
  *   - **Routes that hide themselves.** `schema.hide` is
  *     `@fastify/swagger`'s own opt-out, and `@fastify/cors` sets it on
  *     the `OPTIONS *` preflight it registers. A route claiming that
@@ -268,25 +258,10 @@ function assertEveryRoutePublished(doc: DocLike, routes: RouteOptions[]): void {
     }
   }
 
-  const getHandlers = new Map<string, RouteOptions['handler']>();
-  for (const route of routes) {
-    if (([] as string[]).concat(route.method).includes('GET')) {
-      getHandlers.set(route.url, route.handler);
-    }
-  }
-
   const missing: string[] = [];
-  for (const route of routes) {
+  for (const route of withoutAutoHeadRoutes(routes)) {
     if ((route.schema as { hide?: unknown } | undefined)?.hide === true) continue;
-    const methods = ([] as string[]).concat(route.method);
-    if (
-      methods.length === 1 &&
-      methods[0] === 'HEAD' &&
-      getHandlers.get(route.url) === route.handler
-    ) {
-      continue;
-    }
-    for (const method of methods) {
+    for (const method of methodsOf(route)) {
       const key = `${method.toLowerCase()} ${toOpenApiPath(route.url)}`;
       if (!published.has(key)) missing.push(`${method} ${route.url}`);
     }

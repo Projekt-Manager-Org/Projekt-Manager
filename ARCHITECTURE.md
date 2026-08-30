@@ -413,6 +413,8 @@ The table above is generated from the routes `buildApp()` registers (AC-352) —
 
 **Access is derived from the enforcement, not restated beside it.** A plugin-level `preHandler` is invisible to `onRoute`, so `requireSession` writes an `auth: 'session'` route-config marker in the same call that installs the hook; absence of that marker is what makes an endpoint public, and there is no list of public endpoints to fall out of date. `requirePermission` and `requireRole` return closures — callable but not readable — so each carries its keys as data (`requiredPermissions`, `requiredRoles`), the same move AC-349 made for `RouteAccess`. The column therefore publishes the rule, not the role set the rule happens to resolve to today.
 
+**Both generators read the routes through `scripts/lib/route-introspection.ts`** — which gate reaches a route, what rule it enforces, which HEAD routes are Fastify's automatic companions. Two copies agreeing only by comment is the failure mode these generators exist to remove; it applies to the generators themselves.
+
 **HEAD companions are filtered.** Fastify exposes a HEAD route for every GET. Those are dropped by handler identity — same URL, same handler reference — so a HEAD row means a route someone declared deliberately, today only the tus offset probe.
 
 **Prose below the end marker is never overwritten**, the same split the nav matrix draws: coverage and access rules are generated, meaning is hand-written. That is why the generator does not also try to produce § Endpoint Notes.

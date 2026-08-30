@@ -35,6 +35,10 @@
  * HEAD row means a route that was declared HEAD deliberately —
  * `/api/import-jobs/:id/archive`'s tus offset probe is the only one.
  *
+ * Every one of those reads lives in `scripts/lib/route-introspection.ts`,
+ * shared with `generate-openapi.ts`: both artifacts describe the same
+ * gates, and a second copy could only ever disagree with the first.
+ *
  * `NODE_ENV=production` below is load-bearing, not boilerplate: the login
  * limit's default is environment-aware (`getRateLimit()` in
  * `src/server/config/index.ts`), and the table documents the production
@@ -70,6 +74,12 @@ import type { FastifyInstance, RouteOptions } from 'fastify';
 import type pg from 'pg';
 import { buildApp } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
+import {
+  accessRules,
+  isSessionGated,
+  methodsOf,
+  withoutAutoHeadRoutes,
+} from './lib/route-introspection.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /**
@@ -103,40 +113,6 @@ interface Endpoint {
   rateLimit: string;
 }
 
-type Handler = RouteOptions['handler'];
-
-/** A `preHandler` produced by `createAuthMiddleware`. */
-function isSessionGate(fn: unknown): boolean {
-  return typeof fn === 'function' && (fn as { requiresSession?: unknown }).requiresSession === true;
-}
-
-/**
- * The rule a `requirePermission(...)` / `requireRole(...)` gate enforces,
- * rendered as the spec words it, or `null` if `fn` is neither.
- *
- * Both publish the RULE, not the role set it resolves to today — the
- * distinction AC-349 draws for the nav matrix, and the reason both gates
- * carry their keys as data instead of hiding them in a closure.
- */
-function readAccessRule(fn: unknown): string | null {
-  if (typeof fn !== 'function') return null;
-  const permissions = (fn as { requiredPermissions?: unknown }).requiredPermissions;
-  if (Array.isArray(permissions)) {
-    return permissions.map((key) => `\`${String(key)}\``).join(' or ');
-  }
-  const roles = (fn as { requiredRoles?: unknown }).requiredRoles;
-  if (Array.isArray(roles)) {
-    return `Role: ${roles.map(String).join(' or ')}`;
-  }
-  return null;
-}
-
-function routeLevelPreHandlers(route: RouteOptions): unknown[] {
-  const { preHandler } = route;
-  if (!preHandler) return [];
-  return Array.isArray(preHandler) ? [...preHandler] : [preHandler];
-}
-
 /**
  * `or` within one gate (it grants on ANY of its keys), `and` across
  * gates (every gate must pass). No route stacks two gates today; the
@@ -147,9 +123,7 @@ function routeLevelPreHandlers(route: RouteOptions): unknown[] {
  * the caller's scope instead (ADR-0019) — see the notes below the table.
  */
 function renderAccess(route: RouteOptions): string {
-  const gates = routeLevelPreHandlers(route)
-    .map(readAccessRule)
-    .filter((rule): rule is string => rule !== null);
+  const gates = accessRules(route);
   return gates.length > 0 ? gates.join(' and ') : '—';
 }
 
@@ -207,34 +181,11 @@ async function collectRoutes(): Promise<RouteOptions[]> {
   }
 }
 
-/**
- * Drop the HEAD companion Fastify exposes for every GET route: same URL,
- * and the very same handler reference. An explicitly declared HEAD route
- * has its own handler and survives.
- */
-function withoutAutoHeadRoutes(routes: RouteOptions[]): RouteOptions[] {
-  const getHandlers = new Map<string, Handler>();
-  for (const route of routes) {
-    const methods = ([] as string[]).concat(route.method);
-    if (methods.includes('GET')) getHandlers.set(route.url, route.handler);
-  }
-  return routes.filter((route) => {
-    const methods = ([] as string[]).concat(route.method);
-    return !(
-      methods.length === 1 &&
-      methods[0] === 'HEAD' &&
-      getHandlers.get(route.url) === route.handler
-    );
-  });
-}
-
 function toEndpoint(route: RouteOptions): Endpoint {
-  const sessionGated =
-    route.config?.auth === 'session' || routeLevelPreHandlers(route).some(isSessionGate);
   return {
-    methods: ([] as string[]).concat(route.method),
+    methods: methodsOf(route),
     url: route.url,
-    auth: sessionGated ? 'session' : 'none',
+    auth: isSessionGated(route) ? 'session' : 'none',
     access: renderAccess(route),
     rateLimit: renderRateLimit(route),
   };
