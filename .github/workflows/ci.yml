@@ -361,6 +361,17 @@ jobs:
       - name: OpenAPI doc drift check — self-test
         run: bash scripts/__tests__/check-openapi-doc.test.sh
 
+      # Enforce AC-352 — the endpoint table in ARCHITECTURE.md § API
+      # Surface is generated from the routes buildApp() registers, and its
+      # Auth / Access / Rate limit columns are read off the gates
+      # themselves. Same self-provisioned env as the OpenAPI check, so no
+      # DB/MinIO here either.
+      - name: API surface drift check (AC-352)
+        run: npm run check:api-surface
+
+      - name: API surface drift check — self-test
+        run: bash scripts/__tests__/check-api-surface.test.sh
+
       # AC-351's API-surface-completeness clause rests on one ESLint
       # selector, which fails open: a typo or a widened `ignores:` leaves
       # `npm run lint` green while the document silently goes incomplete.

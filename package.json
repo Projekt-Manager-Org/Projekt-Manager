@@ -32,6 +32,7 @@
     "check:permissions-doc": "tsx scripts/generate-permissions-doc.ts --check",
     "check:nav-doc": "tsx scripts/generate-nav-doc.ts --check",
     "check:openapi": "tsx scripts/generate-openapi.ts --check",
+    "check:api-surface": "tsx scripts/generate-api-surface.ts --check",
     "check:doc-paths": "bash scripts/check-doc-paths.sh",
     "check:module-map": "bash scripts/check-module-map.sh",
     "check:links": "bash scripts/check-links.sh",
