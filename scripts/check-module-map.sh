@@ -368,6 +368,14 @@ declare -A REPORTED_GHOSTS=()
 #
 # Already-reported names are marked, not skipped: two blocks may both be
 # wrong about the same name, and each has its own broken claim to report.
+#
+# Resolution here is RECURSIVE, while the coverage direction above is
+# direct-children-only. `src/ui/` needs the recursion — it holds no files
+# of its own and every component it names sits a level down. The cost is
+# that `#### `src/server/` (root files)` does not enforce the "root
+# files" half of its own heading: move a root file into
+# `src/server/services/` and its citation still resolves. The heading's
+# directory is the contract; its suffix is prose.
 check_scoped_names() {
   local dir="$1" body="$2" label="$3" file base name
   local -A existing=()

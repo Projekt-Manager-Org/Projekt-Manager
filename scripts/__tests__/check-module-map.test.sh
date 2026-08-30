@@ -106,6 +106,23 @@ assert_case() {
   fi
 }
 
+# Asserts on the REPORT, not the exit code. A name reported twice still
+# exits 1, so dedup between the scoped and the document-wide pass — and
+# the label a report line carries — are invisible to assert_case.
+assert_report_case() {
+  local expected="$1" pattern="$2" label="$3" dir="$4"
+  local actual
+  actual="$(MODULE_MAP_ROOT="$dir" bash "$CHECK" 2>&1 | grep -c -- "$pattern")"
+  if [[ "$actual" == "$expected" ]]; then
+    pass=$((pass + 1))
+    echo "  PASS — $label ($actual matching line(s))"
+  else
+    fail=$((fail + 1))
+    failures+=("$label: expected $expected matching line(s), got $actual")
+    echo "  FAIL — $label (expected $expected matching line(s), got $actual)"
+  fi
+}
+
 echo "Case: the real repository passes its own check"
 assert_case 0 "real repository covered" "$REPO_ROOT"
 
@@ -326,6 +343,16 @@ echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
 sed -i 's|^Nothing here.$|Nothing here, but `Whatever.ts` is cited.|' "$d/ARCHITECTURE.md"
 assert_case 0 "live name outside every subsection" "$d"
 
+echo "Case: a dead name is reported once, by the scoped pass"
+# Both passes see a name that resolves nowhere, and reporting it twice
+# still exits 1 — so only the report shows the dedup. The scoped line is
+# the one worth keeping: it names the directory whose claim broke.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^- `AlphaService.ts` — the documented one$|- `AlphaService.ts` — the documented one\n- `GoneService.ts` — gone|' "$d/ARCHITECTURE.md"
+assert_report_case 1 'GoneService\.ts' "dead name reported exactly once" "$d"
+assert_report_case 1 'src/server/services/ -> GoneService\.ts' "scoped report wins over the document-wide one" "$d"
+
 echo "Case: the scoped pass stays stricter than the document-wide one"
 # Must fail. A gated subsection claiming a file that exists ELSEWHERE is
 # still breaking its own contract — the document-wide pass must not
@@ -393,6 +420,19 @@ d="$(stage)"
 echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
 add_note_item "$d" '**`Bulk download`** — no orchestrator, by decision; see `Whatever.ts`.'
 assert_case 0 "non-directory bold opener is not a key" "$d"
+
+echo "Case: a Directory Notes key that is not a real directory"
+# Must fail, and loudly. A typo in the bold key still ends in `/`, so it
+# is taken as a key — and every name in the entry then resolves against
+# an empty file set and is reported dead. That is the safe direction, but
+# only because the report carries the key: the label is what separates a
+# misspelled key from a genuine batch of dead citations.
+d="$(stage)"
+echo "src/server/services/BetaService.ts" >"$d/scripts/module-map-baseline.txt"
+sed -i 's|^\*\*`src/ungated/`\*\* — the others\.$|**`src/ungatedd/`** — the others.|' "$d/ARCHITECTURE.md"
+add_note_item "$d" '- `Whatever.ts` — alive; the key above is misspelled'
+assert_case 1 "misspelled notes key reports live names dead" "$d"
+assert_report_case 1 '### Directory Notes src/ungatedd/ -> Whatever\.ts' "the report names the misspelled key" "$d"
 
 echo "Case: a note naming a file in a nested directory of its own key"
 # Must pass. Scoping is by directory, not by direct children: `src/ui/`
