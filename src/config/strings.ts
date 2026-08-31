@@ -33,6 +33,11 @@ export const STRINGS = {
     notFound: (entity: string) => `${entity} nicht gefunden.`,
     routeNotFound: 'Die angeforderte URL existiert nicht.',
     methodNotAllowed: 'Diese Methode ist für diesen Endpunkt nicht erlaubt.',
+    // Resumable-upload (tus) header rejections — api.md §14.2.4. The
+    // header names stay untranslated: they are protocol tokens the
+    // client sends verbatim, not prose.
+    uploadLengthRequired: 'Der Header „Upload-Length" fehlt oder ist keine gültige Bytezahl.',
+    uploadOffsetRequired: 'Der Header „Upload-Offset" fehlt oder ist keine gültige Bytezahl.',
     idempotencyConflict: 'Diese Anfrage-ID wurde bereits mit abweichenden Daten verwendet.',
     schemaVersionMismatch:
       'Die Datenformat-Version der Datei passt nicht zur aktuellen Version des Systems.',

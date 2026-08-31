@@ -122,12 +122,14 @@ export function importJobRoutes(db: Database) {
         const uploadLengthHeader = request.headers['upload-length'];
         const uploadLength = Number(uploadLengthHeader);
         if (!uploadLengthHeader || !Number.isInteger(uploadLength) || uploadLength < 0) {
+          // 400 rather than the 422 `validationError()` mints: this is a
+          // tus protocol-level header rejection, not a body-schema one.
           return reply
             .code(400)
             .send(
               new AppError(
                 'VALIDATION_ERROR',
-                'Upload-Length header is required and must be a non-negative integer',
+                STRINGS.errors.uploadLengthRequired,
                 400,
               ).toResponse(),
             );
@@ -312,12 +314,13 @@ export function importJobRoutes(db: Database) {
 
         const clientOffset = Number(request.headers['upload-offset']);
         if (!Number.isInteger(clientOffset) || clientOffset < 0) {
+          // 400 rather than 422 — see the Upload-Length guard above.
           return reply
             .code(400)
             .send(
               new AppError(
                 'VALIDATION_ERROR',
-                'Upload-Offset header is required and must be a non-negative integer',
+                STRINGS.errors.uploadOffsetRequired,
                 400,
               ).toResponse(),
             );
