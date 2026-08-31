@@ -275,6 +275,86 @@ jobs:
           exit-code: '1'
           trivyignores: .trivyignore
 
+      # `docker compose config --quiet` exits 0 even when a
+      # referenced `${VAR}` has no default — it only prints a stderr
+      # warning. Capture combined output and fail on
+      # "variable is not set" so a newly-referenced `${FOO}` without
+      # a `:-` default cannot sail through CI. Carried over from the
+      # closed PR #67.
+      #
+      # In `lint`, not `docker`: `docker` is `if: github.event_name !=
+      # 'push'`, so on the one path where compose validation matters
+      # most — `promote`'s fallback, taken when the merged tree diverged
+      # from the PR tip — nothing would have validated those bytes.
+      # `lint` runs on every event. Same argument that put the Trivy
+      # filesystem-secret and IaC scans here rather than in the image
+      # job: it needs no image and costs seconds.
+      - name: Validate Compose file references
+        env:
+          # Placeholders for variables in docker-compose.yml that have
+          # no `:-` default. Kept intentionally minimal so adding a new
+          # defaultless `${FOO}` trips the "variable is not set" grep
+          # below — the whole point of this check. Do NOT add a
+          # placeholder here "just in case": if a variable has a `:-`
+          # default, leave it out so the check can still catch a
+          # future removal of that default.
+          POSTGRES_PASSWORD: placeholder
+          # Object-storage env, all `:?`-gated in the base file because
+          # values are operator-supplied per provider (B2 in prod, the
+          # in-compose MinIO mirror in dev). Real deploys source them
+          # from `.env` (operator config) and `secrets.env.age` (the
+          # secret half).
+          STORAGE_ENDPOINT: http://placeholder:9000
+          STORAGE_REGION: us-east-1
+          STORAGE_BUCKET: placeholder
+          STORAGE_ACCESS_KEY: placeholder
+          STORAGE_SECRET_KEY: placeholder
+          # MinIO root + restricted-app credentials — only consumed by
+          # the minio overlay. `:?`-gated there for the same operator-
+          # must-supply reason.
+          MINIO_ROOT_USER: placeholder
+          MINIO_ROOT_PASSWORD: placeholder
+          MINIO_APP_ACCESS_KEY: placeholder
+          MINIO_APP_SECRET_KEY: placeholder
+          CLOUDFLARE_API_TOKEN: placeholder
+          # APP_IMAGE_TAG is `:?`-gated — mutable branch tag defaults
+          # were removed. A placeholder lets `docker compose config`
+          # parse; real deploys pass a SHA tag via scripts/deploy.sh.
+          APP_IMAGE_TAG: placeholder
+          # DOMAIN is `:?`-gated at the first reference in the caddy
+          # service. Real deploys supply it via `.env`; CI needs any
+          # non-empty value so compose can parse.
+          DOMAIN: placeholder
+        run: |
+          set -euo pipefail
+          check() {
+            local label=$1
+            shift
+            local out
+            if ! out=$(docker compose "$@" config --quiet 2>&1); then
+              echo "::error::$label: docker compose config failed"
+              echo "$out"
+              exit 1
+            fi
+            if echo "$out" | grep -q 'variable is not set'; then
+              echo "::error::$label: compose references an unset variable without a default"
+              echo "$out" | grep 'variable is not set'
+              exit 1
+            fi
+          }
+          check "prod compose" -f docker-compose.yml
+          check "prod + minio overlay" -f docker-compose.yml -f docker-compose.minio.yml
+          check "prod + minio + dev overlays" -f docker-compose.yml -f docker-compose.minio.yml -f docker-compose.dev.yml
+          # Exercise the backup profile once so variable substitution
+          # inside the backup service's environment block is covered.
+          check "prod compose, backup profile" -f docker-compose.yml --profile backup
+          # …and once with the dev overlay, which is where the backup
+          # service's `build:` stanza lives. The prod-only case above
+          # never renders it, so a typo in its context/args would ship
+          # unnoticed until a developer ran the build by hand.
+          check "dev overlays, backup profile" -f docker-compose.yml -f docker-compose.minio.yml -f docker-compose.dev.yml --profile backup
+          echo "Compose files validated."
+
       - name: Lint
         run: npm run lint
 
@@ -589,9 +669,10 @@ jobs:
       # integration suite runs (ADR-0024). Not preinstalled on
       # ubuntu-latest. ripgrep lives in `lint` only (theme-token check).
       #
-      # The SHA-pinned install lives in the composite so this job and
-      # e2e.yml share ONE pin rather than two hand-synced copies — see
-      # that action's header for why apt is not acceptable here.
+      # The SHA-pinned install lives in the composite so this job, e2e.yml
+      # and `build-scan-smoke` share ONE pin rather than two hand-synced
+      # copies plus an apt install — see that action's header for why apt
+      # is not acceptable here.
       - uses: ./.github/actions/install-age
 
       # Storage — MinIO + full bucket/IAM provisioning. Rationale, image
@@ -707,78 +788,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-
-      # `docker compose config --quiet` exits 0 even when a
-      # referenced `${VAR}` has no default — it only prints a stderr
-      # warning. Capture combined output and fail on
-      # "variable is not set" so a newly-referenced `${FOO}` without
-      # a `:-` default cannot sail through CI. Carried over from the
-      # closed PR #67.
-      - name: Validate Compose file references
-        env:
-          # Placeholders for variables in docker-compose.yml that have
-          # no `:-` default. Kept intentionally minimal so adding a new
-          # defaultless `${FOO}` trips the "variable is not set" grep
-          # below — the whole point of this check. Do NOT add a
-          # placeholder here "just in case": if a variable has a `:-`
-          # default, leave it out so the check can still catch a
-          # future removal of that default.
-          POSTGRES_PASSWORD: placeholder
-          # Object-storage env, all `:?`-gated in the base file because
-          # values are operator-supplied per provider (B2 in prod, the
-          # in-compose MinIO mirror in dev). Real deploys source them
-          # from `.env` (operator config) and `secrets.env.age` (the
-          # secret half).
-          STORAGE_ENDPOINT: http://placeholder:9000
-          STORAGE_REGION: us-east-1
-          STORAGE_BUCKET: placeholder
-          STORAGE_ACCESS_KEY: placeholder
-          STORAGE_SECRET_KEY: placeholder
-          # MinIO root + restricted-app credentials — only consumed by
-          # the minio overlay. `:?`-gated there for the same operator-
-          # must-supply reason.
-          MINIO_ROOT_USER: placeholder
-          MINIO_ROOT_PASSWORD: placeholder
-          MINIO_APP_ACCESS_KEY: placeholder
-          MINIO_APP_SECRET_KEY: placeholder
-          CLOUDFLARE_API_TOKEN: placeholder
-          # APP_IMAGE_TAG is `:?`-gated — mutable branch tag defaults
-          # were removed. A placeholder lets `docker compose config`
-          # parse; real deploys pass a SHA tag via scripts/deploy.sh.
-          APP_IMAGE_TAG: placeholder
-          # DOMAIN is `:?`-gated at the first reference in the caddy
-          # service. Real deploys supply it via `.env`; CI needs any
-          # non-empty value so compose can parse.
-          DOMAIN: placeholder
-        run: |
-          set -euo pipefail
-          check() {
-            local label=$1
-            shift
-            local out
-            if ! out=$(docker compose "$@" config --quiet 2>&1); then
-              echo "::error::$label: docker compose config failed"
-              echo "$out"
-              exit 1
-            fi
-            if echo "$out" | grep -q 'variable is not set'; then
-              echo "::error::$label: compose references an unset variable without a default"
-              echo "$out" | grep 'variable is not set'
-              exit 1
-            fi
-          }
-          check "prod compose" -f docker-compose.yml
-          check "prod + minio overlay" -f docker-compose.yml -f docker-compose.minio.yml
-          check "prod + minio + dev overlays" -f docker-compose.yml -f docker-compose.minio.yml -f docker-compose.dev.yml
-          # Exercise the backup profile once so variable substitution
-          # inside the backup service's environment block is covered.
-          check "prod compose, backup profile" -f docker-compose.yml --profile backup
-          # …and once with the dev overlay, which is where the backup
-          # service's `build:` stanza lives. The prod-only case above
-          # never renders it, so a typo in its context/args would ship
-          # unnoticed until a developer ran the build by hand.
-          check "dev overlays, backup profile" -f docker-compose.yml -f docker-compose.minio.yml -f docker-compose.dev.yml --profile backup
-          echo "Compose files validated."
 
       # Build both images, scan both with Trivy, and boot the stack.
       # Nothing is published here — `publish` below does that after

@@ -48,7 +48,7 @@ Callers in `.github/workflows/ci.yml`:
 
 | Job       | Event                                                               | Runs                                                              |
 | --------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `docker`  | every PR, `merge_group`, `workflow_dispatch`                        | compose validation → `build-scan-smoke` → Tier 1 round-trip       |
+| `docker`  | every PR, `merge_group`, `workflow_dispatch`                        | `build-scan-smoke` → Tier 1 round-trip                            |
 | `publish` | PR (non-fork) + `workflow_dispatch`, `needs: [check, lint, docker]` | `push-images` → `sha-<pr-tip>` + `<branch-slug>`                  |
 | `promote` | `push: main`                                                        | re-tag (see next section); fallback runs both composites in order |
 
