@@ -53,18 +53,31 @@ runs:
     # cache is best-effort; missing it costs ~30s on the next cold
     # build, nothing else.
     #
-    # `load: true` exports into the runner's local Docker daemon.
-    # Trivy resolves `image-ref` through that daemon, and the smoke
-    # resolves the compose `image:` lines through it too. Mutually
-    # exclusive with multi-platform builds; this build is amd64-only.
-    - name: Build app image (load locally)
+    # Two exporters, ONE build (buildx ≥0.13 / BuildKit ≥0.13):
+    #
+    #   type=docker  loads into the runner's local Docker daemon under
+    #                `--tag`. Trivy resolves `image-ref` through that
+    #                daemon, and the smoke resolves the compose `image:`
+    #                lines through it too. Mutually exclusive with
+    #                multi-platform builds; this build is amd64-only.
+    #   type=oci     writes the layout the backup build's `FROM` resolves
+    #                against — see the extract + `build-contexts` steps
+    #                below for why that indirection exists.
+    #
+    # This used to be two `build-push-action` invocations differing only
+    # in exporter, which paid a second export + cache round-trip (~5–10s
+    # warm) to re-derive bytes the first build already had. Cheap while
+    # `docker` was path-filtered; on the critical path of every merge now
+    # that it runs on every PR.
+    - name: Build app image (load locally + OCI layout)
       uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
       with:
         context: .
         file: Dockerfile
-        push: false
-        load: true
         tags: projekt-manager-app:ci
+        outputs: |
+          type=docker
+          type=oci,dest=/tmp/app-image-oci.tar
         build-args: |
           GIT_SHA=${{ inputs.git_sha }}
         cache-from: type=gha
@@ -92,25 +105,12 @@ runs:
         exit-code: '1'
         trivyignores: .trivyignore
 
-    # Export the app image as an OCI layout so the backup build below
-    # resolves `FROM ghcr.io/.../projekt-manager:${APP_IMAGE_TAG}`
-    # without that tag existing on GHCR. Introduced for the PR-time
-    # backup scan in #219 / ADR-0027 §157; it is what lets the whole
-    # build → scan → smoke sequence run before anything is published.
-    # buildx re-uses every layer from the app build above via the
-    # shared gha cache, so this adds only the tar-export cost (~5–10s
-    # on warm cache).
-    - name: Export app image as OCI layout (for backup build context)
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
-      with:
-        context: .
-        file: Dockerfile
-        outputs: type=oci,dest=/tmp/app-image-oci.tar
-        build-args: |
-          GIT_SHA=${{ inputs.git_sha }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max,ignore-error=true
-
+    # The OCI layout exported above is what lets the backup build below
+    # resolve `FROM ghcr.io/.../projekt-manager:${APP_IMAGE_TAG}` without
+    # that tag existing on GHCR. Introduced for the PR-time backup scan
+    # in #219 / ADR-0027 §157; it is what lets the whole build → scan →
+    # smoke sequence run before anything is published.
+    #
     # buildx's `oci-layout://` named-context source reads a directory,
     # not a tarball, so unpack before the next build.
     - name: Extract OCI layout
