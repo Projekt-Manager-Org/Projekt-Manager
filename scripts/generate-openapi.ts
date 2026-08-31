@@ -38,21 +38,42 @@
  * I/O at construction), so the placeholder values below satisfy it —
  * which is also why the CI check needs no DB/MinIO services.
  *
+ * The route reads this shares with `generate-api-surface.ts` — which gate
+ * reaches a route, what rule it enforces, which HEAD routes are Fastify's
+ * automatic companions — live in `scripts/lib/route-introspection.ts`.
+ * Two artifacts describing the same gates must not read them twice.
+ *
+ * What is left here is boot, drift and I/O. The document's own shaping
+ * and the guards over it are decided by `(doc, routes)` alone and live
+ * in `scripts/lib/openapi-document.ts`; this file calls them in one line
+ * each — strip, guard, annotate, validate — and each one mutates `doc`
+ * in place or throws.
+ *
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (missing/unreadable target in --check mode, or the app
- * failed to build/ready, or the doc could not be generated or is not
- * valid OpenAPI 3.1) so the caller's `set -e` trips loudly instead of
- * silently no-op'ing.
+ * failed to build/ready, or the doc could not be generated, is not valid
+ * OpenAPI 3.1, does not match the route set in both directions, or the
+ * route set itself gates access without authenticating) so the caller's
+ * `set -e` trips loudly instead of silently no-op'ing.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as prettier from 'prettier';
-import { Validator } from '@seriousme/openapi-schema-validator';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, RouteOptions } from 'fastify';
 import type pg from 'pg';
 import { buildApp, type OpenApiDocOptions } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
+import { createAuthMiddleware, requirePermission } from '../src/server/middleware/auth.js';
+import { assertGatesAuthenticate, methodsOf } from './lib/route-introspection.js';
+import {
+  applySecurity,
+  assertEveryRoutePublished,
+  assertValid,
+  DECLARED_OAS_VERSION,
+  type DocLike,
+  stripUnsupportedClaims,
+} from './lib/openapi-document.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /**
@@ -81,77 +102,6 @@ process.env.STORAGE_ACCESS_KEY = 'openapi-spike-unused';
 process.env.STORAGE_SECRET_KEY = 'openapi-spike-unused';
 process.env.BINARY_AGE_RECIPIENT = 'age1openapispikeunusedplaceholderplaceholderplaceholder';
 
-const HTTP_METHODS = [
-  'get',
-  'put',
-  'post',
-  'delete',
-  'options',
-  'head',
-  'patch',
-  'trace',
-] as const;
-
-interface OperationLike {
-  responses?: Record<string, unknown>;
-}
-interface DocLike {
-  paths?: Record<string, Record<string, unknown>>;
-  components?: Record<string, unknown>;
-}
-
-/**
- * True for the placeholder `@fastify/swagger` synthesizes when a route
- * declared no `response:` schema: `{"200": {"description": "Default
- * Response"}}`. Matched exactly (single key, single property, exact
- * text), so a real declared response schema is never mistaken for it.
- */
-function isSyntheticResponses(responses: Record<string, unknown> | undefined): boolean {
-  if (!responses) return false;
-  const keys = Object.keys(responses);
-  if (keys.length !== 1 || keys[0] !== '200') return false;
-  const body = responses['200'];
-  if (typeof body !== 'object' || body === null) return false;
-  const props = Object.keys(body);
-  return props.length === 1 && (body as { description?: unknown }).description === 'Default Response';
-}
-
-/**
- * Strip claims the route schemas do not support: the synthetic 200, and
- * an all-empty `components` (today `{"schemas": {}}`). Both are derived
- * from nothing, and 3.1 lets the document stay silent about them —
- * ARCHITECTURE.md § OpenAPI Document Generation.
- *
- * Real response schemas, once routes declare them, flow through
- * untouched.
- */
-function stripUnsupportedClaims(doc: DocLike): DocLike {
-  for (const item of Object.values(doc.paths ?? {})) {
-    for (const method of HTTP_METHODS) {
-      const op = item[method] as OperationLike | undefined;
-      if (op && isSyntheticResponses(op.responses)) delete op.responses;
-    }
-  }
-  const components = doc.components;
-  if (
-    components &&
-    Object.values(components).every(
-      (v) => typeof v === 'object' && v !== null && Object.keys(v).length === 0,
-    )
-  ) {
-    delete doc.components;
-  }
-  return doc;
-}
-
-/**
- * The `openapi:` version the document declares, and the major.minor the
- * validator is required to report back for it (`Validator.version` is
- * major.minor only).
- */
-const DECLARED_OAS_VERSION = '3.1.0';
-const TARGET_OAS_VERSION = '3.1';
-
 /**
  * The document's header. Lives here, not in `src/server/app.ts`: what
  * the artifact says about itself is a documentation decision, and
@@ -175,36 +125,16 @@ const DOC_OPTIONS: OpenApiDocOptions = {
     description:
       'GENERATED FILE — do not edit by hand. Produced from the routes ' +
       'registered by buildApp() via `npx tsx scripts/generate-openapi.ts`; ' +
-      'CI fails on drift. Describes requests only — responses and auth are ' +
-      'not declared yet. The normative API contract is docs/spec/api.md ' +
-      '§14.2; see ARCHITECTURE.md § OpenAPI Document Generation.',
+      'CI fails on drift. Describes requests and the session requirement ' +
+      'only — responses are not declared yet. The normative API contract ' +
+      'is docs/spec/api.md §14.2; see ARCHITECTURE.md § OpenAPI Document ' +
+      'Generation.',
+    // 3.1 accepts an SPDX `identifier` in place of 3.0's `url`. Kept in
+    // step with `LICENSE` and package.json's `license` field.
+    license: { name: 'GNU Affero General Public License v3.0 only', identifier: 'AGPL-3.0-only' },
   },
   servers: [{ url: '/' }],
 };
-
-/**
- * Fail unless the document is valid OpenAPI 3.1 — the second of the two
- * gates (ARCHITECTURE.md § OpenAPI Document Generation).
- *
- * The detected version is asserted too, not just validity: the validator
- * picks its schema from the document's own `openapi:` field, so a
- * document that silently declared 3.0 would be checked against 3.0's
- * schema and pass — a green check that no longer means what it says.
- */
-async function assertValid(doc: DocLike): Promise<void> {
-  const validator = new Validator();
-  const result = await validator.validate(doc as Record<string, unknown>);
-  if (!result.valid) {
-    const detail =
-      typeof result.errors === 'string' ? result.errors : JSON.stringify(result.errors, null, 2);
-    throw new Error(`generated document is not valid OpenAPI:\n${detail}`);
-  }
-  if (validator.version !== TARGET_OAS_VERSION) {
-    throw new Error(
-      `generated document validated as OpenAPI ${validator.version}, expected ${TARGET_OAS_VERSION}`,
-    );
-  }
-}
 
 /** Build the app, collect the OpenAPI document, and Prettier-format it. */
 async function buildExpectedDoc(): Promise<string> {
@@ -215,9 +145,67 @@ async function buildExpectedDoc(): Promise<string> {
     pool = conn.pool;
 
     app = buildApp({ logger: false, db: conn.db, rateLimit: false, openapi: DOC_OPTIONS });
+
+    // Attached AFTER `buildApp()` returns and BEFORE `ready()`, and read
+    // only once `ready()` has resolved — the same two-part timing
+    // `collectRoutes` in generate-api-surface.ts documents: `register()`
+    // defers plugin execution to `ready()`, so this still sees routes in
+    // child encapsulation contexts, and `requireSession`'s marker is
+    // written by the plugin's own hook, after this root one has run.
+    const routes: RouteOptions[] = [];
+    app.addHook('onRoute', (routeOptions) => {
+      routes.push(routeOptions);
+    });
     await app.ready();
 
-    const doc = stripUnsupportedClaims(app.swagger() as DocLike);
+    const doc = app.swagger() as DocLike;
+    stripUnsupportedClaims(doc);
+
+    // Fault-injection seam for the orphaned-operation case in
+    // scripts/__tests__/check-openapi-doc.test.sh. Every operation
+    // matches a route by construction, so this is the only way to
+    // exercise `applySecurity`'s coverage guard — same argument as
+    // $OPENAPI_INJECT_INVALID below.
+    if (process.env.OPENAPI_INJECT_ORPHAN_OPERATION === '1') {
+      (doc.paths ??= {})['/api/__no-such-route__'] = { get: {} };
+    }
+
+    // The mirror seam, for the unpublished-route case. Same argument:
+    // every registered route reaches the document by construction, so
+    // dropping one is the only way to prove the guard is wired.
+    if (process.env.OPENAPI_INJECT_DROP_OPERATION === '1') {
+      delete doc.paths?.['/api/health'];
+    }
+
+    // The seam for the unauthenticated-access-gate case. Every access
+    // gate today sits behind a session gate, so the guard never fires on
+    // the real route set — same argument as the two seams above. The
+    // real `requirePermission` is used rather than an imitation, so the
+    // case exercises the gate shape the guard actually reads. Mutating
+    // `routeOptions` after `ready()` changes nothing at runtime: the
+    // route's hook chain was compiled at registration.
+    if (process.env.OPENAPI_INJECT_ORPHAN_GATE === '1') {
+      const target = routes.find((r) => r.url === '/api/health' && methodsOf(r).includes('GET'));
+      if (target) target.preHandler = requirePermission('project:read');
+    }
+
+    // The ordering half of the same guard. Both gates are present here,
+    // so a presence test sees a correctly protected route; the access
+    // gate still runs first and answers 401 to every caller, because
+    // Fastify runs a route's `preHandler` array in declaration order.
+    // Real gates on both sides again — the bug is the order, not the
+    // shapes.
+    if (process.env.OPENAPI_INJECT_MISORDERED_GATE === '1') {
+      const target = routes.find((r) => r.url === '/api/health' && methodsOf(r).includes('GET'));
+      if (target)
+        target.preHandler = [requirePermission('project:read'), createAuthMiddleware(conn.db)];
+    }
+
+    // Route wiring before document coverage: an access gate no session
+    // gate reaches is a broken route, not a stale document.
+    assertGatesAuthenticate(routes);
+    assertEveryRoutePublished(doc, routes);
+    applySecurity(doc, routes);
 
     // Fault-injection seam for scripts/__tests__/check-openapi-doc.test.sh.
     // The document is generated from the real routes and is (correctly)

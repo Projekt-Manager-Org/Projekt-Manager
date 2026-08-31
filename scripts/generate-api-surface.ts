@@ -35,6 +35,10 @@
  * HEAD row means a route that was declared HEAD deliberately —
  * `/api/import-jobs/:id/archive`'s tus offset probe is the only one.
  *
+ * Every one of those reads lives in `scripts/lib/route-introspection.ts`,
+ * shared with `generate-openapi.ts`: both artifacts describe the same
+ * gates, and a second copy could only ever disagree with the first.
+ *
  * `NODE_ENV=production` below is load-bearing, not boilerplate: the login
  * limit's default is environment-aware (`getRateLimit()` in
  * `src/server/config/index.ts`), and the table documents the production
@@ -52,6 +56,9 @@
  * a fixture written outside the repo is byte-identical to the published
  * doc rather than silently reformatted with Prettier's built-in defaults.
  *
+ * $API_SURFACE_INJECT_ORPHAN_GATE is the same harness's fault-injection
+ * seam for the wiring guard — see `buildExpectedDoc`.
+ *
  * Route registration requires a truthy `db`, and the placeholder env
  * below satisfies the presence checks registration performs without any
  * of it being dereferenced — the same seam `generate-openapi.ts`
@@ -59,8 +66,9 @@
  *
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (doc file unreadable, markers missing, the app failed
- * to build, or a route declares a rate limit this script cannot render)
- * so the caller's `set -e` trips loudly instead of silently no-op'ing.
+ * to build, a route declares a rate limit this script cannot render, or
+ * an access gate reaches a route no session gate does) so the caller's
+ * `set -e` trips loudly instead of silently no-op'ing.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -70,6 +78,14 @@ import type { FastifyInstance, RouteOptions } from 'fastify';
 import type pg from 'pg';
 import { buildApp } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
+import { requirePermission } from '../src/server/middleware/auth.js';
+import {
+  accessRules,
+  assertGatesAuthenticate,
+  isSessionGated,
+  methodsOf,
+  withoutAutoHeadRoutes,
+} from './lib/route-introspection.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 /**
@@ -103,40 +119,6 @@ interface Endpoint {
   rateLimit: string;
 }
 
-type Handler = RouteOptions['handler'];
-
-/** A `preHandler` produced by `createAuthMiddleware`. */
-function isSessionGate(fn: unknown): boolean {
-  return typeof fn === 'function' && (fn as { requiresSession?: unknown }).requiresSession === true;
-}
-
-/**
- * The rule a `requirePermission(...)` / `requireRole(...)` gate enforces,
- * rendered as the spec words it, or `null` if `fn` is neither.
- *
- * Both publish the RULE, not the role set it resolves to today — the
- * distinction AC-349 draws for the nav matrix, and the reason both gates
- * carry their keys as data instead of hiding them in a closure.
- */
-function readAccessRule(fn: unknown): string | null {
-  if (typeof fn !== 'function') return null;
-  const permissions = (fn as { requiredPermissions?: unknown }).requiredPermissions;
-  if (Array.isArray(permissions)) {
-    return permissions.map((key) => `\`${String(key)}\``).join(' or ');
-  }
-  const roles = (fn as { requiredRoles?: unknown }).requiredRoles;
-  if (Array.isArray(roles)) {
-    return `Role: ${roles.map(String).join(' or ')}`;
-  }
-  return null;
-}
-
-function routeLevelPreHandlers(route: RouteOptions): unknown[] {
-  const { preHandler } = route;
-  if (!preHandler) return [];
-  return Array.isArray(preHandler) ? [...preHandler] : [preHandler];
-}
-
 /**
  * `or` within one gate (it grants on ANY of its keys), `and` across
  * gates (every gate must pass). No route stacks two gates today; the
@@ -147,9 +129,7 @@ function routeLevelPreHandlers(route: RouteOptions): unknown[] {
  * the caller's scope instead (ADR-0019) — see the notes below the table.
  */
 function renderAccess(route: RouteOptions): string {
-  const gates = routeLevelPreHandlers(route)
-    .map(readAccessRule)
-    .filter((rule): rule is string => rule !== null);
+  const gates = accessRules(route);
   return gates.length > 0 ? gates.join(' and ') : '—';
 }
 
@@ -207,34 +187,11 @@ async function collectRoutes(): Promise<RouteOptions[]> {
   }
 }
 
-/**
- * Drop the HEAD companion Fastify exposes for every GET route: same URL,
- * and the very same handler reference. An explicitly declared HEAD route
- * has its own handler and survives.
- */
-function withoutAutoHeadRoutes(routes: RouteOptions[]): RouteOptions[] {
-  const getHandlers = new Map<string, Handler>();
-  for (const route of routes) {
-    const methods = ([] as string[]).concat(route.method);
-    if (methods.includes('GET')) getHandlers.set(route.url, route.handler);
-  }
-  return routes.filter((route) => {
-    const methods = ([] as string[]).concat(route.method);
-    return !(
-      methods.length === 1 &&
-      methods[0] === 'HEAD' &&
-      getHandlers.get(route.url) === route.handler
-    );
-  });
-}
-
 function toEndpoint(route: RouteOptions): Endpoint {
-  const sessionGated =
-    route.config?.auth === 'session' || routeLevelPreHandlers(route).some(isSessionGate);
   return {
-    methods: ([] as string[]).concat(route.method),
+    methods: methodsOf(route),
     url: route.url,
-    auth: sessionGated ? 'session' : 'none',
+    auth: isSessionGated(route) ? 'session' : 'none',
     access: renderAccess(route),
     rateLimit: renderRateLimit(route),
   };
@@ -268,7 +225,28 @@ async function buildExpectedDoc(): Promise<string> {
     process.exit(2);
   }
 
-  const endpoints = withoutAutoHeadRoutes(await collectRoutes()).map(toEndpoint);
+  const routes = await collectRoutes();
+
+  // Fault-injection seam for the wiring guard below, used by
+  // scripts/__tests__/check-api-surface.test.sh. Every access gate in the
+  // real route set sits behind a session gate, so the guard never fires
+  // here — without the seam this call could be deleted and every case
+  // would stay green, which is the same argument the OpenAPI harness
+  // makes for its three seams. The real `requirePermission` is used
+  // rather than an imitation, so the case exercises the gate shape the
+  // guard actually reads. Mutating `routeOptions` after `ready()` changes
+  // nothing at runtime: the route's hook chain was compiled at
+  // registration.
+  if (process.env.API_SURFACE_INJECT_ORPHAN_GATE === '1') {
+    const target = routes.find((r) => r.url === '/api/health' && methodsOf(r).includes('GET'));
+    if (target) target.preHandler = requirePermission('project:read');
+  }
+
+  // A published `Auth: none` row beside a populated `Access` column is
+  // the same fail-open claim the OpenAPI generator refuses to make, so
+  // the shared guard runs on both sides.
+  assertGatesAuthenticate(routes);
+  const endpoints = withoutAutoHeadRoutes(routes).map(toEndpoint);
 
   const startLineEnd = doc.indexOf('\n', startIdx) + 1;
   const before = doc.slice(0, startLineEnd);

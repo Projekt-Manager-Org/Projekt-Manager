@@ -17,5 +17,5 @@
   // only via `include`. generate-openapi.ts reaches archiver
   // transitively through the route plugins and would otherwise typecheck
   // it as `any`.
-  "include": ["*.ts", "../src/server/db/schema.ts", "../src/types"]
+  "include": ["*.ts", "lib/*.ts", "../src/server/db/schema.ts", "../src/types"]
 }
