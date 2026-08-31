@@ -56,6 +56,7 @@ Callers in `.github/workflows/ci.yml`:
 - `docker/login-action` authenticates to GHCR with the built-in `GITHUB_TOKEN` (no separate secret).
 - `docker/build-push-action` with `cache-from: type=gha, cache-to: type=gha,mode=max` — warm builds ~10–15s.
 - `publish` and `promote` declare `packages: write` (default is `contents: read`); `promote` additionally declares `pull-requests: read` for the PR-discovery API call. `docker` declares neither — it cannot publish even by mistake.
+- **`publish` is a required status check on `main`**, alongside `check`, `lint` and `docker`. This is an ordering constraint, not a fourth gate. `publish` and auto-merge both become eligible the instant `check` + `lint` + `docker` go green, so without it a Renovate auto-merge advances `main` and deletes the head branch while `publish` is still pushing — and guard 3 then finds no `sha-<pr-tip>` and pays the full fallback rebuild on the repo's highest-volume merge path. It survived on a timing margin (`promote` re-runs `check` + `lint`, ~4 min, before guard 3 executes; `publish` takes ~1.5 min), not on ordering. Fork PRs are unaffected: their `publish` is skipped by its `if:`, and a skipped job satisfies a required check. The cost is that a GHCR outage blocks merges — correct, since `promote` could not publish through one either.
 - `concurrency.cancel-in-progress` exempts `push`. On a PR the newer run re-validates the same branch, so cancelling is free; on `push: main` the run is the sole producer of that commit's artifact, and cancelling it leaves the commit unpublishable (#355 §5).
 
 **Build once, promote on merge:**
@@ -68,7 +69,7 @@ Flow:
 
 ```
 PR ──► docker    build ─► scan ─► smoke            (required check, every PR)
-       publish   push sha-<pr-tip> + <branch-slug> (needs: check + lint + docker)
+       publish   push sha-<pr-tip> + <branch-slug> (required check; needs: check + lint + docker)
 
 merge ──► promote  guard 1,2,3 ✓ ──► imagetools create ──► sha-<merge> + main   ~30s
                                  ✗ ──► build ─► scan ─► smoke ─► push           ~5 min
