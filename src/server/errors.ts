@@ -193,6 +193,28 @@ export function exportJobNotReady(): AppError {
   return new AppError('EXPORT_JOB_NOT_READY', STRINGS.errors.exportJobNotReady, 409);
 }
 
+/** The tus headers the resumable-upload endpoints reject on. */
+const UPLOAD_HEADER_MESSAGES = {
+  'Upload-Length': STRINGS.errors.uploadLengthRequired,
+  'Upload-Offset': STRINGS.errors.uploadOffsetRequired,
+} as const;
+
+export type UploadHeader = keyof typeof UPLOAD_HEADER_MESSAGES;
+
+/**
+ * A tus protocol header is absent or is not a non-negative integer
+ * (api.md §14.2.4 "Import job — resumable upload").
+ *
+ * 400, not the 422 `validationError()` mints: the rejection is
+ * protocol-level — it fires before any body schema applies, and the tus
+ * client reads the status, not the payload. Minted here rather than
+ * assembled at the call site so the status lives in one place and the
+ * code is visible to the AC-354 factory table.
+ */
+export function uploadHeaderInvalid(header: UploadHeader): AppError {
+  return new AppError('VALIDATION_ERROR', UPLOAD_HEADER_MESSAGES[header], 400);
+}
+
 /**
  * Resumable-upload chunk PATCHed at an offset other than the server's
  * current one (api.md §14.2.4 "Import job — resumable upload"). 409: the

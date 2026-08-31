@@ -50,11 +50,11 @@ import { stagedArtifactPath, sweepStagedArtifact } from '../services/takeout-sta
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 import {
-  AppError,
   importJobActive,
   notFound,
   targetNotEmpty,
   restoreConfirmationMismatch,
+  uploadHeaderInvalid,
   uploadOffsetConflict,
   uploadTooLarge,
   uploadNotAccepted,
@@ -122,17 +122,7 @@ export function importJobRoutes(db: Database) {
         const uploadLengthHeader = request.headers['upload-length'];
         const uploadLength = Number(uploadLengthHeader);
         if (!uploadLengthHeader || !Number.isInteger(uploadLength) || uploadLength < 0) {
-          // 400 rather than the 422 `validationError()` mints: this is a
-          // tus protocol-level header rejection, not a body-schema one.
-          return reply
-            .code(400)
-            .send(
-              new AppError(
-                'VALIDATION_ERROR',
-                STRINGS.errors.uploadLengthRequired,
-                400,
-              ).toResponse(),
-            );
+          throw uploadHeaderInvalid('Upload-Length');
         }
 
         const body = request.body as { override?: boolean; confirmation_phrase?: string } | null;
@@ -314,16 +304,7 @@ export function importJobRoutes(db: Database) {
 
         const clientOffset = Number(request.headers['upload-offset']);
         if (!Number.isInteger(clientOffset) || clientOffset < 0) {
-          // 400 rather than 422 — see the Upload-Length guard above.
-          return reply
-            .code(400)
-            .send(
-              new AppError(
-                'VALIDATION_ERROR',
-                STRINGS.errors.uploadOffsetRequired,
-                400,
-              ).toResponse(),
-            );
+          throw uploadHeaderInvalid('Upload-Offset');
         }
 
         const stagingDir = env.TAKEOUT_STAGING_DIR;

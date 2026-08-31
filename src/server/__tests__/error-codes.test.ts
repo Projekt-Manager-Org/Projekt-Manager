@@ -52,6 +52,7 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['exportJobActive', () => errors.exportJobActive('job-id')],
   ['importJobActive', () => errors.importJobActive('job-id')],
   ['exportJobNotReady', () => errors.exportJobNotReady()],
+  ['uploadHeaderInvalid', () => errors.uploadHeaderInvalid('Upload-Length')],
   ['uploadOffsetConflict', () => errors.uploadOffsetConflict()],
   ['uploadTooLarge', () => errors.uploadTooLarge()],
   ['uploadNotAccepted', () => errors.uploadNotAccepted()],
