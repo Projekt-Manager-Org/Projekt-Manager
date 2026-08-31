@@ -839,11 +839,18 @@ jobs:
   # which is also why the images are only re-materialised here rather
   # than rebuilt — every layer is a gha cache hit from `docker`.
   #
-  # Fork PRs do not publish: `packages: write` is not granted to a
-  # fork's GITHUB_TOKEN, so the job is skipped for them. `docker`
-  # still runs, so a fork PR is fully validated; its merge simply
-  # takes `promote`'s fallback rebuild, which is the documented
-  # exception path rather than a regression.
+  # Fork PRs do not publish — and the `if:` below is the ONLY thing
+  # that makes that true. Token scope never skips a job: a fork PR's
+  # GITHUB_TOKEN is read-only whatever the `permissions:` block says
+  # ("The GITHUB_TOKEN has read-only permissions in pull requests
+  # from forked repositories" — GitHub docs), so without the `if:`
+  # this job would run and die on `denied: permission_denied` at
+  # push time, i.e. a guaranteed red check on every fork PR. The
+  # condition is load-bearing, not belt-and-braces.
+  #
+  # `docker` still runs, so a fork PR is fully validated; its merge
+  # simply takes `promote`'s fallback rebuild, which is the
+  # documented exception path rather than a regression.
   # ---------------------------------------------------------------
   publish:
     if: >-
@@ -910,9 +917,9 @@ jobs:
   #      still allows `main` to advance between the last status check
   #      and the merge, which diverges the trees and makes the PR-tip
   #      bytes wrong for HEAD.
-  #   3. `sha-<pr-tip>` image must exist on GHCR — fork PR (no
-  #      `packages: write`), force-push after the last green run, or
-  #      a direct push that never had a PR run at all.
+  #   3. `sha-<pr-tip>` image must exist on GHCR — fork PR (`publish`
+  #      is excluded by its `if:`), force-push after the last green
+  #      run, or a direct push that never had a PR run at all.
   #
   # See ADR-0011 §"Build once, promote on merge", #221 and #355.
   # ---------------------------------------------------------------
@@ -967,7 +974,7 @@ jobs:
           fi
 
           # Guard 3: source tag must exist on GHCR. `publish` is
-          # skipped on fork PRs (no `packages: write`), and a
+          # skipped on fork PRs by its `if:`, and a
           # force-push after the last green run orphans the tag that
           # was built from the previous tip. `docker manifest inspect`
           # is a lightweight HEAD-equivalent — no pull.
@@ -1006,8 +1013,9 @@ jobs:
           set -euo pipefail
           merge_sha="${GITHUB_SHA}"
           # GITHUB_REF_NAME on push:main is `main` — no slugification
-          # needed; included for parity with build-and-push and to
-          # tolerate future changes to the target branch name.
+          # needed; included for parity with `publish`'s tag
+          # computation and to tolerate future changes to the target
+          # branch name.
           branch_slug=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]/' '[:lower:]-' | sed 's/[^a-z0-9._-]/-/g')
 
           for img in projekt-manager projekt-manager-backup; do

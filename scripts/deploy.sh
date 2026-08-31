@@ -79,7 +79,7 @@ echo "(continuing deploy at $EXPECTED_SHA)"
 # rollback is just re-running with an older SHA. Both `app` and `backup`
 # images are produced by this repo and share APP_IMAGE_TAG — CI pushes
 # them as a pair per commit SHA (see .github/workflows/ci.yml
-# build-and-push job and ADR-0020 §Decision for the backup image).
+# publish job and ADR-0020 §Decision for the backup image).
 #
 # Exported HERE — before any compose invocation in Phase 2 — because
 # the docker-compose.yml `image:` lines for `app` and `backup` use
