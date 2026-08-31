@@ -15,6 +15,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import { methodNotAllowed } from '../errors.js';
 
 /**
  * Register the public push routes. The public key is captured at
@@ -50,9 +51,7 @@ export function pushPublicRoutes(vapidPublicKey: string | null) {
       url: '/api/push/vapid-public-key',
       handler: async (_request, reply) => {
         reply.header('allow', 'GET');
-        return reply
-          .code(405)
-          .send({ code: 'METHOD_NOT_ALLOWED', message: 'Only GET is allowed on this endpoint.' });
+        return reply.code(405).send(methodNotAllowed().toResponse());
       },
     });
   };

@@ -7,43 +7,64 @@
 
 import { STRINGS } from '../config/strings.js';
 
-export type ErrorCode =
-  | 'INVALID_CREDENTIALS'
-  | 'UNAUTHENTICATED'
-  | 'SESSION_EXPIRED'
-  | 'NOT_PERMITTED'
-  | 'VALIDATION_ERROR'
-  | 'CONFLICT'
-  | 'IDEMPOTENCY_CONFLICT'
-  | 'NOT_FOUND'
-  | 'ROUTE_NOT_FOUND'
-  | 'GONE'
-  | 'RATE_LIMITED'
-  | 'SCHEMA_VERSION_MISMATCH'
-  | 'TARGET_NOT_EMPTY'
-  | 'RESTORE_CONFIRMATION_MISMATCH'
-  | 'MISSING_USER_REFS'
+/**
+ * Every machine-readable error code the API can put on the wire —
+ * the single form of the set (AC-354).
+ *
+ * A runtime array rather than a bare union, for two reasons. The
+ * catalogue published in api.md §14.4.1 is generated from it
+ * (`scripts/generate-error-codes.ts`), and a TypeScript union has no
+ * runtime form to generate from. And `ErrorCode` is derived from it
+ * below, so the type every `AppError` is constructed against and the
+ * set the contract declares are one thing rather than two that agree
+ * by inspection — which they did not: `METHOD_NOT_ALLOWED` was answered
+ * by four route sites while absent from both, and `DRAFT_NOT_EXPORTABLE`
+ * / `EXPORT_TOO_LARGE` were in the union and absent from the contract.
+ *
+ * Declaration order is publication order. Grouped by domain, so the
+ * generated catalogue reads as a catalogue and not as an alphabet.
+ */
+export const ERROR_CODES = [
+  'INVALID_CREDENTIALS',
+  'UNAUTHENTICATED',
+  'SESSION_EXPIRED',
+  'NOT_PERMITTED',
+  'VALIDATION_ERROR',
+  'CONFLICT',
+  'IDEMPOTENCY_CONFLICT',
+  'NOT_FOUND',
+  'ROUTE_NOT_FOUND',
+  'METHOD_NOT_ALLOWED',
+  'GONE',
+  'RATE_LIMITED',
+  'SCHEMA_VERSION_MISMATCH',
+  'TARGET_NOT_EMPTY',
+  'RESTORE_CONFIRMATION_MISMATCH',
+  'MISSING_USER_REFS',
   // Full-account takeout jobs (ADR-0018, api.md §14.2.4 / §14.4.1).
-  | 'EXPORT_JOB_ACTIVE'
-  | 'IMPORT_JOB_ACTIVE'
-  | 'EXPORT_JOB_NOT_READY'
-  | 'UPLOAD_OFFSET_CONFLICT'
-  | 'UPLOAD_TOO_LARGE'
-  | 'UPLOAD_NOT_ACCEPTED'
-  | 'BULK_LIMIT_EXCEEDED'
-  | 'DEK_UNWRAP_FAILED'
+  'EXPORT_JOB_ACTIVE',
+  'IMPORT_JOB_ACTIVE',
+  'EXPORT_JOB_NOT_READY',
+  'UPLOAD_OFFSET_CONFLICT',
+  'UPLOAD_TOO_LARGE',
+  'UPLOAD_NOT_ACCEPTED',
+  'BULK_LIMIT_EXCEEDED',
+  'DEK_UNWRAP_FAILED',
   // Invoice + company-profile domain (ADR-0026, api.md §14.4).
-  | 'INVOICE_FROZEN'
-  | 'INVOICE_NUMBER_FORMAT'
-  | 'INVOICE_PROJECT_STATE'
-  | 'INVOICE_NOT_ISSUED'
-  | 'INVOICE_ALREADY_CANCELLED'
-  | 'DRAFT_NOT_EXPORTABLE'
-  | 'EXPORT_TOO_LARGE'
-  | 'COMPANY_PROFILE_REQUIRED'
-  | 'CUSTOMER_HAS_INVOICES'
-  | 'PROJECT_HAS_INVOICES'
-  | 'SERVER_ERROR';
+  'INVOICE_FROZEN',
+  'INVOICE_NUMBER_FORMAT',
+  'INVOICE_PROJECT_STATE',
+  'INVOICE_NOT_ISSUED',
+  'INVOICE_ALREADY_CANCELLED',
+  'DRAFT_NOT_EXPORTABLE',
+  'EXPORT_TOO_LARGE',
+  'COMPANY_PROFILE_REQUIRED',
+  'CUSTOMER_HAS_INVOICES',
+  'PROJECT_HAS_INVOICES',
+  'SERVER_ERROR',
+] as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[number];
 
 export interface AppErrorResponse {
   code: ErrorCode;
@@ -240,6 +261,19 @@ export function notFound(entity: string = STRINGS.entities.resource): AppError {
  */
 export function routeNotFound(): AppError {
   return new AppError('ROUTE_NOT_FOUND', STRINGS.errors.routeNotFound, 404);
+}
+
+/**
+ * The URL has a registered handler, but not for the requested verb —
+ * api.md §14.4.1. Distinct from `routeNotFound()`: the endpoint exists,
+ * the verb does not.
+ *
+ * Callers set the `Allow` header themselves before sending, because the
+ * admitted verbs are the route's knowledge and not this factory's.
+ * Fastify's router does not populate `Allow` for these guards.
+ */
+export function methodNotAllowed(): AppError {
+  return new AppError('METHOD_NOT_ALLOWED', STRINGS.errors.methodNotAllowed, 405);
 }
 
 /**

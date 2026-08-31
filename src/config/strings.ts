@@ -32,6 +32,7 @@ export const STRINGS = {
     invalidInput: 'Ungültige Eingabe.',
     notFound: (entity: string) => `${entity} nicht gefunden.`,
     routeNotFound: 'Die angeforderte URL existiert nicht.',
+    methodNotAllowed: 'Diese Methode ist für diesen Endpunkt nicht erlaubt.',
     idempotencyConflict: 'Diese Anfrage-ID wurde bereits mit abweichenden Daten verwendet.',
     schemaVersionMismatch:
       'Die Datenformat-Version der Datei passt nicht zur aktuellen Version des Systems.',

@@ -474,6 +474,15 @@ jobs:
       - name: API surface drift check — self-test
         run: bash scripts/__tests__/check-api-surface.test.sh
 
+      # Enforce AC-354 — the error-code catalogue in api.md §14.4.1 is
+      # generated from ERROR_CODES, not hand-authored. Reads the module
+      # only; no app boot, no DB/MinIO.
+      - name: Error-code catalogue drift check (AC-354)
+        run: npm run check:error-codes
+
+      - name: Error-code catalogue drift check — self-test
+        run: bash scripts/__tests__/check-error-codes.test.sh
+
       # AC-351's API-surface-completeness clause rests on one ESLint
       # selector, which fails open: a typo or a widened `ignores:` leaves
       # `npm run lint` green while the document silently goes incomplete.

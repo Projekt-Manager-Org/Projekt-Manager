@@ -19,6 +19,7 @@ For the full product specification, see [docs/spec/](docs/spec/index.md). `AC-NN
   - [Endpoint Notes](#endpoint-notes)
   - [API Surface Generation](#api-surface-generation)
   - [OpenAPI Document Generation](#openapi-document-generation)
+  - [Error-Code Catalogue Generation](#error-code-catalogue-generation)
 - [Permission Gating](#permission-gating)
 - [How to Extend](#how-to-extend)
   - [Adding a new entity](#adding-a-new-entity-eg-supplier)
@@ -453,6 +454,23 @@ Two things this deliberately does not publish. **Permission keys do not ride in 
 `@fastify/swagger` is a **devDependency**, imported lazily inside the `opts.openapi` branch in `src/server/app.ts`. The two facts that decide the import style: esbuild runs with `--packages=external`, so the specifier survives bundling verbatim either way; and the Dockerfile runs `npm prune --omit=dev` after the build, so the package is not in the runtime image. A static top-level import would therefore be evaluated on every production boot against a `node_modules` that no longer contains it — the container would fail to start. Lazily, the specifier is still in `dist/server/start.js` (one occurrence, inside the branch) but is never reached, because nothing in production passes `openapi`. The branch is a build-tooling seam, not dead code (C-DEAD): its caller is the generator, and CI exercises it on every run.
 
 One gap remains, tracked incrementally in #282 (never big-bang): **response/error schemas**. As routes gain real `response:` schemas the generator emits them automatically, and `api.md`'s per-endpoint request/response prose retires one route at a time (strangler); its normative design notes stay hand-written. Adding a `response:` schema is not a documentation-only change — Fastify serializes through `fast-json-stringify` once one is present, so a field the schema omits disappears from the wire.
+
+### Error-Code Catalogue Generation
+
+The catalogue in [api.md §14.4.1](docs/spec/api.md#1441-error-categories) is generated from `ERROR_CODES` (`src/server/errors.ts`), not hand-authored (AC-354) — fifth in the same family as the permissions matrix (AC-343), the nav matrix (AC-349), the OpenAPI document (AC-351) and the API surface table (AC-352). `scripts/generate-error-codes.ts` renders the sentence between `GENERATED:error-codes` markers and reformats via Prettier; `--check` fails CI on drift (`npm run check:error-codes`, plus the scenario harness `scripts/__tests__/check-error-codes.test.sh`).
+
+**`ERROR_CODES` is an array, and `ErrorCode` is derived from it** (`(typeof ERROR_CODES)[number]`) rather than declared beside it. A TypeScript union has no runtime form, so a union alone is not generatable — but the reason to derive rather than keep both is that the hand-kept pair had already drifted in both directions at once:
+
+| Code                                       | In the type | On the wire | In the contract                        |
+| ------------------------------------------ | ----------- | ----------- | -------------------------------------- |
+| `METHOD_NOT_ALLOWED`                       | no          | yes         | required by §14.2, absent from §14.4.1 |
+| `DRAFT_NOT_EXPORTABLE`, `EXPORT_TOO_LARGE` | yes         | yes         | absent                                 |
+
+`METHOD_NOT_ALLOWED` is the instructive one: four route sites answered it as a hand-rolled `{ code, message }` object literal, which type-checks against `reply.send(payload: unknown)` no matter what it contains. Those sites now build the response through `methodNotAllowed()`, so the code is a member of the catalogue by construction and the message comes from `STRINGS` in German like every other. The `Allow` header stays at the call site — the admitted verbs are the route's knowledge, not the factory's.
+
+What is **not** generated: the per-code prose below the end marker — which category a code specializes, what its `details` payload carries — exists nowhere in the code and stays hand-written. The catalogue is the set; the prose is the meaning.
+
+One gap this does not close: nothing yet stops a new route from hand-rolling an error body again, the way those four did. The type system cannot see it (`send` takes `unknown`), so the guard would be a lint rule in the shape of the route-registration selector in `eslint.config.js`. Tracked in #282.
 
 **Where the code sits.** `scripts/generate-openapi.ts` owns boot, env pinning, drift and I/O. Everything that decides what the document may claim — the strip, the two coverage guards, the security annotation, the validity gate — is decided by `(doc, routes)` alone in `scripts/lib/openapi-document.ts`, callable without booting an app (each mutates the document in place or throws; none is pure). Both guards index operations through one `operationKey`, so the pair cannot come to disagree about what identifies an operation. The `schema: { hide: true }` opt-out is read more strictly there than `@fastify/swagger` reads it — the plugin hides a strict superset — so the divergence fails closed, costing a build break that demands `hide: true` spelled exactly, never a silently shrunken surface.
 
