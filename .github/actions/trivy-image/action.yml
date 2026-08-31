@@ -1,0 +1,43 @@
+name: Trivy image scan
+description: >
+  Scans one locally-built image for HIGH/CRITICAL vulnerabilities and fails
+  the step on any finding. Single source of truth for the image-scan
+  policy — severity floor, unfixed handling, allowlist and cache location
+  are one decision, not one per call site.
+
+inputs:
+  image_ref:
+    description: Image reference to scan, resolved through the runner's Docker daemon.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Policy (ADR-0027 §Decision.2), stated once:
+    #
+    #   HIGH/CRITICAL only — image scans otherwise drown in LOW-severity OS
+    #   package noise. The filesystem-secret and IaC scans in `lint` carry
+    #   no severity filter for the opposite reason; see that job.
+    #
+    #   No `ignore-unfixed` — per the project's refuse-or-block-never-
+    #   downgrade principle a no-fix-yet CVE is still a finding. When one
+    #   becomes operationally tolerable the entry goes in .trivyignore with
+    #   owner + reason + expiry ≤90d, gated by check-allowlist-schema.sh.
+    #
+    #   cache-dir is moved OUT of the workspace. The action defaults it to
+    #   `${{ github.workspace }}/.cache/trivy`, which is inside the Docker
+    #   build context: the ~1.3 GB unpacked vuln DB then lands in every
+    #   subsequent build's context, invalidating `COPY . .` and costing a
+    #   full rebuild of everything downstream of it. Measured at 1.33 GB of
+    #   context transfer on run 33424054809 before this moved. .dockerignore
+    #   carries a `.cache` entry as the durable guard; this keeps the bytes
+    #   from being written there at all.
+    - name: Trivy — image vuln scan (HIGH/CRITICAL)
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        scan-type: image
+        image-ref: ${{ inputs.image_ref }}
+        severity: HIGH,CRITICAL
+        exit-code: '1'
+        trivyignores: .trivyignore
+        cache-dir: ${{ runner.temp }}/trivy-cache

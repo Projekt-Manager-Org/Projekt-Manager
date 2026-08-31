@@ -158,7 +158,7 @@ This job was originally path-filtered, and the filter was load-bearing in the wr
 
 **Backup image at PR time (#219).** `Dockerfile.backup`'s `FROM ghcr.io/.../projekt-manager:${APP_IMAGE_TAG}` references the GHCR copy of the app image, which does not exist while the PR is still open. Without indirection the backup image's CVE surface (its own `apk add` layers on top of `node:22-alpine`, plus everything the app image carries) could only be scanned after publish. That mode put `main` red in #218 — a base-layer CVE landed via a Renovate auto-merge that passed PR-CI, then the post-merge backup scan failed. To close it, `build-scan-smoke` exports the app image as an OCI layout and aliases the GHCR reference via buildx's `build-contexts` (`oci-layout://`), so the backup build resolves locally and gets scanned before anything is pushed. No `Dockerfile.backup` change, no driver downgrade, no registry round-trip.
 
-The same aliasing is what lets the whole build → scan → smoke sequence run ahead of the publish (#355): `push-images` is a separate composite that only ever runs after it.
+The same aliasing is what lets the whole build → scan → smoke sequence run ahead of any push (#355). What follows it is a digest push, which carries no tag, and then `tag-images` — a separate composite gated on every other check — is what makes the result reachable by name.
 
 Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of most PRs skipping it. That is the price of the gate being a gate; the ~5 min post-merge rebuild it replaces makes it roughly neutral per merged PR.
 
