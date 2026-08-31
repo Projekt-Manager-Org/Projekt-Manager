@@ -29,6 +29,14 @@ import { STRINGS } from '../config/strings.js';
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
+      // Headers the status is not valid without (e.g. `Allow` on a 405,
+      // RFC 9110 §15.5.6). Written here, with the body, so the pair
+      // cannot come apart at an individual call site.
+      if (error.headers) {
+        for (const [name, value] of Object.entries(error.headers)) {
+          reply.header(name, value);
+        }
+      }
       return reply.code(error.statusCode).send(error.toResponse());
     }
 

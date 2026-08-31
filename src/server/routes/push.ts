@@ -45,13 +45,13 @@ export function pushPublicRoutes(vapidPublicKey: string | null) {
     // Non-GET verbs on the same path → explicit 405, not the default
     // 404. Web Push clients that accidentally POST to this path get a
     // meaningful response. Fastify's router does not auto-populate
-    // `Allow` so we set it here.
+    // `Allow`; the factory carries it, so the header cannot be dropped
+    // here without dropping the status with it.
     app.route({
       method: ['POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/push/vapid-public-key',
-      handler: async (_request, reply) => {
-        reply.header('allow', 'GET');
-        return reply.code(405).send(methodNotAllowed().toResponse());
+      handler: async () => {
+        throw methodNotAllowed(['GET']);
       },
     });
   };

@@ -135,9 +135,8 @@ export function eventsRoutes(db: Database) {
     app.route({
       method: ['POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/events',
-      handler: async (_request, reply) => {
-        reply.header('allow', 'GET');
-        return reply.code(405).send(methodNotAllowed().toResponse());
+      handler: async () => {
+        throw methodNotAllowed(['GET']);
       },
     });
   };

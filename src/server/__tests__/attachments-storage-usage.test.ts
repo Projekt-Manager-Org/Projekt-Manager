@@ -667,6 +667,10 @@ describe('Project storage usage tracking', () => {
           headers: { cookie: `session=${ownerToken}` },
         });
         expect(res.statusCode).toBe(405);
+        // RFC 9110 §15.5.6 — mandatory on a 405. Carried by the factory
+        // rather than set here, so this asserts the wiring reaches the
+        // wire, not that this call site remembered it (AC-354).
+        expect(res.headers['allow']).toBe('GET');
         const body = res.json() as { code?: string; message?: string };
         // The status alone left the body untested: this guard answered
         // with a code absent from the catalogue and an English message
@@ -775,6 +779,10 @@ describe('Project storage usage tracking', () => {
           headers: { cookie: `session=${ownerToken}` },
         });
         expect(res.statusCode).toBe(405);
+        // RFC 9110 §15.5.6 — mandatory on a 405. Carried by the factory
+        // rather than set here, so this asserts the wiring reaches the
+        // wire, not that this call site remembered it (AC-354).
+        expect(res.headers['allow']).toBe('GET');
         const body = res.json() as { code?: string; message?: string };
         // The status alone left the body untested: this guard answered
         // with a code absent from the catalogue and an English message

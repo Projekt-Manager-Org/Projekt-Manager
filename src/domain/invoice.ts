@@ -261,6 +261,15 @@ export function negateInvoiceLines(lines: InvoiceLine[]): InvoiceLine[] {
   }));
 }
 
+/**
+ * Canonical `Invoice.number` shape — api.md §14.4.1, mirrored by the
+ * `invoices` CHECK constraint in the baseline migration. The DB is the
+ * primary enforcement; this constant exists so the application-side
+ * defense-in-depth detector checks the same shape rather than a second
+ * hand-written regex that can drift from it.
+ */
+export const INVOICE_NUMBER_PATTERN = /^(RE|ST)-\d{4}-\d{4,}$/;
+
 /** Format an invoice number from a sequence kind, year, and integer value. */
 export function formatInvoiceNumber(
   kind: InvoiceSequenceKind,

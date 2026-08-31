@@ -79,6 +79,13 @@ export class AppError extends Error {
     public readonly userMessage: string,
     public readonly statusCode: number,
     public readonly details?: unknown,
+    /**
+     * Response headers the status code is not valid without. Applied by
+     * the global handler (`error-handler.ts`) in the same place the body
+     * is written, so a status whose contract includes a header cannot
+     * reach the wire missing it — see `methodNotAllowed()`.
+     */
+    public readonly headers?: Readonly<Record<string, string>>,
   ) {
     super(userMessage);
     this.name = 'AppError';
@@ -268,12 +275,19 @@ export function routeNotFound(): AppError {
  * api.md §14.4.1. Distinct from `routeNotFound()`: the endpoint exists,
  * the verb does not.
  *
- * Callers set the `Allow` header themselves before sending, because the
- * admitted verbs are the route's knowledge and not this factory's.
- * Fastify's router does not populate `Allow` for these guards.
+ * The admitted verbs are the route's knowledge, so the caller supplies
+ * them — but it supplies them *here* rather than setting the header
+ * itself. RFC 9110 §15.5.6 makes `Allow` mandatory on a 405 and
+ * Fastify's router does not populate it for these guards, so a guard
+ * that sets the status and forgets the header ships an RFC-non-compliant
+ * response that nothing notices. Taking the verbs as an argument makes
+ * the pair unforgettable by construction: the header rides on the error
+ * and the global handler writes it with the body.
  */
-export function methodNotAllowed(): AppError {
-  return new AppError('METHOD_NOT_ALLOWED', STRINGS.errors.methodNotAllowed, 405);
+export function methodNotAllowed(allowed: readonly string[]): AppError {
+  return new AppError('METHOD_NOT_ALLOWED', STRINGS.errors.methodNotAllowed, 405, undefined, {
+    allow: allowed.join(', '),
+  });
 }
 
 /**
@@ -358,6 +372,18 @@ export function dekUnwrapFailed(): AppError {
  */
 export function invoiceFrozen(): AppError {
   return new AppError('INVOICE_FROZEN', STRINGS.errors.invoiceFrozen, 422);
+}
+
+/**
+ * A minted `Invoice.number` does not match the canonical shape
+ * `^(RE|ST)-\d{4}-\d{4,}$` — api.md §14.4.1. Defense in depth: the DB
+ * CHECK constraint is the primary enforcement, so reaching this code
+ * means a programmer error or a corrupt `invoice_sequence` row, and the
+ * client cannot recover. 500 rather than 4xx for exactly that reason —
+ * the caller did nothing wrong.
+ */
+export function invoiceNumberFormat(): AppError {
+  return new AppError('INVOICE_NUMBER_FORMAT', STRINGS.errors.serverError, 500);
 }
 
 /**

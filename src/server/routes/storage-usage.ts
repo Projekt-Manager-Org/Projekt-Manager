@@ -60,9 +60,8 @@ export function storageUsageRoutes(db: Database) {
     app.route({
       method: ['POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/projects/:id/storage-usage',
-      handler: async (_request, reply) => {
-        reply.header('allow', 'GET');
-        return reply.code(405).send(methodNotAllowed().toResponse());
+      handler: async () => {
+        throw methodNotAllowed(['GET']);
       },
     });
 
@@ -83,9 +82,8 @@ export function storageUsageRoutes(db: Database) {
     app.route({
       method: ['POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/storage-usage',
-      handler: async (_request, reply) => {
-        reply.header('allow', 'GET');
-        return reply.code(405).send(methodNotAllowed().toResponse());
+      handler: async () => {
+        throw methodNotAllowed(['GET']);
       },
     });
   };

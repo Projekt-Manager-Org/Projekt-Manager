@@ -7,21 +7,85 @@
  * enforced by the compiler, the publication by the drift check — so what
  * is left to test here is what neither can see.
  *
- * A duplicate entry is the one corruption the compiler is blind to:
- * `(typeof ERROR_CODES)[number]` deduplicates as a union, so a code
- * pasted twice type-checks perfectly and publishes twice.
+ * Two such gaps. A duplicate entry: `(typeof ERROR_CODES)[number]`
+ * deduplicates as a union, so a code pasted twice type-checks perfectly
+ * and publishes twice. And an *unproducible* entry: the compiler proves
+ * every `AppError` carries a catalogued code, but nothing proves the
+ * converse — a code no factory can mint publishes a contract the server
+ * cannot honour. That direction is invisible to the generator by
+ * construction (it reads the array, which is exactly what is wrong), and
+ * it had already drifted: `INVOICE_NUMBER_FORMAT` was catalogued in
+ * §14.4.1 and in the array with no factory and no producer anywhere.
  *
  * `methodNotAllowed()` is pinned because it is the code the catalogue
  * was missing: four route sites answered `405 METHOD_NOT_ALLOWED` with a
  * hand-rolled object literal, outside `AppError` and outside the type,
  * while api.md §14.2 required the response in six places. Routing those
  * sites through a factory is what puts the code under the compiler; this
- * pins the shape they now emit.
+ * pins the shape they now emit, `Allow` included.
  */
 
 import { describe, it, expect } from 'vitest';
-import { ERROR_CODES, methodNotAllowed } from '../errors.js';
+import * as errors from '../errors.js';
+import { AppError, ERROR_CODES, methodNotAllowed, type ErrorCode } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
+
+/**
+ * Every factory, with arguments good enough to call it. Hand-maintained
+ * on purpose — the arities differ and a reflective caller would have to
+ * guess payload shapes — but not hand-*trusted*: `covers every exported
+ * factory` below fails on an entry that is missing from this table, so
+ * the table cannot silently fall behind the module.
+ */
+const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
+  ['invalidCredentials', () => errors.invalidCredentials()],
+  ['unauthenticated', () => errors.unauthenticated()],
+  ['sessionExpired', () => errors.sessionExpired()],
+  ['notPermitted', () => errors.notPermitted()],
+  ['validationError', () => errors.validationError('any')],
+  ['conflict', () => errors.conflict('any')],
+  ['idempotencyConflict', () => errors.idempotencyConflict()],
+  ['schemaVersionMismatch', () => errors.schemaVersionMismatch(1, 2)],
+  ['targetNotEmpty', () => errors.targetNotEmpty()],
+  ['restoreConfirmationMismatch', () => errors.restoreConfirmationMismatch()],
+  ['missingUserRefs', () => errors.missingUserRefs({ missingUserIds: [], references: [] })],
+  ['exportJobActive', () => errors.exportJobActive('job-id')],
+  ['importJobActive', () => errors.importJobActive('job-id')],
+  ['exportJobNotReady', () => errors.exportJobNotReady()],
+  ['uploadOffsetConflict', () => errors.uploadOffsetConflict()],
+  ['uploadTooLarge', () => errors.uploadTooLarge()],
+  ['uploadNotAccepted', () => errors.uploadNotAccepted()],
+  ['notFound', () => errors.notFound()],
+  ['routeNotFound', () => errors.routeNotFound()],
+  ['methodNotAllowed', () => errors.methodNotAllowed(['GET'])],
+  ['gone', () => errors.gone('any')],
+  ['rateLimited', () => errors.rateLimited()],
+  ['serverError', () => errors.serverError()],
+  ['bulkLimitExceeded', () => errors.bulkLimitExceeded({ limits: { maxFiles: 1, maxBytes: 1 } })],
+  ['dekUnwrapFailed', () => errors.dekUnwrapFailed()],
+  ['invoiceFrozen', () => errors.invoiceFrozen()],
+  ['invoiceNumberFormat', () => errors.invoiceNumberFormat()],
+  ['invoiceProjectState', () => errors.invoiceProjectState()],
+  ['invoiceNotIssued', () => errors.invoiceNotIssued()],
+  ['invoiceAlreadyCancelled', () => errors.invoiceAlreadyCancelled()],
+  ['companyProfileRequired', () => errors.companyProfileRequired({ missingFields: [] })],
+  ['customerHasInvoices', () => errors.customerHasInvoices({ invoiceCount: 1 })],
+  ['projectHasInvoices', () => errors.projectHasInvoices({ invoiceCount: 1 })],
+  ['draftNotExportable', () => errors.draftNotExportable({ invoiceId: 'invoice-id' })],
+  ['exportTooLarge', () => errors.exportTooLarge({ total: 2, cap: 1 })],
+];
+
+/**
+ * Exported functions that are deliberately not factories. Declared
+ * rather than pattern-matched so adding one is a decision that shows up
+ * in review instead of a name that happens to miss a heuristic.
+ */
+const NON_FACTORY_EXPORTS = new Set([
+  'AppError', // the class itself
+  'extractPgConstraint', // error-chain readers, return string | null
+  'extractSqlState',
+  'mapFastify4xx', // re-wraps a FastifyError; mints no code of its own
+]);
 
 describe('AC-354: error-code catalogue', () => {
   it('declares each code exactly once', () => {
@@ -31,11 +95,44 @@ describe('AC-354: error-code catalogue', () => {
     const seen = new Set(ERROR_CODES);
     expect(seen.size).toBe(ERROR_CODES.length);
   });
+
+  it('covers every exported factory', () => {
+    const tabled = new Set(FACTORY_CALLS.map(([name]) => name));
+    const untabled = Object.entries(errors)
+      .filter(([name, value]) => typeof value === 'function' && !NON_FACTORY_EXPORTS.has(name))
+      .map(([name]) => name)
+      .filter((name) => !tabled.has(name));
+
+    // A new factory added to errors.ts without a table entry lands here,
+    // which is what keeps the membership assertions below honest.
+    expect(untabled).toEqual([]);
+  });
+
+  it('every factory mints a catalogued code', () => {
+    // The compiler already proves this — `AppError`'s first parameter is
+    // `ErrorCode`. Asserted anyway because it is the cheap half of the
+    // pair and it makes the expensive half below readable as a contract
+    // rather than as a lone set comparison.
+    for (const [name, invoke] of FACTORY_CALLS) {
+      expect(ERROR_CODES, `${name}() minted an uncatalogued code`).toContain(invoke().code);
+    }
+  });
+
+  it('every catalogued code is producible by a factory', () => {
+    const producible = new Set<ErrorCode>(FACTORY_CALLS.map(([, invoke]) => invoke().code));
+    const unproducible = ERROR_CODES.filter((code) => !producible.has(code));
+
+    // The direction neither the compiler nor the generator can see. A
+    // code here is published in api.md §14.4.1 as part of the API
+    // contract while no code path can put it on the wire — the
+    // catalogue over-promising rather than drifting.
+    expect(unproducible).toEqual([]);
+  });
 });
 
 describe('AC-354: methodNotAllowed()', () => {
   it('carries the catalogued code, 405, and the German user message', () => {
-    const err = methodNotAllowed();
+    const err = methodNotAllowed(['GET']);
 
     expect(err.code).toBe('METHOD_NOT_ALLOWED');
     expect(ERROR_CODES).toContain(err.code);
@@ -49,5 +146,16 @@ describe('AC-354: methodNotAllowed()', () => {
       code: 'METHOD_NOT_ALLOWED',
       message: STRINGS.errors.methodNotAllowed,
     });
+  });
+
+  it('carries Allow, so a guard cannot ship the status without the header', () => {
+    // RFC 9110 §15.5.6 makes `Allow` mandatory on a 405 and Fastify does
+    // not populate it for these guards. Taking the verbs as a required
+    // argument is what makes the pair inseparable — before this, the
+    // status and the header were two statements at each call site that
+    // had to agree by inspection, and a fifth guard forgetting the
+    // header would have shipped green.
+    expect(methodNotAllowed(['GET']).headers).toEqual({ allow: 'GET' });
+    expect(methodNotAllowed(['GET', 'PUT']).headers).toEqual({ allow: 'GET, PUT' });
   });
 });
