@@ -142,9 +142,10 @@ echo "Case: an access gate no session gate reaches fails the wiring guard"
 # the ungated `/api/health` route. Every access gate in the real route
 # set already sits behind a session gate, so without the seam the
 # generator's `assertGatesAuthenticate` call could be deleted and every
-# case above would stay green. The document is byte-identical to a clean
-# run, so exit 2 here also proves the guard runs BEFORE the drift
-# comparison rather than after it.
+# case above would stay green. Here it would not: the injected gate
+# populates that row's `Access` cell, so an unguarded run reports plain
+# drift (exit 1) against the staged copy. Asserting exit 2 is therefore
+# also what pins the guard to run BEFORE the drift comparison.
 d="$(mktmp_doc)"
 INJECT_GATE=1
 assert_case 2 "unauthenticated access gate" "$d" "no session gate reaches"
