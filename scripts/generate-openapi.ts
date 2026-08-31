@@ -44,9 +44,10 @@
  * Two artifacts describing the same gates must not read them twice.
  *
  * What is left here is boot, drift and I/O. The document's own shaping
- * and the guards over it are pure functions of `(doc, routes)` and live
+ * and the guards over it are decided by `(doc, routes)` alone and live
  * in `scripts/lib/openapi-document.ts`; this file calls them in one line
- * each — strip, guard, annotate, validate.
+ * each — strip, guard, annotate, validate — and each one mutates `doc`
+ * in place or throws.
  *
  * Exit codes: 0 success / in-sync; 1 drift found (--check only); 2
  * toolchain error (missing/unreadable target in --check mode, or the app
@@ -157,7 +158,8 @@ async function buildExpectedDoc(): Promise<string> {
     });
     await app.ready();
 
-    const doc = stripUnsupportedClaims(app.swagger() as DocLike);
+    const doc = app.swagger() as DocLike;
+    stripUnsupportedClaims(doc);
 
     // Fault-injection seam for the orphaned-operation case in
     // scripts/__tests__/check-openapi-doc.test.sh. Every operation

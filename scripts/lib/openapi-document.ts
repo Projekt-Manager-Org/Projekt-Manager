@@ -1,10 +1,14 @@
 /**
  * The OpenAPI document's shaping and the guards over it (AC-351, AC-353).
  *
- * Everything here is a pure function of the document `@fastify/swagger`
- * produced and the routes `buildApp()` registered — no boot, no env, no
- * filesystem. `generate-openapi.ts` owns those, and calls into this in
- * one line each: strip → guard → annotate → validate.
+ * Everything here is decided by `(doc, routes)` alone — the document
+ * `@fastify/swagger` produced and the routes `buildApp()` registered. No
+ * boot, no env, no filesystem: `generate-openapi.ts` owns those, and
+ * calls into this in one line each: strip → guard → annotate → validate.
+ *
+ * Not pure, though: each of the four functions mutates `doc` in place or
+ * throws, and none returns a value. One convention for the module, so no
+ * call site reads as if it were dropping a result that mattered.
  *
  * Split out for size (C-SIZE): the generator's own header, env pinning
  * and drift plumbing are a separate concern from what the document is
@@ -76,7 +80,7 @@ function isSyntheticResponses(responses: Record<string, unknown> | undefined): b
  * Real response schemas, once routes declare them, flow through
  * untouched.
  */
-export function stripUnsupportedClaims(doc: DocLike): DocLike {
+export function stripUnsupportedClaims(doc: DocLike): void {
   for (const item of Object.values(doc.paths ?? {})) {
     for (const method of HTTP_METHODS) {
       const op = item[method] as OperationLike | undefined;
@@ -92,7 +96,6 @@ export function stripUnsupportedClaims(doc: DocLike): DocLike {
   ) {
     delete doc.components;
   }
-  return doc;
 }
 
 /**
@@ -159,7 +162,7 @@ function operationKey(method: string, openApiPath: string): string {
  * requirement, which understates the protection the server enforces.
  * `assertEveryRoutePublished` covers the other direction.
  */
-export function applySecurity(doc: DocLike, routes: RouteOptions[]): DocLike {
+export function applySecurity(doc: DocLike, routes: RouteOptions[]): void {
   const gatedByKey = new Map<string, boolean>();
   for (const route of routes) {
     const gated = isSessionGated(route);
@@ -186,7 +189,6 @@ export function applySecurity(doc: DocLike, routes: RouteOptions[]): DocLike {
   }
 
   doc.components = { ...doc.components, securitySchemes: SECURITY_SCHEMES };
-  return doc;
 }
 
 /**
@@ -223,12 +225,14 @@ export function assertEveryRoutePublished(doc: DocLike, routes: RouteOptions[]):
   const missing: string[] = [];
   for (const route of withoutAutoHeadRoutes(routes)) {
     // Deliberately stricter than `@fastify/swagger`'s own
-    // `shouldRouteHide`, which is truthy on `schema.hide` and also hides
-    // a route tagged with its `hiddenTag` (default `X-HIDDEN`). Every
-    // divergence fails closed — a route this publishes but the plugin
-    // hides fails the build, rather than passing unpublished — so the
-    // cost of the narrower test is a build break demanding `hide: true`
-    // spelled exactly, and never a silently shrunken surface.
+    // `shouldRouteHide`, which hides a strict superset: any TRUTHY
+    // `schema.hide`, a route tagged with its `hiddenTag` (default
+    // `X-HIDDEN`), and — under `hideUntagged`, which this generator
+    // leaves at its default `false` — every untagged route. So each
+    // divergence fails closed: a route this expects published but the
+    // plugin hides breaks the build, rather than passing unpublished.
+    // The cost is a build break demanding `hide: true` spelled exactly,
+    // never a silently shrunken surface.
     if ((route.schema as { hide?: unknown } | undefined)?.hide === true) continue;
     for (const method of methodsOf(route)) {
       if (!published.has(operationKey(method, toOpenApiPath(route.url)))) {
