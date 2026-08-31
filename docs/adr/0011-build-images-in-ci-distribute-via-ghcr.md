@@ -39,41 +39,66 @@ Build the production `app` image in GitHub Actions, push to GitHub Container Reg
 
 **CI pipeline:**
 
-- Build/scan/smoke/push lives in a composite action `.github/actions/build-scan-push` — single source of truth for the rebuild path. Two callers in `.github/workflows/ci.yml`:
-  - `build-and-push` job — runs on `workflow_dispatch` (operator feature-branch dispatch). Calls the composite directly.
-  - `promote` job — runs on `push: main`. Tries promote-on-merge (see next section); falls through to the same composite on guard failure.
-- Not path-filtered — a TypeScript change changes image contents without touching `Dockerfile`, so path filtering would ship stale images.
+Two composite actions in `.github/actions/`, deliberately split at the publish boundary so validation cannot be skipped and publishing cannot happen without it:
+
+- **`build-scan-smoke`** — builds both images into the runner's local store, Trivy-scans both, boots the stack and runs the smoke. Publishes nothing.
+- **`push-images`** — logs in to GHCR and pushes both. Every layer is a gha cache hit from the preceding `build-scan-smoke`, so this re-materialises rather than rebuilds.
+
+Callers in `.github/workflows/ci.yml`:
+
+| Job       | Event                                                               | Runs                                                              |
+| --------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `docker`  | every PR, `merge_group`, `workflow_dispatch`                        | compose validation → `build-scan-smoke` → Tier 1 round-trip       |
+| `publish` | PR (non-fork) + `workflow_dispatch`, `needs: [check, lint, docker]` | `push-images` → `sha-<pr-tip>` + `<branch-slug>`                  |
+| `promote` | `push: main`                                                        | re-tag (see next section); fallback runs both composites in order |
+
+- Neither job is path-filtered. A TypeScript change alters image contents without touching `Dockerfile`, so a filter ships stale images — and a skipped required check counts as met, which is how `main` accumulated commits whose container was first built post-merge (#355).
 - `docker/login-action` authenticates to GHCR with the built-in `GITHUB_TOKEN` (no separate secret).
 - `docker/build-push-action` with `cache-from: type=gha, cache-to: type=gha,mode=max` — warm builds ~10–15s.
-- Jobs declare `packages: write` (default is `contents: read`); `promote` additionally declares `pull-requests: read` for the PR-discovery API call.
+- `publish` and `promote` declare `packages: write` (default is `contents: read`); `promote` additionally declares `pull-requests: read` for the PR-discovery API call. `docker` declares neither — it cannot publish even by mistake.
+- `concurrency.cancel-in-progress` exempts `push`. On a PR the newer run re-validates the same branch, so cancelling is free; on `push: main` the run is the sole producer of that commit's artifact, and cancelling it leaves the commit unpublishable (#355 §5).
 
 **Build once, promote on merge:**
 
 Industry pattern (Vercel, Netlify, Cloudflare Pages, AWS CodePipeline, Heroku): build the artifact once during the PR/preview phase, then promote it to production by re-tagging — do not rebuild on merge. Named practice: **immutable artifact + tag promotion**. Aligns forward-looking with SLSA Level 2/3 single-build provenance.
 
+**The build stage is CI's, not an operator's.** The first version of this ADR made step 1 a manual `gh workflow run ci.yml --ref <branch>`. A pipeline stage gated on a human remembering a CLI invocation is not a pipeline stage: the dispatch fired **0 times in 100 CI runs**, guard 3 therefore failed on **100% of merges**, and every merge paid the full rebuild this section exists to avoid (#355). The dispatch survives as an operator escape hatch for deploying a feature branch to the VPS — it is no longer load-bearing.
+
 Flow:
 
-1. Operator opens PR, fires `workflow_dispatch` on the PR branch. `build-and-push` runs the composite: app + backup built, Trivy-scanned, smoke-tested end-to-end, pushed to GHCR as `sha-<pr-tip>` + `<branch-slug>`. Operator deploys to VPS for validation.
+```
+PR ──► docker    build ─► scan ─► smoke            (required check, every PR)
+       publish   push sha-<pr-tip> + <branch-slug> (needs: check + lint + docker)
 
-   **Precondition: the promotable artifact is the one built from the _final_ PR tip.** Guard 3 resolves `sha-<pr-tip>` at merge time, so any commit pushed after a dispatch — review fix, rebase, force-push — orphans that artifact and sends the merge down the rebuild path. Re-dispatch once the PR is final. Mid-PR dispatches for VPS testing stay useful; they are simply not the ones that get promoted.
+merge ──► promote  guard 1,2,3 ✓ ──► imagetools create ──► sha-<merge> + main   ~30s
+                                 ✗ ──► build ─► scan ─► smoke ─► push           ~5 min
+```
 
-2. PR merges to `main` (squash by convention). `promote` fires on `push: main`. Three guards:
+1. PR opens. `docker` builds both images, scans both, and smokes them. `publish` waits on `check`, `lint` **and** `docker`, then pushes `sha-<pr-tip>` + `<branch-slug>`. Nothing reaches GHCR that has not passed every gate.
+
+   **Precondition: the promotable artifact is the one built from the _final_ PR tip.** Guard 3 resolves `sha-<pr-tip>` at merge time. Each push to the PR produces its own `sha-<tip>`, so this holds automatically — a force-push that discards the last-built tip is the one case that orphans the artifact and sends the merge down the rebuild path.
+
+2. PR merges to `main` (squash — the only method enabled). `promote` fires on `push: main`. Three guards:
    - **PR discovery** — `gh api repos/.../commits/${GITHUB_SHA}/pulls` must return the PR's head SHA. Direct pushes to `main` (hot-fix) return empty → fallback.
-   - **Tree equality** — `tree(merge-sha) == tree(pr-tip)`. Squash merges preserve trees; merge-commit / rebase strategies (also enabled on the repo) may pull in `main` and diverge → fallback.
-   - **Source image present on GHCR** — `docker manifest inspect ghcr.io/.../sha-<pr-tip>` must succeed. Renovate auto-merge or dispatch skipped entirely → fallback.
-3. Happy path: `docker buildx imagetools create -t <new-tag> <src-tag>` for both images, creating `sha-<merge-sha>` + `main` from the dispatched `sha-<pr-tip>`. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke — the artifact is bit-for-bit identical to what was validated during dispatch.
-4. Fallback: call the same composite the dispatch ran. ~5 min on main's (cold-ish) cache scope. Operators see a `::warning::` in the run log explaining which guard failed.
+   - **Tree equality** — `tree(merge-sha) == tree(pr-tip)`. Squash preserves the tree, but `strict_required_status_checks_policy` still permits `main` advancing between the last green run and the merge, folding those commits into the squash → fallback.
+   - **Source image present on GHCR** — `docker manifest inspect ghcr.io/.../sha-<pr-tip>` must succeed. Fork PR, or a force-push after the last green run → fallback.
+3. Happy path: `docker buildx imagetools create -t <new-tag> <src-tag>` for both images, creating `sha-<merge-sha>` + `main` from `sha-<pr-tip>`. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke — the artifact is bit-for-bit identical to what `docker` validated before the merge.
+4. Fallback: `build-scan-smoke` then `push-images`, in that order, against the merge SHA. ~5 min on main's (cold-ish) cache scope. Operators see a `::warning::` in the run log explaining which guard failed.
 
 PR-tip discovery is via GitHub's merge metadata (`gh api .../commits/<sha>/pulls`) and not via a PR label. A label channel would persist past a force-push-then-merge and could promote stale bytes; using the API ties discovery to the actual merge.
 
-Promotion is exact-artifact only. `GIT_SHA` is baked into the client bundle for the footer version chip, so every commit yields distinct image bytes — there is no "close enough" ancestor to promote. Guard 3's exact-SHA lookup is the only sound key, and a rebuild after a post-dispatch commit is correct behavior, not waste.
+Promotion is exact-artifact only. `GIT_SHA` is baked into the client bundle for the footer version chip, so every commit yields distinct image bytes — there is no "close enough" ancestor to promote. Guard 3's exact-SHA lookup is the only sound key, and a rebuild when the tip moved after the last green run is correct behavior, not waste.
+
+**Fork PRs do not publish.** A fork's `GITHUB_TOKEN` gets no `packages: write`, so `publish` is skipped for them. `docker` still runs, so a fork PR is validated exactly like any other; its merge simply takes the fallback rebuild. Deliberate, not a gap.
+
+**Publishing follows validation, never precedes it.** `build-scan-smoke` aliases the locally-built images to their GHCR refs (`docker tag`) before `compose up`. No compose file sets `pull_policy`, so compose defaults to `missing` and resolves both services from the local store — the smoke exercises the real compose config against the exact bytes just scanned, with nothing published. The earlier ordering pushed first so the smoke could exercise the `compose pull` path; that bought a registry round-trip at the price of publishing an unvalidated image, and a smoke failure left a pullable `sha-<commit>` behind (#355 §1). The round-trip is exercised by the next `scripts/deploy.sh` run regardless.
 
 Trade-offs accepted:
 
-- **Smoke runs only on dispatch.** Promote re-tags identical bytes; the smoke that ran against those bytes is the smoke for the artifact. A runner-environment difference between dispatch and merge runners is theoretically possible but the bytes are the same.
-- **Trivy DB binds to dispatch time.** CVEs published between dispatch and merge slip past until the daily `security-scheduled.yml` catches them. Dispatch-to-merge is typically minutes to hours.
-- **GHCR tag count.** New `sha-<pr-tip>` tags accumulate per dispatched PR in addition to `sha-<merge-sha>` per merge. ~2× under existing retention.
-- **Smoke runs after the push.** The composite pushes both images, then smokes — deliberately, so the smoke exercises the real `compose pull` path rather than local tags. A smoke failure therefore leaves a pullable `sha-<commit>` on GHCR: the run goes red, but `scripts/deploy.sh <sha>` would still resolve it. Trivy gates its own image's push, so a scan failure never reaches that state — an app-scan failure pushes nothing, and a backup-scan failure leaves the app tag published but no backup tag, which `deploy.sh` (`compose --profile backup pull app backup`) refuses.
+- **Every PR pays the image build.** ~6–7 min for `docker` + `publish`, where the path filter previously skipped it on most PRs. Against that, the ~5 min post-merge rebuild is gone and the runtime smoke becomes a pre-merge gate. Roughly neutral per merged PR; strictly better per merged defect.
+- **Trivy DB binds to PR time.** CVEs published between the last PR run and the merge slip past until the daily `security-scheduled.yml` catches them. Typically minutes to hours.
+- **GHCR tag count.** `sha-<pr-tip>` tags accumulate per PR push in addition to `sha-<merge-sha>` per merge. ~2× under existing retention.
+- **`publish` re-materialises rather than reusing `docker`'s bytes.** The two run on different runners, so the local image store does not carry over; `publish` rebuilds from the gha cache both jobs share. Identical build-args and cache keys make this a layer-for-layer cache hit, but it is a cache-identity assumption rather than a proof. Alternatives — uploading the ~400 MB OCI layout as a workflow artifact, or pushing from `docker` and gating the tag afterwards — cost more than the assumption is worth at this scale.
 
 **Tagging:**
 
@@ -119,10 +144,10 @@ Trade-offs accepted:
 
 ## Dep lifecycle health (as of 2026-05-15)
 
-| Dep                              | Status                         | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GitHub Actions                   | Active GitHub-managed platform | Action SHA pins live in `.github/workflows/`; Renovate maintains them under [ADR-0027](0027-continuous-dependency-updates-with-supply-chain-scanning.md). Pinned actions per [#187](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/187): `actions/checkout`, `actions/setup-node`, `docker/build-push-action`, `docker/login-action`, `docker/setup-buildx-action`, `dorny/paths-filter`, `ludeeus/action-shellcheck` (all on current latest, no published advisories). |
-| GitHub Container Registry (GHCR) | Active GitHub-managed service  | Free for public repos and OSS; private retention controlled via repo settings. No published deprecation path; exit ramp would be Docker Hub or self-hosted Distribution (alternatives in this ADR).                                                                                                                                                                                                                                                                                    |
+| Dep                              | Status                         | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub Actions                   | Active GitHub-managed platform | Action SHA pins live in `.github/workflows/`; Renovate maintains them under [ADR-0027](0027-continuous-dependency-updates-with-supply-chain-scanning.md). Pinned actions per [#187](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/187): `actions/checkout`, `actions/setup-node`, `docker/build-push-action`, `docker/login-action`, `docker/setup-buildx-action`, `ludeeus/action-shellcheck` (all on current latest, no published advisories). `dorny/paths-filter` was dropped with the `changes` job (#355). |
+| GitHub Container Registry (GHCR) | Active GitHub-managed service  | Free for public repos and OSS; private retention controlled via repo settings. No published deprecation path; exit ramp would be Docker Hub or self-hosted Distribution (alternatives in this ADR).                                                                                                                                                                                                                                                                                                                              |
 
 ## References
 

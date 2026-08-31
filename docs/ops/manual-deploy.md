@@ -3,7 +3,7 @@
 Pull-based deploy over WireGuard per ADR-0012. CI builds and pushes the image to GHCR; the operator pulls it onto the VPS.
 
 ```
-operator dispatch on PR -> CI build-and-push -> GHCR (sha-<pr-tip>, <branch-slug>)
+PR opened -> CI docker (build+scan+smoke) -> publish -> GHCR (sha-<pr-tip>, <branch-slug>)
                                                   |
 PR merge to main         -> CI promote        -> GHCR (sha-<merge-sha>, main)
                                                   |
@@ -40,7 +40,7 @@ Have `~/secrets/age-backup.key` open on the operator workstation before invoking
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
 
 # Deploy a topic branch built via the operator's manual CI dispatch
-# (gh workflow run ci.yml --ref <branch> — see ci.yml's build-and-push job)
+# (gh workflow run ci.yml --ref <branch> — escape hatch; a PR publishes the same tags)
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/fix/some-slug
 
 # Deploy a specific SHA (rollback)

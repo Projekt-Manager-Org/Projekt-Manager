@@ -36,7 +36,7 @@ The `deploy` user itself is kept: still owns `/opt/projekt-manager`, still in `d
 
 ### What stays
 
-- `.github/workflows/ci.yml` — `lint`, `check-shard`, `check`, `changes`, `docker`, `build-and-push` unchanged.
+- `.github/workflows/ci.yml` — `lint`, `check-shard`, `check`, `docker`, `publish` unchanged.
 - `ghcr.io/projekt-manager-org/projekt-manager` with `sha-<commit>` and `<branch-slug>` tags — ADR-0011 untouched.
 - Rollback — any previous SHA tag can be redeployed (now via `./deploy.sh <sha>`).
 - SHA assertion after `git checkout` and smoke test (`docker compose exec -T app node -e "fetch('/api/health')"`) — both preserved in `scripts/deploy.sh`.
