@@ -42,22 +42,27 @@ Build the production `app` image in GitHub Actions, push to GitHub Container Reg
 Two composite actions in `.github/actions/`, deliberately split at the publish boundary so validation cannot be skipped and publishing cannot happen without it:
 
 - **`build-scan-smoke`** — builds both images into the runner's local store, Trivy-scans both, boots the stack and runs the smoke. Publishes nothing.
-- **`push-images`** — logs in to GHCR and pushes both. Every layer is a gha cache hit from the preceding `build-scan-smoke`, so this re-materialises rather than rebuilds.
+- **`push-images`** — logs in to GHCR, then per image: build into the local store, Trivy-scan, push. On a warm gha cache the build is a layer-for-layer hit, so this re-materialises rather than rebuilds; the scan is there for when it is not (see Trade-offs).
 
 Callers in `.github/workflows/ci.yml`:
 
 | Job       | Event                                                               | Runs                                                              |
 | --------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `docker`  | every PR, `merge_group`, `workflow_dispatch`                        | `build-scan-smoke` → Tier 1 round-trip                            |
+| `docker`  | every PR, `merge_group`, `workflow_dispatch`                        | computes the tag triple → `build-scan-smoke` → Tier 1 round-trip  |
 | `publish` | PR (non-fork) + `workflow_dispatch`, `needs: [check, lint, docker]` | `push-images` → `sha-<pr-tip>` + `<branch-slug>`                  |
 | `promote` | `push: main`                                                        | re-tag (see next section); fallback runs both composites in order |
+
+`docker` owns the tag triple (`sha_tag`, `branch_slug`, `git_sha`) and exposes it as job outputs; `publish` consumes those rather than re-deriving them. `git_sha` is part of the image cache key, so two independent expressions of it can drift into publishing bytes `docker` never validated. The same step refuses a branch whose slug is `main` — lowercasing means a branch called `Main` lands on the production pointer, and since #355 a PR is a writer of the slug tag, not just an operator dispatch.
 
 - Neither job is path-filtered. A TypeScript change alters image contents without touching `Dockerfile`, so a filter ships stale images — and a skipped required check counts as met, which is how `main` accumulated commits whose container was first built post-merge (#355).
 - `docker/login-action` authenticates to GHCR with the built-in `GITHUB_TOKEN` (no separate secret).
 - `docker/build-push-action` with `cache-from: type=gha, cache-to: type=gha,mode=max` — warm builds ~10–15s.
 - `publish` and `promote` declare `packages: write` (default is `contents: read`); `promote` additionally declares `pull-requests: read` for the PR-discovery API call. `docker` declares neither — it cannot publish even by mistake.
 - **`publish` is a required status check on `main`**, alongside `check`, `lint` and `docker`. This is an ordering constraint, not a fourth gate. `publish` and auto-merge both become eligible the instant `check` + `lint` + `docker` go green, so without it a Renovate auto-merge advances `main` and deletes the head branch while `publish` is still pushing — and guard 3 then finds no `sha-<pr-tip>` and pays the full fallback rebuild on the repo's highest-volume merge path. It survived on a timing margin (`promote` re-runs `check` + `lint`, ~4 min, before guard 3 executes; `publish` takes ~1.5 min), not on ordering. Fork PRs are unaffected: their `publish` is skipped by its `if:`, and a skipped job satisfies a required check. The cost is that a GHCR outage blocks merges — correct, since `promote` could not publish through one either.
-- `concurrency.cancel-in-progress` exempts `push`. On a PR the newer run re-validates the same branch, so cancelling is free; on `push: main` the run is the sole producer of that commit's artifact, and cancelling it leaves the commit unpublishable (#355 §5).
+
+  Branch protection and the merge queue disagree about skipped checks: branch protection counts one as met, the queue counts it as _not yet_ met and times out after 60 min (#214). A required `publish` therefore cannot be `if:`-skipped on `merge_group` the way it is on forks. It runs there and skips its own steps instead — the job reports, publishes nothing, and the queue's train SHA (which nothing deploys) stays untagged.
+
+- `concurrency.cancel-in-progress` exempts every event class that publishes — since #355 that is all of them but `merge_group`. A run killed inside `push-images` has already pushed the app image under `<branch-slug>` seconds before the backup image is built, leaving the moving tag mismatched until a later run finishes; on `push: main` the run is additionally the sole producer of that commit's artifact (#355 §5). The immutable `sha-<tip>` pair is safe either way — guard 3 requires both halves. Superseded runs queue instead of dying; the cost is one full image build per superseded push.
 
 **Build once, promote on merge:**
 
@@ -98,12 +103,14 @@ Trade-offs accepted:
 
 - **Every PR pays the image build.** ~6–7 min for `docker` + `publish`, where the path filter previously skipped it on most PRs. Against that, the ~5 min post-merge rebuild is gone and the runtime smoke becomes a pre-merge gate. Roughly neutral per merged PR; strictly better per merged defect.
 - **Trivy DB binds to PR time.** CVEs published between the last PR run and the merge slip past until the daily `security-scheduled.yml` catches them. Typically minutes to hours.
-- **GHCR tag count.** Each push to a PR branch produces its own `sha-<pr-tip>` app+backup pair plus a moving `<branch-slug>` pair, on top of `sha-<merge-sha>` + `main` per merge — call it 5–10 immutable SHA tags per merged PR, plus everything left behind by PRs that never merge. The dispatch-driven design produced ~2× because the dispatch never fired. **Nothing reaps any of it** — see Retention below.
-- **`publish` re-materialises rather than reusing `docker`'s bytes.** The two run on different runners, so the local image store does not carry over; `publish` rebuilds from the gha cache both jobs share. Identical build-args and cache keys make this a layer-for-layer cache hit, but it is a cache-identity assumption rather than a proof.
+- **GHCR tag count.** Each push to a PR branch produces its own `sha-<pr-tip>` app+backup pair plus a moving `<branch-slug>` pair, on top of `sha-<merge-sha>` + `main` per merge — call it 5–10 immutable SHA tags per merged PR, plus everything left behind by PRs that never merge. The dispatch-driven design produced ~2× because the dispatch never fired. **Nothing reaps any of it** — see Retention below and [#373](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/373).
+- **`publish` re-materialises rather than reusing `docker`'s bytes.** The two run on different runners, so the local image store does not carry over; `publish` rebuilds from the gha cache both jobs share. Identical build-args and cache keys make that a layer-for-layer hit on the warm path — but it is a cache-identity assumption, and the pipeline does not rest on it.
 
-  The residual risk is narrower than "the bytes might differ", and worth naming exactly: both `FROM` lines are digest-pinned (`node:24.16.0-alpine@sha256:21f4…`) and the `GIT_SHA` / `APP_IMAGE_TAG` build-args are passed identically, so on a cache **hit** the bytes are identical by construction. The single nondeterministic input is `apk add --no-cache` (`Dockerfile:74`, `Dockerfile.backup:107`): on a cache **miss** between `docker` and `publish`, that layer can resolve Alpine package versions Trivy never scanned.
+  The risk is worth naming exactly. Both `FROM` lines are digest-pinned (`node:24.16.0-alpine@sha256:21f4…`) and the `GIT_SHA` / `APP_IMAGE_TAG` build-args are passed identically, so on a cache **hit** the bytes are identical by construction. The single nondeterministic input is `apk add --no-cache` (`Dockerfile:74`, `Dockerfile.backup:107`): on a cache **miss** that layer resolves whatever Alpine package versions are current at that instant. A miss is not hypothetical — `cache-to` carries `ignore-error=true` precisely because the GHA backend 502s under load, so a dropped export is silent and leaves `publish` cold.
 
-  Alternatives — uploading the ~400 MB OCI layout as a workflow artifact, or pushing from `docker` and gating the tag afterwards — cost more than the assumption is worth at this scale. Turning it into an assertion is cheap and is the tracked follow-up: `docker/build-push-action` emits an `imageid` output, so surfacing it from `build-scan-smoke` and comparing against `push-images` fails the run on divergence. It needs empirical confirmation first that `imageid` is stable across a `load: true` build and a `push: true` build carrying provenance attestations; if it is not, the same check works on the app layer digests.
+  So `push-images` scans what it is about to publish: build into the local store → Trivy → push, per image. A cache miss then costs wall-clock, not a coverage hole, and the "nothing unscanned reaches GHCR" property holds without depending on the cache at all. The scan is ~20s on the warm path.
+
+  This is deliberately not the digest-assertion alternative (surface `build-push-action`'s `imageid` from `build-scan-smoke`, compare in `push-images`). That would detect divergence; scanning prevents the consequence, and needs no empirical work on whether `imageid` is stable across a `load: true` build and a `push: true` build carrying provenance attestations. Uploading the ~400 MB OCI layout as a workflow artifact remains the only way to make the two artifacts literally the same bytes, and still costs more than it buys at this scale.
 
 - **`publish` is the first PR-triggered job in this repo holding `packages: write`.** It checks out and executes PR-authored code — `.github/actions/push-images/action.yml`, `Dockerfile`, `Dockerfile.backup` — with a GHCR write token in scope. **Accepted, and why:** the `if:` restricts the job to same-repo head branches, so the actor already holds push access here and could publish the same images by pushing a branch and dispatching the workflow. The boundary is genuinely wider than before; the capability it grants is not new. Fork PRs — the untrusted population — never reach the job. CONTRIBUTING § Security audit's trigger question reads yes for this change ("communicates externally"), so this is a recorded acceptance rather than an unasked question.
 
@@ -120,7 +127,7 @@ Trade-offs accepted:
 
 **Image visibility:** private, matching the repo. Re-examine if any component goes beyond the WG tunnel.
 
-**Retention: intended, not configured.** The intent is GHCR's built-in "keep last 20 untagged versions", with branch-tagged versions retained until branch deletion. Neither half is in place today — no retention policy on the packages, and no cleanup workflow in `.github/workflows/` (`cache-cleanup.yml` reaps GHA caches only). The built-in policy would not touch `sha-` tags in any case: they are _tagged_ versions. Reaping them needs a scheduled `actions/delete-package-versions` job keyed on age. Open operational gap — see Consequences.
+**Retention: intended, not configured.** The intent is GHCR's built-in "keep last 20 untagged versions", with branch-tagged versions retained until branch deletion. Neither half is in place today — no retention policy on the packages, and no cleanup workflow in `.github/workflows/` (`cache-cleanup.yml` reaps GHA caches only). The built-in policy would not touch `sha-` tags in any case: they are _tagged_ versions. Reaping them needs a scheduled `actions/delete-package-versions` job keyed on age. Open operational gap, tracked in [#373](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/373) — which also carries the two undecided specifics (the retention window, and whether `<branch-slug>` tags are reaped on branch deletion).
 
 ## Alternatives Considered
 
@@ -146,7 +153,7 @@ Trade-offs accepted:
 - GHCR becomes a runtime dependency for _deploying_ (not serving — the running image keeps running if GHCR is down). GitHub Actions is already the critical path, so no new SPOF in practice.
 - CI cold build adds ~1–2 minutes; warm builds ~10–15s. Net system cost is lower, but individual CI runs feel slightly slower.
 - Every commit produces a new image even on small deltas. GHA caching absorbs the redundant work; retention handles stale tags.
-- Image retention is a new operational concern, and an unclosed one — stale SHA tags accumulate at 5–10 per merged PR with no policy and no cleanup job reaping them (see Decision § Retention).
+- Image retention is a new operational concern, and an unclosed one — stale SHA tags accumulate at 5–10 per merged PR with no policy and no cleanup job reaping them (see Decision § Retention, tracked in [#373](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/373)).
 - CI runner's Docker version is not pinned under ADR-0009. Controlled drift: OCI images are portable across reasonably-versioned daemons; only the manifest format needs to match. Upcoming security audit decides whether this needs explicit mitigation.
 
 ## Dep lifecycle health (as of 2026-05-15)
