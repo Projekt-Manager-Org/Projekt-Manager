@@ -32,20 +32,25 @@ on:
 # GHCR image for a feature-branch deploy via `gh workflow run ci.yml`) must
 # not cancel the PR run — doing so left the merge box reporting the
 # cancelled PR checks ("checks failing") while the dispatch run was green
-# (#234). The event-name suffix puts each class in its own lane: a newer
-# push's `pull_request` run still cancels the stale one (the dedup we want),
-# but a dispatch never touches it.
+# (#234). The event-name suffix puts each class in its own lane: a dispatch
+# never touches a PR run.
 #
-# `push` is exempt from cancellation entirely. On a PR run, cancelling a
-# superseded run costs nothing — the newer run re-validates the same
-# branch. On `push: main` the run is the ONLY producer of that commit's
-# GHCR artifact, so cancelling it leaves the commit with no image, a
-# half-pushed app/backup pair, or an unsmoked one. Observed on 1fc8dd79,
-# 6814d500 and b844cf75, all killed mid-publish by the next merge landing
-# (#355 §5). Back-to-back merges now queue instead.
+# Cancellation is exempt on every event class that PUBLISHES, which since
+# #355 is all of them but `merge_group`. A run killed inside `push-images`
+# has already pushed the app image under `<branch-slug>` seconds before the
+# backup image is even built, so the moving tag is left pointing at one
+# commit's app beside another's backup until some later run finishes. The
+# immutable `sha-<tip>` pair is safe either way — `promote`'s guard 3
+# requires both halves — but the slug pair is not, and on `push: main` the
+# run is the ONLY producer of that commit's artifact (observed on 1fc8dd79,
+# 6814d500 and b844cf75, all killed mid-publish by the next merge landing,
+# #355 §5). Superseded runs queue instead of dying; the cost is one full
+# image build per superseded push, which is the same trade `push` already
+# made. `merge_group` publishes nothing (see `publish` below), so its trains
+# stay cancellable.
 concurrency:
   group: ci-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event_name }}
-  cancel-in-progress: ${{ github.event_name != 'push' }}
+  cancel-in-progress: ${{ github.event_name == 'merge_group' }}
 
 jobs:
   # ---------------------------------------------------------------
@@ -786,8 +791,52 @@ jobs:
     # that repo setting cannot silently hand it `packages: write`.
     permissions:
       contents: read
+    # Single source of truth for the tag triple. `publish` consumes these
+    # rather than re-deriving them: `git_sha` is part of the image cache
+    # key, so two independent expressions of it can drift into publishing
+    # bytes that were never the ones scanned here.
+    outputs:
+      sha_tag: ${{ steps.tags.outputs.sha_tag }}
+      branch_slug: ${{ steps.tags.outputs.branch_slug }}
+      git_sha: ${{ steps.tags.outputs.git_sha }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # The SHA tag is the immutable rollback target used by
+      # scripts/deploy.sh and the tag `promote`'s guard 3 looks for at
+      # merge time; the branch-slug tag is the moving "latest on this
+      # branch" pointer kept as a human-friendly fallback. See ADR-0012.
+      - name: Compute image tags
+        id: tags
+        env:
+          # GITHUB_REF_NAME is `<pr-number>/merge` on pull_request events,
+          # which is not a branch anyone can deploy — take the head ref
+          # there. GITHUB_SHA is likewise the synthetic merge commit; both
+          # the SHA tag and the version chip want the PR tip, so that
+          # `promote` can find the artifact and the chip identifies the
+          # bytes the contributor is iterating on.
+          BRANCH_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # Slugify the branch name for Docker tag legality:
+          # lowercase, replace '/' with '-', strip anything not in
+          # [a-z0-9._-].
+          branch_slug=$(echo "${BRANCH_REF}" | tr '[:upper:]/' '[:lower:]-' | sed 's/[^a-z0-9._-]/-/g')
+          # `main` is the production pointer `promote` owns. Lowercasing
+          # means a branch called `Main` slugifies onto it, and since #355
+          # a PR — not just an operator dispatch — is a writer of the slug
+          # tag, so an unmerged branch could overwrite it. Refuse rather
+          # than publish over it.
+          if [ "$branch_slug" = "main" ] && [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::branch '${BRANCH_REF}' slugifies to 'main', the tag promote publishes on merge — rename the branch"
+            exit 1
+          fi
+          {
+            echo "sha_tag=sha-${HEAD_SHA}"
+            echo "branch_slug=${branch_slug}"
+            echo "git_sha=${HEAD_SHA}"
+          } >> "$GITHUB_OUTPUT"
 
       # Build both images, scan both with Trivy, and boot the stack.
       # Nothing is published here — `publish` below does that after
@@ -798,16 +847,10 @@ jobs:
       # rarely changes — documented accepted gap. If a Caddy build
       # regression slips through, `scripts/deploy.sh`'s image build on
       # the VPS is the backstop.
-      #
-      # `github.sha` points at the synthetic merge commit on
-      # `pull_request` events, so both inputs take the PR head SHA
-      # instead: the version chip should identify the bytes the
-      # contributor is iterating on, and `sha_tag` must be the tag
-      # `promote`'s guard 3 will look for at merge time.
       - uses: ./.github/actions/build-scan-smoke
         with:
-          sha_tag: sha-${{ github.event.pull_request.head.sha || github.sha }}
-          git_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          sha_tag: ${{ steps.tags.outputs.sha_tag }}
+          git_sha: ${{ steps.tags.outputs.git_sha }}
 
       # Tier 1 round-trip against the real initdb / pg_dump / pg_restore
       # (#301 scope C). This job is the only place those binaries exist:
@@ -844,9 +887,13 @@ jobs:
   # `needs` is the whole safety story. Publishing waits on every gate:
   # `check` + `lint` (tests, type-check, static analysis) and `docker`
   # (both images built, both Trivy-scanned, stack booted, Tier 1
-  # round-trip). Nothing reaches GHCR that has not passed all of them,
-  # which is also why the images are only re-materialised here rather
-  # than rebuilt — every layer is a gha cache hit from `docker`.
+  # round-trip). Nothing reaches GHCR that has not passed all of them.
+  # The push composite re-scans what it is about to publish, so a cold
+  # cache cannot smuggle unscanned layers past this point either.
+  #
+  # Tags come from `docker`'s outputs, not from a second copy of the
+  # same expressions — `git_sha` is part of the image cache key, so a
+  # drifted duplicate publishes bytes `docker` never validated.
   #
   # Fork PRs do not publish — and the `if:` below is the ONLY thing
   # that makes that true. Token scope never skips a job: a fork PR's
@@ -860,10 +907,19 @@ jobs:
   # `docker` still runs, so a fork PR is fully validated; its merge
   # simply takes `promote`'s fallback rebuild, which is the
   # documented exception path rather than a regression.
+  #
+  # `merge_group` runs the job but skips its only real step. `publish`
+  # is a REQUIRED status check (ADR-0011), and the merge queue treats a
+  # skipped required check as "not yet met" — it would sit `CLEAN` for
+  # the 60-min response timeout and then be rejected with no actionable
+  # signal (#214). So the job must report, but it must not publish: the
+  # queue's train SHA is not a commit anything deploys, and `promote`
+  # promotes the PR-tip artifact this job already pushed from the PR run.
   # ---------------------------------------------------------------
   publish:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'merge_group' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: [check, lint, docker]
@@ -873,38 +929,14 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-
-      # The SHA tag is the immutable rollback target used by
-      # scripts/deploy.sh; the branch-slug tag is the moving "latest on
-      # this branch" pointer kept as a human-friendly fallback. See
-      # ADR-0012 for the manual pull-based deploy flow.
-      - name: Compute image tags
-        id: tags
-        env:
-          # GITHUB_REF_NAME is `<pr-number>/merge` on pull_request
-          # events, which is not a branch anyone can deploy — take the
-          # head ref there. GITHUB_SHA is likewise the synthetic merge
-          # commit; the SHA tag must be the PR tip so `promote` can
-          # find it.
-          BRANCH_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          # Slugify the branch name for Docker tag legality:
-          # lowercase, replace '/' with '-', strip anything not in
-          # [a-z0-9._-].
-          branch_slug=$(echo "${BRANCH_REF}" | tr '[:upper:]/' '[:lower:]-' | sed 's/[^a-z0-9._-]/-/g')
-          {
-            echo "sha_tag=sha-${HEAD_SHA}"
-            echo "branch_slug=${branch_slug}"
-            echo "git_sha=${HEAD_SHA}"
-          } >> "$GITHUB_OUTPUT"
+        if: github.event_name != 'merge_group'
 
       - uses: ./.github/actions/push-images
+        if: github.event_name != 'merge_group'
         with:
-          sha_tag: ${{ steps.tags.outputs.sha_tag }}
-          branch_slug_tag: ${{ steps.tags.outputs.branch_slug }}
-          git_sha: ${{ steps.tags.outputs.git_sha }}
+          sha_tag: ${{ needs.docker.outputs.sha_tag }}
+          branch_slug_tag: ${{ needs.docker.outputs.branch_slug }}
+          git_sha: ${{ needs.docker.outputs.git_sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
 
