@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Static check: every checksum-pinned binary install in a workflow is
- * actually tracked by a Renovate customManager.
+ * Static check: every checksum-pinned binary install in a workflow or a
+ * composite action is actually tracked by a Renovate customManager.
  *
  * WHY THIS EXISTS
  *   ADR-0027 §Decision.1 manager 6 pins CLI binaries by URL + SHA256 and
@@ -20,10 +20,13 @@
  *   with two explanatory comments between its annotation and `version=`.
  *
  * WHAT IT ENFORCES
- *   1. TRACKED — every `expected_sha="<64 hex>"` in .github/workflows/**
- *      is captured as a `currentDigest` by one of the customManagers that
- *      apply to workflow files. A pin no manager claims is an untracked
- *      pin.
+ *   1. TRACKED — every `expected_sha="<64 hex>"` in .github/workflows/** or
+ *      .github/actions/<name>/*.{yml,yaml,sh} is captured as a
+ *      `currentDigest` by a customManager whose `managerFilePatterns`
+ *      actually match THAT path. A pin no manager claims is an untracked
+ *      pin. Applicability is per-file on purpose: a manager scoped to
+ *      workflows tracks nothing in a composite action, and counting it
+ *      would be a false green.
  *   2. SINGLE VERSION REFERENCE — within the same shell block, the version
  *      value appears exactly once (on the `version=` line). Renovate
  *      rewrites only the span its regex matched, so a version hardcoded a
@@ -60,12 +63,14 @@
  * Usage:
  *   node scripts/check-renovate-annotations.mjs
  *
- * RENOVATE_CONFIG and WORKFLOW_DIR are overridable so the self-test
- * (scripts/__tests__/check-renovate-annotations.test.sh) can stage mutated
- * copies without touching the real config or workflows.
+ * RENOVATE_CONFIG, WORKFLOW_DIR and ACTIONS_DIR are overridable so the
+ * self-test (scripts/__tests__/check-renovate-annotations.test.sh) can stage
+ * mutated copies without touching the real config, workflows or actions.
+ * ACTIONS_DIR defaults to WORKFLOW_DIR's sibling `actions/`, so staging the
+ * two together is enough to redirect both roots.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -76,6 +81,14 @@ const configPath = process.env.RENOVATE_CONFIG
 const workflowDir = process.env.WORKFLOW_DIR
   ? path.resolve(process.env.WORKFLOW_DIR)
   : path.join(repoRoot, '.github', 'workflows');
+// Composite actions carry checksum pins too (`install-age`), and a pin
+// hidden in one is exactly as untracked as a pin hidden in a workflow.
+// Derived from WORKFLOW_DIR's parent rather than repoRoot so the self-test
+// redirects both roots by staging `workflows/` and `actions/` side by side;
+// a staged tree without an `actions/` sibling simply has none to scan.
+const actionsDir = process.env.ACTIONS_DIR
+  ? path.resolve(process.env.ACTIONS_DIR)
+  : path.join(path.dirname(workflowDir), 'actions');
 
 function fail(message, code) {
   console.error(`ERROR: ${message}`);
@@ -95,33 +108,29 @@ try {
   fail(`cannot read ${path.relative(repoRoot, configPath)}: ${err.message}`, 2);
 }
 
-// Managers that apply to workflow files. `managerFilePatterns` is matched
-// against repo-relative POSIX paths, which is how Renovate presents them.
-const sampleWorkflowPath = '.github/workflows/ci.yml';
-const workflowManagers = (config.customManagers ?? []).filter(
-  (m) =>
-    m.customType === 'regex' &&
-    (m.managerFilePatterns ?? []).some((p) => toRegExp(p).test(sampleWorkflowPath)),
-);
+// `managerFilePatterns` is matched against repo-relative POSIX paths, which
+// is how Renovate presents them — so applicability is per file, not global.
+// A manager scoped to `.github/workflows/**` does not track a pin sitting in
+// a composite action, and reporting it as tracked would be the exact
+// false-green this check exists to prevent.
+const regexManagers = (config.customManagers ?? []).filter((m) => m.customType === 'regex');
 
-if (workflowManagers.length === 0) {
-  fail(
-    'no customManager in .github/renovate.json applies to .github/workflows/** — ' +
-      'either the config changed shape or manager 6 was removed. Every checksum ' +
-      'pin in a workflow is untracked until one exists.',
-    2,
+/** Digest-capturing managers Renovate would actually apply to `relPath`. */
+function digestManagersFor(relPath) {
+  return regexManagers.filter(
+    (m) =>
+      (m.managerFilePatterns ?? []).some((p) => toRegExp(p).test(relPath)) &&
+      (m.matchStrings ?? []).some((s) => s.includes('(?<currentDigest>')),
   );
 }
 
-// Only the managers that actually capture a digest can track a checksum pin.
-const digestManagers = workflowManagers.filter((m) =>
-  (m.matchStrings ?? []).some((s) => s.includes('(?<currentDigest>')),
-);
-
-if (digestManagers.length === 0) {
+// Structural sanity: workflows are the canonical home for these pins, so a
+// config that stopped covering them is a config problem, not a pin problem.
+if (digestManagersFor('.github/workflows/ci.yml').length === 0) {
   fail(
-    'no customManager applying to .github/workflows/** captures a `currentDigest` — ' +
-      'checksum pins cannot be tracked. See .github/renovate.json manager 6.',
+    'no customManager in .github/renovate.json captures a `currentDigest` for ' +
+      '.github/workflows/** — either the config changed shape or manager 6 was ' +
+      'removed. Every checksum pin in a workflow is untracked until one exists.',
     2,
   );
 }
@@ -134,21 +143,59 @@ if (digestManagers.length === 0) {
 // that has been shown to resolve asset digests.
 const DIGEST_DATASOURCES = new Set(['github-release-attachments']);
 
-const workflowFiles = readdirSync(workflowDir)
+// Each entry carries two paths. `abs` is where the bytes are; `matchPath`
+// is the canonical repo-relative POSIX path Renovate would present the file
+// under, and is what `managerFilePatterns` gets tested against. They differ
+// whenever WORKFLOW_DIR points at a staged copy (the self-test), and using
+// `abs` for matching would make every manager look inapplicable — reporting
+// correctly-annotated pins as untracked.
+const scanFiles = readdirSync(workflowDir)
   .filter((f) => /\.ya?ml$/.test(f))
-  .sort();
+  .sort()
+  .map((f) => ({
+    abs: path.join(workflowDir, f),
+    matchPath: `.github/workflows/${f}`,
+  }));
+
+// `.github/actions/<name>/*` — one level deep, matching how the repo lays
+// composite actions out and how the renovate.json patterns for them are
+// written. Both YAML and `.sh` are in scope: an action's steps can shell
+// out to a helper script (`start-minio/start-minio.sh` already does), and
+// a pin hidden in one of those is exactly as untracked as a pin hidden in
+// `action.yml`. Scanning a file class no customManager covers is the
+// point — the pin is then reported untracked, loudly, instead of freezing
+// in silence.
+const ACTION_FILE_RE = /\.(ya?ml|sh)$/;
+if (existsSync(actionsDir)) {
+  for (const entry of readdirSync(actionsDir, { withFileTypes: true }).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )) {
+    if (!entry.isDirectory()) continue;
+    const dir = path.join(actionsDir, entry.name);
+    for (const file of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      if (!file.isFile() || !ACTION_FILE_RE.test(file.name)) continue;
+      scanFiles.push({
+        abs: path.join(dir, file.name),
+        matchPath: `.github/actions/${entry.name}/${file.name}`,
+      });
+    }
+  }
+}
 
 const problems = [];
 let pinCount = 0;
 
-for (const file of workflowFiles) {
-  const rel = path.relative(repoRoot, path.join(workflowDir, file));
-  const content = readFileSync(path.join(workflowDir, file), 'utf8');
+for (const { abs, matchPath } of scanFiles) {
+  const rel = path.relative(repoRoot, abs);
+  const content = readFileSync(abs, 'utf8');
   const lines = content.split('\n');
 
-  // Digests Renovate would actually see, per manager.
+  // Digests Renovate would actually see, per manager applicable to THIS
+  // file — a manager scoped elsewhere tracks nothing here.
   const tracked = new Map(); // digest -> { version, datasource }
-  for (const manager of digestManagers) {
+  for (const manager of digestManagersFor(matchPath)) {
     for (const matchString of manager.matchStrings ?? []) {
       const re = new RegExp(matchString, 'g');
       for (const m of content.matchAll(re)) {
@@ -241,10 +288,11 @@ if (problems.length > 0) {
   console.error('');
   console.error('A checksum pin with no update path is the failure ADR-0027 exists to retire:');
   console.error('the version freezes silently while CI stays green. See');
-  console.error('.github/renovate.json manager 6 and docs/ops/dep-management.md § Weekly wrangler.');
+  console.error(
+    '.github/renovate.json manager 6 and docs/ops/dep-management.md § Weekly wrangler.',
+  );
   process.exit(1);
 }
 
 console.log(`OK: ${pinCount} checksum-pinned binary install(s) tracked by Renovate`);
-console.log(`  workflows scanned: ${workflowFiles.length}`);
-console.log(`  managers applied:  ${digestManagers.length}`);
+console.log(`  files scanned:     ${scanFiles.length} (workflows + composite actions)`);

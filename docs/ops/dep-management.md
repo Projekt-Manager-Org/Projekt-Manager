@@ -196,7 +196,7 @@ Then commit the lockfile onto the Renovate branch. `--before` is refused (npm ma
 
 **Pinned CLI binaries** (OSV-Scanner, actionlint, ripgrep, age) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing: a new OSV-Scanner build reporting a fresh advisory, or a new actionlint check firing on an existing workflow. Fix the finding, don't pin back.
 
-`age` is installed by both `ci.yml` (`check-shard`) and `e2e.yml`, pinned to the same version in each. Renovate bumps both in one PR because both annotations match; `scripts/check-workflow-drift.sh` fails the build if they ever diverge by hand.
+`age` has **one** pin, in the composite action `.github/actions/install-age`, called from `ci.yml`'s `check-shard` and from `e2e.yml`. It used to be two hand-synced copies guarded by a drift check; the objection to deduplicating it — Renovate's customManager scanned `.github/workflows/**` only, so a composite would have hidden the pin — was removed by extending manager 6 and `scripts/check-renovate-annotations.mjs` to `.github/actions/*/*.{yml,yaml,sh}`. The `.sh` half is not speculative: an action's steps can shell out to a helper script, as `.github/actions/start-minio/start-minio.sh` already does, and a pin hidden there would be exactly as untracked as one hidden in `action.yml`. **Any new checksum-pinned binary in a composite action is tracked and gated the same way.**
 
 ## CVE handling
 

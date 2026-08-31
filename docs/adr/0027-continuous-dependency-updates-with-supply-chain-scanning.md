@@ -52,14 +52,14 @@ We will adopt **three coupled changes**:
 - **Lockfile maintenance** PR daily to bound transitive drift, exempt from the PR limits (see the [2026-08-06 amendment](#2026-08-06--renovate-does-not-remediate-transitive-deps)).
 - **Managers:** `npm`, `dockerfile`, `docker-compose`, `github-actions`, and six `customManagers` of type `regex`, each covering a pin the built-in managers cannot see:
 
-  | #   | Surface                                                                                            | Datasource                   |
-  | --- | -------------------------------------------------------------------------------------------------- | ---------------------------- |
-  | 1   | Caddy version (`xcaddy build vN.N.N`, `docker/caddy/Dockerfile`)                                   | `docker`                     |
-  | 2   | `caddy-dns/cloudflare` plugin SHA, same Dockerfile                                                 | `git-refs`                   |
-  | 3   | MinIO `mc` image tag in `scripts/sync-*.sh`                                                        | `docker`                     |
-  | 4   | MinIO `minio`/`mc` image tags in `.github/workflows/*.yml` and `.github/actions/<name>/*.{yml,sh}` | `docker`                     |
-  | 5   | PostgreSQL major in `Dockerfile.backup` apk pins                                                   | `docker`                     |
-  | 6   | CLI binaries installed by URL + SHA256 in a workflow step (OSV-Scanner, actionlint, ripgrep, age)  | `github-release-attachments` |
+  | #   | Surface                                                                                                               | Datasource                   |
+  | --- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+  | 1   | Caddy version (`xcaddy build vN.N.N`, `docker/caddy/Dockerfile`)                                                      | `docker`                     |
+  | 2   | `caddy-dns/cloudflare` plugin SHA, same Dockerfile                                                                    | `git-refs`                   |
+  | 3   | MinIO `mc` image tag in `scripts/sync-*.sh`                                                                           | `docker`                     |
+  | 4   | MinIO `minio`/`mc` image tags in `.github/workflows/*.yml` and `.github/actions/<name>/*.{yml,sh}`                    | `docker`                     |
+  | 5   | PostgreSQL major in `Dockerfile.backup` apk pins                                                                      | `docker`                     |
+  | 6   | CLI binaries installed by URL + SHA256 in a workflow or composite-action step (OSV-Scanner, actionlint, ripgrep, age) | `github-release-attachments` |
 
   Manager 6 closes a gap this ADR had left open: a binary pinned by checksum with no update path is the same "adopted-already-dying" failure this ADR was written to retire, and it is worse on a **scanner** — a stale OSV-Scanner keeps reporting green while no longer knowing about new advisories. The `github-release-attachments` datasource locates the release's checksums asset from the current digest and re-reads it on the next release, so version and SHA256 advance in one PR; no checksum is ever hand-edited. When no checksums asset matches — `age` ships only Sigsum `.proof` files — it falls back to hashing the release assets directly and matching on the digest, so a checksum-less upstream is still tracked. It is driven by an inline `# renovate:` annotation at the call site, and requires `currentValue` to be the literal git tag, `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep), because the digest lookup calls `GET /releases/tags/{currentValue}` verbatim.
 
@@ -262,7 +262,7 @@ Global `prConcurrentLimit` deliberately stays at 1. Raising it is a documented m
 
 ## Dep lifecycle health (as of 2026-07-27)
 
-Renovate, OSV-Scanner, Trivy and actionlint are the adopted _tooling_; the choice is reversible (move to Dependabot-only or to commercial SCA later). Concrete tool-version pinning lives in `.github/workflows/*.yml` and `.github/renovate.json`, and every pin is now on a Renovate update path (customManager 6 above closed the last gap).
+Renovate, OSV-Scanner, Trivy and actionlint are the adopted _tooling_; the choice is reversible (move to Dependabot-only or to commercial SCA later). Concrete tool-version pinning lives in `.github/workflows/*.yml`, `.github/actions/*/`, and `.github/renovate.json`, and every pin is now on a Renovate update path (customManager 6 above closed the last gap). `scripts/check-renovate-annotations.mjs` scans both roots and fails the build on a pin no manager claims, so the "update path" is enforced rather than asserted.
 
 | Dep                                | Last release        | License    | Maintainership                   | Notes                                                                                                                                                                                                                                                                             |
 | ---------------------------------- | ------------------- | ---------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
