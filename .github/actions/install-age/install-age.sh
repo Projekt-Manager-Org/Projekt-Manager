@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Installs the `age` and `age-keygen` binaries to /usr/bin from a
 # SHA256-pinned upstream release tarball. Invoked by the sibling composite
-# action (action.yml), which is called from ci.yml's `check-shard` and from
-# e2e.yml.
+# action (action.yml), which is called from ci.yml's `check-shard`, from
+# e2e.yml, and from the build-scan-push composite.
 #
 # Lives in a real .sh file, not an inline `run:` block, so CI's shellcheck
 # gate covers it: actionlint does not read composite action.yml files

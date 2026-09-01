@@ -2,9 +2,10 @@ name: Install age
 description: >
   Installs the `age` and `age-keygen` binaries to /usr/bin from a
   SHA256-pinned upstream release tarball. Single source of truth for the
-  pin — called from `ci.yml`'s `check-shard` (the integration suite mints
-  a per-fork binary identity, ADR-0024) and from `e2e.yml` (Playwright
-  mints one before spawning the webServer).
+  pin — three call sites, all minting a binary identity per ADR-0024:
+  `ci.yml`'s `check-shard` (the integration suite, per fork), `e2e.yml`
+  (Playwright, before spawning the webServer), and the `build-scan-push`
+  composite (the smoke test, before `docker compose up`).
 
   Pinned tarball rather than `apt-get install age`, for the same reason as
   ripgrep and OSV-Scanner in `lint`: apt was measured at 10s–54s across
