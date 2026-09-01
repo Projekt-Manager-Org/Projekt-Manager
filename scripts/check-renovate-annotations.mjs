@@ -159,10 +159,12 @@ const scanFiles = readdirSync(workflowDir)
 
 // `.github/actions/<name>/*` — one level deep, matching how the repo lays
 // composite actions out and how the renovate.json patterns for them are
-// written. Both YAML and `.sh` are in scope: an action's steps can shell
-// out to a helper script (`start-minio/start-minio.sh` already does), and
-// a pin hidden in one of those is exactly as untracked as a pin hidden in
-// `action.yml`. Scanning a file class no customManager covers is the
+// written. Both YAML and `.sh` are in scope, and the `.sh` half is where
+// the pins actually sit: a composite's procedure goes in a sibling script
+// so CI's shellcheck gate covers it (`install-age.sh`, `start-minio.sh`).
+// `action.yml` stays in scope because a composite may still hold an inline
+// `run:` block, and a pin hidden there is exactly as untracked as one
+// hidden in a script. Scanning a file class no customManager covers is the
 // point — the pin is then reported untracked, loudly, instead of freezing
 // in silence.
 const ACTION_FILE_RE = /\.(ya?ml|sh)$/;

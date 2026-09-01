@@ -292,7 +292,9 @@ jobs:
       # Scope: .github/workflows/ ONLY. actionlint does not read composite
       # action.yml files — auto-discovery skips them, and passing one
       # explicitly parses it as a workflow (`"jobs" section is missing`).
-      # The shell inside .github/actions/ is covered by the step above.
+      # Nothing lints an inline `run:` body in an action.yml, so a
+      # composite's procedure belongs in a sibling .sh (start-minio,
+      # install-age) — the step above then covers it.
       #
       # --severity=warning matches the shellcheck step's threshold; without
       # it actionlint reports `info`-level noise the project does not gate on.
@@ -421,11 +423,12 @@ jobs:
         run: bash scripts/__tests__/notify-classify.test.sh
 
       # Static check: every `expected_sha` binary pin in .github/workflows
-      # is actually matched by a Renovate customManager. The manager's
-      # regex joins the `# renovate:` annotation to `version=` with `\s+`,
-      # so an interposed comment drops the pin out of tracking with no
-      # error raised anywhere — it just silently stops advancing, which is
-      # the "adopted-already-dying" failure ADR-0027 exists to retire.
+      # and .github/actions is actually matched by a Renovate customManager
+      # scoped to THAT path. The manager's regex joins the `# renovate:`
+      # annotation to `version=` with `\s+`, so an interposed comment drops
+      # the pin out of tracking with no error raised anywhere — it just
+      # silently stops advancing, which is the "adopted-already-dying"
+      # failure ADR-0027 exists to retire.
       - name: Renovate annotation check
         run: node scripts/check-renovate-annotations.mjs
 

@@ -90,10 +90,46 @@ assert_case() {
   fi
 }
 
+# Assert the check reached every staged file and read every pin in them.
+#
+# An exit code alone cannot prove the actions sweep ran: if it stopped
+# resolving — a renamed directory, a broken ACTIONS_DIR derivation — the
+# composite's pin is never read, nothing is reported, and the run is green.
+# The totals the check prints are the only observable that separates
+# "scanned and clean" from "never looked", so they are asserted against the
+# staged tree, counted independently here.
+assert_scan_counts() {
+  local dir="$1" label="$2"
+  local files want_files want_pins out rc got_files got_pins
+  files="$(
+    find "$dir/workflows" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \)
+    find "$dir/actions" -mindepth 2 -maxdepth 2 -type f \
+      \( -name '*.yml' -o -name '*.yaml' -o -name '*.sh' \) 2>/dev/null
+  )"
+  want_files="$(printf '%s\n' "$files" | grep -c .)"
+  want_pins="$(printf '%s\n' "$files" | tr '\n' '\0' |
+    xargs -0 -r grep -ho 'expected_sha="[a-f0-9]\{64\}"' | wc -l)"
+
+  out="$(WORKFLOW_DIR="$dir/workflows" RENOVATE_CONFIG="$dir/renovate.json" \
+    node "$CHECK" 2>&1)"
+  rc=$?
+  got_pins="$(printf '%s\n' "$out" | sed -n 's|^OK: \([0-9]\{1,\}\) checksum-pinned.*|\1|p')"
+  got_files="$(printf '%s\n' "$out" | sed -n 's|^ *files scanned: *\([0-9]\{1,\}\).*|\1|p')"
+
+  if [[ "$rc" == 0 && "$got_files" == "$want_files" && "$got_pins" == "$want_pins" ]]; then
+    pass=$((pass + 1))
+    echo "  PASS — $label (exit 0, $got_files files, $got_pins pins)"
+  else
+    fail=$((fail + 1))
+    failures+=("$label: expected exit 0 with $want_files files / $want_pins pins, got exit $rc with ${got_files:-?} / ${got_pins:-?}")
+    echo "  FAIL — $label (expected exit 0, $want_files files, $want_pins pins; got exit $rc, ${got_files:-?}, ${got_pins:-?})"
+  fi
+}
+
 # Guard against a staging typo silently making every case vacuous.
 # $2 is the staged path relative to `.github/` — `workflows/ci.yml`,
-# `actions/install-age/action.yml` — so composite actions can be asserted
-# the same way workflows are.
+# `actions/install-age/install-age.sh` — so composite actions can be
+# asserted the same way workflows are.
 assert_mutated() {
   local dir="$1" rel="$2" label="$3"
   if diff -q "$REPO_ROOT/.github/$rel" "$dir/$rel" >/dev/null 2>&1; then
@@ -123,12 +159,12 @@ assert_mutated "$d" workflows/ci.yml "prose above annotation" && assert_case 0 "
 
 echo "Case: the annotation is missing entirely"
 # A pin added with no update path at all — the plainest form of the
-# failure ADR-0027 exists to retire. Targets the composite because that is
-# where the `age` pin lives now.
+# failure ADR-0027 exists to retire. Targets the composite's script because
+# that is where the `age` pin lives now.
 d="$(stage)"
-sed -i '/^        # renovate: datasource=github-release-attachments depName=FiloSottile\/age$/d' \
-  "$d/actions/install-age/action.yml"
-assert_mutated "$d" actions/install-age/action.yml "missing annotation" &&
+sed -i '/^# renovate: datasource=github-release-attachments depName=FiloSottile\/age$/d' \
+  "$d/actions/install-age/install-age.sh"
+assert_mutated "$d" actions/install-age/install-age.sh "missing annotation" &&
   assert_case 1 "missing annotation" "$d"
 
 echo "Case: the datasource is misspelled"
@@ -142,8 +178,14 @@ echo "Case: the version is hardcoded a second time in the URL"
 # Renovate rewrites only the span its regex matched. A second literal use
 # survives the bump, so the step fetches the old asset and fails the
 # checksum compare on the next release.
+#
+# The version is read out of the ripgrep block rather than off the first
+# `version=` line in the file, so adding a pin above ripgrep's cannot make
+# this case substitute some other tool's version — which would inject no
+# duplicate at all and quietly stop testing anything.
 d="$(stage)"
-ver="$(sed -n 's|^ *version="\([^"]*\)".*|\1|p' "$d/workflows/ci.yml" | head -1)"
+ver="$(grep -A1 'depName=BurntSushi/ripgrep' "$d/workflows/ci.yml" |
+  sed -n 's|^ *version="\([^"]*\)".*|\1|p')"
 sed -i "s|^\( *asset=\"ripgrep-\)\${version}|\1$ver|" "$d/workflows/ci.yml"
 assert_mutated "$d" workflows/ci.yml "hardcoded version in URL" &&
   assert_case 1 "hardcoded version in URL" "$d"
@@ -152,11 +194,14 @@ echo "Case: a comment inside the step names the version"
 # Must pass — the mirror of the case above. Renovate rewrites only the
 # `version=` span, but a comment that names the version is prose, not a
 # fetch: leaving it stale is a docs nit, and failing on it would make the
-# rule unsatisfiable short of rewording the comment. The version is read
-# out of the file so this case survives the next bump.
+# rule unsatisfiable short of rewording the comment. Both the version and
+# the line it lands on are scoped to the ripgrep block, so the comment
+# names the version of the very step it sits in — the only arrangement
+# that exercises the exemption — and the case survives the next bump.
 d="$(stage)"
-ver="$(sed -n 's|^ *version="\([^"]*\)".*|\1|p' "$d/workflows/ci.yml" | head -1)"
-sed -i "s|^\( *expected_sha=\"[a-f0-9]\{64\}\"\)$|\1\n          # Note: $ver is the release this checksum was taken from.|" \
+ver="$(grep -A1 'depName=BurntSushi/ripgrep' "$d/workflows/ci.yml" |
+  sed -n 's|^ *version="\([^"]*\)".*|\1|p')"
+sed -i "/depName=BurntSushi\/ripgrep/,+2 s|^\( *expected_sha=\"[a-f0-9]\{64\}\"\)$|\1\n          # Note: $ver is the release this checksum was taken from.|" \
   "$d/workflows/ci.yml"
 assert_mutated "$d" workflows/ci.yml "version named in a comment" &&
   assert_case 0 "version named in a comment" "$d"
@@ -181,45 +226,49 @@ d="$(stage)"
 echo 'not json {' > "$d/renovate.json"
 assert_case 2 "malformed renovate.json" "$d"
 
-echo "Case: a composite action's pin is tracked"
-# Regression guard for the scan root itself. `install-age` holds the only
-# checksum pin outside .github/workflows/; if the actions sweep silently
-# stopped resolving — a renamed directory, a dropped managerFilePattern —
-# the pin would go untracked with the check still reporting green.
-d="$(stage)"
-if [[ ! -f "$d/actions/install-age/action.yml" ]]; then
-  echo "  FAIL — composite action pin tracked (install-age not staged)"
-  fail=$((fail + 1))
-  failures+=("composite action pin tracked: install-age/action.yml missing from the staged tree")
-else
-  assert_case 0 "composite action pin tracked" "$d"
-fi
+echo "Case: the composite action's pin is reached and tracked"
+# Regression guard for the scan root itself. `install-age/install-age.sh`
+# holds the only checksum pin outside .github/workflows/, and a sweep that
+# never reaches it reports exactly what a clean sweep reports: exit 0. So
+# this case asserts the totals, not the exit code — an actions root that
+# stopped resolving drops the file and pin counts, and is caught here.
+assert_scan_counts "$(stage)" "composite action pin reached and tracked"
 
 echo "Case: a comment interposed in a composite action's annotation"
 # Same failure mode as the workflow case, in the file class that was out
-# of scope until the age install moved into a composite.
+# of scope until the age install moved into a composite. The substitution
+# matches `version="` rather than the literal version, so a Renovate bump
+# cannot turn it into a no-op and strand the case on assert_mutated.
 d="$(stage)"
-sed -i 's|^        version="v1\.3\.1"$|        # An interposed comment.\n        version="v1.3.1"|' \
-  "$d/actions/install-age/action.yml"
-assert_mutated "$d" actions/install-age/action.yml "composite action interposed comment" &&
+sed -i 's|^version="|# An interposed comment.\nversion="|' \
+  "$d/actions/install-age/install-age.sh"
+assert_mutated "$d" actions/install-age/install-age.sh "composite action interposed comment" &&
   assert_case 1 "composite action interposed comment" "$d"
 
-echo "Case: a pin in a composite action's helper .sh"
-# An action's steps can shell out to a helper script — `start-minio` already
-# ships one — so a pin can live there too. Nothing stages such a pin today,
-# which is exactly why this case writes one: if the sweep stopped reading
-# `.sh` under .github/actions/, the pin would go unseen and the check would
+echo "Case: a pin inline in a composite action.yml"
+# The other file class under .github/actions/. A composite CAN hold its
+# procedure in an inline `run:` block, so a pin can live in action.yml —
+# nothing in this repo does it (the shellcheck gate is why: see ci.yml's
+# actionlint step), which is exactly why this case writes one. If the sweep
+# stopped reading action.yml, the pin would go unseen and the check would
 # still report green.
 d="$(stage)"
-mkdir -p "$d/actions/install-age"
-cat > "$d/actions/install-age/helper.sh" <<'HELPER'
-#!/usr/bin/env bash
-# renovate: datasource=github-release-attachments depName=FiloSottile/age
-# An interposed comment.
-version="v1.3.1"
-expected_sha="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
-HELPER
-assert_case 1 "pin in a composite action helper .sh" "$d"
+mkdir -p "$d/actions/inline-pin"
+cat > "$d/actions/inline-pin/action.yml" <<'INLINE'
+name: Fixture
+description: A checksum pin held directly in an action.yml.
+runs:
+  using: composite
+  steps:
+    - name: Install something
+      shell: bash
+      run: |
+        # renovate: datasource=github-release-attachments depName=FiloSottile/age
+        # An interposed comment.
+        version="v1.3.1"
+        expected_sha="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
+INLINE
+assert_case 1 "pin inline in a composite action.yml" "$d"
 
 echo
 echo "Results: $pass passed, $fail failed"
