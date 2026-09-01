@@ -406,7 +406,8 @@ jobs:
       # `workflow_dispatch` only, so an unsynced edit there stays invisible
       # until an operator runs it before a manual deploy. The `Install age`
       # step used to be compared here too; it is now one composite action
-      # and cannot drift.
+      # and cannot drift — but the check still asserts both workflows call
+      # it, since deduplication does not stop the call being dropped.
       - name: Workflow drift check (ci.yml ↔ e2e.yml)
         run: bash scripts/check-workflow-drift.sh
 

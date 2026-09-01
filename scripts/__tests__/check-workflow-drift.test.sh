@@ -11,7 +11,9 @@
 #
 # The compared block gets: a real-regression case, a second field class to
 # prove the whole block is covered, a comment-only case that must pass, and
-# the structural cases (block gone, key renamed, block duplicated).
+# the structural cases (block gone, key renamed, block duplicated). The
+# install-age presence assertion gets one case per file, since ci.yml and
+# e2e.yml fail it for different reasons.
 #
 # Exits 0 when every case matches its expected code; 1 otherwise.
 #
@@ -123,6 +125,25 @@ echo "Case: a second postgres service makes the pair ambiguous"
 d="$(stage)"
 sed -i 's/^      postgres:$/      postgres:\n      postgres-replica:\n        image: postgres:17-alpine\n      postgres:/' "$d/e2e.yml"
 assert_case 2 "two postgres services" "$d"
+
+# The presence half. Deduplicating the age step into a composite closed
+# the drift risk and opened this one: a dropped `uses:` line is invisible
+# in e2e.yml, which is `workflow_dispatch` only and never runs on a PR.
+#
+# Neither case can go vacuously green: if the `uses:` line ever stops
+# matching this pattern the sed deletes nothing, the check exits 0, and
+# the case fails on the expected 2.
+echo "Case: the install-age call is gone from e2e.yml"
+d="$(stage)"
+sed -i '\|^ *- uses: \./\.github/actions/install-age *$|d' "$d/e2e.yml"
+assert_case 2 "missing install-age call (e2e)" "$d"
+
+echo "Case: the install-age call is gone from ci.yml"
+# Same invariant, other file. `check-shard` would fail its own suite, but
+# failing here names the cause instead of leaving it to a vitest ENOENT.
+d="$(stage)"
+sed -i '\|^ *- uses: \./\.github/actions/install-age *$|d' "$d/ci.yml"
+assert_case 2 "missing install-age call (ci)" "$d"
 
 echo
 echo "Results: $pass passed, $fail failed"

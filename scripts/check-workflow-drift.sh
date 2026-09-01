@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 #
-# Static drift check for the `postgres` service container, which
-# .github/workflows/ci.yml (`check-shard`) and .github/workflows/e2e.yml
-# must keep identical.
+# Static drift check for what .github/workflows/ci.yml (`check-shard`) and
+# .github/workflows/e2e.yml must keep in agreement:
+#
+#   1. the `postgres` service container — compared field by field
+#   2. the call to .github/actions/install-age — asserted present in both
 #
 # It is ONE decision expressed twice: the two services must agree on image
 # major, role and password, published port and health probe. When they
@@ -27,31 +29,38 @@
 #   service config trades a small duplication for a large conditional.
 #   Workflow-level YAML anchors are not supported either.
 #
-#   The `Install age` step used to be compared here for the same reason,
-#   and no longer is: it was deduplicated into the composite action
-#   .github/actions/install-age, called from `check-shard` and `e2e`. The
-#   sole objection to that — Renovate's customManager scanned
-#   `.github/workflows/**` only, so a composite would have hidden the
-#   pin — was removed by widening the manager's `managerFilePatterns` and
-#   the scan in check-renovate-annotations.mjs to
-#   `.github/actions/*/*.{yml,yaml,sh}`. One definition cannot drift, so
-#   the check for it is gone rather than narrowed. See #355 review,
-#   .github/renovate.json manager 6, and ADR-0027 §Decision.1.
+#   The `Install age` step WAS compared here, and no longer is: it was
+#   deduplicated into .github/actions/install-age. The sole objection to
+#   that — Renovate's customManager scanned `.github/workflows/**` only,
+#   so a composite would have hidden the pin — was removed by widening
+#   the manager's `managerFilePatterns` and the scan in
+#   check-renovate-annotations.mjs to `.github/actions/*/*.{yml,yaml,sh}`.
+#   See #355 review, .github/renovate.json manager 6, ADR-0027 §Decision.1.
 #
-# WHAT IT COMPARES
-#   The block with whole-line comments and its base indentation removed.
-#   Comments are stripped deliberately: each file explains its block in
-#   its own terms (vitest's per-fork databases vs Playwright's
-#   `ensure-db.mjs`), and forcing prose to match would be enforcing prose,
-#   not configuration. Everything else — image, env, ports, options —
-#   must be identical.
+#   One definition cannot drift, so the field-by-field comparison is gone.
+#   Presence is a separate invariant and is NOT covered by deduplication:
+#   drop the `uses:` line from e2e.yml and nothing else in the pipeline
+#   notices, because e2e.yml is `workflow_dispatch` only. Hence (2).
+#
+# WHAT IT CHECKS
+#   (1) The postgres block with whole-line comments and its base
+#   indentation removed. Comments are stripped deliberately: each file
+#   explains its block in its own terms (vitest's per-fork databases vs
+#   Playwright's `ensure-db.mjs`), and forcing prose to match would be
+#   enforcing prose, not configuration. Everything else — image, env,
+#   ports, options — must be identical.
+#
+#   (2) That each file calls the install-age composite at least once.
+#   Both jobs mint a binary `age` identity (ADR-0024) and neither can run
+#   without it.
 #
 # EXIT CODES
 #   0  in sync
 #   1  drift (the diff is printed)
-#   2  structural problem — a file or the block is missing, or a file
-#      holds more than one, which would make "the block" ambiguous and
-#      let this check pass while comparing the wrong pair.
+#   2  structural problem — a file, the postgres block or the install-age
+#      call is missing, or a file holds more than one postgres block,
+#      which would make "the block" ambiguous and let this check pass
+#      while comparing the wrong pair.
 #
 # Usage:
 #   bash scripts/check-workflow-drift.sh
@@ -88,8 +97,33 @@ assert_single() {
   fi
 }
 
+# Deduplicating the age step removed the drift risk, not the presence
+# risk. The old check exited 2 when the step vanished from either file;
+# nothing else does. ci.yml's call is self-protecting (the integration
+# suite fails without `age-keygen`), but e2e.yml is `workflow_dispatch`
+# only — a dropped call there surfaces when an operator runs it before a
+# manual deploy and Playwright dies minting the identity.
+#
+# Matched loosely enough to survive a `name:` being added above the
+# `uses:`; "at least one" rather than "exactly one" because a second call
+# is redundant, not ambiguous.
+assert_calls_install_age() {
+  local file="$1" count
+  count=$(grep -cE \
+    '^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*\./\.github/actions/install-age[[:space:]]*$' \
+    "$file" || true)
+  if [ "$count" -lt 1 ]; then
+    echo "ERROR: $file never calls ./.github/actions/install-age." >&2
+    echo "       Both jobs mint a binary \`age\` identity (ADR-0024) and cannot run" >&2
+    echo "       without the SHA-pinned install. Re-add the step — or, if the job" >&2
+    echo "       genuinely no longer needs age, say so here and drop this guard." >&2
+    exit 2
+  fi
+}
+
 for f in "$CI_WORKFLOW" "$E2E_WORKFLOW"; do
   assert_single "$f" '^[[:space:]]*postgres:[[:space:]]*$' 'postgres:'
+  assert_calls_install_age "$f"
 done
 
 # Extract `services.postgres` and normalise it for comparison.
