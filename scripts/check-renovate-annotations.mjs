@@ -20,18 +20,26 @@
  *   with two explanatory comments between its annotation and `version=`.
  *
  * WHAT IT ENFORCES
- *   1. TRACKED — every `expected_sha="<64 hex>"` in .github/workflows/** or
- *      .github/actions/<name>/*.{yml,yaml,sh} is captured as a
- *      `currentDigest` by a customManager whose `managerFilePatterns`
- *      actually match THAT path. A pin no manager claims is an untracked
- *      pin. Applicability is per-file on purpose: a manager scoped to
- *      workflows tracks nothing in a composite action, and counting it
- *      would be a false green.
- *   2. SINGLE VERSION REFERENCE — within the same shell block, the version
- *      value appears exactly once (on the `version=` line). Renovate
- *      rewrites only the span its regex matched, so a version hardcoded a
- *      second time in the download URL survives the bump and the step then
- *      fetches the old asset against the new checksum.
+ *   1. TRACKED — every `expected_sha="<64 hex>"` in a workflow, or in a
+ *      `.yml`/`.yaml`/`.sh` file at ANY depth under .github/actions/, is
+ *      captured as a `currentDigest` by a customManager whose
+ *      `managerFilePatterns` actually match THAT path. (Spelling the
+ *      actions glob out rather than writing it: `**` followed by `/`
+ *      closes a block comment.)
+ *      A pin no manager claims is an untracked pin. Applicability is
+ *      per-file on purpose: a manager scoped to workflows tracks nothing in
+ *      a composite action, and counting it would be a false green. The
+ *      actions sweep recurses while manager 6's patterns reach exactly one
+ *      level, so a pin nested deeper is reported untracked — loudly —
+ *      rather than seen by neither side.
+ *   2. SINGLE VERSION REFERENCE — within the same install block, the
+ *      version value appears exactly once (on the `version=` line).
+ *      Renovate rewrites only the span its regex matched, so a version
+ *      hardcoded a second time in the download URL survives the bump and
+ *      the step then fetches the old asset against the new checksum. The
+ *      block ends at a dedent below the `version=` line or at the next
+ *      `# renovate:` annotation, whichever comes first — in a `.sh` the pin
+ *      sits at column 0, so only the annotation can end it.
  *   3. KNOWN DATASOURCE — the annotation's `datasource=` names a datasource
  *      that can actually resolve an asset checksum. The manager's regex
  *      captures `[a-z-]+`, so `github-release-attachment` (singular) is a
@@ -58,7 +66,8 @@
  * EXIT CODES
  *   0  every pin tracked
  *   1  an untracked pin, or a version referenced more than once
- *   2  structural problem — config unreadable, no applicable manager found
+ *   2  structural problem — config unreadable, no applicable manager found,
+ *      or a scan root missing
  *
  * Usage:
  *   node scripts/check-renovate-annotations.mjs
@@ -67,7 +76,8 @@
  * self-test (scripts/__tests__/check-renovate-annotations.test.sh) can stage
  * mutated copies without touching the real config, workflows or actions.
  * ACTIONS_DIR defaults to WORKFLOW_DIR's sibling `actions/`, so staging the
- * two together is enough to redirect both roots.
+ * two together is enough to redirect both roots. A missing scan root is an
+ * error, not an empty scan.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -84,8 +94,7 @@ const workflowDir = process.env.WORKFLOW_DIR
 // Composite actions carry checksum pins too (`install-age`), and a pin
 // hidden in one is exactly as untracked as a pin hidden in a workflow.
 // Derived from WORKFLOW_DIR's parent rather than repoRoot so the self-test
-// redirects both roots by staging `workflows/` and `actions/` side by side;
-// a staged tree without an `actions/` sibling simply has none to scan.
+// redirects both roots by staging `workflows/` and `actions/` side by side.
 const actionsDir = process.env.ACTIONS_DIR
   ? path.resolve(process.env.ACTIONS_DIR)
   : path.join(path.dirname(workflowDir), 'actions');
@@ -157,34 +166,44 @@ const scanFiles = readdirSync(workflowDir)
     matchPath: `.github/workflows/${f}`,
   }));
 
-// `.github/actions/<name>/*` — one level deep, matching how the repo lays
-// composite actions out and how the renovate.json patterns for them are
-// written. Both YAML and `.sh` are in scope, and the `.sh` half is where
-// the pins actually sit: a composite's procedure goes in a sibling script
-// so CI's shellcheck gate covers it (`install-age.sh`, `start-minio.sh`).
-// `action.yml` stays in scope because a composite may still hold an inline
-// `run:` block, and a pin hidden there is exactly as untracked as one
-// hidden in a script. Scanning a file class no customManager covers is the
-// point — the pin is then reported untracked, loudly, instead of freezing
-// in silence.
+// Everything YAML or `.sh` under `.github/actions/`. The `.sh` half is
+// where the pins actually sit: a composite's procedure goes in a sibling
+// script so CI's shellcheck gate covers it (`install-age.sh`,
+// `start-minio.sh`). `action.yml` stays in scope because a composite may
+// still hold an inline `run:` block, and a pin hidden there is exactly as
+// untracked as one hidden in a script.
+//
+// RECURSIVE, deliberately, even though the repo lays composite actions out
+// one level deep and manager 6's `managerFilePatterns` reach exactly that
+// far. A sweep that stopped at one level too would leave a pin nested any
+// deeper seen by NEITHER side — tracked by no manager and reported by no
+// check, which is the silent freeze this whole file exists to prevent.
+// Scanning wider than the managers is the point: a file class no manager
+// covers is then reported as an untracked pin, loudly.
 const ACTION_FILE_RE = /\.(ya?ml|sh)$/;
-if (existsSync(actionsDir)) {
-  for (const entry of readdirSync(actionsDir, { withFileTypes: true }).sort((a, b) =>
+
+// A scan root that is not there scans nothing and reports OK — the same
+// false green, arrived at by a different route.
+if (!existsSync(actionsDir)) {
+  fail(
+    `${path.relative(repoRoot, actionsDir)} does not exist — composite actions are a scan root ` +
+      'for checksum pins (.github/renovate.json manager 6). If they moved, move this check and ' +
+      'the manager patterns with them; scanning nothing silently is not an option.',
+    2,
+  );
+}
+
+function collectActionFiles(dir, relDir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
     a.name.localeCompare(b.name),
   )) {
-    if (!entry.isDirectory()) continue;
-    const dir = path.join(actionsDir, entry.name);
-    for (const file of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    )) {
-      if (!file.isFile() || !ACTION_FILE_RE.test(file.name)) continue;
-      scanFiles.push({
-        abs: path.join(dir, file.name),
-        matchPath: `.github/actions/${entry.name}/${file.name}`,
-      });
-    }
+    const abs = path.join(dir, entry.name);
+    const matchPath = `${relDir}/${entry.name}`;
+    if (entry.isDirectory()) collectActionFiles(abs, matchPath);
+    else if (entry.isFile() && ACTION_FILE_RE.test(entry.name)) scanFiles.push({ abs, matchPath });
   }
 }
+collectActionFiles(actionsDir, '.github/actions');
 
 const problems = [];
 let pinCount = 0;
@@ -259,11 +278,26 @@ for (const { abs, matchPath } of scanFiles) {
     );
     if (versionLineIdx === -1) return;
 
+    // Where the pin's block ends. Two terminators, whichever comes first:
+    //
+    //   - a dedent below the `version=` line's own indentation. This is
+    //     what bounds a `run:` body in a workflow, and what bounds NOTHING
+    //     in a `.sh`, where the pin sits at column 0 and no later line can
+    //     be shallower.
+    //   - the next `# renovate:` annotation, which starts another pin's
+    //     block and therefore ends this one. In a single-pin script that
+    //     degrades to end-of-file, which is the right scope: any line of a
+    //     standalone install script can fetch the asset.
+    //
+    // Without the second terminator, two pins in one script share a block:
+    // the first swallows the second's `version=` line, and two tools that
+    // happen to sit on the same version are reported as a duplicate use.
     const baseIndent = lines[versionLineIdx].search(/\S/);
     let end = versionLineIdx + 1;
     while (end < lines.length) {
       const l = lines[end];
       if (l.trim() !== '' && l.search(/\S/) < baseIndent) break;
+      if (/#\s*renovate:/.test(l)) break;
       end += 1;
     }
     const block = lines.slice(versionLineIdx, end);
@@ -277,7 +311,7 @@ for (const { abs, matchPath } of scanFiles) {
     if (literalUses > 1) {
       problems.push(
         `${rel}:${versionLineIdx + 1}  version "${version}" appears ${literalUses} times in ` +
-          'this step — Renovate rewrites only the `version=` line, so the other use would ' +
+          'this install block — Renovate rewrites only the `version=` line, so the other use would ' +
           'keep pointing at the old release. Derive it from "${version}" instead.',
       );
     }

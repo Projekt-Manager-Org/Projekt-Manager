@@ -10,6 +10,11 @@
 # sibling of `workflows/` because the check derives its actions root from
 # $WORKFLOW_DIR's parent.
 #
+# Three cases key off the actions root's SHAPE rather than a pin's content
+# — the root going missing, a pin nested below the level manager 6 reaches,
+# and two pins sharing one script. Each is a way the sweep can cover less
+# than it claims to while still exiting 0.
+#
 # The first failing case is the regression that motivated the check: the
 # ripgrep pin shipped with two explanatory comments between its annotation
 # and `version=`, which the customManager's `\s+` join does not tolerate.
@@ -93,17 +98,33 @@ assert_case() {
 # Assert the check reached every staged file and read every pin in them.
 #
 # An exit code alone cannot prove the actions sweep ran: if it stopped
-# resolving — a renamed directory, a broken ACTIONS_DIR derivation — the
-# composite's pin is never read, nothing is reported, and the run is green.
-# The totals the check prints are the only observable that separates
+# resolving — a broken ACTIONS_DIR derivation, a depth limit reintroduced —
+# the composite's pin is never read, nothing is reported, and the run is
+# green. The totals the check prints are the only observable that separates
 # "scanned and clean" from "never looked", so they are asserted against the
-# staged tree, counted independently here.
+# staged tree, counted independently here (no depth bound, matching the
+# check's recursive walk).
+#
+# Those totals are derived from the staged tree, so they move together if
+# staging drops files — which would make the case vacuous. The floor below
+# is the absolute term the derived ones cannot supply: the staged tree must
+# actually contain a composite-action pin for any of this to mean anything.
+# (A missing actions root is a separate matter — the check exits 2 on it,
+# and the case just below this one covers that.)
 assert_scan_counts() {
   local dir="$1" label="$2"
-  local files want_files want_pins out rc got_files got_pins
+  local files want_files want_pins out rc got_files got_pins action_pins
+  action_pins="$(grep -rho 'expected_sha="[a-f0-9]\{64\}"' "$dir/actions" 2>/dev/null | wc -l)"
+  if [[ "$action_pins" -lt 1 ]]; then
+    fail=$((fail + 1))
+    failures+=("$label: no pin staged under actions/ — the case proves nothing")
+    echo "  FAIL — $label (staged tree holds no composite-action pin)"
+    return 1
+  fi
+
   files="$(
     find "$dir/workflows" -maxdepth 1 -type f \( -name '*.yml' -o -name '*.yaml' \)
-    find "$dir/actions" -mindepth 2 -maxdepth 2 -type f \
+    find "$dir/actions" -type f \
       \( -name '*.yml' -o -name '*.yaml' -o -name '*.sh' \) 2>/dev/null
   )"
   want_files="$(printf '%s\n' "$files" | grep -c .)"
@@ -269,6 +290,48 @@ runs:
         expected_sha="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
 INLINE
 assert_case 1 "pin inline in a composite action.yml" "$d"
+
+echo "Case: the actions scan root is missing"
+# A root that is not there scans nothing and would otherwise report OK —
+# the same false green as a pin no manager claims, reached differently.
+# Structural (exit 2), not a pin problem: if composite actions moved, the
+# check and the manager patterns move with them.
+d="$(stage)"
+rm -rf "$d/actions"
+assert_case 2 "actions scan root missing" "$d"
+
+echo "Case: a pin nested deeper than .github/actions/<name>/<file>"
+# manager 6's patterns reach exactly one level, so a pin below that is
+# tracked by nothing. The sweep recurses anyway — scanning wider than the
+# managers is what turns "no manager covers this file" into a loud
+# untracked-pin error instead of a silent freeze. A one-level sweep would
+# never read this file and report exit 0.
+d="$(stage)"
+mkdir -p "$d/actions/nested-pin/lib"
+cat > "$d/actions/nested-pin/lib/install.sh" <<'NESTED'
+#!/usr/bin/env bash
+# renovate: datasource=github-release-attachments depName=FiloSottile/age
+version="v1.3.1"
+expected_sha="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
+NESTED
+assert_case 1 "pin nested below one level" "$d"
+
+echo "Case: two pins in one composite script do not bleed together"
+# Must pass. Rule 2 counts literal version uses inside the pin's own block.
+# In a `.sh` the pin sits at column 0, so an indentation dedent can never
+# end the block — the next `# renovate:` annotation does. Without that
+# terminator the first pin's block swallows the second's `version=` line,
+# and two tools sharing a version string are reported as a duplicate use.
+d="$(stage)"
+cat >> "$d/actions/install-age/install-age.sh" <<'SECOND'
+
+# renovate: datasource=github-release-attachments depName=example/second-tool
+version="v1.3.1"
+expected_sha="00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+url="https://github.com/example/second-tool/releases/download/${version}/tool.tar.gz"
+SECOND
+assert_mutated "$d" actions/install-age/install-age.sh "two pins in one script" &&
+  assert_case 0 "two pins in one script" "$d"
 
 echo
 echo "Results: $pass passed, $fail failed"
