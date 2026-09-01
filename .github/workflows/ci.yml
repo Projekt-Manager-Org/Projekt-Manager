@@ -799,13 +799,15 @@ jobs:
   docker:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
-    # `packages: write` because this job now pushes the validated images
-    # to GHCR by digest — see the composite's push steps for why that is
-    # not "publishing". ADR-0011 §Trade-offs records the acceptance: the
-    # capability is bounded to same-repo head branches by
-    # `push_by_digest` below, where the actor already holds push access.
-    # A fork PR's GITHUB_TOKEN is read-only whatever this block says, so
-    # the grant cannot reach the untrusted population either way.
+    # `packages: write` because this job pushes the images to GHCR by
+    # digest before scanning them — see the composite's header for why an
+    # untagged digest is not "publishing". ADR-0011 §Trade-offs records
+    # the acceptance: a fork PR's GITHUB_TOKEN is read-only whatever this
+    # block says, so the grant never reaches the untrusted population;
+    # for everyone else the actor already holds push access and could
+    # publish the same images by pushing a branch and dispatching. What
+    # the grant can produce is narrower than what it replaced: an
+    # untagged digest, which nothing deploys until `publish` names it.
     permissions:
       contents: read
       packages: write
@@ -843,16 +845,25 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash scripts/ci/image-refs.sh >> "$GITHUB_OUTPUT"
 
-      # Build both images once, scan both with Trivy, boot the stack, and
-      # push the result to GHCR by digest. A digest-only manifest carries
-      # no tag — `publish` below is what gives it names, after every gate.
+      # Build both images once each, push each to GHCR by digest, then
+      # pull them back to scan and smoke those exact bytes. A digest-only
+      # manifest carries no tag — `publish` below is what gives it names,
+      # after every gate.
       #
-      # `push_by_digest` mirrors `publish`'s `if:`: same-repo PRs and the
-      # operator's dispatch push, forks and merge-queue trains do not. A
-      # fork run still builds, scans and smokes — it is fully validated,
-      # it just has nothing to push with, and its merge takes `promote`'s
-      # fallback. A merge_group train SHA is not a commit anything
-      # deploys, so there is nothing worth pushing for it.
+      # The push is unconditional, so this job requires a writable token.
+      # A fork PR's GITHUB_TOKEN is read-only whatever the `permissions:`
+      # block says, so a fork PR fails here at push time and its merge is
+      # blocked. That is the intended behaviour, not an oversight: this
+      # repo takes no fork contributions, and a fork has nothing to gain
+      # from publishing images. Blocking the merge is the project's
+      # standing answer to an environment that cannot meet a requirement —
+      # the alternative, a second non-pushing build shape, is the
+      # build-twice topology this PR exists to delete.
+      #
+      # A merge_group train pushes too. Its digests are named by nothing
+      # (`publish` skips its only step on merge_group) and the train SHA
+      # is not a commit anything deploys, so they are untagged garbage
+      # the GHCR retention policy sweeps — #373. Cheaper than a branch.
       #
       # Caddy has its own build context (./docker/caddy) with a custom
       # xcaddy + pinned plugin SHA that adds ~60s of Go compile and
@@ -866,16 +877,16 @@ jobs:
           backup_repo: ${{ steps.tags.outputs.backup_repo }}
           sha_tag: ${{ steps.tags.outputs.sha_tag }}
           git_sha: ${{ steps.tags.outputs.git_sha }}
-          push_by_digest: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
 
       # Tier 1 round-trip against the real initdb / pg_dump / pg_restore
       # (#301 scope C). This job is the only place those binaries exist:
       # they ship in the backup image and on no runner, so the host suite
-      # can pin their argv but never execute them. Reads
-      # `projekt-manager-backup:ci` out of the local store, which the
-      # composite above loaded.
+      # can pin their argv but never execute them. Reads the backup image
+      # out of the local store, where the composite above named the
+      # manifest it pulled back from GHCR — so this exercises the
+      # published bytes, not a separate local build.
       #
       # Here rather than in `check`, and as a script rather than a vitest
       # case, for the reasons in the script header — `check-shard` has no
@@ -892,7 +903,7 @@ jobs:
       - name: Tier 1 round-trip (real Postgres binaries)
         timeout-minutes: 10
         env:
-          BACKUP_IMAGE: projekt-manager-backup:ci
+          BACKUP_IMAGE: ${{ steps.tags.outputs.backup_repo }}:${{ steps.tags.outputs.sha_tag }}
         run: bash scripts/backup/verify-roundtrip.sh
 
   # ---------------------------------------------------------------
@@ -917,18 +928,14 @@ jobs:
   # (run 33424054809: 63 s of `npm ci` + `npm run build` inside a 71 s
   # "push"), and therefore pushed bytes that were never the scanned ones.
   #
-  # Fork PRs do not publish — and the `if:` below is the ONLY thing
-  # that makes that true. Token scope never skips a job: a fork PR's
-  # GITHUB_TOKEN is read-only whatever the `permissions:` block says
-  # ("The GITHUB_TOKEN has read-only permissions in pull requests
-  # from forked repositories" — GitHub docs), so without the `if:`
-  # this job would run and die on `denied: permission_denied` at
-  # push time, i.e. a guaranteed red check on every fork PR. The
-  # condition is load-bearing, not belt-and-braces.
-  #
-  # `docker` still runs, so a fork PR is fully validated; its merge
-  # simply takes `promote`'s fallback rebuild, which is the
-  # documented exception path rather than a regression.
+  # Fork PRs do not reach this job. `docker` pushes unconditionally and
+  # a fork PR's GITHUB_TOKEN is read-only whatever a `permissions:` block
+  # says ("The GITHUB_TOKEN has read-only permissions in pull requests
+  # from forked repositories" — GitHub docs), so a fork PR goes red at
+  # `docker` and `needs:` never lets this run. The same-repo clause in
+  # the `if:` below is therefore documentation of intent rather than the
+  # load-bearing guard it was before #355 — it states the boundary at the
+  # job that would do the naming, where a reader looks for it.
   #
   # `merge_group` runs the job but skips its only real step. `publish`
   # is a REQUIRED status check (ADR-0011), and the merge queue treats a
@@ -983,9 +990,9 @@ jobs:
   #      still allows `main` to advance between the last status check
   #      and the merge, which diverges the trees and makes the PR-tip
   #      bytes wrong for HEAD.
-  #   3. `sha-<pr-tip>` image must exist on GHCR — fork PR (`publish`
-  #      is excluded by its `if:`), force-push after the last green
-  #      run, or a direct push that never had a PR run at all.
+  #   3. `sha-<pr-tip>` image must exist on GHCR — force-push after
+  #      the last green run, or a direct push that never had a PR
+  #      run at all.
   #
   # See ADR-0011 §"Build once, promote on merge", #221 and #355.
   # ---------------------------------------------------------------
@@ -1054,11 +1061,11 @@ jobs:
             exit 0
           fi
 
-          # Guard 3: source tag must exist on GHCR. `publish` is
-          # skipped on fork PRs by its `if:`, and a
-          # force-push after the last green run orphans the tag that
-          # was built from the previous tip. `docker manifest inspect`
-          # is a lightweight HEAD-equivalent — no pull.
+          # Guard 3: source tag must exist on GHCR. A force-push after
+          # the last green run orphans the tag that was built from the
+          # previous tip, and a direct push never had a PR run at all.
+          # `docker manifest inspect` is a lightweight HEAD-equivalent
+          # — no pull.
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           for repo in "$APP_REPO" "$BACKUP_REPO"; do
             ref="${repo}:sha-${pr_head}"
@@ -1105,7 +1112,6 @@ jobs:
           backup_repo: ${{ steps.tags.outputs.backup_repo }}
           sha_tag: ${{ steps.tags.outputs.sha_tag }}
           git_sha: ${{ github.sha }}
-          push_by_digest: 'true'
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
 

@@ -36,8 +36,9 @@
 #   one. Callers supply only a prebuilt image. It builds nothing:
 #   Dockerfile.backup's first stage is `FROM ghcr.io/.../projekt-manager:
 #   ${APP_IMAGE_TAG}`, which CI resolves through buildx `build-contexts:
-#   oci-layout://` (ADR-0027 §"Backup image at PR time") — a named-context
-#   form compose cannot express, and at PR time no GHCR tag exists to pull.
+#   docker-image://<app_repo>@<digest>` against the app image it has
+#   already pushed (ADR-0027 §"Backup image at PR time") — a named-context
+#   form compose cannot express.
 #
 # USAGE
 #   Locally, via the npm entry point — it supplies the dev image tag as the
@@ -49,7 +50,8 @@
 #     npm run test:backup-roundtrip
 #
 #   CI, and any run against a different tag, calls this script directly:
-#     BACKUP_IMAGE=projekt-manager-backup:ci scripts/backup/verify-roundtrip.sh
+#     BACKUP_IMAGE=ghcr.io/<owner>/projekt-manager-backup:sha-<commit> \
+#       scripts/backup/verify-roundtrip.sh
 #
 #   BACKUP_IMAGE stays REQUIRED here rather than defaulting in-script: CI
 #   must fail loudly if its tag ever goes missing, instead of silently
@@ -66,7 +68,7 @@ set -euo pipefail
 
 if [ -z "${BACKUP_IMAGE:-}" ]; then
   echo "ERROR: BACKUP_IMAGE is required (a prebuilt backup image tag)." >&2
-  echo "       CI passes projekt-manager-backup:ci; see the header for local use." >&2
+  echo "       CI passes the backup image's sha-<commit> ref; see the header for local use." >&2
   exit 1
 fi
 
@@ -74,7 +76,8 @@ fi
 # (see the header). Without this check the first `docker run` below reaches
 # for a registry and reports "pull access denied", which reads as a
 # credentials problem rather than "you have not built the image yet". CI is
-# unaffected: the `docker` job loads projekt-manager-backup:ci one step up.
+# unaffected: the `docker` job pulls the backup image back from GHCR and
+# names it in the local store one step up.
 if ! docker image inspect "$BACKUP_IMAGE" >/dev/null 2>&1; then
   echo "ERROR: image '$BACKUP_IMAGE' is not in the local Docker image store." >&2
   echo "       This script builds nothing. Build it first — order matters," >&2
