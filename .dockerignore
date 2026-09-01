@@ -2,6 +2,14 @@ node_modules
 .git
 docs
 *.md
+# Tool caches written into the workspace by CI steps. `trivy-action`
+# defaults TRIVY_CACHE_DIR to `$GITHUB_WORKSPACE/.cache/trivy` and unpacks
+# a ~1.3 GB vuln DB there; without this line every build after a scan
+# ships that into the context, invalidating `COPY . .` and rebuilding
+# everything below it. `.github/actions/trivy-image` also redirects the
+# cache out of the workspace — this is the guard for the next tool that
+# does the same thing without being noticed.
+.cache
 .env
 .env.*
 !.env.example

@@ -1,0 +1,89 @@
+name: Tag images on GHCR
+description: >
+  Points the `sha-<commit>` and `<branch-slug>` tags at an app + backup
+  image pair that is already on GHCR, by registry-level manifest copy. No
+  pull, no build, no local Docker daemon involvement. This is the only
+  step in the pipeline that makes an image reachable by a name anything
+  deploys — everything before it addresses images by digest.
+
+inputs:
+  app_repo:
+    description: GHCR repository path for the app image, without a tag.
+    required: true
+  backup_repo:
+    description: GHCR repository path for the backup image, without a tag.
+    required: true
+  app_source:
+    description: >
+      Complete existing reference to copy the app image from — either
+      `<repo>@sha256:…` (the digest `build-scan-smoke` pushed) or
+      `<repo>:<tag>` (`promote` re-tagging the PR-tip artifact).
+    required: true
+  backup_source:
+    description: Complete existing reference to copy the backup image from.
+    required: true
+  sha_tag:
+    description: Immutable per-commit tag (e.g. `sha-<commit>`). Written first.
+    required: true
+  branch_slug_tag:
+    description: Moving branch pointer (e.g. `main`, `233-live-activity-dock`).
+    required: true
+  github_token:
+    description: GHCR auth token. Pass `secrets.GITHUB_TOKEN`.
+    required: true
+  github_actor:
+    description: GHCR username. Pass `github.actor`.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Log in to GHCR
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.github_actor }}
+        password: ${{ inputs.github_token }}
+
+    # `imagetools create` resolves and pushes manifests through the buildx
+    # client, so the builder has to exist even though nothing is built.
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+    # Both immutable tags before either moving one. A run killed partway
+    # then leaves `promote`'s guard 3 satisfiable (it requires both
+    # `sha-<tip>` halves) and at worst a stale `<branch-slug>`, which the
+    # next run overwrites. The reverse order would leave the slug pair
+    # split across two commits with nothing to repair it — the failure
+    # that made PR runs uncancellable in the first place (#355 §5).
+    #
+    # `docker buildx imagetools create` copies the manifest at the registry
+    # level. It preserves the OCI image-index wrapper and the buildx
+    # provenance/SBOM attestation manifests, which `docker pull + tag +
+    # push` silently drops — the daemon handles platform-specific
+    # manifests, not index + attestation tuples. Regression observed on the
+    # first promote run in #226: `sha-<merge>` came out schema-2 with the
+    # attestation manifest gone. Bytes ran fine; a `cosign verify` or
+    # SLSA-verify gate would not have.
+    - name: Point sha + branch-slug tags at the published digests
+      shell: bash
+      env:
+        APP_REPO: ${{ inputs.app_repo }}
+        BACKUP_REPO: ${{ inputs.backup_repo }}
+        APP_SOURCE: ${{ inputs.app_source }}
+        BACKUP_SOURCE: ${{ inputs.backup_source }}
+        SHA_TAG: ${{ inputs.sha_tag }}
+        BRANCH_SLUG_TAG: ${{ inputs.branch_slug_tag }}
+      run: |
+        set -euo pipefail
+        tag_pair() {
+          local tag=$1
+          echo "::group::Tag ${tag}"
+          echo "  ${APP_SOURCE} -> ${APP_REPO}:${tag}"
+          docker buildx imagetools create -t "${APP_REPO}:${tag}" "${APP_SOURCE}"
+          echo "  ${BACKUP_SOURCE} -> ${BACKUP_REPO}:${tag}"
+          docker buildx imagetools create -t "${BACKUP_REPO}:${tag}" "${BACKUP_SOURCE}"
+          echo "::endgroup::"
+        }
+        tag_pair "$SHA_TAG"
+        tag_pair "$BRANCH_SLUG_TAG"

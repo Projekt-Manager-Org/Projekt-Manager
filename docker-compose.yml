@@ -259,7 +259,7 @@ services:
     #
     # Pulled from GHCR — mirrors the `app` service's shape (ADR-0011's
     # "build in CI, distribute via GHCR" invariant extends to this
-    # image; see .github/workflows/ci.yml build-and-push job). The tag
+    # image; see .github/workflows/ci.yml publish job). The tag
     # is the commit SHA of the currently-deployed revision, set by
     # scripts/deploy.sh via APP_IMAGE_TAG. No default: mirrors the
     # `app` service's `:?` gate so compose refuses to start without an

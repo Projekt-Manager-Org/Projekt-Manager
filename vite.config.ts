@@ -8,7 +8,7 @@ import path from 'path';
 /**
  * Resolve the git short-SHA baked into the client bundle for the footer
  * version chip. Precedence:
- *   1. `$GIT_SHA` env (CI passes the commit SHA via the build-scan-push
+ *   1. `$GIT_SHA` env (CI passes the commit SHA via the build-scan-smoke
  *      composite; Dockerfile forwards the build-arg into the build env).
  *   2. `git rev-parse --short=7 HEAD` for local `npm run build` outside
  *      a container.

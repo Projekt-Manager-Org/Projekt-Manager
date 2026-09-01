@@ -1,18 +1,36 @@
-name: Build, scan, smoke, and push images
+name: Build, push by digest, scan, and smoke
 description: >
-  Builds the app + backup images, scans both with Trivy (HIGH/CRITICAL),
-  publishes them to GHCR under the supplied SHA tag and branch-slug tag,
-  then runs the runtime smoke (compose up, schedule registration, one
-  backup cycle). Single source of truth for the rebuild path — called
-  from the `build-and-push` job (workflow_dispatch) directly, and from
-  the `promote` job's fallback when the promote guards fail.
+  Builds the app + backup images ONCE each, pushing each straight to GHCR
+  by digest, then pulls the published manifests back and scans and smokes
+  those exact bytes. What Trivy scans and what the stack boots IS what was
+  published — an identity, not an argument about cache equivalence.
+
+  A digest-only manifest carries no tag, so nothing can pull, deploy or
+  promote it: `scripts/deploy.sh` cannot name it and `promote`'s guard 3
+  cannot find it. `tag-images` is what makes an image reachable by name,
+  and it runs only after every other gate has passed. That naming boundary
+  — not the push boundary — is what lets the push sit ahead of `check`,
+  `lint` and the smoke without weakening the invariant.
+
+  Called from the `docker` job (every PR) and from `promote`'s fallback.
+  Both hold `packages: write`; there is no non-pushing caller.
 
 inputs:
-  sha_tag:
-    description: SHA-derived image tag (e.g. `sha-<commit>`). Used as APP_IMAGE_TAG in the smoke compose.
+  app_repo:
+    description: GHCR repository path for the app image, without a tag.
     required: true
-  branch_slug_tag:
-    description: Branch-slug human-friendly fallback tag (e.g. `main`, `233-live-activity-dock`).
+  backup_repo:
+    description: GHCR repository path for the backup image, without a tag.
+    required: true
+  sha_tag:
+    description: >
+      SHA-derived tag the images will carry once `tag-images` runs (e.g.
+      `sha-<commit>`). Used as APP_IMAGE_TAG in the smoke compose, as the
+      local name the pulled-back manifests are tagged with, and as the
+      `FROM` reference the backup build resolves against.
+    required: true
+  git_sha:
+    description: Commit SHA baked into the client bundle for the footer version chip.
     required: true
   github_token:
     description: GHCR auth token. Pass `secrets.GITHUB_TOKEN`.
@@ -21,27 +39,19 @@ inputs:
     description: GHCR username. Pass `github.actor`.
     required: true
 
+outputs:
+  app_digest:
+    description: Digest of the pushed app image index.
+    value: ${{ steps.push_app.outputs.digest }}
+  backup_digest:
+    description: Digest of the pushed backup image index.
+    value: ${{ steps.push_backup.outputs.digest }}
+
 runs:
   using: composite
   steps:
-    - name: Compute full tag lists
-      id: tags
-      shell: bash
-      run: |
-        set -euo pipefail
-        # GHCR rejects uppercase in the repository path, so lowercase
-        # the owner (the org name `Projekt-Manager-Org` is mixed-case).
-        owner="${GITHUB_REPOSITORY_OWNER,,}"
-        {
-          echo "app_tags<<APP_TAGS_EOF"
-          echo "ghcr.io/${owner}/projekt-manager:${{ inputs.sha_tag }}"
-          echo "ghcr.io/${owner}/projekt-manager:${{ inputs.branch_slug_tag }}"
-          echo "APP_TAGS_EOF"
-          echo "backup_tags<<BACKUP_TAGS_EOF"
-          echo "ghcr.io/${owner}/projekt-manager-backup:${{ inputs.sha_tag }}"
-          echo "ghcr.io/${owner}/projekt-manager-backup:${{ inputs.branch_slug_tag }}"
-          echo "BACKUP_TAGS_EOF"
-        } >> "$GITHUB_OUTPUT"
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
     - name: Log in to GHCR
       uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
@@ -50,125 +60,135 @@ runs:
         username: ${{ inputs.github_actor }}
         password: ${{ inputs.github_token }}
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
-
-    # Build → scan → push. Two build-push-action invocations share
-    # the gha cache, so the second one re-uses every layer and adds
-    # ~5s. The split exists to keep a failing image scan from
-    # publishing the bad tag to GHCR — `scripts/deploy.sh <sha>`
-    # resolves images by SHA tag, so a published-then-fails-scan
-    # sequence would leave a pullable bad image behind.
+    # ---------------------------------------------------------------
+    # ONE build per image, and the registry is the handoff point.
     #
-    # `cache-to` carries `ignore-error=true` on every site below:
-    # the GHA cache backend returns transient 502s under load (the
-    # "Unicorn!" page), and treating cache-export as load-bearing
-    # converts that into a hard build failure even though the image
-    # bytes were already assembled. The cache is best-effort; missing
-    # it costs ~30s on the next cold build, nothing else.
-    - name: Build app image (load locally for scan)
+    # This replaced a build-twice shape: a `type=docker` + `type=oci`
+    # validation build that Trivy and the smoke consumed, then a second
+    # `type=image,push-by-digest` build for the push. That shape claimed
+    # the two were byte-identical because they shared a cache. They were
+    # not: in the push invocation `COPY . .` missed, so `npm run build`
+    # (16.5s) and `npm prune` (9.1s) re-executed and produced a different
+    # snapshot from the one that had been scanned — and `apk upgrade
+    # --no-cache` (Dockerfile:73) is a live nondeterministic input behind
+    # it. The published backup image was worse: its `FROM` resolved
+    # through `build-contexts` to the *validation* app build while the
+    # published app image was the *push* build, so the `sha-<commit>`
+    # pair did not come from one app build at all — the exact skew
+    # Dockerfile.backup exists to prevent.
+    #
+    # Pushing first removes the second build rather than trying to keep
+    # it honest. The bytes go to GHCR untagged, come back by digest, and
+    # everything downstream addresses that digest.
+    #
+    # `provenance: mode=max` is now uniform. The asymmetry that used to
+    # be here (`false` on validation, `mode=max` on the push) was forced
+    # by the `docker` exporter, which cannot write a manifest list —
+    # `ERROR: failed to build: docker exporter does not currently support
+    # exporting manifest lists` — and an attestation turns the result
+    # into one. There is no `docker` exporter in this build any more, so
+    # the constraint is gone with it.
+    #
+    # `cache-to` carries `ignore-error=true`: the GHA cache backend
+    # returns transient 502s under load, and treating cache export as
+    # load-bearing turns that into a hard build failure even though the
+    # image bytes were already assembled. Missing it costs ~30s on the
+    # next cold build, nothing else.
+    # ---------------------------------------------------------------
+    - name: Build app image and push by digest
+      id: push_app
       uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
       with:
         context: .
         file: Dockerfile
-        push: false
-        load: true
-        tags: projekt-manager-app:ci
-        # Bake the commit SHA into the client bundle for the footer
-        # version chip. `github.sha` is the merge-commit SHA on push to
-        # main; on workflow_dispatch it is the branch HEAD. Vite
-        # truncates to 7 chars before inlining.
+        provenance: mode=max
+        outputs: type=image,name=${{ inputs.app_repo }},push-by-digest=true,name-canonical=true,push=true
         build-args: |
-          GIT_SHA=${{ github.sha }}
+          GIT_SHA=${{ inputs.git_sha }}
         cache-from: type=gha
         cache-to: type=gha,mode=max,ignore-error=true
 
-    # Backstop Trivy image scan on the locally-loaded image before
-    # publishing (ADR-0027 §Decision.2). The PR-time `docker` job
-    # already scans the image before merge; this catches edge cases
-    # — TS-only commits that change the baked-in code without
-    # tripping the docker job's path filter, workflow_dispatch
-    # builds on feature branches, and direct-push-to-main bypasses
-    # that skipped the PR flow entirely. No `ignore-unfixed`: same
-    # rationale as the `docker` job's scan.
-    - name: Trivy — image vuln scan (HIGH/CRITICAL)
-      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
-        scan-type: image
-        image-ref: projekt-manager-app:ci
-        severity: HIGH,CRITICAL
-        exit-code: '1'
-        trivyignores: .trivyignore
-
-    - name: Push app image
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
-      with:
-        context: .
-        file: Dockerfile
-        push: true
-        tags: ${{ steps.tags.outputs.app_tags }}
-        # Same SHA as the locally-loaded scan build above — buildx
-        # re-uses every cached layer, the build-arg just needs to match
-        # so the cache key lines up.
-        build-args: |
-          GIT_SHA=${{ github.sha }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max,ignore-error=true
-
-    # Backup image — see ADR-0020 §Decision (Layer 2 encrypted
-    # backups) and Dockerfile.backup. Built and pushed to GHCR under
-    # the same tagging scheme as the app image so scripts/deploy.sh
-    # can resolve both images by the same commit SHA. Sequential on
-    # purpose: Dockerfile.backup's `FROM ghcr.io/...:${APP_IMAGE_TAG}`
-    # references the just-pushed app image, so the app push must
-    # complete first. Separate gha cache scope keeps the backup
-    # image's layer cache from invalidating the app image's cache.
+    # Pull the published manifest back and give it its future name in the
+    # LOCAL store only. Two things need it there:
     #
-    # Build → scan → push mirrors the app image flow (same R6 rationale):
-    # the backup image adds `postgresql17*`, `age`, `bash`, `findmnt`
-    # apk layers on top of node-alpine, each with its own CVE surface
-    # — leaving it unscanned was pre-existing tech debt.
-    - name: Build backup image (load locally for scan)
+    #   - the smoke's compose files declare `image:` lines at
+    #     `${APP_IMAGE_TAG}`. No compose file sets `pull_policy`, so
+    #     compose defaults to `missing` and resolves them from the local
+    #     store — the smoke exercises the real compose config against the
+    #     bytes that are on GHCR, while no name resolves to them there.
+    #   - the `docker` job's Tier 1 round-trip runs the backup image out
+    #     of the same store.
+    #
+    # A local tag is not a registry tag: nothing outside this runner can
+    # see it, so the naming boundary is intact.
+    - name: Pull the app image back and name it locally
+      shell: bash
+      env:
+        APP_DIGEST_REF: ${{ inputs.app_repo }}@${{ steps.push_app.outputs.digest }}
+        APP_REF: ${{ inputs.app_repo }}:${{ inputs.sha_tag }}
+      run: |
+        set -euo pipefail
+        docker pull "$APP_DIGEST_REF"
+        docker tag "$APP_DIGEST_REF" "$APP_REF"
+        echo "  $APP_DIGEST_REF"
+        echo "  -> $APP_REF (local only)"
+
+    - name: Trivy — app image
+      uses: ./.github/actions/trivy-image
+      with:
+        image_ref: ${{ inputs.app_repo }}@${{ steps.push_app.outputs.digest }}
+
+    # The backup build's `FROM` resolves against the app image's PUBLISHED
+    # digest. That is what pushing first buys: the backup image is built
+    # on the exact app bytes that were published and scanned, addressed by
+    # digest rather than through an OCI layout that has to be kept in step
+    # with the pushed image by hand — the mechanism that let the two
+    # diverge in the first place.
+    #
+    # APP_IMAGE_TAG is the real `sha_tag`, so the `FROM` recorded in the
+    # backup image names the app tag it will be published beside. Separate
+    # gha cache scope keeps the backup image's layer cache from
+    # invalidating the app image's.
+    - name: Build backup image and push by digest
+      id: push_backup
       uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
       with:
         context: .
         file: Dockerfile.backup
-        push: false
-        load: true
-        tags: projekt-manager-backup:ci
+        provenance: mode=max
+        outputs: type=image,name=${{ inputs.backup_repo }},push-by-digest=true,name-canonical=true,push=true
         build-args: |
           APP_IMAGE_TAG=${{ inputs.sha_tag }}
+        build-contexts: |
+          ${{ inputs.app_repo }}:${{ inputs.sha_tag }}=docker-image://${{ inputs.app_repo }}@${{ steps.push_app.outputs.digest }}
         cache-from: type=gha,scope=backup
         cache-to: type=gha,mode=max,scope=backup,ignore-error=true
 
-    - name: Trivy — backup image vuln scan (HIGH/CRITICAL)
-      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      with:
-        scan-type: image
-        image-ref: projekt-manager-backup:ci
-        severity: HIGH,CRITICAL
-        exit-code: '1'
-        trivyignores: .trivyignore
+    - name: Pull the backup image back and name it locally
+      shell: bash
+      env:
+        BACKUP_DIGEST_REF: ${{ inputs.backup_repo }}@${{ steps.push_backup.outputs.digest }}
+        BACKUP_REF: ${{ inputs.backup_repo }}:${{ inputs.sha_tag }}
+      run: |
+        set -euo pipefail
+        docker pull "$BACKUP_DIGEST_REF"
+        docker tag "$BACKUP_DIGEST_REF" "$BACKUP_REF"
+        echo "  $BACKUP_DIGEST_REF"
+        echo "  -> $BACKUP_REF (local only)"
 
-    - name: Push backup image
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+    # The backup image adds `postgresql17*`, `age`, `bash`, `findmnt` apk
+    # layers on top of node-alpine, each with its own CVE surface.
+    - name: Trivy — backup image
+      uses: ./.github/actions/trivy-image
       with:
-        context: .
-        file: Dockerfile.backup
-        push: true
-        tags: ${{ steps.tags.outputs.backup_tags }}
-        build-args: |
-          APP_IMAGE_TAG=${{ inputs.sha_tag }}
-        cache-from: type=gha,scope=backup
-        cache-to: type=gha,mode=max,scope=backup,ignore-error=true
+        image_ref: ${{ inputs.backup_repo }}@${{ steps.push_backup.outputs.digest }}
 
     # `age` on the runner is needed by the smoke step below to mint a
     # per-run binary `age` keypair before `docker compose up`. The app
-    # boot probe (assertBinaryIdentityLoaded — ADR-0024) refuses to
-    # start without a tmpfs-loaded identity matching
-    # BINARY_AGE_RECIPIENT; the recipient is interpolated into the app
-    # container's env at compose-parse time, so it must exist before
-    # the stack comes up.
+    # boot probe (assertBinaryIdentityLoaded — ADR-0024) refuses to start
+    # without a tmpfs-loaded identity matching BINARY_AGE_RECIPIENT; the
+    # recipient is interpolated into the app container's env at
+    # compose-parse time, so it must exist before the stack comes up.
     #
     # The same SHA-pinned composite `check-shard` and `e2e.yml` call, so
     # all three identities are minted by the same `age` build. Was
@@ -180,10 +200,10 @@ runs:
     # ---------------------------------------------------------------
     # Runtime smoke test — catch bugs that "does it compile?" misses.
     #
-    # History (pre-#199): iteration 7 landed with six distinct
-    # runtime defects that all passed `npm ci && npm test && docker
-    # build`. Each one fired only when the container actually booted
-    # and ran its real code path on a real DB:
+    # History (pre-#199): iteration 7 landed with six distinct runtime
+    # defects that all passed `npm ci && npm test && docker build`. Each
+    # one fired only when the container actually booted and ran its real
+    # code path on a real DB:
     #   - dcron EPERM on setpgid (needed init:true) — gone with #199
     #     (croner does not fork; container runs non-root)
     #   - shared env schema required STORAGE_* (unused by backup-runner)
@@ -193,27 +213,28 @@ runs:
     #   - seed fixture readFileSync at module load (since fixed to an
     #     inlined JSON import so the specific ENOENT can't recur)
     #
-    # Cheap defence: boot the full stack with the in-stack MinIO
-    # standing in as the R2 target. Confirm the scheduler logged
-    # its registered-jobs lines (catches a schedule-registration
-    # regression in scheduleSubcommand), then run one `node
-    # backup-runner.js run` cycle end to end. MinIO is S3-compatible
-    # for every call the uploader makes (HeadBucket / PutObject /
-    # GetObject / ListObjectsV2), so this exercises the real
-    # pipeline including the startup R2 HeadBucket probe and the
-    # ephemeral-pg spawn under the postgres UID. An env-schema
-    # error, spawn-quoting crash, peer-auth failure, missing
-    # binary, or schedule-registration regression all surface here
-    # before the image is picked up by a real deploy. Runtime cost
-    # is ~60–90s on GHA's hosted runners.
+    # Cheap defence: boot the full stack with the in-stack MinIO standing
+    # in as the R2 target. Confirm the scheduler logged its
+    # registered-jobs lines (catches a schedule-registration regression in
+    # scheduleSubcommand), then run one `node backup-runner.js run` cycle
+    # end to end. MinIO is S3-compatible for every call the uploader makes
+    # (HeadBucket / PutObject / GetObject / ListObjectsV2), so this
+    # exercises the real pipeline including the startup R2 HeadBucket
+    # probe and the ephemeral-pg spawn under the postgres UID. An
+    # env-schema error, spawn-quoting crash, peer-auth failure, missing
+    # binary, or schedule-registration regression all surface here.
+    #
+    # It runs after the push, which is what the naming boundary buys: a
+    # smoke failure leaves two untagged digests on GHCR that nothing can
+    # name, pull or deploy, and `tag-images` never runs. Runtime cost is
+    # ~60–90s on GHA's hosted runners.
     # ---------------------------------------------------------------
     - name: Runtime smoke test
       shell: bash
       env:
-        # `build-and-push` already pushed both images under the SHA
-        # tag; the smoke step pulls them back through docker compose's
-        # normal path so the compose config is exercised too, not just
-        # the images.
+        # Resolves to the pulled-back images named in the local store
+        # above — the published bytes, addressed by the tag compose
+        # declares.
         APP_IMAGE_TAG: ${{ inputs.sha_tag }}
         # Placeholder secrets — the stack must start and one
         # `node backup-runner.js run` cycle must complete before any

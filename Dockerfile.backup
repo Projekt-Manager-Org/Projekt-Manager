@@ -29,7 +29,7 @@
 # psql are all available for the Tier 1 verify-on-create path
 # (ADR-0020 §Decision, docs/spec/architecture.md §11.10) without
 # multi-stage binary shuffling.
-# No default: callers (scripts/deploy.sh via the CI build-and-push job,
+# No default: callers (scripts/deploy.sh via the CI `docker` job,
 # or an operator-run `docker build --build-arg`) MUST supply the tag.
 # Dropping the `=iteration-7-data` default closes the H2 audit finding —
 # a stale mutable branch tag could silently ship the wrong code.

@@ -113,7 +113,7 @@ jobs:
       # per-run binary identity via `age-keygen` before spawning the
       # webServer (ADR-0024). Not preinstalled on ubuntu-latest.
       #
-      # Same composite as ci.yml's `check-shard` and `build-scan-push`:
+      # Same composite as ci.yml's `check-shard` and `build-scan-smoke`:
       # one tool, one pin, one definition. A version skew between E2E and
       # the integration suite would mean the two identities are generated
       # by different `age` builds, which is why this used to be a

@@ -4,7 +4,7 @@ description: >
   SHA256-pinned upstream release tarball. Single source of truth for the
   pin — three call sites, all minting a binary identity per ADR-0024:
   `ci.yml`'s `check-shard` (the integration suite, per fork), `e2e.yml`
-  (Playwright, before spawning the webServer), and the `build-scan-push`
+  (Playwright, before spawning the webServer), and the `build-scan-smoke`
   composite (the smoke test, before `docker compose up`).
 
   Pinned tarball rather than `apt-get install age`, for the same reason as

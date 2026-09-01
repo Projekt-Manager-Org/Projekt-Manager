@@ -14,7 +14,7 @@ Key forces:
 
 - **Local/prod parity is load-bearing.** ADR-0003 commits us to `docker compose up` producing identical stacks locally and in production. Silent version drift erodes that — a Compose-file or BuildKit syntax that works locally can fail on deploy.
 - **VPS runs Docker in production.** Images are built in CI and pulled on the VPS (see [ADR-0011](0011-build-images-in-ci-distribute-via-ghcr.md)), but the VPS Docker version still governs runtime.
-- **CI exercises Docker.** `ci.yml` has a `docker` job (Compose validation + image build) and a `build-and-push` job (GHCR publish).
+- **CI exercises Docker.** `ci.yml` has a `docker` job (Compose validation + image build + scan + runtime smoke) and a `publish` job (GHCR publish).
 - **Solo operator.** No platform team to absorb surprise breakage. Determinism beats automatic patching at this scale.
 
 ## Decision
