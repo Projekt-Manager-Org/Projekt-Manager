@@ -168,10 +168,14 @@ runs:
     # start without a tmpfs-loaded identity matching
     # BINARY_AGE_RECIPIENT; the recipient is interpolated into the app
     # container's env at compose-parse time, so it must exist before
-    # the stack comes up. Same install as the `check-shard` job.
+    # the stack comes up.
+    #
+    # The same SHA-pinned composite `check-shard` and `e2e.yml` call, so
+    # all three identities are minted by the same `age` build. Was
+    # `apt-get install -y age` until #374 — unpinned and unverified, on
+    # the one binary in this pipeline that mints a crypto identity.
     - name: Install age (smoke prerequisite)
-      shell: bash
-      run: sudo apt-get update && sudo apt-get install -y age
+      uses: ./.github/actions/install-age
 
     # ---------------------------------------------------------------
     # Runtime smoke test — catch bugs that "does it compile?" misses.

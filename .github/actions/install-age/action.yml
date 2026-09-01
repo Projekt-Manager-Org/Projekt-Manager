@@ -1,0 +1,27 @@
+name: Install age
+description: >
+  Installs the `age` and `age-keygen` binaries to /usr/bin from a
+  SHA256-pinned upstream release tarball. Single source of truth for the
+  pin — three call sites, all minting a binary identity per ADR-0024:
+  `ci.yml`'s `check-shard` (the integration suite, per fork), `e2e.yml`
+  (Playwright, before spawning the webServer), and the `build-scan-push`
+  composite (the smoke test, before `docker compose up`).
+
+  Pinned tarball rather than `apt-get install age`, for the same reason as
+  ripgrep and OSV-Scanner in `lint`: apt was measured at 10s–54s across
+  five runs, the long tail being azure.archive.ubuntu.com stalling, and
+  `check-shard` — the longest job in the pipeline — sits behind it. An
+  unpinned binary that mints a crypto identity is also a supply-chain
+  hole the rest of the pipeline does not have.
+
+  The procedure lives in the sibling install-age.sh — a real script file
+  so CI's shellcheck gate covers it (actionlint does not read composite
+  action.yml files). The pin and its `# renovate:` annotation live there
+  too.
+
+runs:
+  using: composite
+  steps:
+    - name: Install age
+      shell: bash
+      run: bash "${GITHUB_ACTION_PATH}/install-age.sh"
