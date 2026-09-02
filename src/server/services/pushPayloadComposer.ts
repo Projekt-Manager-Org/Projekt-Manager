@@ -24,6 +24,7 @@ import {
   labelForEventClass,
 } from '../../config/notificationEvents.js';
 import { STATE_CONFIGS, type WorkflowState } from '../../config/stateConfig.js';
+import { STRINGS } from '../../config/strings.js';
 import type { AuditLogRow } from './audit-publisher.js';
 
 export interface RenderedPushPayload {
@@ -53,16 +54,43 @@ const PROJECT_FALLBACK_BODY = 'Aktualisierung';
 const SYSTEM_FALLBACK_URL = '/verwaltung';
 
 /**
+ * Push body per derived backup-badge reason. Keyed by the `reason`
+ * strings of `BackupBadgeState` (src/domain/backupBadge.ts) and valued
+ * with the badge's own labels, so a push and the badge it points at
+ * never disagree about what is wrong.
+ */
+const BACKUP_REASON_BODY: Readonly<Record<string, string>> = {
+  'last-run-failed': STRINGS.backup.lastRunFailed,
+  'backup-never-run': STRINGS.backup.backupNeverRun,
+  'drill-never-run': STRINGS.backup.drillNeverRun,
+  'backup-stale': STRINGS.backup.backupStale,
+  'backup-aging': STRINGS.backup.backupAging,
+  'drill-stale': STRINGS.backup.drillStale,
+};
+
+function readStringField(payload: Record<string, unknown> | null, key: string): string | null {
+  if (payload === null) return null;
+  const value = payload[key];
+  return typeof value === 'string' ? value : null;
+}
+
+function readNumberField(payload: Record<string, unknown> | null, key: string): number | null {
+  if (payload === null) return null;
+  const value = payload[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
  * Compose the user-facing push payload for a dispatched event.
  *
  * `auditRow` is null for system-bus events (`backup.failed`,
- * `disk.threshold_reached`); `systemPayload` is unused today — reserved
- * for richer system-event templates without breaking the signature.
+ * `disk.threshold_reached`); those read `systemPayload` instead, which
+ * the threshold monitor populates with the derived condition.
  */
 export function composePushPayload(
   eventClass: NotificationEventClass,
   auditRow: AuditLogRow | null,
-  _systemPayload: Record<string, unknown> | null,
+  systemPayload: Record<string, unknown> | null,
 ): RenderedPushPayload {
   const title = labelForEventClass(eventClass);
 
@@ -101,19 +129,22 @@ export function composePushPayload(
     }
 
     case 'backup.failed': {
-      return {
-        title,
-        body: 'Backup konnte nicht abgeschlossen werden.',
-        url: '/verwaltung/backups',
-      };
+      // The monitor publishes the derived badge reason; reuse the badge's
+      // own German labels so the push and the badge the owner lands on
+      // say the same thing. Falls back to the generic sentence when the
+      // payload is absent or carries an unknown reason.
+      const reason = readStringField(systemPayload, 'reason');
+      const body =
+        (reason === null ? null : BACKUP_REASON_BODY[reason]) ??
+        'Backup konnte nicht abgeschlossen werden.';
+      return { title, body, url: '/verwaltung/backups' };
     }
 
     case 'disk.threshold_reached': {
-      return {
-        title,
-        body: 'Speichernutzung über Schwellwert.',
-        url: SYSTEM_FALLBACK_URL,
-      };
+      const percent = readNumberField(systemPayload, 'percent');
+      const body =
+        percent === null ? 'Speichernutzung über Schwellwert.' : `Speicher zu ${percent}% belegt.`;
+      return { title, body, url: SYSTEM_FALLBACK_URL };
     }
   }
 }

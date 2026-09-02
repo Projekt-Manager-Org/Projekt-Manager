@@ -333,6 +333,29 @@ Exact German strings live in the German UI and error strings catalogue (`[C]` �
 
 ---
 
+### 11.15 Threshold Monitor
+
+Periodic evaluator in the `app` process that turns two standing **conditions** into the two non-mutation catalog events ([§11.11](#1111-notification-publisher-and-dispatch)). Source: `src/server/services/threshold-monitor.ts`, driven by the shared periodic sweeper.
+
+| Condition                                                  | Source of truth                                                                                  | Event                    |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------ |
+| Backup badge on any non-green state                        | `meta_backup_status`, via `deriveBadgeState` ([§11.10](#1110-full-state-backup-layer-2))         | `backup.failed`          |
+| Global stored ciphertext ≥ warn band of `STORAGE_QUOTA_GB` | `project_storage_usage` roll-up ([data-model.md §5.14](data-model.md#514-project-storage-usage)) | `disk.threshold_reached` |
+
+**Why an evaluator, not a publish at the failure site.** The backup failure IS written at a failure site — but that site is the `backup` container, a separate image ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)), while the publisher binds its `Database` and dispatcher at `app` startup. A publish from the runner reaches an unbound publisher and is silently dropped. The age-derived states (`backup-stale`, `backup-aging`, `drill-stale`, never-run) have no failure site at all — nothing happens at the moment a row goes stale. Both are therefore evaluated in the `app` process over the rows the runner writes; the DB is the cross-process channel.
+
+Consequence: this also covers the dead-runner case. A `backup` container that never starts writes nothing, so no failure path fires — but the row keeps aging and the monitor notices at the badge's own thresholds.
+
+**Ciphertext, not plaintext.** The cap describes provisioned bucket capacity, and what occupies the bucket is the encrypted object ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)). Plaintext is the user-facing "how much data do I carry" figure the Footer badge and DatenView row show ([§8.1.2](ui/index.md#812-authenticated-state)); ciphertext is the operator figure a capacity warning is about. Hidden rows count — their bytes occupy the bucket until the lifecycle rule reaps them.
+
+**Re-notify policy.** A condition notifies on entry, then at most once per `THRESHOLD_MONITOR.repeatMinutes` while it persists. A condition whose derived reason _changes_ (amber → red) notifies immediately — that is new information. Clearing forgets the condition, so a recurrence notifies again. The de-duplication state is in-memory: an `app` restart replays at most one duplicate per standing condition, which is preferred over the schema and migration that persisting it would cost.
+
+**Warn-only.** Nothing rejects an upload at the warn band. Quota _enforcement_ is out of scope.
+
+**Single-process invariant** ([ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md)). A multi-replica deployment needs a lease at the scheduler site, or every replica notifies the same owner for the same condition.
+
+---
+
 ## 12. Configuration Boundaries
 
 ### 12.1 Universal Domain Rules
@@ -383,6 +406,8 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 - Attachment orphan-reaper TTL — age of a `status = 'pending'` attachment row past which the scheduled reaper removes the row and its backing objects (default 15 minutes; [data-model.md §6.11](data-model.md#611-attachment-orphan-reaper)). Env var: `ATTACHMENT_ORPHAN_REAPER_TTL_MINUTES`
 - Attachment hidden-reaper TTL — age past `hiddenAt` past which the scheduled reaper hard-deletes the `status = 'hidden'` row (default 2 days; [data-model.md §6.12](data-model.md#612-attachment-hidden-reaper)). Equal to `L` by construction. Env var: `ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES` (minutes; default `2880`)
 - Attachment presigned-URL expiry — lifetime of upload (presigned-PUT) and download (presigned-GET) URLs issued by the attachment surface (default 5 minutes; [api.md §14.2.11](api.md#14211-attachments))
+- Storage capacity declaration — stored-ciphertext volume the deployment's bucket is provisioned for, in power-of-1024 GB. Drives the `disk.threshold_reached` warning ([§11.15](#1115-threshold-monitor)). Env var: `STORAGE_QUOTA_GB`, no default — unset disables storage warnings entirely, logged once at startup. Env-backed rather than a source constant because it tracks the provisioned bucket, not policy: a second deployment against a larger bucket must not need a code edit to describe its own capacity
+- Threshold-monitor policy — warn band (default 80% of `STORAGE_QUOTA_GB`), sweep cadence (default 15 minutes), and re-notify cadence while a condition persists (default 1440 minutes = 24 h). Source constant: `THRESHOLD_MONITOR` in `src/config/thresholdMonitor.ts`. No env var — these are policy, parity with `BACKUP_THRESHOLDS`
 - Attachment worker self-delete grace — elapsed window since upload during which a worker may delete their own attachment (default 15 minutes; outside the window worker delete is rejected with `403 NOT_PERMITTED`; [verification.md AC-215](verification.md#1526-attachments)). Env var: `ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES`
 - Attachment label catalog — the closed enum `AttachmentLabel` ([data-model.md §5.13](data-model.md#513-attachment)) paired with its German display strings: `angebot` → `Angebot`, `auftragsbestaetigung` → `Auftragsbestätigung`, `rechnung` → `Rechnung`, `aufmass` → `Aufmaß`, `foto` → `Foto`, `sonstiges` → `Sonstiges`. Adding a label is a code change plus a migration (parity with the notification-event catalog).
 - Attachment upload CTA labels — German copy for the upload affordance on the project detail page ([ui/project-detail.md §8.15.4](ui/project-detail.md#8154-photo-gallery), [§8.15.5](ui/project-detail.md#8155-binary-list)): the camera-capture CTA (`Foto aufnehmen`), the drop-zone text, the explicit-browse labels, and the retry / dismiss actions. Kept alongside the other `German UI and error strings` — listed here because the CTAs are referenced by capability statements elsewhere in the spec.

@@ -23,6 +23,9 @@
  *                                        threshold — AC-171 treats an unverified
  *                                        backup cycle as worse than a stale one)
  *   - drill age > drillAmberDays     → { kind: 'amber', reason: 'drill-stale' }
+ *   - backup age > backupAmberDays   → { kind: 'amber', reason: 'backup-aging' }
+ *                                       (only reachable when the drill is green —
+ *                                        drill amber takes precedence above)
  *   - otherwise                      → { kind: 'green' }
  *
  * The label on the 'unknown' branch is a German UI string per AC-171 —
@@ -64,7 +67,7 @@ export interface BackupStatus {
 export type BackupBadgeState =
   | { kind: 'unknown'; label: string }
   | { kind: 'green'; lastBackupAt?: string }
-  | { kind: 'amber'; reason: 'drill-stale'; lastBackupAt?: string }
+  | { kind: 'amber'; reason: 'drill-stale' | 'backup-aging'; lastBackupAt?: string }
   | {
       kind: 'red';
       reason: 'backup-stale' | 'drill-never-run' | 'last-run-failed' | 'backup-never-run';
@@ -158,11 +161,12 @@ export function deriveBadgeState(
   if (status.lastBackupAt !== undefined) {
     const backupAgeDays = daysBetween(new Date(status.lastBackupAt), now);
     if (backupAgeDays > thresholds.backupAmberDays) {
-      // Amber for backup age alone is currently represented by the same
-      // 'drill-stale' reason string; keeping it simple because the test
-      // suite only pins the drill-staleness amber case. If a separate
-      // amber reason is needed later it's a pure additive change.
-      return { kind: 'amber', reason: 'drill-stale', lastBackupAt: status.lastBackupAt };
+      // Distinct from 'drill-stale': the backup itself is aging while the
+      // drill is still fresh. The two shared a reason string while the
+      // reason only fed a badge tooltip, but the threshold monitor now
+      // renders it into a push body — collapsing them would tell the
+      // owner the drill is overdue when the backup is the problem.
+      return { kind: 'amber', reason: 'backup-aging', lastBackupAt: status.lastBackupAt };
     }
   }
 

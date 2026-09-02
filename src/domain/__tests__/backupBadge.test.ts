@@ -73,6 +73,41 @@ function daysAgo(n: number): string {
   return d.toISOString();
 }
 
+describe('#122: amber reasons are distinguishable', () => {
+  it('renders amber / backup-aging when the backup ages past amber and the drill is fresh', () => {
+    // The backup itself is getting old while the drill is current. This
+    // shared the 'drill-stale' reason string while the reason only fed a
+    // badge tooltip; the threshold monitor now renders it into a push
+    // body, where the collapse would tell the owner the drill is overdue
+    // when the backup is the actual problem.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(3),
+      lastDrillAt: daysAgo(0),
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('amber');
+    if (s.kind === 'amber') expect(s.reason).toBe('backup-aging');
+  });
+
+  it('renders amber / drill-stale when the drill ages past amber and the backup is fresh', () => {
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(0),
+      lastDrillAt: daysAgo(20),
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('amber');
+    if (s.kind === 'amber') expect(s.reason).toBe('drill-stale');
+  });
+});
+
 describe('AC-171: backup badge — unreachable + never-drilled states', () => {
   it("renders 'Status unbekannt' when the status source is unreachable", () => {
     // `undefined` models the DB-down + mirror-unavailable branch.

@@ -978,6 +978,7 @@ export const STRINGS = {
   backup: {
     green: 'Backup: aktuell',
     drillStale: 'Backup: aktuell, Drill-Schlüssel neu laden',
+    backupAging: 'Backup: wird alt',
     backupStale: 'Backup: veraltet',
     lastRunFailed: 'Backup: fehlgeschlagen',
     backupNeverRun: 'Backup: noch nie ausgeführt',

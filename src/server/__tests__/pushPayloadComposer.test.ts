@@ -157,9 +157,35 @@ describe('composePushPayload — AC-211', () => {
 
   it('renders backup.failed system event without an audit row', () => {
     const out = composePushPayload('backup.failed', null, {});
-    expect(out.title).toBe('Backup fehlgeschlagen');
+    // Title is deliberately broader than the class id — the threshold
+    // monitor fires this class for any non-green badge state, not only
+    // a failed run (#122).
+    expect(out.title).toBe('Backup-Warnung');
+    // Empty payload → generic fallback sentence.
     expect(out.body).toBe('Backup konnte nicht abgeschlossen werden.');
     expect(out.url).toBe('/verwaltung/backups');
+  });
+
+  it('renders the badge reason into the backup.failed body when the monitor supplies one', () => {
+    // Each reason maps to the badge's own German label so the push and
+    // the badge the owner lands on cannot disagree (#122).
+    const cases: ReadonlyArray<[string, string]> = [
+      ['last-run-failed', 'Backup: fehlgeschlagen'],
+      ['backup-never-run', 'Backup: noch nie ausgeführt'],
+      ['drill-never-run', 'Drill: noch nie ausgeführt'],
+      ['backup-stale', 'Backup: veraltet'],
+      ['backup-aging', 'Backup: wird alt'],
+      ['drill-stale', 'Backup: aktuell, Drill-Schlüssel neu laden'],
+    ];
+    for (const [reason, expected] of cases) {
+      const out = composePushPayload('backup.failed', null, { reason });
+      expect(out.body, `reason=${reason}`).toBe(expected);
+    }
+  });
+
+  it('falls back to the generic backup body on an unknown reason', () => {
+    const out = composePushPayload('backup.failed', null, { reason: 'not-a-real-reason' });
+    expect(out.body).toBe('Backup konnte nicht abgeschlossen werden.');
   });
 
   it('renders disk.threshold_reached system event without an audit row', () => {
@@ -167,6 +193,20 @@ describe('composePushPayload — AC-211', () => {
     expect(out.title).toBe('Speichergrenze erreicht');
     expect(out.body).toBe('Speichernutzung über Schwellwert.');
     expect(out.url).toBe('/verwaltung');
+  });
+
+  it('renders the fill percentage into the disk.threshold_reached body', () => {
+    const out = composePushPayload('disk.threshold_reached', null, {
+      percent: 82,
+      usedBytes: 1,
+      quotaBytes: 2,
+    });
+    expect(out.body).toBe('Speicher zu 82% belegt.');
+  });
+
+  it('ignores a non-numeric percent and falls back to the generic disk body', () => {
+    const out = composePushPayload('disk.threshold_reached', null, { percent: '82' });
+    expect(out.body).toBe('Speichernutzung über Schwellwert.');
   });
 
   it('never produces an empty title or body — every code path renders strings', () => {

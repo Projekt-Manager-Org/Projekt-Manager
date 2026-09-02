@@ -102,7 +102,13 @@ export const NOTIFICATION_EVENT_LABELS: Record<NotificationEventClass, string> =
   'project.archived': 'Projekt archiviert',
   'project.assignment_changed': 'Mitarbeiter-Zuweisung geändert',
   'project.attachment_added': 'Datei hinzugefügt',
-  'backup.failed': 'Backup fehlgeschlagen',
+  // Label deliberately broader than the class id. The threshold monitor
+  // fires this for ANY non-green backup badge state — a failed run, but
+  // also an aging or stale backup and a never-run drill. The id keeps
+  // its original spelling because it is the stored `notification_rule`
+  // discriminator; renaming it would be a migration for no user-visible
+  // gain, while the label is what the owner actually reads.
+  'backup.failed': 'Backup-Warnung',
   'disk.threshold_reached': 'Speichergrenze erreicht',
 };
 
