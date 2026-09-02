@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { composePushPayload } from '../services/pushPayloadComposer.js';
 import type { AuditLogRow } from '../services/audit-publisher.js';
+import { ROUTES } from '../../config/routes.js';
 
 function row(overrides: Partial<AuditLogRow> = {}): AuditLogRow {
   return {
@@ -163,7 +164,7 @@ describe('composePushPayload — AC-211', () => {
     expect(out.title).toBe('Backup-Warnung');
     // Empty payload → generic fallback sentence.
     expect(out.body).toBe('Backup konnte nicht abgeschlossen werden.');
-    expect(out.url).toBe('/verwaltung/backups');
+    expect(out.url).toBe('/kanban');
   });
 
   it('renders the badge reason into the backup.failed body when the monitor supplies one', () => {
@@ -192,7 +193,26 @@ describe('composePushPayload — AC-211', () => {
     const out = composePushPayload('disk.threshold_reached', null, {});
     expect(out.title).toBe('Speichergrenze erreicht');
     expect(out.body).toBe('Speichernutzung über Schwellwert.');
-    expect(out.url).toBe('/verwaltung');
+    expect(out.url).toBe('/daten');
+  });
+
+  it('points both system events at paths the route table actually serves', () => {
+    // These URLs went to `/verwaltung` and `/verwaltung/backups`, which
+    // no route defines. Nothing 404s — `viewFromPath` falls back to
+    // kanban and the SPA handler serves index.html — so the only
+    // symptom was the owner tapping a backup warning and landing on the
+    // board. Asserted against the live route table so a future edit
+    // cannot reintroduce a path that does not exist.
+    const systemUrls = [
+      composePushPayload('backup.failed', null, {}).url,
+      composePushPayload('disk.threshold_reached', null, {}).url,
+    ];
+    for (const url of systemUrls) {
+      expect(
+        ROUTES.some((r) => r.path === url),
+        `${url} is not a declared route`,
+      ).toBe(true);
+    }
   });
 
   it('renders the fill percentage into the disk.threshold_reached body', () => {

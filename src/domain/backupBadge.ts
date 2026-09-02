@@ -74,6 +74,18 @@ export type BackupBadgeState =
       lastBackupAt?: string;
     };
 
+/**
+ * Every reason a non-green badge can carry.
+ *
+ * Exported so consumers that render a reason (the badge's own label
+ * switches, the push-payload composer) can key an exhaustive map on it
+ * and let the compiler catch a reason nobody rendered. Without this the
+ * composer degrades a new reason to its generic fallback silently —
+ * which is the same collapse the `drill-stale` / `backup-aging` split
+ * exists to prevent, one layer down.
+ */
+export type BackupBadgeReason = Extract<BackupBadgeState, { reason: string }>['reason'];
+
 export interface BadgeThresholds {
   /** Age (days) at which a fresh-but-aging backup switches to amber. */
   backupAmberDays: number;

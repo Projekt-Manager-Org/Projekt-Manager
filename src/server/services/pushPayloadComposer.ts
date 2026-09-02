@@ -17,6 +17,8 @@
  *   - Status name in transition body: `STATE_CONFIGS` (config/stateConfig.ts).
  *   - Project identifier in body: `entityLabel` (snapshotted at write time
  *     via `projectAuditLabel` — survives rename / archive).
+ *   - Backup-condition body: `STRINGS.backup` (config/strings.ts), the
+ *     same catalog the badge renders from.
  */
 
 import {
@@ -25,6 +27,7 @@ import {
 } from '../../config/notificationEvents.js';
 import { STATE_CONFIGS, type WorkflowState } from '../../config/stateConfig.js';
 import { STRINGS } from '../../config/strings.js';
+import type { BackupBadgeReason } from '../../domain/backupBadge.js';
 import type { AuditLogRow } from './audit-publisher.js';
 
 export interface RenderedPushPayload {
@@ -51,15 +54,35 @@ function readAfterStatus(row: AuditLogRow | null): string | null {
 }
 
 const PROJECT_FALLBACK_BODY = 'Aktualisierung';
-const SYSTEM_FALLBACK_URL = '/verwaltung';
 
 /**
- * Push body per derived backup-badge reason. Keyed by the `reason`
- * strings of `BackupBadgeState` (src/domain/backupBadge.ts) and valued
- * with the badge's own labels, so a push and the badge it points at
- * never disagree about what is wrong.
+ * Click target for the storage warning — the view that carries the
+ * storage row (`StorageUsageRow`, ui/daten.md §8.11.3).
  */
-const BACKUP_REASON_BODY: Readonly<Record<string, string>> = {
+const STORAGE_EVENT_URL = '/daten';
+
+/**
+ * Click target for the backup warning. There is no backup *page*: the
+ * badge renders in the header of every authenticated surface
+ * (`Header.tsx`, AC-170), so the relevant destination is simply an
+ * authenticated view with the badge in it. `/kanban` is the owner's
+ * landing view (`LANDING_ORDER` in src/config/routes.ts) and both
+ * system events are seeded owner-only, so this is where the tap would
+ * have put them anyway.
+ */
+const BACKUP_EVENT_URL = '/kanban';
+
+/**
+ * Push body per derived backup-badge reason, valued with the badge's
+ * own labels so a push and the badge it points at never disagree about
+ * what is wrong.
+ *
+ * Keyed by `BackupBadgeReason` rather than `string`: a reason added to
+ * the domain union without a body here is a compile error, matching the
+ * exhaustiveness the badge's own `switch` statements get from their
+ * `never` branches.
+ */
+const BACKUP_REASON_BODY: Readonly<Record<BackupBadgeReason, string>> = {
   'last-run-failed': STRINGS.backup.lastRunFailed,
   'backup-never-run': STRINGS.backup.backupNeverRun,
   'drill-never-run': STRINGS.backup.drillNeverRun,
@@ -133,18 +156,24 @@ export function composePushPayload(
       // own German labels so the push and the badge the owner lands on
       // say the same thing. Falls back to the generic sentence when the
       // payload is absent or carries an unknown reason.
+      // `reason` arrives as an untrusted string off the payload, so the
+      // lookup is guarded by `hasOwn` rather than a bare index — an
+      // unknown reason (or an inherited key like `toString`) falls
+      // through to the generic sentence instead of rendering a
+      // non-string.
       const reason = readStringField(systemPayload, 'reason');
       const body =
-        (reason === null ? null : BACKUP_REASON_BODY[reason]) ??
-        'Backup konnte nicht abgeschlossen werden.';
-      return { title, body, url: '/verwaltung/backups' };
+        reason !== null && Object.hasOwn(BACKUP_REASON_BODY, reason)
+          ? BACKUP_REASON_BODY[reason as BackupBadgeReason]
+          : 'Backup konnte nicht abgeschlossen werden.';
+      return { title, body, url: BACKUP_EVENT_URL };
     }
 
     case 'disk.threshold_reached': {
       const percent = readNumberField(systemPayload, 'percent');
       const body =
         percent === null ? 'Speichernutzung über Schwellwert.' : `Speicher zu ${percent}% belegt.`;
-      return { title, body, url: SYSTEM_FALLBACK_URL };
+      return { title, body, url: STORAGE_EVENT_URL };
     }
   }
 }

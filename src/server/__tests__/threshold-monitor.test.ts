@@ -42,6 +42,15 @@ vi.mock('../services/StorageUsageService.js', () => ({
   },
 }));
 
+// Mocked so the default (production) publisher branch is assertable —
+// see the "production publisher path" describe.
+const publishSystemEventMock = vi.hoisted(() =>
+  vi.fn<(event: unknown) => Promise<void>>().mockResolvedValue(undefined),
+);
+vi.mock('../services/notification-publisher.js', () => ({
+  publishSystemEvent: publishSystemEventMock,
+}));
+
 const FAKE_DB = {} as Database;
 const NOW = new Date('2026-09-02T12:00:00.000Z');
 const GB = 1024 * 1024 * 1024;
@@ -110,33 +119,47 @@ describe('threshold monitor — backup condition', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it('publishes backup.failed with the derived reason on a failed run', async () => {
-    readBackupStatus.mockResolvedValue({ ...greenStatus(), lastBackupOk: false });
-    const publish = vi.fn().mockResolvedValue(undefined);
-    await run({ publish });
-    expect(publish).toHaveBeenCalledTimes(1);
-    expect(publish).toHaveBeenCalledWith({
-      eventClass: 'backup.failed',
-      payload: expect.objectContaining({ kind: 'red', reason: 'last-run-failed' }),
-    });
-  });
-
-  it('publishes for an age-derived state that has no failure site at all', async () => {
-    // The dead-runner case: nothing wrote a failure because nothing ran.
-    // The row just ages. This is the coverage the badge alone could not
+  // AC-354 says "anything other than green", so every non-green state
+  // has to reach `publish` — not just the red ones. Driven as a table
+  // because the amber rows are the ones that would otherwise go
+  // untested: with only red cases, disabling amber warnings entirely
+  // (`kind === 'green' || kind === 'amber'` → return) keeps the suite
+  // green, and the `drill-stale` / `backup-aging` split this feature
+  // rests on would be unproven end to end.
+  //
+  // Ages are chosen against the REAL `BACKUP_THRESHOLDS` (amber 2 / red
+  // 4 days backup, amber 14 / red 30 drill), which the monitor imports
+  // directly rather than taking by injection.
+  const NON_GREEN_CASES: ReadonlyArray<[string, BackupStatus, string, string]> = [
+    ['failed run', { ...greenStatus(), lastBackupOk: false }, 'red', 'last-run-failed'],
+    [
+      'never run',
+      { ...greenStatus(), lastBackupOk: false, lastBackupAt: undefined },
+      'red',
+      'backup-never-run',
+    ],
+    ['drill never run', { ...greenStatus(), lastDrillOk: null }, 'red', 'drill-never-run'],
+    // The dead-runner case: nothing wrote a failure because nothing ran,
+    // the row just ages. This is the coverage the badge alone could not
     // give — it required the owner to look.
-    readBackupStatus.mockResolvedValue({
-      ...greenStatus(),
-      lastBackupAt: daysAgo(10),
-      updatedAt: daysAgo(10),
-    });
-    const publish = vi.fn().mockResolvedValue(undefined);
-    await run({ publish });
-    expect(publish).toHaveBeenCalledWith({
-      eventClass: 'backup.failed',
-      payload: expect.objectContaining({ kind: 'red', reason: 'backup-stale' }),
-    });
-  });
+    ['stale backup', { ...greenStatus(), lastBackupAt: daysAgo(10) }, 'red', 'backup-stale'],
+    ['aging backup', { ...greenStatus(), lastBackupAt: daysAgo(3) }, 'amber', 'backup-aging'],
+    ['stale drill', { ...greenStatus(), lastDrillAt: daysAgo(20) }, 'amber', 'drill-stale'],
+  ];
+
+  it.each(NON_GREEN_CASES)(
+    'publishes backup.failed for a %s state',
+    async (_label, status, kind, reason) => {
+      readBackupStatus.mockResolvedValue(status);
+      const publish = vi.fn().mockResolvedValue(undefined);
+      await run({ publish });
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(publish).toHaveBeenCalledWith({
+        eventClass: 'backup.failed',
+        payload: expect.objectContaining({ kind, reason }),
+      });
+    },
+  );
 
   it('stays silent when the status row is unreadable', async () => {
     // DB unreachable → `unknown`. The publisher needs the same DB to
@@ -266,6 +289,68 @@ describe('threshold monitor — storage condition', () => {
       now: new Date(NOW.getTime() + 15 * 60 * 1000),
     });
     expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-notify when usage dips inside the hysteresis band and returns', async () => {
+    // The flapping case. Warn 80, clear 78. A reap drops usage to 79 and
+    // the next upload puts it back over. Without hysteresis the dip
+    // forgets the condition and the return reads as a fresh crossing,
+    // bypassing the repeat window — one push per sweep for a bucket
+    // that never left "about 80% full".
+    getGlobalUsage.mockResolvedValue(usage(85 * GB));
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await run({ publish, quotaBytes: 100 * GB });
+
+    getGlobalUsage.mockResolvedValue(usage(79 * GB));
+    await run({ publish, quotaBytes: 100 * GB, now: new Date(NOW.getTime() + 15 * 60 * 1000) });
+
+    getGlobalUsage.mockResolvedValue(usage(81 * GB));
+    await run({ publish, quotaBytes: 100 * GB, now: new Date(NOW.getTime() + 30 * 60 * 1000) });
+
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-notifies once usage genuinely clears below the hysteresis band and returns', async () => {
+    getGlobalUsage.mockResolvedValue(usage(85 * GB));
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await run({ publish, quotaBytes: 100 * GB });
+
+    // Below the clear line — the owner acted, or the cap was raised.
+    getGlobalUsage.mockResolvedValue(usage(70 * GB));
+    await run({ publish, quotaBytes: 100 * GB, now: new Date(NOW.getTime() + 15 * 60 * 1000) });
+
+    getGlobalUsage.mockResolvedValue(usage(85 * GB));
+    await run({ publish, quotaBytes: 100 * GB, now: new Date(NOW.getTime() + 30 * 60 * 1000) });
+
+    expect(publish).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('threshold monitor — production publisher path', () => {
+  beforeEach(() => {
+    __resetThresholdMonitorState();
+    readBackupStatus.mockReset().mockResolvedValue({ ...greenStatus(), lastBackupOk: false });
+    getGlobalUsage.mockReset().mockResolvedValue(usage(0));
+    publishSystemEventMock.mockReset().mockResolvedValue(undefined);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('falls back to publishSystemEvent when no publisher is injected', async () => {
+    // Every other test injects `publish`, so none of them touches the
+    // default. The scheduler does NOT pass one — production runs
+    // entirely on this branch, and the premise of the whole feature is
+    // that a producer exists. Without this test the suite proves the
+    // mock works, not that anything is published.
+    await runThresholdMonitor({
+      db: FAKE_DB,
+      logger: makeLogger(),
+      quotaBytes: null,
+      now: NOW,
+    });
+    expect(publishSystemEventMock).toHaveBeenCalledWith({
+      eventClass: 'backup.failed',
+      payload: expect.objectContaining({ reason: 'last-run-failed' }),
+    });
   });
 });
 

@@ -64,10 +64,6 @@ export interface RunThresholdMonitorOptions {
    * storage check is skipped entirely.
    */
   quotaBytes: number | null;
-  /** Defaults to `THRESHOLD_MONITOR.storageWarnPercent`. */
-  warnPercent?: number;
-  /** Defaults to `THRESHOLD_MONITOR.repeatMinutes`. */
-  repeatMinutes?: number;
   /** Injectable clock — tests drive the repeat window through this. */
   now?: Date;
   /** Injectable publisher — tests assert dispatch without a bound app. */
@@ -181,12 +177,23 @@ async function evaluateStorage(
   // until the lifecycle rule reaps them.
   const usedBytes = usage.ready.ciphertext + usage.hidden.ciphertext;
   const percent = (usedBytes / quotaBytes) * 100;
-  const warnPercent = opts.warnPercent ?? THRESHOLD_MONITOR.storageWarnPercent;
+  const warnPercent = THRESHOLD_MONITOR.storageWarnPercent;
+  const clearPercent = warnPercent - THRESHOLD_MONITOR.storageClearMarginPoints;
 
-  if (percent < warnPercent) {
+  // Hysteresis. Clearing at the warn line itself would make usage
+  // hovering around the band re-notify on every re-crossing: a reap
+  // drops usage a hair under, the next upload pushes it back over, and
+  // each crossing looks like a fresh condition that bypasses the repeat
+  // window entirely. The band is exactly where a warned deployment
+  // sits, so that is the steady state, not a corner case — and an owner
+  // who gets a push every sweep mutes the channel, which disables the
+  // feature. Below the clear line the condition is genuinely resolved;
+  // between the two lines it is neither re-notified nor forgotten.
+  if (percent < clearPercent) {
     slots.delete('storage');
     return;
   }
+  if (percent < warnPercent) return;
 
   // The key is the crossing itself, not the percentage — keying on the
   // percent would re-notify on every byte uploaded past the line.
@@ -221,7 +228,7 @@ async function evaluateStorage(
 export async function runThresholdMonitor(opts: RunThresholdMonitorOptions): Promise<void> {
   const now = opts.now ?? new Date();
   const publish = opts.publish ?? publishSystemEvent;
-  const repeatMs = (opts.repeatMinutes ?? THRESHOLD_MONITOR.repeatMinutes) * 60 * 1000;
+  const repeatMs = THRESHOLD_MONITOR.repeatMinutes * 60 * 1000;
 
   const results = await Promise.allSettled([
     evaluateBackup(opts, now, repeatMs, publish),

@@ -1,5 +1,5 @@
 /**
- * Periodic threshold monitor scheduler — architecture.md §12.2.
+ * Periodic threshold monitor scheduler — architecture.md §11.15.
  *
  * Thin caller over `createPeriodicSweeper` (see
  * `src/server/periodicSweeper.ts`): the timer drive, sustained-failure
@@ -9,9 +9,12 @@
  * need a lease at this caller site — otherwise every replica would
  * notify the same owner for the same condition.
  *
- * The sweep body publishes notification events but writes no rows, so
- * it never crosses the `mutate()` audit boundary — consistent with the
- * other non-mutation system-bus publishers (ADR-0021).
+ * The sweep body never crosses the `mutate()` audit boundary —
+ * consistent with the other non-mutation system-bus publishers
+ * (ADR-0021). Note it is not row-free: push dispatch prunes dead
+ * subscriptions in its own transaction (`PushDispatcher`), which is
+ * delivery housekeeping written outside `mutate()` on the audit-driven
+ * path too.
  */
 
 import type { Database } from './db/connection.js';

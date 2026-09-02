@@ -25,6 +25,13 @@
  *     margin that the owner can act (delete, or raise the cap) before
  *     uploads would actually be at risk. Warn-only: nothing rejects an
  *     upload at this line.
+ *   - storageClearMarginPoints = 2 — hysteresis. A standing warning is
+ *     forgotten only below 78%, not at 80%. Clearing at the warn line
+ *     would let usage hovering in the band re-notify on every crossing
+ *     (a reap drops it under, the next upload pushes it over), and each
+ *     crossing reads as a fresh condition that bypasses the repeat
+ *     window. 2 points is wide enough to absorb ordinary churn without
+ *     making a genuinely resolved condition wait to be forgotten.
  *   - intervalMinutes = 15 — sweep cadence. Both conditions move on the
  *     order of hours (backup runs 5×/weekday; storage grows by upload),
  *     so a sub-15-minute sweep would burn ticks without shortening the
@@ -39,6 +46,11 @@
 export interface ThresholdMonitorConfig {
   /** Percent of `STORAGE_QUOTA_GB` at which the warning fires. [C] */
   storageWarnPercent: number;
+  /**
+   * Points below `storageWarnPercent` at which a standing storage
+   * warning is considered resolved. [C]
+   */
+  storageClearMarginPoints: number;
   /** Sweep cadence in minutes. [C] */
   intervalMinutes: number;
   /** Re-notify cadence in minutes while a condition persists. [C] */
@@ -48,6 +60,7 @@ export interface ThresholdMonitorConfig {
 /** [C] — customer-configurable; see module docstring for rationale. */
 export const THRESHOLD_MONITOR: ThresholdMonitorConfig = {
   storageWarnPercent: 80,
+  storageClearMarginPoints: 2,
   intervalMinutes: 15,
   repeatMinutes: 1440,
 };
