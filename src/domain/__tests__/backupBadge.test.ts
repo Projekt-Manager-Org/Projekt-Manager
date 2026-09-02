@@ -136,7 +136,51 @@ describe('#122: amber reasons are distinguishable', () => {
       lastError: undefined,
       updatedAt: daysAgo(0),
     };
-    expect(deriveBadgeState(status, NOW, THRESHOLDS).kind).toBe('red');
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('red');
+    // Asserting the reason, not just the severity. This case pinned only
+    // `kind` while the reason was 'backup-stale', which is how a
+    // drill-driven red went on claiming the backup was out of date.
+    if (s.kind === 'red') expect(s.reason).toBe('drill-expired');
+  });
+
+  it('renders red / drill-expired when the drill passes its red line and the backup is fresh', () => {
+    // The red counterpart of the amber split above, and the one that
+    // actually misled: backup ran today and succeeded, only the drill is
+    // overdue, yet the reason was 'backup-stale' → push body "Backup:
+    // veraltet". The owner is told their backup is stale while it is
+    // fresh, contradicting the correct amber message ("Drill-Schlüssel
+    // neu laden") they got at the amber line. Drills are manual operator
+    // actions (ADR-0020), so this is the ordinary decay path, not a
+    // corner case.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(0),
+      lastDrillAt: daysAgo(THRESHOLDS.drillRedDays + 5),
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('red');
+    if (s.kind === 'red') expect(s.reason).toBe('drill-expired');
+  });
+
+  it('reports drill-expired when lastDrillAt is missing but lastDrillOk is set', () => {
+    // Internal inconsistency (data-model.md §5.9): surfaced loudly
+    // rather than coerced green, and pointed at the drill because the
+    // drill timestamp is the broken datum.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(0),
+      lastDrillAt: undefined,
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('red');
+    if (s.kind === 'red') expect(s.reason).toBe('drill-expired');
   });
 });
 

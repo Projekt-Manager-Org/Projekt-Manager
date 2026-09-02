@@ -145,6 +145,10 @@ describe('threshold monitor — backup condition', () => {
     ['stale backup', { ...greenStatus(), lastBackupAt: daysAgo(10) }, 'red', 'backup-stale'],
     ['aging backup', { ...greenStatus(), lastBackupAt: daysAgo(3) }, 'amber', 'backup-aging'],
     ['stale drill', { ...greenStatus(), lastDrillAt: daysAgo(20) }, 'amber', 'drill-stale'],
+    // The drill's red line, with the backup fresh. Distinct from
+    // 'backup-stale': this is the reason the owner reads in the push, and
+    // it must name the drill, not the backup.
+    ['expired drill', { ...greenStatus(), lastDrillAt: daysAgo(35) }, 'red', 'drill-expired'],
   ];
 
   it.each(NON_GREEN_CASES)(

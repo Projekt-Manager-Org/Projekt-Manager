@@ -176,6 +176,7 @@ describe('composePushPayload — AC-211', () => {
       ['drill-never-run', 'Drill: noch nie ausgeführt'],
       ['backup-stale', 'Backup: veraltet'],
       ['backup-aging', 'Backup: wird alt'],
+      ['drill-expired', 'Drill: überfällig'],
       ['drill-stale', 'Backup: aktuell, Drill-Schlüssel neu laden'],
     ];
     for (const [reason, expected] of cases) {

@@ -88,6 +88,7 @@ const BACKUP_REASON_BODY: Readonly<Record<BackupBadgeReason, string>> = {
   'drill-never-run': STRINGS.backup.drillNeverRun,
   'backup-stale': STRINGS.backup.backupStale,
   'backup-aging': STRINGS.backup.backupAging,
+  'drill-expired': STRINGS.backup.drillExpired,
   'drill-stale': STRINGS.backup.drillStale,
 };
 

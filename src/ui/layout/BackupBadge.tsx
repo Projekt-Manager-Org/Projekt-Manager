@@ -63,6 +63,8 @@ function labelForRedReason(reason: Extract<BackupBadgeState, { kind: 'red' }>['r
   switch (reason) {
     case 'backup-stale':
       return STRINGS.backup.backupStale;
+    case 'drill-expired':
+      return STRINGS.backup.drillExpired;
     case 'last-run-failed':
       return STRINGS.backup.lastRunFailed;
     case 'backup-never-run':
