@@ -509,10 +509,21 @@ export interface InsertRenderedInvoiceBinaryFields {
 
 /**
  * INSERT the rendered-invoice-PDF descriptor row at `status='ready'`.
- * Called from inside the issuance / cancel transactions so a fault
- * after the bucket PUT rolls back the row insert; the orphaned object
- * is reaped by the attachment-orphan reaper because no row ever
- * reached `ready` from its perspective.
+ * Called from inside the issuance / cancel transactions, so a fault
+ * after the bucket PUT rolls back the row insert and leaves the object
+ * behind.
+ *
+ * That orphan is NOT reaped by the attachment-orphan reaper. The reaper
+ * deletes rows matching `status = 'pending'` (`deleteOrphans`) and hides
+ * their keys; a rolled-back insert leaves no row at all, so there is
+ * nothing for it to match and the object leaks indefinitely. An earlier
+ * version of this comment claimed the opposite — it was wrong.
+ *
+ * Cleanup today is `npm run storage:prune` (issue #169 item A), the
+ * operator-run bucket/DB reconciliation. The real fix is to write a
+ * `pending` row BEFORE the PUT and flip it to `ready` after, the way
+ * `AttachmentService.initUpload` already does, which would bring this
+ * path back under the reaper — tracked as issue #169 item B.
  *
  * Pinned fields:
  *   - `kind='binary'` / `label='rechnung'` — rendered invoice PDFs
