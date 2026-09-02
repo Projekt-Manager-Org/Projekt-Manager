@@ -314,6 +314,20 @@ MINIO_APP_SECRET_KEY=pmappsecret        # password for the app user (default in 
 
 This catches drift between the runbook and live bucket state — e.g., an operator who edits lifecycle in the B2 portal without updating the runbook trips the probe at next deploy. The capability self-test additionally catches the orthogonal "credential drift" axis: a reissued app key with `deleteFiles` enabled by mistake passes every shape check yet breaks the primary defense.
 
+## Orphan reconciliation
+
+Objects with no `attachments` row. Two paths PUT bytes before inserting their row and leak on a fault in between: the takeout import runner and the invoice renderer (issue #169).
+
+```bash
+npm run storage:prune
+```
+
+Dry run by default — reports the diff and every orphan key, writes nothing. Add `-- --apply` to hide them. `hide()` is a delete marker, not a destroy (the app key cannot destroy versions), so the bucket lifecycle reaps them after `L` days and the un-hide flow can lift a marker until then.
+
+The diff is exact: this bucket holds only `attachments/…` and `invoices/…` keys, and both are rows in the `attachments` table. Backups live in a separate R2 bucket; takeout staging is local disk. No prefix caveats, and no age filter is needed — `initUpload` writes the `pending` row before presigning the PUT, so an in-flight upload is never an orphan.
+
+Cheap to run: `ListObjectsV2` is a Class C call, and B2 bills only Class D.
+
 ## Related
 
 - [ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md) — design rationale, layered-defense reasoning, R vs. L sizing.

@@ -1,15 +1,18 @@
 /**
- * Integration test — pruneBucketOrphans (SEED=force bucket reset).
+ * Integration test — pruneBucketOrphans (SEED=force bucket reset and the
+ * `scripts/prune-bucket-orphans.ts` ops entrypoint).
  *
  * Pins the contract:
  *   - keys present in the bucket but NOT in `attachments.original_key` /
- *     `thumb_key` (across every status) are passed to `storage.hide()`;
+ *     `thumb_key` (across every status) are passed to `storage.hide()`
+ *     when `apply` is true;
  *   - keys still referenced by an attachment row — including `hidden`
  *     rows whose original/thumb keys back the un-hide flow — are
  *     preserved;
  *   - the result counts (`bucketObjectCount`, `preservedCount`,
- *     `orphanCount`) match what was hidden vs. preserved;
- *   - `NODE_ENV=production` refuses with a clear error before any I/O.
+ *     `orphanCount`) and `orphanKeys` match what was hidden vs. preserved;
+ *   - `apply: false` (the ops-entrypoint default) reports the identical
+ *     diff and hides nothing — the dry run is a pure read.
  *
  * The bucket lister is injected (`listAllBucketKeys`) so the test never
  * issues a real ListObjectsV2 against the developer's working bucket —
@@ -130,19 +133,13 @@ describe('pruneBucketOrphans', () => {
       .mockResolvedValue([refOrigKey, refThumbKey, orphanKey1, orphanKey2]);
     const logger = makeLogger();
 
-    const result = await pruneBucketOrphans(
-      db,
-      storage,
-      lister,
-      logger,
-      'test-bucket',
-      'development',
-    );
+    const result = await pruneBucketOrphans(db, storage, lister, logger, 'test-bucket', true);
 
     expect(result).toEqual({
       bucketObjectCount: 4,
       preservedCount: 2,
       orphanCount: 2,
+      orphanKeys: [orphanKey1, orphanKey2],
     });
 
     const hide = storage.hide as ReturnType<typeof vi.fn>;
@@ -164,14 +161,7 @@ describe('pruneBucketOrphans', () => {
     const storage = makeStorageStub();
     const lister = vi.fn<() => Promise<string[]>>().mockResolvedValue([hiddenOrigKey, orphanKey]);
 
-    const result = await pruneBucketOrphans(
-      db,
-      storage,
-      lister,
-      makeLogger(),
-      'test-bucket',
-      'development',
-    );
+    const result = await pruneBucketOrphans(db, storage, lister, makeLogger(), 'test-bucket', true);
 
     expect(result.orphanCount).toBe(1);
     expect(result.preservedCount).toBe(1);
@@ -188,19 +178,13 @@ describe('pruneBucketOrphans', () => {
     const lister = vi.fn<() => Promise<string[]>>().mockResolvedValue([refKey]);
     const logger = makeLogger();
 
-    const result = await pruneBucketOrphans(
-      db,
-      storage,
-      lister,
-      logger,
-      'test-bucket',
-      'development',
-    );
+    const result = await pruneBucketOrphans(db, storage, lister, logger, 'test-bucket', true);
 
     expect(result).toEqual({
       bucketObjectCount: 1,
       preservedCount: 1,
       orphanCount: 0,
+      orphanKeys: [],
     });
     expect(storage.hide).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledTimes(1);
@@ -212,32 +196,60 @@ describe('pruneBucketOrphans', () => {
     const lister = vi.fn<() => Promise<string[]>>().mockResolvedValue([]);
     const logger = makeLogger();
 
-    const result = await pruneBucketOrphans(
-      db,
-      storage,
-      lister,
-      logger,
-      'test-bucket',
-      'development',
-    );
+    const result = await pruneBucketOrphans(db, storage, lister, logger, 'test-bucket', true);
 
     expect(result).toEqual({
       bucketObjectCount: 0,
       preservedCount: 0,
       orphanCount: 0,
+      orphanKeys: [],
     });
     expect(storage.hide).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses to run with NODE_ENV=production', async () => {
+  it('reports the identical diff without hiding anything when apply is false', async () => {
+    const refKey = `attachments/${projectId}/${crypto.randomUUID()}.orig`;
+    const orphanKey = `attachments/${projectId}/${crypto.randomUUID()}.orig`;
+    await seedAttachment(db, projectId, 'ready', refKey, null);
+
     const storage = makeStorageStub();
-    const lister = vi.fn<() => Promise<string[]>>().mockResolvedValue([]);
-    await expect(
-      pruneBucketOrphans(db, storage, lister, makeLogger(), 'test-bucket', 'production'),
-    ).rejects.toThrow(/NODE_ENV=production/);
-    // Refusal is up-front: lister and storage stay untouched.
-    expect(lister).not.toHaveBeenCalled();
+    const lister = vi.fn<() => Promise<string[]>>().mockResolvedValue([refKey, orphanKey]);
+    const logger = makeLogger();
+
+    const result = await pruneBucketOrphans(db, storage, lister, logger, 'test-bucket', false);
+
+    // Same diff an --apply run would act on — the dry run is what the
+    // operator reads before authorising the destructive pass.
+    expect(result).toEqual({
+      bucketObjectCount: 2,
+      preservedCount: 1,
+      orphanCount: 1,
+      orphanKeys: [orphanKey],
+    });
+    // The whole point: a dry run is a pure read.
     expect(storage.hide).not.toHaveBeenCalled();
+    // Warn (not info) — orphans exist — and the line must say so loudly
+    // enough that nobody mistakes a dry run for a completed cleanup.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn.mock.calls[0]![0]).toMatch(/DRY RUN/);
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  it('treats a clean bucket identically in dry-run and apply mode', async () => {
+    const refKey = `attachments/${projectId}/${crypto.randomUUID()}.orig`;
+    await seedAttachment(db, projectId, 'ready', refKey, null);
+
+    const storage = makeStorageStub();
+    const lister = vi.fn<() => Promise<string[]>>().mockResolvedValue([refKey]);
+    const logger = makeLogger();
+
+    const result = await pruneBucketOrphans(db, storage, lister, logger, 'test-bucket', false);
+
+    expect(result.orphanCount).toBe(0);
+    expect(storage.hide).not.toHaveBeenCalled();
+    // No orphans → the info line, with no DRY RUN theatre to add.
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });

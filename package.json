@@ -28,6 +28,7 @@
     "demo:record": "PLAYWRIGHT_RUN_DEMO=1 playwright test --project=demo --project=demo-mobile --workers=1",
     "demo:encode": "node scripts/demo/encode.mjs --master",
     "demo:hero": "node scripts/demo/encode.mjs --hero",
+    "storage:prune": "tsx --env-file-if-exists=.env scripts/prune-bucket-orphans.ts",
     "check:tokens": "bash scripts/check-theme-tokens.sh",
     "check:permissions-doc": "tsx scripts/generate-permissions-doc.ts --check",
     "check:nav-doc": "tsx scripts/generate-nav-doc.ts --check",

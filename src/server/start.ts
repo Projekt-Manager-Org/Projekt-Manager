@@ -194,7 +194,10 @@ async function start(): Promise<void> {
           createBucketKeyLister(prunerConfig),
           { info: (m) => console.log(m), warn: (m) => console.warn(m) },
           env.STORAGE_BUCKET,
-          env.NODE_ENV,
+          // `SEED=force` means "full reset" — a dry run here would leave
+          // the bucket dirty and defeat the point. Safe by enclosure:
+          // this branch is the `else` of `isProduction`.
+          true,
         );
       }
     }

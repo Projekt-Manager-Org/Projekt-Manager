@@ -8,13 +8,32 @@
  * (DeleteObject without VersionId) for the difference via the storage
  * client's `hide()` primitive.
  *
- * Wired into `start.ts` so `SEED=force` truly resets storage state along
- * with the DB. Without this, a forced re-seed truncates `attachments`
- * but leaves the bucket dirty — the orphan blobs are unreadable in
- * practice (per-row wrapped DEKs went away with the truncate), but they
- * still consume bucket space and would mirror real bytes onto B2's
- * Compliance-locked bucket via `scripts/sync-dev-to-vps.sh` if its
- * pollution guard didn't refuse.
+ * Two callers:
+ *   - `start.ts` under `SEED=force`, so a forced re-seed truly resets
+ *     storage state along with the DB. Without this, a re-seed truncates
+ *     `attachments` but leaves the bucket dirty — the orphan blobs are
+ *     unreadable in practice (per-row wrapped DEKs went away with the
+ *     truncate), but they still consume bucket space and would mirror
+ *     real bytes onto B2's Compliance-locked bucket via
+ *     `scripts/sync-dev-to-vps.sh` if its pollution guard didn't refuse.
+ *   - `scripts/prune-bucket-orphans.ts`, the operator-run reconciliation
+ *     (issue #169). Dry-run by default; `--apply` opts into hiding.
+ *
+ * Why the set difference is exact: the bucket holds exactly two key
+ * namespaces, `attachments/…` (AttachmentService) and `invoices/…`
+ * (InvoiceBinaryService), and BOTH are rows in the `attachments` table.
+ * Backups live in a separate R2 bucket; takeout staging is local VPS
+ * disk. So `attachments` is a complete index of this bucket and
+ * "in the bucket, not in the table" means orphan with no prefix caveats.
+ *
+ * Why no age filter: `AttachmentService.initUpload` INSERTs the
+ * `pending` row BEFORE presigning the PUT, so an object can never exist
+ * in the bucket without its key already being referenced. An in-flight
+ * upload is therefore never an orphan and needs no grace window.
+ *
+ * Cost: `ListObjectsV2` is a Backblaze Class C call, and Class A/B/C are
+ * all free on B2 pay-as-you-go (only Class D, event notifications, is
+ * billed). A full sweep costs nothing at any cadence.
  *
  * Versioning + Object Lock semantics: `storage.hide(key)` is DeleteObject
  * without a VersionId on a versioned bucket — only a delete marker is
@@ -31,15 +50,23 @@
  * is unbounded by design (it operates on the WHOLE bucket), and the
  * integration suite shares `STORAGE_BUCKET` with `npm run dev`.
  *
- * Safety: dev-only by construction — `start.ts` invokes this only when
- * `NODE_ENV !== 'production'` AND `SEED === 'force'`. The function
- * additionally refuses if `NODE_ENV === 'production'` (defense in
- * depth) so a misconfigured caller can never destroy production state.
+ * Safety: the destructive step is gated on the explicit `apply` flag,
+ * which every caller must pass. `apply: false` computes and reports the
+ * identical diff without touching storage — a pure read. The seed path
+ * passes `true` and is itself unreachable in production (`start.ts`
+ * skips seeding entirely when `NODE_ENV=production`); the ops script
+ * defaults to `false` and requires `--apply` on the command line.
+ *
+ * This replaced a blanket `NODE_ENV === 'production'` refusal. That
+ * refusal made the only working reconciliation unreachable exactly
+ * where orphans actually accumulate, which is the wrong trade: `hide()`
+ * is non-destructive by construction (the app key cannot destroy
+ * versions — ADR-0022), so the worst case of an unwanted apply is a
+ * delete marker that the un-hide flow can lift for R days.
  */
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { sql } from 'drizzle-orm';
 
-import type { Env } from '../config/env.js';
 import type { Database } from '../db/connection.js';
 import type { AttachmentStorageClient } from './client.js';
 
@@ -70,6 +97,12 @@ export interface PruneBucketOrphansResult {
   bucketObjectCount: number;
   preservedCount: number;
   orphanCount: number;
+  /**
+   * The orphan keys themselves, in bucket-listing order. The dry run is
+   * only useful if the operator can see WHICH keys an `--apply` pass
+   * would hide — a bare count is not reviewable.
+   */
+  orphanKeys: string[];
 }
 
 /**
@@ -120,15 +153,8 @@ export async function pruneBucketOrphans(
   listAllBucketKeys: () => Promise<string[]>,
   logger: PruneBucketOrphansLogger,
   bucketLabel: string,
-  nodeEnv: Env['NODE_ENV'],
+  apply: boolean,
 ): Promise<PruneBucketOrphansResult> {
-  if (nodeEnv === 'production') {
-    throw new Error(
-      'pruneBucketOrphans: refusing to run with NODE_ENV=production. ' +
-        'This helper is dev-only — it issues delete-marker writes against the configured bucket.',
-    );
-  }
-
   // 1. Bucket listing — current-version view only.
   const bucketKeys = new Set<string>(await listAllBucketKeys());
 
@@ -154,20 +180,33 @@ export async function pruneBucketOrphans(
 
   // 4. Hide each orphan via the storage wrapper's hide() primitive — same
   // call shape as the orphan reaper, idempotent on a versioned bucket.
-  for (const key of orphans) {
-    await storage.hide(key);
+  // Skipped entirely under `apply: false`: a dry run must issue no
+  // mutating call at all, so an operator reviewing the report cannot
+  // have already changed the bucket by reading it.
+  if (apply) {
+    for (const key of orphans) {
+      await storage.hide(key);
+    }
   }
 
   const result: PruneBucketOrphansResult = {
     bucketObjectCount: bucketKeys.size,
     preservedCount: bucketKeys.size - orphans.length,
     orphanCount: orphans.length,
+    orphanKeys: orphans,
   };
 
   if (orphans.length > 0) {
+    // Past tense only when something actually happened. A dry-run line
+    // that reads like a completed cleanup is how an operator ends up
+    // believing the bucket is clean when it is not.
     logger.warn(
-      `pruneBucketOrphans: hid ${orphans.length} orphan object(s) in bucket '${bucketLabel}' ` +
-        `(preserved ${result.preservedCount} referenced, total ${result.bucketObjectCount}).`,
+      apply
+        ? `pruneBucketOrphans: hid ${orphans.length} orphan object(s) in bucket '${bucketLabel}' ` +
+            `(preserved ${result.preservedCount} referenced, total ${result.bucketObjectCount}).`
+        : `pruneBucketOrphans: DRY RUN — ${orphans.length} orphan object(s) in bucket ` +
+            `'${bucketLabel}' would be hidden (preserved ${result.preservedCount} referenced, ` +
+            `total ${result.bucketObjectCount}). Nothing was changed; re-run with --apply to act.`,
     );
   } else {
     logger.info(
