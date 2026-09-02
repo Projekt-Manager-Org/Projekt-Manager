@@ -119,7 +119,7 @@ describe('threshold monitor — backup condition', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  // AC-354 says "anything other than green", so every non-green state
+  // AC-355 says "anything other than green", so every non-green state
   // has to reach `publish` — not just the red ones. Driven as a table
   // because the amber rows are the ones that would otherwise go
   // untested: with only red cases, disabling amber warnings entirely
