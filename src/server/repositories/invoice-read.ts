@@ -20,10 +20,8 @@ import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/co
 import { invoices, projects } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { isUnscoped, OUT_OF_SCOPE, type ScopedReadResult } from './scope.js';
-import { invoiceNumberFormat } from '../errors.js';
 import {
   formatInvoiceNumber,
-  INVOICE_NUMBER_PATTERN,
   INVOICE_SEQUENCE_KINDS,
   type Invoice,
   type InvoiceLine,
@@ -354,14 +352,11 @@ export async function allocateNextSequenceValue(
  * Convenience — allocate + format in one call. Returns the canonical
  * `RE-YYYY-NNNN` / `ST-YYYY-NNNN` string.
  *
- * The formatted number is checked against `INVOICE_NUMBER_PATTERN`
- * before it leaves — the application-side half of the defense in depth
- * api.md §14.4.1 describes for `INVOICE_NUMBER_FORMAT`. The DB CHECK is
- * the primary enforcement, but it fires on INSERT: without this the
- * violation would surface as an opaque 500 from the constraint rather
- * than as the typed code the spec publishes. Reachable only via a
- * corrupt `invoice_sequence` row or an out-of-range year, so it is not
- * expected to fire — that is the point of a detector.
+ * The shape is enforced by the `invoices_number_format` CHECK constraint
+ * on INSERT. No application-side re-check: `year` is the caller's
+ * `getUTCFullYear()` and `value` a sequence integer, so nothing this
+ * function can produce fails the constraint short of a corrupt
+ * `invoice_sequence` row — which the constraint catches anyway.
  */
 export async function allocateInvoiceNumber(
   tx: TransactionalDatabase,
@@ -369,11 +364,7 @@ export async function allocateInvoiceNumber(
   kind: InvoiceSequenceKind,
 ): Promise<{ value: number; number: string }> {
   const value = await allocateNextSequenceValue(tx, year, kind);
-  const number = formatInvoiceNumber(kind, year, value);
-  if (!INVOICE_NUMBER_PATTERN.test(number)) {
-    throw invoiceNumberFormat();
-  }
-  return { value, number };
+  return { value, number: formatInvoiceNumber(kind, year, value) };
 }
 
 // ---------------------------------------------------------------------

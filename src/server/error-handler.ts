@@ -41,12 +41,10 @@ export function installErrorHandler(app: FastifyInstance): void {
       }
       // AC-247's triage contract is about the status class, not about
       // which branch produced it: a 5xx is a genuine server failure and
-      // logs at `error` like any other. Without this an `AppError`
-      // carrying its own 5xx — `serverError()`, `invoiceNumberFormat()`
-      // — answers 500 and leaves no trace at all, which is worse than
-      // the generic collapse it replaced. `invoiceNumberFormat()` is the
-      // sharp case: a corruption detector whose whole purpose is to
-      // surface would surface only to the caller, who cannot act on it.
+      // logs at `error` like any other. Without this a thrown
+      // `serverError()` — six sites across AttachmentService and
+      // ExtractionService — answers 500 and leaves no trace at all,
+      // where the same failure reaching the fallback below is logged.
       if (error.statusCode >= 500) {
         request.log.error({ err: error, code: error.code }, 'server-side failure');
       }

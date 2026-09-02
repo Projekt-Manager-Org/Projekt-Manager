@@ -52,7 +52,6 @@ export const ERROR_CODES = [
   'DEK_UNWRAP_FAILED',
   // Invoice + company-profile domain (ADR-0026, api.md §14.4).
   'INVOICE_FROZEN',
-  'INVOICE_NUMBER_FORMAT',
   'INVOICE_PROJECT_STATE',
   'INVOICE_NOT_ISSUED',
   'INVOICE_ALREADY_CANCELLED',
@@ -391,18 +390,6 @@ export function dekUnwrapFailed(): AppError {
  */
 export function invoiceFrozen(): AppError {
   return new AppError('INVOICE_FROZEN', STRINGS.errors.invoiceFrozen, 422);
-}
-
-/**
- * A minted `Invoice.number` does not match the canonical shape
- * `^(RE|ST)-\d{4}-\d{4,}$` — api.md §14.4.1. Defense in depth: the DB
- * CHECK constraint is the primary enforcement, so reaching this code
- * means a programmer error or a corrupt `invoice_sequence` row, and the
- * client cannot recover. 500 rather than 4xx for exactly that reason —
- * the caller did nothing wrong.
- */
-export function invoiceNumberFormat(): AppError {
-  return new AppError('INVOICE_NUMBER_FORMAT', STRINGS.errors.serverError, 500);
 }
 
 /**

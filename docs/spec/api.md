@@ -464,7 +464,6 @@ Design notes:
   - Cancel on an already-cancelled invoice → `409 CONFLICT` with `code = INVOICE_ALREADY_CANCELLED`.
   - Cancel on a draft → `409 CONFLICT` with `code = INVOICE_NOT_ISSUED`.
   - Download PDF on a draft → `409 CONFLICT` with `code = INVOICE_NOT_ISSUED`.
-  - Server-detected number-format violation (defense-in-depth — the DB CHECK is the primary enforcement) → `500 SERVER_ERROR` with `code = INVOICE_NUMBER_FORMAT` (the client never produces a number; this is the corruption-detection path).
   - Bulk export supplying both selectors, or neither → `422 VALIDATION_ERROR`.
   - Bulk export whose id selection includes a draft → `422 VALIDATION_ERROR` with `code = DRAFT_NOT_EXPORTABLE` and `details.invoiceId` naming the draft.
   - Bulk export whose filter matches more rows than the server's ceiling → `422 VALIDATION_ERROR` with `code = EXPORT_TOO_LARGE` and `details.total` / `details.cap`.
@@ -559,7 +558,7 @@ The API must distinguish the following error categories. Each category has disti
 
 <!-- CHECKED:error-codes:START — mirrors ERROR_CODES (src/server/errors.ts), pinned by src/server/__tests__/error-codes.test.ts (AC-354). Edit the array, then this block. Not generated — see ARCHITECTURE.md § Error-Code Catalogue for why. -->
 
-The full set of machine-readable error codes: `INVALID_CREDENTIALS`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `NOT_PERMITTED`, `VALIDATION_ERROR`, `CONFLICT`, `IDEMPOTENCY_CONFLICT`, `NOT_FOUND`, `ROUTE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `GONE`, `RATE_LIMITED`, `SCHEMA_VERSION_MISMATCH`, `TARGET_NOT_EMPTY`, `RESTORE_CONFIRMATION_MISMATCH`, `MISSING_USER_REFS`, `EXPORT_JOB_ACTIVE`, `IMPORT_JOB_ACTIVE`, `EXPORT_JOB_NOT_READY`, `UPLOAD_OFFSET_CONFLICT`, `UPLOAD_TOO_LARGE`, `UPLOAD_NOT_ACCEPTED`, `BULK_LIMIT_EXCEEDED`, `DEK_UNWRAP_FAILED`, `INVOICE_FROZEN`, `INVOICE_NUMBER_FORMAT`, `INVOICE_PROJECT_STATE`, `INVOICE_NOT_ISSUED`, `INVOICE_ALREADY_CANCELLED`, `DRAFT_NOT_EXPORTABLE`, `EXPORT_TOO_LARGE`, `COMPANY_PROFILE_REQUIRED`, `CUSTOMER_HAS_INVOICES`, `PROJECT_HAS_INVOICES`, `SERVER_ERROR`.
+The full set of machine-readable error codes: `INVALID_CREDENTIALS`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `NOT_PERMITTED`, `VALIDATION_ERROR`, `CONFLICT`, `IDEMPOTENCY_CONFLICT`, `NOT_FOUND`, `ROUTE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `GONE`, `RATE_LIMITED`, `SCHEMA_VERSION_MISMATCH`, `TARGET_NOT_EMPTY`, `RESTORE_CONFIRMATION_MISMATCH`, `MISSING_USER_REFS`, `EXPORT_JOB_ACTIVE`, `IMPORT_JOB_ACTIVE`, `EXPORT_JOB_NOT_READY`, `UPLOAD_OFFSET_CONFLICT`, `UPLOAD_TOO_LARGE`, `UPLOAD_NOT_ACCEPTED`, `BULK_LIMIT_EXCEEDED`, `DEK_UNWRAP_FAILED`, `INVOICE_FROZEN`, `INVOICE_PROJECT_STATE`, `INVOICE_NOT_ISSUED`, `INVOICE_ALREADY_CANCELLED`, `DRAFT_NOT_EXPORTABLE`, `EXPORT_TOO_LARGE`, `COMPANY_PROFILE_REQUIRED`, `CUSTOMER_HAS_INVOICES`, `PROJECT_HAS_INVOICES`, `SERVER_ERROR`.
 
 <!-- CHECKED:error-codes:END -->
 
@@ -585,7 +584,6 @@ The error body uses the standard `{ code, message, details }` shape. The `detail
 The invoice-domain codes are specializations of the validation-error and conflict categories:
 
 - **`INVOICE_FROZEN`** (`422`) — mutation rejected because the invoice is `issued` or `cancelled` ([data-model.md §6.14](data-model.md#614-immutability-of-issued-invoices)). Client should refetch and present a read-only viewer.
-- **`INVOICE_NUMBER_FORMAT`** (`500`) — server-detected format violation on `Invoice.number` against the regex `^(RE|ST)-\d{4}-\d{4,}$`. Primary enforcement is the DB CHECK constraint; the application code path is a defense-in-depth detector. Reaching this code indicates a programmer error or DB corruption — the client cannot recover.
 - **`INVOICE_PROJECT_STATE`** (`409`) — issue rejected because the parent project is not in `rechnung_faellig`. Client refetches the project status and surfaces the mismatch (the project may have moved while the draft was open).
 - **`INVOICE_NOT_ISSUED`** (`409`) — cancel / download-PDF rejected on a draft. Client surfaces the message; the affordance should not have been presented (a client-state-drift indicator).
 - **`INVOICE_ALREADY_CANCELLED`** (`409`) — cancel on a row whose `status` is already `'cancelled'`. Idempotent intent is acceptable, but the route does not silently succeed — the operator's view of the invoice should be refreshed before a re-cancel attempt.

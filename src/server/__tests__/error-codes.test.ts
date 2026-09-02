@@ -13,13 +13,20 @@
  *
  * Two such gaps. A duplicate entry: `(typeof ERROR_CODES)[number]`
  * deduplicates as a union, so a code pasted twice type-checks perfectly
- * and publishes twice. And an *unproducible* entry: the compiler proves
- * every `AppError` carries a catalogued code, but nothing proves the
- * converse — a code no factory can mint publishes a contract the server
- * cannot honour. That direction is invisible to the generator by
- * construction (it reads the array, which is exactly what is wrong), and
- * it had already drifted: `INVOICE_NUMBER_FORMAT` was catalogued in
- * §14.4.1 and in the array with no factory and no producer anywhere.
+ * and publishes twice. And an entry *no factory mints*: the compiler
+ * proves every `AppError` carries a catalogued code, but nothing proves
+ * the converse — a code the catalogue publishes and the module cannot
+ * construct promises clients a response they will never receive. It had
+ * already drifted that way: `INVOICE_NUMBER_FORMAT` was catalogued in
+ * §14.4.1 and in the array with no factory anywhere, and was deleted
+ * rather than given one — the only application-side check that could
+ * have raised it duplicated the `invoices_number_format` DB CHECK
+ * against inputs that cannot fail it.
+ *
+ * Note the exact claim: this pins that a *factory exists*, not that a
+ * request can reach it. A factory whose call site is unreachable passes
+ * here — which is how the deleted code passed before review caught it.
+ * Reachability is a route test's job.
  *
  * Both directions of the doc drift are covered by one assertion: a code
  * the array gained and the block did not, and a code the block carries
@@ -29,7 +36,7 @@
  * was missing, and the four route sites now route through it, so this
  * pins the shape they emit — `Allow` included. Why the header rides on
  * the error rather than sitting beside it: ARCHITECTURE.md § Error-Code
- * Catalogue Generation.
+ * Catalogue.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -79,7 +86,6 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['bulkLimitExceeded', () => errors.bulkLimitExceeded({ limits: { maxFiles: 1, maxBytes: 1 } })],
   ['dekUnwrapFailed', () => errors.dekUnwrapFailed()],
   ['invoiceFrozen', () => errors.invoiceFrozen()],
-  ['invoiceNumberFormat', () => errors.invoiceNumberFormat()],
   ['invoiceProjectState', () => errors.invoiceProjectState()],
   ['invoiceNotIssued', () => errors.invoiceNotIssued()],
   ['invoiceAlreadyCancelled', () => errors.invoiceAlreadyCancelled()],
@@ -148,15 +154,16 @@ describe('AC-354: error-code catalogue', () => {
     }
   });
 
-  it('every catalogued code is producible by a factory', () => {
-    const producible = new Set<ErrorCode>(FACTORY_CALLS.map(([, invoke]) => invoke().code));
-    const unproducible = ERROR_CODES.filter((code) => !producible.has(code));
+  it('every catalogued code is minted by a factory', () => {
+    const minted = new Set<ErrorCode>(FACTORY_CALLS.map(([, invoke]) => invoke().code));
+    const unminted = ERROR_CODES.filter((code) => !minted.has(code));
 
-    // The direction neither the compiler nor the generator can see. A
-    // code here is published in api.md §14.4.1 as part of the API
-    // contract while no code path can put it on the wire — the
-    // catalogue over-promising rather than drifting.
-    expect(unproducible).toEqual([]);
+    // The direction the compiler cannot see. A code here is published in
+    // api.md §14.4.1 as part of the API contract while the module has no
+    // way to construct it — the catalogue over-promising rather than
+    // drifting. Existence of a factory only; whether a request can reach
+    // that factory is a route test's question.
+    expect(unminted).toEqual([]);
   });
 });
 

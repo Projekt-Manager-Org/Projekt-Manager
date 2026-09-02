@@ -29,7 +29,7 @@ import {
   installNotFoundHandler,
   installSpaAwareNotFoundHandler,
 } from '../error-handler.js';
-import { invoiceNumberFormat, methodNotAllowed } from '../errors.js';
+import { methodNotAllowed, serverError } from '../errors.js';
 import { registerStaticAssets } from '../staticCache.js';
 
 const TINY_BODY_LIMIT = 100;
@@ -196,9 +196,11 @@ describe('AC-247 / AT-108 — Global error handler 4xx pass-through', () => {
 //
 // The gap this closes: the `AppError` branch returns before the 5xx
 // fallback, so a 500 carrying its own code answered the caller and
-// logged nothing. `invoiceNumberFormat()` (AC-354) made it live — a
-// corruption detector that fires silently, where the DB CHECK violation
-// it front-runs used to reach `error` level as a statusless throw.
+// logged nothing at all. `throw serverError()` — six sites across
+// AttachmentService and ExtractionService — took that path, while the
+// identical failure arriving as a statusless throw reached `error` level
+// via the fallback. Same incident, logged or silent depending on how it
+// was raised.
 // ---------------------------------------------------------------------
 describe('AT-108 — an AppError carrying a 5xx logs at the operational error level', () => {
   async function inject(url: string, handler: () => Promise<never>) {
@@ -214,19 +216,18 @@ describe('AT-108 — an AppError carrying a 5xx logs at the operational error le
     return { res, errorLines: lines.filter((l) => JSON.parse(l).level === 50) };
   }
 
-  it('500 AppError → the code survives on the wire AND the failure is logged', async () => {
+  it('500 AppError → answered AND logged, not answered silently', async () => {
     const { res, errorLines } = await inject('/boom', async () => {
-      throw invoiceNumberFormat();
+      throw serverError();
     });
 
-    // The wire contract (api.md §14.2.14): the precise code, not the
-    // generic collapse.
     expect(res.statusCode).toBe(500);
-    expect(res.json().code).toBe('INVOICE_NUMBER_FORMAT');
-    // The operator contract: one `error`-level entry naming the code, so
-    // a corrupt `invoice_sequence` row is triageable from logs alone.
+    expect(res.json().code).toBe('SERVER_ERROR');
+    // The property under test. The wire response is unchanged by the fix
+    // — `SERVER_ERROR` either way — so the log entry is the whole
+    // difference between an operator seeing this failure and not.
     expect(errorLines).toHaveLength(1);
-    expect(JSON.parse(errorLines[0]!).code).toBe('INVOICE_NUMBER_FORMAT');
+    expect(JSON.parse(errorLines[0]!).code).toBe('SERVER_ERROR');
   });
 
   it('4xx AppError stays below error level — 5xx alerting keeps its meaning', async () => {
