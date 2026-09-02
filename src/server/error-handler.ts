@@ -3,10 +3,12 @@
  *
  * Honor the HTTP statusCode native to the failure: 4xx-class errors
  * preserve their status and surface a stable code per AC-247 / api.md
- * §14.4.2; only 5xx-or-statusless errors collapse to `SERVER_ERROR` and
- * are logged at the operational `error` level. Transport-layer 4xx
- * rejections log at `warn` so 5xx alerting on logs reflects only genuine
- * server failures.
+ * §14.4.2; a 5xx-or-statusless error carrying no code of its own
+ * collapses to `SERVER_ERROR`. Every 5xx logs at the operational `error`
+ * level — an `AppError` that carries its own 5xx code included, since it
+ * is a genuine server failure under a more precise name. Transport-layer
+ * 4xx rejections log at `warn` so 5xx alerting on logs reflects only
+ * genuine server failures.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -36,6 +38,17 @@ export function installErrorHandler(app: FastifyInstance): void {
         for (const [name, value] of Object.entries(error.headers)) {
           reply.header(name, value);
         }
+      }
+      // AC-247's triage contract is about the status class, not about
+      // which branch produced it: a 5xx is a genuine server failure and
+      // logs at `error` like any other. Without this an `AppError`
+      // carrying its own 5xx — `serverError()`, `invoiceNumberFormat()`
+      // — answers 500 and leaves no trace at all, which is worse than
+      // the generic collapse it replaced. `invoiceNumberFormat()` is the
+      // sharp case: a corruption detector whose whole purpose is to
+      // surface would surface only to the caller, who cannot act on it.
+      if (error.statusCode >= 500) {
+        request.log.error({ err: error, code: error.code }, 'server-side failure');
       }
       return reply.code(error.statusCode).send(error.toResponse());
     }

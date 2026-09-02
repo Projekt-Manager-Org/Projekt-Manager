@@ -18,13 +18,18 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildApp } from '../app.js';
-import { installNotFoundHandler, installSpaAwareNotFoundHandler } from '../error-handler.js';
+import {
+  installErrorHandler,
+  installNotFoundHandler,
+  installSpaAwareNotFoundHandler,
+} from '../error-handler.js';
+import { invoiceNumberFormat, methodNotAllowed } from '../errors.js';
 import { registerStaticAssets } from '../staticCache.js';
 
 const TINY_BODY_LIMIT = 100;
@@ -180,6 +185,60 @@ describe('AC-247 / AT-108 — Global error handler 4xx pass-through', () => {
     expect(res.statusCode).toBe(500);
     expect(res.json().code).toBe('SERVER_ERROR');
     expect(errorSpy).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------
+// AT-108, `AppError` branch. Its own app because the assertion is on
+// `request.log` — a pino child of `app.log`, whose bound methods a
+// `vi.spyOn(app.log, 'error')` never sees. Capturing the stream reads
+// what actually reaches a log sink, which is the property under test.
+//
+// The gap this closes: the `AppError` branch returns before the 5xx
+// fallback, so a 500 carrying its own code answered the caller and
+// logged nothing. `invoiceNumberFormat()` (AC-354) made it live — a
+// corruption detector that fires silently, where the DB CHECK violation
+// it front-runs used to reach `error` level as a statusless throw.
+// ---------------------------------------------------------------------
+describe('AT-108 — an AppError carrying a 5xx logs at the operational error level', () => {
+  async function inject(url: string, handler: () => Promise<never>) {
+    const lines: string[] = [];
+    const probe = Fastify({
+      logger: { level: 'trace', stream: { write: (s: string) => void lines.push(s) } },
+    });
+    installErrorHandler(probe);
+    probe.get(url, handler);
+    await probe.ready();
+    const res = await probe.inject({ method: 'GET', url });
+    await probe.close();
+    return { res, errorLines: lines.filter((l) => JSON.parse(l).level === 50) };
+  }
+
+  it('500 AppError → the code survives on the wire AND the failure is logged', async () => {
+    const { res, errorLines } = await inject('/boom', async () => {
+      throw invoiceNumberFormat();
+    });
+
+    // The wire contract (api.md §14.2.14): the precise code, not the
+    // generic collapse.
+    expect(res.statusCode).toBe(500);
+    expect(res.json().code).toBe('INVOICE_NUMBER_FORMAT');
+    // The operator contract: one `error`-level entry naming the code, so
+    // a corrupt `invoice_sequence` row is triageable from logs alone.
+    expect(errorLines).toHaveLength(1);
+    expect(JSON.parse(errorLines[0]!).code).toBe('INVOICE_NUMBER_FORMAT');
+  });
+
+  it('4xx AppError stays below error level — 5xx alerting keeps its meaning', async () => {
+    // The other half of AC-247's rationale. Logging every `AppError`
+    // would fix the silence by drowning it: a 405 from a stale client is
+    // not an incident.
+    const { res, errorLines } = await inject('/nope', async () => {
+      throw methodNotAllowed(['GET']);
+    });
+
+    expect(res.statusCode).toBe(405);
+    expect(errorLines).toEqual([]);
   });
 });
 
