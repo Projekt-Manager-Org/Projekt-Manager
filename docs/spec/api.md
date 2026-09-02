@@ -557,11 +557,11 @@ The API must distinguish the following error categories. Each category has disti
 | **Rate limited**         | Too many requests in the configured time window.                                                                                                                                                                                          | Show retry message. Back off before retrying.                                                                                                                  |
 | **Method not allowed**   | The URL has a registered handler, but not for the requested HTTP verb. Distinct from "Route not found" — the endpoint exists; the verb does not. The response names the admitted verbs.                                                   | Show generic error message. Do not retry the same verb. Indicates a stale client or direct API misuse.                                                         |
 
-<!-- GENERATED:error-codes:START — generated from ERROR_CODES (src/server/errors.ts); do not hand-edit. See ARCHITECTURE.md for the generation mechanism (AC-354). -->
+<!-- CHECKED:error-codes:START — mirrors ERROR_CODES (src/server/errors.ts), pinned by src/server/__tests__/error-codes.test.ts (AC-354). Edit the array, then this block. Not generated — see ARCHITECTURE.md § Error-Code Catalogue for why. -->
 
 The full set of machine-readable error codes: `INVALID_CREDENTIALS`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `NOT_PERMITTED`, `VALIDATION_ERROR`, `CONFLICT`, `IDEMPOTENCY_CONFLICT`, `NOT_FOUND`, `ROUTE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `GONE`, `RATE_LIMITED`, `SCHEMA_VERSION_MISMATCH`, `TARGET_NOT_EMPTY`, `RESTORE_CONFIRMATION_MISMATCH`, `MISSING_USER_REFS`, `EXPORT_JOB_ACTIVE`, `IMPORT_JOB_ACTIVE`, `EXPORT_JOB_NOT_READY`, `UPLOAD_OFFSET_CONFLICT`, `UPLOAD_TOO_LARGE`, `UPLOAD_NOT_ACCEPTED`, `BULK_LIMIT_EXCEEDED`, `DEK_UNWRAP_FAILED`, `INVOICE_FROZEN`, `INVOICE_NUMBER_FORMAT`, `INVOICE_PROJECT_STATE`, `INVOICE_NOT_ISSUED`, `INVOICE_ALREADY_CANCELLED`, `DRAFT_NOT_EXPORTABLE`, `EXPORT_TOO_LARGE`, `COMPANY_PROFILE_REQUIRED`, `CUSTOMER_HAS_INVOICES`, `PROJECT_HAS_INVOICES`, `SERVER_ERROR`.
 
-<!-- GENERATED:error-codes:END -->
+<!-- CHECKED:error-codes:END -->
 
 `METHOD_NOT_ALLOWED` (405) is returned by endpoints that register an explicit guard for the verbs they do not serve, rather than letting the request fall through to the router's `ROUTE_NOT_FOUND`. The response carries `Allow` naming the admitted verbs ([RFC 9110 §15.5.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.6)).
 

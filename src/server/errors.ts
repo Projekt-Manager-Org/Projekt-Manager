@@ -12,14 +12,17 @@ import { STRINGS } from '../config/strings.js';
  * the single form of the set (AC-354).
  *
  * An array rather than a bare union, with `ErrorCode` derived from it
- * below: api.md §14.4.1's catalogue is generated from this
- * (`scripts/generate-error-codes.ts`) and a union has no runtime form to
- * generate from. Why the pair is derived rather than kept side by side,
- * and the drift that argument comes from, is in
- * [ARCHITECTURE.md § Error-Code Catalogue Generation](../../ARCHITECTURE.md#error-code-catalogue-generation).
+ * below: a union has no runtime form, so nothing can read it, publish it
+ * into api.md §14.4.1, or emit it as an OpenAPI enum. Why the pair is
+ * derived rather than kept side by side, and the drift that argument
+ * comes from, is in
+ * [ARCHITECTURE.md § Error-Code Catalogue](../../ARCHITECTURE.md#error-code-catalogue).
+ *
+ * api.md §14.4.1's `CHECKED:error-codes` block mirrors this array and is
+ * pinned to it by `__tests__/error-codes.test.ts` — edit both together.
  *
  * Declaration order is publication order. Grouped by domain, so the
- * generated catalogue reads as a catalogue and not as an alphabet.
+ * published catalogue reads as a catalogue and not as an alphabet.
  */
 export const ERROR_CODES = [
   'INVALID_CREDENTIALS',
@@ -298,7 +301,7 @@ export function routeNotFound(): AppError {
  * them — but it supplies them *here* rather than setting `Allow` itself,
  * which is what makes status and header inseparable. RFC 9110 §15.5.6
  * and the argument for binding the two:
- * [ARCHITECTURE.md § Error-Code Catalogue Generation](../../ARCHITECTURE.md#error-code-catalogue-generation).
+ * [ARCHITECTURE.md § Error-Code Catalogue](../../ARCHITECTURE.md#error-code-catalogue).
  */
 export function methodNotAllowed(allowed: readonly string[]): AppError {
   return new AppError('METHOD_NOT_ALLOWED', STRINGS.errors.methodNotAllowed, 405, undefined, {

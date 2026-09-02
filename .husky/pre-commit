@@ -1,7 +1,8 @@
-# --concurrent false: three lint-staged entries write docs/spec/api.md —
-# the permissions generator, the error-code generator, and `**/*.md` →
-# `prettier --write`. lint-staged defaults to running every glob's
-# commands at once, so a commit touching two of their inputs races them
-# on one file and commits whichever write landed last. CI catches the
-# stale block, but as a confusing red build rather than a clean commit.
+# --concurrent false: two lint-staged entries write docs/spec/api.md —
+# the permissions generator and `**/*.md` → `prettier --write`.
+# lint-staged defaults to running every glob's commands at once, so a
+# commit that stages both src/config/permissions.ts and api.md races
+# them on one file and commits whichever write landed last. CI catches
+# the stale block, but as a confusing red build rather than a clean
+# commit.
 npx lint-staged --concurrent false
