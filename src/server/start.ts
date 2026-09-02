@@ -34,10 +34,12 @@ import { startAuditRetentionScheduler } from './audit-retention-scheduler.js';
 import { startAttachmentOrphanReaperScheduler } from './attachment-orphan-reaper-scheduler.js';
 import { startAttachmentHiddenReaperScheduler } from './attachment-hidden-reaper-scheduler.js';
 import { startTakeoutStagingReaperScheduler } from './takeout-staging-reaper-scheduler.js';
+import { startThresholdMonitorScheduler } from './threshold-monitor-scheduler.js';
 import { reapAbandonedDataExchangeJobs } from './services/data-exchange-boot-reaper.js';
 import { setOperationalLogger as setAuditPublisherLogger } from './services/audit-publisher.js';
 import { AUDIT_RETENTION } from '../config/auditRetention.js';
 import { ATTACHMENT_CONFIG } from '../config/attachmentConfig.js';
+import { BYTES_PER_GB, THRESHOLD_MONITOR } from '../config/thresholdMonitor.js';
 import { STATE_KEYS } from '../config/stateConfig.js';
 import { assertBinaryIdentityLoaded } from './storage/binaryIdentity.js';
 import { createStorageClient } from './storage/client.js';
@@ -354,6 +356,30 @@ async function start(): Promise<void> {
     },
   });
 
+  // Threshold monitor (#122). Evaluates two standing conditions and
+  // publishes the matching catalog events: the backup badge on any
+  // non-green state (`backup.failed`) and global ciphertext volume past
+  // the warn band (`disk.threshold_reached`). Lives in this process, not
+  // the `backup` container, because the notification publisher binds
+  // here — see the service docstring.
+  //
+  // An undeclared STORAGE_QUOTA_GB disables the storage half only; the
+  // backup half runs regardless, since it needs no capacity figure.
+  const storageQuotaBytes =
+    env.STORAGE_QUOTA_GB === undefined ? null : env.STORAGE_QUOTA_GB * BYTES_PER_GB;
+  if (storageQuotaBytes === null) {
+    console.log('threshold-monitor: STORAGE_QUOTA_GB unset — storage warnings disabled');
+  }
+  const thresholdMonitor = startThresholdMonitorScheduler({
+    db,
+    intervalMinutes: THRESHOLD_MONITOR.intervalMinutes,
+    quotaBytes: storageQuotaBytes,
+    logger: {
+      info: (ctx, event) => console.log(event, ctx),
+      error: (ctx, event) => console.error(event, ctx),
+    },
+  });
+
   // Storage client for the health probe. Instantiated once at startup and
   // reused across health requests. The existing routes do not use storage
   // yet (walking skeleton), but #48 still wants MinIO liveness surfaced by
@@ -402,6 +428,7 @@ async function start(): Promise<void> {
         attachmentReaper.stop(),
         hiddenReaper.stop(),
         takeoutStagingReaper.stop(),
+        thresholdMonitor.stop(),
       ]);
       await app.close();
       await pool.end();

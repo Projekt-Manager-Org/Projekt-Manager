@@ -165,6 +165,7 @@ The EN 16931 e-invoicing core (ADR-0026). Gated on its own rather than inherited
 - `attachment-orphan-reaper-scheduler.ts` — attachment orphan reaper scheduler
 - `attachment-hidden-reaper-scheduler.ts` — hidden-attachment reaper scheduler ([data-model.md §6.12](docs/spec/data-model.md#612-attachment-hidden-reaper))
 - `takeout-staging-reaper-scheduler.ts` — takeout staging reaper scheduler ([data-model.md §6.15](docs/spec/data-model.md#615-takeout-staging-reaper)). Schedule only; the sweep itself is a service one layer down, listed in [§ Directory Notes](#directory-notes).
+- `threshold-monitor-scheduler.ts` — threshold monitor scheduler ([architecture.md §11.15](docs/spec/architecture.md#1115-threshold-monitor)). Schedule only; the evaluator is a service one layer down, listed in [§ Directory Notes](#directory-notes).
 - `backup-runner.ts` — Layer 2 backup CLI entry with `schedule` / `run` / `drill` subcommands. `schedule` is the `backup` container's PID 1 and registers the cron jobs via croner, per ADR-0020.
 - `errors.ts` — error factories: `notFound()`, `validationError()`, `bulkLimitExceeded()`, etc. return `AppError` instances
 - `error-handler.ts` — the global error and 404 handlers that turn those into responses. The 4xx pass-through rule is in [§ Design Decisions](#design-decisions-not-adr-worthy).
@@ -188,6 +189,7 @@ Every entry is keyed by a directory, and `scripts/check-module-map.sh` resolves 
 - `events.ts` — the **domain** event bus: process-local pub/sub for audit and notifications. Not the SSE pair `src/server/routes/events.ts` / `src/server/sse/`, which is a different mechanism with a colliding name.
 - `KeyEnvelopeService.ts` — DEK envelope wrap/unwrap against the operator-loaded binary `age` identity (ADR-0024). The entire crypto perimeter on B2 ciphertext.
 - `backup.ts`, `backup-drill.ts`, `ephemeralPg.ts`, `r2Uploader.ts` — the Layer 2 backup pipeline (ADR-0020), four files that only make sense together.
+- `threshold-monitor.ts` — evaluates the backup-badge state and global storage fill on a timer and publishes `backup.failed` / `disk.threshold_reached` ([architecture.md §11.15](docs/spec/architecture.md#1115-threshold-monitor)). It lives here, not in the `backup` container, because the notification publisher binds in the `app` process; a publish from the runner would reach an unbound publisher. Its scheduler is `src/server/threshold-monitor-scheduler.ts`, one layer up.
 - `DataExchangeJobService.ts`, `takeout-export-builder.ts`, `takeout-export-runner.ts`, `takeout-import-runner.ts`, `takeout-staging.ts`, `takeout-staging-reaper.ts`, `data-exchange-boot-reaper.ts` — the server-side takeout subsystem (ADR-0018/0024): job lifecycle, archive build, VPS staging and the two reapers that sweep it. Its scheduler is `src/server/takeout-staging-reaper-scheduler.ts`, one layer up.
 - The invoice service layer — the `InvoiceService.ts` facade plus four focused services — is listed in [§ Invoices Module](#invoices-module); that section is the single list.
 - Bulk download has **no** server-side orchestrator, reaper or scheduler (ADR-0024 § Decision "Bulk download") — the per-file `bulk-fetch` route returns DEK material + presigned GETs and the browser assembles the zip locally via streaming-zip. Absence here is a decision, not a gap.
@@ -214,31 +216,32 @@ Every entry is keyed by a directory, and `scripts/check-module-map.sh` resolves 
 
 Maps spec `[C]` markers (values that vary per deployment) to files. For how operator-supplied env vars are validated and what happens when one is missing, see [Design Decisions § Configuration boundary](#design-decisions-not-adr-worthy) below and [spec architecture.md §12](docs/spec/architecture.md#12-configuration-boundaries).
 
-| What                                                                      | File                                   |
-| ------------------------------------------------------------------------- | -------------------------------------- |
-| App name, branding, footer text, brand accent (light + dark)              | `src/config/brandingConfig.ts`         |
-| Color design tokens — primitive palette, semantic tokens, dark overrides  | `src/styles/tokens.css`                |
-| Workflow states (labels, colors, order, aging thresholds, collapse tiers) | `src/config/stateConfig.ts`            |
-| German UI and error strings                                               | `src/config/strings.ts`                |
-| Date and locale display settings                                          | `src/config/localeConfig.ts`           |
-| Insecure-connection detection                                             | `src/config/insecureConnection.ts`     |
-| Password policy (min length, max bytes, blocklist)                        | `src/server/config/password-policy.ts` |
-| Session duration, rate-limit windows                                      | `src/server/config/index.ts`           |
-| Role set and per-role permission matrix                                   | `src/config/permissions.ts`            |
-| Per-view nav + route-guard rules (URL ↔ view ↔ access rule)               | `src/config/routes.ts`                 |
-| Backup-freshness thresholds (amber/red days for backup and drill)         | `src/config/backupThresholds.ts`       |
-| Destructive-restore confirmation phrase                                   | `src/config/dataExchangeConfig.ts`     |
-| Theme preference local-storage key                                        | `src/config/themeStorage.ts`           |
-| Audit retention window (ADR-0021)                                         | `src/config/auditRetention.ts`         |
-| Audit action → German label map                                           | `src/config/auditActionLabels.ts`      |
-| Audit list page size                                                      | `src/config/auditPageSize.ts`          |
-| Notification event catalog + German labels (ADR-0023)                     | `src/config/notificationEvents.ts`     |
-| Push-dispatch latency budget                                              | `src/config/pushDispatch.ts`           |
-| Role keys (typed `AccountRoleKey` enum)                                   | `src/config/roleKeys.ts`               |
-| Attachment server caps (size, bulk, reaper TTL, worker self-delete grace) | `src/config/attachmentConfig.ts`       |
-| Attachment client pipeline params (resize, quality, thumbnail dimension)  | `src/config/attachmentPipeline.ts`     |
-| Realtime SSE heartbeat interval (default 25 s, bounded 1 s–600 s)         | `src/server/config/env.ts`             |
-| Seed default password                                                     | `src/test/seedAssumptions.ts`          |
+| What                                                                       | File                                   |
+| -------------------------------------------------------------------------- | -------------------------------------- |
+| App name, branding, footer text, brand accent (light + dark)               | `src/config/brandingConfig.ts`         |
+| Color design tokens — primitive palette, semantic tokens, dark overrides   | `src/styles/tokens.css`                |
+| Workflow states (labels, colors, order, aging thresholds, collapse tiers)  | `src/config/stateConfig.ts`            |
+| German UI and error strings                                                | `src/config/strings.ts`                |
+| Date and locale display settings                                           | `src/config/localeConfig.ts`           |
+| Insecure-connection detection                                              | `src/config/insecureConnection.ts`     |
+| Password policy (min length, max bytes, blocklist)                         | `src/server/config/password-policy.ts` |
+| Session duration, rate-limit windows                                       | `src/server/config/index.ts`           |
+| Role set and per-role permission matrix                                    | `src/config/permissions.ts`            |
+| Per-view nav + route-guard rules (URL ↔ view ↔ access rule)                | `src/config/routes.ts`                 |
+| Backup-freshness thresholds (amber/red days for backup and drill)          | `src/config/backupThresholds.ts`       |
+| Threshold-monitor policy (storage warn band, hysteresis, sweep, re-notify) | `src/config/thresholdMonitor.ts`       |
+| Destructive-restore confirmation phrase                                    | `src/config/dataExchangeConfig.ts`     |
+| Theme preference local-storage key                                         | `src/config/themeStorage.ts`           |
+| Audit retention window (ADR-0021)                                          | `src/config/auditRetention.ts`         |
+| Audit action → German label map                                            | `src/config/auditActionLabels.ts`      |
+| Audit list page size                                                       | `src/config/auditPageSize.ts`          |
+| Notification event catalog + German labels (ADR-0023)                      | `src/config/notificationEvents.ts`     |
+| Push-dispatch latency budget                                               | `src/config/pushDispatch.ts`           |
+| Role keys (typed `AccountRoleKey` enum)                                    | `src/config/roleKeys.ts`               |
+| Attachment server caps (size, bulk, reaper TTL, worker self-delete grace)  | `src/config/attachmentConfig.ts`       |
+| Attachment client pipeline params (resize, quality, thumbnail dimension)   | `src/config/attachmentPipeline.ts`     |
+| Realtime SSE heartbeat interval (default 25 s, bounded 1 s–600 s)          | `src/server/config/env.ts`             |
+| Seed default password                                                      | `src/test/seedAssumptions.ts`          |
 
 ---
 

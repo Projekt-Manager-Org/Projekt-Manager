@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { composePushPayload } from '../services/pushPayloadComposer.js';
 import type { AuditLogRow } from '../services/audit-publisher.js';
+import { ROUTES } from '../../config/routes.js';
 
 function row(overrides: Partial<AuditLogRow> = {}): AuditLogRow {
   return {
@@ -157,16 +158,76 @@ describe('composePushPayload — AC-211', () => {
 
   it('renders backup.failed system event without an audit row', () => {
     const out = composePushPayload('backup.failed', null, {});
-    expect(out.title).toBe('Backup fehlgeschlagen');
+    // Title is deliberately broader than the class id — the threshold
+    // monitor fires this class for any non-green badge state, not only
+    // a failed run (#122).
+    expect(out.title).toBe('Backup-Warnung');
+    // Empty payload → generic fallback sentence.
     expect(out.body).toBe('Backup konnte nicht abgeschlossen werden.');
-    expect(out.url).toBe('/verwaltung/backups');
+    expect(out.url).toBe('/kanban');
+  });
+
+  it('renders the badge reason into the backup.failed body when the monitor supplies one', () => {
+    // Each reason maps to the badge's own German label so the push and
+    // the badge the owner lands on cannot disagree (#122).
+    const cases: ReadonlyArray<[string, string]> = [
+      ['last-run-failed', 'Backup: fehlgeschlagen'],
+      ['backup-never-run', 'Backup: noch nie ausgeführt'],
+      ['drill-never-run', 'Drill: noch nie ausgeführt'],
+      ['backup-stale', 'Backup: veraltet'],
+      ['backup-aging', 'Backup: wird alt'],
+      ['drill-expired', 'Drill: überfällig'],
+      ['drill-stale', 'Backup: aktuell, Drill-Schlüssel neu laden'],
+    ];
+    for (const [reason, expected] of cases) {
+      const out = composePushPayload('backup.failed', null, { reason });
+      expect(out.body, `reason=${reason}`).toBe(expected);
+    }
+  });
+
+  it('falls back to the generic backup body on an unknown reason', () => {
+    const out = composePushPayload('backup.failed', null, { reason: 'not-a-real-reason' });
+    expect(out.body).toBe('Backup konnte nicht abgeschlossen werden.');
   });
 
   it('renders disk.threshold_reached system event without an audit row', () => {
     const out = composePushPayload('disk.threshold_reached', null, {});
     expect(out.title).toBe('Speichergrenze erreicht');
     expect(out.body).toBe('Speichernutzung über Schwellwert.');
-    expect(out.url).toBe('/verwaltung');
+    expect(out.url).toBe('/daten');
+  });
+
+  it('points both system events at paths the route table actually serves', () => {
+    // These URLs went to `/verwaltung` and `/verwaltung/backups`, which
+    // no route defines. Nothing 404s — `viewFromPath` falls back to
+    // kanban and the SPA handler serves index.html — so the only
+    // symptom was the owner tapping a backup warning and landing on the
+    // board. Asserted against the live route table so a future edit
+    // cannot reintroduce a path that does not exist.
+    const systemUrls = [
+      composePushPayload('backup.failed', null, {}).url,
+      composePushPayload('disk.threshold_reached', null, {}).url,
+    ];
+    for (const url of systemUrls) {
+      expect(
+        ROUTES.some((r) => r.path === url),
+        `${url} is not a declared route`,
+      ).toBe(true);
+    }
+  });
+
+  it('renders the fill percentage into the disk.threshold_reached body', () => {
+    const out = composePushPayload('disk.threshold_reached', null, {
+      percent: 82,
+      usedBytes: 1,
+      quotaBytes: 2,
+    });
+    expect(out.body).toBe('Speicher zu 82% belegt.');
+  });
+
+  it('ignores a non-numeric percent and falls back to the generic disk body', () => {
+    const out = composePushPayload('disk.threshold_reached', null, { percent: '82' });
+    expect(out.body).toBe('Speichernutzung über Schwellwert.');
   });
 
   it('never produces an empty title or body — every code path renders strings', () => {

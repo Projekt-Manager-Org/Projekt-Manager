@@ -63,6 +63,8 @@ function labelForRedReason(reason: Extract<BackupBadgeState, { kind: 'red' }>['r
   switch (reason) {
     case 'backup-stale':
       return STRINGS.backup.backupStale;
+    case 'drill-expired':
+      return STRINGS.backup.drillExpired;
     case 'last-run-failed':
       return STRINGS.backup.lastRunFailed;
     case 'backup-never-run':
@@ -76,6 +78,27 @@ function labelForRedReason(reason: Extract<BackupBadgeState, { kind: 'red' }>['r
   }
 }
 
+/**
+ * German label for an amber reason. Mirrors `labelForRedReason` — the
+ * two amber cases are distinct problems ('drill-stale' = the verifier
+ * is late, 'backup-aging' = the backup itself is getting old) and read
+ * as different sentences to the operator.
+ */
+function labelForAmberReason(
+  reason: Extract<BackupBadgeState, { kind: 'amber' }>['reason'],
+): string {
+  switch (reason) {
+    case 'drill-stale':
+      return STRINGS.backup.drillStale;
+    case 'backup-aging':
+      return STRINGS.backup.backupAging;
+    default: {
+      const _exhaustive: never = reason;
+      throw new Error(`Unhandled backup-badge amber reason: ${String(_exhaustive)}`);
+    }
+  }
+}
+
 function baseLabelFor(state: BackupBadgeState): string {
   switch (state.kind) {
     case 'unknown':
@@ -83,7 +106,7 @@ function baseLabelFor(state: BackupBadgeState): string {
     case 'green':
       return STRINGS.backup.green;
     case 'amber':
-      return STRINGS.backup.drillStale;
+      return labelForAmberReason(state.reason);
     case 'red':
       return labelForRedReason(state.reason);
     default: {

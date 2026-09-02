@@ -18,11 +18,16 @@
  *                                       (no Tier 2 drill has ever succeeded or failed —
  *                                        data-model.md §5.9 authoritative null signal)
  *   - backup age > backupRedDays     → { kind: 'red', reason: 'backup-stale' }
- *   - drill age > drillRedDays       → { kind: 'red', reason: 'backup-stale' }
+ *   - drill age > drillRedDays       → { kind: 'red', reason: 'drill-expired' }
  *                                       (drill staleness is a red signal at the red
  *                                        threshold — AC-171 treats an unverified
- *                                        backup cycle as worse than a stale one)
+ *                                        backup cycle as worse than a stale one —
+ *                                        but it is the DRILL that is overdue, not
+ *                                        the backup; see the reason split below)
  *   - drill age > drillAmberDays     → { kind: 'amber', reason: 'drill-stale' }
+ *   - backup age > backupAmberDays   → { kind: 'amber', reason: 'backup-aging' }
+ *                                       (only reachable when the drill is green —
+ *                                        drill amber takes precedence above)
  *   - otherwise                      → { kind: 'green' }
  *
  * The label on the 'unknown' branch is a German UI string per AC-171 —
@@ -64,12 +69,29 @@ export interface BackupStatus {
 export type BackupBadgeState =
   | { kind: 'unknown'; label: string }
   | { kind: 'green'; lastBackupAt?: string }
-  | { kind: 'amber'; reason: 'drill-stale'; lastBackupAt?: string }
+  | { kind: 'amber'; reason: 'drill-stale' | 'backup-aging'; lastBackupAt?: string }
   | {
       kind: 'red';
-      reason: 'backup-stale' | 'drill-never-run' | 'last-run-failed' | 'backup-never-run';
+      reason:
+        | 'backup-stale'
+        | 'drill-expired'
+        | 'drill-never-run'
+        | 'last-run-failed'
+        | 'backup-never-run';
       lastBackupAt?: string;
     };
+
+/**
+ * Every reason a non-green badge can carry.
+ *
+ * Exported so consumers that render a reason (the badge's own label
+ * switches, the push-payload composer) can key an exhaustive map on it
+ * and let the compiler catch a reason nobody rendered. Without this the
+ * composer degrades a new reason to its generic fallback silently —
+ * which is the same collapse the `drill-stale` / `backup-aging` split
+ * exists to prevent, one layer down.
+ */
+export type BackupBadgeReason = Extract<BackupBadgeState, { reason: string }>['reason'];
 
 export interface BadgeThresholds {
   /** Age (days) at which a fresh-but-aging backup switches to amber. */
@@ -139,15 +161,24 @@ export function deriveBadgeState(
     }
   }
 
-  // Drill age evaluation. `lastDrillAt === undefined` alongside
-  // `lastDrillOk !== null` is an internal inconsistency — treat it as
-  // red-stale to surface the problem loudly rather than coerce green.
+  // Drill age evaluation. Both branches below are driven by the DRILL,
+  // so they carry a drill reason — 'backup-stale' here would tell the
+  // owner their backup is out of date while it is fresh and succeeding,
+  // which is the same collapse the 'drill-stale' / 'backup-aging' split
+  // exists to prevent, one severity level up. It matters more here: the
+  // reason is rendered into a push body (architecture.md §11.15), so a
+  // wrong reason sends the operator to the wrong subsystem.
+  //
+  // `lastDrillAt === undefined` alongside `lastDrillOk !== null` is an
+  // internal inconsistency — surfaced loudly rather than coerced green,
+  // and pointed at the drill because the drill timestamp is the broken
+  // datum.
   if (status.lastDrillAt === undefined) {
-    return { kind: 'red', reason: 'backup-stale', lastBackupAt: status.lastBackupAt };
+    return { kind: 'red', reason: 'drill-expired', lastBackupAt: status.lastBackupAt };
   }
   const drillAgeDays = daysBetween(new Date(status.lastDrillAt), now);
   if (drillAgeDays > thresholds.drillRedDays) {
-    return { kind: 'red', reason: 'backup-stale', lastBackupAt: status.lastBackupAt };
+    return { kind: 'red', reason: 'drill-expired', lastBackupAt: status.lastBackupAt };
   }
   if (drillAgeDays > thresholds.drillAmberDays) {
     return { kind: 'amber', reason: 'drill-stale', lastBackupAt: status.lastBackupAt };
@@ -158,11 +189,12 @@ export function deriveBadgeState(
   if (status.lastBackupAt !== undefined) {
     const backupAgeDays = daysBetween(new Date(status.lastBackupAt), now);
     if (backupAgeDays > thresholds.backupAmberDays) {
-      // Amber for backup age alone is currently represented by the same
-      // 'drill-stale' reason string; keeping it simple because the test
-      // suite only pins the drill-staleness amber case. If a separate
-      // amber reason is needed later it's a pure additive change.
-      return { kind: 'amber', reason: 'drill-stale', lastBackupAt: status.lastBackupAt };
+      // Distinct from 'drill-stale': the backup itself is aging while the
+      // drill is still fresh. The two shared a reason string while the
+      // reason only fed a badge tooltip, but the threshold monitor now
+      // renders it into a push body — collapsing them would tell the
+      // owner the drill is overdue when the backup is the problem.
+      return { kind: 'amber', reason: 'backup-aging', lastBackupAt: status.lastBackupAt };
     }
   }
 

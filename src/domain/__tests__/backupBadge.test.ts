@@ -73,6 +73,117 @@ function daysAgo(n: number): string {
   return d.toISOString();
 }
 
+describe('#122: amber reasons are distinguishable', () => {
+  it('renders amber / backup-aging when the backup ages past amber and the drill is fresh', () => {
+    // The backup itself is getting old while the drill is current. This
+    // shared the 'drill-stale' reason string while the reason only fed a
+    // badge tooltip; the threshold monitor now renders it into a push
+    // body, where the collapse would tell the owner the drill is overdue
+    // when the backup is the actual problem.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(3),
+      lastDrillAt: daysAgo(0),
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('amber');
+    if (s.kind === 'amber') expect(s.reason).toBe('backup-aging');
+  });
+
+  it('renders amber / drill-stale when the drill ages past amber and the backup is fresh', () => {
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(0),
+      lastDrillAt: daysAgo(20),
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('amber');
+    if (s.kind === 'amber') expect(s.reason).toBe('drill-stale');
+  });
+
+  it('gives drill staleness precedence when both the backup and the drill are amber', () => {
+    // Both dimensions past their amber line. The ordering is documented
+    // in `deriveBadgeState` but was unpinned — and getting it wrong is
+    // not merely a swapped label: hoisting the backup-age check above
+    // the drill-age checks turns a 3-day backup with a 40-day drill from
+    // red/backup-stale into amber/backup-aging, which is exactly the
+    // misleading-state class AC-171 forbids.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(3),
+      lastDrillAt: daysAgo(20),
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('amber');
+    if (s.kind === 'amber') expect(s.reason).toBe('drill-stale');
+  });
+
+  it('stays red when the backup is amber-aged but the drill is past its red line', () => {
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(3),
+      lastDrillAt: daysAgo(40),
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('red');
+    // Asserting the reason, not just the severity. This case pinned only
+    // `kind` while the reason was 'backup-stale', which is how a
+    // drill-driven red went on claiming the backup was out of date.
+    if (s.kind === 'red') expect(s.reason).toBe('drill-expired');
+  });
+
+  it('renders red / drill-expired when the drill passes its red line and the backup is fresh', () => {
+    // The red counterpart of the amber split above, and the one that
+    // actually misled: backup ran today and succeeded, only the drill is
+    // overdue, yet the reason was 'backup-stale' → push body "Backup:
+    // veraltet". The owner is told their backup is stale while it is
+    // fresh, contradicting the correct amber message ("Drill-Schlüssel
+    // neu laden") they got at the amber line. Drills are manual operator
+    // actions (ADR-0020), so this is the ordinary decay path, not a
+    // corner case.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(0),
+      lastDrillAt: daysAgo(THRESHOLDS.drillRedDays + 5),
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('red');
+    if (s.kind === 'red') expect(s.reason).toBe('drill-expired');
+  });
+
+  it('reports drill-expired when lastDrillAt is missing but lastDrillOk is set', () => {
+    // Internal inconsistency (data-model.md §5.9): surfaced loudly
+    // rather than coerced green, and pointed at the drill because the
+    // drill timestamp is the broken datum.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(0),
+      lastDrillAt: undefined,
+      lastDrillOk: true,
+      lastError: undefined,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('red');
+    if (s.kind === 'red') expect(s.reason).toBe('drill-expired');
+  });
+});
+
 describe('AC-171: backup badge — unreachable + never-drilled states', () => {
   it("renders 'Status unbekannt' when the status source is unreachable", () => {
     // `undefined` models the DB-down + mirror-unavailable branch.

@@ -320,6 +320,27 @@ export const envSchema = z.object({
     z.coerce.number().int().positive().optional(),
   ),
   // ---------------------------------------------------------------
+  // Storage capacity declaration (architecture.md §12.2). The stored
+  // ciphertext volume the deployment's bucket is provisioned for; the
+  // threshold monitor warns the owner at
+  // `THRESHOLD_MONITOR.storageWarnPercent` of this figure.
+  //
+  // Env rather than a source constant because it tracks the bucket this
+  // deployment points at, not policy — a second deployment against a
+  // bigger bucket must not need a code edit to tell the truth about its
+  // own capacity.
+  //
+  // Optional, no default: an unset value means "capacity undeclared" and
+  // the monitor skips the storage check entirely (logged once at
+  // startup). A default here would be a fabricated capacity figure, and
+  // warnings measured against a number nobody chose are worse than no
+  // warnings. Power-of-1024 GB, matching `formatBytes` (AC-274).
+  // ---------------------------------------------------------------
+  STORAGE_QUOTA_GB: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.coerce.number().int().positive().optional(),
+  ),
+  // ---------------------------------------------------------------
   // Full-account takeout staging (ADR-0018 / ADR-0024, data-model.md
   // §5.18 / §6.14, architecture.md §12.2). The export job builds the
   // archive (envelope + every ready attachment's plaintext) and stages
