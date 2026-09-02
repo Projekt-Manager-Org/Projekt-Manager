@@ -17,12 +17,11 @@
  * it had already drifted: `INVOICE_NUMBER_FORMAT` was catalogued in
  * §14.4.1 and in the array with no factory and no producer anywhere.
  *
- * `methodNotAllowed()` is pinned because it is the code the catalogue
- * was missing: four route sites answered `405 METHOD_NOT_ALLOWED` with a
- * hand-rolled object literal, outside `AppError` and outside the type,
- * while api.md §14.2 required the response in six places. Routing those
- * sites through a factory is what puts the code under the compiler; this
- * pins the shape they now emit, `Allow` included.
+ * `methodNotAllowed()` gets its own block: it is the code the catalogue
+ * was missing, and the four route sites now route through it, so this
+ * pins the shape they emit — `Allow` included. Why the header rides on
+ * the error rather than sitting beside it: ARCHITECTURE.md § Error-Code
+ * Catalogue Generation.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -138,10 +137,9 @@ describe('AC-354: methodNotAllowed()', () => {
     expect(err.code).toBe('METHOD_NOT_ALLOWED');
     expect(ERROR_CODES).toContain(err.code);
     expect(err.statusCode).toBe(405);
-    // The hand-rolled literals this factory replaces carried an English
-    // message ('Only GET is allowed on this endpoint.') where §14.4 puts
-    // a German one. Pinned to STRINGS rather than to the text so a
-    // wording change stays a one-line edit.
+    // Pinned to STRINGS, not to the text, so a wording change stays a
+    // one-line edit — and so a regression to a hand-rolled English
+    // literal fails here rather than shipping.
     expect(err.userMessage).toBe(STRINGS.errors.methodNotAllowed);
     expect(err.toResponse()).toEqual({
       code: 'METHOD_NOT_ALLOWED',
@@ -150,12 +148,9 @@ describe('AC-354: methodNotAllowed()', () => {
   });
 
   it('carries Allow, so a guard cannot ship the status without the header', () => {
-    // RFC 9110 §15.5.6 makes `Allow` mandatory on a 405 and Fastify does
-    // not populate it for these guards. Taking the verbs as a required
-    // argument is what makes the pair inseparable — before this, the
-    // status and the header were two statements at each call site that
-    // had to agree by inspection, and a fifth guard forgetting the
-    // header would have shipped green.
+    // Taking the verbs as a *required* argument is the whole mechanism:
+    // it is what makes status and header inseparable. Pinned here so a
+    // signature change that reintroduces an optional header fails.
     expect(methodNotAllowed(['GET']).headers).toEqual({ allow: 'GET' });
     expect(methodNotAllowed(['GET', 'PUT']).headers).toEqual({ allow: 'GET, PUT' });
   });

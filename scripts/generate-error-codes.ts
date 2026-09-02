@@ -5,8 +5,8 @@
  *
  * Fifth in the same family as the permissions matrix (AC-343), the nav
  * matrix (AC-349), the OpenAPI document (AC-351) and the API surface
- * table (AC-352), and it exists for the reason the others do: the
- * hand-kept list had drifted from the code in both directions at once.
+ * table (AC-352). Why it exists — ARCHITECTURE.md § Error-Code Catalogue
+ * Generation.
  *
  * Only the catalogue sentence is generated. §14.4.1 continues below the
  * end marker with per-code prose that exists nowhere in the code —

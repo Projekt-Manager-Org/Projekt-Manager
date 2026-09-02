@@ -11,15 +11,12 @@ import { STRINGS } from '../config/strings.js';
  * Every machine-readable error code the API can put on the wire —
  * the single form of the set (AC-354).
  *
- * A runtime array rather than a bare union, for two reasons. The
- * catalogue published in api.md §14.4.1 is generated from it
- * (`scripts/generate-error-codes.ts`), and a TypeScript union has no
- * runtime form to generate from. And `ErrorCode` is derived from it
- * below, so the type every `AppError` is constructed against and the
- * set the contract declares are one thing rather than two that agree
- * by inspection — which they did not: `METHOD_NOT_ALLOWED` was answered
- * by four route sites while absent from both, and `DRAFT_NOT_EXPORTABLE`
- * / `EXPORT_TOO_LARGE` were in the union and absent from the contract.
+ * An array rather than a bare union, with `ErrorCode` derived from it
+ * below: api.md §14.4.1's catalogue is generated from this
+ * (`scripts/generate-error-codes.ts`) and a union has no runtime form to
+ * generate from. Why the pair is derived rather than kept side by side,
+ * and the drift that argument comes from, is in
+ * [ARCHITECTURE.md § Error-Code Catalogue Generation](../../ARCHITECTURE.md#error-code-catalogue-generation).
  *
  * Declaration order is publication order. Grouped by domain, so the
  * generated catalogue reads as a catalogue and not as an alphabet.
@@ -298,13 +295,10 @@ export function routeNotFound(): AppError {
  * the verb does not.
  *
  * The admitted verbs are the route's knowledge, so the caller supplies
- * them — but it supplies them *here* rather than setting the header
- * itself. RFC 9110 §15.5.6 makes `Allow` mandatory on a 405 and
- * Fastify's router does not populate it for these guards, so a guard
- * that sets the status and forgets the header ships an RFC-non-compliant
- * response that nothing notices. Taking the verbs as an argument makes
- * the pair unforgettable by construction: the header rides on the error
- * and the global handler writes it with the body.
+ * them — but it supplies them *here* rather than setting `Allow` itself,
+ * which is what makes status and header inseparable. RFC 9110 §15.5.6
+ * and the argument for binding the two:
+ * [ARCHITECTURE.md § Error-Code Catalogue Generation](../../ARCHITECTURE.md#error-code-catalogue-generation).
  */
 export function methodNotAllowed(allowed: readonly string[]): AppError {
   return new AppError('METHOD_NOT_ALLOWED', STRINGS.errors.methodNotAllowed, 405, undefined, {
