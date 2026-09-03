@@ -135,8 +135,8 @@ jobs:
       # the integration suite would mean the two identities are generated
       # by different `age` builds, which is why this used to be a
       # hand-synced copy guarded by scripts/check-workflow-drift.sh. That
-      # check still fails the build if this line goes missing — nothing
-      # else would notice, since this workflow is `workflow_dispatch` only.
+      # check still fails the build if this line goes missing — no PR check
+      # would notice otherwise, only the next nightly.
       - uses: ./.github/actions/install-age
 
       # Storage — MinIO + full bucket/IAM provisioning. Rationale, image
@@ -168,10 +168,13 @@ jobs:
       # nightly nobody can debug is a nightly that gets muted, so the
       # artifact is what makes the schedule above actionable.
       #
-      # `failure()` only: on green, `retain-on-failure` leaves no trace and
-      # the report carries nothing worth 14 days of storage.
+      # Not on green: `retain-on-failure` leaves no trace there and the
+      # report carries nothing worth 14 days of storage. `cancelled()` is
+      # in the condition because `timeout-minutes` above CANCELS the job
+      # rather than failing it — without it the unattended hang that
+      # timeout exists for is the one failure that uploads nothing.
       - name: Upload Playwright report and traces
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report-${{ github.run_id }}
