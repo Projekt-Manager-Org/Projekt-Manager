@@ -54,6 +54,7 @@ import {
   notFound,
   targetNotEmpty,
   restoreConfirmationMismatch,
+  uploadHeaderInvalid,
   uploadOffsetConflict,
   uploadTooLarge,
   uploadNotAccepted,
@@ -121,10 +122,7 @@ export function importJobRoutes(db: Database) {
         const uploadLengthHeader = request.headers['upload-length'];
         const uploadLength = Number(uploadLengthHeader);
         if (!uploadLengthHeader || !Number.isInteger(uploadLength) || uploadLength < 0) {
-          return reply.code(400).send({
-            code: 'VALIDATION_ERROR',
-            message: 'Upload-Length header is required and must be a non-negative integer',
-          });
+          throw uploadHeaderInvalid('Upload-Length');
         }
 
         const body = request.body as { override?: boolean; confirmation_phrase?: string } | null;
@@ -306,10 +304,7 @@ export function importJobRoutes(db: Database) {
 
         const clientOffset = Number(request.headers['upload-offset']);
         if (!Number.isInteger(clientOffset) || clientOffset < 0) {
-          return reply.code(400).send({
-            code: 'VALIDATION_ERROR',
-            message: 'Upload-Offset header is required and must be a non-negative integer',
-          });
+          throw uploadHeaderInvalid('Upload-Offset');
         }
 
         const stagingDir = env.TAKEOUT_STAGING_DIR;

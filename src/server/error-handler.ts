@@ -3,10 +3,12 @@
  *
  * Honor the HTTP statusCode native to the failure: 4xx-class errors
  * preserve their status and surface a stable code per AC-247 / api.md
- * §14.4.2; only 5xx-or-statusless errors collapse to `SERVER_ERROR` and
- * are logged at the operational `error` level. Transport-layer 4xx
- * rejections log at `warn` so 5xx alerting on logs reflects only genuine
- * server failures.
+ * §14.4.2; a 5xx-or-statusless error carrying no code of its own
+ * collapses to `SERVER_ERROR`. Every 5xx logs at the operational `error`
+ * level — an `AppError` that carries its own 5xx code included, since it
+ * is a genuine server failure under a more precise name. Transport-layer
+ * 4xx rejections log at `warn` so 5xx alerting on logs reflects only
+ * genuine server failures.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -29,6 +31,20 @@ import { STRINGS } from '../config/strings.js';
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
+      // Headers the status is not valid without (e.g. `Allow` on a 405,
+      // RFC 9110 §15.5.6). Written here, with the body, so the pair
+      // cannot come apart at an individual call site.
+      if (error.headers) {
+        for (const [name, value] of Object.entries(error.headers)) {
+          reply.header(name, value);
+        }
+      }
+      // AC-247's triage contract is about the status class, not about
+      // which branch produced it: a 5xx is a genuine server failure and
+      // logs at `error` like any other.
+      if (error.statusCode >= 500) {
+        request.log.error({ err: error, code: error.code }, 'server-side failure');
+      }
       return reply.code(error.statusCode).send(error.toResponse());
     }
 
@@ -63,8 +79,11 @@ export function installErrorHandler(app: FastifyInstance): void {
       return reply.code(mapped.statusCode).send(mapped.toResponse());
     }
 
-    // 5xx fallback — the only branch that warrants `error`-level logging.
-    app.log.error(error);
+    // 5xx fallback for a non-`AppError`. Logs at `error`, as the
+    // `AppError` branch above does for its own 5xx; the 4xx branches
+    // between them stay at `warn`. On `request.log` like both of them,
+    // so the entry an operator triages carries the request id.
+    request.log.error(error);
     const err = serverError();
     return reply.code(err.statusCode).send(err.toResponse());
   });

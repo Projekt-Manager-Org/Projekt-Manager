@@ -32,6 +32,7 @@ import {
   resolveExportInvoices,
   buildManifestCsv,
   todayIsoDate,
+  EXPORT_FILTER_SAFETY_CAP,
   type ExportInput,
   type ExportFilterInput,
 } from '../services/InvoiceExportService.js';
@@ -455,10 +456,14 @@ export function invoiceRoutes(db: Database) {
                 type: 'array',
                 items: { type: 'string', format: 'uuid' },
                 minItems: 1,
-                // Mirrors the filter-mode safety cap. A single explicit
-                // selection over 5000 invoices is presumed misuse; the
-                // user can re-run with a narrower selection.
-                maxItems: 5000,
+                // The filter-mode safety cap itself, not a copy of its
+                // value: a selection this large is presumed misuse in
+                // either mode, and two literals that agree by inspection
+                // are the drift this domain keeps paying for. Note the
+                // rejections differ — over-cap here is a schema
+                // rejection (422 VALIDATION_ERROR), while filter-mode
+                // resolves the count first and mints EXPORT_TOO_LARGE.
+                maxItems: EXPORT_FILTER_SAFETY_CAP,
               },
               filter: {
                 type: 'object',

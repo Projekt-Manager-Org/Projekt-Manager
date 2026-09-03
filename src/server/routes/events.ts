@@ -36,6 +36,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
 import { requireSession } from '../middleware/auth.js';
+import { methodNotAllowed } from '../errors.js';
 import { subscribe, unsubscribe, type SseConnection } from '../sse/bus.js';
 import { AuthService } from '../services/AuthService.js';
 import { getEnv } from '../config/env.js';
@@ -134,12 +135,8 @@ export function eventsRoutes(db: Database) {
     app.route({
       method: ['POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/events',
-      handler: async (_request, reply) => {
-        reply.header('allow', 'GET');
-        return reply.code(405).send({
-          code: 'METHOD_NOT_ALLOWED',
-          message: 'Only GET is allowed on this endpoint.',
-        });
+      handler: async () => {
+        throw methodNotAllowed(['GET']);
       },
     });
   };

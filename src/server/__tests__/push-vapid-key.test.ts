@@ -15,9 +15,16 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { pushPublicRoutes } from '../routes/push.js';
+import { installErrorHandler } from '../error-handler.js';
+import { STRINGS } from '../../config/strings.js';
 
 async function buildTestApp(publicKey: string | null): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
+  // The 405 guard throws an `AppError` carrying its own `Allow` header,
+  // which the global handler writes with the body. Registering it here
+  // is what makes this harness exercise the production path rather than
+  // Fastify's default error serializer.
+  installErrorHandler(app);
   await app.register(pushPublicRoutes(publicKey));
   await app.ready();
   return app;
@@ -61,6 +68,12 @@ describe('GET /api/push/vapid-public-key', () => {
 
       expect(res.statusCode).toBe(405);
       expect(res.headers['allow']).toBe('GET');
+      // Body, not just the status line: this guard answered with a code
+      // absent from the catalogue and an English message for as long as
+      // it existed (AC-354). The other three 405 sites assert the same.
+      const body = res.json() as { code?: string; message?: string };
+      expect(body.code).toBe('METHOD_NOT_ALLOWED');
+      expect(body.message).toBe(STRINGS.errors.methodNotAllowed);
     });
   });
 });

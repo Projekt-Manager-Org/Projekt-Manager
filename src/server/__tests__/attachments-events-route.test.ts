@@ -51,6 +51,7 @@ import {
   createTestUserSession,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
+import { STRINGS } from '../../config/strings.js';
 
 /**
  * Inject a streaming response and return both the `light-my-request`
@@ -263,8 +264,12 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
         // `Allow` header is part of the 405 contract — the storage-usage
         // route mounts it the same way (storage-usage.ts L60-70).
         expect(String(res.headers['allow'] ?? '').toUpperCase()).toContain('GET');
-        const body = res.json() as { code?: string };
+        const body = res.json() as { code?: string; message?: string };
         expect(body.code).toBe('METHOD_NOT_ALLOWED');
+        // Pins the guard to the shared factory (AC-354). The literal it
+        // replaced carried an English message; asserting the code alone
+        // would not notice a regression back to a hand-rolled body.
+        expect(body.message).toBe(STRINGS.errors.methodNotAllowed);
       },
     );
   });

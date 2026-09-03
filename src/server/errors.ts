@@ -7,43 +7,61 @@
 
 import { STRINGS } from '../config/strings.js';
 
-export type ErrorCode =
-  | 'INVALID_CREDENTIALS'
-  | 'UNAUTHENTICATED'
-  | 'SESSION_EXPIRED'
-  | 'NOT_PERMITTED'
-  | 'VALIDATION_ERROR'
-  | 'CONFLICT'
-  | 'IDEMPOTENCY_CONFLICT'
-  | 'NOT_FOUND'
-  | 'ROUTE_NOT_FOUND'
-  | 'GONE'
-  | 'RATE_LIMITED'
-  | 'SCHEMA_VERSION_MISMATCH'
-  | 'TARGET_NOT_EMPTY'
-  | 'RESTORE_CONFIRMATION_MISMATCH'
-  | 'MISSING_USER_REFS'
+/**
+ * Every machine-readable error code the API can put on the wire —
+ * the single form of the set (AC-354). An array rather than a bare
+ * union, with `ErrorCode` derived from it below: a union has no runtime
+ * form, so nothing can read it, publish it into api.md §14.4.1, or emit
+ * it as an OpenAPI enum.
+ *
+ * api.md §14.4.1's `CHECKED:error-codes` block mirrors this array and is
+ * pinned to it by `__tests__/error-codes.test.ts` — edit both together.
+ * Rationale:
+ * [ARCHITECTURE.md § Error-Code Catalogue](../../ARCHITECTURE.md#error-code-catalogue).
+ *
+ * Declaration order is publication order. Grouped by domain, so the
+ * published catalogue reads as a catalogue and not as an alphabet.
+ */
+export const ERROR_CODES = [
+  'INVALID_CREDENTIALS',
+  'UNAUTHENTICATED',
+  'SESSION_EXPIRED',
+  'NOT_PERMITTED',
+  'VALIDATION_ERROR',
+  'CONFLICT',
+  'IDEMPOTENCY_CONFLICT',
+  'NOT_FOUND',
+  'ROUTE_NOT_FOUND',
+  'METHOD_NOT_ALLOWED',
+  'GONE',
+  'RATE_LIMITED',
+  'SCHEMA_VERSION_MISMATCH',
+  'TARGET_NOT_EMPTY',
+  'RESTORE_CONFIRMATION_MISMATCH',
+  'MISSING_USER_REFS',
   // Full-account takeout jobs (ADR-0018, api.md §14.2.4 / §14.4.1).
-  | 'EXPORT_JOB_ACTIVE'
-  | 'IMPORT_JOB_ACTIVE'
-  | 'EXPORT_JOB_NOT_READY'
-  | 'UPLOAD_OFFSET_CONFLICT'
-  | 'UPLOAD_TOO_LARGE'
-  | 'UPLOAD_NOT_ACCEPTED'
-  | 'BULK_LIMIT_EXCEEDED'
-  | 'DEK_UNWRAP_FAILED'
+  'EXPORT_JOB_ACTIVE',
+  'IMPORT_JOB_ACTIVE',
+  'EXPORT_JOB_NOT_READY',
+  'UPLOAD_OFFSET_CONFLICT',
+  'UPLOAD_TOO_LARGE',
+  'UPLOAD_NOT_ACCEPTED',
+  'BULK_LIMIT_EXCEEDED',
+  'DEK_UNWRAP_FAILED',
   // Invoice + company-profile domain (ADR-0026, api.md §14.4).
-  | 'INVOICE_FROZEN'
-  | 'INVOICE_NUMBER_FORMAT'
-  | 'INVOICE_PROJECT_STATE'
-  | 'INVOICE_NOT_ISSUED'
-  | 'INVOICE_ALREADY_CANCELLED'
-  | 'DRAFT_NOT_EXPORTABLE'
-  | 'EXPORT_TOO_LARGE'
-  | 'COMPANY_PROFILE_REQUIRED'
-  | 'CUSTOMER_HAS_INVOICES'
-  | 'PROJECT_HAS_INVOICES'
-  | 'SERVER_ERROR';
+  'INVOICE_FROZEN',
+  'INVOICE_PROJECT_STATE',
+  'INVOICE_NOT_ISSUED',
+  'INVOICE_ALREADY_CANCELLED',
+  'DRAFT_NOT_EXPORTABLE',
+  'EXPORT_TOO_LARGE',
+  'COMPANY_PROFILE_REQUIRED',
+  'CUSTOMER_HAS_INVOICES',
+  'PROJECT_HAS_INVOICES',
+  'SERVER_ERROR',
+] as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[number];
 
 export interface AppErrorResponse {
   code: ErrorCode;
@@ -58,6 +76,13 @@ export class AppError extends Error {
     public readonly userMessage: string,
     public readonly statusCode: number,
     public readonly details?: unknown,
+    /**
+     * Response headers the status code is not valid without. Applied by
+     * the global handler (`error-handler.ts`) in the same place the body
+     * is written, so a status whose contract includes a header cannot
+     * reach the wire missing it — see `methodNotAllowed()`.
+     */
+    public readonly headers?: Readonly<Record<string, string>>,
   ) {
     super(userMessage);
     this.name = 'AppError';
@@ -165,6 +190,28 @@ export function exportJobNotReady(): AppError {
   return new AppError('EXPORT_JOB_NOT_READY', STRINGS.errors.exportJobNotReady, 409);
 }
 
+/** The tus headers the resumable-upload endpoints reject on. */
+const UPLOAD_HEADER_MESSAGES = {
+  'Upload-Length': STRINGS.errors.uploadLengthRequired,
+  'Upload-Offset': STRINGS.errors.uploadOffsetRequired,
+} as const;
+
+export type UploadHeader = keyof typeof UPLOAD_HEADER_MESSAGES;
+
+/**
+ * A tus protocol header is absent or is not a non-negative integer
+ * (api.md §14.2.4 "Import job — resumable upload").
+ *
+ * 400, not the 422 `validationError()` mints: the rejection is
+ * protocol-level — it fires before any body schema applies, and the tus
+ * client reads the status, not the payload. Minted here rather than
+ * assembled at the call site so the status lives in one place and the
+ * code is visible to the AC-354 factory table.
+ */
+export function uploadHeaderInvalid(header: UploadHeader): AppError {
+  return new AppError('VALIDATION_ERROR', UPLOAD_HEADER_MESSAGES[header], 400);
+}
+
 /**
  * Resumable-upload chunk PATCHed at an offset other than the server's
  * current one (api.md §14.2.4 "Import job — resumable upload"). 409: the
@@ -240,6 +287,23 @@ export function notFound(entity: string = STRINGS.entities.resource): AppError {
  */
 export function routeNotFound(): AppError {
   return new AppError('ROUTE_NOT_FOUND', STRINGS.errors.routeNotFound, 404);
+}
+
+/**
+ * The URL has a registered handler, but not for the requested verb —
+ * api.md §14.4.1. Distinct from `routeNotFound()`: the endpoint exists,
+ * the verb does not.
+ *
+ * The admitted verbs are the route's knowledge, so the caller supplies
+ * them — but it supplies them *here* rather than setting `Allow` itself,
+ * which is what makes status and header inseparable. RFC 9110 §15.5.6
+ * and the argument for binding the two:
+ * [ARCHITECTURE.md § Error-Code Catalogue](../../ARCHITECTURE.md#error-code-catalogue).
+ */
+export function methodNotAllowed(allowed: readonly string[]): AppError {
+  return new AppError('METHOD_NOT_ALLOWED', STRINGS.errors.methodNotAllowed, 405, undefined, {
+    allow: allowed.join(', '),
+  });
 }
 
 /**
