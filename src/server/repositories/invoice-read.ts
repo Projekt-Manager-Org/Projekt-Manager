@@ -351,6 +351,12 @@ export async function allocateNextSequenceValue(
 /**
  * Convenience — allocate + format in one call. Returns the canonical
  * `RE-YYYY-NNNN` / `ST-YYYY-NNNN` string.
+ *
+ * The shape is enforced by the `invoices_number_format` CHECK constraint
+ * on INSERT. No application-side re-check: `year` is the caller's
+ * `getUTCFullYear()` and `value` a sequence integer, so nothing this
+ * function can produce fails the constraint short of a corrupt
+ * `invoice_sequence` row — which the constraint catches anyway.
  */
 export async function allocateInvoiceNumber(
   tx: TransactionalDatabase,

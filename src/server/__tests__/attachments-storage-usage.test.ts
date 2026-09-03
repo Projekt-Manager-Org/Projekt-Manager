@@ -64,6 +64,7 @@ import {
   getApp,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
+import { STRINGS } from '../../config/strings.js';
 import { createDatabase } from '../db/connection.js';
 import type { Database } from '../db/connection.js';
 
@@ -666,6 +667,16 @@ describe('Project storage usage tracking', () => {
           headers: { cookie: `session=${ownerToken}` },
         });
         expect(res.statusCode).toBe(405);
+        // RFC 9110 §15.5.6 — mandatory on a 405. Carried by the factory
+        // rather than set here, so this asserts the wiring reaches the
+        // wire, not that this call site remembered it (AC-354).
+        expect(res.headers['allow']).toBe('GET');
+        const body = res.json() as { code?: string; message?: string };
+        // The status alone left the body untested: this guard answered
+        // with a code absent from the catalogue and an English message
+        // for as long as it existed (AC-354).
+        expect(body.code).toBe('METHOD_NOT_ALLOWED');
+        expect(body.message).toBe(STRINGS.errors.methodNotAllowed);
       },
     );
   });
@@ -768,6 +779,16 @@ describe('Project storage usage tracking', () => {
           headers: { cookie: `session=${ownerToken}` },
         });
         expect(res.statusCode).toBe(405);
+        // RFC 9110 §15.5.6 — mandatory on a 405. Carried by the factory
+        // rather than set here, so this asserts the wiring reaches the
+        // wire, not that this call site remembered it (AC-354).
+        expect(res.headers['allow']).toBe('GET');
+        const body = res.json() as { code?: string; message?: string };
+        // The status alone left the body untested: this guard answered
+        // with a code absent from the catalogue and an English message
+        // for as long as it existed (AC-354).
+        expect(body.code).toBe('METHOD_NOT_ALLOWED');
+        expect(body.message).toBe(STRINGS.errors.methodNotAllowed);
       },
     );
   });

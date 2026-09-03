@@ -26,6 +26,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
 import { requirePermission, requireSession } from '../middleware/auth.js';
+import { methodNotAllowed } from '../errors.js';
 import { StorageUsageService } from '../services/StorageUsageService.js';
 
 export function storageUsageRoutes(db: Database) {
@@ -59,12 +60,8 @@ export function storageUsageRoutes(db: Database) {
     app.route({
       method: ['POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/projects/:id/storage-usage',
-      handler: async (_request, reply) => {
-        reply.header('allow', 'GET');
-        return reply.code(405).send({
-          code: 'METHOD_NOT_ALLOWED',
-          message: 'Only GET is allowed on this endpoint.',
-        });
+      handler: async () => {
+        throw methodNotAllowed(['GET']);
       },
     });
 
@@ -85,12 +82,8 @@ export function storageUsageRoutes(db: Database) {
     app.route({
       method: ['POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/storage-usage',
-      handler: async (_request, reply) => {
-        reply.header('allow', 'GET');
-        return reply.code(405).send({
-          code: 'METHOD_NOT_ALLOWED',
-          message: 'Only GET is allowed on this endpoint.',
-        });
+      handler: async () => {
+        throw methodNotAllowed(['GET']);
       },
     });
   };
