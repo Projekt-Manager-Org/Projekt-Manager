@@ -18,9 +18,9 @@
  * at every checkpoint.
  *
  * `[infra]` — the assertion is a structural invariant on the data
- * layer; not a behaviour observable through the API. Foundation for
- * the follow-up reconciliation work tracked at #172 (the same
- * comparison runs on a schedule against live state).
+ * layer; not a behaviour observable through the API. This test is the
+ * whole reconciliation safety net: running the same comparison on a
+ * schedule against live state was weighed at #172 and dropped.
  *
  * Pre-impl red state: `project_storage_usage` does not exist yet, so
  * the view-side of the comparison throws "relation does not exist" —
