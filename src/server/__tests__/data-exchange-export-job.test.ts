@@ -412,7 +412,14 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // -------------------------------------------------------------------
   describe('AC-331: one active export job per kind', () => {
     it('a second create while one is pending/running → 409 EXPORT_JOB_ACTIVE carrying the active id', async () => {
-      const first = await createExportJob(ownerToken);
+      // Minted directly rather than through POST, for the same reason as
+      // the not-ready download arm above: the create route fire-and-forgets
+      // the build, which on a fresh seed reaches `ready` ~20ms later — and
+      // `activeOfKind` matches only `pending`/`running`, so a build that
+      // finishes inside the gap clears the guard and this POST correctly
+      // returns 201. The contract under test is status-based, so a
+      // `pending` row with no runner attached pins it without racing.
+      const first = await new DataExchangeJobService(db).create('export', null);
 
       const second = await authPost(ownerToken, '/api/export-jobs');
       expect(second.statusCode).toBe(409);
