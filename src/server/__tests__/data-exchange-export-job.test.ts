@@ -322,10 +322,16 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // -------------------------------------------------------------------
   describe('AC-324: Range-capable download', () => {
     it('download of a not-yet-ready job → 409 EXPORT_JOB_NOT_READY', async () => {
-      // A freshly-created job is `pending`; downloading before the build
-      // finishes is the documented 409 (not a 404 — the job exists).
-      const created = await createExportJob(ownerToken);
-      const res = await authGet(ownerToken, `/api/export-jobs/${created.id}/download`);
+      // The row is minted directly rather than through POST: the create
+      // route fire-and-forgets the build, which on a fresh seed (nothing to
+      // decrypt) reaches `ready` ~20ms later — inside the gap before this
+      // download lands on a loaded runner, turning the 409 into a 200. The
+      // contract under test is status-based — a job that exists but is not
+      // `ready` → 409, not a 404 — so a `pending` row with no runner
+      // attached pins it without racing the build.
+      const job = await new DataExchangeJobService(db).create('export', null);
+
+      const res = await authGet(ownerToken, `/api/export-jobs/${job.id}/download`);
       expect(res.statusCode).toBe(409);
       expect(res.json().code).toBe('EXPORT_JOB_NOT_READY');
     });
