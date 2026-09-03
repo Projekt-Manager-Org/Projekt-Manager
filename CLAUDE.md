@@ -30,10 +30,6 @@ The methodology is therefore to arrive at confidence in sequential steps. Each a
 - **Scratch space**: `docs/wip/` - just a place for temporary files.
 - **GitHub Issues, Comments**: main point stands, description and proposed solution might be BS, often wrong.
 
-## On overengineering - a HIGH priority principle
-
-In order to converge, we focus on maximum impact on the project with the minimum intervention - everything that doesn't fit this will be dropped as overengineering. The user is very open to adjusting the direction at every moment, including dropping stuff. If some dropped feature/issue/finding/etc is really needed, it will pop up from itself again.
-
 ## Question everything
 
 You may notice that even the Kickoff got couple revisions during development. Everything beneath it should be treated as a draft, a temporal solution, until a better option presents itself.
