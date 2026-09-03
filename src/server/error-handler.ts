@@ -41,12 +41,7 @@ export function installErrorHandler(app: FastifyInstance): void {
       }
       // AC-247's triage contract is about the status class, not about
       // which branch produced it: a 5xx is a genuine server failure and
-      // logs at `error` like any other. Without this the three
-      // `throw serverError()` sites in AttachmentService answered 500
-      // and left no trace at all, where the same failure reaching the
-      // fallback below is logged. ExtractionService's three sites log a
-      // named event before throwing and so now log twice — a duplicate
-      // line costs less than the silence it replaces.
+      // logs at `error` like any other.
       if (error.statusCode >= 500) {
         request.log.error({ err: error, code: error.code }, 'server-side failure');
       }
@@ -86,8 +81,9 @@ export function installErrorHandler(app: FastifyInstance): void {
 
     // 5xx fallback for a non-`AppError`. Logs at `error`, as the
     // `AppError` branch above does for its own 5xx; the 4xx branches
-    // between them stay at `warn`.
-    app.log.error(error);
+    // between them stay at `warn`. On `request.log` like both of them,
+    // so the entry an operator triages carries the request id.
+    request.log.error(error);
     const err = serverError();
     return reply.code(err.statusCode).send(err.toResponse());
   });
