@@ -9,9 +9,10 @@
 # It is ONE decision expressed twice: the two services must agree on image
 # major, role and password, published port and health probe. When they
 # diverge, the workflow that was not edited keeps running against the old
-# shape — and because e2e.yml is `workflow_dispatch` only, that divergence
-# surfaces at the moment an operator clicks "Run workflow" before a manual
-# deploy, which is the worst time to discover it.
+# shape — and because e2e.yml runs only nightly and on dispatch, that
+# divergence surfaces up to a day later, or at the moment an operator clicks
+# "Run workflow" before a manual deploy. Either is a bad time to discover it;
+# a static check catches it on the PR that caused it.
 #
 # The `-h 127.0.0.1` health probe is the live example: a socket probe
 # reports healthy during the entrypoint's init-phase temporary server, so
@@ -39,8 +40,8 @@
 #
 #   One definition cannot drift, so the field-by-field comparison is gone.
 #   Presence is a separate invariant and is NOT covered by deduplication:
-#   drop the `uses:` line from e2e.yml and nothing else in the pipeline
-#   notices, because e2e.yml is `workflow_dispatch` only. Hence (2).
+#   drop the `uses:` line from e2e.yml and no PR check notices, because
+#   e2e.yml is off the merge gate — the nightly would, a day late. Hence (2).
 #
 # WHAT IT CHECKS
 #   (1) The postgres block with whole-line comments and its base
@@ -100,9 +101,9 @@ assert_single() {
 # Deduplicating the age step removed the drift risk, not the presence
 # risk. The old check exited 2 when the step vanished from either file;
 # nothing else does. ci.yml's call is self-protecting (the integration
-# suite fails without `age-keygen`), but e2e.yml is `workflow_dispatch`
-# only — a dropped call there surfaces when an operator runs it before a
-# manual deploy and Playwright dies minting the identity.
+# suite fails without `age-keygen`), but e2e.yml is off the merge gate — a
+# dropped call there surfaces on the next nightly, or when an operator runs
+# it before a manual deploy, with Playwright dying minting the identity.
 #
 # Matched loosely enough to survive a `name:` being added above the
 # `uses:`; "at least one" rather than "exactly one" because a second call

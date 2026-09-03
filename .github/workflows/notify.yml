@@ -57,9 +57,6 @@
 #     empty check list — so it can never merge.
 #
 # DELIBERATELY NOT MONITORED
-#   - `E2E (manual)` — flaky, `workflow_dispatch`-only, deliberately
-#     outside the merge gate. Wiring it in manufactures exactly the
-#     alert fatigue this mechanism exists to prevent.
 #   - `Cache cleanup` — housekeeping. A failure costs disk, not
 #     correctness, and produces no signal worth an issue.
 #
@@ -75,10 +72,16 @@ name: Notify
 
 on:
   workflow_run:
-    # Matched by workflow NAME, not file path. Renaming `CI` or
-    # `Security (scheduled)` silently unhooks this — actionlint does
-    # not catch it, because it cannot know which names are real.
-    workflows: [CI, 'Security (scheduled)']
+    # Matched by workflow NAME, not file path. Renaming `CI`,
+    # `Security (scheduled)` or `E2E` silently unhooks this — actionlint
+    # does not catch it, because it cannot know which names are real.
+    #
+    # `E2E` was excluded until #377 as flaky and `workflow_dispatch`-only,
+    # where monitoring manufactures alert fatigue. On a nightly schedule
+    # the failure mode inverts to silence — it sat red ~3.5 weeks with
+    # nothing to say so. `route='main'` already covers the `schedule`
+    # event, and one-issue-per-incident below is what bounds the fatigue.
+    workflows: [CI, 'Security (scheduled)', E2E]
     types: [completed]
 
 # An explicit block zeroes every scope not listed. `contents: read`

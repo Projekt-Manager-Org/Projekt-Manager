@@ -1,24 +1,37 @@
-name: E2E (manual)
+name: E2E
 
-# Playwright end-to-end tests, triggered manually from the Actions tab
-# ("Run workflow" button). Rationale:
+# Playwright end-to-end tests: nightly on `main`, plus on demand from the
+# Actions tab ("Run workflow" button). Rationale:
 #
-#   Iteration 5 consolidation review (H-1) found that CI does not run
-#   Playwright, despite the spec's AC-37 claiming "tests in §16 pass".
-#   Adding Playwright to the push/PR ci.yml gate would slow every PR by
-#   several minutes and add a retry-flakiness surface that the project
-#   cannot afford to debug while shipping features. At the same time
-#   leaving E2E as local-only means only the developer sees whether the
-#   suite still passes — a regression goes unnoticed until the next
-#   local run.
+#   Playwright stays OUT of the push/PR gate. It is a serial
+#   (`workers: 1`) suite of ~130 tests costing 4-7 min, and the local
+#   record is a long tail of flake-chasing — putting that on the merge
+#   path taxes every PR and blocks merges on failures that are not the
+#   PR's fault.
 #
-#   The compromise is this workflow: Playwright stays out of the push/PR
-#   gate but is one click away in the Actions tab when an operator wants
-#   to validate a commit against the full suite before a manual deploy.
+#   But `workflow_dispatch`-only meant it effectively never ran: twelve
+#   runs in the project's lifetime, and #377 caught a red `main` that had
+#   been red for ~3.5 weeks because the last dispatch predated the spec
+#   edit that broke it. A suite outside the merge gate with no scheduled
+#   run decays silently, and a red E2E discovered 25 days late is
+#   indistinguishable from no E2E.
+#
+#   The nightly is the tradeoff: the decay window drops from unbounded to
+#   24 h at zero PR latency, and a failure is an issue to triage rather
+#   than a blocked merge. `notify.yml` monitors this workflow (it is in
+#   that file's `workflows:` filter) and raises "E2E is red on main",
+#   assigned, one issue per incident, auto-closed on green.
+#
 #   See architecture.md §11.7 and verification.md AC-37 for the
 #   spec-side description of this topology.
 
 on:
+  schedule:
+    # 03:30 UTC daily = 05:30 Europe/Sofia (EET, winter) / 06:30 (EEST,
+    # summer DST). Offset 30 min from `security-scheduled.yml`'s 03:00 so
+    # the two nightlies neither contend for runners nor deliver their red
+    # notifications in the same minute.
+    - cron: '30 3 * * *'
   workflow_dispatch:
     inputs:
       ref:
@@ -29,6 +42,10 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+
+    # The suite runs 4-7 min. Unattended on a schedule there is no operator
+    # watching to cancel a hang, and the job default is 6 h of runner time.
+    timeout-minutes: 30
 
     # Byte-for-byte the same postgres service container as ci.yml's
     # `check-shard` job, comments aside. It has to be duplicated — Actions
@@ -118,8 +135,8 @@ jobs:
       # the integration suite would mean the two identities are generated
       # by different `age` builds, which is why this used to be a
       # hand-synced copy guarded by scripts/check-workflow-drift.sh. That
-      # check still fails the build if this line goes missing — nothing
-      # else would notice, since this workflow is `workflow_dispatch` only.
+      # check still fails the build if this line goes missing — no PR check
+      # would notice otherwise, only the next nightly.
       - uses: ./.github/actions/install-age
 
       # Storage — MinIO + full bucket/IAM provisioning. Rationale, image
@@ -143,3 +160,26 @@ jobs:
 
       - name: Run Playwright
         run: npx playwright test
+
+      # Without this the run's evidence dies with the runner.
+      # playwright.config.ts sets `trace: 'retain-on-failure'` and the html
+      # reporter, but nothing collected either — so #377's investigation had
+      # a trace path that only ever existed on the developer's own disk. A
+      # nightly nobody can debug is a nightly that gets muted, so the
+      # artifact is what makes the schedule above actionable.
+      #
+      # Not on green: `retain-on-failure` leaves no trace there and the
+      # report carries nothing worth 14 days of storage. `cancelled()` is
+      # in the condition because `timeout-minutes` above CANCELS the job
+      # rather than failing it — without it the unattended hang that
+      # timeout exists for is the one failure that uploads nothing.
+      - name: Upload Playwright report and traces
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: warn
