@@ -509,10 +509,22 @@ export interface InsertRenderedInvoiceBinaryFields {
 
 /**
  * INSERT the rendered-invoice-PDF descriptor row at `status='ready'`.
- * Called from inside the issuance / cancel transactions so a fault
- * after the bucket PUT rolls back the row insert; the orphaned object
- * is reaped by the attachment-orphan reaper because no row ever
- * reached `ready` from its perspective.
+ * Called from inside the issuance / cancel transactions, so a fault
+ * after the bucket PUT rolls back the row insert and leaves the object
+ * behind.
+ *
+ * That orphan is NOT reaped by the attachment-orphan reaper. The reaper
+ * deletes rows matching `status = 'pending'` (`deleteOrphans`) and hides
+ * their keys; a rolled-back insert leaves no row at all, so there is
+ * nothing for it to match and the object leaks indefinitely. An earlier
+ * version of this comment claimed the opposite — it was wrong.
+ *
+ * Cleanup is the periodic bucket-orphan sweep (`pruneBucketOrphans`,
+ * issue #169): it diffs the bucket against this table and hides the
+ * difference within a day. Reordering to row-before-PUT — the way
+ * `AttachmentService.initUpload` does — was weighed in #169 and
+ * dropped: it only shortens an invisible object's life to ~20 minutes,
+ * and would restructure the issuance transaction to do it.
  *
  * Pinned fields:
  *   - `kind='binary'` / `label='rechnung'` — rendered invoice PDFs

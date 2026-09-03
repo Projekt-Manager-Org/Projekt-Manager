@@ -115,4 +115,22 @@ export const STORAGE_CONFIG = {
 
   /** Maximum signed URL expiry in seconds. */
   maxSignedUrlExpirySec: 3600,
+
+  /**
+   * Bucket-orphan prune cadence, in minutes (issue #169). Daily:
+   * an orphan is inert — it costs bucket space and nothing else — so
+   * nothing is gained by sweeping more often. Source constant, no env
+   * override (architecture.md §12.2).
+   */
+  pruneIntervalMinutes: 1440,
+
+  /**
+   * Minimum object age, in minutes, before the prune will hide it.
+   * Shields the two writers that PUT bytes before inserting their row
+   * (invoice renderer, takeout import) — see
+   * `server/storage/pruneBucketOrphans.ts`. 24 h is orders of magnitude
+   * beyond either window, and waiting costs nothing. Source constant,
+   * no env override (architecture.md §12.2).
+   */
+  pruneMinAgeMinutes: 1440,
 } as const;

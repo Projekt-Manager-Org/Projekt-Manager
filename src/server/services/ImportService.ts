@@ -950,10 +950,10 @@ export class ImportService {
 
     // Post-commit storage cleanup. A failure here does not abort the
     // import — the rows are already gone; orphaned keys are logged
-    // and operators can sweep them later (see #169). Doing this
-    // outside the tx avoids coupling a non-transactional side effect
-    // to the SQL commit: a rollback after a successful hide cannot be
-    // undone.
+    // and the periodic bucket-orphan sweep collects them (#169).
+    // Doing this outside the tx avoids coupling a non-transactional
+    // side effect to the SQL commit: a rollback after a successful
+    // hide cannot be undone.
     if (keysToHide.length > 0 && this.storage !== null && log !== undefined) {
       await bestEffortHideStorageKeys(this.storage, keysToHide, log);
     }

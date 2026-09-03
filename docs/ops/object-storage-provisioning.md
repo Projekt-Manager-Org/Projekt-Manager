@@ -314,6 +314,26 @@ MINIO_APP_SECRET_KEY=pmappsecret        # password for the app user (default in 
 
 This catches drift between the runbook and live bucket state — e.g., an operator who edits lifecycle in the B2 portal without updating the runbook trips the probe at next deploy. The capability self-test additionally catches the orthogonal "credential drift" axis: a reissued app key with `deleteFiles` enabled by mistake passes every shape check yet breaks the primary defense.
 
+## Orphan reconciliation
+
+Objects with no `attachments` row. Two paths PUT bytes before inserting their row and leak on a fault in between: the takeout import runner and the invoice renderer (issue #169).
+
+The app sweeps for them every 24 h and hides what it finds — same shape as the other reapers, in dev and production alike. Nothing to run, nothing to configure, no flag to set. Cadence (24 h) and grace window (24 h) are source constants in `STORAGE_CONFIG`.
+
+Operationally there is one line per sweep in the app log, `bucket-orphan-prune`, carrying `orphan_count`, `preserved_count` and `skipped_recent_count`. `orphan_count` should be zero on a healthy deployment; a standing non-zero value means a writer is leaking faster than the sweep reaps.
+
+### What bounds the damage
+
+- **Hiding is not destroying.** `hide()` writes a delete marker; the app key cannot destroy versions, so the bytes survive until the lifecycle reaps them after `L` days. Note the un-hide flow does **not** cover `invoices/…` — those rows are excluded from the Papierkorb and carry `hiddenAt = null`, so recovering a wrongly hidden invoice PDF is a manual `copyFromVersion` against the row's `version_id`. That asymmetry is why the two guards below are enforced in code rather than left to an operator's judgement.
+- **Min age.** An unreferenced object younger than the grace window, or one whose `LastModified` the provider omits, is skipped. The invoice renderer holds a PUT object whose row is uncommitted for as long as the issuance transaction runs; without the window, a sweep landing in that gap would hide a live invoice PDF.
+- **Mismatch refusal.** A sweep that would preserve _nothing_ out of a non-empty bucket aborts before the first hide. Running inside the app makes the bucket/database pairing right by construction, but not permanently — restore an older dump, or point the app at a fresh database, and every object reads as unreferenced. `SEED=force` is the one caller that opts out, because truncating `attachments` is exactly how it gets there.
+
+### Scope of the diff
+
+The bucket holds three key namespaces: `attachments/…` and `invoices/…`, both indexed by the `attachments` table, and `__probe/…`, the deploy-preflight sentinels, which the sweep treats as reserved and never reports. Backups live in a separate R2 bucket; takeout staging is local disk.
+
+Cheap to run: `ListObjectsV2` is a Class C call, and B2 bills only Class D.
+
 ## Related
 
 - [ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md) — design rationale, layered-defense reasoning, R vs. L sizing.

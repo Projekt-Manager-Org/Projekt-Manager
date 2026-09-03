@@ -86,12 +86,12 @@ export class InvoiceBinaryService {
    *      is the descriptor reference returned to the caller and
    *      stored on `invoices.renderedPdfBinaryDescriptorId`.
    *
-   * The whole call runs inside the issuance transaction so a fault
-   * after the bucket PUT rolls back the row insert; the orphaned
-   * object is reaped by the existing attachment-orphan reaper because
-   * the row never reached `ready` from the reaper's perspective
-   * (no row, no claim — the reaper sweeps storage paths matching the
-   * `invoices/` prefix on the same schedule).
+   * The whole call runs inside the issuance transaction, so a fault
+   * after the bucket PUT rolls back the row insert and leaves the
+   * object behind. The attachment-orphan reaper does NOT collect it:
+   * it matches rows at `status = 'pending'`, and a rolled-back insert
+   * leaves no row at all. The periodic bucket-orphan sweep
+   * (`pruneBucketOrphans`) is what collects it, within a day.
    */
   async persistRendered(
     tx: MutatingDatabase,
