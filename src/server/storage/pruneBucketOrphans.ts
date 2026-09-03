@@ -8,13 +8,12 @@
  * (DeleteObject without VersionId) for the difference via the storage
  * client's `hide()` primitive.
  *
- * Three callers:
- *   - `bucket-orphan-prune-scheduler.ts` — the unattended sweep in the
- *     app process. This is the production surface: it shares the app's
- *     env, so the bucket it lists and the DB it diffs against are the
- *     ones the app itself serves.
- *   - `scripts/prune-bucket-orphans.ts` — the on-demand operator
- *     command, for inspecting the diff or forcing a pass off-cadence.
+ * Two callers:
+ *   - `bucket-orphan-prune-scheduler.ts` — the periodic sweep in the app
+ *     process. This is the whole mechanism: it shares the app's env, so
+ *     the bucket it lists and the DB it diffs against are the ones the
+ *     app itself serves, in dev and in production alike. There is no
+ *     command to run and no flag to set.
  *   - `start.ts` under `SEED=force`, so a forced re-seed truly resets
  *     storage state along with the DB. Without this, a re-seed truncates
  *     `attachments` but leaves the bucket dirty — the orphan blobs are
@@ -53,14 +52,14 @@
  *
  * ## Why the empty-preserve refusal exists
  *
- * The diff is only meaningful if the DB owns the bucket. Point a process
- * at one deployment's bucket and another's database — a dev checkout
- * with `STORAGE_*` aimed at B2, a half-restored DB, a wrong
- * `DATABASE_URL` — and every object in the bucket is "unreferenced".
- * `requireReferencedRows` refuses to apply when the sweep would preserve
- * nothing out of a non-empty candidate set, which is that mismatch's
- * fingerprint. `SEED=force` legitimately reaches that state (it just
- * truncated `attachments`) and opts out.
+ * The diff is only meaningful if the DB owns the bucket. Running inside
+ * the app process makes that true by construction — but not
+ * permanently: restore an older dump, or point the app at a fresh
+ * database while keeping the bucket, and every object reads as
+ * unreferenced. `requireReferencedRows` refuses to hide when the sweep
+ * would preserve nothing out of a non-empty candidate set, which is
+ * that mismatch's fingerprint. `SEED=force` legitimately reaches that
+ * state (it just truncated `attachments`) and opts out.
  *
  * ## Versioning + Object Lock semantics
  *
@@ -165,14 +164,6 @@ export interface PruneBucketOrphansResult {
    */
   skippedRecentCount: number;
   orphanCount: number;
-  /**
-   * The orphan keys themselves, in bucket-listing order. A report is
-   * only reviewable if it says WHICH keys an apply pass would hide — a
-   * bare count tells the operator nothing about whether to trust it.
-   */
-  orphanKeys: string[];
-  /** Whether the hides were actually issued. */
-  applied: boolean;
 }
 
 export interface PruneBucketOrphansOptions {
@@ -181,8 +172,6 @@ export interface PruneBucketOrphansOptions {
   listBucketObjects: () => Promise<BucketObject[]>;
   logger: PruneBucketOrphansLogger;
   bucketLabel: string;
-  /** `false` computes and reports the identical diff, issuing no mutating call. */
-  apply: boolean;
   /**
    * Grace window protecting the PUT-before-INSERT writers (see header).
    * `0` disables it — only `SEED=force`, which owns the whole bucket
@@ -190,7 +179,7 @@ export interface PruneBucketOrphansOptions {
    */
   minAgeMinutes: number;
   /**
-   * Refuse to apply when the sweep would preserve nothing out of a
+   * Refuse to hide when the sweep would preserve nothing out of a
    * non-empty candidate set — the bucket/DB mismatch fingerprint (see
    * header). `SEED=force` passes `false`.
    */
@@ -248,7 +237,7 @@ export function createBucketObjectLister(
 export async function pruneBucketOrphans(
   opts: PruneBucketOrphansOptions,
 ): Promise<PruneBucketOrphansResult> {
-  const { db, storage, logger, bucketLabel, apply, minAgeMinutes, requireReferencedRows } = opts;
+  const { db, storage, logger, bucketLabel, minAgeMinutes, requireReferencedRows } = opts;
   if (!Number.isInteger(minAgeMinutes) || minAgeMinutes < 0) {
     throw new Error(
       `pruneBucketOrphans: minAgeMinutes must be a non-negative integer, got ${minAgeMinutes}`,
@@ -298,18 +287,9 @@ export async function pruneBucketOrphans(
     orphans.push(obj.key);
   }
 
-  const result: PruneBucketOrphansResult = {
-    bucketObjectCount: candidates.length,
-    preservedCount,
-    skippedRecentCount,
-    orphanCount: orphans.length,
-    orphanKeys: orphans,
-    applied: apply && orphans.length > 0,
-  };
-
   // 4. Coherence gate — BEFORE the first hide, so a mismatched pairing
   // costs nothing. See the header: this is the shape a wrong DB takes.
-  if (apply && requireReferencedRows && preservedCount === 0 && candidates.length > 0) {
+  if (requireReferencedRows && preservedCount === 0 && candidates.length > 0) {
     throw new Error(
       `pruneBucketOrphans: refusing to hide ${orphans.length} object(s) in bucket ` +
         `'${bucketLabel}' — not one of the ${candidates.length} listed object(s) is referenced ` +
@@ -320,36 +300,31 @@ export async function pruneBucketOrphans(
 
   // 5. Hide each orphan via the storage wrapper's hide() primitive — same
   // call shape as the orphan reaper, idempotent on a versioned bucket.
-  // Skipped entirely under `apply: false`: a report must issue no
-  // mutating call at all, so reviewing the diff cannot itself change the
-  // bucket. Each key is logged as it goes so a fault mid-loop still
-  // leaves a record of what was already hidden.
-  if (apply) {
-    for (const key of orphans) {
-      await storage.hide(key);
-      logger.info(`pruneBucketOrphans: hid ${key}`);
-    }
+  // Each key is logged as it goes, so a fault mid-loop still leaves a
+  // record of what was already hidden.
+  for (const key of orphans) {
+    await storage.hide(key);
+    logger.info(`pruneBucketOrphans: hid ${key}`);
   }
 
   const tally =
     `preserved ${preservedCount} referenced, ` +
     (skippedRecentCount > 0 ? `${skippedRecentCount} too recent to judge, ` : '') +
-    `total ${result.bucketObjectCount}`;
+    `total ${candidates.length}`;
 
   if (orphans.length > 0) {
-    // Past tense only when something actually happened. A report that
-    // reads like a completed cleanup is how an operator ends up
-    // believing the bucket is clean when it is not.
     logger.warn(
-      apply
-        ? `pruneBucketOrphans: hid ${orphans.length} orphan object(s) in bucket '${bucketLabel}' ` +
-            `(${tally}).`
-        : `pruneBucketOrphans: REPORT ONLY — ${orphans.length} orphan object(s) in bucket ` +
-            `'${bucketLabel}' would be hidden (${tally}). Nothing was changed.`,
+      `pruneBucketOrphans: hid ${orphans.length} orphan object(s) in bucket '${bucketLabel}' ` +
+        `(${tally}).`,
     );
   } else {
     logger.info(`pruneBucketOrphans: no orphans in bucket '${bucketLabel}' (${tally}).`);
   }
 
-  return result;
+  return {
+    bucketObjectCount: candidates.length,
+    preservedCount,
+    skippedRecentCount,
+    orphanCount: orphans.length,
+  };
 }

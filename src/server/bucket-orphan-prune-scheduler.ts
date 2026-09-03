@@ -13,13 +13,11 @@
  * was started with. A standalone script has to be *told* which pair to
  * use, and the deployed image ships neither `scripts/` nor `tsx`, so it
  * could only ever run from a checkout pointed at production by hand.
- * `scripts/prune-bucket-orphans.ts` remains for on-demand inspection.
  *
- * Report-only by default (`apply: false`): the sweep computes and logs
- * the diff without touching the bucket until an operator sets
- * `STORAGE_PRUNE_APPLY=true`. Orphans are inert — they cost bucket
- * space and nothing else — so there is no hurry to start hiding, and
- * the log gives the operator real evidence before authorising it.
+ * Cadence and grace window are source constants (`STORAGE_CONFIG`), not
+ * env vars — parity with `THRESHOLD_MONITOR`. An orphan is invisible to
+ * every user-facing surface, so how often it is swept and how long it
+ * must sit first are not deployment decisions.
  *
  * Single-process invariant (ADR-0021). Multi-replica deployments would
  * need a lease at this caller site.
@@ -49,8 +47,6 @@ export interface StartBucketOrphanPruneSchedulerOptions {
   intervalMinutes: number;
   /** Grace window shielding the PUT-before-INSERT writers. */
   minAgeMinutes: number;
-  /** `false` (the default deployment shape) reports without hiding. */
-  apply: boolean;
   logger: ServiceLogger;
 }
 
@@ -89,7 +85,6 @@ export function startBucketOrphanPruneScheduler(
         listBucketObjects: opts.listBucketObjects,
         logger: pruneLogger,
         bucketLabel: opts.bucketLabel,
-        apply: opts.apply,
         minAgeMinutes: opts.minAgeMinutes,
         // Unattended and destructive: the mismatch refusal is exactly
         // the guard an absent operator would otherwise have been.
@@ -102,7 +97,6 @@ export function startBucketOrphanPruneScheduler(
         {
           event: EVENT_BUCKET_ORPHAN_PRUNE,
           bucket: opts.bucketLabel,
-          apply: opts.apply,
           min_age_minutes: opts.minAgeMinutes,
           bucket_object_count: result.bucketObjectCount,
           preserved_count: result.preservedCount,

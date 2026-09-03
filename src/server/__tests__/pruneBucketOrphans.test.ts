@@ -1,12 +1,10 @@
 /**
- * Integration test — pruneBucketOrphans (the scheduled sweep, the
- * `scripts/prune-bucket-orphans.ts` entrypoint, and the SEED=force
- * bucket reset all share this function).
+ * Integration test — pruneBucketOrphans (the scheduled sweep and the
+ * SEED=force bucket reset share this function).
  *
  * Pins the contract:
  *   - keys present in the bucket but NOT in `attachments.original_key` /
- *     `thumb_key` (across every status) are passed to `storage.hide()`
- *     when `apply` is true;
+ *     `thumb_key` (across every status) are passed to `storage.hide()`;
  *   - keys still referenced by an attachment row — including `hidden`
  *     rows whose original/thumb keys back the un-hide flow — are
  *     preserved;
@@ -18,8 +16,7 @@
  *     row has not committed yet;
  *   - `requireReferencedRows` refuses, before the first hide, when
  *     nothing in a non-empty bucket is referenced — the bucket/database
- *     mismatch fingerprint — and `SEED=force` can opt out;
- *   - `apply: false` reports the identical diff and hides nothing.
+ *     mismatch fingerprint — and `SEED=force` can opt out.
  *
  * The bucket lister is injected (`listBucketObjects`) so the test never
  * issues a real ListObjectsV2 against the developer's working bucket —
@@ -171,7 +168,6 @@ describe('pruneBucketOrphans', () => {
     const result = await pruneBucketOrphans({
       ...baseOpts(storage, logger),
       listBucketObjects: lister,
-      apply: true,
     });
 
     expect(result).toEqual({
@@ -179,8 +175,6 @@ describe('pruneBucketOrphans', () => {
       preservedCount: 2,
       skippedRecentCount: 0,
       orphanCount: 2,
-      orphanKeys: [orphanKey1, orphanKey2],
-      applied: true,
     });
 
     const hide = storage.hide as ReturnType<typeof vi.fn>;
@@ -209,7 +203,6 @@ describe('pruneBucketOrphans', () => {
     const result = await pruneBucketOrphans({
       ...baseOpts(storage, logger),
       listBucketObjects: lister,
-      apply: true,
     });
 
     expect(result.bucketObjectCount).toBe(1);
@@ -235,11 +228,10 @@ describe('pruneBucketOrphans', () => {
     const result = await pruneBucketOrphans({
       ...baseOpts(storage, logger),
       listBucketObjects: lister,
-      apply: true,
       requireReferencedRows: false,
     });
 
-    expect(result.orphanKeys).toEqual([settledOrphan]);
+    expect(result.orphanCount).toBe(1);
     expect(result.skippedRecentCount).toBe(1);
     expect(storage.hide).toHaveBeenCalledTimes(1);
     expect(storage.hide).toHaveBeenCalledWith(settledOrphan);
@@ -256,7 +248,6 @@ describe('pruneBucketOrphans', () => {
       listBucketObjects: vi
         .fn<() => Promise<BucketObject[]>>()
         .mockResolvedValue([{ key: unknownAgeKey }]),
-      apply: true,
       requireReferencedRows: false,
     });
 
@@ -272,16 +263,15 @@ describe('pruneBucketOrphans', () => {
     const result = await pruneBucketOrphans({
       ...baseOpts(storage, makeLogger()),
       listBucketObjects: makeLister([{ key: freshKey, lastModified: RECENT }]),
-      apply: true,
       minAgeMinutes: 0,
       requireReferencedRows: false,
     });
 
-    expect(result.orphanKeys).toEqual([freshKey]);
+    expect(result.orphanCount).toBe(1);
     expect(storage.hide).toHaveBeenCalledWith(freshKey);
   });
 
-  it('refuses to apply when nothing in a non-empty bucket is referenced', async () => {
+  it('refuses to hide when nothing in a non-empty bucket is referenced', async () => {
     // What a checkout pointed at one deployment's bucket and another's
     // database looks like. Every object is "unreferenced" and the sweep
     // would delete-marker the whole bucket.
@@ -295,7 +285,6 @@ describe('pruneBucketOrphans', () => {
       pruneBucketOrphans({
         ...baseOpts(storage, makeLogger()),
         listBucketObjects: lister,
-        apply: true,
       }),
     ).rejects.toThrow(/bucket\/database mismatch/);
 
@@ -303,23 +292,7 @@ describe('pruneBucketOrphans', () => {
     expect(storage.hide).not.toHaveBeenCalled();
   });
 
-  it('does not refuse a report-only run against an unreferenced bucket', async () => {
-    // Nothing is written, so there is nothing to protect against — and
-    // the report is exactly how an operator diagnoses the mismatch.
-    const orphanKey = `attachments/${projectId}/${crypto.randomUUID()}.orig`;
-    const storage = makeStorageStub();
-
-    const result = await pruneBucketOrphans({
-      ...baseOpts(storage, makeLogger()),
-      listBucketObjects: makeLister([orphanKey]),
-      apply: false,
-    });
-
-    expect(result.orphanKeys).toEqual([orphanKey]);
-    expect(storage.hide).not.toHaveBeenCalled();
-  });
-
-  it('lets SEED=force apply against a bucket with no referenced rows', async () => {
+  it('lets SEED=force sweep a bucket with no referenced rows', async () => {
     // The seed just truncated `attachments`; "nothing referenced" is the
     // expected state there, not a mismatch.
     const orphanKey = `attachments/${projectId}/${crypto.randomUUID()}.orig`;
@@ -328,7 +301,6 @@ describe('pruneBucketOrphans', () => {
     const result = await pruneBucketOrphans({
       ...baseOpts(storage, makeLogger()),
       listBucketObjects: makeLister([orphanKey]),
-      apply: true,
       minAgeMinutes: 0,
       requireReferencedRows: false,
     });
@@ -347,7 +319,6 @@ describe('pruneBucketOrphans', () => {
     const result = await pruneBucketOrphans({
       ...baseOpts(storage, makeLogger()),
       listBucketObjects: makeLister([hiddenOrigKey, orphanKey]),
-      apply: true,
     });
 
     expect(result.orphanCount).toBe(1);
@@ -367,7 +338,6 @@ describe('pruneBucketOrphans', () => {
     const result = await pruneBucketOrphans({
       ...baseOpts(storage, logger),
       listBucketObjects: makeLister([refKey]),
-      apply: true,
     });
 
     expect(result).toEqual({
@@ -375,8 +345,6 @@ describe('pruneBucketOrphans', () => {
       preservedCount: 1,
       skippedRecentCount: 0,
       orphanCount: 0,
-      orphanKeys: [],
-      applied: false,
     });
     expect(storage.hide).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledTimes(1);
@@ -390,7 +358,6 @@ describe('pruneBucketOrphans', () => {
     const result = await pruneBucketOrphans({
       ...baseOpts(storage, logger),
       listBucketObjects: makeLister([]),
-      apply: true,
     });
 
     expect(result).toEqual({
@@ -398,44 +365,9 @@ describe('pruneBucketOrphans', () => {
       preservedCount: 0,
       skippedRecentCount: 0,
       orphanCount: 0,
-      orphanKeys: [],
-      applied: false,
     });
     expect(storage.hide).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledTimes(1);
-  });
-
-  it('reports the identical diff without hiding anything when apply is false', async () => {
-    const refKey = `attachments/${projectId}/${crypto.randomUUID()}.orig`;
-    const orphanKey = `attachments/${projectId}/${crypto.randomUUID()}.orig`;
-    await seedAttachment(db, projectId, 'ready', refKey, null);
-
-    const storage = makeStorageStub();
-    const logger = makeLogger();
-
-    const result = await pruneBucketOrphans({
-      ...baseOpts(storage, logger),
-      listBucketObjects: makeLister([refKey, orphanKey]),
-      apply: false,
-    });
-
-    // Same diff an apply run would act on — this is what the operator
-    // reads before authorising the destructive pass.
-    expect(result).toEqual({
-      bucketObjectCount: 2,
-      preservedCount: 1,
-      skippedRecentCount: 0,
-      orphanCount: 1,
-      orphanKeys: [orphanKey],
-      applied: false,
-    });
-    // The whole point: a report is a pure read.
-    expect(storage.hide).not.toHaveBeenCalled();
-    // Warn (not info) — orphans exist — and the line must say so loudly
-    // enough that nobody mistakes a report for a completed cleanup.
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn.mock.calls[0]![0]).toMatch(/REPORT ONLY/);
-    expect(logger.info).not.toHaveBeenCalled();
   });
 
   it('rejects a negative min age rather than treating it as disabled', async () => {
@@ -444,7 +376,6 @@ describe('pruneBucketOrphans', () => {
       pruneBucketOrphans({
         ...baseOpts(storage, makeLogger()),
         listBucketObjects: makeLister([]),
-        apply: false,
         minAgeMinutes: -1,
       }),
     ).rejects.toThrow(/minAgeMinutes/);

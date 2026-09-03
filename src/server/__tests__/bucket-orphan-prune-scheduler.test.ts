@@ -4,9 +4,9 @@
  * The diff itself is covered by `pruneBucketOrphans.test.ts`. What only
  * this file can pin is the wiring that makes an UNATTENDED destructive
  * sweep safe: the scheduler must always ask for the bucket/database
- * mismatch refusal, and must forward the operator's `apply` and min-age
- * settings rather than substituting its own. A regression there is
- * invisible until the day it hides a live bucket.
+ * mismatch refusal, and must forward the configured cadence and min-age
+ * rather than substituting its own. A regression there is invisible
+ * until the day it hides a live bucket.
  *
  * Pattern mirrors `attachment-hidden-reaper-scheduler.test.ts`: fake
  * timers plus a `vi.mock` on the prune so the scheduler's wiring is
@@ -27,8 +27,6 @@ const CLEAN_RESULT: PruneBucketOrphansResult = {
   preservedCount: 6,
   skippedRecentCount: 0,
   orphanCount: 1,
-  orphanKeys: ['attachments/p/o.orig'],
-  applied: true,
 };
 
 const prune = vi.hoisted(() =>
@@ -58,7 +56,6 @@ function start(
     bucketLabel: 'test-bucket',
     intervalMinutes: 1440,
     minAgeMinutes: 1440,
-    apply: false,
     ...overrides,
     logger,
   });
@@ -80,7 +77,7 @@ describe('startBucketOrphanPruneScheduler', () => {
     // The whole reason the sweep may run unattended: with no operator
     // reading the diff, the refusal is the only thing standing between a
     // wrong DATABASE_URL and a delete-marker over the entire bucket.
-    const { scheduler } = start({ apply: true });
+    const { scheduler } = start();
     await vi.advanceTimersByTimeAsync(1440 * MINUTE_MS);
 
     expect(prune).toHaveBeenCalledTimes(1);
@@ -88,8 +85,8 @@ describe('startBucketOrphanPruneScheduler', () => {
     await scheduler.stop();
   });
 
-  it('forwards the configured apply and min-age settings', async () => {
-    const { scheduler } = start({ apply: true, minAgeMinutes: 90, intervalMinutes: 30 });
+  it('forwards the configured cadence and min-age', async () => {
+    const { scheduler } = start({ minAgeMinutes: 90, intervalMinutes: 30 });
     // Just under the interval — no sweep yet.
     await vi.advanceTimersByTimeAsync(30 * MINUTE_MS - 1);
     expect(prune).not.toHaveBeenCalled();
@@ -99,16 +96,8 @@ describe('startBucketOrphanPruneScheduler', () => {
       db: FAKE_DB,
       storage: FAKE_STORAGE,
       bucketLabel: 'test-bucket',
-      apply: true,
       minAgeMinutes: 90,
     });
-    await scheduler.stop();
-  });
-
-  it('defaults to report-only so nothing is hidden before an operator opts in', async () => {
-    const { scheduler } = start();
-    await vi.advanceTimersByTimeAsync(1440 * MINUTE_MS);
-    expect(prune.mock.calls[0]![0]).toMatchObject({ apply: false });
     await scheduler.stop();
   });
 
@@ -122,7 +111,6 @@ describe('startBucketOrphanPruneScheduler', () => {
     expect(summaries).toHaveLength(1);
     expect(summaries[0]![0]).toMatchObject({
       bucket: 'test-bucket',
-      apply: false,
       bucket_object_count: 7,
       preserved_count: 6,
       skipped_recent_count: 0,
@@ -136,7 +124,7 @@ describe('startBucketOrphanPruneScheduler', () => {
     // it, and keep the schedule alive — a thrown rejection out of a
     // timer callback would take the app down.
     prune.mockRejectedValue(new Error('bucket/database mismatch'));
-    const { scheduler, logger } = start({ apply: true });
+    const { scheduler, logger } = start();
 
     await vi.advanceTimersByTimeAsync(1440 * MINUTE_MS);
 

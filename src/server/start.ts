@@ -196,10 +196,6 @@ async function start(): Promise<void> {
           listBucketObjects: createBucketObjectLister(prunerConfig),
           logger: { info: (m) => console.log(m), warn: (m) => console.warn(m) },
           bucketLabel: env.STORAGE_BUCKET,
-          // `SEED=force` means "full reset" — a report here would leave
-          // the bucket dirty and defeat the point. Safe by enclosure:
-          // this branch is the `else` of `isProduction`.
-          apply: true,
           // Both guards are off for the same reason: this caller just
           // truncated `attachments` and owns every byte in the bucket.
           // A min-age would strand the objects the seed itself wrote,
@@ -372,9 +368,7 @@ async function start(): Promise<void> {
   // against `attachments` and hides objects no row references — the two
   // writers that PUT before inserting their row (invoice renderer,
   // takeout import) leak an object whenever a fault lands in between,
-  // and nothing else cleans those up. Report-only unless
-  // STORAGE_PRUNE_APPLY=true; see the scheduler's header for why the
-  // destructive half is opt-in.
+  // and nothing else cleans those up.
   //
   // Runs in this process rather than as an ops command so the bucket it
   // lists and the DB it diffs are the app's own, not a pairing someone
@@ -391,9 +385,8 @@ async function start(): Promise<void> {
       keyPrefix: env.STORAGE_KEY_PREFIX,
     }),
     bucketLabel: env.STORAGE_BUCKET,
-    intervalMinutes: env.STORAGE_PRUNE_INTERVAL_MINUTES ?? STORAGE_CONFIG.pruneIntervalMinutes,
-    minAgeMinutes: env.STORAGE_PRUNE_MIN_AGE_MINUTES ?? STORAGE_CONFIG.pruneMinAgeMinutes,
-    apply: env.STORAGE_PRUNE_APPLY === 'true',
+    intervalMinutes: STORAGE_CONFIG.pruneIntervalMinutes,
+    minAgeMinutes: STORAGE_CONFIG.pruneMinAgeMinutes,
     logger: {
       info: (ctx, event) => console.log(event, ctx),
       error: (ctx, event) => console.error(event, ctx),

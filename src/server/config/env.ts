@@ -320,31 +320,6 @@ export const envSchema = z.object({
     z.coerce.number().int().positive().optional(),
   ),
   // ---------------------------------------------------------------
-  // Bucket-orphan prune (issue #169, `storage/pruneBucketOrphans.ts`).
-  // Reconciles the bucket against `attachments` and hides objects no
-  // row references.
-  //
-  // `STORAGE_PRUNE_APPLY` defaults to `false`: the sweep runs and logs
-  // the diff but writes nothing. Hiding an object is a delete marker
-  // the app key cannot escalate to a destroy (ADR-0022), but a wrongly
-  // hidden `invoices/…` object is not recoverable through the
-  // Papierkorb — so the destructive half is opt-in, and the operator
-  // gets a log of what it would have done first.
-  //
-  // `STORAGE_PRUNE_MIN_AGE_MINUTES` is a safety margin, not a retention
-  // window: it keeps the sweep away from objects whose row has not
-  // committed yet.
-  // ---------------------------------------------------------------
-  STORAGE_PRUNE_APPLY: z.enum(['true', 'false']).default('false'),
-  STORAGE_PRUNE_INTERVAL_MINUTES: z.preprocess(
-    (v) => (v === '' ? undefined : v),
-    z.coerce.number().int().positive().optional(),
-  ),
-  STORAGE_PRUNE_MIN_AGE_MINUTES: z.preprocess(
-    (v) => (v === '' ? undefined : v),
-    z.coerce.number().int().positive().optional(),
-  ),
-  // ---------------------------------------------------------------
   // Storage capacity declaration (architecture.md §12.2). The stored
   // ciphertext volume the deployment's bucket is provisioned for; the
   // threshold monitor warns the owner at

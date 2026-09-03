@@ -318,29 +318,15 @@ This catches drift between the runbook and live bucket state — e.g., an operat
 
 Objects with no `attachments` row. Two paths PUT bytes before inserting their row and leak on a fault in between: the takeout import runner and the invoice renderer (issue #169).
 
-The app process sweeps for them on a timer. Nothing to run and nothing to schedule — but the destructive half is **opt-in**:
+The app sweeps for them every 24 h and hides what it finds — same shape as the other reapers, in dev and production alike. Nothing to run, nothing to configure, no flag to set. Cadence (24 h) and grace window (24 h) are source constants in `STORAGE_CONFIG`.
 
-| Variable                         | Default | Meaning                                                            |
-| -------------------------------- | ------- | ------------------------------------------------------------------ |
-| `STORAGE_PRUNE_APPLY`            | `false` | `false` logs the diff and writes nothing; `true` hides the orphans |
-| `STORAGE_PRUNE_INTERVAL_MINUTES` | `1440`  | Sweep cadence                                                      |
-| `STORAGE_PRUNE_MIN_AGE_MINUTES`  | `1440`  | Objects younger than this are never touched                        |
-
-Watch `bucket-orphan-prune` in the app log first — one line per sweep, carrying `orphan_count`, `preserved_count` and `skipped_recent_count`. When the reported diff looks right, set `STORAGE_PRUNE_APPLY=true`. `orphan_count` should then fall to zero and stay there; a standing non-zero value means a writer is leaking faster than the sweep reaps.
-
-To look at the diff on demand from a repo checkout (the deployed image ships neither `scripts/` nor `tsx`, so this does not run on the server):
-
-```bash
-npm run storage:prune
-```
-
-Report-only by default — prints the diff and every orphan key, writes nothing. `-- --apply` hides them.
+Operationally there is one line per sweep in the app log, `bucket-orphan-prune`, carrying `orphan_count`, `preserved_count` and `skipped_recent_count`. `orphan_count` should be zero on a healthy deployment; a standing non-zero value means a writer is leaking faster than the sweep reaps.
 
 ### What bounds the damage
 
-- **Hiding is not destroying.** `hide()` writes a delete marker; the app key cannot destroy versions, so the bytes survive until the lifecycle reaps them after `L` days. But note the un-hide flow does **not** cover `invoices/…` — those rows are excluded from the Papierkorb and carry `hiddenAt = null`, so recovering a wrongly hidden invoice PDF is a manual `copyFromVersion` against the row's `version_id`. That asymmetry is why the two guards below are enforced in code rather than left to the operator.
-- **Min age.** An object younger than `STORAGE_PRUNE_MIN_AGE_MINUTES`, or one whose `LastModified` the provider omits, is skipped. The invoice renderer holds a PUT object whose row is still uncommitted for as long as the issuance transaction runs; without the grace window a sweep landing in that gap would hide a live invoice PDF.
-- **Mismatch refusal.** A sweep that would preserve _nothing_ out of a non-empty bucket aborts before the first hide. That is the signature of a bucket and a database from different deployments — a wrong `DATABASE_URL`, a half-restored DB — not of a dirty bucket. `SEED=force` is the one caller that opts out, because truncating `attachments` is exactly how it gets there.
+- **Hiding is not destroying.** `hide()` writes a delete marker; the app key cannot destroy versions, so the bytes survive until the lifecycle reaps them after `L` days. Note the un-hide flow does **not** cover `invoices/…` — those rows are excluded from the Papierkorb and carry `hiddenAt = null`, so recovering a wrongly hidden invoice PDF is a manual `copyFromVersion` against the row's `version_id`. That asymmetry is why the two guards below are enforced in code rather than left to an operator's judgement.
+- **Min age.** An unreferenced object younger than the grace window, or one whose `LastModified` the provider omits, is skipped. The invoice renderer holds a PUT object whose row is uncommitted for as long as the issuance transaction runs; without the window, a sweep landing in that gap would hide a live invoice PDF.
+- **Mismatch refusal.** A sweep that would preserve _nothing_ out of a non-empty bucket aborts before the first hide. Running inside the app makes the bucket/database pairing right by construction, but not permanently — restore an older dump, or point the app at a fresh database, and every object reads as unreferenced. `SEED=force` is the one caller that opts out, because truncating `attachments` is exactly how it gets there.
 
 ### Scope of the diff
 

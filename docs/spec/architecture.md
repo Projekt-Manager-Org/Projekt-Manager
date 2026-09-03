@@ -418,8 +418,8 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 
 **Deliberately not `[C]`.** `src/server/config/env.ts` declares variables this catalogue does not list. They are settable, but they are not company settings:
 
-- **Scheduler sweep cadences** — `SESSION_CLEANUP_INTERVAL_MINUTES`, `AUDIT_RETENTION_INTERVAL_MINUTES`, `ATTACHMENT_ORPHAN_REAPER_INTERVAL_MINUTES`, `ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES`, `STORAGE_PRUNE_INTERVAL_MINUTES`. How _often_ a reaper sweeps is operational tuning; the retention window it enforces is the company-facing value, and that one is catalogued.
-- **Bucket-orphan prune controls** — `STORAGE_PRUNE_APPLY`, `STORAGE_PRUNE_MIN_AGE_MINUTES`. An orphan is an object no row references; it is invisible to every company-facing surface, so neither whether it gets swept nor how long it must sit first is a company decision. The min-age is a write-settling margin, not a retention window.
+- **Scheduler sweep cadences** — `SESSION_CLEANUP_INTERVAL_MINUTES`, `AUDIT_RETENTION_INTERVAL_MINUTES`, `ATTACHMENT_ORPHAN_REAPER_INTERVAL_MINUTES`, `ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES`. How _often_ a reaper sweeps is operational tuning; the retention window it enforces is the company-facing value, and that one is catalogued.
+- **Bucket-orphan prune cadence and grace window** — source constants in `STORAGE_CONFIG`, no env vars, parity with `THRESHOLD_MONITOR`. An orphan is an object no row references: invisible to every company-facing surface, so neither how often it is swept nor how long it must sit first is a company decision. The grace window is a write-settling margin, not a retention window.
 - **Deployment wiring and secrets** — database and object-store endpoints, buckets and credentials, `PORT`, `DOMAIN`, `NODE_ENV`, `SEED`, `ALLOW_INSECURE_HTTP`, VAPID keys, `BOOTSTRAP_ADMIN_*`, the LLM provider key and model id, and the `*_IDENTITY_PATH` mount points for operator-loaded private keys.
 
 A variable's absence here is a claim that no company would need to change it. If one does, the fix is to add the entry — not to treat the catalogue as advisory.

@@ -154,16 +154,6 @@ services:
       # binds here; the `backup` container never reads it. Unset disables
       # storage warnings and logs the skip at startup.
       STORAGE_QUOTA_GB: ${STORAGE_QUOTA_GB:-}
-      # Bucket-orphan prune (#169). The sweep runs in this process on a
-      # timer; APPLY gates the destructive half, so an unset value means
-      # "report only". These must be forwarded explicitly — the container
-      # inherits nothing from .env — or the operator's opt-in would
-      # silently never arrive. `:-false` (not `:-`) because the Zod
-      # schema is an enum: an empty string is a parse error, not an
-      # absent value, so it cannot fall through to the schema default.
-      STORAGE_PRUNE_APPLY: ${STORAGE_PRUNE_APPLY:-false}
-      STORAGE_PRUNE_INTERVAL_MINUTES: ${STORAGE_PRUNE_INTERVAL_MINUTES:-}
-      STORAGE_PRUNE_MIN_AGE_MINUTES: ${STORAGE_PRUNE_MIN_AGE_MINUTES:-}
       # Full-account takeout staging (ADR-0018 / ADR-0024, architecture.md
       # §12.2). TTL is [C]; both default in the env.ts Zod schema (1440 min
       # / OS-temp path). TAKEOUT_STAGING_DIR defaults to the named-volume
