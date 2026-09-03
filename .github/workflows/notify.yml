@@ -57,11 +57,14 @@
 #     empty check list — so it can never merge.
 #
 # DELIBERATELY NOT MONITORED
-#   - `E2E (manual)` — flaky, `workflow_dispatch`-only, deliberately
-#     outside the merge gate. Wiring it in manufactures exactly the
-#     alert fatigue this mechanism exists to prevent.
 #   - `Cache cleanup` — housekeeping. A failure costs disk, not
 #     correctness, and produces no signal worth an issue.
+#
+#   `E2E` used to be listed here — flaky, `workflow_dispatch`-only,
+#   outside the merge gate, so monitoring it would manufacture the alert
+#   fatigue this mechanism exists to prevent. #377 inverted that: it now
+#   runs nightly on `main`, where the failure mode is silence, not noise
+#   (it sat red ~3.5 weeks unnoticed). Still outside the merge gate.
 #
 # SECURITY
 #   `workflow_run` is a PRIVILEGED trigger: it runs in base-repo
@@ -75,10 +78,19 @@ name: Notify
 
 on:
   workflow_run:
-    # Matched by workflow NAME, not file path. Renaming `CI` or
-    # `Security (scheduled)` silently unhooks this — actionlint does
-    # not catch it, because it cannot know which names are real.
-    workflows: [CI, 'Security (scheduled)']
+    # Matched by workflow NAME, not file path. Renaming `CI`,
+    # `Security (scheduled)` or `E2E` silently unhooks this — actionlint
+    # does not catch it, because it cannot know which names are real.
+    #
+    # `E2E` was previously excluded on the grounds that it is flaky and
+    # `workflow_dispatch`-only, so monitoring it would manufacture alert
+    # fatigue. The schedule added in #377 inverts that: it now runs
+    # nightly on `main`, where the failure mode is not noise but silence
+    # — that workflow sat red for ~3.5 weeks with nothing to say so.
+    # `route='main'` already covers the `schedule` event, and the
+    # one-issue-per-incident design below (comment on repeat, auto-close
+    # on green) is what bounds the fatigue.
+    workflows: [CI, 'Security (scheduled)', E2E]
     types: [completed]
 
 # An explicit block zeroes every scope not listed. `contents: read`
