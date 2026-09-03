@@ -196,11 +196,12 @@ describe('AC-247 / AT-108 — Global error handler 4xx pass-through', () => {
 //
 // The gap this closes: the `AppError` branch returns before the 5xx
 // fallback, so a 500 carrying its own code answered the caller and
-// logged nothing at all. `throw serverError()` — six sites across
-// AttachmentService and ExtractionService — took that path, while the
-// identical failure arriving as a statusless throw reached `error` level
-// via the fallback. Same incident, logged or silent depending on how it
-// was raised.
+// logged nothing at all. AttachmentService's three `throw serverError()`
+// sites took that path in full silence, while the identical failure
+// arriving as a statusless throw reached `error` level via the fallback.
+// Same incident, logged or silent depending on how it was raised.
+// (ExtractionService's three sites log a named event of their own first,
+// so they were never silent — they now log twice.)
 // ---------------------------------------------------------------------
 describe('AT-108 — an AppError carrying a 5xx logs at the operational error level', () => {
   async function inject(url: string, handler: () => Promise<never>) {

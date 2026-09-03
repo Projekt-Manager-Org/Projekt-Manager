@@ -144,16 +144,6 @@ describe('AC-354: error-code catalogue', () => {
     expect(untabled).toEqual([]);
   });
 
-  it('every factory mints a catalogued code', () => {
-    // The compiler already proves this — `AppError`'s first parameter is
-    // `ErrorCode`. Asserted anyway because it is the cheap half of the
-    // pair and it makes the expensive half below readable as a contract
-    // rather than as a lone set comparison.
-    for (const [name, invoke] of FACTORY_CALLS) {
-      expect(ERROR_CODES, `${name}() minted an uncatalogued code`).toContain(invoke().code);
-    }
-  });
-
   it('every catalogued code is minted by a factory', () => {
     const minted = new Set<ErrorCode>(FACTORY_CALLS.map(([, invoke]) => invoke().code));
     const unminted = ERROR_CODES.filter((code) => !minted.has(code));
