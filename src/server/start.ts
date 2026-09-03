@@ -27,7 +27,8 @@ import { formatErrorChain } from './format-error-chain.js';
 import { assertBaselineLedgerMatchesFile } from './db/baseline-guard.js';
 import { createDatabase } from './db/connection.js';
 import { seed } from './seed.js';
-import { pruneBucketOrphans, createBucketKeyLister } from './storage/pruneBucketOrphans.js';
+import { pruneBucketOrphans, createBucketObjectLister } from './storage/pruneBucketOrphans.js';
+import { startBucketOrphanPruneScheduler } from './bucket-orphan-prune-scheduler.js';
 import { deleteExpiredSessions } from './repositories/session.js';
 import { startSessionReaper } from './session-reaper.js';
 import { startAuditRetentionScheduler } from './audit-retention-scheduler.js';
@@ -39,6 +40,7 @@ import { reapAbandonedDataExchangeJobs } from './services/data-exchange-boot-rea
 import { setOperationalLogger as setAuditPublisherLogger } from './services/audit-publisher.js';
 import { AUDIT_RETENTION } from '../config/auditRetention.js';
 import { ATTACHMENT_CONFIG } from '../config/attachmentConfig.js';
+import { STORAGE_CONFIG } from './config/index.js';
 import { BYTES_PER_GB, THRESHOLD_MONITOR } from '../config/thresholdMonitor.js';
 import { STATE_KEYS } from '../config/stateConfig.js';
 import { assertBinaryIdentityLoaded } from './storage/binaryIdentity.js';
@@ -188,17 +190,24 @@ async function start(): Promise<void> {
           ...prunerConfig,
           publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
         });
-        await pruneBucketOrphans(
+        await pruneBucketOrphans({
           db,
-          prunerStorage,
-          createBucketKeyLister(prunerConfig),
-          { info: (m) => console.log(m), warn: (m) => console.warn(m) },
-          env.STORAGE_BUCKET,
-          // `SEED=force` means "full reset" — a dry run here would leave
+          storage: prunerStorage,
+          listBucketObjects: createBucketObjectLister(prunerConfig),
+          logger: { info: (m) => console.log(m), warn: (m) => console.warn(m) },
+          bucketLabel: env.STORAGE_BUCKET,
+          // `SEED=force` means "full reset" — a report here would leave
           // the bucket dirty and defeat the point. Safe by enclosure:
           // this branch is the `else` of `isProduction`.
-          true,
-        );
+          apply: true,
+          // Both guards are off for the same reason: this caller just
+          // truncated `attachments` and owns every byte in the bucket.
+          // A min-age would strand the objects the seed itself wrote,
+          // and "nothing is referenced" is the expected post-truncate
+          // state here, not the mismatch it signals everywhere else.
+          minAgeMinutes: 0,
+          requireReferencedRows: false,
+        });
       }
     }
   }
@@ -359,6 +368,38 @@ async function start(): Promise<void> {
     },
   });
 
+  // Bucket-orphan prune (issue #169 item A). Reconciles the bucket
+  // against `attachments` and hides objects no row references — the two
+  // writers that PUT before inserting their row (invoice renderer,
+  // takeout import) leak an object whenever a fault lands in between,
+  // and nothing else cleans those up. Report-only unless
+  // STORAGE_PRUNE_APPLY=true; see the scheduler's header for why the
+  // destructive half is opt-in.
+  //
+  // Runs in this process rather than as an ops command so the bucket it
+  // lists and the DB it diffs are the app's own, not a pairing someone
+  // has to get right by hand.
+  const bucketOrphanPrune = startBucketOrphanPruneScheduler({
+    db,
+    storage: attachmentStorageForReaper,
+    listBucketObjects: createBucketObjectLister({
+      endpoint: env.STORAGE_ENDPOINT,
+      bucket: env.STORAGE_BUCKET,
+      accessKey: env.STORAGE_ACCESS_KEY,
+      secretKey: env.STORAGE_SECRET_KEY,
+      region: env.STORAGE_REGION,
+      keyPrefix: env.STORAGE_KEY_PREFIX,
+    }),
+    bucketLabel: env.STORAGE_BUCKET,
+    intervalMinutes: env.STORAGE_PRUNE_INTERVAL_MINUTES ?? STORAGE_CONFIG.pruneIntervalMinutes,
+    minAgeMinutes: env.STORAGE_PRUNE_MIN_AGE_MINUTES ?? STORAGE_CONFIG.pruneMinAgeMinutes,
+    apply: env.STORAGE_PRUNE_APPLY === 'true',
+    logger: {
+      info: (ctx, event) => console.log(event, ctx),
+      error: (ctx, event) => console.error(event, ctx),
+    },
+  });
+
   // Threshold monitor (#122). Evaluates two standing conditions and
   // publishes the matching catalog events: the backup badge on any
   // non-green state (`backup.failed`) and global ciphertext volume past
@@ -431,6 +472,7 @@ async function start(): Promise<void> {
         attachmentReaper.stop(),
         hiddenReaper.stop(),
         takeoutStagingReaper.stop(),
+        bucketOrphanPrune.stop(),
         thresholdMonitor.stop(),
       ]);
       await app.close();

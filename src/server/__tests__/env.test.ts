@@ -75,6 +75,9 @@ function makeEnv(overrides: Partial<Env>): Env {
     INVOICE_OBJECT_LOCK_DAYS: 0,
     TAKEOUT_STAGING_TTL_MINUTES: 1440,
     TAKEOUT_STAGING_DIR: '/tmp/projekt-manager-takeout',
+    // Bucket-orphan prune: report-only is the shipped default, so the
+    // fixture carries the same value a deployment gets without opting in.
+    STORAGE_PRUNE_APPLY: 'false',
     ...overrides,
   };
 }

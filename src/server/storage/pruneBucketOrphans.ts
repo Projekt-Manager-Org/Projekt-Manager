@@ -1,14 +1,20 @@
 /**
- * Bucket orphan prune — TS counterpart of `scripts/clean-bucket-orphans.sh`.
+ * Bucket orphan reconciliation — objects with no `attachments` row.
  *
- * Lists every current-version object in the configured bucket, intersects
- * with the keys still referenced by the `attachments` table (across every
+ * Lists every current-version object in the configured bucket, subtracts
+ * the keys still referenced by the `attachments` table (across every
  * status — `hidden` rows still hold a PUT version below their delete
  * marker that the un-hide flow promotes back), and writes a delete marker
  * (DeleteObject without VersionId) for the difference via the storage
  * client's `hide()` primitive.
  *
- * Two callers:
+ * Three callers:
+ *   - `bucket-orphan-prune-scheduler.ts` — the unattended sweep in the
+ *     app process. This is the production surface: it shares the app's
+ *     env, so the bucket it lists and the DB it diffs against are the
+ *     ones the app itself serves.
+ *   - `scripts/prune-bucket-orphans.ts` — the on-demand operator
+ *     command, for inspecting the diff or forcing a pass off-cadence.
  *   - `start.ts` under `SEED=force`, so a forced re-seed truly resets
  *     storage state along with the DB. Without this, a re-seed truncates
  *     `attachments` but leaves the bucket dirty — the orphan blobs are
@@ -16,59 +22,100 @@
  *     truncate), but they still consume bucket space and would mirror
  *     real bytes onto B2's Compliance-locked bucket via
  *     `scripts/sync-dev-to-vps.sh` if its pollution guard didn't refuse.
- *   - `scripts/prune-bucket-orphans.ts`, the operator-run reconciliation
- *     (issue #169). Dry-run by default; `--apply` opts into hiding.
  *
- * Why the set difference is exact: the bucket holds exactly two key
- * namespaces, `attachments/…` (AttachmentService) and `invoices/…`
- * (InvoiceBinaryService), and BOTH are rows in the `attachments` table.
- * Backups live in a separate R2 bucket; takeout staging is local VPS
- * disk. So `attachments` is a complete index of this bucket and
- * "in the bucket, not in the table" means orphan with no prefix caveats.
+ * ## Why the set difference is sound
  *
- * Why no age filter: `AttachmentService.initUpload` INSERTs the
- * `pending` row BEFORE presigning the PUT, so an object can never exist
- * in the bucket without its key already being referenced. An in-flight
- * upload is therefore never an orphan and needs no grace window.
+ * The bucket holds three key namespaces: `attachments/…`
+ * (AttachmentService), `invoices/…` (InvoiceBinaryService) — both rows
+ * in the `attachments` table — and `__probe/…`, the deploy-preflight
+ * sentinels (`deploy-preflight-cli.ts`), which have no row and never
+ * will. Backups live in a separate R2 bucket; takeout staging is local
+ * VPS disk. So `attachments` indexes everything under the two app
+ * namespaces, and `RESERVED_KEY_PREFIXES` carves out the third.
  *
- * Cost: `ListObjectsV2` is a Backblaze Class C call, and Class A/B/C are
- * all free on B2 pay-as-you-go (only Class D, event notifications, is
+ * ## Why a min-age is required, not optional
+ *
+ * `AttachmentService.initUpload` INSERTs the `pending` row BEFORE
+ * presigning the PUT, so a browser upload is never an orphan mid-flight.
+ * The other two writers invert that order:
+ *   - `InvoiceBinaryService.persistRendered` PUTs the ciphertext, HEADs
+ *     it, then INSERTs the row — inside the issuance transaction, so the
+ *     row is invisible until that transaction commits.
+ *   - `takeout-import-runner` Pass 2 PUTs original + thumbnail, then
+ *     INSERTs.
+ * Between the PUT and the commit the object is listable with no row
+ * behind it — indistinguishable from an orphan by set difference alone.
+ * `minAgeMinutes` is what makes it distinguishable: an object younger
+ * than the cutoff is left alone. Objects whose `LastModified` the
+ * provider omits are treated as unknown-age and skipped for the same
+ * reason. #169 item B reorders both writers, after which the min-age
+ * becomes belt-and-braces rather than load-bearing.
+ *
+ * ## Why the empty-preserve refusal exists
+ *
+ * The diff is only meaningful if the DB owns the bucket. Point a process
+ * at one deployment's bucket and another's database — a dev checkout
+ * with `STORAGE_*` aimed at B2, a half-restored DB, a wrong
+ * `DATABASE_URL` — and every object in the bucket is "unreferenced".
+ * `requireReferencedRows` refuses to apply when the sweep would preserve
+ * nothing out of a non-empty candidate set, which is that mismatch's
+ * fingerprint. `SEED=force` legitimately reaches that state (it just
+ * truncated `attachments`) and opts out.
+ *
+ * ## Versioning + Object Lock semantics
+ *
+ * `storage.hide(key)` is DeleteObject without a VersionId on a versioned
+ * bucket — only a delete marker is written, the current version becomes
+ * noncurrent, and the underlying bytes remain locked under the bucket's
+ * default Compliance retention until R + L days pass and the lifecycle
+ * rule reaps them. The goal here is a clean current view, not freed
+ * bytes. Note the marker is liftable via `copyFromVersion` but NOT
+ * through the Papierkorb for `invoices/…` keys — those rows are excluded
+ * from both the live and trash listings (`repositories/attachment.ts`)
+ * and carry `hiddenAt = null`. Recovering a wrongly-hidden invoice PDF
+ * is a manual operation, which is why the two guards above are
+ * structural rather than advisory.
+ *
+ * ## Cost
+ *
+ * `ListObjectsV2` is a Backblaze Class C call, and Class A/B/C are all
+ * free on B2 pay-as-you-go (only Class D, event notifications, is
  * billed). A full sweep costs nothing at any cadence.
  *
- * Versioning + Object Lock semantics: `storage.hide(key)` is DeleteObject
- * without a VersionId on a versioned bucket — only a delete marker is
- * written, the current version becomes noncurrent, and the underlying
- * bytes remain locked under the bucket's default Compliance retention
- * until R + L days pass and the lifecycle rule reaps them. The goal here
- * is a clean current view, not freed bytes.
+ * ## Bucket-listing dependency injection
  *
- * Bucket-listing dependency injection: the caller supplies the
- * `listAllBucketKeys` closure. Production wires it through
- * `createBucketKeyLister()` (paginated ListObjectsV2 against the
- * configured bucket); tests pass a stub returning a controlled set so a
- * test run cannot wipe the developer's working bucket — pruneBucketOrphans
- * is unbounded by design (it operates on the WHOLE bucket), and the
- * integration suite shares `STORAGE_BUCKET` with `npm run dev`.
- *
- * Safety: the destructive step is gated on the explicit `apply` flag,
- * which every caller must pass. `apply: false` computes and reports the
- * identical diff without touching storage — a pure read. The seed path
- * passes `true` and is itself unreachable in production (`start.ts`
- * skips seeding entirely when `NODE_ENV=production`); the ops script
- * defaults to `false` and requires `--apply` on the command line.
- *
- * This replaced a blanket `NODE_ENV === 'production'` refusal. That
- * refusal made the only working reconciliation unreachable exactly
- * where orphans actually accumulate, which is the wrong trade: `hide()`
- * is non-destructive by construction (the app key cannot destroy
- * versions — ADR-0022), so the worst case of an unwanted apply is a
- * delete marker that the un-hide flow can lift for R days.
+ * The caller supplies the `listBucketObjects` closure. Production wires
+ * it through `createBucketObjectLister()` (paginated ListObjectsV2
+ * against the configured bucket); tests pass a stub returning a
+ * controlled set so a test run cannot wipe the developer's working
+ * bucket — the prune is unbounded by design (it operates on the WHOLE
+ * bucket), and the integration suite shares `STORAGE_BUCKET` with
+ * `npm run dev`.
  */
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { sql } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
 import type { AttachmentStorageClient } from './client.js';
+
+const MS_PER_MINUTE = 60 * 1000;
+
+/**
+ * Key namespaces the bucket carries that are NOT indexed by
+ * `attachments` and must never be treated as orphans.
+ *
+ * `__probe/` holds the deploy-preflight sentinels `__probe/upload` and
+ * `__probe/copyobj` (`deploy-preflight-cli.ts`), rewritten on every
+ * deploy. Hiding them is harmless — the next preflight PUTs a fresh
+ * version before the copy reads it — but it would make every sweep on a
+ * real deployment report orphans, and an operator who learns to ignore
+ * this report loses the only signal that says the bucket is clean.
+ */
+export const RESERVED_KEY_PREFIXES = ['__probe/'] as const;
+
+function isReserved(key: string): boolean {
+  return RESERVED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
 
 export interface BucketKeyListerConfig {
   endpoint: string;
@@ -88,21 +135,68 @@ export interface BucketKeyListerConfig {
   keyPrefix?: string;
 }
 
+/** One current-version object as the diff sees it. */
+export interface BucketObject {
+  /** Logical key — the shape `attachments` rows store. */
+  key: string;
+  /**
+   * Provider-reported write time. Optional because S3-compatible
+   * providers may omit it; an object with no timestamp is unknown-age
+   * and is never pruned while a min-age is configured.
+   */
+  lastModified?: Date;
+}
+
 export interface PruneBucketOrphansLogger {
   info(message: string): void;
   warn(message: string): void;
 }
 
 export interface PruneBucketOrphansResult {
+  /** App-owned objects listed — `RESERVED_KEY_PREFIXES` excluded. */
   bucketObjectCount: number;
+  /** Listed objects still referenced by an `attachments` row. */
   preservedCount: number;
+  /**
+   * Unreferenced objects left alone because they are younger than
+   * `minAgeMinutes` (or carry no `lastModified`). A standing non-zero
+   * value across sweeps means a writer is leaking, not that the sweep
+   * is behind.
+   */
+  skippedRecentCount: number;
   orphanCount: number;
   /**
-   * The orphan keys themselves, in bucket-listing order. The dry run is
-   * only useful if the operator can see WHICH keys an `--apply` pass
-   * would hide — a bare count is not reviewable.
+   * The orphan keys themselves, in bucket-listing order. A report is
+   * only reviewable if it says WHICH keys an apply pass would hide — a
+   * bare count tells the operator nothing about whether to trust it.
    */
   orphanKeys: string[];
+  /** Whether the hides were actually issued. */
+  applied: boolean;
+}
+
+export interface PruneBucketOrphansOptions {
+  db: Database;
+  storage: AttachmentStorageClient;
+  listBucketObjects: () => Promise<BucketObject[]>;
+  logger: PruneBucketOrphansLogger;
+  bucketLabel: string;
+  /** `false` computes and reports the identical diff, issuing no mutating call. */
+  apply: boolean;
+  /**
+   * Grace window protecting the PUT-before-INSERT writers (see header).
+   * `0` disables it — only `SEED=force`, which owns the whole bucket
+   * and wants a full reset, passes that.
+   */
+  minAgeMinutes: number;
+  /**
+   * Refuse to apply when the sweep would preserve nothing out of a
+   * non-empty candidate set — the bucket/DB mismatch fingerprint (see
+   * header). `SEED=force` passes `false`.
+   */
+  requireReferencedRows: boolean;
+  /** Injectable wall clock, matching the reaper schedulers. */
+  now?: Date;
 }
 
 /**
@@ -110,7 +204,9 @@ export interface PruneBucketOrphansResult {
  * bucket. Tests don't use this — they pass a stub that returns a
  * controlled set.
  */
-export function createBucketKeyLister(config: BucketKeyListerConfig): () => Promise<string[]> {
+export function createBucketObjectLister(
+  config: BucketKeyListerConfig,
+): () => Promise<BucketObject[]> {
   const s3 = new S3Client({
     endpoint: config.endpoint,
     region: config.region ?? 'us-east-1',
@@ -120,7 +216,7 @@ export function createBucketKeyLister(config: BucketKeyListerConfig): () => Prom
 
   const keyPrefix = config.keyPrefix ?? '';
   return async () => {
-    const keys: string[] = [];
+    const objects: BucketObject[] = [];
     let continuationToken: string | undefined;
     do {
       const response = await s3.send(
@@ -137,31 +233,43 @@ export function createBucketKeyLister(config: BucketKeyListerConfig): () => Prom
         if (typeof obj.Key !== 'string') continue;
         // Return logical keys (the same shape the attachments rows store)
         // so the diff against the DB-referenced set is apples-to-apples.
-        keys.push(
-          keyPrefix && obj.Key.startsWith(keyPrefix) ? obj.Key.slice(keyPrefix.length) : obj.Key,
-        );
+        objects.push({
+          key:
+            keyPrefix && obj.Key.startsWith(keyPrefix) ? obj.Key.slice(keyPrefix.length) : obj.Key,
+          ...(obj.LastModified ? { lastModified: obj.LastModified } : {}),
+        });
       }
       continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
     } while (continuationToken);
-    return keys;
+    return objects;
   };
 }
 
 export async function pruneBucketOrphans(
-  db: Database,
-  storage: AttachmentStorageClient,
-  listAllBucketKeys: () => Promise<string[]>,
-  logger: PruneBucketOrphansLogger,
-  bucketLabel: string,
-  apply: boolean,
+  opts: PruneBucketOrphansOptions,
 ): Promise<PruneBucketOrphansResult> {
-  // 1. Bucket listing — current-version view only.
-  const bucketKeys = new Set<string>(await listAllBucketKeys());
+  const { db, storage, logger, bucketLabel, apply, minAgeMinutes, requireReferencedRows } = opts;
+  if (!Number.isInteger(minAgeMinutes) || minAgeMinutes < 0) {
+    throw new Error(
+      `pruneBucketOrphans: minAgeMinutes must be a non-negative integer, got ${minAgeMinutes}`,
+    );
+  }
+  const runAt = opts.now ?? new Date();
+  const cutoff = new Date(runAt.getTime() - minAgeMinutes * MS_PER_MINUTE);
+
+  // 1. Bucket listing — current-version view only. Reserved namespaces
+  // are dropped here so they cannot reach any count or the diff.
+  const listed = await opts.listBucketObjects();
+  const candidates = listed.filter((obj) => !isReserved(obj.key));
 
   // 2. DB-referenced keys — every status (`pending`, `ready`, `hidden`).
   // `hidden` rows hold a legitimate PUT version below the delete marker
   // that the un-hide flow needs; preserving those keys here matches the
   // bash script's UNION.
+  //
+  // Ordering matters: the listing is taken BEFORE this read, so a row
+  // that commits between the two is still seen as referenced. The
+  // reverse order would manufacture orphans.
   const referencedRows = await db.execute<{ key: string }>(sql`
     SELECT original_key AS key FROM attachments
     UNION
@@ -172,47 +280,75 @@ export async function pruneBucketOrphans(
     if (typeof row.key === 'string') referencedKeys.add(row.key);
   }
 
-  // 3. Orphans = bucket - referenced.
+  // 3. Orphans = listed − referenced − too-recent.
   const orphans: string[] = [];
-  for (const key of bucketKeys) {
-    if (!referencedKeys.has(key)) orphans.push(key);
-  }
-
-  // 4. Hide each orphan via the storage wrapper's hide() primitive — same
-  // call shape as the orphan reaper, idempotent on a versioned bucket.
-  // Skipped entirely under `apply: false`: a dry run must issue no
-  // mutating call at all, so an operator reviewing the report cannot
-  // have already changed the bucket by reading it.
-  if (apply) {
-    for (const key of orphans) {
-      await storage.hide(key);
+  let preservedCount = 0;
+  let skippedRecentCount = 0;
+  for (const obj of candidates) {
+    if (referencedKeys.has(obj.key)) {
+      preservedCount += 1;
+      continue;
     }
+    // Unknown age is treated as "too recent": a provider that omits
+    // LastModified gives us no basis to claim the write has settled.
+    if (minAgeMinutes > 0 && !(obj.lastModified && obj.lastModified < cutoff)) {
+      skippedRecentCount += 1;
+      continue;
+    }
+    orphans.push(obj.key);
   }
 
   const result: PruneBucketOrphansResult = {
-    bucketObjectCount: bucketKeys.size,
-    preservedCount: bucketKeys.size - orphans.length,
+    bucketObjectCount: candidates.length,
+    preservedCount,
+    skippedRecentCount,
     orphanCount: orphans.length,
     orphanKeys: orphans,
+    applied: apply && orphans.length > 0,
   };
 
+  // 4. Coherence gate — BEFORE the first hide, so a mismatched pairing
+  // costs nothing. See the header: this is the shape a wrong DB takes.
+  if (apply && requireReferencedRows && preservedCount === 0 && candidates.length > 0) {
+    throw new Error(
+      `pruneBucketOrphans: refusing to hide ${orphans.length} object(s) in bucket ` +
+        `'${bucketLabel}' — not one of the ${candidates.length} listed object(s) is referenced ` +
+        `by an attachments row. That is what a bucket/database mismatch looks like, not a dirty ` +
+        `bucket. Verify DATABASE_URL and STORAGE_BUCKET name the same deployment before retrying.`,
+    );
+  }
+
+  // 5. Hide each orphan via the storage wrapper's hide() primitive — same
+  // call shape as the orphan reaper, idempotent on a versioned bucket.
+  // Skipped entirely under `apply: false`: a report must issue no
+  // mutating call at all, so reviewing the diff cannot itself change the
+  // bucket. Each key is logged as it goes so a fault mid-loop still
+  // leaves a record of what was already hidden.
+  if (apply) {
+    for (const key of orphans) {
+      await storage.hide(key);
+      logger.info(`pruneBucketOrphans: hid ${key}`);
+    }
+  }
+
+  const tally =
+    `preserved ${preservedCount} referenced, ` +
+    (skippedRecentCount > 0 ? `${skippedRecentCount} too recent to judge, ` : '') +
+    `total ${result.bucketObjectCount}`;
+
   if (orphans.length > 0) {
-    // Past tense only when something actually happened. A dry-run line
-    // that reads like a completed cleanup is how an operator ends up
+    // Past tense only when something actually happened. A report that
+    // reads like a completed cleanup is how an operator ends up
     // believing the bucket is clean when it is not.
     logger.warn(
       apply
         ? `pruneBucketOrphans: hid ${orphans.length} orphan object(s) in bucket '${bucketLabel}' ` +
-            `(preserved ${result.preservedCount} referenced, total ${result.bucketObjectCount}).`
-        : `pruneBucketOrphans: DRY RUN — ${orphans.length} orphan object(s) in bucket ` +
-            `'${bucketLabel}' would be hidden (preserved ${result.preservedCount} referenced, ` +
-            `total ${result.bucketObjectCount}). Nothing was changed; re-run with --apply to act.`,
+            `(${tally}).`
+        : `pruneBucketOrphans: REPORT ONLY — ${orphans.length} orphan object(s) in bucket ` +
+            `'${bucketLabel}' would be hidden (${tally}). Nothing was changed.`,
     );
   } else {
-    logger.info(
-      `pruneBucketOrphans: no orphans in bucket '${bucketLabel}' ` +
-        `(${result.bucketObjectCount} object(s), all referenced).`,
-    );
+    logger.info(`pruneBucketOrphans: no orphans in bucket '${bucketLabel}' (${tally}).`);
   }
 
   return result;

@@ -318,13 +318,33 @@ This catches drift between the runbook and live bucket state — e.g., an operat
 
 Objects with no `attachments` row. Two paths PUT bytes before inserting their row and leak on a fault in between: the takeout import runner and the invoice renderer (issue #169).
 
+The app process sweeps for them on a timer. Nothing to run and nothing to schedule — but the destructive half is **opt-in**:
+
+| Variable                         | Default | Meaning                                                            |
+| -------------------------------- | ------- | ------------------------------------------------------------------ |
+| `STORAGE_PRUNE_APPLY`            | `false` | `false` logs the diff and writes nothing; `true` hides the orphans |
+| `STORAGE_PRUNE_INTERVAL_MINUTES` | `1440`  | Sweep cadence                                                      |
+| `STORAGE_PRUNE_MIN_AGE_MINUTES`  | `1440`  | Objects younger than this are never touched                        |
+
+Watch `bucket-orphan-prune` in the app log first — one line per sweep, carrying `orphan_count`, `preserved_count` and `skipped_recent_count`. When the reported diff looks right, set `STORAGE_PRUNE_APPLY=true`. `orphan_count` should then fall to zero and stay there; a standing non-zero value means a writer is leaking faster than the sweep reaps.
+
+To look at the diff on demand from a repo checkout (the deployed image ships neither `scripts/` nor `tsx`, so this does not run on the server):
+
 ```bash
 npm run storage:prune
 ```
 
-Dry run by default — reports the diff and every orphan key, writes nothing. Add `-- --apply` to hide them. `hide()` is a delete marker, not a destroy (the app key cannot destroy versions), so the bucket lifecycle reaps them after `L` days and the un-hide flow can lift a marker until then.
+Report-only by default — prints the diff and every orphan key, writes nothing. `-- --apply` hides them.
 
-The diff is exact: this bucket holds only `attachments/…` and `invoices/…` keys, and both are rows in the `attachments` table. Backups live in a separate R2 bucket; takeout staging is local disk. No prefix caveats, and no age filter is needed — `initUpload` writes the `pending` row before presigning the PUT, so an in-flight upload is never an orphan.
+### What bounds the damage
+
+- **Hiding is not destroying.** `hide()` writes a delete marker; the app key cannot destroy versions, so the bytes survive until the lifecycle reaps them after `L` days. But note the un-hide flow does **not** cover `invoices/…` — those rows are excluded from the Papierkorb and carry `hiddenAt = null`, so recovering a wrongly hidden invoice PDF is a manual `copyFromVersion` against the row's `version_id`. That asymmetry is why the two guards below are enforced in code rather than left to the operator.
+- **Min age.** An object younger than `STORAGE_PRUNE_MIN_AGE_MINUTES`, or one whose `LastModified` the provider omits, is skipped. The invoice renderer holds a PUT object whose row is still uncommitted for as long as the issuance transaction runs; without the grace window a sweep landing in that gap would hide a live invoice PDF.
+- **Mismatch refusal.** A sweep that would preserve _nothing_ out of a non-empty bucket aborts before the first hide. That is the signature of a bucket and a database from different deployments — a wrong `DATABASE_URL`, a half-restored DB — not of a dirty bucket. `SEED=force` is the one caller that opts out, because truncating `attachments` is exactly how it gets there.
+
+### Scope of the diff
+
+The bucket holds three key namespaces: `attachments/…` and `invoices/…`, both indexed by the `attachments` table, and `__probe/…`, the deploy-preflight sentinels, which the sweep treats as reserved and never reports. Backups live in a separate R2 bucket; takeout staging is local disk.
 
 Cheap to run: `ListObjectsV2` is a Class C call, and B2 bills only Class D.
 
