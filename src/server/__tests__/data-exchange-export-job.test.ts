@@ -19,14 +19,13 @@
  *   - AC-334 / AT-148 — a ready artifact aged past the takeout staging
  *     TTL is swept by the scheduled reaper; the download then 404s.
  *
- * RED-STATE EXPECTATION: none of `/api/export-jobs*` is registered yet
- * (app.ts wires only the text-leg `/api/export` + `/api/import`), and no
- * runner / reaper module exists. Every arm therefore fails — create /
- * status / latest hit the ROUTE_NOT_FOUND not-found handler (404), the
- * ready-dependent arms time out at the poll (no runner advances the job),
- * and the reaper arm fails at the dynamic `import()` of the absent
- * module. The assertions encode the FINAL intended contract, so they go
- * green once the feature lands — they are not pinned to the 404.
+ * TIMING — `POST /api/export-jobs` fire-and-forgets the build, which on a
+ * fresh seed reaches `ready` in well under a second. An arm that needs a
+ * job to still be `pending` must mint the row through
+ * `DataExchangeJobService.create()`, not through the route: going through
+ * POST races the runner, and the failure is a confusing "expected 201 to
+ * be 409/200" rather than a timeout. The not-ready download arm and the
+ * AC-331 active-job guard were both fixed for exactly this.
  *
  * The archive-content + per-row-skip arms (AC-323 / AC-325) live in the
  * sibling file `data-exchange-export-archive.test.ts`.
@@ -151,10 +150,12 @@ interface TakeoutStagingReaperOptions {
 
 async function runTakeoutStagingReaper(opts: TakeoutStagingReaperOptions): Promise<void> {
   // Specifier held in a variable (not a string literal) so `tsc` cannot
-  // statically resolve — and thus cannot error on — a module that does
-  // not exist yet. Same indirection data-exchange-job-service.test.ts
-  // uses for the SSE bus import. The reaper arm fails at this `import()`
-  // (MODULE_NOT_FOUND) until the implementation lands, then resolves.
+  // statically resolve — and thus cannot error on — the module. That was
+  // load-bearing while the reaper was unbuilt; it now ships
+  // (`services/takeout-staging-reaper.ts`), so the indirection and the
+  // local `TakeoutStagingReaperOptions` duplicate are both vestigial. A
+  // static import of `runTakeoutStagingReaper` + its exported
+  // `RunTakeoutStagingReaperDeps` would replace this whole block.
   const p = '../services/takeout-staging-reaper.js';
   const mod = (await import(/* @vite-ignore */ p)) as {
     runTakeoutStagingReaper: (opts: TakeoutStagingReaperOptions) => Promise<void>;
@@ -412,7 +413,14 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // -------------------------------------------------------------------
   describe('AC-331: one active export job per kind', () => {
     it('a second create while one is pending/running → 409 EXPORT_JOB_ACTIVE carrying the active id', async () => {
-      const first = await createExportJob(ownerToken);
+      // Minted directly rather than through POST, for the same reason as
+      // the not-ready download arm above: the create route fire-and-forgets
+      // the build, which on a fresh seed reaches `ready` ~20ms later — and
+      // `activeOfKind` matches only `pending`/`running`, so a build that
+      // finishes inside the gap clears the guard and this POST correctly
+      // returns 201. The contract under test is status-based, so a
+      // `pending` row with no runner attached pins it without racing.
+      const first = await new DataExchangeJobService(db).create('export', null);
 
       const second = await authPost(ownerToken, '/api/export-jobs');
       expect(second.statusCode).toBe(409);
