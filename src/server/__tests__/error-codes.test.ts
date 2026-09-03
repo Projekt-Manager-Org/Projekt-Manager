@@ -2,41 +2,25 @@
  * AC-354 — the error-code catalogue's runtime definition.
  *
  * `ERROR_CODES` is the single form of the set: `ErrorCode` is derived
- * from it, and api.md §14.4.1's `CHECKED:error-codes` block publishes
- * it. The derivation is the compiler's job; the publication is pinned
- * here (`publishes exactly ERROR_CODES`), because the block is a
- * transcription of the array and a transcription is not worth a
- * generator — ARCHITECTURE.md § Error-Code Catalogue owns that call.
+ * from it (the compiler's job), and api.md §14.4.1's
+ * `CHECKED:error-codes` block publishes it (pinned here, in both drift
+ * directions — a code the array gained and a code the block invented are
+ * the same equality failure). Why checked rather than generated:
+ * ARCHITECTURE.md § Error-Code Catalogue.
  *
- * Beyond those two, what is left to test is what neither the compiler
- * nor the doc check can see.
+ * The rest is what neither the compiler nor the doc check can see. A
+ * duplicate entry: `(typeof ERROR_CODES)[number]` deduplicates as a
+ * union, so a code pasted twice type-checks perfectly and publishes
+ * twice. And an entry *no factory mints*: the compiler proves every
+ * `AppError` carries a catalogued code, never the converse, so the
+ * catalogue can promise a response the module cannot construct.
  *
- * Two such gaps. A duplicate entry: `(typeof ERROR_CODES)[number]`
- * deduplicates as a union, so a code pasted twice type-checks perfectly
- * and publishes twice. And an entry *no factory mints*: the compiler
- * proves every `AppError` carries a catalogued code, but nothing proves
- * the converse — a code the catalogue publishes and the module cannot
- * construct promises clients a response they will never receive. It had
- * already drifted that way: `INVOICE_NUMBER_FORMAT` was catalogued in
- * §14.4.1 and in the array with no factory anywhere, and was deleted
- * rather than given one — the only application-side check that could
- * have raised it duplicated the `invoices_number_format` DB CHECK
- * against inputs that cannot fail it.
+ * Note the exact claim there: a *factory exists*, not that a request can
+ * reach it. Reachability is a route test's job.
  *
- * Note the exact claim: this pins that a *factory exists*, not that a
- * request can reach it. A factory whose call site is unreachable passes
- * here — which is how the deleted code passed before review caught it.
- * Reachability is a route test's job.
- *
- * Both directions of the doc drift are covered by one assertion: a code
- * the array gained and the block did not, and a code the block carries
- * that the array does not, are the same equality failure.
- *
- * `methodNotAllowed()` gets its own block: it is the code the catalogue
- * was missing, and the four route sites now route through it, so this
- * pins the shape they emit — `Allow` included. Why the header rides on
- * the error rather than sitting beside it: ARCHITECTURE.md § Error-Code
- * Catalogue.
+ * `methodNotAllowed()` gets its own block — the four 405 route sites
+ * build their response through it, so this pins the shape they emit,
+ * `Allow` included.
  */
 
 import { describe, it, expect } from 'vitest';
