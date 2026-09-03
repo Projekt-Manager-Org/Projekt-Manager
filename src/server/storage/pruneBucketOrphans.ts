@@ -47,8 +47,8 @@
  * `minAgeMinutes` is what makes it distinguishable: an object younger
  * than the cutoff is left alone. Objects whose `LastModified` the
  * provider omits are treated as unknown-age and skipped for the same
- * reason. #169 item B reorders both writers, after which the min-age
- * becomes belt-and-braces rather than load-bearing.
+ * reason. Reordering the two writers to row-before-PUT was weighed in
+ * #169 and dropped, so the min-age is load-bearing permanently.
  *
  * ## Why the empty-preserve refusal exists
  *

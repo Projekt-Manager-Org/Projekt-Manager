@@ -519,11 +519,12 @@ export interface InsertRenderedInvoiceBinaryFields {
  * nothing for it to match and the object leaks indefinitely. An earlier
  * version of this comment claimed the opposite — it was wrong.
  *
- * Cleanup today is `npm run storage:prune` (issue #169 item A), the
- * operator-run bucket/DB reconciliation. The real fix is to write a
- * `pending` row BEFORE the PUT and flip it to `ready` after, the way
- * `AttachmentService.initUpload` already does, which would bring this
- * path back under the reaper — tracked as issue #169 item B.
+ * Cleanup is the periodic bucket-orphan sweep (`pruneBucketOrphans`,
+ * issue #169): it diffs the bucket against this table and hides the
+ * difference within a day. Reordering to row-before-PUT — the way
+ * `AttachmentService.initUpload` does — was weighed in #169 and
+ * dropped: it only shortens an invisible object's life to ~20 minutes,
+ * and would restructure the issuance transaction to do it.
  *
  * Pinned fields:
  *   - `kind='binary'` / `label='rechnung'` — rendered invoice PDFs
