@@ -474,10 +474,6 @@ jobs:
       - name: API surface drift check — self-test
         run: bash scripts/__tests__/check-api-surface.test.sh
 
-      # AC-354's catalogue drift check is a unit test
-      # (src/server/__tests__/error-codes.test.ts), not a generator — see
-      # ARCHITECTURE.md § Error-Code Catalogue. It runs in the test job.
-
       # AC-351's API-surface-completeness clause rests on one ESLint
       # selector, which fails open: a typo or a widened `ignores:` leaves
       # `npm run lint` green while the document silently goes incomplete.

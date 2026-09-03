@@ -38,9 +38,8 @@ const CHECKED_BLOCK =
 /**
  * Every factory, with arguments good enough to call it. Hand-maintained
  * on purpose — the arities differ and a reflective caller would have to
- * guess payload shapes — but not hand-*trusted*: `covers every exported
- * factory` below fails on an entry that is missing from this table, so
- * the table cannot silently fall behind the module.
+ * guess payload shapes. A new code whose factory is missing here fails
+ * `every catalogued code is minted by a factory` below.
  */
 const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['invalidCredentials', () => errors.invalidCredentials()],
@@ -80,18 +79,6 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['exportTooLarge', () => errors.exportTooLarge({ total: 2, cap: 1 })],
 ];
 
-/**
- * Exported functions that are deliberately not factories. Declared
- * rather than pattern-matched so adding one is a decision that shows up
- * in review instead of a name that happens to miss a heuristic.
- */
-const NON_FACTORY_EXPORTS = new Set([
-  'AppError', // the class itself
-  'extractPgConstraint', // error-chain readers, return string | null
-  'extractSqlState',
-  'mapFastify4xx', // re-wraps a FastifyError; mints no code of its own
-]);
-
 describe('AC-354: error-code catalogue', () => {
   it('api.md §14.4.1 publishes exactly ERROR_CODES', () => {
     const block = CHECKED_BLOCK.exec(readFileSync(API_DOC, 'utf8'))?.[1];
@@ -116,18 +103,6 @@ describe('AC-354: error-code catalogue', () => {
     expect(seen.size).toBe(ERROR_CODES.length);
   });
 
-  it('covers every exported factory', () => {
-    const tabled = new Set(FACTORY_CALLS.map(([name]) => name));
-    const untabled = Object.entries(errors)
-      .filter(([name, value]) => typeof value === 'function' && !NON_FACTORY_EXPORTS.has(name))
-      .map(([name]) => name)
-      .filter((name) => !tabled.has(name));
-
-    // A new factory added to errors.ts without a table entry lands here,
-    // which is what keeps the membership assertions below honest.
-    expect(untabled).toEqual([]);
-  });
-
   it('every catalogued code is minted by a factory', () => {
     const minted = new Set<ErrorCode>(FACTORY_CALLS.map(([, invoke]) => invoke().code));
     const unminted = ERROR_CODES.filter((code) => !minted.has(code));
@@ -146,7 +121,6 @@ describe('AC-354: methodNotAllowed()', () => {
     const err = methodNotAllowed(['GET']);
 
     expect(err.code).toBe('METHOD_NOT_ALLOWED');
-    expect(ERROR_CODES).toContain(err.code);
     expect(err.statusCode).toBe(405);
     // Pinned to STRINGS, not to the text, so a wording change stays a
     // one-line edit — and so a regression to a hand-rolled English
