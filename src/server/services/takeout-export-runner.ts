@@ -22,7 +22,6 @@
  */
 
 import { rm } from 'node:fs/promises';
-import path from 'node:path';
 
 import type { Database } from '../db/connection.js';
 import type { AuthUser } from '../middleware/auth.js';
@@ -30,6 +29,7 @@ import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
 import { DataExchangeJobService } from './DataExchangeJobService.js';
 import { buildExportArchive } from './takeout-export-builder.js';
+import { stagedArtifactPath } from './takeout-staging.js';
 
 export interface RunExportBuildDeps {
   db: Database;
@@ -130,9 +130,10 @@ export async function runExportBuild(deps: RunExportBuildDeps): Promise<void> {
     // build left on disk. `archiveRef` is unset on a failed row, so the TTL
     // reaper (which sweeps ready rows by `archive_ref`) would never reclaim
     // it — without this the partial plaintext would persist past the TTL.
-    // The staged name is deterministic (`<jobId>.zip`).
+    // The name comes from `stagedArtifactPath` — the single source of the
+    // convention — not hand-built, so it cannot drift from the builder's.
     try {
-      await rm(path.join(deps.stagingDir, `${jobId}.zip`), { force: true });
+      await rm(stagedArtifactPath(deps.stagingDir, 'export', jobId), { force: true });
     } catch (rmErr) {
       logger.error(
         {

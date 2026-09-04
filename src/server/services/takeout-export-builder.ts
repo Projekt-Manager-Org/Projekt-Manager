@@ -49,6 +49,13 @@
  * point-in-time snapshot: a row that arrives after it is simply not in
  * this backup, which is the correct semantics.
  *
+ * The snapshot pins the ROW SET, not the bytes. `originalKey` is fetched
+ * live, so a row hidden or purged after the snapshot commits (hide writes
+ * a delete marker — its bytes become a noncurrent version) FAILS the build
+ * instead of being read from that version. Loud and re-runnable, which is
+ * the right trade for a backup; version-pinned reads are the fix if this
+ * ever becomes a real nuisance.
+ *
  * The manifest reflects what is IN the archive: `data.json` is the first
  * entry (no `attachmentId`), then each archived attachment (with
  * `attachmentId`); it excludes itself. `totalFiles === files.length`,
