@@ -67,7 +67,7 @@ Every criterion carries exactly one tier marker:
 - **AC-31** `[infra]`: A CI-built image can be promoted to the hosted environment via manual, pull-based deploy over VPN (see [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)).
 - **AC-45** `[crit]`: HTTPS is enforced by default. HTTP-only mode requires an explicit opt-in flag AND a non-production environment (neither alone is sufficient). When HTTP mode is active, the UI shows a non-dismissible warning banner on every page. Enabling the insecure flag in production causes the server to refuse to start. See [ADR-0013](../adr/0013-http-only-evaluation-mode.md).
 - **AC-46** `[infra]`: A failed deployment leaves the previously running version running.
-- **AC-47** `[infra]`: A previously deployed commit can be redeployed (rollback) by the operator over VPN. See [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md).
+- **AC-47** `[infra]`: A previously deployed commit can be redeployed (rollback) by the operator over VPN, within the retention window its image survives in — see [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md) and [ADR-0011 § Retention](../adr/0011-build-images-in-ci-distribute-via-ghcr.md). Beyond it, rollback is forward-only (revert + redeploy).
 - **AC-48** `[infra]`: After every deploy, an automated smoke test verifies the health endpoint. Failure aborts the deploy.
 - **AC-49** `[infra]`: The hosted environment is reachable only via VPN. See [ADR-0008](../adr/0008-vpn-first-network-access.md).
 - **AC-50** `[infra]`: Database and object storage data persist across container restarts and redeploys.

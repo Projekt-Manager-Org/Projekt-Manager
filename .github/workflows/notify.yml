@@ -60,6 +60,12 @@
 #   - `Cache cleanup` — housekeeping. A failure costs disk, not
 #     correctness, and produces no signal worth an issue.
 #
+#   `GHCR retention` is NOT in that class, though it looks like it. It
+#   fails closed, so a red run deleted nothing — but "nothing happened
+#   and nobody noticed" is exactly how #373 accumulated 442 versions
+#   against an intent that was recorded and never implemented. Silent
+#   non-execution is the failure mode being fixed, so it is monitored.
+#
 # SECURITY
 #   `workflow_run` is a PRIVILEGED trigger: it runs in base-repo
 #   context with a writable token regardless of what the triggering run
@@ -81,7 +87,7 @@ on:
     # the failure mode inverts to silence — it sat red ~3.5 weeks with
     # nothing to say so. `route='main'` already covers the `schedule`
     # event, and one-issue-per-incident below is what bounds the fatigue.
-    workflows: [CI, 'Security (scheduled)', E2E]
+    workflows: [CI, 'Security (scheduled)', E2E, 'GHCR retention']
     types: [completed]
 
 # An explicit block zeroes every scope not listed. `contents: read`
