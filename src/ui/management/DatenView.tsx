@@ -111,8 +111,6 @@ export function DatenView() {
     setImportFile(null);
   };
 
-  const exportSkipped = exportJob ? Math.max(0, exportJob.filesTotal - exportJob.filesDone) : 0;
-
   return (
     <div className={styles.container} data-testid="daten-view">
       <StorageUsageRow />
@@ -136,11 +134,6 @@ export function DatenView() {
               >
                 {STRINGS.dataExchange.exportDownloadAction}
               </a>
-              {exportSkipped > 0 && (
-                <span data-testid="export-job-skipped">
-                  {STRINGS.dataExchange.exportSummarySkipped(exportSkipped)}
-                </span>
-              )}
             </div>
           )}
           {!exportDialogOpen && exportJob?.status === 'failed' && (

@@ -468,7 +468,6 @@ export const STRINGS = {
     exportCancel: 'Abbrechen',
     exportSummaryTitle: 'Export abgeschlossen',
     exportSummaryFile: (name: string) => `Datei: ${name}`,
-    exportSummarySkipped: (n: number) => `${n} Dateien übersprungen`,
     exportSummaryClose: 'Schließen',
     exportError: 'Export fehlgeschlagen.',
 
@@ -498,7 +497,6 @@ export const STRINGS = {
     importCancel: 'Abbrechen',
     importSummaryTitle: 'Import abgeschlossen',
     importSummaryCommitted: (n: number) => `${n} Anhänge wiederhergestellt`,
-    importSummarySkipped: (n: number) => `${n} Anhänge übersprungen`,
     importSummaryClose: 'Schließen',
     importError: 'Import fehlgeschlagen.',
     importValidationFailed: 'ZIP-Datei ungültig oder unvollständig.',

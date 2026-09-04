@@ -259,7 +259,6 @@ export interface SummaryViewProps {
 
 export function SummaryView(props: SummaryViewProps) {
   const { job, dialogRef, initialFocusRef, onClose } = props;
-  const skipped = Math.max(0, job.filesTotal - job.filesDone);
   return (
     <DialogShell
       dialogRef={dialogRef}
@@ -268,16 +267,9 @@ export function SummaryView(props: SummaryViewProps) {
       bodyId="import-job-summary-body"
       title={STRINGS.dataExchange.importSummaryTitle}
       body={
-        <>
-          <div className={styles.readoutLine} data-testid="import-job-restored">
-            {STRINGS.dataExchange.importSummaryCommitted(job.filesDone)}
-          </div>
-          {skipped > 0 && (
-            <div className={styles.skippedLine} data-testid="import-job-skipped">
-              {STRINGS.dataExchange.importSummarySkipped(skipped)}
-            </div>
-          )}
-        </>
+        <div className={styles.readoutLine} data-testid="import-job-restored">
+          {STRINGS.dataExchange.importSummaryCommitted(job.filesDone)}
+        </div>
       }
       actions={
         <button

@@ -136,17 +136,6 @@ describe('VollstaendigerExportDialog — ready + failed (AC-335)', () => {
     expect(dl).toHaveAttribute('download');
   });
 
-  it('surfaces a skipped-file count on ready when the build skipped rows', () => {
-    useExportJobStore.setState({ job: makeJob({ status: 'running' }) });
-    render(<VollstaendigerExportDialog onClose={vi.fn()} />);
-    act(() => {
-      useExportJobStore.setState({
-        job: makeJob({ id: 'job-1', status: 'ready', filesTotal: 5, filesDone: 4 }),
-      });
-    });
-    expect(screen.getByTestId('export-job-skipped')).toBeInTheDocument();
-  });
-
   it('renders the job error_detail on a failed build', () => {
     useExportJobStore.setState({ job: makeJob({ status: 'running' }) });
     render(<VollstaendigerExportDialog onClose={vi.fn()} />);

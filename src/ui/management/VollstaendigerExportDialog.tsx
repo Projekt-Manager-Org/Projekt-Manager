@@ -7,7 +7,7 @@
  *   - preflight — start action + mobile-warning. Shown on a fresh open (the
  *     Export button) until Start is clicked and the job row arrives.
  *   - progress  — files/bytes/current-item readout while the build runs.
- *   - ready     — Range-capable download link (+ skipped count).
+ *   - ready     — Range-capable download link.
  *   - failed    — the job's error_detail.
  *
  * `tracking` distinguishes a fresh open (Export button → preflight, even if a

@@ -1,6 +1,6 @@
 /**
  * API integration tests — export-job ARCHIVE layout, manifest, and
- * per-row resilience (TDD red).
+ * completeness.
  *
  * Drives a server-side full-account EXPORT job (api.md §14.2.4 "Export
  * job — archive layout + manifest" / "build and lifecycle") to `ready`,
@@ -17,10 +17,16 @@
  *     totalBytes === sum(sizeBytes), every files[i].sha256 === SHA-256 of
  *     the bytes at its zipPath, and the attachment plaintext byte-equals
  *     what was uploaded.
- *   - AC-325 / AT-139 — an attachment whose wrapped DEK is corrupt
- *     (unwrap fails) is SKIPPED: the build still reaches `ready`,
- *     filesDone reflects the skip, the manifest omits the bad row, and
- *     the surviving rows land in the archive.
+ *   - AC-325 / AT-139 — export completeness, two arms:
+ *     (a) an attachment whose wrapped DEK is corrupt (unwrap fails) FAILS
+ *         the job: `error_detail` names the row, the download 409s, and no
+ *         archive is served. Removing the bad row and re-running yields a
+ *         `ready` archive whose envelope↔manifest parity holds.
+ *     (b) a row that becomes `ready` AFTER the envelope snapshot but
+ *         before the archive is built is excluded from BOTH — the export
+ *         is a consistent point-in-time snapshot, not two disagreeing
+ *         reads. Arm (b) drives `buildExportArchive` directly because the
+ *         window cannot be won deterministically through HTTP.
  *
  * SEEDING REAL CIPHERTEXT: the build unwraps each row's `wrappedDek`
  * against the per-fork binary `age` identity, fetches the ciphertext from
@@ -39,12 +45,6 @@
  * helper seeds the row WITHOUT real backing bytes — it would never
  * decrypt). Raw-SQL attachment seeding is allowlisted under __tests__/
  * per the AC-179 architecture check.
- *
- * RED-STATE EXPECTATION: `/api/export-jobs*` is not registered and no
- * runner exists, so `POST` 404s at the not-found handler and the poll
- * helper times out; every arm fails before the unzip. The assertions
- * encode the FINAL intended archive contract so they go green once the
- * feature lands.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -52,13 +52,21 @@ import { sql } from 'drizzle-orm';
 import { unzipSync } from 'fflate';
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 
 import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
-import { createStorageClient, type StorageClient } from '../storage/client.js';
+import {
+  createStorageClient,
+  type StorageClient,
+  type AttachmentStorageClient,
+} from '../storage/client.js';
 import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
+import { buildExportArchive } from '../services/takeout-export-builder.js';
+import type { ServiceLogger } from '../services/Logger.js';
 import { getEnv } from '../config/env.js';
+import type { AuthUser } from '../middleware/auth.js';
 
 // ---------------------------------------------------------------------
 // Job row wire shape — the subset this file reads (camelCase, §5.18).
@@ -70,6 +78,7 @@ interface ExportJobRow {
   filesDone: number;
   bytesTotal: number;
   bytesDone: number;
+  errorDetail: string | null;
 }
 
 // ---------------------------------------------------------------------
@@ -137,12 +146,32 @@ function sha256Hex(bytes: Buffer): string {
   return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
-describe('Export-job archive — layout, manifest, per-row resilience', () => {
+/**
+ * The invariant the import job enforces before the wipe
+ * (`takeout-import-runner` → `validateArchive`): the envelope's
+ * `attachments[]` ids and the manifest's attachment entries must cover
+ * exactly the same set, both directions. An archive failing this is
+ * unrestorable — asserted here so the export side owns the failure.
+ */
+function assertEnvelopeManifestParity(entries: Map<string, Buffer>, manifest: Manifest): void {
+  const envelope = JSON.parse(entries.get('data.json')!.toString('utf-8')) as {
+    attachments: { id: string }[];
+  };
+  const envelopeIds = [...envelope.attachments.map((a) => a.id)].sort();
+  const manifestIds = manifest.files
+    .filter((f) => f.attachmentId)
+    .map((f) => f.attachmentId!)
+    .sort();
+  expect(manifestIds).toEqual(envelopeIds);
+}
+
+describe('Export-job archive — layout, manifest, completeness', () => {
   let db: Database;
   let pool: import('pg').Pool;
   let storage: StorageClient;
   let identity: string;
   let recipient: string;
+  let caller: AuthUser;
   let ownerToken: string;
   let projectId: string;
   let projectNumber: string;
@@ -224,6 +253,23 @@ describe('Export-job archive — layout, manifest, per-row resilience', () => {
     identity = readFileSync(identityPath, 'utf-8').trim();
 
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+
+    // Unscoped caller for the direct `buildExportArchive` arm (the
+    // snapshot-race test) — threaded to ExportService's scope tripwire.
+    const ownerRow = (
+      await db.execute(
+        sql`SELECT id, display_name FROM users WHERE username = ${SEED_USERS.owner.username}`,
+      )
+    ).rows[0] as { id: string; display_name: string };
+    caller = {
+      id: ownerRow.id,
+      username: SEED_USERS.owner.username,
+      displayName: ownerRow.display_name,
+      roles: ['owner'],
+      email: null,
+      themePreference: 'system',
+      pushMuted: false,
+    };
 
     // Pin a concrete project to seed attachments against — its
     // (number, title) drives the archive's `attachments/<number>-<title>/`
@@ -353,10 +399,18 @@ describe('Export-job archive — layout, manifest, per-row resilience', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-325 / AT-139 — one bad row is skipped; the build still completes.
+  // AC-325 / AT-139 — one bad row FAILS the job; no partial archive.
+  //
+  // This arm crosses the diagonal the old coverage matrix left empty:
+  // "≥1 unreadable row" × "the archive is importable". Under the previous
+  // contract the build skipped the row and reached `ready`, but the
+  // envelope — serialized before any decryption is attempted — still
+  // listed it, so the importer's parity check rejected the archive at
+  // restore time. The operator learned their backup was worthless only
+  // when they needed it.
   // -------------------------------------------------------------------
-  describe('AC-325: per-row resilience (corrupt DEK is skipped)', () => {
-    it('skips the corrupt-DEK row, still reaches ready, and excludes it from the manifest', async () => {
+  describe('AC-325: export completeness (a corrupt DEK fails the job)', () => {
+    it('fails the job naming the bad row, serves no archive, and exports cleanly once it is gone', async () => {
       const goodPlain = crypto.randomBytes(512);
       const good = await seedReadyAttachment({ plaintext: goodPlain, fileName: 'good.pdf' });
       const bad = await seedReadyAttachment({
@@ -365,36 +419,121 @@ describe('Export-job archive — layout, manifest, per-row resilience', () => {
         corruptDek: true,
       });
 
+      const created = await authPost(ownerToken, '/api/export-jobs');
+      expect(created.statusCode).toBe(201);
+      const failed = await pollUntilTerminal(ownerToken, (created.json() as ExportJobRow).id);
+
+      // No partial artifact is labelled success.
+      expect(failed.status).toBe('failed');
+      // `error_detail` names the offending row so the operator can act on
+      // it without reading server logs.
+      expect(failed.errorDetail ?? '').toContain(bad.id);
+
+      // Nothing is downloadable from a failed job (AC-324).
+      const dl = await authGet(ownerToken, `/api/export-jobs/${failed.id}/download`);
+      expect(dl.statusCode).toBe(409);
+
+      // Remove the unreadable row; the export now succeeds and covers the
+      // full remaining set.
+      await db.execute(sql`DELETE FROM attachments WHERE id = ${bad.id}`);
       const { entries, manifest, job } = await buildAndUnzip(ownerToken);
 
-      // The build reached `ready` despite the bad row (buildAndUnzip
-      // already asserts status === 'ready').
       expect(job.status).toBe('ready');
+      expect(job.filesTotal).toBe(1);
+      expect(job.filesDone).toBe(1);
+      expect(job.bytesTotal).toBe(512);
+      expect(job.bytesDone).toBe(512);
 
-      // The good attachment is present and byte-equal; the bad one is
-      // absent from BOTH the archive entries and the manifest.
       const goodEntry = [...entries.keys()].find((k) => k.endsWith(`${good.id}-good.pdf`));
       expect(goodEntry, 'good attachment missing from archive').toBeDefined();
       expect(Buffer.compare(entries.get(goodEntry!)!, goodPlain)).toBe(0);
 
-      const badEntry = [...entries.keys()].find((k) => k.includes(bad.id));
-      expect(badEntry, 'corrupt-DEK attachment should not be in the archive').toBeUndefined();
+      assertEnvelopeManifestParity(entries, manifest);
+    });
 
-      expect(manifest.files.some((f) => f.attachmentId === good.id)).toBe(true);
-      expect(manifest.files.some((f) => f.attachmentId === bad.id)).toBe(false);
+    it('a healthy build satisfies envelope↔manifest parity for every ready row', async () => {
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(128), fileName: 'a.pdf' });
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(256), fileName: 'b.pdf' });
 
-      // filesDone "reflects the skip" (AC-325): of the 2 ready attachments
-      // (filesTotal), exactly the 1 good one was streamed — the bad row was
-      // attempted then skipped, not counted as done. data.json / manifest.json
-      // are archive entries, not attachment "files" for this counter.
+      const { entries, manifest, job } = await buildAndUnzip(ownerToken);
+
       expect(job.filesTotal).toBe(2);
-      expect(job.filesDone).toBe(1);
+      expect(job.filesDone).toBe(2);
+      assertEnvelopeManifestParity(entries, manifest);
+    });
 
-      // bytesTotal is the denominator (Σ of BOTH ready rows' plaintext size,
-      // skip included); bytesDone counts only the archived good row. Both
-      // seeds are 512 bytes (data-model.md §5.18, ui/daten.md §8.11).
-      expect(job.bytesTotal).toBe(1024);
-      expect(job.bytesDone).toBe(512);
+    // -----------------------------------------------------------------
+    // The envelope is read inside a `repeatable read read only` snapshot
+    // that COMMITS before the archive is built. A build that re-derived
+    // its own `status='ready'` set afterwards would pick up anything that
+    // landed in between — producing a `ready` archive whose manifest
+    // carries a row the envelope lacks, which the importer rejects
+    // pre-wipe, with healthy-looking counters and no bad row anywhere.
+    //
+    // Deriving the archive set FROM the envelope makes that impossible.
+    // The window is opened deterministically by proxying `db.transaction`
+    // to land a ready row the instant the snapshot closes; it cannot be
+    // won reliably through the HTTP surface, hence the direct call.
+    // -----------------------------------------------------------------
+    it('excludes a row that turns ready after the envelope snapshot from BOTH envelope and manifest', async () => {
+      const original = await seedReadyAttachment({
+        plaintext: crypto.randomBytes(256),
+        fileName: 'already-there.pdf',
+      });
+      let racedId = '';
+
+      const racingDb = new Proxy(db, {
+        get(target, prop, receiver) {
+          if (prop === 'transaction') {
+            return async (...args: unknown[]) => {
+              const result = await (
+                target.transaction as unknown as (...a: unknown[]) => Promise<unknown>
+              )(...args);
+              // Envelope snapshot has committed — another user's upload
+              // completes right now.
+              racedId = (
+                await seedReadyAttachment({
+                  plaintext: crypto.randomBytes(256),
+                  fileName: 'landed-mid-build.pdf',
+                })
+              ).id;
+              return result;
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      }) as Database;
+
+      const result = await buildExportArchive({
+        db: racingDb,
+        storage: storage as AttachmentStorageClient,
+        logger: { info: () => {}, error: () => {} } as unknown as ServiceLogger,
+        caller,
+        binaryAgeRecipient: recipient,
+        binaryAgeIdentityPath: process.env.BINARY_AGE_IDENTITY_PATH!,
+        stagingDir: getEnv().TAKEOUT_STAGING_DIR,
+        jobId: crypto.randomUUID(),
+        onProgress: async () => {},
+      });
+
+      expect(racedId, 'the race window never opened — the proxy did not fire').not.toBe('');
+      // The build covers the snapshot, not the moving present.
+      expect(result.filesTotal).toBe(1);
+      expect(result.filesDone).toBe(1);
+
+      const decoded = unzipSync(new Uint8Array(await readFile(result.archiveRef)));
+      const entries = new Map<string, Buffer>();
+      for (const [name, bytes] of Object.entries(decoded)) entries.set(name, Buffer.from(bytes));
+      const manifest = JSON.parse(entries.get('manifest.json')!.toString('utf-8')) as Manifest;
+
+      // Parity holds, and the raced row is in NEITHER — a consistent
+      // point-in-time snapshot. It belongs to the next export.
+      assertEnvelopeManifestParity(entries, manifest);
+      const envelope = JSON.parse(entries.get('data.json')!.toString('utf-8')) as {
+        attachments: { id: string }[];
+      };
+      expect(envelope.attachments.map((a) => a.id)).toEqual([original.id]);
+      expect(manifest.files.some((f) => f.attachmentId === racedId)).toBe(false);
     });
   });
 });

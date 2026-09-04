@@ -26,15 +26,34 @@
  * attachment is buffered and its GCM tag VERIFIED (`final()`) before the
  * plaintext enters the archive — only authentic bytes are ever written
  * (authenticated-before-release; GCM cannot authenticate a partial stream).
- * A per-row failure (unwrap / fetch / decrypt throws) is logged and the row
- * is SKIPPED — excluded from both the archive and the manifest — and the
- * build still reaches `ready` (AC-325). One bad row never aborts the job.
+ * A per-row failure (unwrap / fetch / decrypt throws) FAILS THE JOB
+ * (AC-325): an archive missing a row is a worthless backup, and shipping
+ * it as `ready` hands the operator a restore that cannot work. No partial
+ * artifact is ever labelled success — the operator re-runs the export.
+ *
+ * THE ENVELOPE IS THE SINGLE SOURCE OF TRUTH for what the archive
+ * contains. The build iterates `envelope.attachments` and looks up only
+ * the columns the envelope deliberately withholds (`originalKey`,
+ * `wrappedDek` — AC-220 / ADR-0024), keyed by the envelope's own ids;
+ * archive paths come from the envelope's `projects` + `fileName`. There
+ * is no second `WHERE status='ready'` query, so envelope↔manifest parity
+ * — the invariant the importer enforces before the wipe — holds by
+ * CONSTRUCTION rather than by agreement between two reads.
+ *
+ * That matters because the envelope is read inside a `repeatable read
+ * read only` snapshot that commits before the build starts. A second,
+ * later read would see a different set: an upload completing mid-build
+ * would land in the archive but not the envelope, producing a `ready`
+ * archive the importer rejects — with healthy-looking counters and no
+ * bad row anywhere. Deriving from the envelope makes the export a clean
+ * point-in-time snapshot: a row that arrives after it is simply not in
+ * this backup, which is the correct semantics.
  *
  * The manifest reflects what is IN the archive: `data.json` is the first
- * entry (no `attachmentId`), then each successfully-archived attachment
- * (with `attachmentId`); it excludes itself. `totalFiles ===
- * files.length`, `totalBytes === Σ sizeBytes`, and every `sha256` is the
- * hex SHA-256 of that entry's exact bytes.
+ * entry (no `attachmentId`), then each archived attachment (with
+ * `attachmentId`); it excludes itself. `totalFiles === files.length`,
+ * `totalBytes === Σ sizeBytes`, and every `sha256` is the hex SHA-256 of
+ * that entry's exact bytes.
  *
  * Plaintext stages only inside the trust radius (the VPS-local
  * `TAKEOUT_STAGING_DIR`, dir 0700 / file 0600 so the plaintext superset —
@@ -49,10 +68,10 @@ import { createWriteStream } from 'node:fs';
 import { chmod, mkdir } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { ZipArchive } from 'archiver';
-import { asc, eq } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
-import { attachments, projects } from '../db/schema.js';
+import { attachments } from '../db/schema.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
 import { ExportService } from './ExportService.js';
@@ -132,25 +151,24 @@ export interface BuildExportArchiveDeps {
 export interface BuildExportArchiveResult {
   /** Absolute path of the staged zip — recorded as `archiveRef` on markReady. */
   archiveRef: string;
-  /** Count of `ready` attachments considered (excludes data.json / manifest.json). */
+  /** Count of `ready` attachments archived (excludes data.json / manifest.json). */
   filesTotal: number;
-  /** Count successfully archived (excludes skipped rows). */
+  /** Count archived so far — equals `filesTotal` on a successful build. */
   filesDone: number;
-  /** Summed plaintext size of all `ready` attachments attempted (the denominator). */
+  /** Summed plaintext size of all `ready` attachments (the denominator). */
   bytesTotal: number;
-  /** Summed plaintext bytes of the archived attachments. */
+  /** Summed plaintext bytes archived — equals `bytesTotal` on success. */
   bytesDone: number;
 }
 
-/** A `ready` attachment plus the owning project's number/title for the path. */
-interface ReadyAttachmentRow {
-  id: string;
+/**
+ * The per-row crypto + storage columns the envelope deliberately omits
+ * (AC-220 / ADR-0024). Everything else the build needs — path components,
+ * plaintext size — comes from the envelope itself.
+ */
+interface AttachmentKeys {
   originalKey: string;
-  filename: string;
-  sizeBytes: number;
   wrappedDek: string | null;
-  projectNumber: string;
-  projectTitle: string;
 }
 
 /** Throttle window for progress emissions — one frame per second at most. */
@@ -158,10 +176,9 @@ const PROGRESS_THROTTLE_MS = 1000;
 
 /**
  * Build the staged export archive and return its location + counters.
- * Throws only on a WHOLESALE failure (envelope read, disk write,
- * archive finalize) — the caller maps that to `failed` and unlinks the
- * partial staged file. Per-row attachment failures are absorbed (logged
- * + skipped) and never throw.
+ * Throws on ANY failure — wholesale (envelope read, disk write, archive
+ * finalize) or per-row (a single attachment that will not decrypt). The
+ * caller maps that to `failed` and unlinks the partial staged file.
  */
 export async function buildExportArchive(
   deps: BuildExportArchiveDeps,
@@ -175,15 +192,21 @@ export async function buildExportArchive(
   const envelope = await new ExportService(deps.db).export(deps.caller);
   const dataJsonBytes = Buffer.from(JSON.stringify(envelope), 'utf-8');
 
-  // 2. Enumerate every `status='ready'` attachment with its project's
-  //    (number, title) — the path is `attachments/<nummer>-<titel>/…`.
-  //    Ordered by attachment id for a deterministic archive layout.
-  const readyRows = await loadReadyAttachments(deps.db);
-  const filesTotal = readyRows.length;
+  // 2. The archive set IS the envelope's attachment set. Look up only the
+  //    withheld crypto/storage columns, keyed by the envelope's ids, and
+  //    index the envelope's projects for the `<nummer>-<titel>` path
+  //    segment. ExportService already orders attachments by id, so the
+  //    archive layout stays deterministic without a second sort.
+  const keysById = await loadAttachmentKeys(
+    deps.db,
+    envelope.attachments.map((a) => a.id),
+  );
+  const projectById = new Map(envelope.projects.map((p) => [p.id, p]));
+  const filesTotal = envelope.attachments.length;
   // bytesTotal is the live readout's denominator (data-model.md §5.18,
-  // ui/daten.md §8.11): the summed plaintext size of every ready row we
-  // will attempt, known up front from the row metadata.
-  const bytesTotal = readyRows.reduce((sum, r) => sum + r.sizeBytes, 0);
+  // ui/daten.md §8.11): the summed plaintext size of every row in the
+  // envelope, known up front from its metadata.
+  const bytesTotal = envelope.attachments.reduce((sum, a) => sum + a.sizeBytes, 0);
 
   // 3. Open the staged zip and stream entries into it AS THEY ARE BUILT.
   //    Dir 0700 / file 0600 keep the staged plaintext off other UIDs on
@@ -254,33 +277,54 @@ export async function buildExportArchive(
       sha256: sha256Hex(dataJsonBytes),
     });
 
-    for (const row of readyRows) {
+    for (const att of envelope.attachments) {
+      // A row present in the envelope snapshot but gone by the time the
+      // keys are read (hard-deleted mid-build) cannot be archived, and an
+      // archive missing an envelope row is unrestorable — fail, naming it.
+      const keys = keysById.get(att.id);
+      if (!keys) {
+        throw new Error(`attachment ${att.id} vanished between the snapshot and the build`);
+      }
+      const project = projectById.get(att.projectId);
+      if (!project) {
+        throw new Error(`attachment ${att.id} references project ${att.projectId} not in envelope`);
+      }
+
       // Buffer ONE attachment and GCM-verify it before it enters the
       // archive. The await on the storage fetch paces the loop: the local
       // disk write of the previous entry drains while the next is fetched,
       // so the archiver queue stays shallow (bounded memory).
-      const plaintext = await decryptAttachment(row, deps.storage, envelopeService, deps.logger);
-      if (plaintext === null) {
-        // Per-row failure already logged in decryptAttachment — skip the
-        // row (absent from archive AND manifest) and keep building.
-        await emitProgress(row.filename, false);
-        continue;
-      }
+      const plaintext = await decryptAttachment(
+        att.id,
+        keys,
+        deps.storage,
+        envelopeService,
+        deps.logger,
+      );
 
-      const dirSegment = sanitisePathSegment(`${row.projectNumber}-${row.projectTitle}`);
-      const fileSegment = sanitisePathSegment(`${row.id}-${row.filename}`);
+      const dirSegment = sanitisePathSegment(`${project.number}-${project.title}`);
+      const fileSegment = sanitisePathSegment(`${att.id}-${att.fileName}`);
       const zipPath = `attachments/${dirSegment}/${fileSegment}`;
       await appendEntry(plaintext, zipPath);
       manifestFiles.push({
         zipPath,
         sizeBytes: plaintext.length,
         sha256: sha256Hex(plaintext),
-        attachmentId: row.id,
+        attachmentId: att.id,
       });
 
       filesDone += 1;
       bytesDone += plaintext.length;
-      await emitProgress(row.filename, false);
+      await emitProgress(att.fileName, false);
+    }
+
+    // Envelope↔manifest coverage — the invariant the importer enforces
+    // before the wipe. Structural (the loop pushes exactly one entry per
+    // envelope attachment, and ids are unique), so a count match implies
+    // set equality; kept as a one-line tripwire against a future edit
+    // that reintroduces a second source for the archive set.
+    if (filesDone !== filesTotal) {
+      throw new Error(`archived ${filesDone} of ${filesTotal} envelope attachments`);
     }
 
     // manifest.json is appended LAST and is NOT in `manifestFiles` (it
@@ -314,58 +358,63 @@ export async function buildExportArchive(
 }
 
 /**
- * Load every `status='ready'` attachment joined to its project's number
- * and title, ordered by attachment id (deterministic archive layout).
+ * Load the withheld crypto/storage columns for exactly the envelope's
+ * attachment ids. No status filter and no project join: the envelope
+ * already settled WHICH rows travel (`status='ready'` inside its own
+ * snapshot, AC-220), so re-deriving that set here is what let the two
+ * reads disagree. An id with no row is caught by the caller.
  */
-async function loadReadyAttachments(db: Database): Promise<ReadyAttachmentRow[]> {
+async function loadAttachmentKeys(
+  db: Database,
+  ids: string[],
+): Promise<Map<string, AttachmentKeys>> {
+  if (ids.length === 0) return new Map();
   const rows = await db
     .select({
       id: attachments.id,
       originalKey: attachments.originalKey,
-      filename: attachments.filename,
-      sizeBytes: attachments.sizeBytes,
       wrappedDek: attachments.wrappedDek,
-      projectNumber: projects.number,
-      projectTitle: projects.title,
     })
     .from(attachments)
-    .innerJoin(projects, eq(attachments.projectId, projects.id))
-    .where(eq(attachments.status, 'ready'))
-    .orderBy(asc(attachments.id));
-  return rows;
+    .where(inArray(attachments.id, ids));
+  return new Map(rows.map((r) => [r.id, { originalKey: r.originalKey, wrappedDek: r.wrappedDek }]));
 }
 
 /**
- * Decrypt one ready attachment to plaintext, or return `null` on any
- * per-row fault (missing wrapped DEK, unwrap failure, storage fetch
- * failure, AES-256-GCM verify failure). The null path is logged on the
- * error channel and the caller skips the row (AC-325).
+ * Decrypt one attachment to plaintext. Any per-row fault (missing wrapped
+ * DEK, unwrap failure, storage fetch failure, AES-256-GCM verify failure)
+ * is logged and RETHROWN naming the row — it fails the whole build
+ * (AC-325). A backup that silently omits a file is not a backup.
+ *
+ * Transient storage faults are already retried inside the S3 client (SDK
+ * default: 3 attempts, standard mode with backoff), so reaching this
+ * catch on a fetch means the object is genuinely unreachable.
  */
 async function decryptAttachment(
-  row: ReadyAttachmentRow,
+  attachmentId: string,
+  keys: AttachmentKeys,
   storage: AttachmentStorageClient,
   envelopeService: KeyEnvelopeService,
   logger: ServiceLogger,
-): Promise<Buffer | null> {
+): Promise<Buffer> {
   try {
-    if (!row.wrappedDek) {
+    if (!keys.wrappedDek) {
       throw new Error('wrapped_dek missing on ready row');
     }
-    const dek = await envelopeService.unwrap(Buffer.from(row.wrappedDek, 'base64'));
-    const { data } = await storage.download(row.originalKey);
+    const dek = await envelopeService.unwrap(Buffer.from(keys.wrappedDek, 'base64'));
+    const { data } = await storage.download(keys.originalKey);
     const ciphertext = data instanceof Buffer ? data : Buffer.from(data);
     const plaintext = decryptInvoicePayload(ciphertext, dek);
     return Buffer.from(plaintext);
   } catch (err) {
+    const hint = err instanceof Error ? err.message : String(err);
     logger.error(
-      {
-        event: 'takeout-export-row-skipped',
-        attachment_id: row.id,
-        error_hint: err instanceof Error ? err.message : String(err),
-      },
-      'takeout-export-row-skipped',
+      { event: 'takeout-export-row-failed', attachment_id: attachmentId, error_hint: hint },
+      'takeout-export-row-failed',
     );
-    return null;
+    // The id rides `error_detail` on the failed job so the operator can
+    // find the offending row without digging through logs.
+    throw new Error(`attachment ${attachmentId} could not be read: ${hint}`, { cause: err });
   }
 }
 
