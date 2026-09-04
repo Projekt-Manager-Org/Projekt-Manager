@@ -26,9 +26,7 @@ on:
 # repository-scoped, so the workflow that publishes them holds admin on
 # them and GITHUB_TOKEN needs no PAT standing in for it. PROVEN, not
 # assumed — run 33881546101 (2026-09-04) deleted 808 versions across
-# both packages, 0 failures. `actions/delete-package-versions`' README
-# says org-owned packages need a classic PAT; that does not hold for a
-# repository-scoped package deleted by its own repo's workflow.
+# both packages, 0 failures.
 # `pull-requests: read` backs the open-PR rule.
 permissions:
   contents: read
@@ -36,9 +34,8 @@ permissions:
   pull-requests: read
 
 # The first run deleted 808 versions at one per second (~18 min). Never
-# cancel one —
-# the job is idempotent, so an interrupted run is harmless, but two runs
-# racing the same delete list produce 404s for no benefit.
+# cancel one — the job is idempotent, so an interrupted run is harmless,
+# but two runs racing the same delete list produce 404s for no benefit.
 concurrency:
   group: ghcr-retention
   cancel-in-progress: false
