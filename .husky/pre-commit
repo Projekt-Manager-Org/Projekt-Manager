@@ -1,8 +1,14 @@
-# --concurrent false: two lint-staged entries write docs/spec/api.md —
-# the permissions generator and `**/*.md` → `prettier --write`.
-# lint-staged defaults to running every glob's commands at once, so a
-# commit that stages both src/config/permissions.ts and api.md races
-# them on one file and commits whichever write landed last. CI catches
-# the stale block, but as a confusing red build rather than a clean
-# commit.
+# --concurrent false: the lint-staged globs overlap by design and three
+# entries write files another entry also writes. lint-staged defaults to
+# running every glob's commands at once, which races them on one file and
+# commits whichever write landed last. Serial execution runs them in the
+# order package.json declares, which is the order they need:
+#
+#   1. eslint --fix   (src TS — may rewrap code)
+#   2. prettier       (everything — must be last so it formats 1's output)
+#   3. permissions generator → docs/spec/api.md (emits Prettier-formatted
+#      bytes itself, so it is safe after 2)
+#
+# CI catches a bad interleaving, but as a confusing red build rather than a
+# clean commit.
 npx lint-staged --concurrent false
