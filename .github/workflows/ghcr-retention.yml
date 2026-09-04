@@ -63,8 +63,4 @@ jobs:
           # this is the only scheduled job in the repo that deletes
           # anything, so arming it is an explicit act.
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
-          # Commits to pin beyond the rollback window — set this when the
-          # VPS is running something older than the newest KEEP_MAIN
-          # commits on main. Unset is the normal state.
-          KEEP_EXTRA: ${{ vars.GHCR_KEEP_EXTRA }}
         run: bash scripts/ci/ghcr-retention.sh
