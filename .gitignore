@@ -40,7 +40,10 @@ e2e/.auth/
 docs/wip/
 
 # Server-side runtime data (dev-generated VAPID key, etc.) — never committed.
-data/
+# Repo-root only: unanchored, this also swallowed src/server/data/, hiding a
+# tracked source file from every tool that honours .gitignore — Prettier since
+# it is a default --ignore-path, so format:check silently skipped it.
+/data/
 
 # Scratch screenshots (Playwright MCP saves to repo root by default).
 # Repo-root only — keeps any deliberate `assets/*.png` etc. unaffected.
