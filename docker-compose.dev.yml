@@ -26,7 +26,7 @@ services:
     # to unblock local `up` without weakening the prod gate.
     build: .
     ports:
-      - "${PORT:-3000}:3000"
+      - '${PORT:-3000}:3000'
     # Profile-gated off the default dev workflow. Local dev runs the
     # app via `npm run dev` on the host (HMR, faster reload, no image
     # rebuild per change), so a containerised app would be a duplicate
@@ -72,7 +72,7 @@ services:
 
   db:
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       # Long-form bind with `create_host_path: false`. The default
       # daemon behaviour is to silently materialise a missing bind-mount
@@ -96,7 +96,7 @@ services:
     # since both dev and CI smoke want it published). The console is a
     # developer convenience, not a CI need.
     ports:
-      - "9001:9001"
+      - '9001:9001'
 
   caddy:
     # Caddy requires CLOUDFLARE_API_TOKEN for DNS-01 TLS — not available

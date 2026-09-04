@@ -112,9 +112,7 @@ test('AC-112 [vis]: system mode tracks OS color-scheme change without reload', a
   page.on('framenavigated', onNav);
 
   // Start light: data-theme attribute should be absent or non-'dark'.
-  const lightAttr = await page.evaluate(() =>
-    document.documentElement.getAttribute('data-theme'),
-  );
+  const lightAttr = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
   expect(lightAttr).not.toBe('dark');
 
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -130,9 +128,7 @@ test('AC-112 [vis]: system mode tracks OS color-scheme change without reload', a
     // fall through — assertion below gives a descriptive message
   }
 
-  const darkAttr = await page.evaluate(() =>
-    document.documentElement.getAttribute('data-theme'),
-  );
+  const darkAttr = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
   page.off('framenavigated', onNav);
 
   expect(

@@ -40,12 +40,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as prettier from 'prettier';
-import {
-  LANDING_ORDER,
-  ROUTES,
-  type RouteAccess,
-  type RouteEntry,
-} from '../src/config/routes.js';
+import { LANDING_ORDER, ROUTES, type RouteAccess, type RouteEntry } from '../src/config/routes.js';
 import { ROLE_KEYS } from '../src/config/roleKeys.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -61,9 +56,7 @@ const END_MARKER = '<!-- GENERATED:nav-matrix:END -->';
 
 /** The rule, as the spec should read it. */
 function renderRule(access: RouteAccess): string {
-  return access.kind === 'role'
-    ? `Role: ${access.roles.join(', ')}`
-    : `\`${access.permission}\``;
+  return access.kind === 'role' ? `Role: ${access.roles.join(', ')}` : `\`${access.permission}\``;
 }
 
 /** The rule's outcome over the production role set. */
@@ -89,9 +82,9 @@ function renderLanding(entry: RouteEntry): string {
  * that made `RouteAccess` data instead of a closure.
  */
 function renderLandingOrder(): string {
-  const rules = LANDING_ORDER.map(
-    (entry) => `${entry.roles.join(' / ')} → \`${entry.view}\``,
-  ).join('; ');
+  const rules = LANDING_ORDER.map((entry) => `${entry.roles.join(' / ')} → \`${entry.view}\``).join(
+    '; ',
+  );
   return (
     `**Landing is first-match over this order:** ${rules}. ` +
     `A caller holding several roles takes the first rule that matches, ` +

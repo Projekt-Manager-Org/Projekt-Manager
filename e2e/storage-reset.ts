@@ -22,11 +22,7 @@
  * dev bucket cannot wipe the operator's working data.
  */
 
-import {
-  S3Client,
-  ListObjectsV2Command,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const DEV_BUCKET_NAME = 'projekt-manager';
 

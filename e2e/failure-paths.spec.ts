@@ -27,9 +27,7 @@ test.describe('E2E failure paths', () => {
     await expect(page.getByTestId('kanban-board')).toBeVisible();
   });
 
-  test('network error during transition shows error banner and reverts state', async ({
-    page,
-  }) => {
+  test('network error during transition shows error banner and reverts state', async ({ page }) => {
     // Inject a network failure on the next transition request.
     await page.route('**/api/projects/*/transition/*', async (route) => {
       await route.abort('failed');

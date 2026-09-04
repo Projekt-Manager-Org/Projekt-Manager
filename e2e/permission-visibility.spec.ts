@@ -158,170 +158,168 @@ test.describe('AC-121: permission-based UI visibility', () => {
       test('action controls match ROLE_PERMISSIONS', async ({ page }) => {
         await page.goto('/');
 
-      // -- Header navigation and extract button --------------------------
-      // Nav visibility is driven by the central route table (§8.7.1).
-      // `expectViewReachable` handles both inline and admin-menu renderings.
-      await expectViewReachable(page, 'kanban', c.canSeeKanban);
-      await expectViewReachable(page, 'projekte', c.canSeeManagement);
-      await expectViewReachable(page, 'kunden', c.canSeeManagement);
-      await expectViewReachable(page, 'rechnungen', c.canReadInvoices);
-      await expectViewReachable(page, 'benutzer', c.canReadUsers);
-      // AC-198 — Notification Rules view (Benachrichtigungen tab)
-      // gated on notifications:manage (owner only under default matrix).
-      await expectViewReachable(
-        page,
-        'benachrichtigungen',
-        c.canManageNotifications,
-      );
-      await expect(page.getByTestId('extract-button')).toHaveCount(c.canExtract ? 1 : 0);
+        // -- Header navigation and extract button --------------------------
+        // Nav visibility is driven by the central route table (§8.7.1).
+        // `expectViewReachable` handles both inline and admin-menu renderings.
+        await expectViewReachable(page, 'kanban', c.canSeeKanban);
+        await expectViewReachable(page, 'projekte', c.canSeeManagement);
+        await expectViewReachable(page, 'kunden', c.canSeeManagement);
+        await expectViewReachable(page, 'rechnungen', c.canReadInvoices);
+        await expectViewReachable(page, 'benutzer', c.canReadUsers);
+        // AC-198 — Notification Rules view (Benachrichtigungen tab)
+        // gated on notifications:manage (owner only under default matrix).
+        await expectViewReachable(page, 'benachrichtigungen', c.canManageNotifications);
+        await expect(page.getByTestId('extract-button')).toHaveCount(c.canExtract ? 1 : 0);
 
-      // -- Footer storage badge (AC-271) ---------------------------------
-      // `data:export` gate mirrors the server gate on /api/storage-usage;
-      // worker and bookkeeper see brand text alone. Desktop viewport
-      // (default 1920×1080 in this project) — phones hide the Footer
-      // entirely via the existing footer media query, and that branch
-      // is unobservable without mobile emulation. The tooltip's plaintext
-      // labels (Sichtbar / Im Papierkorb) are pinned at unit level by
-      // `src/ui/layout/__tests__/Footer.test.tsx`.
-      await expect(page.getByTestId('storage-usage-badge')).toHaveCount(
-        c.canExportData ? 1 : 0,
-      );
+        // -- Footer storage badge (AC-271) ---------------------------------
+        // `data:export` gate mirrors the server gate on /api/storage-usage;
+        // worker and bookkeeper see brand text alone. Desktop viewport
+        // (default 1920×1080 in this project) — phones hide the Footer
+        // entirely via the existing footer media query, and that branch
+        // is unobservable without mobile emulation. The tooltip's plaintext
+        // labels (Sichtbar / Im Papierkorb) are pinned at unit level by
+        // `src/ui/layout/__tests__/Footer.test.tsx`.
+        await expect(page.getByTestId('storage-usage-badge')).toHaveCount(c.canExportData ? 1 : 0);
 
-      // -- Kanban view: transition controls on cards and detail panel ----
-      // Only reachable when Kanban is in the role's nav matrix. Roles
-      // without Kanban access (bookkeeper) cannot navigate there at all;
-      // the server-side scoping for transitions is covered by unit tests.
-      if (c.canSeeKanban) {
-        await clickView(page, 'kanban');
-        await page.getByTestId('kanban-board').waitFor();
-        // Wait until at least one card has rendered — the subsequent
-        // `forward-button-*` count assertion races the initial fetch
-        // otherwise and reports 0 before any card mounts.
-        await page.locator('[data-testid^="project-card-"]').first().waitFor();
+        // -- Kanban view: transition controls on cards and detail panel ----
+        // Only reachable when Kanban is in the role's nav matrix. Roles
+        // without Kanban access (bookkeeper) cannot navigate there at all;
+        // the server-side scoping for transitions is covered by unit tests.
+        if (c.canSeeKanban) {
+          await clickView(page, 'kanban');
+          await page.getByTestId('kanban-board').waitFor();
+          // Wait until at least one card has rendered — the subsequent
+          // `forward-button-*` count assertion races the initial fetch
+          // otherwise and reports 0 before any card mounts.
+          await page.locator('[data-testid^="project-card-"]').first().waitFor();
 
-        // Transition arrows live on the Kanban cards now (not in the
-        // detail panel). The card renders `forward-button-*` /
-        // `backward-button-*` gated on both `canTransition` and the
-        // per-state eligibility; at least one direction is available in
-        // every workflow state, so the sum is ≥ 1 for permitted callers.
-        const cardForwardCount = await page.locator('[data-testid^="forward-button-"]').count();
-        const cardBackwardCount = await page.locator('[data-testid^="backward-button-"]').count();
-        if (c.canTransition) {
-          expect(cardForwardCount + cardBackwardCount).toBeGreaterThan(0);
-        } else {
-          expect(cardForwardCount).toBe(0);
-          expect(cardBackwardCount).toBe(0);
+          // Transition arrows live on the Kanban cards now (not in the
+          // detail panel). The card renders `forward-button-*` /
+          // `backward-button-*` gated on both `canTransition` and the
+          // per-state eligibility; at least one direction is available in
+          // every workflow state, so the sum is ≥ 1 for permitted callers.
+          const cardForwardCount = await page.locator('[data-testid^="forward-button-"]').count();
+          const cardBackwardCount = await page.locator('[data-testid^="backward-button-"]').count();
+          if (c.canTransition) {
+            expect(cardForwardCount + cardBackwardCount).toBeGreaterThan(0);
+          } else {
+            expect(cardForwardCount).toBe(0);
+            expect(cardBackwardCount).toBe(0);
+          }
+
+          // Project detail panel (open first card).
+          await page.locator('[data-testid^="project-card-"]').first().click();
+          await page.getByTestId('detail-panel').waitFor();
+
+          await expect(page.getByTestId('detail-date-start')).toHaveCount(c.canUpdateDates ? 1 : 0);
+          await expect(page.getByTestId('detail-date-end')).toHaveCount(c.canUpdateDates ? 1 : 0);
+
+          await page.getByTestId('detail-close').click();
         }
 
-        // Project detail panel (open first card).
-        await page.locator('[data-testid^="project-card-"]').first().click();
-        await page.getByTestId('detail-panel').waitFor();
+        // -- Projekte management view --------------------------------------
+        // Only owner / office / bookkeeper see the Projekte tab (ui/index.md
+        // §8.7.1 — worker is excluded). Skip the management assertions
+        // entirely for worker since the view is not navigable.
+        if (c.canSeeManagement) {
+          await clickView(page, 'projekte');
+          await page.getByTestId('project-table').locator('tbody tr').first().waitFor();
 
-        await expect(page.getByTestId('detail-date-start')).toHaveCount(c.canUpdateDates ? 1 : 0);
-        await expect(page.getByTestId('detail-date-end')).toHaveCount(c.canUpdateDates ? 1 : 0);
+          await expect(page.getByTestId('project-create-button')).toHaveCount(
+            c.canCreateProject ? 1 : 0,
+          );
 
-        await page.getByTestId('detail-close').click();
-      }
+          const projectArchiveBtns = page
+            .getByTestId('project-table')
+            .getByTestId('project-archive-button');
+          if (c.canDeleteProject) {
+            expect(await projectArchiveBtns.count()).toBeGreaterThan(0);
+          } else {
+            expect(await projectArchiveBtns.count()).toBe(0);
+          }
 
-      // -- Projekte management view --------------------------------------
-      // Only owner / office / bookkeeper see the Projekte tab (ui/index.md
-      // §8.7.1 — worker is excluded). Skip the management assertions
-      // entirely for worker since the view is not navigable.
-      if (c.canSeeManagement) {
-        await clickView(page, 'projekte');
-        await page.getByTestId('project-table').locator('tbody tr').first().waitFor();
+          // Click into the first row: navigation is to the detail page.
+          // The title input is read-only for callers without
+          // `project:update` (hidden-control parity).
+          await page.getByTestId('project-table').locator('tbody tr').first().click();
+          const titleEdit = page.getByTestId('project-title-edit');
+          await titleEdit.waitFor({ state: 'visible' });
+          if (c.canUpdateProject) {
+            await expect(titleEdit).not.toHaveAttribute('readonly', '');
+          } else {
+            await expect(titleEdit).toHaveAttribute('readonly', '');
+          }
+          await clickView(page, 'projekte');
 
-        await expect(page.getByTestId('project-create-button')).toHaveCount(
-          c.canCreateProject ? 1 : 0,
-        );
+          // -- Kunden management view --------------------------------------
+          await clickView(page, 'kunden');
+          await page.getByTestId('customer-table').locator('tbody tr').first().waitFor();
 
-        const projectArchiveBtns = page
-          .getByTestId('project-table')
-          .getByTestId('project-archive-button');
-        if (c.canDeleteProject) {
-          expect(await projectArchiveBtns.count()).toBeGreaterThan(0);
-        } else {
-          expect(await projectArchiveBtns.count()).toBe(0);
+          await expect(page.getByTestId('customer-create-button')).toHaveCount(
+            c.canCreateCustomer ? 1 : 0,
+          );
+
+          const customerDeleteBtns = page
+            .getByTestId('customer-table')
+            .locator('tbody button', { hasText: /löschen/i });
+          if (c.canDeleteCustomer) {
+            expect(await customerDeleteBtns.count()).toBeGreaterThan(0);
+          } else {
+            expect(await customerDeleteBtns.count()).toBe(0);
+          }
         }
 
-        // Click into the first row: navigation is to the detail page.
-        // The title input is read-only for callers without
-        // `project:update` (hidden-control parity).
-        await page.getByTestId('project-table').locator('tbody tr').first().click();
-        const titleEdit = page.getByTestId('project-title-edit');
-        await titleEdit.waitFor({ state: 'visible' });
-        if (c.canUpdateProject) {
-          await expect(titleEdit).not.toHaveAttribute('readonly', '');
-        } else {
-          await expect(titleEdit).toHaveAttribute('readonly', '');
+        // -- Daten (unified data-exchange) view ----------------------------
+        // AC-142: the Daten tab itself is gated on `data:export`. Roles
+        // without it must not see the nav toggle at all. Inside the view,
+        // the import sub-form is gated on `data:restore` (owner only).
+        await expectViewReachable(page, 'daten', c.canExportData);
+        if (c.canExportData) {
+          await clickView(page, 'daten');
+          await page.getByTestId('daten-view').waitFor();
+
+          await expect(page.getByTestId('data-export-button')).toHaveCount(1);
+          await expect(page.getByTestId('data-import-file-input')).toHaveCount(
+            c.canRestoreData ? 1 : 0,
+          );
+
+          // AC-272 — Speichernutzung row at the top of DatenView is pinned
+          // by `src/ui/management/__tests__/DatenView.storageRow.test.tsx`.
         }
-        await clickView(page, 'projekte');
 
-        // -- Kunden management view --------------------------------------
-        await clickView(page, 'kunden');
-        await page.getByTestId('customer-table').locator('tbody tr').first().waitFor();
+        // -- Benutzer management view (only if user:read) ------------------
+        if (c.canReadUsers) {
+          await clickView(page, 'benutzer');
+          await page.getByTestId('user-table').locator('tbody tr').first().waitFor();
 
-        await expect(page.getByTestId('customer-create-button')).toHaveCount(
-          c.canCreateCustomer ? 1 : 0,
-        );
+          await expect(page.getByTestId('user-create-button')).toHaveCount(
+            c.canManageUsers ? 1 : 0,
+          );
 
-        const customerDeleteBtns = page
-          .getByTestId('customer-table')
-          .locator('tbody button', { hasText: /löschen/i });
-        if (c.canDeleteCustomer) {
-          expect(await customerDeleteBtns.count()).toBeGreaterThan(0);
-        } else {
-          expect(await customerDeleteBtns.count()).toBe(0);
+          // Open a user detail to check the management action buttons.
+          // Target `buchhalter` — always active and never the logged-in
+          // user (owner or office), so deactivate visibility reflects
+          // `user:manage` and delete visibility reflects `user:delete`,
+          // without interference from the self-delete guard or the
+          // inactive-user reactivate branch. Picked by content because
+          // the list API does not guarantee row order (repositories/user.ts
+          // has no ORDER BY — tracked separately).
+          const targetRow = page
+            .getByTestId('user-table')
+            .locator('tbody tr', { hasText: 'buchhalter' });
+          await expect(targetRow).toHaveCount(1);
+          await targetRow.click();
+
+          await expect(page.getByTestId('user-deactivate-button')).toHaveCount(
+            c.canManageUsers ? 1 : 0,
+          );
+          await expect(page.getByTestId('user-reset-pw-button')).toHaveCount(
+            c.canManageUsers ? 1 : 0,
+          );
+          await expect(page.getByTestId('user-delete-button')).toHaveCount(
+            c.canDeleteUsers ? 1 : 0,
+          );
         }
-      }
-
-      // -- Daten (unified data-exchange) view ----------------------------
-      // AC-142: the Daten tab itself is gated on `data:export`. Roles
-      // without it must not see the nav toggle at all. Inside the view,
-      // the import sub-form is gated on `data:restore` (owner only).
-      await expectViewReachable(page, 'daten', c.canExportData);
-      if (c.canExportData) {
-        await clickView(page, 'daten');
-        await page.getByTestId('daten-view').waitFor();
-
-        await expect(page.getByTestId('data-export-button')).toHaveCount(1);
-        await expect(page.getByTestId('data-import-file-input')).toHaveCount(
-          c.canRestoreData ? 1 : 0,
-        );
-
-        // AC-272 — Speichernutzung row at the top of DatenView is pinned
-        // by `src/ui/management/__tests__/DatenView.storageRow.test.tsx`.
-      }
-
-      // -- Benutzer management view (only if user:read) ------------------
-      if (c.canReadUsers) {
-        await clickView(page, 'benutzer');
-        await page.getByTestId('user-table').locator('tbody tr').first().waitFor();
-
-        await expect(page.getByTestId('user-create-button')).toHaveCount(c.canManageUsers ? 1 : 0);
-
-        // Open a user detail to check the management action buttons.
-        // Target `buchhalter` — always active and never the logged-in
-        // user (owner or office), so deactivate visibility reflects
-        // `user:manage` and delete visibility reflects `user:delete`,
-        // without interference from the self-delete guard or the
-        // inactive-user reactivate branch. Picked by content because
-        // the list API does not guarantee row order (repositories/user.ts
-        // has no ORDER BY — tracked separately).
-        const targetRow = page
-          .getByTestId('user-table')
-          .locator('tbody tr', { hasText: 'buchhalter' });
-        await expect(targetRow).toHaveCount(1);
-        await targetRow.click();
-
-        await expect(page.getByTestId('user-deactivate-button')).toHaveCount(
-          c.canManageUsers ? 1 : 0,
-        );
-        await expect(page.getByTestId('user-reset-pw-button')).toHaveCount(
-          c.canManageUsers ? 1 : 0,
-        );
-        await expect(page.getByTestId('user-delete-button')).toHaveCount(c.canDeleteUsers ? 1 : 0);
-      }
       });
     });
   }

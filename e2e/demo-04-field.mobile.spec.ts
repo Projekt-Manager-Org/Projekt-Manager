@@ -31,7 +31,11 @@ test('04 — Im Einsatz', async ({ page }) => {
     async () => {
       await expect(page.getByTestId('my-projects-view')).toBeVisible();
     },
-    { note: 'rollenbasiert – serverseitig erzwungen, nicht nur ausgeblendet', settleMs: 1000, holdMs: 1800 },
+    {
+      note: 'rollenbasiert – serverseitig erzwungen, nicht nur ausgeblendet',
+      settleMs: 1000,
+      holdMs: 1800,
+    },
   );
 
   await demo.step('Ein Projekt antippen – alle Details dabei.', async () => {

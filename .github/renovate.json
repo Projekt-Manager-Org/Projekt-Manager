@@ -5,11 +5,7 @@
     "DO NOT restate minimumReleaseAge on a packageRule that matches lockFileMaintenance or pin. That preset deliberately sets it to null for those update types because Renovate cannot age them; a rule here sorts AFTER the preset and would override the carve-out. With minimumReleaseAgeBehaviour=timestamp-required (default since Renovate 42) a missing timestamp counts as not-yet-passed, so the branch is never created — silently stopping the daily lockFileMaintenance run that is this repo's only transitive-dep refresh path (ADR-0027 § 2026-08-06 amendment).",
     "The npm-side cooldown for those paths lives in .npmrc (min-release-age=3). Non-npm datasources — docker, github-tags, github-release-attachments, git-refs — carry NO cooldown; see ADR-0027 § 2026-08-28 amendment for why that is a documented non-goal rather than an oversight."
   ],
-  "extends": [
-    "config:best-practices",
-    ":dependencyDashboard",
-    ":semanticCommits"
-  ],
+  "extends": ["config:best-practices", ":dependencyDashboard", ":semanticCommits"],
   "mode": "full",
   "timezone": "Europe/Berlin",
   "schedule": ["before 9am on monday"],
@@ -61,12 +57,7 @@
       "description": "React + types — bump together",
       "groupName": "react",
       "matchManagers": ["npm"],
-      "matchPackageNames": [
-        "react",
-        "react-dom",
-        "@types/react",
-        "@types/react-dom"
-      ]
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"]
     },
     {
       "description": "Fastify family — bump together",
@@ -118,9 +109,7 @@
       "customType": "regex",
       "description": "Caddy version inside `xcaddy build vN.N.N` in docker/caddy/Dockerfile. Tracks the `caddy` Docker image (not github-releases) so the built version can only advance to a Caddy release that already has a published image — keeping it in lockstep with the FROM caddy:X base tags, which the dockerfile manager bumps from the same datasource. Grouped under groupName 'caddy' above.",
       "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
-      "matchStrings": [
-        "xcaddy build v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
-      ],
+      "matchStrings": ["xcaddy build v(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "caddy",
       "datasourceTemplate": "docker",
       "versioningTemplate": "docker"
@@ -129,9 +118,7 @@
       "customType": "regex",
       "description": "caddy-dns/cloudflare plugin pinned to a git SHA — track master and bump the SHA",
       "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
-      "matchStrings": [
-        "github\\.com/caddy-dns/cloudflare@(?<currentDigest>[a-f0-9]{40})"
-      ],
+      "matchStrings": ["github\\.com/caddy-dns/cloudflare@(?<currentDigest>[a-f0-9]{40})"],
       "currentValueTemplate": "master",
       "depNameTemplate": "caddy-dns/cloudflare",
       "packageNameTemplate": "https://github.com/caddy-dns/cloudflare",
@@ -141,9 +128,7 @@
       "customType": "regex",
       "description": "MinIO `mc` image tag in sync-*.sh helper scripts — track minio/mc Docker tags with loose versioning",
       "managerFilePatterns": ["/^scripts/sync-(dev-to-vps|vps-to-dev)\\.sh$/"],
-      "matchStrings": [
-        "MC_IMAGE=\"minio/mc:(?<currentValue>RELEASE\\.[0-9TZ-]+)\""
-      ],
+      "matchStrings": ["MC_IMAGE=\"minio/mc:(?<currentValue>RELEASE\\.[0-9TZ-]+)\""],
       "depNameTemplate": "minio/mc",
       "datasourceTemplate": "docker",
       "versioningTemplate": "loose"
@@ -155,9 +140,7 @@
         "/^\\.github/workflows/[^/]+\\.ya?ml$/",
         "/^\\.github/actions/[^/]+/[^/]+\\.(ya?ml|sh)$/"
       ],
-      "matchStrings": [
-        "minio/(?<depName>minio|mc):(?<currentValue>RELEASE\\.[0-9TZ-]+)"
-      ],
+      "matchStrings": ["minio/(?<depName>minio|mc):(?<currentValue>RELEASE\\.[0-9TZ-]+)"],
       "packageNameTemplate": "minio/{{depName}}",
       "datasourceTemplate": "docker",
       "versioningTemplate": "loose"
@@ -166,9 +149,7 @@
       "customType": "regex",
       "description": "PostgreSQL major in Alpine apk pins (`postgresqlN`, `postgresqlN-client`, `postgresqlN-contrib`) inside Dockerfile.backup. Renovate's Docker manager bumps the `db` image tag in docker-compose/CI but does not see apk package names. Without this regex a server bump leaves the backup client major behind — pg_dump/pg_restore older→newer is the unsupported direction. extractVersion filters Docker tags to integer-only so we track the major line, matching what the apk package name encodes.",
       "managerFilePatterns": ["/^Dockerfile\\.backup$/"],
-      "matchStrings": [
-        "postgresql(?<currentValue>\\d+)(?:-client|-contrib)?"
-      ],
+      "matchStrings": ["postgresql(?<currentValue>\\d+)(?:-client|-contrib)?"],
       "depNameTemplate": "postgres",
       "datasourceTemplate": "docker",
       "versioningTemplate": "loose",

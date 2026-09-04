@@ -44,7 +44,7 @@ services:
     volumes:
       - miniodata:/data
     ports:
-      - "9000:9000"   # S3 API — published so the host (browser, vitest, npm run dev) reaches MinIO.
+      - '9000:9000' # S3 API — published so the host (browser, vitest, npm run dev) reaches MinIO.
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
@@ -55,7 +55,7 @@ services:
       # and dev storage holds no real data. Prod uses B2; CORS lives
       # in the bucket settings (one explicit `https://<domain>` rule —
       # see docs/ops/object-storage-provisioning.md).
-      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+      MINIO_API_CORS_ALLOW_ORIGIN: '*'
     restart: unless-stopped
 
   storage-init:

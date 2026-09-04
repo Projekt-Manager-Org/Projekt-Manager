@@ -281,7 +281,8 @@ test.describe('AC-186: payload drawer visibility per role — owner', () => {
       const projId = (await projRes.json()).id as string;
 
       const archiveRes = await ctx.request.delete(`/api/projects/${projId}`);
-      if (!archiveRes.ok()) throw new Error(`AC-186 fixture: archive DELETE ${archiveRes.status()}`);
+      if (!archiveRes.ok())
+        throw new Error(`AC-186 fixture: archive DELETE ${archiveRes.status()}`);
     } finally {
       await ctx.close();
     }

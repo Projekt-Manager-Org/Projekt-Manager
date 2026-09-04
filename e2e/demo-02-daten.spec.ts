@@ -49,7 +49,8 @@ test('02 — Daten', async ({ page }) => {
       },
       {
         melody: 'Ransomware, Absturz, Bedienfehler – einkalkuliert.',
-        bassline: 'mehrstufig & verschlüsselt · providerseitig gesperrt · mit App-Zugang nicht löschbar',
+        bassline:
+          'mehrstufig & verschlüsselt · providerseitig gesperrt · mit App-Zugang nicht löschbar',
       },
       {
         melody: 'Sicherung automatisch – und automatisch erprobt.',

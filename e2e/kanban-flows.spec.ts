@@ -190,9 +190,7 @@ test.describe('Kanban board flows', () => {
         .getByTestId('kanban-column-in_arbeit')
         .getByTestId(`project-card-${projectId}`);
       await expect(movedCard).toBeVisible();
-      await expect(page.getByTestId('column-count-geplant')).toHaveText(
-        String(initialGeplant - 1),
-      );
+      await expect(page.getByTestId('column-count-geplant')).toHaveText(String(initialGeplant - 1));
 
       // Net-zero teardown: move the card back to geplant via the backward
       // arrow so later tests see the seed column counts restored.

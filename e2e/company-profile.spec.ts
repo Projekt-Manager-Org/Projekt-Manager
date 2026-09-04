@@ -77,9 +77,9 @@ test.describe('Company profile management (AC-301, AC-303)', () => {
       await expect(form).toBeVisible();
 
       // Set reverse_charge and clear ustId.
-      await form.getByTestId('company-profile-defaultTaxMode-select').selectOption(
-        'reverse_charge',
-      );
+      await form
+        .getByTestId('company-profile-defaultTaxMode-select')
+        .selectOption('reverse_charge');
       const ustIdInput = form.getByTestId('company-profile-ustId-input');
       await ustIdInput.fill('');
 

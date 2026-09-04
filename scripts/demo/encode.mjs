@@ -95,7 +95,17 @@ const findMp4s = (dir) => findNamed(dir, 'demo.mp4');
 function dimensions(file) {
   return execFileSync(
     'ffprobe',
-    ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', file],
+    [
+      '-v',
+      'error',
+      '-select_streams',
+      'v:0',
+      '-show_entries',
+      'stream=width,height',
+      '-of',
+      'csv=p=0:s=x',
+      file,
+    ],
     { encoding: 'utf8' },
   ).trim();
 }
@@ -140,7 +150,8 @@ function normBranch(i, portrait, bgInput) {
 /** Build the single-pass 1920×1080 master from `clips` (narrative order). */
 function buildMaster(clips) {
   const backdrop = path.resolve(repoRoot, 'scripts', 'demo', 'assets', 'phone-backdrop.jpg');
-  if (!fs.existsSync(backdrop)) fail(`Phone backdrop missing: ${path.relative(repoRoot, backdrop)}`);
+  if (!fs.existsSync(backdrop))
+    fail(`Phone backdrop missing: ${path.relative(repoRoot, backdrop)}`);
 
   const shapes = clips.map((clip) => {
     const [w, h] = dimensions(clip).split('x').map(Number);
@@ -351,7 +362,19 @@ if (makeReel && produced.length > 0) {
     const listFile = path.join(resultsDir, `reel-${dim}.txt`);
     fs.writeFileSync(listFile, clips.map((c) => `file '${c.replace(/'/g, "'\\''")}'`).join('\n'));
     const reel = path.join(resultsDir, `demo-reel-${dim}.mp4`);
-    ff(['-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', '-movflags', '+faststart', reel]);
+    ff([
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      listFile,
+      '-c',
+      'copy',
+      '-movflags',
+      '+faststart',
+      reel,
+    ]);
     fs.rmSync(listFile, { force: true });
     console.log(`★ ${path.relative(repoRoot, reel)} (${clips.length} clips)`);
   }
