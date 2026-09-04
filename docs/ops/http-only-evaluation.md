@@ -19,11 +19,9 @@ cp .env.example .env                  # first time only — dev-ready, no edits 
 
 ### Option A — Pull from GHCR
 
-Uses the pre-built image from GitHub Container Registry. Private packages need a GHCR login first -- classic PAT, `read:packages` scope, see [manual-deploy.md § GHCR pull token](manual-deploy.md#ghcr-pull-token) for where and how to create one.
+Uses the pre-built image from GitHub Container Registry. The packages are public, so no login is needed.
 
 ```bash
-docker login ghcr.io -u <github-username>   # paste the PAT at the password prompt; skip if the package is public
-
 docker compose -f docker-compose.yml -f docker-compose.http.yml pull
 docker compose -f docker-compose.yml -f docker-compose.http.yml up -d
 # Open http://localhost — login with inhaber / changeme

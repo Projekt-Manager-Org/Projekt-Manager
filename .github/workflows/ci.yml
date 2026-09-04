@@ -863,7 +863,7 @@ jobs:
       # A merge_group train pushes too. Its digests are named by nothing
       # (`publish` skips its only step on merge_group) and the train SHA
       # is not a commit anything deploys, so they are untagged garbage
-      # the GHCR retention policy sweeps — #373. Cheaper than a branch.
+      # that `ghcr-retention.yml` sweeps. Cheaper than a branch.
       #
       # Caddy has its own build context (./docker/caddy) with a custom
       # xcaddy + pinned plugin SHA that adds ~60s of Go compile and

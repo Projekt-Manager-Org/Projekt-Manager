@@ -1,0 +1,70 @@
+# GHCR image retention. The policy, the fail-closed invariants, and why
+# no off-the-shelf action can express them live in the header of
+# scripts/ci/ghcr-retention.sh; the decision is ADR-0011 § Retention.
+#
+# WHY DAILY, NOT WEEKLY
+#   Retention keeps ~50 versions; a week of pushes adds ~180. Running
+#   daily keeps the steady state near the floor instead of sawtoothing an
+#   order of magnitude above it. Each run is ~10 API reads plus one
+#   registry manifest GET per kept version (~35/package) plus the
+#   deletes. 04:00 UTC is clear of the 03:00 security and 03:30 e2e
+#   schedules.
+
+name: GHCR retention
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report what would be deleted without deleting it'
+        type: boolean
+        default: true
+
+# `packages: write` is the delete grant: the container packages are
+# repository-scoped, so the workflow that publishes them holds admin on
+# them and GITHUB_TOKEN needs no PAT standing in for it.
+# `pull-requests: read` backs the open-PR rule.
+permissions:
+  contents: read
+  packages: write
+  pull-requests: read
+
+# A first run deletes ~800 versions at one per second. Never cancel it —
+# the job is idempotent, so an interrupted run is harmless, but two runs
+# racing the same delete list produce 404s for no benefit.
+concurrency:
+  group: ghcr-retention
+  cancel-in-progress: false
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Pinned, not defaulted. `checkout` takes `github.ref`, which
+          # on a workflow_dispatch is the branch picked in the UI — the
+          # script would then walk THAT branch for rule 1 and reap
+          # main's rollback window, with fetch-depth clearing the
+          # short-list guard so nothing complains.
+          ref: main
+          # The rollback window is the newest KEEP_MAIN commits on main,
+          # which the default depth-1 checkout cannot see. The script
+          # fails closed (exit 2) rather than reaping against a short
+          # list if this is ever narrowed below KEEP_MAIN.
+          fetch-depth: 50
+
+      - name: Reap stale image versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Scheduled runs always arm. A dispatch defaults to reporting:
+          # this is the only scheduled job in the repo that deletes
+          # anything, so arming it is an explicit act.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          # Commits to pin beyond the rollback window — set this when the
+          # VPS is running something older than the newest KEEP_MAIN
+          # commits on main. Unset is the normal state.
+          KEEP_EXTRA: ${{ vars.GHCR_KEEP_EXTRA }}
+        run: bash scripts/ci/ghcr-retention.sh

@@ -26,7 +26,7 @@ Have `~/secrets/age-backup.key` open on the operator workstation before invoking
 | ----------------------------------------------- | ----------------------------------------------------------------------------- |
 | `/opt/projekt-manager` is a git clone           | `sudo -u deploy git -C /opt/projekt-manager remote -v`                        |
 | `age` installed                                 | `command -v age`                                                              |
-| `deploy` logged in to GHCR                      | `sudo -u deploy docker pull ghcr.io/projekt-manager-org/projekt-manager:main` |
+| `deploy` can pull from GHCR                     | `sudo -u deploy docker pull ghcr.io/projekt-manager-org/projekt-manager:main` |
 | `secrets.env.age` exists, owned `deploy:deploy` | `ls -l /opt/projekt-manager/secrets.env.age`                                  |
 | `deploy` has no interactive login               | `getent passwd deploy` shows `/usr/sbin/nologin`                              |
 | `deploy` can fetch from origin                  | `sudo -u deploy git -C /opt/projekt-manager fetch --dry-run origin`           |
@@ -71,7 +71,22 @@ sudo -u deploy git -C /opt/projekt-manager log --oneline -20   # find good SHA
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <sha>
 ```
 
-The image must still exist. The host keeps the last `DEPLOY_IMAGE_RETENTION` (default 3) tags per repo image, so a rollback within that window skips the registry round-trip. Beyond it, `compose pull` re-fetches from GHCR. If GHCR has also pruned it, use forward-rollback: `git revert` on operator machine, push, wait for CI, redeploy.
+The image must still exist, and **both** copies are now bounded:
+
+| Where    | Keeps                                                                                                                                                                      |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The host | the last `DEPLOY_IMAGE_RETENTION` (default 3) tags per repo image — a rollback in range skips the pull                                                                     |
+| GHCR     | `main`, the newest **5** `sha-` versions on `main`, open PR heads, anything under **24 h** ([ADR-0011 § Retention](../adr/0011-build-images-in-ci-distribute-via-ghcr.md)) |
+
+Beyond the host window, `compose pull` re-fetches from GHCR. Beyond the GHCR window the tag is gone — use forward-rollback: `git revert` on the operator machine, push, wait for CI, redeploy.
+
+**If the deploy has drifted more than 5 commits behind `main`**, retention will reap the registry copy of what is running. The container keeps running, but that rollback target disappears. To hold it, set the repository variable `GHCR_KEEP_EXTRA` to the deployed commit SHA (space-separated for several):
+
+```bash
+gh variable set GHCR_KEEP_EXTRA --repo Projekt-Manager-Org/Projekt-Manager --body '<deployed-sha>'
+```
+
+Clear it once the deploy is back inside the window.
 
 ## Verify a deploy
 
@@ -156,13 +171,13 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
 
 Backup blobs in R2 remain decryptable — they are encrypted against `AGE_RECIPIENT`'s keypair, not the `secrets.env.age` passphrase. Losing only the deploy passphrase does not cost backup recoverability.
 
-### GHCR pull token
+### GHCR pull credential — none
 
-- **Location:** `~deploy/.docker/config.json`
-- **Scope:** classic PAT, `read:packages` only
-- **Rotation:** every 12 months
-- **Create:** `https://github.com/settings/tokens` -> Generate new token (classic) -> scope `read:packages`
-- **Re-issue:** `sudo -u deploy docker login ghcr.io -u vlzware --password-stdin <<< '<new-PAT>'`
+The packages are public ([ADR-0011 § Image visibility](../adr/0011-build-images-in-ci-distribute-via-ghcr.md)), so `deploy` pulls anonymously. There is no `read:packages` PAT to rotate, and `~deploy/.docker/config.json` should hold no `ghcr.io` entry. On a VPS bootstrapped before 2026-09-04 the old login is still there — clear it once:
+
+```bash
+sudo -u deploy docker logout ghcr.io
+```
 
 ## Bootstrap (first run on fresh VPS)
 
@@ -175,19 +190,17 @@ sudo -u deploy git clone https://github.com/Projekt-Manager-Org/Projekt-Manager.
 # 2. Install age
 sudo apt update && sudo apt install -y age
 
-# 3. GHCR login (classic PAT, read:packages)
-sudo -u deploy docker login ghcr.io -u vlzware --password-stdin <<< '<PAT>'
+# 3. Upload secrets.env.age (see "Rotate a secret" above for the scp flow)
+#    No GHCR login step — the packages are public.
 
-# 4. Upload secrets.env.age (see "Rotate a secret" above for the scp flow)
-
-# 5. First deploy
+# 4. First deploy
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main
 
-# 6. Lock down deploy user (ONLY after step 5 succeeds)
+# 5. Lock down deploy user (ONLY after step 4 succeeds)
 sudo usermod -s /usr/sbin/nologin deploy
 sudo rm -f /home/deploy/.ssh/authorized_keys
 
-# 7. Prove locked-down flow works: stop everything, redeploy from scratch.
+# 6. Prove locked-down flow works: stop everything, redeploy from scratch.
 # `docker stop` bypasses the compose-parse path (no secret interpolation needed)
 # and is idempotent — missing/stopped containers just no-op with `|| true`.
 sudo -u deploy docker stop projekt-manager-app-1 projekt-manager-db-1 projekt-manager-storage-1 projekt-manager-caddy-1 projekt-manager-backup-1 2>/dev/null || true
@@ -196,14 +209,15 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main
 
 ## Failure modes
 
-| Symptom                                                                | Cause                                                                                                                                  | Fix                                                                                                                                                                                                                                          |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `git checkout` fails                                                   | Uncommitted changes in working tree                                                                                                    | `git status`, reset or stash                                                                                                                                                                                                                 |
-| `git checkout landed at X, expected Y`                                 | Post-checkout SHA assertion                                                                                                            | Inspect `git status`, clean up                                                                                                                                                                                                               |
-| `age: failed to read identity`                                         | Wrong passphrase                                                                                                                       | Retry; verify against password manager after 3 attempts                                                                                                                                                                                      |
-| `docker pull` unauthorized                                             | GHCR PAT expired                                                                                                                       | Create + log in with a fresh PAT -- see [§ GHCR pull token](#ghcr-pull-token)                                                                                                                                                                |
-| Smoke test timeout (60s)                                               | App container failed or `/api/health` returning 503                                                                                    | `docker logs projekt-manager-app-1 --tail=50` (also `-db-1`, `-storage-1`)                                                                                                                                                                   |
-| `no such container` on exec                                            | `docker compose up -d` did not start `app`                                                                                             | `docker ps --filter name=projekt-manager-`; confirm the resolved tag exists in GHCR                                                                                                                                                          |
-| `APP_IMAGE_TAG must be set` or `CLOUDFLARE_API_TOKEN must be declared` | Compose parses the full file (and every `:?` gate) before dispatching any verb — trips on `restart`/`logs`/`exec`/`ps`, not just `up`. | Read-only ops: `docker` directly (no parse, e.g. `docker logs projekt-manager-caddy-1`). Any compose verb: re-run `scripts/deploy.sh` — by design the only entrypoint that pins the SHA and sources secrets, so they stay encrypted at rest. |
-| First request after deploy 500s with `column "<X>" does not exist`     | Schema baseline edited; live DB still on previous schema                                                                               | Wipe + reseed + sync — see [recover-from-schema-change.md](recover-from-schema-change.md)                                                                                                                                                    |
-| `failed to extract layer … no space left on device` mid-pull           | Disk or **inodes** exhausted (`df -i /` near 100%) — pre-GC image buildup, or another filler. The post-deploy GC bounds normal growth. | `df -h / && df -i /`; reclaim with `docker builder prune -af && docker image prune -af` (keeps running images), then re-run the deploy. If inodes stay high, find the hog: `du --inodes -xd1 / \| sort -rn`.                                 |
+| Symptom                                                                | Cause                                                                                                                                                                     | Fix                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `git checkout` fails                                                   | Uncommitted changes in working tree                                                                                                                                       | `git status`, reset or stash                                                                                                                                                                                                                 |
+| `git checkout landed at X, expected Y`                                 | Post-checkout SHA assertion                                                                                                                                               | Inspect `git status`, clean up                                                                                                                                                                                                               |
+| `age: failed to read identity`                                         | Wrong passphrase                                                                                                                                                          | Retry; verify against password manager after 3 attempts                                                                                                                                                                                      |
+| `docker pull` unauthorized                                             | The packages are public, so this is not an expired credential: either visibility was narrowed, or a stale `ghcr.io` entry in `~deploy/.docker/config.json` is being sent. | `sudo -u deploy docker logout ghcr.io` and retry; if it persists, check the package visibility on GitHub                                                                                                                                     |
+| `manifest unknown` pulling an old `sha-` tag                           | Retention reaped it. GHCR keeps `main`, the newest 5 `sha-` versions on main, open PR heads, and anything under 24 h old.                                                 | Roll back to a SHA still in the window (`git log -5 origin/main`), or re-run CI on the branch to republish. Host-side, `deploy.sh` also keeps the 3 newest images locally.                                                                   |
+| Smoke test timeout (60s)                                               | App container failed or `/api/health` returning 503                                                                                                                       | `docker logs projekt-manager-app-1 --tail=50` (also `-db-1`, `-storage-1`)                                                                                                                                                                   |
+| `no such container` on exec                                            | `docker compose up -d` did not start `app`                                                                                                                                | `docker ps --filter name=projekt-manager-`; confirm the resolved tag exists in GHCR                                                                                                                                                          |
+| `APP_IMAGE_TAG must be set` or `CLOUDFLARE_API_TOKEN must be declared` | Compose parses the full file (and every `:?` gate) before dispatching any verb — trips on `restart`/`logs`/`exec`/`ps`, not just `up`.                                    | Read-only ops: `docker` directly (no parse, e.g. `docker logs projekt-manager-caddy-1`). Any compose verb: re-run `scripts/deploy.sh` — by design the only entrypoint that pins the SHA and sources secrets, so they stay encrypted at rest. |
+| First request after deploy 500s with `column "<X>" does not exist`     | Schema baseline edited; live DB still on previous schema                                                                                                                  | Wipe + reseed + sync — see [recover-from-schema-change.md](recover-from-schema-change.md)                                                                                                                                                    |
+| `failed to extract layer … no space left on device` mid-pull           | Disk or **inodes** exhausted (`df -i /` near 100%) — pre-GC image buildup, or another filler. The post-deploy GC bounds normal growth.                                    | `df -h / && df -i /`; reclaim with `docker builder prune -af && docker image prune -af` (keeps running images), then re-run the deploy. If inodes stay high, find the hog: `du --inodes -xd1 / \| sort -rn`.                                 |

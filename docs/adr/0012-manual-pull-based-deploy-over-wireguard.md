@@ -76,8 +76,8 @@ The `deploy` user itself is kept: still owns `/opt/projekt-manager`, still in `d
 
 Documented and accepted. Each has an upgrade trigger.
 
-- **`deploy` still in `docker` group.** Cutover reduces _exposure_ (no remote key hands it out) but not _posture_. Rootless Docker or Podman is the direction. Trigger: operational cost of migration justified by stack growth, or before repo/GHCR goes public.
-- **GHCR PAT on the VPS.** `docker login` uses a classic PAT scoped `read:packages`. Treat as a key — location, expiry, rotation in `docs/ops/manual-deploy.md`. Small exposure vs what was removed.
+- **`deploy` still in `docker` group.** Cutover reduces _exposure_ (no remote key hands it out) but not _posture_. Rootless Docker or Podman is the direction. Trigger: operational cost of migration justified by stack growth, or before repo/GHCR goes public. **The trigger fired 2026-09-04** (repo and packages both public) and was consciously not acted on: the app is still WG-only, so going public widened who can read the image, not who can reach the daemon. Re-examine when anything is served beyond the tunnel.
+- ~~**GHCR PAT on the VPS.**~~ **Closed 2026-09-04** — the packages went public ([ADR-0011 § Image visibility](0011-build-images-in-ci-distribute-via-ghcr.md)), `deploy` pulls anonymously, and there is no credential left to rotate.
 - **VPS reboot requires manual re-deploy.** Stack does not come back alone because secrets are not on disk. Acceptable at pilot scale / single operator. Trigger: reboot-miss incidents accumulate → VPS-local secrets manager (Docker secrets from a systemd-delivered unseal file, or minimal KMS).
 - **Passphrase loss = regenerate secrets from sources of record** (password manager, Cloudflare dashboard, Postgres/MinIO reset paths). Recovery in `docs/ops/manual-deploy.md`.
 - **Compromised dev machine can publish a malicious image to GHCR.** Mitigated by manual promotion — an attacker-tagged image does not deploy itself; the operator reviews the SHA passed to `./deploy.sh`. Not fully mitigated by this ADR; signing (Sigstore cosign) is the scale-up answer.
@@ -90,7 +90,7 @@ The cutover is a principled retreat to a smaller trust surface. Expected progres
 1. **This ADR** — manual pull-based deploy, secrets encrypted at rest, no remote trust link.
 2. **Rootless Docker or Podman** — eliminates the `docker`-group-equals-root residual, enables the next step safely.
 3. **Pull-based GitOps agent** — reintroduces automation once the trust root is small enough that an always-on agent is not a net privilege expansion.
-4. **Multi-recipient secrets and signed images** — once a second operator exists or the GHCR package goes public.
+4. **Multi-recipient secrets and signed images** — once a second operator exists. The other half of this trigger (packages public) fired 2026-09-04; signing stays deferred because the deploy path is unchanged — the operator still passes a reviewed SHA to `deploy.sh`, and a public package is readable, not writable, by strangers.
 
 The artifact pipeline (CI → GHCR, ADR-0011) is compatible with every step without modification — future automation bolts onto it, does not replace it.
 
