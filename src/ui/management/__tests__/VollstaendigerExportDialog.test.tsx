@@ -66,6 +66,14 @@ describe('VollstaendigerExportDialog — preflight (AC-335)', () => {
     expect(screen.queryByTestId('export-job-mobile-warning')).not.toBeInTheDocument();
   });
 
+  it('states that the Papierkorb is not exported (AC-220)', () => {
+    // The envelope carries only `status='ready'` rows, so the archive holds
+    // no Papierkorb items — and a later restore therefore purges them. The
+    // operator's model of what a backup contains forms at THIS dialog.
+    render(<VollstaendigerExportDialog onClose={vi.fn()} />);
+    expect(screen.getByTestId('export-job-papierkorb-notice')).toHaveTextContent(/Papierkorb/);
+  });
+
   it('renders the mobile warning below the configured breakpoint', () => {
     setMatchMedia(true);
     render(<VollstaendigerExportDialog onClose={vi.fn()} />);

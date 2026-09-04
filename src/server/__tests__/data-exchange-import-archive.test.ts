@@ -583,6 +583,120 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
+  // AC-220 — ROUND-TRIP COVERAGE. The two-cycle e2e round proves the
+  // export is a FIXED POINT; it cannot prove the export is COMPLETE. A
+  // table inside the wipe set but absent from the envelope round-trips
+  // perfectly while losing every row it held, and no existing arm can
+  // see it — which is precisely how the Papierkorb purge (#392) went
+  // unnoticed. So: enumerate the LIVE schema and require every table to
+  // either survive a real export→import or sit on an exemption list with
+  // a written reason. A new table added without a decision fails here.
+  // -------------------------------------------------------------------
+  describe('AC-220: a full round trip loses no table (schema-drift tripwire)', () => {
+    /**
+     * Tables a restore is allowed to shrink, each with the reason it is
+     * allowed. This list is the decision record — adding a table to the
+     * schema without either exporting it or naming it here fails the arm
+     * below, so the choice cannot be made by omission.
+     */
+    const MAY_SHRINK: Record<string, string> = {
+      sessions: 'ephemeral auth state — the wipe CASCADEs it and the operator re-authenticates',
+      push_subscriptions:
+        'device- and VAPID-bound; a restored endpoint would be dead on any other instance',
+      attachments:
+        'the `hidden` (Papierkorb) rows deliberately do not travel — AC-220; the `ready` rows are pinned by the next arm',
+    };
+
+    /** Every base table in the live `public` schema. */
+    async function publicTables(): Promise<string[]> {
+      const res = await db.execute(sql`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+      `);
+      return (res.rows as { table_name: string }[]).map((r) => r.table_name);
+    }
+
+    async function rowCounts(tables: string[]): Promise<Record<string, number>> {
+      const counts: Record<string, number> = {};
+      for (const t of tables) counts[t] = await countRows(t);
+      return counts;
+    }
+
+    /** Seed a `ready` row and soft-hide it — a Papierkorb item. */
+    async function seedHiddenAttachment(fileName: string): Promise<string> {
+      const seeded = await seedReadyAttachment({
+        plaintext: crypto.randomBytes(256),
+        fileName,
+      });
+      await db.execute(
+        sql`UPDATE attachments SET status = 'hidden', hidden_at = now() WHERE id = ${seeded.id}`,
+      );
+      return seeded.id;
+    }
+
+    /** seed → export → import(override) → re-auth; returns the fresh token. */
+    async function fullRoundTrip(): Promise<string> {
+      const archive = await buildExportArchive(ownerToken);
+      const jobId = await uploadArchiveToNewJob(ownerToken, archive);
+      const freshToken = await awaitWipeAndReauth(ownerToken, jobId);
+      const job = await pollImportTerminal(freshToken, jobId);
+      expect(job.status, `import failed: ${job.errorDetail ?? ''}`).toBe('ready');
+      return freshToken;
+    }
+
+    it('every table either round-trips or is on the documented shrink list', async () => {
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'keep.pdf' });
+      await seedHiddenAttachment('im-papierkorb.pdf');
+
+      const tables = await publicTables();
+      // A stale exemption is as bad as a missing one: a renamed table would
+      // leave its old name here, silently excusing the new one from nothing.
+      for (const exempt of Object.keys(MAY_SHRINK)) {
+        expect(tables, `MAY_SHRINK names "${exempt}", which is not a table`).toContain(exempt);
+      }
+
+      const before = await rowCounts(tables);
+      await fullRoundTrip();
+      const after = await rowCounts(tables);
+
+      for (const table of tables) {
+        if (table in MAY_SHRINK) continue;
+        expect(
+          after[table],
+          `table "${table}" lost rows across a full export→import ` +
+            `(${before[table]} → ${after[table]}). Either it belongs in the export ` +
+            `envelope, or it belongs in MAY_SHRINK with a reason.`,
+        ).toBeGreaterThanOrEqual(before[table]!);
+      }
+    });
+
+    it('the restore purges the Papierkorb and keeps every ready attachment (AC-220)', async () => {
+      const kept = await seedReadyAttachment({
+        plaintext: crypto.randomBytes(512),
+        fileName: 'behalten.pdf',
+      });
+      const trashed = await seedHiddenAttachment('geloescht.pdf');
+
+      await fullRoundTrip();
+
+      const rows = (await db.execute(sql`SELECT id, status FROM attachments ORDER BY id`)).rows as {
+        id: string;
+        status: string;
+      }[];
+      const byId = new Map(rows.map((r) => [r.id, r.status]));
+
+      // The live row travels and comes back `ready`.
+      expect(byId.get(kept.id)).toBe('ready');
+      // The Papierkorb row does not — the envelope never carried it and the
+      // wipe removed it. This is the decided behaviour (a takeout carries the
+      // live working set, not a TTL-bounded undo buffer), surfaced to the
+      // operator on both dialog legs so it is never a surprise.
+      expect(byId.has(trashed)).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------
   // AC-327 / AT-141 — validate before wipe. Corrupt a REAL roundtrip
   // archive (break data.json's schema_version; sibling arm: break a
   // manifest sha256), import into the NON-EMPTY seeded target with

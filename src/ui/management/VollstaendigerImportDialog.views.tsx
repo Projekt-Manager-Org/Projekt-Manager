@@ -99,6 +99,17 @@ export function ConfirmView(props: ConfirmViewProps) {
           >
             {STRINGS.dataExchange.restoreDestructiveNotice}
           </div>
+          {/* The Papierkorb does not travel in the archive (AC-220), so the
+              restore purges it. Called out separately from the generic
+              destructive notice — "the existing data is deleted" does not
+              tell an operator that the archive cannot bring the trash back. */}
+          <div
+            className={styles.destructiveNotice}
+            data-testid="import-job-papierkorb-notice"
+            role="note"
+          >
+            {STRINGS.dataExchange.restorePapierkorbNotice}
+          </div>
           <label className={styles.readoutLine} htmlFor="import-job-phrase-input">
             {STRINGS.dataExchange.restorePhrasePrompt(RESTORE_CONFIRMATION_PHRASE)}
           </label>

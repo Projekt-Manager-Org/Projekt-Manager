@@ -123,18 +123,12 @@ interface SeededAttachment {
  * seeded ciphertext is decryptable by the SAME contract the production code
  * reads (ADR-0024 §Encryption). Node's WebCrypto (Node 22+) is the producer.
  */
-async function encryptForUpload(
-  plaintext: Buffer,
-): Promise<{ dek: Buffer; ciphertext: Buffer }> {
+async function encryptForUpload(plaintext: Buffer): Promise<{ dek: Buffer; ciphertext: Buffer }> {
   const dek = crypto.randomBytes(32);
   const nonce = crypto.randomBytes(12);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    dek,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt'],
-  );
+  const cryptoKey = await crypto.subtle.importKey('raw', dek, { name: 'AES-GCM' }, false, [
+    'encrypt',
+  ]);
   const sealed = Buffer.from(
     await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, cryptoKey, plaintext),
   );
@@ -171,7 +165,10 @@ function md5Base64(bytes: Buffer): string {
  * encrypts the staged-archive plaintext, so the recovered plaintext is the
  * same bytes that went in.)
  */
-async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestContext): Promise<{
+async function seedAttachmentsOnFirstProject(
+  page: Page,
+  request: APIRequestContext,
+): Promise<{
   projectId: string;
   attachments: SeededAttachment[];
 }> {
@@ -231,9 +228,7 @@ async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestCont
     });
     if (!initRes.ok()) {
       const errBody = await initRes.text().catch(() => '<no body>');
-      throw new Error(
-        `init failed for ${f.fileName}: status=${initRes.status()} body=${errBody}`,
-      );
+      throw new Error(`init failed for ${f.fileName}: status=${initRes.status()} body=${errBody}`);
     }
     const initBody = (await initRes.json()) as {
       attachment: {
@@ -248,7 +243,7 @@ async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestCont
     const createdBy =
       typeof initBody.attachment.createdBy === 'string'
         ? initBody.attachment.createdBy
-        : initBody.attachment.createdBy?.id ?? null;
+        : (initBody.attachment.createdBy?.id ?? null);
     if (!createdBy) throw new Error(`seed: createdBy null on ${f.fileName}`);
 
     // 2. PUT presigned URL with the ciphertext bytes. Strip the forbidden
@@ -268,9 +263,7 @@ async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestCont
 
     // 3. complete — server HEADs the storage object + flips status to 'ready'.
     //    After this the row is visible to the export-job build.
-    const completeRes = await request.post(
-      `/api/projects/${projectId}/attachments/${id}/complete`,
-    );
+    const completeRes = await request.post(`/api/projects/${projectId}/attachments/${id}/complete`);
     expect(completeRes.ok(), `complete failed for ${f.fileName}`).toBe(true);
 
     seeded.push({
@@ -317,6 +310,9 @@ async function exportJobZip(page: Page, opts?: { afterImport?: boolean }): Promi
   const dialog = page.getByTestId('export-job-dialog');
   await expect(dialog).toBeVisible();
   await expect(page.getByTestId('export-job-preflight')).toBeVisible();
+  // AC-220: the archive carries only `ready` attachments. Said here, where the
+  // operator's model of "what is in my backup" forms — not at restore time.
+  await expect(page.getByTestId('export-job-papierkorb-notice')).toContainText('Papierkorb');
   await page.getByTestId('export-job-start').click();
 
   // Progress readout — files-done/total, bytes-done/total, current item. A
@@ -404,6 +400,10 @@ async function importJobZip(
     // matches the configured phrase. Assert disabled-before, enabled-after.
     const confirm = page.getByTestId('import-job-confirm');
     await expect(confirm).toBeVisible();
+    // AC-220: the restore is also a Papierkorb purge, called out separately
+    // from the generic destructive notice — "the existing data is deleted"
+    // does not tell an operator the archive cannot bring the trash back.
+    await expect(confirm.getByTestId('import-job-papierkorb-notice')).toContainText('Papierkorb');
     const phraseInput = confirm.getByTestId('import-job-phrase-input');
     await expect(phraseInput).toBeVisible();
     // The action buttons live in the DialogShell's actions row — a SIBLING of
@@ -709,11 +709,9 @@ test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import
   for (const src of attachments) {
     const match = restored.find((r) => r.id === src.id);
     expect(match, `restored row missing for source id ${src.id}`).toBeDefined();
-    expect(new Date(match!.createdAt).toISOString()).toBe(
-      new Date(src.createdAt).toISOString(),
-    );
+    expect(new Date(match!.createdAt).toISOString()).toBe(new Date(src.createdAt).toISOString());
     const matchCreatedBy =
-      typeof match!.createdBy === 'string' ? match!.createdBy : match!.createdBy?.id ?? null;
+      typeof match!.createdBy === 'string' ? match!.createdBy : (match!.createdBy?.id ?? null);
     expect(matchCreatedBy).toBe(src.createdBy);
   }
 
@@ -737,13 +735,9 @@ test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import
     const nonce = ciphertext.slice(0, 12);
     const body = ciphertext.slice(12);
     const dekBytes = Uint8Array.from(atob(dekMaterial), (c) => c.charCodeAt(0));
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      dekBytes,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt'],
-    );
+    const cryptoKey = await crypto.subtle.importKey('raw', dekBytes, { name: 'AES-GCM' }, false, [
+      'decrypt',
+    ]);
     const plaintext = new Uint8Array(
       await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, cryptoKey, body),
     );

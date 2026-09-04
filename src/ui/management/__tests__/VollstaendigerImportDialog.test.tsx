@@ -75,6 +75,17 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     expect(screen.getByTestId('import-job-start')).toBeDisabled();
   });
 
+  it('warns that the restore purges the Papierkorb (AC-220)', () => {
+    // Distinct from the generic destructive notice: "the existing data is
+    // deleted" does not tell an operator that the archive holds no `hidden`
+    // rows, so the trash cannot come back. No surprises at the gate.
+    render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
+    const confirm = screen.getByTestId('import-job-confirm');
+    expect(within(confirm).getByTestId('import-job-papierkorb-notice')).toHaveTextContent(
+      /Papierkorb/,
+    );
+  });
+
   it('enables Start only when the typed value matches the configured phrase (AC-161)', () => {
     render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
     const input = screen.getByTestId('import-job-phrase-input');

@@ -75,6 +75,12 @@ export function PreflightView(props: PreflightViewProps) {
       body={
         <>
           <div className={styles.readoutLine}>{STRINGS.dataExchange.exportPreflightBody}</div>
+          {/* AC-220: only `ready` attachments travel. Said here so the
+              operator's model of "what is in my backup" is right from the
+              start, not corrected at restore time. */}
+          <div className={styles.readoutLine} data-testid="export-job-papierkorb-notice">
+            {STRINGS.dataExchange.exportPapierkorbNotice}
+          </div>
           {isMobile && (
             <div
               className={styles.mobileWarning}
