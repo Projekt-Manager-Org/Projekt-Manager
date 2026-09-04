@@ -12,11 +12,12 @@
  * (which would re-encode, and risk diverging from, the export builder).
  *
  *   - AC-327 / AT-141 — validate before wipe. An archive whose
- *     `data.json` carries a wrong `schema_version` (sibling arm: a broken
- *     `manifest.json` per-entry sha256) terminates the job `failed` with
- *     `error_detail` and performs ZERO writes — the pre-existing target
- *     rows are UNTOUCHED. The destructive wipe never runs on a corrupt /
- *     tampered / wrong-version archive.
+ *     `data.json` carries a wrong `schema_version` (sibling arms: a broken
+ *     `manifest.json` per-entry sha256, an out-of-enum mimeType, an unsafe
+ *     fileName, two attachment ids sharing one `zipPath`) terminates the
+ *     job `failed` with `error_detail` and performs ZERO writes — the
+ *     pre-existing target rows are UNTOUCHED. The destructive wipe never
+ *     runs on a corrupt / tampered / wrong-version archive.
  *   - AC-328 / AT-142 — restore + server re-encrypt + byte-equal
  *     roundtrip + idempotency. seed (with a ready attachment) → export job
  *     → import job (override + phrase) restores the business rows with IDs
@@ -761,6 +762,49 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(terminal.status).toBe('failed');
       expect(terminal.errorDetail).toContain('unsafe fileName');
 
+      expect(await countRows('projects')).toBe(before.projects);
+      expect(await countRows('attachments')).toBe(before.attachments);
+    });
+
+    it('two manifest entries sharing a zipPath → job failed at Pass-1, target untouched', async () => {
+      // The import-side twin of #387. Pass 2 matches an archive entry back
+      // to its row through `zipPath → attachmentId`, so two ids pointing at
+      // one path collapse into a single insert and the loser is restored
+      // NOWHERE. Attachment-id uniqueness does not catch it (both ids are
+      // distinct) and envelope↔manifest parity still holds (both ids are
+      // still listed), so without this gate the job wipes the target,
+      // restores N-1 of N attachments, and reports `ready` — the operator
+      // learns their restore was short only at the next restore.
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'one.pdf' });
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'two.pdf' });
+      const archive = await buildExportArchive(ownerToken);
+
+      const before = {
+        projects: await countRows('projects'),
+        attachments: await countRows('attachments'),
+      };
+      expect(before.attachments).toBe(2);
+
+      // Point the second attachment entry at the first one's path + digest.
+      // Both entries now verify against a real archive entry, so the run
+      // reaches the uniqueness gate rather than tripping the sha256 check.
+      const corrupt = remuxArchive(archive, (entries) => {
+        const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf-8')) as {
+          files: { zipPath: string; sha256: string; attachmentId?: string }[];
+        };
+        const attachmentFiles = manifest.files.filter((f) => f.attachmentId);
+        expect(attachmentFiles.length).toBe(2);
+        attachmentFiles[1]!.zipPath = attachmentFiles[0]!.zipPath;
+        attachmentFiles[1]!.sha256 = attachmentFiles[0]!.sha256;
+        entries['manifest.json'] = new Uint8Array(Buffer.from(JSON.stringify(manifest)));
+      });
+
+      const jobId = await uploadArchiveToNewJob(ownerToken, corrupt);
+      const terminal = await pollImportTerminal(ownerToken, jobId);
+      expect(terminal.status).toBe('failed');
+      expect(terminal.errorDetail).toContain('duplicate zipPath');
+
+      // ZERO destructive writes — the wipe never ran (AC-327).
       expect(await countRows('projects')).toBe(before.projects);
       expect(await countRows('attachments')).toBe(before.attachments);
     });

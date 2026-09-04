@@ -452,7 +452,6 @@ async function importJobZip(
   await expect(page.getByTestId('import-job-summary')).toBeVisible({ timeout: 60_000 });
 }
 
-
 /**
  * Clear a re-attached terminal import-job summary on the CURRENT page.
  *
