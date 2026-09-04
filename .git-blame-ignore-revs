@@ -18,3 +18,13 @@
 # together with the lockfile refresh and the prettier pin that forced it;
 # no source behaviour changed.
 ff172a42be030d596222ca89b294c398a08a648a
+
+# chore: format the repo with Prettier (#397)
+# Repo-wide `prettier --write .` across the 21 files the old check scope
+# (`src/**` + `**/*.md`) never saw: e2e/, scripts/, the root configs and
+# index.html. Merged as its own PR, ahead of the enforcement change that
+# closes the gap (#396), so the reformat would keep a SHA of its own —
+# squash is this repo's only merge method, and a mixed commit is not
+# listable here. Every file was re-derived from main with `prettier
+# --write` and matched byte for byte; nothing under src/ is touched.
+ae8e163a2f3c9a3dda666dd874233a5a31ee2a46

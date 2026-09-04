@@ -17,8 +17,8 @@
     "build:server": "esbuild src/server/start.ts src/server/backup-runner.ts src/server/deploy-preflight-cli.ts --bundle --platform=node --outdir=dist/server --format=esm --packages=external",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"**/*.md\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"**/*.md\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
@@ -46,12 +46,8 @@
     }
   },
   "lint-staged": {
-    "src/**/*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "src/**/*.css": "prettier --write",
-    "**/*.md": "prettier --write",
+    "src/**/*.{ts,tsx}": "eslint --fix",
+    "**/*": "prettier --write --ignore-unknown",
     "src/config/{permissions,roleKeys}.ts": [
       "tsx scripts/generate-permissions-doc.ts",
       "git add docs/spec/api.md"

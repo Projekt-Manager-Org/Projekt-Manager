@@ -1,0 +1,8 @@
+# Prettier already honours .gitignore (it is a default --ignore-path since
+# Prettier 3), so build output, coverage and node_modules need no entry here.
+# This file is only for tracked files that a TOOL owns.
+
+# drizzle-kit rewrites these on every `drizzle-kit generate`. Formatting them
+# means the next schema change reverts the formatting and fails format:check —
+# churn on bytes no human edits or reviews.
+src/server/db/migrations/meta/
