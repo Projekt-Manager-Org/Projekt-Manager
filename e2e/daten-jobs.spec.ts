@@ -3,6 +3,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { sql } from 'drizzle-orm';
+import { unzipSync } from 'fflate';
 import {
   EXPECTED_RESTORE_PHRASE,
   SEED_DEFAULT_PASSWORD,
@@ -121,18 +123,12 @@ interface SeededAttachment {
  * seeded ciphertext is decryptable by the SAME contract the production code
  * reads (ADR-0024 §Encryption). Node's WebCrypto (Node 22+) is the producer.
  */
-async function encryptForUpload(
-  plaintext: Buffer,
-): Promise<{ dek: Buffer; ciphertext: Buffer }> {
+async function encryptForUpload(plaintext: Buffer): Promise<{ dek: Buffer; ciphertext: Buffer }> {
   const dek = crypto.randomBytes(32);
   const nonce = crypto.randomBytes(12);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    dek,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt'],
-  );
+  const cryptoKey = await crypto.subtle.importKey('raw', dek, { name: 'AES-GCM' }, false, [
+    'encrypt',
+  ]);
   const sealed = Buffer.from(
     await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, cryptoKey, plaintext),
   );
@@ -169,7 +165,10 @@ function md5Base64(bytes: Buffer): string {
  * encrypts the staged-archive plaintext, so the recovered plaintext is the
  * same bytes that went in.)
  */
-async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestContext): Promise<{
+async function seedAttachmentsOnFirstProject(
+  page: Page,
+  request: APIRequestContext,
+): Promise<{
   projectId: string;
   attachments: SeededAttachment[];
 }> {
@@ -229,9 +228,7 @@ async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestCont
     });
     if (!initRes.ok()) {
       const errBody = await initRes.text().catch(() => '<no body>');
-      throw new Error(
-        `init failed for ${f.fileName}: status=${initRes.status()} body=${errBody}`,
-      );
+      throw new Error(`init failed for ${f.fileName}: status=${initRes.status()} body=${errBody}`);
     }
     const initBody = (await initRes.json()) as {
       attachment: {
@@ -246,7 +243,7 @@ async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestCont
     const createdBy =
       typeof initBody.attachment.createdBy === 'string'
         ? initBody.attachment.createdBy
-        : initBody.attachment.createdBy?.id ?? null;
+        : (initBody.attachment.createdBy?.id ?? null);
     if (!createdBy) throw new Error(`seed: createdBy null on ${f.fileName}`);
 
     // 2. PUT presigned URL with the ciphertext bytes. Strip the forbidden
@@ -266,9 +263,7 @@ async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestCont
 
     // 3. complete — server HEADs the storage object + flips status to 'ready'.
     //    After this the row is visible to the export-job build.
-    const completeRes = await request.post(
-      `/api/projects/${projectId}/attachments/${id}/complete`,
-    );
+    const completeRes = await request.post(`/api/projects/${projectId}/attachments/${id}/complete`);
     expect(completeRes.ok(), `complete failed for ${f.fileName}`).toBe(true);
 
     seeded.push({
@@ -300,10 +295,12 @@ async function seedAttachmentsOnFirstProject(page: Page, request: APIRequestCont
  * transition (it asserts EITHER a progress readout OR an already-`ready`
  * state surfaced).
  */
-async function exportJobZip(page: Page): Promise<Buffer> {
+async function exportJobZip(page: Page, opts?: { afterImport?: boolean }): Promise<Buffer> {
   await page.goto('/');
   await clickView(page, 'daten');
   await expect(page.getByTestId('daten-view')).toBeVisible();
+
+  if (opts?.afterImport) await dismissReattachedImportSummary(page);
 
   const exportBtn = page.getByTestId('data-export-button');
   await expect(exportBtn).toBeVisible();
@@ -313,6 +310,9 @@ async function exportJobZip(page: Page): Promise<Buffer> {
   const dialog = page.getByTestId('export-job-dialog');
   await expect(dialog).toBeVisible();
   await expect(page.getByTestId('export-job-preflight')).toBeVisible();
+  // AC-220: the archive carries only `ready` attachments. Said here, where the
+  // operator's model of "what is in my backup" forms — not at restore time.
+  await expect(page.getByTestId('export-job-papierkorb-notice')).toContainText('Papierkorb');
   await page.getByTestId('export-job-start').click();
 
   // Progress readout — files-done/total, bytes-done/total, current item. A
@@ -359,6 +359,145 @@ async function exportJobZip(page: Page): Promise<Buffer> {
   // job on close; a fresh page reload — the resume sub-arm — re-attaches).
   await page.getByTestId('export-job-close').click();
   return bytes;
+}
+
+/**
+ * Drive the Import dialog with `zipBytes` through to the restored-counts
+ * summary, including the mid-processing re-auth.
+ *
+ * Flow: file pick → confirmation-phrase gate (AC-161) → resumable upload →
+ * server processing. The restore TRUNCATEs `users` mid-processing (AC-310),
+ * so the operator's session dies, the next poll 401s, and the app routes to
+ * the login screen — there is NO client-held summary before the wipe. After
+ * re-login the mount-time resume probe auto-opens the dialog onto the summary
+ * (ui/daten.md §8.11.2 step 4).
+ *
+ * `tmpName` keeps concurrent cycles from sharing one scratch file.
+ */
+async function importJobZip(
+  page: Page,
+  zipBytes: Buffer,
+  tmpName: string,
+  opts?: { afterImport?: boolean },
+): Promise<void> {
+  await page.goto('/');
+  await clickView(page, 'daten');
+  if (opts?.afterImport) await dismissReattachedImportSummary(page);
+  const importBtn = page.getByTestId('data-import-button');
+  await expect(importBtn).toBeVisible();
+
+  // Click the Import button to fire the OS file picker; the chooser-event
+  // handshake lets us feed the takeout-zip without an interactive OS dialog.
+  const tmpZipPath = path.join(__dirname, tmpName);
+  fs.writeFileSync(tmpZipPath, zipBytes);
+  try {
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await importBtn.click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles(tmpZipPath);
+
+    // Confirmation-phrase gate (AC-161): start disabled until the typed value
+    // matches the configured phrase. Assert disabled-before, enabled-after.
+    const confirm = page.getByTestId('import-job-confirm');
+    await expect(confirm).toBeVisible();
+    // AC-220: the restore is also a Papierkorb purge, called out separately
+    // from the generic destructive notice — "the existing data is deleted"
+    // does not tell an operator the archive cannot bring the trash back.
+    await expect(confirm.getByTestId('import-job-papierkorb-notice')).toContainText('Papierkorb');
+    const phraseInput = confirm.getByTestId('import-job-phrase-input');
+    await expect(phraseInput).toBeVisible();
+    // The action buttons live in the DialogShell's actions row — a SIBLING of
+    // the phase-body (`import-job-confirm`), not inside it — so page-scope the
+    // start button (same as the export arm does for `export-job-start`).
+    const startBtn = page.getByTestId('import-job-start');
+    await expect(startBtn).toBeDisabled();
+    await phraseInput.fill(EXPECTED_RESTORE_PHRASE);
+    await expect(startBtn).toBeEnabled();
+    await startBtn.click();
+
+    // Resumable upload (client→VPS bytes) → server processing. The upload of a
+    // small seed archive is fast, so accept `processing` having already
+    // surfaced — but when the uploading phase IS caught, its byte readout must
+    // be there (it renders unconditionally inside that view).
+    //
+    // One assertion, not a sampled `if (await uploading.isVisible())` branch:
+    // the phase was measured living only 13-32ms against 1-8ms per round-trip,
+    // so the view could unmount between the sample and the assertion, leaving
+    // it retrying a locator that would never resolve again.
+    //
+    // As in the export arm, a missing readout would be masked by `processing`
+    // arriving; `VollstaendigerImportDialog.test.tsx` is what pins the readout
+    // itself, deterministically. Here the point is that the phase progresses.
+    const uploading = page.getByTestId('import-job-uploading');
+    const processing = page.getByTestId('import-job-processing');
+    await expect(
+      uploading.getByTestId('import-job-upload-bytes').or(processing).first(),
+    ).toBeVisible({ timeout: 60_000 });
+  } finally {
+    if (fs.existsSync(tmpZipPath)) fs.unlinkSync(tmpZipPath);
+  }
+
+  // Re-auth after the mid-processing wipe. The owner row round-trips through
+  // the archive with its seed password.
+  await expect(page.getByTestId('login-username')).toBeVisible({ timeout: 60_000 });
+  await page.getByTestId('login-username').fill(SEED_USERS.owner.username);
+  await page.getByTestId('login-password').fill(SEED_DEFAULT_PASSWORD);
+  await page.getByTestId('login-submit').click();
+  await expect(page.getByTestId('user-indicator')).toContainText(SEED_USERS.owner.displayName);
+
+  // Back on the Daten view (the import was running there); no nav is needed —
+  // a clickView here would be blocked by the import-job overlay. Generous
+  // timeout: the restore + per-attachment re-encrypt run after the re-auth.
+  await expect(page.getByTestId('daten-view')).toBeVisible();
+  await expect(page.getByTestId('import-job-summary')).toBeVisible({ timeout: 60_000 });
+}
+
+/**
+ * Clear a re-attached terminal import-job summary on the CURRENT page.
+ *
+ * `dismissedJobId` lives in the store, not in storage, so every fresh page
+ * load loses it and the mount-time resume probe re-opens the summary — whose
+ * overlay swallows clicks on both Daten action buttons. Callers pass
+ * `afterImport` because only they know a terminal import job exists; this is
+ * not sampled with `isVisible()`, which the phase-timing notes elsewhere in
+ * this file explain is unsafe.
+ */
+async function dismissReattachedImportSummary(page: Page): Promise<void> {
+  await expect(page.getByTestId('daten-view')).toBeVisible();
+  const summary = page.getByTestId('import-job-summary');
+  await expect(summary).toBeVisible({ timeout: 60_000 });
+  await page.getByTestId('import-job-close').click();
+  await expect(page.getByTestId('import-job-overlay')).toHaveCount(0);
+}
+
+/**
+ * Unzip a takeout archive and pull out the three facts a round-trip
+ * comparison needs: the envelope's attachment ids, the manifest's attachment
+ * ids, and the per-attachment SHA-256. Raw zip bytes are deliberately NOT
+ * compared across cycles — `exportedAt` moves and neither entry order nor
+ * compression output is contractually byte-stable.
+ */
+function readArchive(zipBytes: Buffer): {
+  envelopeAttachmentIds: string[];
+  manifestAttachmentIds: string[];
+  sha256ByAttachmentId: Record<string, string>;
+} {
+  const decoded = unzipSync(new Uint8Array(zipBytes));
+  const envelope = JSON.parse(Buffer.from(decoded['data.json']!).toString('utf-8')) as {
+    attachments: Array<{ id: string }>;
+  };
+  const manifest = JSON.parse(Buffer.from(decoded['manifest.json']!).toString('utf-8')) as {
+    files: Array<{ sha256: string; attachmentId?: string }>;
+  };
+  const sha256ByAttachmentId: Record<string, string> = {};
+  for (const f of manifest.files) {
+    if (f.attachmentId) sha256ByAttachmentId[f.attachmentId] = f.sha256;
+  }
+  return {
+    envelopeAttachmentIds: envelope.attachments.map((a) => a.id).sort(),
+    manifestAttachmentIds: Object.keys(sha256ByAttachmentId).sort(),
+    sha256ByAttachmentId,
+  };
 }
 
 // NOTE — declaration order is load-bearing in this serial file. The two
@@ -425,7 +564,68 @@ test('AC-335: export job resume probe re-surfaces the download after a page relo
   await expect(page.getByTestId('export-job-dialog')).toHaveCount(0);
 });
 
-test('AC-335 / AC-328 / AC-161: job-driven export → import roundtrip preserves (id, createdBy, createdAt) and plaintext bytes', async ({
+test('AC-325: an unreadable attachment fails the export in the UI — no download is offered', async ({
+  page,
+}) => {
+  // A `ready` attachment whose wrapped DEK cannot be unwrapped must abort the
+  // build, not be quietly omitted from the archive. The old contract skipped
+  // it and still offered the download, handing the operator a backup its own
+  // importer rejects (#387). Unwrap fails before any storage fetch, so the row
+  // needs no backing object.
+  //
+  // Seeded directly — there is no supported way to mint an unreadable row
+  // through the product — and removed in `finally` so the destructive
+  // roundtrip below still gets a clean export.
+  const { db, pool } = createDatabase();
+  const badId = crypto.randomUUID();
+  try {
+    const projectRes = await page.request.get('/api/projects');
+    expect(projectRes.ok()).toBe(true);
+    const projectId = ((await projectRes.json()) as { data: Array<{ id: string }> }).data[0]?.id;
+    if (!projectId) throw new Error('no projects in seed');
+
+    await db.execute(sql`
+      INSERT INTO attachments
+        (id, project_id, status, kind, label, filename, mime_type, size_bytes,
+         ciphertext_size_bytes, original_key, has_thumbnail,
+         wrapped_dek, wrapped_dek_version)
+      VALUES (${badId}, ${projectId}, 'ready', 'binary', 'sonstiges',
+              'unreadable.pdf', 'application/pdf', 512, 540,
+              ${`attachments/${projectId}/${badId}.orig`}, FALSE,
+              ${crypto.randomBytes(192).toString('base64')}, 1)
+    `);
+
+    await page.goto('/');
+    await clickView(page, 'daten');
+    await expect(page.getByTestId('daten-view')).toBeVisible();
+
+    await page.getByTestId('data-export-button').click();
+    await expect(page.getByTestId('export-job-dialog')).toBeVisible();
+    await expect(page.getByTestId('export-job-preflight')).toBeVisible();
+    await page.getByTestId('export-job-start').click();
+
+    // The job terminates `failed`; the dialog shows the error phase and names
+    // the offending row so the operator can act on it.
+    const error = page.getByTestId('export-job-error');
+    await expect(error).toBeVisible({ timeout: 60_000 });
+    await expect(error).toContainText(badId);
+
+    // The load-bearing assertion: NOTHING downloadable is offered anywhere.
+    await expect(page.getByTestId('export-job-ready')).toHaveCount(0);
+    await expect(page.getByTestId('export-job-download')).toHaveCount(0);
+
+    // Nor after a reload — the inline terminal affordance shows the error,
+    // not a download link.
+    await page.reload();
+    await expect(page.getByTestId('daten-view')).toBeVisible();
+    await expect(page.getByTestId('export-job-download')).toHaveCount(0);
+  } finally {
+    await db.execute(sql`DELETE FROM attachments WHERE id = ${badId}`);
+    await pool.end();
+  }
+});
+
+test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import round preserves identity, bytes, and archive parity', async ({
   page,
   request,
 }) => {
@@ -449,92 +649,50 @@ test('AC-335 / AC-328 / AC-161: job-driven export → import roundtrip preserves
   expect(zipBytes.byteLength).toBeGreaterThan(0);
 
   // -------------------------------------------------------------
-  // 3. Import JOB — drive the dialog with the exported zip. The flow is:
-  //    file pick → confirmation-phrase gate → resumable upload → server
-  //    processing. The restore wipes `users`, so the operator session dies
-  //    MID-PROCESSING (not after a summary, unlike the retiring flow). The
-  //    next poll 401s and the app routes to the login screen automatically.
+  // 3. CYCLE 1 — import the archive the export just produced.
   // -------------------------------------------------------------
-  await page.goto('/');
-  await clickView(page, 'daten');
-  const importBtn = page.getByTestId('data-import-button');
-  await expect(importBtn).toBeVisible();
+  await importJobZip(page, zipBytes, '.tmp-daten-job-import.zip');
 
-  // Click the Import button to fire the OS file picker; the chooser-event
-  // handshake lets us feed the takeout-zip without an interactive OS dialog.
-  const tmpZipPath = path.join(__dirname, '.tmp-daten-job-import.zip');
-  fs.writeFileSync(tmpZipPath, zipBytes);
-  try {
-    const fileChooserPromise = page.waitForEvent('filechooser');
-    await importBtn.click();
-    const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles(tmpZipPath);
+  // -------------------------------------------------------------
+  // 4. CYCLE 2 — re-export the restored state and compare. This is the leg
+  //    that makes the round CLOSED rather than one-way: an export→import
+  //    that "succeeds" but leaves a state which no longer exports to the
+  //    same artifact is still data loss, just deferred. The archive
+  //    contents (not the raw zip bytes — `exportedAt` moves and zip
+  //    entry order/compression need not be byte-stable) must match: same
+  //    attachment id set in BOTH envelope and manifest, and the same
+  //    SHA-256 per attachment entry.
+  // -------------------------------------------------------------
+  const zipBytes2 = await exportJobZip(page, { afterImport: true });
+  const cycle1 = readArchive(zipBytes);
+  const cycle2 = readArchive(zipBytes2);
 
-    // Confirmation-phrase gate (AC-161): start disabled until the typed value
-    // matches the configured phrase. Assert disabled-before, enabled-after.
-    const confirm = page.getByTestId('import-job-confirm');
-    await expect(confirm).toBeVisible();
-    const phraseInput = confirm.getByTestId('import-job-phrase-input');
-    await expect(phraseInput).toBeVisible();
-    // The action buttons live in the DialogShell's actions row — a SIBLING of
-    // the phase-body (`import-job-confirm`), not inside it — so page-scope the
-    // start button (same as the export arm does for `export-job-start`).
-    const startBtn = page.getByTestId('import-job-start');
-    await expect(startBtn).toBeDisabled();
-    await phraseInput.fill(EXPECTED_RESTORE_PHRASE);
-    await expect(startBtn).toBeEnabled();
-    await startBtn.click();
-
-    // Resumable upload (client→VPS bytes) → server processing. The upload of a
-    // small seed archive is fast, so accept `processing` having already
-    // surfaced — but when the uploading phase IS caught, its byte readout must
-    // be there (it renders unconditionally inside that view).
-    //
-    // One assertion, not a sampled `if (await uploading.isVisible())` branch:
-    // the phase was measured living only 13-32ms against 1-8ms per round-trip,
-    // so the view could unmount between the sample and the assertion, leaving
-    // it retrying a locator that would never resolve again.
-    //
-    // As in the export arm, a missing readout would be masked by `processing`
-    // arriving; `VollstaendigerImportDialog.test.tsx` is what pins the readout
-    // itself, deterministically. Here the point is that the phase progresses.
-    const uploading = page.getByTestId('import-job-uploading');
-    const processing = page.getByTestId('import-job-processing');
-    await expect(
-      uploading.getByTestId('import-job-upload-bytes').or(processing).first(),
-    ).toBeVisible({ timeout: 60_000 });
-  } finally {
-    if (fs.existsSync(tmpZipPath)) fs.unlinkSync(tmpZipPath);
+  expect(cycle2.envelopeAttachmentIds).toEqual(cycle1.envelopeAttachmentIds);
+  expect(cycle2.manifestAttachmentIds).toEqual(cycle1.manifestAttachmentIds);
+  // Parity within each archive — the invariant the importer enforces
+  // pre-wipe (AC-325). Asserted on both cycles, not just the first.
+  expect(cycle1.manifestAttachmentIds).toEqual(cycle1.envelopeAttachmentIds);
+  expect(cycle2.manifestAttachmentIds).toEqual(cycle2.envelopeAttachmentIds);
+  // Every attachment this test seeded survives both cycles. Containment,
+  // not equality — the base seed carries attachments on other projects and
+  // they ride the same archive.
+  for (const src of attachments) {
+    expect(cycle1.envelopeAttachmentIds, `cycle 1 dropped ${src.fileName}`).toContain(src.id);
+    expect(cycle2.envelopeAttachmentIds, `cycle 2 dropped ${src.fileName}`).toContain(src.id);
   }
+  // Plaintext digests survive cycle 2 unchanged.
+  expect(cycle2.sha256ByAttachmentId).toEqual(cycle1.sha256ByAttachmentId);
 
   // -------------------------------------------------------------
-  // 4. CRITICAL re-auth delta. The restore TRUNCATEs `users` mid-processing
-  //    (AC-310), so the operator's session dies; the next poll 401s and the
-  //    app routes to the login screen automatically — there is NO client-held
-  //    summary before the wipe (unlike the retiring flow, which carried a
-  //    minted import token to a client-side summary). Re-login as owner; the
-  //    owner row round-trips through the archive with its seed password.
+  // 5. Import the SECOND archive. A restored state that cannot itself be
+  //    restored is a broken backup chain; this closes the loop.
   // -------------------------------------------------------------
-  await expect(page.getByTestId('login-username')).toBeVisible({ timeout: 60_000 });
-  await page.getByTestId('login-username').fill(SEED_USERS.owner.username);
-  await page.getByTestId('login-password').fill(SEED_DEFAULT_PASSWORD);
-  await page.getByTestId('login-submit').click();
-  await expect(page.getByTestId('user-indicator')).toContainText(SEED_USERS.owner.displayName);
+  await importJobZip(page, zipBytes2, '.tmp-daten-job-import-2.zip', { afterImport: true });
 
   // -------------------------------------------------------------
-  // 5. The operator is back on the Daten view (the import was running there)
-  //    and the mount-time resume probe auto-opens the import dialog onto the
-  //    restored-counts summary (ui/daten.md §8.11.2 step 4 — "the view
-  //    re-attaches"). No nav is needed; a clickView here would be blocked by
-  //    the import-job overlay. Generous timeout — the server-side restore +
-  //    per-attachment re-encrypt run after the re-auth.
-  // -------------------------------------------------------------
-  await expect(page.getByTestId('daten-view')).toBeVisible();
-  await expect(page.getByTestId('import-job-summary')).toBeVisible({ timeout: 60_000 });
-
-  // -------------------------------------------------------------
-  // 6. Cross-check restored rows (the AC-328 roundtrip verification, identical
-  //    in shape to the retiring import spec):
+  // 6. Cross-check restored rows after TWO full cycles (the AC-328
+  //    roundtrip verification, identical in shape to the retiring import
+  //    spec) — the byte-equality is against the ORIGINAL seed plaintext:
   //    - (id, createdBy, createdAt) per row equals source
   //    - download-URL plaintext byte-equals seed (AC-241)
   //    - photo thumbnail renders via /encrypted-storage/.../thumbnail (AC-243)
@@ -551,11 +709,9 @@ test('AC-335 / AC-328 / AC-161: job-driven export → import roundtrip preserves
   for (const src of attachments) {
     const match = restored.find((r) => r.id === src.id);
     expect(match, `restored row missing for source id ${src.id}`).toBeDefined();
-    expect(new Date(match!.createdAt).toISOString()).toBe(
-      new Date(src.createdAt).toISOString(),
-    );
+    expect(new Date(match!.createdAt).toISOString()).toBe(new Date(src.createdAt).toISOString());
     const matchCreatedBy =
-      typeof match!.createdBy === 'string' ? match!.createdBy : match!.createdBy?.id ?? null;
+      typeof match!.createdBy === 'string' ? match!.createdBy : (match!.createdBy?.id ?? null);
     expect(matchCreatedBy).toBe(src.createdBy);
   }
 
@@ -579,13 +735,9 @@ test('AC-335 / AC-328 / AC-161: job-driven export → import roundtrip preserves
     const nonce = ciphertext.slice(0, 12);
     const body = ciphertext.slice(12);
     const dekBytes = Uint8Array.from(atob(dekMaterial), (c) => c.charCodeAt(0));
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      dekBytes,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt'],
-    );
+    const cryptoKey = await crypto.subtle.importKey('raw', dekBytes, { name: 'AES-GCM' }, false, [
+      'decrypt',
+    ]);
     const plaintext = new Uint8Array(
       await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, cryptoKey, body),
     );

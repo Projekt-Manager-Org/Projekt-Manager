@@ -102,12 +102,6 @@
   word-break: break-all;
 }
 
-.skippedLine {
-  font-size: 14px;
-  color: var(--color-text);
-  font-weight: 500;
-}
-
 .failureList {
   list-style: none;
   padding: 0;

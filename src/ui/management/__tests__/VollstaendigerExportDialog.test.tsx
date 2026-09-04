@@ -66,6 +66,14 @@ describe('VollstaendigerExportDialog — preflight (AC-335)', () => {
     expect(screen.queryByTestId('export-job-mobile-warning')).not.toBeInTheDocument();
   });
 
+  it('states that the Papierkorb is not exported (AC-220)', () => {
+    // The envelope carries only `status='ready'` rows, so the archive holds
+    // no Papierkorb items — and a later restore therefore purges them. The
+    // operator's model of what a backup contains forms at THIS dialog.
+    render(<VollstaendigerExportDialog onClose={vi.fn()} />);
+    expect(screen.getByTestId('export-job-papierkorb-notice')).toHaveTextContent(/Papierkorb/);
+  });
+
   it('renders the mobile warning below the configured breakpoint', () => {
     setMatchMedia(true);
     render(<VollstaendigerExportDialog onClose={vi.fn()} />);
@@ -134,17 +142,6 @@ describe('VollstaendigerExportDialog — ready + failed (AC-335)', () => {
     // `download` attribute supplies the suggested filename.
     expect(dl).toHaveAttribute('href', '/api/export-jobs/job-1/download');
     expect(dl).toHaveAttribute('download');
-  });
-
-  it('surfaces a skipped-file count on ready when the build skipped rows', () => {
-    useExportJobStore.setState({ job: makeJob({ status: 'running' }) });
-    render(<VollstaendigerExportDialog onClose={vi.fn()} />);
-    act(() => {
-      useExportJobStore.setState({
-        job: makeJob({ id: 'job-1', status: 'ready', filesTotal: 5, filesDone: 4 }),
-      });
-    });
-    expect(screen.getByTestId('export-job-skipped')).toBeInTheDocument();
   });
 
   it('renders the job error_detail on a failed build', () => {

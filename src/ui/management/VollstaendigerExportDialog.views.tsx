@@ -75,6 +75,12 @@ export function PreflightView(props: PreflightViewProps) {
       body={
         <>
           <div className={styles.readoutLine}>{STRINGS.dataExchange.exportPreflightBody}</div>
+          {/* AC-220: only `ready` attachments travel. Said here so the
+              operator's model of "what is in my backup" is right from the
+              start, not corrected at restore time. */}
+          <div className={styles.readoutLine} data-testid="export-job-papierkorb-notice">
+            {STRINGS.dataExchange.exportPapierkorbNotice}
+          </div>
           {isMobile && (
             <div
               className={styles.mobileWarning}
@@ -179,8 +185,7 @@ export interface ReadyViewProps {
 }
 
 export function ReadyView(props: ReadyViewProps) {
-  const { job, downloadHref, dialogRef, initialFocusRef, onClose } = props;
-  const skipped = Math.max(0, job.filesTotal - job.filesDone);
+  const { downloadHref, dialogRef, initialFocusRef, onClose } = props;
   return (
     <DialogShell
       dialogRef={dialogRef}
@@ -190,11 +195,6 @@ export function ReadyView(props: ReadyViewProps) {
       title={STRINGS.dataExchange.exportReadyTitle}
       body={
         <>
-          {skipped > 0 && (
-            <div className={styles.skippedLine} data-testid="export-job-skipped">
-              {STRINGS.dataExchange.exportSummarySkipped(skipped)}
-            </div>
-          )}
           {/* Range-capable authenticated download. The browser's native
               download manager handles the stream (cookies ride along on the
               same-origin GET); an interrupted download resumes via Range. */}

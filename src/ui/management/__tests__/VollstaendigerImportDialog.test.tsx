@@ -75,6 +75,17 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     expect(screen.getByTestId('import-job-start')).toBeDisabled();
   });
 
+  it('warns that the restore purges the Papierkorb (AC-220)', () => {
+    // Distinct from the generic destructive notice: "the existing data is
+    // deleted" does not tell an operator that the archive holds no `hidden`
+    // rows, so the trash cannot come back. No surprises at the gate.
+    render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
+    const confirm = screen.getByTestId('import-job-confirm');
+    expect(within(confirm).getByTestId('import-job-papierkorb-notice')).toHaveTextContent(
+      /Papierkorb/,
+    );
+  });
+
   it('enables Start only when the typed value matches the configured phrase (AC-161)', () => {
     render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
     const input = screen.getByTestId('import-job-phrase-input');
@@ -133,6 +144,36 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
+  it('a picked file shows confirm even when a PRIOR terminal job sits in the store', () => {
+    // `latest('import')` keeps returning a finished job row, so without this
+    // the second restore was unreachable: every open rendered the old
+    // summary and the confirm gate never appeared (found by the two-cycle
+    // export→import→export→import e2e round).
+    useImportJobStore.setState({ job: makeJob({ id: 'old-job', status: 'ready' }) });
+    render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('import-job-confirm')).toBeInTheDocument();
+    expect(screen.queryByTestId('import-job-summary')).not.toBeInTheDocument();
+  });
+
+  it('a picked file shows confirm when a PRIOR failed job sits in the store', () => {
+    useImportJobStore.setState({
+      job: makeJob({ id: 'old-job', status: 'failed', errorDetail: 'boom' }),
+    });
+    render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('import-job-confirm')).toBeInTheDocument();
+    expect(screen.queryByTestId('import-job-failed')).not.toBeInTheDocument();
+  });
+
+  it('re-attach (no file) still resumes onto a terminal job', () => {
+    useImportJobStore.setState({ job: makeJob({ id: 'old-job', status: 'ready' }) });
+    render(<VollstaendigerImportDialog file={null} onClose={vi.fn()} />);
+
+    expect(screen.getByTestId('import-job-summary')).toBeInTheDocument();
+    expect(screen.queryByTestId('import-job-confirm')).not.toBeInTheDocument();
+  });
+
   it('renders the mobile warning below the configured breakpoint', () => {
     setMatchMedia(true);
     render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
@@ -187,16 +228,6 @@ describe('VollstaendigerImportDialog — summary + failed (AC-335)', () => {
 
     const summary = screen.getByTestId('import-job-summary');
     expect(within(summary).getByTestId('import-job-restored')).toHaveTextContent('5');
-    // filesTotal === filesDone → no skipped line.
-    expect(within(summary).queryByTestId('import-job-skipped')).not.toBeInTheDocument();
-  });
-
-  it('surfaces a skipped count on summary when the restore skipped rows', () => {
-    useImportJobStore.setState({
-      job: makeJob({ status: 'ready', filesTotal: 5, filesDone: 4 }),
-    });
-    render(<VollstaendigerImportDialog file={null} onClose={vi.fn()} />);
-    expect(screen.getByTestId('import-job-skipped')).toBeInTheDocument();
   });
 
   it('renders the job error_detail on a failed restore', () => {

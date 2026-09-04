@@ -468,7 +468,6 @@ export const STRINGS = {
     exportCancel: 'Abbrechen',
     exportSummaryTitle: 'Export abgeschlossen',
     exportSummaryFile: (name: string) => `Datei: ${name}`,
-    exportSummarySkipped: (n: number) => `${n} Dateien übersprungen`,
     exportSummaryClose: 'Schließen',
     exportError: 'Export fehlgeschlagen.',
 
@@ -498,11 +497,16 @@ export const STRINGS = {
     importCancel: 'Abbrechen',
     importSummaryTitle: 'Import abgeschlossen',
     importSummaryCommitted: (n: number) => `${n} Anhänge wiederhergestellt`,
-    importSummarySkipped: (n: number) => `${n} Anhänge übersprungen`,
     importSummaryClose: 'Schließen',
     importError: 'Import fehlgeschlagen.',
     importValidationFailed: 'ZIP-Datei ungültig oder unvollständig.',
     restoreDestructiveNotice: 'Die bestehenden Daten werden unwiderruflich gelöscht.',
+    // AC-220: the envelope carries only `ready` attachments, so a restore is
+    // also a Papierkorb purge. Stated at the gate the operator types the
+    // phrase into — the destruction is bounded and usually irrelevant, but it
+    // must never be a surprise.
+    restorePapierkorbNotice:
+      'Der Papierkorb ist nicht Teil des Archivs: gelöschte Anhänge, die dort noch wiederherstellbar sind, gehen dabei endgültig verloren.',
     restorePhrasePrompt: (phrase: string) => `Zur Bestätigung bitte „${phrase}" eingeben:`,
 
     // --- Server-side job flow (ui/daten.md §8.11, AC-322–335) ---------------
@@ -511,6 +515,9 @@ export const STRINGS = {
     // above for the shared readouts; the keys below are job-specific.
     exportPreflightBody:
       'Der vollständige Export wird auf dem Server erstellt und anschließend zum Download angeboten.',
+    // The expectation of what a backup contains forms HERE, not at restore
+    // time — so the exclusion is stated on both legs (AC-220).
+    exportPapierkorbNotice: 'Der Papierkorb wird nicht mit exportiert.',
     exportReadyTitle: 'Export bereit',
     exportDownloadAction: 'Herunterladen',
     importUploadingTitle: 'Hochladen …',

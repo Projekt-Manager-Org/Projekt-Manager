@@ -99,6 +99,17 @@ export function ConfirmView(props: ConfirmViewProps) {
           >
             {STRINGS.dataExchange.restoreDestructiveNotice}
           </div>
+          {/* The Papierkorb does not travel in the archive (AC-220), so the
+              restore purges it. Called out separately from the generic
+              destructive notice — "the existing data is deleted" does not
+              tell an operator that the archive cannot bring the trash back. */}
+          <div
+            className={styles.destructiveNotice}
+            data-testid="import-job-papierkorb-notice"
+            role="note"
+          >
+            {STRINGS.dataExchange.restorePapierkorbNotice}
+          </div>
           <label className={styles.readoutLine} htmlFor="import-job-phrase-input">
             {STRINGS.dataExchange.restorePhrasePrompt(RESTORE_CONFIRMATION_PHRASE)}
           </label>
@@ -259,7 +270,6 @@ export interface SummaryViewProps {
 
 export function SummaryView(props: SummaryViewProps) {
   const { job, dialogRef, initialFocusRef, onClose } = props;
-  const skipped = Math.max(0, job.filesTotal - job.filesDone);
   return (
     <DialogShell
       dialogRef={dialogRef}
@@ -268,16 +278,9 @@ export function SummaryView(props: SummaryViewProps) {
       bodyId="import-job-summary-body"
       title={STRINGS.dataExchange.importSummaryTitle}
       body={
-        <>
-          <div className={styles.readoutLine} data-testid="import-job-restored">
-            {STRINGS.dataExchange.importSummaryCommitted(job.filesDone)}
-          </div>
-          {skipped > 0 && (
-            <div className={styles.skippedLine} data-testid="import-job-skipped">
-              {STRINGS.dataExchange.importSummarySkipped(skipped)}
-            </div>
-          )}
-        </>
+        <div className={styles.readoutLine} data-testid="import-job-restored">
+          {STRINGS.dataExchange.importSummaryCommitted(job.filesDone)}
+        </div>
       }
       actions={
         <button

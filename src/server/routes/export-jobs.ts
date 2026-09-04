@@ -14,8 +14,8 @@
  * Build lifecycle: the create handler advances the row through the
  * `DataExchangeJobService` (`pending → running → ready | failed`) and the
  * `buildExportArchive` builder; the browser polls `GET :id` until terminal.
- * A per-row attachment failure is skipped by the builder — the build still
- * reaches `ready` (AC-325). At the terminal transition (and only there) the
+ * A per-row attachment failure fails the build (AC-325) — no partial
+ * archive is ever served. At the terminal transition (and only there) the
  * runner writes EXACTLY ONE `audit_log` row with `entityType='data_import'`
  * (AC-332), mirroring the single `data_import` row `ImportService` writes
  * (AC-311). Progress updates write no audit rows.

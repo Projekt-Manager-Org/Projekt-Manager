@@ -72,12 +72,6 @@
   word-break: break-all;
 }
 
-.skippedLine {
-  font-size: 14px;
-  color: var(--color-text);
-  font-weight: 500;
-}
-
 .actions {
   display: flex;
   gap: 12px;

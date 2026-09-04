@@ -53,6 +53,11 @@
  *     / `thumb_version_id` so a restored row round-trips through the
  *     Papierkorb (hide → restore copyFromVersion). Photos also get a
  *     regenerated thumbnail (see below). Progress is throttled (~1/s).
+ *     The pass ends by asserting EVERY envelope attachment was inserted —
+ *     a restore short of its own envelope fails rather than reporting
+ *     `ready`, the import-side mirror of the export builder's coverage
+ *     check (AC-325). A backup half-restored under a green label is how
+ *     the operator finds out too late.
  *
  * Photo-thumbnail regeneration (AC-328): the export bundles only originals
  * (EnvelopeAttachment carries no thumb), so for each `kind='photo'` row the
@@ -62,7 +67,9 @@
  * `wrappedThumbDek` / `ciphertextThumbSizeBytes` / `thumbVersionId`.
  * Thumbnail derivation is opportunistic — an undecodable image logs and
  * restores without a thumb (the original still renders) rather than failing
- * the job, mirroring the export builder's per-row skip.
+ * the job. The thumb is DERIVED data, re-derivable from the original at any
+ * time; the original bytes are the thing a restore may never drop, and those
+ * do fail the job.
  *
  * The staged upload is NOT removed on failure: the route stamped
  * `archiveRef` at `markRunning`, so the staging reaper (data-model.md §6.15)
@@ -339,6 +346,14 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
     if (actual !== entry.sha256) {
       throw new Error(`SHA-256 mismatch for ${entry.zipPath}`);
     }
+    // zipPath uniqueness. Pass 2 matches an archive entry back to its row
+    // through THIS map, so two ids sharing a path collapse into one and the
+    // loser is silently never restored — id-uniqueness above does not catch
+    // it. Rejected here, pre-wipe, rather than surviving into a truncated
+    // target (AC-327).
+    if (attachmentIdByZipPath.has(entry.zipPath)) {
+      throw new Error(`duplicate zipPath ${entry.zipPath} in manifest`);
+    }
     attachmentIdByZipPath.set(entry.zipPath, entry.attachmentId!);
   }
 
@@ -487,6 +502,19 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
         await emitProgress(att.fileName, false);
       });
       await emitProgress(null, true);
+
+      // Coverage — every envelope attachment landed. Structural after Pass 1
+      // (one manifest entry per envelope id, each with a distinct zipPath
+      // present in the archive), so this is a tripwire against a future edit
+      // that reintroduces a way to drop an entry, not a routine branch. It
+      // mirrors the export builder's check: a restore short of its envelope
+      // is an incomplete restore, and `ready` is the one thing it must not
+      // be called. The wipe has already committed by here — failing does not
+      // undo it, but it is the difference between an operator who knows and
+      // one who finds out at the next restore.
+      if (filesDone !== filesTotal) {
+        throw new Error(`restored ${filesDone} of ${filesTotal} envelope attachments`);
+      }
     } finally {
       envelopeService.close();
     }

@@ -27,7 +27,7 @@
  * be 409/200" rather than a timeout. The not-ready download arm and the
  * AC-331 active-job guard were both fixed for exactly this.
  *
- * The archive-content + per-row-skip arms (AC-323 / AC-325) live in the
+ * The archive-content + completeness arms (AC-323 / AC-325) live in the
  * sibling file `data-exchange-export-archive.test.ts`.
  */
 
