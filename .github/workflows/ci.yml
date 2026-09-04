@@ -50,6 +50,17 @@ on:
 # (observed on 1fc8dd79, 6814d500 and b844cf75, #355 §5). A
 # `workflow_dispatch` is an operator explicitly asking for a deployable
 # image and should not lose to anything.
+#
+# Accepted gap (#375.1): exemption stops a run being *cancelled in
+# flight*, not *evicted while pending*. The group defaults to
+# `queue: single` — "any existing pending job or workflow run in the same
+# group is canceled and replaced" — so three merges inside one push run
+# (~4.5 min) drop the middle commit's `sha-<merge>` pair. `main` and the
+# newest commit are unaffected, and rollback reads the host image cache
+# first (#394), so the cost is one commit that cannot be deployed by SHA.
+# Never observed. The fix, if it ever is: `queue: max` — which cannot be
+# combined with `cancel-in-progress: true`, so the push group has to be
+# separated from the cancelling one first.
 concurrency:
   group: ci-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
@@ -799,6 +810,12 @@ jobs:
   docker:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    # Measured ~4 min warm; the bound is ~5x that. Every wait the smoke
+    # and the round-trip own is bounded internally, but the `docker`
+    # calls wrapping them are not — a wedged daemon would otherwise hold
+    # the runner, and this job's slot in the concurrency group, for the
+    # 360-minute default before anything reported.
+    timeout-minutes: 20
     # `packages: write` because this job pushes the images to GHCR by
     # digest before scanning them — see the composite's header for why an
     # untagged digest is not "publishing". ADR-0011 §Trade-offs records
@@ -953,6 +970,10 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: [check, lint, docker]
     runs-on: ubuntu-latest
+    # Registry-side manifest copies only, measured ~20s. Bounded for the
+    # same reason as `docker`: `imagetools create` is an unbounded
+    # network call.
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: write
@@ -1000,6 +1021,10 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [check, lint]
     runs-on: ubuntu-latest
+    # The happy path is seconds, but the fallback runs the same composite
+    # `docker` does against main's colder cache — so it inherits the same
+    # bound rather than a tighter one.
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
@@ -1066,7 +1091,10 @@ jobs:
           # previous tip, and a direct push never had a PR run at all.
           # `docker manifest inspect` is a lightweight HEAD-equivalent
           # — no pull.
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          # Credentials come through the environment, never interpolated
+          # into the script body — GH_TOKEN is already in this step's
+          # `env:` and GITHUB_ACTOR is a default Actions variable.
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           for repo in "$APP_REPO" "$BACKUP_REPO"; do
             ref="${repo}:sha-${pr_head}"
             if ! docker manifest inspect "$ref" > /dev/null 2>&1; then
