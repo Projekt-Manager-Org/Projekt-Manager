@@ -32,9 +32,10 @@
 #   The image the VPS is actually running. Rule 1 keeps the newest
 #   KEEP_MAIN commits on `main`; the deploy is whatever the operator
 #   last ran `deploy.sh` with, and that drifts arbitrarily far behind
-#   (measured 2026-09-04: 70 commits). The container keeps running —
-#   the image is on the host — but its registry copy goes. To pin one,
-#   set KEEP_EXTRA. See docs/ops/manual-deploy.md § Rollback.
+#   (measured 2026-09-04: 70 commits). That is deliberate, and it is
+#   `deploy.sh`'s job to survive it: it pulls `--policy missing`, so a
+#   rollback to any image the host still caches never touches the
+#   registry. See docs/ops/manual-deploy.md § Rollback.
 #
 # FAIL CLOSED
 #   Every step that could silently under-populate the keep set aborts
@@ -53,9 +54,6 @@
 #     PACKAGES           space-separated package names.
 #                        Default: "projekt-manager projekt-manager-backup"
 #     KEEP_MAIN          rollback window, in commits on main. Default 5.
-#     KEEP_EXTRA         space-separated commit SHAs to pin beyond the
-#                        window — the deployed image when the VPS has
-#                        drifted past it. Empty by default.
 #     MIN_AGE_HOURS      floor below which nothing is deleted. Default 24.
 #     DRY_RUN            anything but "false" reports without deleting.
 #                        Default "true" — arming is explicit.
@@ -85,7 +83,6 @@ ORG="${GITHUB_REPOSITORY%%/*}"
 OWNER="${ORG,,}"
 PACKAGES="${PACKAGES:-projekt-manager projekt-manager-backup}"
 KEEP_MAIN="${KEEP_MAIN:-5}"
-KEEP_EXTRA="${KEEP_EXTRA:-}"
 MIN_AGE_HOURS="${MIN_AGE_HOURS:-24}"
 DRY_RUN="${DRY_RUN:-true}"
 MAIN_REF="${MAIN_REF:-HEAD}"
@@ -123,19 +120,15 @@ if ! pr_list=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 \
 fi
 mapfile -t pr_shas < <(printf '%s' "$pr_list")
 
-read -ra extra_shas <<< "$KEEP_EXTRA"
-
 keep_tags=(main)
-for sha in "${main_shas[@]}" \
-  ${pr_shas[@]+"${pr_shas[@]}"} \
-  ${extra_shas[@]+"${extra_shas[@]}"}; do
+for sha in "${main_shas[@]}" ${pr_shas[@]+"${pr_shas[@]}"}; do
   keep_tags+=("sha-${sha}")
 done
 keep_tags_json=$(printf '%s\n' "${keep_tags[@]}" | jq -R . | jq -sc .)
 
 cutoff=$(date -u -d "-${MIN_AGE_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)
 
-echo "org=${ORG}  keep_main=${KEEP_MAIN} (${#main_shas[@]} commits)  open_prs=${#pr_shas[@]}  pinned=${#extra_shas[@]}  age_floor=${cutoff}  dry_run=${DRY_RUN}"
+echo "org=${ORG}  keep_main=${KEEP_MAIN} (${#main_shas[@]} commits)  open_prs=${#pr_shas[@]}  age_floor=${cutoff}  dry_run=${DRY_RUN}"
 
 # --- Per package ------------------------------------------------------
 reap_package() {

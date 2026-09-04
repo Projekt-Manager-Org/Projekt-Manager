@@ -80,13 +80,11 @@ The image must still exist, and **both** copies are now bounded:
 
 Beyond the host window, `compose pull` re-fetches from GHCR. Beyond the GHCR window the tag is gone — use forward-rollback: `git revert` on the operator machine, push, wait for CI, redeploy.
 
-**If the deploy has drifted more than 5 commits behind `main`**, retention will reap the registry copy of what is running. The container keeps running, but that rollback target disappears. To hold it, set the repository variable `GHCR_KEEP_EXTRA` to the deployed commit SHA (space-separated for several):
+**A reaped tag does not block a rollback the host can already serve.** `deploy.sh` pulls `--policy missing`, so an image still in the host cache is used as-is and the registry is never consulted. Measured 2026-09-04: of the three image-sets the host kept, two were already gone from GHCR and unusable under an unconditional pull; the third held only on a `GHCR_KEEP_EXTRA` pin, since removed. List what is actually available to roll back to:
 
 ```bash
-gh variable set GHCR_KEEP_EXTRA --repo Projekt-Manager-Org/Projekt-Manager --body '<deployed-sha>'
+sudo -u deploy docker images --format '{{.Tag}}' ghcr.io/projekt-manager-org/projekt-manager
 ```
-
-Clear it once the deploy is back inside the window.
 
 ## Verify a deploy
 

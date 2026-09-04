@@ -24,16 +24,18 @@ on:
 
 # `packages: write` is the delete grant: the container packages are
 # repository-scoped, so the workflow that publishes them holds admin on
-# them and GITHUB_TOKEN needs no PAT standing in for it.
+# them and GITHUB_TOKEN needs no PAT standing in for it. PROVEN, not
+# assumed — run 33881546101 (2026-09-04) deleted 808 versions across
+# both packages, 0 failures.
 # `pull-requests: read` backs the open-PR rule.
 permissions:
   contents: read
   packages: write
   pull-requests: read
 
-# A first run deletes ~800 versions at one per second. Never cancel it —
-# the job is idempotent, so an interrupted run is harmless, but two runs
-# racing the same delete list produce 404s for no benefit.
+# The first run deleted 808 versions at one per second (~18 min). Never
+# cancel one — the job is idempotent, so an interrupted run is harmless,
+# but two runs racing the same delete list produce 404s for no benefit.
 concurrency:
   group: ghcr-retention
   cancel-in-progress: false
@@ -63,8 +65,4 @@ jobs:
           # this is the only scheduled job in the repo that deletes
           # anything, so arming it is an explicit act.
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
-          # Commits to pin beyond the rollback window — set this when the
-          # VPS is running something older than the newest KEEP_MAIN
-          # commits on main. Unset is the normal state.
-          KEEP_EXTRA: ${{ vars.GHCR_KEEP_EXTRA }}
         run: bash scripts/ci/ghcr-retention.sh

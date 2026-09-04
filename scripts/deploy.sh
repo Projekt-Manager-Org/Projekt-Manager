@@ -247,7 +247,19 @@ fi
 # it on pull, the backup service is filtered out of the active set and
 # its image is never fetched ahead of `up -d` (which would then block
 # on a registry round-trip while starting).
-docker compose --profile backup pull app backup
+#
+# `--policy missing` is what makes the local cache below a real rollback
+# store rather than decoration. `app`/`backup` tags are immutable
+# `sha-<commit>`, so "already present locally" and "identical bytes" are
+# the same statement — re-pulling one buys nothing and, once GHCR
+# retention has reaped that tag, the pull 404s under `set -e` and aborts
+# a deploy whose image is sitting on the disk. Measured 2026-09-04: of
+# the three image-sets IMAGE_RETENTION keeps, two were already gone from
+# GHCR; the third held only on a GHCR_KEEP_EXTRA pin, since removed.
+# Same reasoning as Kubernetes' `imagePullPolicy: IfNotPresent` for
+# non-moving tags: the registry is the cold path, the host cache is the
+# warm one.
+docker compose --profile backup pull --policy missing app backup
 
 # Caddy uses `build: ./docker/caddy` (locally built, not a registry
 # pull), so `compose up -d` below does NOT auto-rebuild on Dockerfile
