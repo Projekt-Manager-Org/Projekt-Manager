@@ -547,17 +547,17 @@ export class Demo {
       window.__demoGlass?.(true);
     });
     await this.page.waitForTimeout(550);
-    await this.page.evaluate(
-      ({ title, subtitle }) => window.__demoFactTitle?.(title, subtitle),
-      { title: opts.title, subtitle: opts.subtitle },
-    );
+    await this.page.evaluate(({ title, subtitle }) => window.__demoFactTitle?.(title, subtitle), {
+      title: opts.title,
+      subtitle: opts.subtitle,
+    });
     await this.page.waitForTimeout(settleMs);
 
     for (const fact of opts.facts) {
-      await this.page.evaluate(
-        ({ melody, bassline }) => window.__demoFactAdd?.(melody, bassline),
-        { melody: fact.melody, bassline: fact.bassline },
-      );
+      await this.page.evaluate(({ melody, bassline }) => window.__demoFactAdd?.(melody, bassline), {
+        melody: fact.melody,
+        bassline: fact.bassline,
+      });
       await this.page.waitForTimeout(perFactMs);
     }
 

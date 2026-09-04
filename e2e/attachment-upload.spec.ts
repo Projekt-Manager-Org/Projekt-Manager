@@ -199,9 +199,7 @@ test.describe('Attachment happy-path upload (worker on assigned project)', () =>
 });
 
 test.describe('Attachment upload preserves EXIF / GPS through the pipeline', () => {
-  test('photo lightbox blob retains the source APP1 segment and Make tag', async ({
-    page,
-  }) => {
+  test('photo lightbox blob retains the source APP1 segment and Make tag', async ({ page }) => {
     // Regression guard for #126. The previous library
     // (`browser-image-compression@2.0.2`) had an EXIF copier that
     // rejected JPEGs whose Orientation tag was encoded as LONG; our

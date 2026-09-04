@@ -110,7 +110,10 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
     await expect(page.getByTestId('invoice-form')).toBeHidden();
 
     // The draft row appears in the per-project invoice block.
-    const draftRow = page.getByTestId('invoice-list').locator('[data-testid^="invoice-row-"]').first();
+    const draftRow = page
+      .getByTestId('invoice-list')
+      .locator('[data-testid^="invoice-row-"]')
+      .first();
     await expect(draftRow).toBeVisible();
     await expect(draftRow.getByTestId('invoice-status-badge')).toContainText(/draft|Entwurf/i);
 
@@ -131,7 +134,9 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
       .getByTestId('invoice-list')
       .locator('[data-testid^="invoice-row-"]')
       .first();
-    await expect(issuedRow.getByTestId('invoice-status-badge')).toContainText(/issued|Ausgestellt/i);
+    await expect(issuedRow.getByTestId('invoice-status-badge')).toContainText(
+      /issued|Ausgestellt/i,
+    );
     const numberCell = issuedRow.getByTestId('invoice-number');
     await expect(numberCell).toBeVisible();
     invoiceNumber = (await numberCell.textContent())!.trim();

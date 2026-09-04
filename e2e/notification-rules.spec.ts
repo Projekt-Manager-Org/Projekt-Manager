@@ -36,7 +36,9 @@ test.describe('AC-199: rule-editor form renders conditional fields per eventClas
     await page.getByTestId('notification-rule-create-button').click();
 
     // Select a transition event — Ziel-Status must be visible.
-    await page.getByTestId('notification-rule-event-select').selectOption('project.transition_forward');
+    await page
+      .getByTestId('notification-rule-event-select')
+      .selectOption('project.transition_forward');
     await expect(page.getByTestId('notification-rule-state-filter')).toBeVisible();
 
     // Switch to a non-transition event — Ziel-Status must disappear.
@@ -52,7 +54,9 @@ test.describe('AC-199: rule-editor form renders conditional fields per eventClas
     await page.getByTestId('notification-rule-create-button').click();
 
     // Project-scoped event — toggle enabled.
-    await page.getByTestId('notification-rule-event-select').selectOption('project.transition_forward');
+    await page
+      .getByTestId('notification-rule-event-select')
+      .selectOption('project.transition_forward');
     await expect(page.getByTestId('notification-rule-assigned-workers-toggle')).toBeEnabled();
 
     // Non-project-scoped event — toggle disabled AND forced false.

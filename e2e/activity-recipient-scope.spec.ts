@@ -43,7 +43,10 @@ async function clearRulesForEvent(request: APIRequestContext, eventClass: string
   for (const rule of rules) {
     if (rule.eventClass === eventClass) {
       const delRes = await request.delete(`/api/notification-rules/${rule.id}`);
-      expect(delRes.ok(), `DELETE /api/notification-rules/${rule.id} failed: ${delRes.status()}`).toBe(true);
+      expect(
+        delRes.ok(),
+        `DELETE /api/notification-rules/${rule.id} failed: ${delRes.status()}`,
+      ).toBe(true);
     }
   }
 }
