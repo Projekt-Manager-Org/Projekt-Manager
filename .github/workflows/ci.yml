@@ -810,12 +810,15 @@ jobs:
   docker:
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
-    # Measured ~4 min warm; the bound is ~5x that. Every wait the smoke
-    # and the round-trip own is bounded internally, but the `docker`
-    # calls wrapping them are not — a wedged daemon would otherwise hold
-    # the runner, and this job's slot in the concurrency group, for the
-    # 360-minute default before anything reported.
-    timeout-minutes: 20
+    # Measured across the last 70 runs: 3-5 min warm, 7-14.4 min cold —
+    # and cold is the first run on every new branch, not a rare tail. The
+    # bound is ~2x the cold worst case, not 5x the warm median: a healthy
+    # slow build that trips this becomes a red required check. Every wait
+    # the smoke and the round-trip own is bounded internally, but the
+    # `docker` calls wrapping them are not — a wedged daemon would
+    # otherwise hold the runner, and this job's slot in the concurrency
+    # group, for the 360-minute default before anything reported.
+    timeout-minutes: 30
     # `packages: write` because this job pushes the images to GHCR by
     # digest before scanning them — see the composite's header for why an
     # untagged digest is not "publishing". ADR-0011 §Trade-offs records
@@ -1022,9 +1025,12 @@ jobs:
     needs: [check, lint]
     runs-on: ubuntu-latest
     # The happy path is seconds, but the fallback runs the same composite
-    # `docker` does against main's colder cache — so it inherits the same
-    # bound rather than a tighter one.
-    timeout-minutes: 20
+    # `docker` does — and `docker` never runs on `push`, so main's layer
+    # cache is written almost only by these fallbacks themselves. That
+    # makes this path structurally colder than `docker`'s 14.4-min worst
+    # case, and a timeout here leaves main's SHA with no image at all —
+    # so it inherits `docker`'s bound rather than a tighter one.
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
