@@ -107,6 +107,13 @@ runs:
           GIT_SHA=${{ inputs.git_sha }}
         cache-from: type=gha
         cache-to: type=gha,mode=max,ignore-error=true
+        # The runtime stage's `apk upgrade` (Dockerfile:73) exists to take
+        # Alpine's fix when the pinned base digest lags it. A cached layer
+        # re-resolves nothing, so the upgrade silently froze at whatever
+        # was current when the layer was first built and the Trivy gate
+        # went red on packages Alpine had already patched. Exempt just
+        # that stage; the npm build stage stays cached.
+        no-cache-filters: runtime
 
     # Pull the published manifest back and give it its future name in the
     # LOCAL store only. Two things need it there:
@@ -163,6 +170,10 @@ runs:
           ${{ inputs.app_repo }}:${{ inputs.sha_tag }}=docker-image://${{ inputs.app_repo }}@${{ steps.push_app.outputs.digest }}
         cache-from: type=gha,scope=backup
         cache-to: type=gha,mode=max,scope=backup,ignore-error=true
+        # Same reason as the app build above — this is the stage whose
+        # stale cache put util-linux 2.42.1-r0 in front of the gate while
+        # alpine v3.24/main had the patched 2.42.3-r1.
+        no-cache-filters: runtime
 
     - name: Pull the backup image back and name it locally
       shell: bash
