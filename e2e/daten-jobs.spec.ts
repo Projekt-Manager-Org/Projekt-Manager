@@ -433,23 +433,31 @@ async function importJobZip(
     await expect(
       uploading.getByTestId('import-job-upload-bytes').or(processing).first(),
     ).toBeVisible({ timeout: 60_000 });
+
+    // Re-auth after the mid-processing wipe. The owner row round-trips through
+    // the archive with its seed password.
+    await expect(page.getByTestId('login-username')).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId('login-username').fill(SEED_USERS.owner.username);
+    await page.getByTestId('login-password').fill(SEED_DEFAULT_PASSWORD);
+    await page.getByTestId('login-submit').click();
+    await expect(page.getByTestId('user-indicator')).toContainText(SEED_USERS.owner.displayName);
+
+    // Back on the Daten view (the import was running there); no nav is needed —
+    // a clickView here would be blocked by the import-job overlay. Generous
+    // timeout: the restore + per-attachment re-encrypt run after the re-auth.
+    await expect(page.getByTestId('daten-view')).toBeVisible();
+    await expect(page.getByTestId('import-job-summary')).toBeVisible({ timeout: 60_000 });
   } finally {
+    // The scratch file must outlive the whole upload, not merely the
+    // phase-progress guard above. `setFiles` hands the page a LAZY handle to
+    // this path — Chromium reads the bytes at send time — and the guard is
+    // satisfied by the `0 B` readout, before any chunk has been read. Unlinking
+    // there raced the first PATCH, which then failed `net::ERR_FILE_NOT_FOUND`
+    // and left the dialog wedged at `0 B` (#400; #401 for why it wedges
+    // silently). The summary above is the first point where the bytes are
+    // provably drained.
     if (fs.existsSync(tmpZipPath)) fs.unlinkSync(tmpZipPath);
   }
-
-  // Re-auth after the mid-processing wipe. The owner row round-trips through
-  // the archive with its seed password.
-  await expect(page.getByTestId('login-username')).toBeVisible({ timeout: 60_000 });
-  await page.getByTestId('login-username').fill(SEED_USERS.owner.username);
-  await page.getByTestId('login-password').fill(SEED_DEFAULT_PASSWORD);
-  await page.getByTestId('login-submit').click();
-  await expect(page.getByTestId('user-indicator')).toContainText(SEED_USERS.owner.displayName);
-
-  // Back on the Daten view (the import was running there); no nav is needed —
-  // a clickView here would be blocked by the import-job overlay. Generous
-  // timeout: the restore + per-attachment re-encrypt run after the re-auth.
-  await expect(page.getByTestId('daten-view')).toBeVisible();
-  await expect(page.getByTestId('import-job-summary')).toBeVisible({ timeout: 60_000 });
 }
 
 /**
