@@ -37,7 +37,10 @@ ARG APP_IMAGE_TAG
 # hadolint ignore=DL3006  # tag is set by scripts/deploy.sh per commit
 FROM ghcr.io/projekt-manager-org/projekt-manager:${APP_IMAGE_TAG} AS appsrc
 
-FROM node:24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd225f31f2bc59b5c9a
+# Named so the build can exempt it from the layer cache
+# (`no-cache-filters` in .github/actions/build-scan-smoke), same as
+# Dockerfile's runtime stage — a cached `apk upgrade` upgrades nothing.
+FROM node:24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd225f31f2bc59b5c9a AS runtime
 
 # Package roles:
 #   postgresql17         — server binaries (initdb, postgres) used by
