@@ -23,10 +23,25 @@ import type { CompanyProfile, Invoice } from '../../domain/invoice.js';
 
 const BRAND_DIR = path.join(DIST_ROOT, 'brand');
 const LOGO_PATH = path.join(BRAND_DIR, 'ac362-logo.png');
+const WIDE_LOGO_PATH = path.join(BRAND_DIR, 'ac362-wide.png');
 
-/** A real 1x1 PNG — pdf-lib parses it, so the embed path runs for real. */
+/**
+ * A real 1x1 PNG — pdf-lib parses it, so the embed path runs for real.
+ * Smaller than the logo box on both axes, which is what makes it the
+ * never-enlarge fixture.
+ */
 const ONE_PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/**
+ * A real 200x100 PNG — larger than the 140x42pt box on both axes, and
+ * non-square, so fit-inside has to pick the tighter ratio (42/100) and
+ * a stretch-to-fill would show up as a different width.
+ */
+const WIDE_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAIAAABM5OhcAAABG0lEQVR4nO3SQQkAIADAQHvZztC+LeEQ5OAC7LEx14brxvMCvmQsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYicQCdbsgdbWH2cwAAAABJRU5ErkJggg==',
   'base64',
 );
 
@@ -150,9 +165,39 @@ async function contentStreamText(pdfBytes: Uint8Array): Promise<string> {
   return chunks.join('\n');
 }
 
+/**
+ * The size, in points, the logo was actually drawn at.
+ *
+ * `drawImage` emits its own `q … Q` block whose `cm` matrices compose
+ * into the placement — pdf-lib writes the scale as a matrix of its own,
+ * alongside a translate and two identities. Multiplying the `a` and `d`
+ * components across the block up to the `Do` yields the drawn size;
+ * nothing here rotates, so the diagonal is the whole story.
+ */
+async function drawnLogoSize(
+  pdfBytes: Uint8Array,
+): Promise<{ width: number; height: number } | null> {
+  const stream = await contentStreamText(pdfBytes);
+  const doIndex = stream.indexOf('/Image-');
+  if (doIndex === -1) return null;
+  // The image's own block, not any earlier `q` in the document.
+  const block = stream.slice(0, doIndex).slice(stream.slice(0, doIndex).lastIndexOf('\nq\n'));
+
+  let width = 1;
+  let height = 1;
+  for (const m of block.matchAll(
+    /(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) cm/g,
+  )) {
+    width *= Number(m[1]);
+    height *= Number(m[4]);
+  }
+  return { width, height };
+}
+
 beforeAll(() => {
   mkdirSync(BRAND_DIR, { recursive: true });
   writeFileSync(LOGO_PATH, ONE_PIXEL_PNG);
+  writeFileSync(WIDE_LOGO_PATH, WIDE_PNG);
 });
 
 afterEach(() => {
@@ -161,6 +206,7 @@ afterEach(() => {
 
 afterAll(() => {
   rmSync(LOGO_PATH, { force: true });
+  rmSync(WIDE_LOGO_PATH, { force: true });
 });
 
 describe('InvoiceRenderer branding — AC-362', () => {
@@ -170,6 +216,27 @@ describe('InvoiceRenderer branding — AC-362', () => {
     const { pdfBytes } = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
 
     expect(await countEmbeddedImages(pdfBytes)).toBe(1);
+  });
+
+  it('scales the logo to fit its box, preserving aspect ratio', async () => {
+    configureLogo('/brand/ac362-wide.png');
+
+    const { pdfBytes } = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
+
+    // 200x100 into the 140x42pt box: the height ratio (0.42) is tighter
+    // than the width ratio (0.7), so both axes take 0.42 and the 2:1
+    // aspect survives. A stretch-to-fill would be 140x42.
+    expect(await drawnLogoSize(pdfBytes)).toEqual({ width: 84, height: 42 });
+  });
+
+  it('never enlarges a logo past its natural size', async () => {
+    configureLogo('/brand/ac362-logo.png');
+
+    const { pdfBytes } = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
+
+    // 1x1 fits the box many times over; without the upper bound of 1 on
+    // the scale factor it would be blown up to a blurry 42x42 banner.
+    expect(await drawnLogoSize(pdfBytes)).toEqual({ width: 1, height: 1 });
   });
 
   it('draws no image when no logo is configured (the default install)', async () => {
@@ -188,6 +255,7 @@ describe('InvoiceRenderer branding — AC-362', () => {
     // Degraded, not failed: a PDF came back, it just has no logo on it.
     expect(Buffer.from(pdfBytes).subarray(0, 5).toString()).toBe('%PDF-');
     expect(await countEmbeddedImages(pdfBytes)).toBe(0);
+    expect(await drawnLogoSize(pdfBytes)).toBeNull();
   });
 
   it('paints the table rules in the profile accent', async () => {
@@ -221,6 +289,11 @@ describe('InvoiceRenderer branding — AC-362', () => {
       companyProfile: { ...profile, accentColor: 'not-a-color' },
     });
 
+    // The route layer pattern-pins `accentColor`, but the import path
+    // does not — a restored envelope can carry anything, so the render
+    // must land on the brand accent, not merely survive. `%PDF-` alone
+    // is true of a black or grey render too.
     expect(Buffer.from(pdfBytes).subarray(0, 5).toString()).toBe('%PDF-');
+    expect(await contentStreamText(pdfBytes)).toMatch(/0\.231\d* 0\.509\d* 0\.964\d* rg/);
   });
 });
