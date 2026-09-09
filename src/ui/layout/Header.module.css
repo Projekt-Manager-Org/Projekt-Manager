@@ -34,6 +34,13 @@
 }
 
 .appName {
+  /* Flex so the wordmark and the mark are separated by `gap` rather than
+     a margin on the mark itself: below the 900px breakpoint `.appNameText`
+     is `display: none`, leaving one child, and a flex gap collapses where
+     a margin would leave a stray indent. */
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   font-size: 1.25rem;
   font-weight: 700;
   white-space: nowrap;
