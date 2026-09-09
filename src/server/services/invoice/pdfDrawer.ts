@@ -29,14 +29,14 @@
  * structural shape; the certified-PDF/A-3 gate is future work.
  */
 
-import type { PDFDocument, PDFFont, PDFPage, RGB } from '@cantoo/pdf-lib';
+import type { PDFDocument, PDFFont, PDFImage, PDFPage, RGB } from '@cantoo/pdf-lib';
 
 const pdfLibImport: Promise<typeof import('@cantoo/pdf-lib')> = import('@cantoo/pdf-lib');
 
 import type { CompanyProfile, Invoice } from '../../../domain/invoice.js';
 import { BRANDING } from '../../../config/brandingConfig.js';
 import { taxModeBoilerplate } from './boilerplate.js';
-import { loadBrandLogo } from './logoAsset.js';
+import { loadBrandLogo, type LogoAsset } from './logoAsset.js';
 
 /** WinAnsi-only sanitiser — drop anything @cantoo/pdf-lib's standard fonts cannot encode. */
 function sanitizeForWinAnsi(input: string): string {
@@ -283,6 +283,27 @@ function ensureSpace(
 }
 
 /**
+ * Embed the brand logo, or null if pdf-lib cannot decode it.
+ *
+ * The magic-byte sniff in `logoAsset.ts` proves the first 8 bytes only;
+ * `embedPng` / `embedJpg` parse the rest and throw on a body they do not
+ * support. Every such file is a deployment mistake, and none of them is
+ * worth failing an invoice over — see the call site.
+ */
+async function embedLogo(doc: PDFDocument, logo: LogoAsset): Promise<PDFImage | null> {
+  try {
+    return logo.format === 'png' ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
+  } catch (err) {
+    console.warn(
+      `[branding] the configured logo is not embeddable (${logo.format}: ${
+        err instanceof Error ? err.message : String(err)
+      }) — logo omitted from rendered invoices.`,
+    );
+    return null;
+  }
+}
+
+/**
  * The renderer entry point. Returns the raw PDF bytes (Uint8Array)
  * containing the human-readable layout PLUS the embedded factur-x.xml
  * stream.
@@ -326,9 +347,15 @@ export async function drawInvoicePdf(
   const issuerRightX = PAGE_WIDTH - MARGIN_RIGHT;
   let issuerY = PAGE_HEIGHT - MARGIN_TOP;
   const logo = loadBrandLogo();
-  if (logo) {
-    const image =
-      logo.format === 'png' ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
+  // `loadBrandLogo` sniffs only the PNG signature / JPEG SOI marker; the
+  // rest of the file is parsed here, inside pdf-lib, which throws on a
+  // body it cannot decode (a CMYK JPEG, an APNG, a truncated copy). This
+  // runs inside the issuance transaction holding the gapless
+  // number-sequence lock, so an unembeddable asset must degrade to "no
+  // logo" exactly as an unresolvable one does — otherwise a cosmetic
+  // file stops every issuance in the installation (AC-360, AC-362).
+  const image = logo ? await embedLogo(doc, logo) : null;
+  if (image) {
     // Fit-inside scaling: take the tighter of the two axis ratios, and
     // never scale UP — a small mark stays its natural size rather than
     // being blown up into a blurry banner.

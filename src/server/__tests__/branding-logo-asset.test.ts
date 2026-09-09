@@ -32,16 +32,18 @@ const JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.
 /** RIFF/WEBP — a plausible mistake, and one pdf-lib cannot embed. */
 const WEBP_BYTES = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP')]);
 
-// Files only — never directories. `dist/`, `dist/brand/` and
-// `public/brand/` are shared with `branding-invoice-render.test.ts`,
+// Teardown removes only paths this suite created, never a shared parent.
+// `dist/` and `dist/brand/` are shared with `branding-invoice-render.ts`,
 // which the integration project runs in a sibling worker: a suite that
 // recursively removed a directory it happened to create first would
 // delete the other suite's fixtures mid-run. On CI the test job never
-// builds, so neither directory pre-exists and that race is the normal
-// case. Every fixture name here is `ac360-`-prefixed, so file-level
-// teardown is collision-free; an empty directory left behind under a
-// gitignored build root is the cheap half of the trade.
+// builds, so those directories do not pre-exist and that race is the
+// normal case. Every fixture name here is `ac360-`-prefixed, so removing
+// them by name is collision-free; the shared directories are left
+// standing, and `public/brand/` is gitignored so the residue is inert.
 const written: string[] = [];
+/** `ac360-`-prefixed leaf directories — always empty, safe to recurse. */
+const writtenDirs: string[] = [];
 
 function writeAsset(name: string, bytes: Buffer): void {
   const target = path.join(BRAND_DIR, name);
@@ -79,6 +81,7 @@ afterEach(() => {
 
 afterAll(() => {
   for (const f of written) rmSync(f, { force: true });
+  for (const d of writtenDirs) rmSync(d, { recursive: true, force: true });
 });
 
 describe('loadBrandLogo — AC-360 brand logo asset', () => {
@@ -167,6 +170,26 @@ describe('loadBrandLogo — AC-360 brand logo asset', () => {
     configureLogo('/brand/ac360-both.png');
 
     expect(loadBrandLogo()?.format).toBe('png');
+  });
+
+  it('refuses a present-but-unreadable asset instead of falling through to the other root', () => {
+    // A directory where a file is expected: `statSync` succeeds, the read
+    // throws EISDIR. Chosen over a chmod-000 file because CI containers
+    // commonly run as root, where permission bits are not enforced and
+    // the arm would silently stop testing anything.
+    const unreadable = path.join(PUBLIC_BRAND_DIR, 'ac360-unreadable.png');
+    mkdirSync(unreadable, { recursive: true });
+    writtenDirs.push(unreadable);
+    // A perfectly good copy under the OTHER root.
+    writeAsset('ac360-unreadable.png', PNG_BYTES);
+
+    configureLogo('/brand/ac360-unreadable.png');
+
+    // `public/` is the root the browser is served from. Reading the dist
+    // copy instead would freeze bytes into an immutable PDF that no page
+    // ever displayed — the divergence the two-root lookup exists to
+    // prevent, reached through the error path rather than the miss path.
+    expect(loadBrandLogo()).toBeNull();
   });
 
   it('treats a present-but-invalid asset as a hard stop, not a reason to keep searching', () => {

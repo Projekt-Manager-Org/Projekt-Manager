@@ -24,6 +24,7 @@ import type { CompanyProfile, Invoice } from '../../domain/invoice.js';
 const BRAND_DIR = path.join(DIST_ROOT, 'brand');
 const LOGO_PATH = path.join(BRAND_DIR, 'ac362-logo.png');
 const WIDE_LOGO_PATH = path.join(BRAND_DIR, 'ac362-wide.png');
+const CORRUPT_LOGO_PATH = path.join(BRAND_DIR, 'ac362-corrupt.png');
 
 /**
  * A real 1x1 PNG — pdf-lib parses it, so the embed path runs for real.
@@ -44,6 +45,14 @@ const WIDE_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAMgAAABkCAIAAABM5OhcAAABG0lEQVR4nO3SQQkAIADAQHvZztC+LeEQ5OAC7LEx14brxvMCvmQsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYiYSwSxiJhLBLGImEsEsYicQCdbsgdbWH2cwAAAABJRU5ErkJggg==',
   'base64',
 );
+
+/**
+ * A valid 8-byte PNG signature followed by a body pdf-lib cannot parse.
+ * Passes the magic-byte sniff in `logoAsset.ts` and reaches `embedPng`,
+ * which is the seam this fixture exists to hold: the throw belongs to
+ * the drawer, not to the issuance transaction above it.
+ */
+const CORRUPT_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02, 0x03]);
 
 const ORIGINAL_MARK = { ...BRANDING.mark };
 
@@ -198,6 +207,7 @@ beforeAll(() => {
   mkdirSync(BRAND_DIR, { recursive: true });
   writeFileSync(LOGO_PATH, ONE_PIXEL_PNG);
   writeFileSync(WIDE_LOGO_PATH, WIDE_PNG);
+  writeFileSync(CORRUPT_LOGO_PATH, CORRUPT_PNG);
 });
 
 afterEach(() => {
@@ -207,6 +217,7 @@ afterEach(() => {
 afterAll(() => {
   rmSync(LOGO_PATH, { force: true });
   rmSync(WIDE_LOGO_PATH, { force: true });
+  rmSync(CORRUPT_LOGO_PATH, { force: true });
 });
 
 describe('InvoiceRenderer branding — AC-362', () => {
@@ -256,6 +267,21 @@ describe('InvoiceRenderer branding — AC-362', () => {
     expect(Buffer.from(pdfBytes).subarray(0, 5).toString()).toBe('%PDF-');
     expect(await countEmbeddedImages(pdfBytes)).toBe(0);
     expect(await drawnLogoSize(pdfBytes)).toBeNull();
+  });
+
+  it('still renders a valid invoice when the asset has a good signature but a corrupt body', async () => {
+    // The resolution-side sniff proves the signature only; the body is
+    // parsed by the PDF engine, which throws on a file it cannot decode
+    // (a CMYK JPEG, an APNG, a truncated copy). This runs inside the
+    // issuance transaction holding the gapless number-sequence lock, so
+    // the throw must be contained here or a cosmetic file stops every
+    // issuance in the installation.
+    configureLogo('/brand/ac362-corrupt.png');
+
+    const { pdfBytes } = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
+
+    expect(Buffer.from(pdfBytes).subarray(0, 5).toString()).toBe('%PDF-');
+    expect(await countEmbeddedImages(pdfBytes)).toBe(0);
   });
 
   it('paints the table rules in the profile accent', async () => {

@@ -157,10 +157,18 @@ export function loadBrandLogo(): LogoAsset | null {
         return null;
       }
       bytes = new Uint8Array(readFileSync(candidate));
-    } catch {
-      // Absent under this root — try the next one. Only the last miss is
-      // worth reporting, and `warn` below does that once.
-      continue;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        // Absent under this root — try the next one. Only the last miss
+        // is worth reporting, and `warn` below does that once.
+        continue;
+      }
+      // Present but unreadable (EACCES, EISDIR, ELOOP, …). Falling
+      // through to the other root would embed bytes the browser is not
+      // being served, and freeze them into an immutable PDF — the exact
+      // divergence the two-root lookup exists to prevent.
+      warn(`${candidate} could not be read (${(err as NodeJS.ErrnoException).code ?? 'unknown'})`);
+      return null;
     }
 
     const format = sniffFormat(bytes);
