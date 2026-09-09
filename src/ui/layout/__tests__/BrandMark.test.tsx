@@ -44,13 +44,22 @@ describe('BrandMark — AC-361 configurable brand mark', () => {
     expect(screen.queryByTestId('brand-mark-fallback')).not.toBeInTheDocument();
   });
 
-  it('is decorative — the accessible name comes from the surrounding control', () => {
+  it('is decorative in both states — the accessible name comes from the surrounding control', () => {
     configureLogo('/brand/logo.png');
-    render(<BrandMark />);
+    const { unmount } = render(<BrandMark />);
 
     const img = screen.getByTestId('brand-mark-logo');
     expect(img).toHaveAttribute('alt', '');
     expect(img).toHaveAttribute('aria-hidden', 'true');
+    unmount();
+
+    // The fallback arm too: AC-361 calls the mark decorative in BOTH
+    // states, and the generic SVG is what a default install renders on
+    // every page.
+    configureLogo(undefined);
+    render(<BrandMark />);
+
+    expect(screen.getByTestId('brand-mark-fallback')).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('falls back to the generic mark when the configured asset fails to load', () => {
