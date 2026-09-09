@@ -39,6 +39,7 @@ export const DIST_ROOT = path.resolve(__dirname, '../../dist');
  * check here FIRST and fall back to `DIST_ROOT`: production carries no
  * `public/` in the runtime image so it misses and `dist/` wins, while in
  * development this ordering stops a stale `dist/` from an earlier
- * `npm run build` shadowing the file Vite is actually serving.
+ * `npm run build` shadowing the file Vite is actually serving — bytes
+ * the invoice renderer would freeze into an immutable PDF (ADR-0026).
  */
 export const PUBLIC_ROOT = path.resolve(__dirname, '../../public');

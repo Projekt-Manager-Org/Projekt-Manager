@@ -7,10 +7,10 @@
  * identical mark. One asset, two surfaces — no upload pipeline, no
  * descriptor row, no object storage (ADR-0001).
  *
- * "The same file" spans two roots by necessity: production serves `dist/`
- * via `@fastify/static`, while `npm run dev` serves `public/` through
- * Vite and builds no `dist/` at all. Whichever root the browser is being
- * served from is the one read here — see `candidatePaths` below.
+ * "The same file" spans two roots, because which root the browser is
+ * served from differs either side of the build. `../../staticRoot.ts`
+ * defines both and carries the rationale for the order they are probed
+ * in.
  *
  * Every failure mode returns `null` instead of throwing. The caller is
  * inside the invoice issuance transaction, which holds the gapless
@@ -105,23 +105,10 @@ function resolveUnder(root: string, configured: string): string | null {
 }
 
 /**
- * Candidate paths for the configured asset, in precedence order.
- *
- * `public/` first, `dist/` second — deliberately, because that ordering
- * makes both environments read what the browser is being served.
- *
- *   - Production: the runtime image carries `dist/` only (the Dockerfile
- *     copies `/app/dist` and nothing else), so `public/` misses and
- *     `dist/` — what `@fastify/static` serves — wins.
- *   - Development: `npm run dev` serves `public/` through Vite and
- *     builds no `dist/`. Probing `dist/` first would let a stale
- *     artifact from someone's earlier `npm run build` shadow the file
- *     Vite is actually serving, and those bytes would be frozen into an
- *     immutable issued PDF (ADR-0026). `start.ts` refuses to serve a
- *     stray `dist/` outside production for the same reason.
- *
- * Both roots are confined to their own `brand/` subdirectory
- * independently.
+ * Candidate paths for the configured asset, in precedence order:
+ * `public/` first, `dist/` second, so each environment reads the root
+ * its browser is served from — `PUBLIC_ROOT` in `staticRoot.ts` carries
+ * why. Each root is confined to its own `brand/` subdirectory.
  */
 function candidatePaths(configured: string): string[] {
   return [resolveUnder(PUBLIC_ROOT, configured), resolveUnder(DIST_ROOT, configured)].filter(
