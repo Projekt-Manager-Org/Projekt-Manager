@@ -142,6 +142,18 @@ export function loadBrandLogo(): LogoAsset | null {
   const configured = BRANDING.mark.logo;
   if (!configured) return null;
 
+  // The same string is handed to the browser as an `<img src>`, so it
+  // has to be an absolute same-origin path. `brand/logo.png` resolves
+  // against whatever route the SPA is on (`/projects/:id/brand/…`), and
+  // `//brand/logo.png` is protocol-relative — a different host. Either
+  // shape leaves the browser on the fallback mark while this function
+  // happily reads the real file, which is precisely the two-surface
+  // divergence the module exists to prevent.
+  if (!configured.startsWith('/') || configured.startsWith('//')) {
+    warn(`BRANDING.mark.logo (${configured}) must be an absolute same-origin path`);
+    return null;
+  }
+
   const candidates = candidatePaths(configured);
   if (candidates.length === 0) {
     warn(`BRANDING.mark.logo (${configured}) must be a path under /${BRAND_DIR}/`);

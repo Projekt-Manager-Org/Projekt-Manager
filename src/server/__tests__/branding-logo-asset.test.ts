@@ -129,6 +129,25 @@ describe('loadBrandLogo — AC-360 brand logo asset', () => {
     expect(loadBrandLogo()).toBeNull();
   });
 
+  it('refuses a relative path — the browser would resolve it against the current route', () => {
+    // The file is really there, so the refusal is proven on the path
+    // shape. `<img src="brand/logo.png">` on `/projects/:id` requests
+    // `/projects/:id/brand/logo.png`, which the SPA fallback answers
+    // with index.html: the header shows the generic mark while the PDF
+    // would carry the real logo.
+    writeAsset('ac360-relative.png', PNG_BYTES);
+    configureLogo('brand/ac360-relative.png');
+
+    expect(loadBrandLogo()).toBeNull();
+  });
+
+  it('refuses a protocol-relative path — it names a different host', () => {
+    writeAsset('ac360-protocol-relative.png', PNG_BYTES);
+    configureLogo('//brand/ac360-protocol-relative.png');
+
+    expect(loadBrandLogo()).toBeNull();
+  });
+
   it('refuses an asset over the size cap', () => {
     const oversized = Buffer.concat([PNG_BYTES, Buffer.alloc(2 * 1024 * 1024)]);
     writeAsset('ac360-huge.png', oversized);
