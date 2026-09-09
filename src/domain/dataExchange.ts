@@ -26,11 +26,14 @@ import type {
  * expanded to cover all user-meaningful business state (issue #230): the
  * `users`, `company_profile`, `invoices`, and `invoice_sequence` slots
  * were added, and `customers.ustId` was filled in (pre-existing drift —
- * the schema has carried the field since invoicing landed). Pre-#230
- * (`v2`) envelopes are not consumable on the importing instance and are
- * rejected via SCHEMA_VERSION_MISMATCH.
+ * the schema has carried the field since invoicing landed). Bumped to `4`
+ * when `company_profile.logoBinaryDescriptorId` was dropped (issue #189) —
+ * the logo moved to the deploy-time branding config, so the column and its
+ * envelope slot no longer exist. Envelopes below the current version are
+ * not consumable on the importing instance and are rejected via
+ * SCHEMA_VERSION_MISMATCH.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export interface EnvelopeCustomer {
   id: string;
@@ -134,10 +137,10 @@ export interface EnvelopeUser {
  * Singleton company-profile row. The wire shape mirrors `CompanyProfile`
  * (domain/invoice.ts) but is duplicated here so the envelope contract
  * evolves independently of the API read shape — same pattern as
- * `EnvelopeCustomer` vs. the read-side `Customer`. `logoBinaryDescriptorId`
- * references an attachment row carried by the takeout-zip binary leg
- * (ADR-0024); the envelope row only persists the reference. See
- * data-model.md §5.17 and ADR-0026.
+ * `EnvelopeCustomer` vs. the read-side `Customer`. The company logo is
+ * NOT carried here: it is a deploy-time branding asset
+ * (`BRANDING.mark.logo`, ADR-0001), not per-installation business data.
+ * See data-model.md §5.17 and ADR-0026.
  */
 export interface EnvelopeCompanyProfile {
   id: string;
@@ -148,7 +151,6 @@ export interface EnvelopeCompanyProfile {
   iban: string | null;
   accentColor: string | null;
   footerText: string | null;
-  logoBinaryDescriptorId: string | null;
   defaultTaxMode: TaxMode;
   updatedAt: string;
   updatedBy: string | null;

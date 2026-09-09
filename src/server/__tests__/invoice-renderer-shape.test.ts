@@ -32,7 +32,6 @@ const profile: CompanyProfile = {
   iban: 'DE89370400440532013000',
   accentColor: '#f60',
   footerText: 'Vielen Dank.',
-  logoBinaryDescriptorId: null,
   defaultTaxMode: 'standard',
   updatedAt: '2026-05-12T00:00:00Z',
   updatedBy: null,

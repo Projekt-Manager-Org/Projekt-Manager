@@ -276,7 +276,6 @@ export class InvoiceIssueService {
         iban: companyProfileRow.iban,
         accentColor: companyProfileRow.accentColor,
         footerText: companyProfileRow.footerText,
-        logoBinaryDescriptorId: companyProfileRow.logoBinaryDescriptorId,
         defaultTaxMode: companyProfileRow.defaultTaxMode as TaxMode,
         updatedAt: companyProfileRow.updatedAt.toISOString(),
         updatedBy: companyProfileRow.updatedBy,

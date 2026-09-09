@@ -362,7 +362,6 @@ function buildOverrideEnvelope(): Record<string, unknown> {
         iban: 'DE12 1000 0000 1234 5678 90',
         accentColor: null,
         footerText: null,
-        logoBinaryDescriptorId: null,
         defaultTaxMode: 'standard',
         updatedAt: '2026-01-03T00:00:00.000Z',
         updatedBy: null,

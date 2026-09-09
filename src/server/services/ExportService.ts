@@ -168,7 +168,6 @@ export class ExportService {
         iban: cp.iban ?? null,
         accentColor: cp.accentColor ?? null,
         footerText: cp.footerText ?? null,
-        logoBinaryDescriptorId: cp.logoBinaryDescriptorId ?? null,
         defaultTaxMode: cp.defaultTaxMode as TaxMode,
         updatedAt: cp.updatedAt.toISOString(),
         updatedBy: cp.updatedBy ?? null,

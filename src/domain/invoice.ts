@@ -117,7 +117,6 @@ export interface CompanyProfile {
   iban: string | null;
   accentColor: string | null;
   footerText: string | null;
-  logoBinaryDescriptorId: string | null;
   defaultTaxMode: TaxMode;
   updatedAt: string;
   updatedBy: string | null;

@@ -77,7 +77,6 @@ CREATE TABLE "company_profile" (
 	"iban" text,
 	"accent_color" text,
 	"footer_text" text,
-	"logo_binary_descriptor_id" uuid,
 	"default_tax_mode" text DEFAULT 'standard' NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_by" uuid,

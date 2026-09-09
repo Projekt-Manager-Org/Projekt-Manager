@@ -263,7 +263,6 @@ interface EnvelopeCompanyProfile {
   iban: string | null;
   accentColor: string | null;
   footerText: string | null;
-  logoBinaryDescriptorId: string | null; // references an `attachments[]` row carried in the takeout archive (restored server-side by the import job)
   defaultTaxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge'; // §5.15 TaxMode
   updatedAt: string; // ISO 8601 — preserved on restore
   updatedBy: string | null; // UserAccount.id reference
@@ -684,7 +683,6 @@ interface CompanyProfile {
   iban?: string; // always structurally optional; the renderer emits a payment block iff `iban` is present
   accentColor?: string; // hex; nullable — the renderer falls back to the brand accent ([architecture.md §12.5](architecture.md#125-theming-model))
   footerText?: string; // free German text printed at the foot of every rendered invoice
-  logoBinaryDescriptorId?: string; // FK to a binary descriptor carrying the logo asset; nullable
   defaultTaxMode: TaxMode; // pre-fills new invoice drafts; editable per-draft until issuance
 
   updatedAt: string; // ISO 8601
@@ -699,7 +697,7 @@ Design notes:
 - **Required-fields gate at invoice issuance.** Issuing an invoice requires `companyName`, `address` (all three components), and `taxId` to be non-empty on the singleton; `standard` and `reverse_charge` modes additionally require `ustId`. The API rejects the issue call with a specific error code when any required field is empty (see [api.md §14.4](api.md#144-error-handling) `COMPANY_PROFILE_REQUIRED`). The singleton's mere existence is not sufficient — its contents must be complete for the requested mode.
 - **Snapshot at issuance, not at draft creation.** Drafts read the live row for pre-fill (default tax mode, recipient hints if needed), but the actual `Invoice.issuer` block is snapshotted at the issue call — never earlier. A draft created today and issued next month carries next month's company profile, not today's. This matches the standard ERP "as of the issue date" expectation.
 - **`defaultTaxMode` is a tenant default, not a per-user preference.** Stored on the singleton row, edited by the owner via the company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); it does not live on the user record. New invoice drafts pre-fill `taxMode` from this value; the draft author edits per-invoice as needed (some customers are kleinunternehmer-issued, others reverse-charge for Bauleistungen). Listed in [architecture.md §12.2](architecture.md#122-company-configurable-settings) as a `[C]` value — the default is set per deployment by the owner, not at deploy time.
-- **Logo asset is by reference.** Bytes ride the existing binary descriptor pipeline ([§5.13](#513-attachment)); the row carries only the descriptor id. Replacing the logo replaces the descriptor reference; the prior descriptor is reaped by the existing orphan reaper if unreferenced (no specific cleanup primitive lives on this table).
+- **Logo is not on this row.** The company logo is a deploy-time branding asset (`BRANDING.mark.logo`, [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)), served from the static build and read by the invoice renderer at issuance. It is not per-installation business data, so it neither lives on this table nor rides the export envelope. See [architecture.md §12.2](architecture.md#122-company-configurable-settings).
 
 ### 5.18 Data Exchange Job Entity
 
