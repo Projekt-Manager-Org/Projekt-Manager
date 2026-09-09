@@ -219,13 +219,13 @@ Design notes:
 
 ### 5.8 Export Envelope
 
-The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `3`. The wire shape below is normative — server and UI both bind against it.
+The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `4`. The wire shape below is normative — server and UI both bind against it.
 
 Layer 1 is portability, not cross-trust-boundary transport. The envelope is plaintext; moving it across hosts means encrypting it first (`age` is the obvious choice — same recipient pattern as [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). The `passwordHash` field rides verbatim per the rationale below; the encryption is the operational guard.
 
 ```typescript
 interface ExportEnvelope {
-  schema_version: 3; // monotonic integer; imports reject any mismatch
+  schema_version: 4; // monotonic integer; imports reject any mismatch
   exported_at: string; // ISO 8601 — informational only, not used for import semantics
   users: EnvelopeUser[]; // every row, including inactive accounts (see below)
   company_profile: EnvelopeCompanyProfile[]; // singleton-array, length === 1 (see below)
@@ -322,7 +322,7 @@ Design notes:
 - **Attachments: metadata-only descriptor.** Only rows with `status = 'ready'` are exported; `pending` rows (uncommitted uploads whose backing objects may not exist) and `hidden` rows (the Papierkorb — a TTL-bounded undo buffer reaped by [§6.12](#612-attachment-hidden-reaper), and behind a delete marker on the bucket, so exporting them would need version-pinned reads) are excluded. A full-account restore is consequently also a Papierkorb purge; that consequence is surfaced in the UI on both legs per [AC-220](verification.md#1526-attachments). The envelope carries the per-row metadata fields needed to restore identity and reach the right project on import; it does NOT carry crypto fields (`wrappedDek`, `wrappedThumbDek`, `wrappedDekVersion`), opaque storage keys (`originalKey`, `thumbKey`), or ciphertext sizes (`ciphertextSizeBytes`, `ciphertextThumbSizeBytes`) — those are not consumable on the importing instance. The wrapped envelopes are load-bearing for confidentiality on the exporting instance and are deliberately kept off the takeout artifact.
 - **Restore mechanics are server-driven (import job).** Bytes live in object storage (Layer 3 per [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md)) and ride alongside the envelope as plaintext entries inside the takeout archive ([api.md §14.2.4](api.md#1424-unified-data-exchange) — Export job). On import, the **server** (not the browser) reads each plaintext entry from the staged archive, mints a fresh DEK, AES-256-GCM-encrypts, wraps the DEK under the importing instance's own `BINARY_AGE_RECIPIENT`, and PUTs ciphertext to B2 — preserving the row's `id` / `createdBy` / `createdAt` from this descriptor and capturing the PUT's version-id into `versionId` / `thumbVersionId` so the restored row round-trips through the Papierkorb (hide → restore `copyFromVersion`). For a `photo` row the server regenerates the gallery thumbnail from the restored original (the takeout carries no thumb), encrypts it under a separate fresh DEK, and PUTs it to the `.thumb` key; an undecodable image restores without a thumb (opportunistic). No key material crosses the takeout boundary; plaintext bytes stage only on the VPS, inside the trust radius, never on B2.
 - **Ephemeral, derived, device-tied, and instance-bound rows stay out.** `sessions` (ephemeral tokens), `push_subscriptions` (per-device endpoints), `project_storage_usage` (trigger-maintained derived state), `meta_backup_status` (Layer 2 instance metadata), `notification_rule` (config tied to the closed event catalog per [ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)), `audit_log` (per-instance chain of custody), and `data_exchange_job` (full-account job lifecycle metadata, [§5.18](#518-data-exchange-job-entity)) are excluded by design. The principle is pinned in [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision).
-- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `3`; any other value rejects with `SCHEMA_VERSION_MISMATCH`.
+- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `4`; any other value rejects with `SCHEMA_VERSION_MISMATCH`.
 
 ### 5.9 Backup Status Entity
 
