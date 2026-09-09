@@ -39,8 +39,11 @@ const WEBP_BYTES = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.f
 // delete the other suite's fixtures mid-run. On CI the test job never
 // builds, so those directories do not pre-exist and that race is the
 // normal case. Every fixture name here is `ac360-`-prefixed, so removing
-// them by name is collision-free; the shared directories are left
-// standing, and `public/brand/` is gitignored so the residue is inert.
+// them by name is collision-free, and the shared directories are left
+// standing. `public/brand/` is tracked — a deployment commits its logo
+// there — so a run killed before teardown leaves the fixtures visible in
+// `git status` rather than hidden; that is the intended signal, not a
+// reason to ignore the directory.
 const written: string[] = [];
 /** `ac360-`-prefixed leaf directories — always empty, safe to recurse. */
 const writtenDirs: string[] = [];

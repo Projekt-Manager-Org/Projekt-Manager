@@ -24,13 +24,6 @@ Thumbs.db
 dist/
 .vite/
 
-# Deployment-supplied brand assets (#189). A deployment drops its own
-# logo here and points `BRANDING.mark.logo` at it; the repo ships none,
-# because the pilot company's mark is private (ADR-0001). Ignored so a
-# private asset cannot be swept into a public repo by `git add -A`, and
-# so the branding suites' fixtures leave no untracked residue.
-public/brand/
-
 # Test output
 coverage/
 test-results/

@@ -163,9 +163,10 @@ ALLOWLIST=(
   "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|scripts/backup/probe-r2.mjs"
 
   # The brand-logo drop-in directory (#189). A deployment creates
-  # `public/brand/` and puts its own asset there; the repo deliberately
-  # ships neither, because the pilot company's mark is private per
-  # ADR-0001. The spec cites the path to say where the file goes.
+  # `public/brand/` and commits its own asset there; this generalized
+  # repo ships none of its own per ADR-0001, so the directory is empty
+  # and git tracks nothing under it. The spec cites the path to say
+  # where the file goes. Drop this entry if the repo ever tracks one.
   "docs/spec/architecture.md|public/brand/"
 
   # (3) Named coverage gaps in the traceability ledger — each sits

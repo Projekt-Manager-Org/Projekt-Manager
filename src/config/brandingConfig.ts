@@ -35,11 +35,18 @@
  * Supplying `mark.logo` (issue #189). Its behaviour — resolution,
  * refusal, and both render surfaces — is specified by AC-360 / AC-361 /
  * AC-362 in `docs/spec/verification.md`; what an operator provides:
- *   - Drop the file in `public/brand/` and set this key to its served
- *     path, leading slash included (`/brand/logo.png`). It must stay
- *     under that directory; the renderer refuses anything outside it.
- *     Confinement is lexical, so a symlink planted inside `brand/` is
- *     followed — the directory's write permissions are the real boundary.
+ *   - Drop the file in `public/brand/`, COMMIT IT, and set this key to
+ *     its served path, leading slash included (`/brand/logo.png`). The
+ *     asset ships the same way `public/favicon.svg` and `public/icons/`
+ *     do: CI builds the container image from the git checkout, `vite
+ *     build` copies `public/` into `dist/`, and the image carries
+ *     `dist/` alone. An untracked asset therefore works under
+ *     `npm run dev` and reaches no deployed instance — the header falls
+ *     back to the generic mark and every invoice render warns.
+ *   - It must stay under `public/brand/`; the renderer refuses anything
+ *     outside it. Confinement is lexical, so a symlink planted inside
+ *     `brand/` is followed — the directory's write permissions are the
+ *     real boundary.
  *   - PNG or JPEG. The same bytes feed the header and the invoice PDF,
  *     and the PDF engine embeds no other format.
  *   - Ship it 84px tall or more. The header paints it up to 28px tall,
