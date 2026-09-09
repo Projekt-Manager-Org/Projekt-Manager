@@ -9,7 +9,8 @@
  *
  * "The same file" spans two roots by necessity: production serves `dist/`
  * via `@fastify/static`, while `npm run dev` serves `public/` through
- * Vite and builds no `dist/` at all. See `candidatePaths` below.
+ * Vite and builds no `dist/` at all. Whichever root the browser is being
+ * served from is the one read here — see `candidatePaths` below.
  *
  * Every failure mode returns `null` instead of throwing. The caller is
  * inside the invoice issuance transaction, which holds the gapless
@@ -106,15 +107,24 @@ function resolveUnder(root: string, configured: string): string | null {
 /**
  * Candidate paths for the configured asset, in precedence order.
  *
- * `dist/` is authoritative — it is what `@fastify/static` serves and the
- * only root that exists in the runtime image. `public/` is the
- * development fallback: `npm run dev` serves static files from there
- * through Vite and never builds a `dist/`, so without this the logo
- * would resolve in production and nowhere else. Both roots are confined
- * to their own `brand/` subdirectory independently.
+ * `public/` first, `dist/` second — deliberately, because that ordering
+ * makes both environments read what the browser is being served.
+ *
+ *   - Production: the runtime image carries `dist/` only (the Dockerfile
+ *     copies `/app/dist` and nothing else), so `public/` misses and
+ *     `dist/` — what `@fastify/static` serves — wins.
+ *   - Development: `npm run dev` serves `public/` through Vite and
+ *     builds no `dist/`. Probing `dist/` first would let a stale
+ *     artifact from someone's earlier `npm run build` shadow the file
+ *     Vite is actually serving, and those bytes would be frozen into an
+ *     immutable issued PDF (ADR-0026). `start.ts` refuses to serve a
+ *     stray `dist/` outside production for the same reason.
+ *
+ * Both roots are confined to their own `brand/` subdirectory
+ * independently.
  */
 function candidatePaths(configured: string): string[] {
-  return [resolveUnder(DIST_ROOT, configured), resolveUnder(PUBLIC_ROOT, configured)].filter(
+  return [resolveUnder(PUBLIC_ROOT, configured), resolveUnder(DIST_ROOT, configured)].filter(
     (p): p is string => p !== null,
   );
 }

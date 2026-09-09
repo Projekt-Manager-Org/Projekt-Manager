@@ -49,6 +49,13 @@ function writeAsset(name: string, bytes: Buffer): void {
   written.push(target);
 }
 
+function writePublicAsset(name: string, bytes: Buffer): void {
+  mkdirSync(PUBLIC_BRAND_DIR, { recursive: true });
+  const target = path.join(PUBLIC_BRAND_DIR, name);
+  writeFileSync(target, bytes);
+  written.push(target);
+}
+
 // Snapshot before any spy is installed: reading `BRANDING.mark` inside
 // `configureLogo` would go through the spy that call just created, which
 // has no return value yet.
@@ -130,31 +137,46 @@ describe('loadBrandLogo — AC-360 brand logo asset', () => {
     expect(loadBrandLogo()).toBeNull();
   });
 
-  it('falls back to public/ when dist/ has no copy — the development layout', () => {
+  it('resolves under dist/ when public/ has no copy — the production layout', () => {
+    // The runtime image carries `dist/` only; `@fastify/static` serves
+    // it, and this is the root the browser is being fed from there.
+    writeAsset('ac360-dist-only.png', PNG_BYTES);
+    configureLogo('/brand/ac360-dist-only.png');
+
+    expect(loadBrandLogo()?.format).toBe('png');
+  });
+
+  it('resolves under public/ when dist/ has no copy — the development layout', () => {
     // `npm run dev` serves `public/` through Vite and never builds a
     // `dist/`, so a dist-only lookup would resolve in production and
     // nowhere else. The asset exists ONLY under public/ here.
-    mkdirSync(PUBLIC_BRAND_DIR, { recursive: true });
-    const target = path.join(PUBLIC_BRAND_DIR, 'ac360-public-only.png');
-    writeFileSync(target, PNG_BYTES);
-    written.push(target);
-
+    writePublicAsset('ac360-public-only.png', PNG_BYTES);
     configureLogo('/brand/ac360-public-only.png');
 
     expect(loadBrandLogo()?.format).toBe('png');
   });
 
-  it('does not let the public/ fallback rescue an asset that is present but invalid', () => {
-    // Present-under-dist-but-broken is a hard stop, not a reason to keep
-    // searching: silently serving a different file than the one the
-    // browser loads would defeat the whole "one asset, two surfaces" point.
-    writeAsset('ac360-both.png', WEBP_BYTES);
-    mkdirSync(PUBLIC_BRAND_DIR, { recursive: true });
-    const shadow = path.join(PUBLIC_BRAND_DIR, 'ac360-both.png');
-    writeFileSync(shadow, PNG_BYTES);
-    written.push(shadow);
+  it('lets public/ win over a stale dist/ copy — the file Vite serves is the file embedded', () => {
+    // A leftover `npm run build` artifact must not shadow the asset the
+    // dev server is actually serving: the browser would show one mark
+    // and the PDF would carry another, permanently (ADR-0026). Distinct
+    // formats make it unambiguous which root answered.
+    writeAsset('ac360-both.png', JPEG_BYTES);
+    writePublicAsset('ac360-both.png', PNG_BYTES);
 
     configureLogo('/brand/ac360-both.png');
+
+    expect(loadBrandLogo()?.format).toBe('png');
+  });
+
+  it('treats a present-but-invalid asset as a hard stop, not a reason to keep searching', () => {
+    // Falling through to the other root would silently embed a different
+    // file than the browser loads — exactly the divergence the two-root
+    // lookup exists to prevent.
+    writePublicAsset('ac360-broken.png', WEBP_BYTES);
+    writeAsset('ac360-broken.png', PNG_BYTES);
+
+    configureLogo('/brand/ac360-broken.png');
 
     expect(loadBrandLogo()).toBeNull();
   });
