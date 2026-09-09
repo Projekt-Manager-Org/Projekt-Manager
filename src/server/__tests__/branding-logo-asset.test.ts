@@ -11,13 +11,16 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { BRANDING } from '../../config/brandingConfig.js';
 import { DIST_ROOT, PUBLIC_ROOT } from '../staticRoot.js';
 import { loadBrandLogo } from '../services/invoice/logoAsset.js';
 
 const BRAND_DIR = path.join(DIST_ROOT, 'brand');
+const PUBLIC_BRAND_DIR = path.join(PUBLIC_ROOT, 'brand');
+/** Outside the brand dir on purpose — the traversal arms aim at it. */
+const ESCAPE_TARGET = path.join(DIST_ROOT, 'ac360-escape-target.png');
 
 /** Minimal valid PNG signature + enough tail to look like a file. */
 const PNG_BYTES = Buffer.concat([
@@ -29,10 +32,16 @@ const JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.
 /** RIFF/WEBP — a plausible mistake, and one pdf-lib cannot embed. */
 const WEBP_BYTES = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBP')]);
 
+// Files only — never directories. `dist/`, `dist/brand/` and
+// `public/brand/` are shared with `branding-invoice-render.test.ts`,
+// which the integration project runs in a sibling worker: a suite that
+// recursively removed a directory it happened to create first would
+// delete the other suite's fixtures mid-run. On CI the test job never
+// builds, so neither directory pre-exists and that race is the normal
+// case. Every fixture name here is `ac360-`-prefixed, so file-level
+// teardown is collision-free; an empty directory left behind under a
+// gitignored build root is the cheap half of the trade.
 const written: string[] = [];
-// Only tear down directories this suite created. A developer with a real
-// `dist/` from `npm run build` must get it back untouched.
-const createdDirs: string[] = [];
 
 function writeAsset(name: string, bytes: Buffer): void {
   const target = path.join(BRAND_DIR, name);
@@ -50,14 +59,11 @@ function configureLogo(value: string | undefined): void {
 }
 
 beforeAll(() => {
-  if (!existsSync(DIST_ROOT)) createdDirs.push(DIST_ROOT);
-  if (!existsSync(BRAND_DIR)) createdDirs.push(BRAND_DIR);
   mkdirSync(BRAND_DIR, { recursive: true });
   // A file OUTSIDE the brand dir, to prove traversal is refused on the
   // path shape rather than on the file happening not to exist.
-  const outside = path.join(DIST_ROOT, 'escape-target.png');
-  writeFileSync(outside, PNG_BYTES);
-  written.push(outside);
+  writeFileSync(ESCAPE_TARGET, PNG_BYTES);
+  written.push(ESCAPE_TARGET);
 });
 
 afterEach(() => {
@@ -66,8 +72,6 @@ afterEach(() => {
 
 afterAll(() => {
   for (const f of written) rmSync(f, { force: true });
-  // Deepest first, so `dist/brand` goes before `dist`.
-  for (const d of [...createdDirs].reverse()) rmSync(d, { recursive: true, force: true });
 });
 
 describe('loadBrandLogo — AC-360 brand logo asset', () => {
@@ -103,12 +107,12 @@ describe('loadBrandLogo — AC-360 brand logo asset', () => {
   });
 
   it('refuses a path outside the brand directory', () => {
-    configureLogo('/escape-target.png');
+    configureLogo('/ac360-escape-target.png');
     expect(loadBrandLogo()).toBeNull();
   });
 
   it('refuses a traversal that resolves out of the brand directory', () => {
-    configureLogo('/brand/../escape-target.png');
+    configureLogo('/brand/../ac360-escape-target.png');
     expect(loadBrandLogo()).toBeNull();
   });
 
@@ -130,10 +134,8 @@ describe('loadBrandLogo — AC-360 brand logo asset', () => {
     // `npm run dev` serves `public/` through Vite and never builds a
     // `dist/`, so a dist-only lookup would resolve in production and
     // nowhere else. The asset exists ONLY under public/ here.
-    const publicBrand = path.join(PUBLIC_ROOT, 'brand');
-    if (!existsSync(publicBrand)) createdDirs.push(publicBrand);
-    mkdirSync(publicBrand, { recursive: true });
-    const target = path.join(publicBrand, 'ac360-public-only.png');
+    mkdirSync(PUBLIC_BRAND_DIR, { recursive: true });
+    const target = path.join(PUBLIC_BRAND_DIR, 'ac360-public-only.png');
     writeFileSync(target, PNG_BYTES);
     written.push(target);
 
@@ -147,10 +149,8 @@ describe('loadBrandLogo — AC-360 brand logo asset', () => {
     // searching: silently serving a different file than the one the
     // browser loads would defeat the whole "one asset, two surfaces" point.
     writeAsset('ac360-both.png', WEBP_BYTES);
-    const publicBrand = path.join(PUBLIC_ROOT, 'brand');
-    if (!existsSync(publicBrand)) createdDirs.push(publicBrand);
-    mkdirSync(publicBrand, { recursive: true });
-    const shadow = path.join(publicBrand, 'ac360-both.png');
+    mkdirSync(PUBLIC_BRAND_DIR, { recursive: true });
+    const shadow = path.join(PUBLIC_BRAND_DIR, 'ac360-both.png');
     writeFileSync(shadow, PNG_BYTES);
     written.push(shadow);
 

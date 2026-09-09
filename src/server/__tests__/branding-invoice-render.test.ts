@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { BRANDING } from '../../config/brandingConfig.js';
 import { DIST_ROOT } from '../staticRoot.js';
@@ -31,7 +31,6 @@ const ONE_PIXEL_PNG = Buffer.from(
 );
 
 const ORIGINAL_MARK = { ...BRANDING.mark };
-const createdDirs: string[] = [];
 
 function configureLogo(value: string | undefined): void {
   vi.spyOn(BRANDING, 'mark', 'get').mockReturnValue({ ...ORIGINAL_MARK, logo: value });
@@ -152,8 +151,6 @@ async function contentStreamText(pdfBytes: Uint8Array): Promise<string> {
 }
 
 beforeAll(() => {
-  if (!existsSync(DIST_ROOT)) createdDirs.push(DIST_ROOT);
-  if (!existsSync(BRAND_DIR)) createdDirs.push(BRAND_DIR);
   mkdirSync(BRAND_DIR, { recursive: true });
   writeFileSync(LOGO_PATH, ONE_PIXEL_PNG);
 });
@@ -164,7 +161,6 @@ afterEach(() => {
 
 afterAll(() => {
   rmSync(LOGO_PATH, { force: true });
-  for (const d of [...createdDirs].reverse()) rmSync(d, { recursive: true, force: true });
 });
 
 describe('InvoiceRenderer branding — AC-362', () => {
