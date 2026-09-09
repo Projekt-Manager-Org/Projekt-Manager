@@ -102,7 +102,7 @@ interface ExportEnvelopeShape {
   attachments: Array<{ id: string; [key: string]: unknown }>;
 }
 
-describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
+describe('ExportService envelope — Layer 1 (issue #230)', () => {
   let db: Database;
   let pool: pg.Pool;
 

@@ -95,7 +95,7 @@ async function expectImportRejection(env: Envelope, opts: ImportOptions): Promis
 }
 
 /**
- * Build a full v3 envelope from scratch. Every slot is populated with
+ * Build a full current-version envelope from scratch. Every slot is populated with
  * deterministic fixture data so the tests don't depend on the seed
  * having particular content.
  *
@@ -350,7 +350,7 @@ async function reseed(): Promise<void> {
   await seed(db, { force: true });
 }
 
-describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
+describe('ImportService — Layer 1 envelope (issue #230)', () => {
   beforeAll(async () => {
     await startApp();
     const conn = createDatabase();
@@ -367,7 +367,7 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
 
   // -------------------------------------------------------------------
   // Empty-target import + summary counts. Wipes the DB completely, then
-  // POSTs a v3 envelope with every slot populated; the response carries
+  // POSTs a current-version envelope with every slot populated; the response carries
   // counts matching the envelope; the new tables contain the rows.
   // -------------------------------------------------------------------
   describe('empty-target import accepts the expanded envelope', () => {
@@ -902,7 +902,7 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
     });
   });
 
-  // The "route body schema requires the new v3 slots" case (an envelope
+  // The "route body schema requires the new #230 slots" case (an envelope
   // missing the `users` key → 422 from Fastify ajv) tested the removed
   // text-leg route's body schema. ImportService has no equivalent
   // structural guard — a missing slot key surfaces as a type error, not a
