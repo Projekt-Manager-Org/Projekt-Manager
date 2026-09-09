@@ -59,17 +59,13 @@
   border-radius: 2px;
 }
 
-/* Wordmark / logo swap. Desktop shows the "Projekt-Manager" text;
-   mobile swaps to the favicon mark so the right-cluster (initials +
-   cog + backup + extract) fits on a single row down to 360px. */
+/* Wordmark / mark swap. Desktop shows the "Projekt-Manager" text;
+   mobile hides it so the right-cluster (initials + cog + backup +
+   extract) fits on a single row down to 360px. The mark that takes over
+   below the breakpoint lives in BrandMark.module.css — keep the 900px
+   value there in sync with the media query below. */
 .appNameText {
   display: inline;
-}
-
-.appNameLogo {
-  display: none;
-  width: 28px;
-  height: 28px;
 }
 
 /* Segmented nav pill. The primary view buttons and the Verwaltung
@@ -312,10 +308,6 @@
 @media (max-width: 900px) {
   .appNameText {
     display: none;
-  }
-
-  .appNameLogo {
-    display: block;
   }
 
   .userFullName {

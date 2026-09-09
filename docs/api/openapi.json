@@ -2552,10 +2552,6 @@
                     "type": ["string", "null"],
                     "maxLength": 2000
                   },
-                  "logoBinaryDescriptorId": {
-                    "type": ["string", "null"],
-                    "format": "uuid"
-                  },
                   "defaultTaxMode": {
                     "type": "string",
                     "enum": ["standard", "kleinunternehmer", "reverse_charge"]

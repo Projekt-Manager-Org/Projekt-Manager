@@ -55,8 +55,10 @@ export interface RenderedInvoice {
  * Render-time input — the issuance service passes the snapshotted
  * invoice row (issuer / recipient / lines already frozen on the row by
  * the time `render()` is called) plus the live `company_profile` row
- * for non-snapshotted concerns (logo descriptor reference, accent color
- * — both are render-only and live on the singleton, not the snapshot).
+ * for `accentColor`, which is render-only and lives on the singleton
+ * rather than the snapshot. It does not need freezing: the rendered
+ * PDF bytes are persisted at issuance and never re-rendered, so a later
+ * accent change cannot alter an issued document.
  *
  * No live customer reference is needed: the recipient block is part of
  * the snapshot.
@@ -73,19 +75,15 @@ export class InvoiceRenderer {
    * and stream serialisation are I/O-shaped even when the bytes are
    * synthesised in memory.
    *
-   * The `companyProfile` parameter is intentionally unused on the
-   * current rendering — all displayable issuer fields are already
-   * snapshotted on the invoice row (`invoice.issuer`). The parameter
-   * is kept on the input contract for future render-only attributes
-   * (logo binary descriptor reference, accent color) which live on the
-   * singleton, not the snapshot, and will land without a service-side
-   * call-site change.
+   * Every displayable issuer field is already snapshotted on the invoice
+   * row (`invoice.issuer`); `companyProfile` contributes only the
+   * render-only accent. The brand logo is not carried on either — it is
+   * a deploy-time asset the drawer reads from the build root (#189).
    */
   async render(input: InvoiceRenderInput): Promise<RenderedInvoice> {
-    void input.companyProfile;
     const facturXml = buildFacturXml(input.invoice);
     await validateFacturXml(facturXml);
-    const pdfBytes = await drawInvoicePdf(input.invoice, facturXml);
+    const pdfBytes = await drawInvoicePdf(input.invoice, facturXml, input.companyProfile);
     return { pdfBytes, facturXml };
   }
 }

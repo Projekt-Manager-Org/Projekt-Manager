@@ -121,7 +121,7 @@ describe('Footer storage badge — permission gating (AC-271)', () => {
 
     expect(screen.queryByTestId('storage-usage-badge')).not.toBeInTheDocument();
     // Brand text remains — the badge gate must not collapse the footer
-    // entirely, which would also hide the configurable footerText.
+    // entirely, which would also hide the configurable footerBrandLine.
     expect(screen.getByText('Projekt-Manager')).toBeInTheDocument();
     // The fetch is gated too — a worker render must not even ping the
     // gated read endpoint (defense in depth: server returns 403, but

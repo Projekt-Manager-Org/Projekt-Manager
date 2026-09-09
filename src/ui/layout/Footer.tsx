@@ -20,7 +20,7 @@ export function Footer() {
           v{sha}
         </span>
       )}
-      <span className={styles.brand}>{BRANDING.footerText}</span>
+      <span className={styles.brand}>{BRANDING.footerBrandLine}</span>
       <StorageUsageBadge />
     </footer>
   );

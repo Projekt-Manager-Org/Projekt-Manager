@@ -1,0 +1,33 @@
+/* Brand mark — see BrandMark.tsx.
+
+   The 900px breakpoint below MUST match `.appNameText` in
+   Header.module.css: above it the wordmark carries the identity and the
+   generic mark stays hidden; below it the wordmark collapses and the
+   mark takes over so the header's right-hand cluster still fits at
+   360px. Change one, change the other. */
+
+.fallbackMark {
+  display: none;
+  width: 28px;
+  height: 28px;
+}
+
+@media (max-width: 900px) {
+  .fallbackMark {
+    display: block;
+  }
+}
+
+/* A configured logo is the installation's identity, so it shows at every
+   width — including alongside the wordmark on desktop. `height` is
+   pinned and `width` free so a non-square asset keeps its aspect ratio;
+   `max-width` bounds a very wide one so it cannot push the nav cluster
+   off the row. */
+.logo {
+  display: inline-block;
+  vertical-align: middle;
+  height: 28px;
+  width: auto;
+  max-width: 160px;
+  object-fit: contain;
+}

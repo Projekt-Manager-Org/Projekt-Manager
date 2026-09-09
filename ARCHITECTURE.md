@@ -148,6 +148,7 @@ The EN 16931 e-invoicing core (ADR-0026). Gated on its own rather than inherited
 - `pdfDrawer.ts` — the human-readable A4 body the XML rides in. Standard-14 fonts only, so the glyph repertoire is WinAnsi and anything outside it normalizes to `?` rather than crashing the encoder. Structurally correct PDF/A-3, not certified: no XMP packet is written.
 - `xsdValidator.ts` — validates every render against the canonical Factur-X 1.07.2 schemas under `src/server/services/invoice/xsd/`, inside the issuance transaction. A payload that fails rolls the issuance back instead of reaching storage.
 - `payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, one single-use DEK per render. Byte-identical on the wire to the browser's `nonce(12) || ct || tag(16)` in `src/domain/clientEncryption.ts`; duplicated rather than shared because this path runs synchronously inside `mutate()`.
+- `logoAsset.ts` — reads the deploy-time brand logo (`BRANDING.mark.logo`) off disk so the header and the rendered PDF are fed by the same file (#189). Checks `dist/` then `public/`, because production serves the build output while `npm run dev` serves the source directory and builds no `dist/`. Confines the configured path to a `brand/` subdirectory of whichever root it resolves under, sniffs PNG / JPEG from magic bytes rather than the extension, and caps the size. Every refusal returns no asset instead of throwing — it runs inside the issuance transaction holding the number-sequence lock, so a branding typo must not be able to abort an issuance.
 - `boilerplate.ts` — every per-tax-mode mapping in one place: the statutory footer paragraph, the EN 16931 CategoryCode (`S` / `E` / `AE`) and the BT-120 exemption reason. The `§ 19 UStG` / `§ 13b UStG` anchors are pinned by AT-116; the German copy around them is not. `standard` mode has no paragraph and no exemption reason — its legal anchor is the VAT breakdown in the layout.
 
 #### `src/server/` (root files)
@@ -158,6 +159,7 @@ The EN 16931 e-invoicing core (ADR-0026). Gated on its own rather than inherited
 - `health.ts` — health probe
 - `seed.ts` — seed orchestrator, delegates to `src/server/seed/`
 - `password.ts` — password hashing; thin `bcryptjs` wrapper. bcrypt's silent 72-UTF-8-byte truncation is fenced off by the ceiling in `src/server/config/password-policy.ts`.
+- `staticRoot.ts` — the one definition of `dist/` and `public/` on disk, shared by `start.ts` (which serves the former) and `services/invoice/logoAsset.ts` (which reads the brand logo out of either). Single-sited because `import.meta.url` resolves differently either side of the esbuild bundle; the module's depth under `src/server/` is what makes both modes agree.
 - `staticCache.ts` — the `@fastify/static` registration plus its three Cache-Control tiers: content-hashed `/assets/*` immutable for a year, `index.html` and `sw.js` no-cache so deploys propagate, everything else a day.
 - `deploy-preflight-cli.ts` — the binary behind the configuration boundary's deploy checkpoint ([§ Design Decisions](#design-decisions-not-adr-worthy)): a one-shot container on the pulled image that probes env, storage reachability and the upload / copy verbs, so a credential or provider failure aborts the deploy while the previous replica is still running (AC-230/231).
 - `periodicSweeper.ts` — the shared factory behind the four retention and reaper schedulers: timer drive, overlap guard, sustained-failure backoff, and a `stop()` that drains the in-flight sweep. Deliberately topology-agnostic — the single-process invariant (ADR-0021) lives on its callers, not here.
@@ -218,32 +220,32 @@ Every entry is keyed by a directory, and `scripts/check-module-map.sh` resolves 
 
 Maps spec `[C]` markers (values that vary per deployment) to files. For how operator-supplied env vars are validated and what happens when one is missing, see [Design Decisions § Configuration boundary](#design-decisions-not-adr-worthy) below and [spec architecture.md §12](docs/spec/architecture.md#12-configuration-boundaries).
 
-| What                                                                       | File                                   |
-| -------------------------------------------------------------------------- | -------------------------------------- |
-| App name, branding, footer text, brand accent (light + dark)               | `src/config/brandingConfig.ts`         |
-| Color design tokens — primitive palette, semantic tokens, dark overrides   | `src/styles/tokens.css`                |
-| Workflow states (labels, colors, order, aging thresholds, collapse tiers)  | `src/config/stateConfig.ts`            |
-| German UI and error strings                                                | `src/config/strings.ts`                |
-| Date and locale display settings                                           | `src/config/localeConfig.ts`           |
-| Insecure-connection detection                                              | `src/config/insecureConnection.ts`     |
-| Password policy (min length, max bytes, blocklist)                         | `src/server/config/password-policy.ts` |
-| Session duration, rate-limit windows                                       | `src/server/config/index.ts`           |
-| Role set and per-role permission matrix                                    | `src/config/permissions.ts`            |
-| Per-view nav + route-guard rules (URL ↔ view ↔ access rule)                | `src/config/routes.ts`                 |
-| Backup-freshness thresholds (amber/red days for backup and drill)          | `src/config/backupThresholds.ts`       |
-| Threshold-monitor policy (storage warn band, hysteresis, sweep, re-notify) | `src/config/thresholdMonitor.ts`       |
-| Destructive-restore confirmation phrase                                    | `src/config/dataExchangeConfig.ts`     |
-| Theme preference local-storage key                                         | `src/config/themeStorage.ts`           |
-| Audit retention window (ADR-0021)                                          | `src/config/auditRetention.ts`         |
-| Audit action → German label map                                            | `src/config/auditActionLabels.ts`      |
-| Audit list page size                                                       | `src/config/auditPageSize.ts`          |
-| Notification event catalog + German labels (ADR-0023)                      | `src/config/notificationEvents.ts`     |
-| Push-dispatch latency budget                                               | `src/config/pushDispatch.ts`           |
-| Role keys (typed `AccountRoleKey` enum)                                    | `src/config/roleKeys.ts`               |
-| Attachment server caps (size, bulk, reaper TTL, worker self-delete grace)  | `src/config/attachmentConfig.ts`       |
-| Attachment client pipeline params (resize, quality, thumbnail dimension)   | `src/config/attachmentPipeline.ts`     |
-| Realtime SSE heartbeat interval (default 25 s, bounded 1 s–600 s)          | `src/server/config/env.ts`             |
-| Seed default password                                                      | `src/test/seedAssumptions.ts`          |
+| What                                                                                | File                                   |
+| ----------------------------------------------------------------------------------- | -------------------------------------- |
+| App name, branding, footer brand line, brand accent (light + dark), logo asset path | `src/config/brandingConfig.ts`         |
+| Color design tokens — primitive palette, semantic tokens, dark overrides            | `src/styles/tokens.css`                |
+| Workflow states (labels, colors, order, aging thresholds, collapse tiers)           | `src/config/stateConfig.ts`            |
+| German UI and error strings                                                         | `src/config/strings.ts`                |
+| Date and locale display settings                                                    | `src/config/localeConfig.ts`           |
+| Insecure-connection detection                                                       | `src/config/insecureConnection.ts`     |
+| Password policy (min length, max bytes, blocklist)                                  | `src/server/config/password-policy.ts` |
+| Session duration, rate-limit windows                                                | `src/server/config/index.ts`           |
+| Role set and per-role permission matrix                                             | `src/config/permissions.ts`            |
+| Per-view nav + route-guard rules (URL ↔ view ↔ access rule)                         | `src/config/routes.ts`                 |
+| Backup-freshness thresholds (amber/red days for backup and drill)                   | `src/config/backupThresholds.ts`       |
+| Threshold-monitor policy (storage warn band, hysteresis, sweep, re-notify)          | `src/config/thresholdMonitor.ts`       |
+| Destructive-restore confirmation phrase                                             | `src/config/dataExchangeConfig.ts`     |
+| Theme preference local-storage key                                                  | `src/config/themeStorage.ts`           |
+| Audit retention window (ADR-0021)                                                   | `src/config/auditRetention.ts`         |
+| Audit action → German label map                                                     | `src/config/auditActionLabels.ts`      |
+| Audit list page size                                                                | `src/config/auditPageSize.ts`          |
+| Notification event catalog + German labels (ADR-0023)                               | `src/config/notificationEvents.ts`     |
+| Push-dispatch latency budget                                                        | `src/config/pushDispatch.ts`           |
+| Role keys (typed `AccountRoleKey` enum)                                             | `src/config/roleKeys.ts`               |
+| Attachment server caps (size, bulk, reaper TTL, worker self-delete grace)           | `src/config/attachmentConfig.ts`       |
+| Attachment client pipeline params (resize, quality, thumbnail dimension)            | `src/config/attachmentPipeline.ts`     |
+| Realtime SSE heartbeat interval (default 25 s, bounded 1 s–600 s)                   | `src/server/config/env.ts`             |
+| Seed default password                                                               | `src/test/seedAssumptions.ts`          |
 
 ---
 
@@ -760,7 +762,7 @@ Spec contract: [docs/spec/data-model.md §5.15–§5.17](docs/spec/data-model.md
 
 ### `company_profile` singleton
 
-One row per deployment, pinned by `UNIQUE(singleton) + CHECK(singleton = true)`. Owner-only mutation through `PUT /api/company-profile`; every authenticated role may read so the values invoices will snapshot are visible (office / worker / bookkeeper see a read-only summary on the Daten view). No dedicated `company_profile:*` permission key — the route-layer role check is the gate (mutations restricted to `owner`). Logo upload is not yet wired client-side — the schema's `logoBinaryDescriptorId` column is present but the orphan (non-project) binary-descriptor pipeline is a follow-up; the form sends `null` until that lands.
+One row per deployment, pinned by `UNIQUE(singleton) + CHECK(singleton = true)`. Owner-only mutation through `PUT /api/company-profile`; every authenticated role may read so the values invoices will snapshot are visible (office / worker / bookkeeper see a read-only summary on the Daten view). No dedicated `company_profile:*` permission key — the route-layer role check is the gate (mutations restricted to `owner`). The company logo is **not** on this row: it is a deploy-time branding asset (`BRANDING.mark.logo`), read from the served build root by both the header and the invoice renderer (#189). `accentColor` is document styling for the rendered invoice, not an app-theme override — the app accent needs a light/dark pair and lives in `brandingConfig.ts`.
 
 ### Realtime + repository scope
 

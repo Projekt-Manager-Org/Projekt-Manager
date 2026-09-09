@@ -48,6 +48,7 @@ import { createStorageClient } from './storage/client.js';
 import { assertStorageBucketSafe } from './storage/safety.js';
 import { probeStagingDurability } from './config/assertStagingDurable.js';
 import { registerStaticAssets } from './staticCache.js';
+import { DIST_ROOT } from './staticRoot.js';
 
 const HOST = '0.0.0.0';
 
@@ -59,7 +60,6 @@ const TAKEOUT_STAGING_REAPER_INTERVAL_MINUTES = 60;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, 'db/migrations');
-const distFolder = path.resolve(__dirname, '../../dist');
 
 /**
  * Verify that every `status` value in the projects table is present in
@@ -442,12 +442,12 @@ async function start(): Promise<void> {
   // never get silently served in dev. Vite's dev server on :5173 is always
   // the source of truth there; :3000 should only ever answer /api.
   if (isProduction) {
-    if (!existsSync(distFolder)) {
+    if (!existsSync(DIST_ROOT)) {
       throw new Error(
-        `dist/ not found at ${distFolder}. Run 'npm run build' before starting in production.`,
+        `dist/ not found at ${DIST_ROOT}. Run 'npm run build' before starting in production.`,
       );
     }
-    await registerStaticAssets(app, distFolder);
+    await registerStaticAssets(app, DIST_ROOT);
 
     installSpaAwareNotFoundHandler(app);
   } else {

@@ -85,7 +85,7 @@ import { importEnvelope } from '../../test/data-exchange-helpers.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
-import type { Envelope } from '../../domain/dataExchange.js';
+import { SCHEMA_VERSION, type Envelope } from '../../domain/dataExchange.js';
 import { createStorageClient } from '../storage/client.js';
 import { ProjectCrudService } from '../services/ProjectCrudService.js';
 import { getEnv } from '../config/env.js';
@@ -320,7 +320,6 @@ async function seededWorkerIdAny(ownerToken: string): Promise<string> {
  * branches reuse this envelope: the override test runs it against a
  * non-empty target; the empty-target test wipes the tables first.
  */
-const CURRENT_SCHEMA_VERSION = 3;
 
 function uuidWithPrefix(prefix: string, i: number): string {
   const hex = Array.from(prefix)
@@ -349,7 +348,9 @@ function buildOverrideEnvelope(): Record<string, unknown> {
   const customerId = uuidWithPrefix('cus', nonce % 9999);
   const projectId = uuidWithPrefix('pro', nonce % 9999);
   return {
-    schema_version: CURRENT_SCHEMA_VERSION,
+    // Derived, never a literal: this envelope only has to be *current*,
+    // and a hardcoded copy silently rejects on the next contract bump.
+    schema_version: SCHEMA_VERSION,
     exported_at: new Date().toISOString(),
     users: [],
     company_profile: [

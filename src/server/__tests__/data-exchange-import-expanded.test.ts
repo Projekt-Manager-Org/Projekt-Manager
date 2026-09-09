@@ -17,7 +17,7 @@
  *     a ref absent from envelope.users surfaces the error.
  *   - Per-entity-type audit rows emitted on commit (one per non-empty
  *     entity-typed slot) with the documented shape.
- *   - SCHEMA_VERSION = 3 is a hard cut — a v2-stamped envelope rejects.
+ *   - The envelope version is a hard cut — a stale-stamped envelope rejects.
  *
  * Test fixtures are built in-test rather than via the seed or a full
  * `ExportService` export so the cases can vary independently. The roundtrip AT-77
@@ -866,13 +866,15 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // SCHEMA_VERSION = 3 hard cut. A v2-stamped envelope rejects with
+  // Envelope-version hard cut. A stale-stamped envelope rejects with
   // SCHEMA_VERSION_MISMATCH; no writes occur (the route layer does not
   // even reach the service for some shapes, but the version field is
   // structurally typed as a generic integer so the service catches it).
+  // `2` is stamped as a concrete stale value — this arm wants a version
+  // that is NOT current, so it stays a literal on purpose.
   // -------------------------------------------------------------------
-  describe('SCHEMA_VERSION = 3 hard cut', () => {
-    it('rejects a v2-stamped envelope with SCHEMA_VERSION_MISMATCH', async () => {
+  describe('envelope-version hard cut', () => {
+    it('rejects a stale-stamped envelope with SCHEMA_VERSION_MISMATCH', async () => {
       await wipeBusinessDataExceptUsers();
       try {
         const env = buildExpandedEnvelope();
