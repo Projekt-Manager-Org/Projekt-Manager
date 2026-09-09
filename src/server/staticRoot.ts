@@ -36,7 +36,9 @@ export const DIST_ROOT = path.resolve(__dirname, '../../dist');
  * server-side reader that looked only at `DIST_ROOT` would find nothing
  * locally and everything in production — the worst kind of divergence,
  * since the broken half is the one nobody runs the tests against. Readers
- * check `DIST_ROOT` first (authoritative in production, where this path
- * is not even copied into the runtime image) and fall back to here.
+ * check here FIRST and fall back to `DIST_ROOT`: production carries no
+ * `public/` in the runtime image so it misses and `dist/` wins, while in
+ * development this ordering stops a stale `dist/` from an earlier
+ * `npm run build` shadowing the file Vite is actually serving.
  */
 export const PUBLIC_ROOT = path.resolve(__dirname, '../../public');

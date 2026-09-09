@@ -681,7 +681,7 @@ interface CompanyProfile {
   taxId: string; // Steuernummer — required, non-empty
   ustId?: string; // USt-IdNr. — required to issue `standard` or `reverse_charge` invoices; optional structurally
   iban?: string; // always structurally optional; the renderer emits a payment block iff `iban` is present
-  accentColor?: string; // hex; nullable — the renderer falls back to the brand accent ([architecture.md §12.5](architecture.md#125-theming-model))
+  accentColor?: string; // hex; nullable — document styling for the rendered invoice only, never an app-theme override; the renderer falls back to the brand accent's light variant (AC-362)
   footerText?: string; // free German text printed at the foot of every rendered invoice
   defaultTaxMode: TaxMode; // pre-fills new invoice drafts; editable per-draft until issuance
 

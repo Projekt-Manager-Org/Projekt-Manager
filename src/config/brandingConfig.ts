@@ -23,37 +23,27 @@
  *
  * Brand mark contract:
  *   - `mark.bg` and `mark.bars` paint the generic fallback mark
- *     (rendered inline as SVG by `src/ui/layout/Header.tsx`). The mark is
- *     a rounded square background with three vertical bars in the order
+ *     (rendered inline as SVG by `src/ui/layout/BrandMark.tsx`). The mark
+ *     is a rounded square background with three vertical bars in the order
  *     given by `bars`. Theme-independent; the same hex values render in
  *     light and dark modes.
  *   - `mark.logo` is the installation's own logo and overrides the
  *     fallback wherever the mark is drawn. Unset in this repo: the
  *     pilot company's asset is private (ADR-0001), so the generic mark
- *     is what ships. A deployment sets it by dropping a file under
- *     `public/brand/` and pointing this key at the served path.
+ *     is what ships.
  *
- * Logo asset contract (`mark.logo`, issue #189):
- *   - Served path, e.g. `/brand/logo.png`, leading slash included. The
- *     file lives at `public/brand/logo.png`; Vite serves it from there
- *     in development and copies it into `dist/` for production. It MUST
- *     sit under `/brand/` — the invoice renderer resolves the same path
- *     on the filesystem and refuses a path that lexically escapes that
- *     directory. (Lexically: a symlink planted inside `brand/` is
- *     followed, so the directory's write permissions are the real
- *     boundary.)
- *   - PNG or JPEG only. The header would take any format the browser
- *     renders, but the same bytes are embedded into the invoice PDF and
- *     `@cantoo/pdf-lib` supports exactly these two. One asset, both
- *     surfaces — a separate print variant can be added if the web mark
- *     ever needs to be vector.
- *   - The header draws it 28px tall, so ship it at 3x (84px or taller)
- *     to stay crisp on dense displays. The PDF fits it inside a
- *     140x42pt box, preserving aspect ratio and never enlarging past
- *     its natural size.
- *   - A missing or unreadable file is a deployment misconfiguration,
- *     never a hard failure: the header falls back to the inline SVG and
- *     invoice issuance renders without a logo rather than aborting.
+ * Supplying `mark.logo` (issue #189). Its behaviour — resolution,
+ * refusal, and both render surfaces — is specified by AC-360 / AC-361 /
+ * AC-362 in `docs/spec/verification.md`; what an operator provides:
+ *   - Drop the file in `public/brand/` and set this key to its served
+ *     path, leading slash included (`/brand/logo.png`). It must stay
+ *     under that directory; the renderer refuses anything outside it.
+ *     Confinement is lexical, so a symlink planted inside `brand/` is
+ *     followed — the directory's write permissions are the real boundary.
+ *   - PNG or JPEG. The same bytes feed the header and the invoice PDF,
+ *     and the PDF engine embeds no other format.
+ *   - Ship it 84px tall or more. The header paints it up to 28px tall,
+ *     so 3x stays crisp on dense displays.
  */
 export interface BrandingConfig {
   appName: string;
