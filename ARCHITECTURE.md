@@ -762,7 +762,7 @@ Spec contract: [docs/spec/data-model.md §5.15–§5.17](docs/spec/data-model.md
 
 ### `company_profile` singleton
 
-One row per deployment, pinned by `UNIQUE(singleton) + CHECK(singleton = true)`. Owner-only mutation through `PUT /api/company-profile`; every authenticated role may read so the values invoices will snapshot are visible (office / worker / bookkeeper see a read-only summary on the Daten view). No dedicated `company_profile:*` permission key — the route-layer role check is the gate (mutations restricted to `owner`). The company logo is **not** on this row: it is a deploy-time branding asset (`BRANDING.mark.logo`), read from the served build root by both the header and the invoice renderer (#189). `accentColor` is document styling for the rendered invoice, not an app-theme override — the app accent needs a light/dark pair and lives in `brandingConfig.ts`.
+One row per deployment, pinned by `UNIQUE(singleton) + CHECK(singleton = true)`. Owner-only mutation through `PUT /api/company-profile`; every authenticated role may read so the values invoices will snapshot are visible (office / worker / bookkeeper see a read-only summary on the Daten view). No dedicated `company_profile:*` permission key — the route-layer role check is the gate (mutations restricted to `owner`). The company logo is **not** on this row: it is a deploy-time branding asset (`BRANDING.mark.logo`) — the browser fetches it over the served path, and the invoice renderer reads the same file off the static root (#189). `accentColor` is document styling for the rendered invoice, not an app-theme override — the app accent needs a light/dark pair and lives in `brandingConfig.ts`.
 
 ### Realtime + repository scope
 

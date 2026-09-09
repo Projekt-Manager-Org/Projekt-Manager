@@ -34,20 +34,23 @@
  *     `public/brand/` and pointing this key at the served path.
  *
  * Logo asset contract (`mark.logo`, issue #189):
- *   - Served path, e.g. `/brand/logo.png`. The file lives at
- *     `public/brand/logo.png`; Vite serves it from there in development
- *     and copies it into `dist/` for production. It MUST sit under
- *     `/brand/` — the invoice renderer resolves the same path on the
- *     filesystem (checking `dist/` then `public/`) and refuses anything
- *     that escapes that directory.
+ *   - Served path, e.g. `/brand/logo.png`, leading slash included. The
+ *     file lives at `public/brand/logo.png`; Vite serves it from there
+ *     in development and copies it into `dist/` for production. It MUST
+ *     sit under `/brand/` — the invoice renderer resolves the same path
+ *     on the filesystem and refuses a path that lexically escapes that
+ *     directory. (Lexically: a symlink planted inside `brand/` is
+ *     followed, so the directory's write permissions are the real
+ *     boundary.)
  *   - PNG or JPEG only. The header would take any format the browser
  *     renders, but the same bytes are embedded into the invoice PDF and
  *     `@cantoo/pdf-lib` supports exactly these two. One asset, both
  *     surfaces — a separate print variant can be added if the web mark
  *     ever needs to be vector.
- *   - Ship it at 3x the 32px header box (96x96 or larger) so the
- *     rasterised mark stays crisp; the PDF scales it into a 120x40pt
- *     box preserving aspect ratio.
+ *   - The header draws it 28px tall, so ship it at 3x (84px or taller)
+ *     to stay crisp on dense displays. The PDF fits it inside a
+ *     140x42pt box, preserving aspect ratio and never enlarging past
+ *     its natural size.
  *   - A missing or unreadable file is a deployment misconfiguration,
  *     never a hard failure: the header falls back to the inline SVG and
  *     invoice issuance renders without a logo rather than aborting.

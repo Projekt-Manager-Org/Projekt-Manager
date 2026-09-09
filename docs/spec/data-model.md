@@ -584,7 +584,7 @@ interface InvoiceIssuerSnapshot {
   ustId?: string; // USt-IdNr. — required when taxMode != 'kleinunternehmer'
   iban?: string;
   footerText?: string;
-  // Logo bytes are referenced indirectly — the rendered PDF/A-3 carries the logo at render time.
+  // No logo field — it is deploy-time branding, drawn at render time and never snapshotted (§5.17).
 }
 
 interface InvoiceRecipientSnapshot {

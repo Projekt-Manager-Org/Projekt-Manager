@@ -162,7 +162,7 @@ ALLOWLIST=(
   "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|scripts/backup/crontab"
   "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|scripts/backup/probe-r2.mjs"
 
-  # (3) The brand-logo drop-in directory (#189). A deployment creates
+  # The brand-logo drop-in directory (#189). A deployment creates
   # `public/brand/` and puts its own asset there; the repo deliberately
   # ships neither, because the pilot company's mark is private per
   # ADR-0001. The spec cites the path to say where the file goes.

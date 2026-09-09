@@ -382,7 +382,7 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 
 - App name, branding, footer brand line
 - Brand accent color — explicit light and dark values (see [§12.5](#125-theming-model))
-- Brand logo asset — optional served path, the file living at `public/brand/` (`BRANDING.mark.logo`, source constant, no env var). Set, it replaces the generic mark in the header at every viewport width and is embedded in the issuer block of every rendered invoice; unset, both surfaces fall back to the generic three-bar mark. PNG or JPEG only — one asset feeds the browser and `@cantoo/pdf-lib`, which embeds no other format. The pilot company's own asset stays out of the repo per [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)
+- Brand logo asset — optional served path, the file living at `public/brand/` (`BRANDING.mark.logo`, source constant, no env var). Set, it replaces the generic mark in the header at every viewport width and is drawn above the issuer block of every rendered invoice; unset, both surfaces fall back to the generic mark. PNG or JPEG only — one asset feeds both surfaces, and the invoice renderer embeds no other format. The pilot company's own asset stays out of the repo per [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)
 - Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers
 - German UI and error strings
 - Date and locale display settings

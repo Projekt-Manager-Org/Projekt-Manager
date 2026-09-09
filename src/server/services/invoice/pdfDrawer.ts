@@ -194,21 +194,14 @@ function drawRight(
 }
 
 /**
- * Draw a horizontal hairline across the content area as a 1-pt-tall
- * filled rectangle. `drawLine` at fractional y-coordinates can render
- * with subtly different antialiasing across rules at different y
- * positions (the table's top and bottom rules sit at non-integer y);
- * a filled rectangle is single-primitive and renders identically at
- * every position, so the two rules read as a true pair.
- */
-/**
  * Parse a `#RGB` / `#RRGGBB` string into pdf-lib's 0..1 RGB triple.
  * Returns null on anything else so the caller can fall back rather than
  * render an invoice in an accidental black.
  *
- * The route layer already pattern-pins `company_profile.accentColor` to
- * these two shapes, and `BRANDING.accent` is checked in review — this is
- * the third line of defence, and the only one running at render time.
+ * The route layer pattern-pins `company_profile.accentColor` to these
+ * two shapes, but the import path does not — a restored envelope can
+ * carry any string — so this is the check that actually runs on the
+ * value being drawn.
  */
 function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
   const m = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.exec(hex.trim());
@@ -228,6 +221,14 @@ function parseHexColor(hex: string): { r: number; g: number; b: number } | null 
   };
 }
 
+/**
+ * Draw a horizontal hairline across the content area as a 1-pt-tall
+ * filled rectangle. `drawLine` at fractional y-coordinates can render
+ * with subtly different antialiasing across rules at different y
+ * positions (the table's top and bottom rules sit at non-integer y);
+ * a filled rectangle is single-primitive and renders identically at
+ * every position, so the two rules read as a true pair.
+ */
 const RULE_THICKNESS = 0.5;
 function drawHRule(page: PDFPage, y: number, color: RGB): void {
   page.drawRectangle({
@@ -490,10 +491,13 @@ export async function drawInvoicePdf(
   // rule. This keeps the rule clear of both rows' glyphs by the same
   // visual gap — the old layout used a fixed offset that put the data
   // row's cap above the rule and produced a visible overlap.
-  // Table rules carry the invoice accent: the profile's own value when
-  // the owner set one, else the deployment's brand accent. The light
-  // variant is the right default — the sheet is white either way, so
-  // the dark-theme pairing has nothing to do with paper.
+  // Table rules carry the invoice accent, in three tiers: the profile's
+  // own value when the owner set one, else the deployment's brand
+  // accent, else neutral grey if that too fails to parse (only reachable
+  // on a deployment that edits `BRANDING.accent.light` to something
+  // invalid). The light variant is the right default — the sheet is
+  // white either way, so the dark-theme pairing has nothing to do with
+  // paper.
   const accent =
     parseHexColor(companyProfile.accentColor ?? '') ?? parseHexColor(BRANDING.accent.light);
   const ruleColor = accent ? rgb(accent.r, accent.g, accent.b) : rgb(0.6, 0.6, 0.6);
