@@ -44,7 +44,17 @@ services:
     volumes:
       - miniodata:/data
     ports:
-      - '9000:9000' # S3 API — published so the host (browser, vitest, npm run dev) reaches MinIO.
+      # S3 API — published so the host (browser, vitest, npm run dev) reaches MinIO.
+      #
+      # Loopback, NOT 0.0.0.0. The image is frozen on an archived upstream
+      # carrying write-access advisories with no OSS fix, so narrowing scope
+      # is the only mitigation available — see ADR-0003 § Dep lifecycle
+      # health for the advisories and the accepted residual risk.
+      #
+      # Costs nothing: every host-side consumer already uses `localhost:9000`.
+      # Cross-machine dev needs `STORAGE_PUBLIC_ENDPOINT` retargeted anyway —
+      # override the bind here in that case, and accept the exposure.
+      - '127.0.0.1:9000:9000'
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}

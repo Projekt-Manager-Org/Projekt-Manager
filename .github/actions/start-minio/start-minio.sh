@@ -65,9 +65,14 @@ docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NET
 
 start_minio() {
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  # Loopback for the same reason as the compose bind (docker-compose.minio.yml
+  # `storage.ports`). This runner path is where the STORAGE_ACCESS_KEY values
+  # hardcoded in the public workflows are actually in use, so it needs the bind
+  # at least as much as the dev box does. Every consumer here is either the
+  # runner itself over localhost or a container on "$NETWORK".
   docker run -d --name "$CONTAINER" \
     --network "$NETWORK" \
-    -p 9000:9000 \
+    -p 127.0.0.1:9000:9000 \
     -e MINIO_ROOT_USER \
     -e MINIO_ROOT_PASSWORD \
     "$MINIO_IMAGE" \
