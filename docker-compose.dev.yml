@@ -95,8 +95,12 @@ services:
     # MinIO console (the S3 API port lives in docker-compose.minio.yml,
     # since both dev and CI smoke want it published). The console is a
     # developer convenience, not a CI need.
+    #
+    # Loopback-bound for the same reason as the S3 port — see the rationale
+    # on `storage.ports` in docker-compose.minio.yml. This one is the admin
+    # UI, so exposing it off-box is strictly worse than exposing the S3 API.
     ports:
-      - '9001:9001'
+      - '127.0.0.1:9001:9001'
 
   caddy:
     # Caddy requires CLOUDFLARE_API_TOKEN for DNS-01 TLS — not available

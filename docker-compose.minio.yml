@@ -44,7 +44,22 @@ services:
     volumes:
       - miniodata:/data
     ports:
-      - '9000:9000' # S3 API — published so the host (browser, vitest, npm run dev) reaches MinIO.
+      # S3 API — published so the host (browser, vitest, npm run dev) reaches MinIO.
+      #
+      # Bound to loopback, NOT 0.0.0.0. MinIO is frozen at the last
+      # published image and carries two unfixable HIGH advisories
+      # (CVE-2026-40344, CVE-2026-41145) that let anyone holding a valid
+      # *access key* — `minioadmin`, or the `pmappci` values hardcoded in
+      # our public CI workflows — write arbitrary objects to any bucket
+      # with a fabricated signature. Patched only in commercial AIStor;
+      # OSS MinIO has no fix and never will (#191). Loopback is therefore
+      # the mitigation, not the version pin.
+      #
+      # Every host-side consumer uses `localhost:9000` (vitest, Playwright,
+      # the browser on this box, the `mc` helper scripts), so this costs
+      # nothing. Cross-machine dev needs `STORAGE_PUBLIC_ENDPOINT` retargeted
+      # anyway — override the bind here in that case, and accept the exposure.
+      - '127.0.0.1:9000:9000'
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
