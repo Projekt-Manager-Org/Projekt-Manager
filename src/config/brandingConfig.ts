@@ -22,15 +22,48 @@
  *     7.31:1 (dark) — do not regress without re-checking contrast.
  *
  * Brand mark contract:
- *   - `mark.bg` and `mark.bars` paint the compact mobile/header logo
- *     (rendered inline as SVG by `src/ui/layout/Header.tsx`). The mark is
- *     a rounded square background with three vertical bars in the order
+ *   - `mark.bg` and `mark.bars` paint the generic fallback mark
+ *     (rendered inline as SVG by `src/ui/layout/BrandMark.tsx`). The mark
+ *     is a rounded square background with three vertical bars in the order
  *     given by `bars`. Theme-independent; the same hex values render in
  *     light and dark modes.
+ *   - `mark.logo` is the installation's own logo and overrides the
+ *     fallback wherever the mark is drawn. Unset in this repo: the
+ *     pilot company's asset is private (ADR-0001), so the generic mark
+ *     is what ships.
+ *
+ * Supplying `mark.logo` (issue #189). Its behaviour — resolution,
+ * refusal, and both render surfaces — is specified by AC-360 / AC-361 /
+ * AC-362 in `docs/spec/verification.md`; what an operator provides:
+ *   - Drop the file in `public/brand/`, COMMIT IT, and set this key to
+ *     its served path, leading slash included (`/brand/logo.png`). The
+ *     asset ships the same way `public/favicon.svg` and `public/icons/`
+ *     do: CI builds the container image from the git checkout, `vite
+ *     build` copies `public/` into `dist/`, and the image carries
+ *     `dist/` alone. An untracked asset therefore works under
+ *     `npm run dev` and reaches no deployed instance — the header falls
+ *     back to the generic mark and every invoice render warns.
+ *   - It must stay under `public/brand/`; the renderer refuses anything
+ *     outside it. Confinement is lexical, so a symlink planted inside
+ *     `brand/` is followed — the directory's write permissions are the
+ *     real boundary.
+ *   - PNG or JPEG. The same bytes feed the header and the invoice PDF,
+ *     and the PDF engine embeds no other format.
+ *   - Ship it 84px tall or more. The header paints it up to 28px tall,
+ *     so 3x stays crisp on dense displays.
  */
 export interface BrandingConfig {
   appName: string;
-  footerText: string;
+  /**
+   * Brand line in the application's own footer (`src/ui/layout/Footer.tsx`).
+   *
+   * NOT to be confused with `company_profile.footerText`, which is
+   * owner-editable German prose printed at the foot of every rendered
+   * invoice (data-model.md §5.17). Different surface, different
+   * lifecycle, different editor — deliberately named apart so a grep
+   * for either lands on one of them only.
+   */
+  footerBrandLine: string;
   accent: {
     light: string;
     dark: string;
@@ -38,12 +71,13 @@ export interface BrandingConfig {
   mark: {
     bg: string;
     bars: readonly [string, string, string];
+    logo?: string;
   };
 }
 
 export const BRANDING: BrandingConfig = {
   appName: 'Projekt-Manager',
-  footerText: 'Projekt-Manager',
+  footerBrandLine: 'Projekt-Manager',
   accent: {
     light: '#3b82f6', // tailwind blue-500 — 4.97:1 against slate-900
     dark: '#60a5fa', //  tailwind blue-400 — 7.31:1 against slate-900
@@ -55,5 +89,6 @@ export const BRANDING: BrandingConfig = {
       '#3b82f6', // blue-500
       '#22c55e', // green-500
     ],
+    // logo: '/brand/logo.png',  <- a deployment sets this; see the contract above.
   },
 };

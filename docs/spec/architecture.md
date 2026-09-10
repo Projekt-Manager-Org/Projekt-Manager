@@ -380,8 +380,9 @@ The following values are centralized as single-source constants: each has exactl
 
 Entries state which. Promoting a source constant to an env var is a normal change when a deployment actually needs to vary it — it is not a spec change.
 
-- App name, branding, footer text
+- App name, branding, footer brand line
 - Brand accent color — explicit light and dark values (see [§12.5](#125-theming-model))
+- Brand logo asset — optional served path, the file living at `public/brand/` (`BRANDING.mark.logo`, source constant, no env var). Set, it replaces the generic mark in the header at every viewport width and is drawn above the issuer block of every rendered invoice; unset, both surfaces fall back to the generic mark. PNG or JPEG only — one asset feeds both surfaces, and the invoice renderer embeds no other format. A deployment ships its asset with its configuration, the same way the other files under `public/` ship; this generalized repo carries none of its own, per [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)
 - Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers
 - German UI and error strings
 - Date and locale display settings

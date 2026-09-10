@@ -219,13 +219,13 @@ Design notes:
 
 ### 5.8 Export Envelope
 
-The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `3`. The wire shape below is normative — server and UI both bind against it.
+The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `4`. The wire shape below is normative — server and UI both bind against it.
 
 Layer 1 is portability, not cross-trust-boundary transport. The envelope is plaintext; moving it across hosts means encrypting it first (`age` is the obvious choice — same recipient pattern as [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). The `passwordHash` field rides verbatim per the rationale below; the encryption is the operational guard.
 
 ```typescript
 interface ExportEnvelope {
-  schema_version: 3; // monotonic integer; imports reject any mismatch
+  schema_version: 4; // monotonic integer; imports reject any mismatch
   exported_at: string; // ISO 8601 — informational only, not used for import semantics
   users: EnvelopeUser[]; // every row, including inactive accounts (see below)
   company_profile: EnvelopeCompanyProfile[]; // singleton-array, length === 1 (see below)
@@ -263,7 +263,6 @@ interface EnvelopeCompanyProfile {
   iban: string | null;
   accentColor: string | null;
   footerText: string | null;
-  logoBinaryDescriptorId: string | null; // references an `attachments[]` row carried in the takeout archive (restored server-side by the import job)
   defaultTaxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge'; // §5.15 TaxMode
   updatedAt: string; // ISO 8601 — preserved on restore
   updatedBy: string | null; // UserAccount.id reference
@@ -323,7 +322,7 @@ Design notes:
 - **Attachments: metadata-only descriptor.** Only rows with `status = 'ready'` are exported; `pending` rows (uncommitted uploads whose backing objects may not exist) and `hidden` rows (the Papierkorb — a TTL-bounded undo buffer reaped by [§6.12](#612-attachment-hidden-reaper), and behind a delete marker on the bucket, so exporting them would need version-pinned reads) are excluded. A full-account restore is consequently also a Papierkorb purge; that consequence is surfaced in the UI on both legs per [AC-220](verification.md#1526-attachments). The envelope carries the per-row metadata fields needed to restore identity and reach the right project on import; it does NOT carry crypto fields (`wrappedDek`, `wrappedThumbDek`, `wrappedDekVersion`), opaque storage keys (`originalKey`, `thumbKey`), or ciphertext sizes (`ciphertextSizeBytes`, `ciphertextThumbSizeBytes`) — those are not consumable on the importing instance. The wrapped envelopes are load-bearing for confidentiality on the exporting instance and are deliberately kept off the takeout artifact.
 - **Restore mechanics are server-driven (import job).** Bytes live in object storage (Layer 3 per [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md)) and ride alongside the envelope as plaintext entries inside the takeout archive ([api.md §14.2.4](api.md#1424-unified-data-exchange) — Export job). On import, the **server** (not the browser) reads each plaintext entry from the staged archive, mints a fresh DEK, AES-256-GCM-encrypts, wraps the DEK under the importing instance's own `BINARY_AGE_RECIPIENT`, and PUTs ciphertext to B2 — preserving the row's `id` / `createdBy` / `createdAt` from this descriptor and capturing the PUT's version-id into `versionId` / `thumbVersionId` so the restored row round-trips through the Papierkorb (hide → restore `copyFromVersion`). For a `photo` row the server regenerates the gallery thumbnail from the restored original (the takeout carries no thumb), encrypts it under a separate fresh DEK, and PUTs it to the `.thumb` key; an undecodable image restores without a thumb (opportunistic). No key material crosses the takeout boundary; plaintext bytes stage only on the VPS, inside the trust radius, never on B2.
 - **Ephemeral, derived, device-tied, and instance-bound rows stay out.** `sessions` (ephemeral tokens), `push_subscriptions` (per-device endpoints), `project_storage_usage` (trigger-maintained derived state), `meta_backup_status` (Layer 2 instance metadata), `notification_rule` (config tied to the closed event catalog per [ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)), `audit_log` (per-instance chain of custody), and `data_exchange_job` (full-account job lifecycle metadata, [§5.18](#518-data-exchange-job-entity)) are excluded by design. The principle is pinned in [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision).
-- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `3`; any other value rejects with `SCHEMA_VERSION_MISMATCH`.
+- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `4`; any other value rejects with `SCHEMA_VERSION_MISMATCH`.
 
 ### 5.9 Backup Status Entity
 
@@ -585,7 +584,7 @@ interface InvoiceIssuerSnapshot {
   ustId?: string; // USt-IdNr. — required when taxMode != 'kleinunternehmer'
   iban?: string;
   footerText?: string;
-  // Logo bytes are referenced indirectly — the rendered PDF/A-3 carries the logo at render time.
+  // No logo field — it is deploy-time branding, drawn at render time and never snapshotted (§5.17).
 }
 
 interface InvoiceRecipientSnapshot {
@@ -682,9 +681,8 @@ interface CompanyProfile {
   taxId: string; // Steuernummer — required, non-empty
   ustId?: string; // USt-IdNr. — required to issue `standard` or `reverse_charge` invoices; optional structurally
   iban?: string; // always structurally optional; the renderer emits a payment block iff `iban` is present
-  accentColor?: string; // hex; nullable — the renderer falls back to the brand accent ([architecture.md §12.5](architecture.md#125-theming-model))
+  accentColor?: string; // hex; nullable — document styling for the rendered invoice only, never an app-theme override; the renderer falls back to the brand accent's light variant (AC-362)
   footerText?: string; // free German text printed at the foot of every rendered invoice
-  logoBinaryDescriptorId?: string; // FK to a binary descriptor carrying the logo asset; nullable
   defaultTaxMode: TaxMode; // pre-fills new invoice drafts; editable per-draft until issuance
 
   updatedAt: string; // ISO 8601
@@ -699,7 +697,7 @@ Design notes:
 - **Required-fields gate at invoice issuance.** Issuing an invoice requires `companyName`, `address` (all three components), and `taxId` to be non-empty on the singleton; `standard` and `reverse_charge` modes additionally require `ustId`. The API rejects the issue call with a specific error code when any required field is empty (see [api.md §14.4](api.md#144-error-handling) `COMPANY_PROFILE_REQUIRED`). The singleton's mere existence is not sufficient — its contents must be complete for the requested mode.
 - **Snapshot at issuance, not at draft creation.** Drafts read the live row for pre-fill (default tax mode, recipient hints if needed), but the actual `Invoice.issuer` block is snapshotted at the issue call — never earlier. A draft created today and issued next month carries next month's company profile, not today's. This matches the standard ERP "as of the issue date" expectation.
 - **`defaultTaxMode` is a tenant default, not a per-user preference.** Stored on the singleton row, edited by the owner via the company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); it does not live on the user record. New invoice drafts pre-fill `taxMode` from this value; the draft author edits per-invoice as needed (some customers are kleinunternehmer-issued, others reverse-charge for Bauleistungen). Listed in [architecture.md §12.2](architecture.md#122-company-configurable-settings) as a `[C]` value — the default is set per deployment by the owner, not at deploy time.
-- **Logo asset is by reference.** Bytes ride the existing binary descriptor pipeline ([§5.13](#513-attachment)); the row carries only the descriptor id. Replacing the logo replaces the descriptor reference; the prior descriptor is reaped by the existing orphan reaper if unreferenced (no specific cleanup primitive lives on this table).
+- **Logo is not on this row.** The company logo is a deploy-time branding asset (`BRANDING.mark.logo`, [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)), served from the static build and read by the invoice renderer at issuance. It is not per-installation business data, so it neither lives on this table nor rides the export envelope. See [architecture.md §12.2](architecture.md#122-company-configurable-settings).
 
 ### 5.18 Data Exchange Job Entity
 

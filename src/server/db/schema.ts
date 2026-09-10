@@ -777,7 +777,6 @@ export const companyProfile = pgTable(
     iban: text('iban'),
     accentColor: text('accent_color'),
     footerText: text('footer_text'),
-    logoBinaryDescriptorId: uuid('logo_binary_descriptor_id'),
     defaultTaxMode: text('default_tax_mode').notNull().default('standard'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),

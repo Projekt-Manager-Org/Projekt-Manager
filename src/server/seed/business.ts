@@ -472,10 +472,9 @@ export function buildBusinessEnvelope(now: Date, hashedPassword: string): Envelo
   // Singleton company_profile (data-model.md §5.17, ADR-0026). The
   // baseline migration pre-seeds an empty placeholder row; the import
   // path UPSERTs over it via `ON CONFLICT (singleton)`, so a fresh
-  // install ends up with this fixture's values. `accentColor`,
-  // `footerText`, and `logoBinaryDescriptorId` stay null — the fixture
-  // does not pin them and the schema defaults are the right resting
-  // state.
+  // install ends up with this fixture's values. `accentColor` and
+  // `footerText` stay null — the fixture does not pin them and the
+  // schema defaults are the right resting state.
   const companyProfileRow: EnvelopeCompanyProfile = {
     id: randomUUID(),
     companyName: 'Maler Berger GmbH',
@@ -485,7 +484,6 @@ export function buildBusinessEnvelope(now: Date, hashedPassword: string): Envelo
     iban: 'DE12 1000 0000 1234 5678 90',
     accentColor: null,
     footerText: null,
-    logoBinaryDescriptorId: null,
     defaultTaxMode: 'standard',
     updatedAt: nowIso,
     updatedBy: null,

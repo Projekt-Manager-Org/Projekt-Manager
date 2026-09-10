@@ -23,8 +23,9 @@
  * (`standard` / `reverse_charge` require it; `kleinunternehmer` does
  * not).
  *
- * Logo upload is out of scope of this Chunk — see the inline finding
- * in the task scope. No logo affordance is rendered.
+ * The company logo is NOT part of this form: it is a deploy-time
+ * branding asset (`BRANDING.mark.logo`, ADR-0001), not per-installation
+ * business data. See issue #189.
  */
 
 import { useEffect, useState, type ChangeEvent } from 'react';
@@ -208,12 +209,6 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
     }
 
     setSubmitting(true);
-    // Logo upload is out of scope of this Chunk (#189) — there is no
-    // orphan (non-project) binary descriptor pipeline yet, and the form
-    // exposes no logo affordance. PUT semantics require every writable
-    // field (api.md §14.2.15), so the save round-trips the descriptor
-    // from the loaded profile back to the server unchanged; any value
-    // set by a future flow (or out-of-band write) survives the save.
     const payload: CompanyProfileSavePayload = {
       companyName: values.companyName.trim(),
       address: {
@@ -226,7 +221,6 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
       iban: values.iban.trim() || null,
       accentColor: values.accentColor.trim() || null,
       footerText: values.footerText.trim() || null,
-      logoBinaryDescriptorId: profile.logoBinaryDescriptorId ?? null,
       defaultTaxMode: values.defaultTaxMode,
     };
     await saveProfile(payload);

@@ -87,8 +87,7 @@ An owner-only form persisting the singleton `company_profile` row ([data-model.m
 - `Steuernummer` — required, non-empty.
 - `USt-IdNr.` — required when `defaultTaxMode` is `standard` or `reverse_charge`; optional for `kleinunternehmer`. The form re-renders the requiredness asterisk when `defaultTaxMode` changes.
 - `IBAN` — optional structurally; the renderer emits a payment block when present.
-- `Logo` — optional image upload. Uses the existing binary descriptor pipeline ([data-model.md §5.13](../data-model.md#513-attachment), [ADR-0024](../../adr/0024-binary-attachment-e2e-encryption.md)); the form stores only the descriptor id. Accepts `image/png`, `image/jpeg`, `image/webp` per the existing MIME whitelist.
-- `Akzentfarbe` — optional hex color; falls back to the brand accent ([architecture.md §12.5](../architecture.md#125-theming-model)).
+- `Akzentfarbe` — optional hex color used by the **rendered invoice** (the rules bracketing the line-item table); falls back to the deploy-time brand accent when unset. It is a document-styling value, not an app-theme override: the app theme needs a light/dark pair with contrast guarantees and is owned by the branding config ([architecture.md §12.5](../architecture.md#125-theming-model)).
 - `Fußzeile` — optional free German text printed at the foot of every rendered invoice.
 - `Standard-Steuermodus` (`defaultTaxMode`) — three-way dropdown (`Regulär`, `Kleinunternehmer §19`, `Reverse-Charge §13b`). Pre-fills new invoice drafts ([invoices.md §8.16.2](invoices.md#8162-draft-form)).
 

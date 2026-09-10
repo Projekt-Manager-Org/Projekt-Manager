@@ -37,6 +37,7 @@ import type pg from 'pg';
 import { startApp, stopApp } from '../../test/api-helpers.js';
 import { exportEnvelope, importEnvelope } from '../../test/data-exchange-helpers.js';
 import { EXPECTED_RESTORE_PHRASE } from '../../test/seedAssumptions.js';
+import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
@@ -58,13 +59,14 @@ const migrationsFolder = path.resolve(__dirname, '../db/migrations');
  * this constant; the import should then reject the old value the next
  * test run, which is exactly the test's purpose.
  *
- * Bumped to `3` when the Layer 1 envelope expanded to cover all
- * user-meaningful business state (issue #230): `users`, `company_profile`,
- * `invoices`, and `invoice_sequence` joined the prior set. Pre-#230 (v2)
- * envelopes are not consumable on the importing instance; the
- * SCHEMA_VERSION_MISMATCH arm is the documented refusal path.
+ * Derived from the domain constant rather than copied: these fixtures
+ * only need to be *current*, and a literal goes stale silently on the
+ * next contract bump — the envelope then rejects with
+ * SCHEMA_VERSION_MISMATCH and every downstream assertion in the file
+ * fails for an unrelated-looking reason. The refusal path itself is
+ * pinned separately, against a deliberately-stale version.
  */
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = SCHEMA_VERSION;
 
 const UUID_ZERO = '00000000-0000-0000-0000-000000000000';
 
@@ -103,7 +105,6 @@ function buildFixtureCompanyProfile(suffix: string): Record<string, unknown> {
     iban: 'DE12 1000 0000 1234 5678 90',
     accentColor: null,
     footerText: null,
-    logoBinaryDescriptorId: null,
     defaultTaxMode: 'standard',
     updatedAt: '2026-01-03T00:00:00.000Z',
     updatedBy: null,

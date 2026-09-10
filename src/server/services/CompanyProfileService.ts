@@ -54,7 +54,6 @@ export function toCompanyProfileResponse(row: CompanyProfileRow): CompanyProfile
     iban: row.iban,
     accentColor: row.accentColor,
     footerText: row.footerText,
-    logoBinaryDescriptorId: row.logoBinaryDescriptorId,
     defaultTaxMode: row.defaultTaxMode as TaxMode,
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy,
@@ -75,7 +74,6 @@ export interface CompanyProfileUpsertInput {
   iban?: string | null;
   accentColor?: string | null;
   footerText?: string | null;
-  logoBinaryDescriptorId?: string | null;
   defaultTaxMode: TaxMode;
 }
 
@@ -196,7 +194,6 @@ export class CompanyProfileService {
             iban: input.iban ?? null,
             accentColor: input.accentColor ?? null,
             footerText: input.footerText ?? null,
-            logoBinaryDescriptorId: input.logoBinaryDescriptorId ?? null,
             defaultTaxMode: input.defaultTaxMode,
             updatedBy: caller.id,
           });
@@ -218,7 +215,6 @@ export class CompanyProfileService {
             iban: before.iban,
             accentColor: before.accentColor,
             footerText: before.footerText,
-            logoBinaryDescriptorId: before.logoBinaryDescriptorId,
             defaultTaxMode: before.defaultTaxMode,
           };
           const afterPayload: Record<string, unknown> = {
@@ -229,7 +225,6 @@ export class CompanyProfileService {
             iban: after.iban,
             accentColor: after.accentColor,
             footerText: after.footerText,
-            logoBinaryDescriptorId: after.logoBinaryDescriptorId,
             defaultTaxMode: after.defaultTaxMode,
           };
 

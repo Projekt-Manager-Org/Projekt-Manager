@@ -85,7 +85,7 @@ import { importEnvelope } from '../../test/data-exchange-helpers.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
-import type { Envelope } from '../../domain/dataExchange.js';
+import { SCHEMA_VERSION, type Envelope } from '../../domain/dataExchange.js';
 import { createStorageClient } from '../storage/client.js';
 import { ProjectCrudService } from '../services/ProjectCrudService.js';
 import { getEnv } from '../config/env.js';
@@ -310,18 +310,6 @@ async function seededWorkerIdAny(ownerToken: string): Promise<string> {
   return worker.id;
 }
 
-/**
- * Build a minimal valid envelope distinct from the seed so the
- * override path actually replaces business data. The shape mirrors
- * `buildOverrideEnvelope` in `data-exchange.test.ts`. AC-276 pins
- * exactly one `project_changed` per successful non-dry-run commit
- * (architecture.md §11.13: "one coarse signal is sufficient for every
- * consumer to refetch") and zero events per dry-run. Both non-dry-run
- * branches reuse this envelope: the override test runs it against a
- * non-empty target; the empty-target test wipes the tables first.
- */
-const CURRENT_SCHEMA_VERSION = 3;
-
 function uuidWithPrefix(prefix: string, i: number): string {
   const hex = Array.from(prefix)
     .map((ch) => ch.charCodeAt(0).toString(16).padStart(2, '0'))
@@ -332,6 +320,16 @@ function uuidWithPrefix(prefix: string, i: number): string {
   return `${hex}-0000-4000-8000-${n}`;
 }
 
+/**
+ * Build a minimal valid envelope distinct from the seed so the
+ * override path actually replaces business data. The shape mirrors
+ * `buildOverrideEnvelope` in `data-exchange.test.ts`. AC-276 pins
+ * exactly one `project_changed` per successful non-dry-run commit
+ * (architecture.md §11.13: "one coarse signal is sufficient for every
+ * consumer to refetch") and zero events per dry-run. Both non-dry-run
+ * branches reuse this envelope: the override test runs it against a
+ * non-empty target; the empty-target test wipes the tables first.
+ */
 function buildOverrideEnvelope(): Record<string, unknown> {
   // Deterministic per-test-run UUIDs would collide on a re-run; lift
   // the high-order bits with a random nonce so each test build inserts
@@ -349,7 +347,9 @@ function buildOverrideEnvelope(): Record<string, unknown> {
   const customerId = uuidWithPrefix('cus', nonce % 9999);
   const projectId = uuidWithPrefix('pro', nonce % 9999);
   return {
-    schema_version: CURRENT_SCHEMA_VERSION,
+    // Derived, never a literal: this envelope only has to be *current*,
+    // and a hardcoded copy silently rejects on the next contract bump.
+    schema_version: SCHEMA_VERSION,
     exported_at: new Date().toISOString(),
     users: [],
     company_profile: [
@@ -362,7 +362,6 @@ function buildOverrideEnvelope(): Record<string, unknown> {
         iban: 'DE12 1000 0000 1234 5678 90',
         accentColor: null,
         footerText: null,
-        logoBinaryDescriptorId: null,
         defaultTaxMode: 'standard',
         updatedAt: '2026-01-03T00:00:00.000Z',
         updatedBy: null,

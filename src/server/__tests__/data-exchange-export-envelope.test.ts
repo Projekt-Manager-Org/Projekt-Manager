@@ -44,7 +44,7 @@ import type pg from 'pg';
  * import. The full domain shape is the build-time contract; this is the
  * runtime mirror.
  */
-interface ExportEnvelopeV3 {
+interface ExportEnvelopeShape {
   schema_version: number;
   exported_at: string;
   users: Array<{
@@ -72,7 +72,6 @@ interface ExportEnvelopeV3 {
     iban: string | null;
     accentColor: string | null;
     footerText: string | null;
-    logoBinaryDescriptorId: string | null;
     defaultTaxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge';
     updatedAt: string;
     updatedBy: string | null;
@@ -103,7 +102,7 @@ interface ExportEnvelopeV3 {
   attachments: Array<{ id: string; [key: string]: unknown }>;
 }
 
-describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
+describe('ExportService envelope — Layer 1 (issue #230)', () => {
   let db: Database;
   let pool: pg.Pool;
 
@@ -123,16 +122,16 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
   // Schema version + top-level slot presence
   // -------------------------------------------------------------------
   describe('envelope top-level shape', () => {
-    it('stamps SCHEMA_VERSION = 3 (the contract bump for #230)', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+    it('stamps SCHEMA_VERSION = 4 (the contract bump for #189)', async () => {
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
       // Mirrors the source-of-truth import — a future re-bump must update
       // both this assertion and the domain constant in one commit.
       expect(env.schema_version).toBe(SCHEMA_VERSION);
-      expect(env.schema_version).toBe(3);
+      expect(env.schema_version).toBe(4);
     });
 
     it('emits every documented top-level slot, including the four #230 additions', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
       expect(Array.isArray(env.users)).toBe(true);
       expect(Array.isArray(env.company_profile)).toBe(true);
       expect(Array.isArray(env.customers)).toBe(true);
@@ -151,7 +150,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('users slot', () => {
     it('exports every seeded user row, including inactive accounts', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
 
       // The seed mints 6 users (5 active + 1 inactive — see
       // src/test/seedAssumptions.ts SEED_USERS).
@@ -167,7 +166,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
     });
 
     it('ships passwordHash verbatim (no redaction)', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
 
       // Cross-check the bytes against the DB directly — a regression that
       // replaced the hash with a fixed sentinel or null would slip past a
@@ -186,7 +185,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
     });
 
     it('orders users by id ASC (deterministic for byte-stable round-trip)', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
       const ids = env.users.map((u) => u.id);
       const sorted = [...ids].sort();
       expect(ids).toEqual(sorted);
@@ -199,12 +198,12 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('company_profile slot', () => {
     it('is a singleton-array (exactly one row)', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
       expect(env.company_profile.length).toBe(1);
     });
 
     it('carries the seeded fixture values (sanity that the seed snapshot landed)', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
       const profile = env.company_profile[0]!;
       // Mirrors the seed insert in src/server/seed.ts; if the seed's
       // values change, this test fails loudly so the assertion is kept
@@ -228,7 +227,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('customers.ustId field round-trip', () => {
     it('emits ustId on every customer row, defaulting to null when unset', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
 
       // Every customer carries the field — null for the unset arm,
       // string for the set arm. The seed has no customer with a non-
@@ -256,7 +255,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
       const targetId = updated.rows[0]!.id;
 
       try {
-        const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+        const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
         const target = env.customers.find((c) => c.id === targetId);
         expect(target).toBeDefined();
         expect(target!.ustId).toBe('DE246800001');
@@ -274,7 +273,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('invoices slot ordering', () => {
     it('emits the seeded invoice rows (originals + at least one Storno)', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
 
       // The seed mints at least one cancellation pair (RE-0001 →
       // ST-0001 + RE-0002 reissue per src/server/seed/invoices.ts), so
@@ -287,7 +286,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
     });
 
     it('orders originals (cancellation_of IS NULL) before Stornos; id ASC tiebreaker', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
 
       // Find the first Storno — every preceding row must have a null
       // cancellationOf. This is the importer's two-pass-insert
@@ -311,7 +310,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
     });
 
     it('formats issueDate / performanceDate as YYYY-MM-DD strings (date columns, not timestamps)', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
       const issued = env.invoices.find((i) => i.status !== 'draft');
       expect(issued).toBeDefined();
       expect(issued!.issueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -325,7 +324,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('invoice_sequence slot', () => {
     it('emits the per-(year, kind) counter rows the seed allocated', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
 
       // Seed issues invoices across 2024 / 2025 / 2026 and at least
       // one cancellation, so both `invoice` and `storno` sub-sequences
@@ -345,7 +344,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
     });
 
     it('orders rows by (year ASC, kind ASC)', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
       const keys = env.invoice_sequence.map((s) => `${s.year}|${s.kind}`);
       const sorted = [...keys].sort();
       expect(keys).toEqual(sorted);
@@ -361,7 +360,7 @@ describe('ExportService envelope — Layer 1 v3 (issue #230)', () => {
   // -------------------------------------------------------------------
   describe('snapshot consistency across slots', () => {
     it('every non-null user reference on customers/projects resolves to an env.users row', async () => {
-      const env = (await exportEnvelope()) as unknown as ExportEnvelopeV3;
+      const env = (await exportEnvelope()) as unknown as ExportEnvelopeShape;
       const userIds = new Set(env.users.map((u) => u.id));
 
       // The seed sets createdBy/updatedBy to null for business rows

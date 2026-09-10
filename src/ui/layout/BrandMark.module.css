@@ -1,0 +1,40 @@
+/* Brand mark — see BrandMark.tsx.
+
+   The 900px breakpoint below MUST match `.appNameText` in
+   Header.module.css: above it the wordmark carries the identity and the
+   generic mark stays hidden; below it the wordmark collapses and the
+   mark takes over so the header's right-hand cluster still fits at
+   360px. Change one, change the other. */
+
+.fallbackMark {
+  display: none;
+  width: 28px;
+  height: 28px;
+}
+
+@media (max-width: 900px) {
+  .fallbackMark {
+    display: block;
+  }
+}
+
+/* A configured logo is the installation's identity, so it shows at every
+   width — including alongside the wordmark on desktop, which `.appName`'s
+   flex gap separates it from.
+
+   Both axes are capped and both are `auto`, so the box the element takes
+   up is always exactly the painted image: the asset grows to 28px tall
+   until it hits the width cap, then keeps its ratio and gets shorter.
+   Pinning `height` and letting `object-fit: contain` absorb the overflow
+   instead would hold a 28px-tall box open around a much shorter image —
+   a 10:1 wordmark painted 15px tall, letterboxed in dead space.
+
+   220px is the widest cap that keeps the header on one row at 1024px. It
+   carries every ratio up to ~7.9:1 at the full 28px, which covers
+   ordinary horizontal wordmarks (3:1 to 6:1). */
+.logo {
+  max-height: 28px;
+  max-width: 220px;
+  width: auto;
+  height: auto;
+}

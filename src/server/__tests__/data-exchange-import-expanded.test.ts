@@ -17,7 +17,7 @@
  *     a ref absent from envelope.users surfaces the error.
  *   - Per-entity-type audit rows emitted on commit (one per non-empty
  *     entity-typed slot) with the documented shape.
- *   - SCHEMA_VERSION = 3 is a hard cut — a v2-stamped envelope rejects.
+ *   - The envelope version is a hard cut — a stale-stamped envelope rejects.
  *
  * Test fixtures are built in-test rather than via the seed or a full
  * `ExportService` export so the cases can vary independently. The roundtrip AT-77
@@ -95,7 +95,7 @@ async function expectImportRejection(env: Envelope, opts: ImportOptions): Promis
 }
 
 /**
- * Build a full v3 envelope from scratch. Every slot is populated with
+ * Build a full current-version envelope from scratch. Every slot is populated with
  * deterministic fixture data so the tests don't depend on the seed
  * having particular content.
  *
@@ -166,7 +166,6 @@ function buildExpandedEnvelope(): Envelope {
         iban: 'DE12 1000 0000 1234 5678 90',
         accentColor: null,
         footerText: null,
-        logoBinaryDescriptorId: null,
         defaultTaxMode: 'standard',
         updatedAt: '2026-01-03T00:00:00.000Z',
         updatedBy: ownerUserId,
@@ -351,7 +350,7 @@ async function reseed(): Promise<void> {
   await seed(db, { force: true });
 }
 
-describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
+describe('ImportService — Layer 1 envelope (issue #230)', () => {
   beforeAll(async () => {
     await startApp();
     const conn = createDatabase();
@@ -368,7 +367,7 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
 
   // -------------------------------------------------------------------
   // Empty-target import + summary counts. Wipes the DB completely, then
-  // POSTs a v3 envelope with every slot populated; the response carries
+  // POSTs a current-version envelope with every slot populated; the response carries
   // counts matching the envelope; the new tables contain the rows.
   // -------------------------------------------------------------------
   describe('empty-target import accepts the expanded envelope', () => {
@@ -867,13 +866,15 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // SCHEMA_VERSION = 3 hard cut. A v2-stamped envelope rejects with
+  // Envelope-version hard cut. A stale-stamped envelope rejects with
   // SCHEMA_VERSION_MISMATCH; no writes occur (the route layer does not
   // even reach the service for some shapes, but the version field is
   // structurally typed as a generic integer so the service catches it).
+  // `2` is stamped as a concrete stale value — this arm wants a version
+  // that is NOT current, so it stays a literal on purpose.
   // -------------------------------------------------------------------
-  describe('SCHEMA_VERSION = 3 hard cut', () => {
-    it('rejects a v2-stamped envelope with SCHEMA_VERSION_MISMATCH', async () => {
+  describe('envelope-version hard cut', () => {
+    it('rejects a stale-stamped envelope with SCHEMA_VERSION_MISMATCH', async () => {
       await wipeBusinessDataExceptUsers();
       try {
         const env = buildExpandedEnvelope();
@@ -901,7 +902,7 @@ describe('ImportService — Layer 1 envelope v3 (issue #230)', () => {
     });
   });
 
-  // The "route body schema requires the new v3 slots" case (an envelope
+  // The "route body schema requires the new #230 slots" case (an envelope
   // missing the `users` key → 422 from Fastify ajv) tested the removed
   // text-leg route's body schema. ImportService has no equivalent
   // structural guard — a missing slot key surfaces as a type error, not a

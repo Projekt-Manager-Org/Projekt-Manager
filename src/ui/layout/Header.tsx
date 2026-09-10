@@ -11,6 +11,7 @@ import { BACKUP_THRESHOLDS } from '@/config/backupThresholds';
 import { deriveBadgeState } from '@/domain/backupBadge';
 import type { ThemePreference } from '@/config/themeStorage';
 import { BackupBadge } from './BackupBadge';
+import { BrandMark } from './BrandMark';
 import { MenuBackdrop } from '../common/MenuBackdrop';
 import { EmailExtractModal } from '../extraction/EmailExtractModal';
 import { PasswordChangeModal } from './PasswordChangeModal';
@@ -152,44 +153,11 @@ export function Header() {
           title={STRINGS.ui.navHome}
           aria-label={`${BRANDING.appName} — ${STRINGS.ui.navHome}`}
         >
-          {/* Wordmark (≥769px) swaps to logo-only (≤768px) via CSS —
-              keeps the right-cluster fitting on one row at 360px. */}
+          {/* Wordmark collapses at ≤900px so the right-hand cluster fits
+              on one row at 360px; `BrandMark` owns the mark itself and
+              its own visibility rules. */}
           <span className={styles.appNameText}>{BRANDING.appName}</span>
-          <svg
-            className={styles.appNameLogo}
-            viewBox="0 0 32 32"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <rect width="32" height="32" rx="6" fill={BRANDING.mark.bg} />
-            <rect
-              x="4"
-              y="6"
-              width="6"
-              height="20"
-              rx="2"
-              fill={BRANDING.mark.bars[0]}
-              opacity="0.9"
-            />
-            <rect
-              x="13"
-              y="10"
-              width="6"
-              height="16"
-              rx="2"
-              fill={BRANDING.mark.bars[1]}
-              opacity="0.9"
-            />
-            <rect
-              x="22"
-              y="8"
-              width="6"
-              height="18"
-              rx="2"
-              fill={BRANDING.mark.bars[2]}
-              opacity="0.9"
-            />
-          </svg>
+          <BrandMark />
         </button>
         {(inlineRoutes.length > 0 || renderSecondaryAsMenu) && (
           <div className={styles.viewToggle}>

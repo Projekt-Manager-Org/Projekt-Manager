@@ -289,16 +289,17 @@ describe('production composition — SPA-aware not-found handler', () => {
 // larger refactor than the fix warrants), so an inject()-based test can't
 // exercise it directly without duplicating the composition test above with
 // nothing to serve. Source-string pinning is the minimum-invasive way to
-// make a regression back to gating on `existsSync(distFolder)` alone loud.
+// make a regression back to gating on `existsSync(DIST_ROOT)` alone loud.
 describe('start.ts call-site pin — dist/ serving gated on isProduction, not existsSync', () => {
   const startTsPath = resolve(dirname(fileURLToPath(import.meta.url)), '../start.ts');
   const startSource = readFileSync(startTsPath, 'utf8');
   const stripped = startSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
-  // Anchor on `existsSync(distFolder)` — its only call site outside the
-  // `const distFolder =` declaration — so this can't accidentally match the
-  // unrelated `if (isProduction)` used earlier in start.ts for cookie config.
-  const distGateIdx = stripped.indexOf('existsSync(distFolder)');
+  // Anchor on `existsSync(DIST_ROOT)` — its only call site in start.ts,
+  // the constant itself now living in `staticRoot.ts` — so this can't
+  // accidentally match the unrelated `if (isProduction)` used earlier in
+  // start.ts for cookie config.
+  const distGateIdx = stripped.indexOf('existsSync(DIST_ROOT)');
   const ifProdIdx = stripped.lastIndexOf('if (isProduction)', distGateIdx);
   const registerIdx = stripped.indexOf('registerStaticAssets(app', distGateIdx);
 

@@ -34,6 +34,13 @@
 }
 
 .appName {
+  /* Flex so the wordmark and the mark are separated by `gap` rather than
+     a margin on the mark itself: below the 900px breakpoint `.appNameText`
+     is `display: none`, leaving one child, and a flex gap collapses where
+     a margin would leave a stray indent. */
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   font-size: 1.25rem;
   font-weight: 700;
   white-space: nowrap;
@@ -59,17 +66,13 @@
   border-radius: 2px;
 }
 
-/* Wordmark / logo swap. Desktop shows the "Projekt-Manager" text;
-   mobile swaps to the favicon mark so the right-cluster (initials +
-   cog + backup + extract) fits on a single row down to 360px. */
+/* Wordmark / mark swap. Desktop shows the "Projekt-Manager" text;
+   mobile hides it so the right-cluster (initials + cog + backup +
+   extract) fits on a single row down to 360px. The mark that takes over
+   below the breakpoint lives in BrandMark.module.css — keep the 900px
+   value there in sync with the media query below. */
 .appNameText {
   display: inline;
-}
-
-.appNameLogo {
-  display: none;
-  width: 28px;
-  height: 28px;
 }
 
 /* Segmented nav pill. The primary view buttons and the Verwaltung
@@ -312,10 +315,6 @@
 @media (max-width: 900px) {
   .appNameText {
     display: none;
-  }
-
-  .appNameLogo {
-    display: block;
   }
 
   .userFullName {

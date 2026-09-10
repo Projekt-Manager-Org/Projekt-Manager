@@ -33,7 +33,6 @@ export interface UpdateCompanyProfileFields {
   iban: string | null;
   accentColor: string | null;
   footerText: string | null;
-  logoBinaryDescriptorId: string | null;
   defaultTaxMode: TaxMode;
   updatedBy: string;
 }
@@ -63,7 +62,6 @@ export async function updateCompanyProfileSingleton(
       iban: fields.iban,
       accentColor: fields.accentColor,
       footerText: fields.footerText,
-      logoBinaryDescriptorId: fields.logoBinaryDescriptorId,
       defaultTaxMode: fields.defaultTaxMode,
       updatedAt: new Date(),
       updatedBy: fields.updatedBy,

@@ -16,10 +16,7 @@ import { handleSessionExpired } from './sessionExpired';
 
 /**
  * Payload accepted by `save`. The full `CompanyProfileInput` shape per
- * api.md §14.2.15 (PUT — every writable field present, including
- * `logoBinaryDescriptorId`). The Section round-trips the descriptor
- * value loaded by GET back through PUT so any server-side state
- * (logo upload pipeline lands in #189) survives an owner save.
+ * api.md §14.2.15 — PUT semantics, every writable field present.
  */
 export type CompanyProfileSavePayload = CompanyProfileInput;
 

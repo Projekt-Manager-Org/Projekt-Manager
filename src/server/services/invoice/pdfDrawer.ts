@@ -29,12 +29,14 @@
  * structural shape; the certified-PDF/A-3 gate is future work.
  */
 
-import type { PDFDocument, PDFFont, PDFPage, RGB } from '@cantoo/pdf-lib';
+import type { PDFDocument, PDFFont, PDFImage, PDFPage, RGB } from '@cantoo/pdf-lib';
 
 const pdfLibImport: Promise<typeof import('@cantoo/pdf-lib')> = import('@cantoo/pdf-lib');
 
-import type { Invoice } from '../../../domain/invoice.js';
+import type { CompanyProfile, Invoice } from '../../../domain/invoice.js';
+import { BRANDING } from '../../../config/brandingConfig.js';
 import { taxModeBoilerplate } from './boilerplate.js';
+import { loadBrandLogo, type LogoAsset } from './logoAsset.js';
 
 /** WinAnsi-only sanitiser — drop anything @cantoo/pdf-lib's standard fonts cannot encode. */
 function sanitizeForWinAnsi(input: string): string {
@@ -83,6 +85,16 @@ const TABLE_RULE_PAD = 4;
 
 const COL_LEFT = MARGIN_LEFT;
 const COL_RIGHT = PAGE_WIDTH - MARGIN_RIGHT;
+
+// Logo box, top-right, above the issuer block (issue #189). The asset is
+// scaled to FIT this box preserving aspect ratio, never stretched — a
+// squashed company logo is worse than no logo. The issuer text starts
+// below whatever height the fitted image actually took, and the title
+// slot already anchors to `Math.min(cursor.y, issuerY)`, so a taller
+// logo pushes the whole document down instead of overlapping anything.
+const LOGO_MAX_WIDTH = 140;
+const LOGO_MAX_HEIGHT = 42;
+const LOGO_GAP_BELOW = 10;
 
 /**
  * Line-item table column layout. All numeric columns (`menge`, `einzelpreis`,
@@ -182,6 +194,34 @@ function drawRight(
 }
 
 /**
+ * Parse a `#RGB` / `#RRGGBB` string into pdf-lib's 0..1 RGB triple.
+ * Returns null on anything else so the caller can fall back rather than
+ * render an invoice in an accidental black.
+ *
+ * The route layer pattern-pins `company_profile.accentColor` to these
+ * two shapes, but the import path does not — a restored envelope can
+ * carry any string — so this is the check that actually runs on the
+ * value being drawn.
+ */
+function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
+  const m = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.exec(hex.trim());
+  if (!m) return null;
+  const digits = m[1]!;
+  const full =
+    digits.length === 3
+      ? digits
+          .split('')
+          .map((d) => d + d)
+          .join('')
+      : digits;
+  return {
+    r: parseInt(full.slice(0, 2), 16) / 255,
+    g: parseInt(full.slice(2, 4), 16) / 255,
+    b: parseInt(full.slice(4, 6), 16) / 255,
+  };
+}
+
+/**
  * Draw a horizontal hairline across the content area as a 1-pt-tall
  * filled rectangle. `drawLine` at fractional y-coordinates can render
  * with subtly different antialiasing across rules at different y
@@ -243,11 +283,36 @@ function ensureSpace(
 }
 
 /**
+ * Embed the brand logo, or null if pdf-lib cannot decode it.
+ *
+ * The magic-byte sniff in `logoAsset.ts` proves the first 8 bytes only;
+ * `embedPng` / `embedJpg` parse the rest and throw on a body they do not
+ * support. Every such file is a deployment mistake, and none of them is
+ * worth failing an invoice over — see the call site.
+ */
+async function embedLogo(doc: PDFDocument, logo: LogoAsset): Promise<PDFImage | null> {
+  try {
+    return logo.format === 'png' ? await doc.embedPng(logo.bytes) : await doc.embedJpg(logo.bytes);
+  } catch (err) {
+    console.warn(
+      `[branding] the configured logo is not embeddable (${logo.format}: ${
+        err instanceof Error ? err.message : String(err)
+      }) — logo omitted from rendered invoices.`,
+    );
+    return null;
+  }
+}
+
+/**
  * The renderer entry point. Returns the raw PDF bytes (Uint8Array)
  * containing the human-readable layout PLUS the embedded factur-x.xml
  * stream.
  */
-export async function drawInvoicePdf(invoice: Invoice, facturXml: string): Promise<Uint8Array> {
+export async function drawInvoicePdf(
+  invoice: Invoice,
+  facturXml: string,
+  companyProfile: CompanyProfile,
+): Promise<Uint8Array> {
   const { PDFDocument, StandardFonts, rgb, AFRelationship } = (await pdfLibImport) as PdfDrawDeps;
 
   const doc = await PDFDocument.create();
@@ -276,6 +341,38 @@ export async function drawInvoicePdf(invoice: Invoice, facturXml: string): Promi
     invoice.cancellationOf !== null ||
     (typeof invoice.number === 'string' && invoice.number.startsWith('ST-'));
 
+  // ----- Brand logo (top-right, above the issuer block) -----
+  // Deploy-time asset (issue #189) — see `logoAsset.ts`. Absent or
+  // unusable is the normal case for a default install and draws nothing.
+  const issuerRightX = PAGE_WIDTH - MARGIN_RIGHT;
+  let issuerY = PAGE_HEIGHT - MARGIN_TOP;
+  const logo = loadBrandLogo();
+  // `loadBrandLogo` sniffs only the PNG signature / JPEG SOI marker; the
+  // rest of the file is parsed here, inside pdf-lib, which throws on a
+  // body it cannot decode (a CMYK JPEG, an APNG, a truncated copy). This
+  // runs inside the issuance transaction holding the gapless
+  // number-sequence lock, so an unembeddable asset must degrade to "no
+  // logo" exactly as an unresolvable one does — otherwise a cosmetic
+  // file stops every issuance in the installation (AC-360, AC-362).
+  const image = logo ? await embedLogo(doc, logo) : null;
+  if (image) {
+    // Fit-inside scaling: take the tighter of the two axis ratios, and
+    // never scale UP — a small mark stays its natural size rather than
+    // being blown up into a blurry banner.
+    const scale = Math.min(LOGO_MAX_WIDTH / image.width, LOGO_MAX_HEIGHT / image.height, 1);
+    const drawWidth = image.width * scale;
+    const drawHeight = image.height * scale;
+    // `drawImage` anchors bottom-left; the box's top edge is the same
+    // baseline-ish line the issuer text would otherwise have started on.
+    cursor.page.drawImage(image, {
+      x: issuerRightX - drawWidth,
+      y: issuerY - drawHeight,
+      width: drawWidth,
+      height: drawHeight,
+    });
+    issuerY -= drawHeight + LOGO_GAP_BELOW;
+  }
+
   // ----- Issuer block (top-right) -----
   const issuerLines = [
     invoice.issuer.companyName,
@@ -285,8 +382,6 @@ export async function drawInvoicePdf(invoice: Invoice, facturXml: string): Promi
   ];
   if (invoice.issuer.ustId) issuerLines.push(`USt-IdNr.: ${invoice.issuer.ustId}`);
   if (invoice.issuer.iban) issuerLines.push(`IBAN: ${invoice.issuer.iban}`);
-  const issuerRightX = PAGE_WIDTH - MARGIN_RIGHT;
-  let issuerY = PAGE_HEIGHT - MARGIN_TOP;
   for (const line of issuerLines) {
     const txt = sanitizeForWinAnsi(line);
     const width = font.widthOfTextAtSize(txt, FONT_SIZE_BODY);
@@ -423,7 +518,16 @@ export async function drawInvoicePdf(invoice: Invoice, facturXml: string): Promi
   // rule. This keeps the rule clear of both rows' glyphs by the same
   // visual gap — the old layout used a fixed offset that put the data
   // row's cap above the rule and produced a visible overlap.
-  const ruleColor = rgb(0.6, 0.6, 0.6);
+  // Table rules carry the invoice accent, in three tiers: the profile's
+  // own value when the owner set one, else the deployment's brand
+  // accent, else neutral grey if that too fails to parse (only reachable
+  // on a deployment that edits `BRANDING.accent.light` to something
+  // invalid). The light variant is the right default — the sheet is
+  // white either way, so the dark-theme pairing has nothing to do with
+  // paper.
+  const accent =
+    parseHexColor(companyProfile.accentColor ?? '') ?? parseHexColor(BRANDING.accent.light);
+  const ruleColor = accent ? rgb(accent.r, accent.g, accent.b) : rgb(0.6, 0.6, 0.6);
   cursor.y = colHeaderY - TEXT_DESCENDER_BODY - TABLE_RULE_PAD;
   drawHRule(cursor.page, cursor.y, ruleColor);
   cursor.y -= TABLE_RULE_PAD + TEXT_CAP_HEIGHT_BODY;

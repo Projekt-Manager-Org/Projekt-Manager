@@ -59,7 +59,6 @@ const profileBodySchema = {
       pattern: '^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$',
     },
     footerText: { type: ['string', 'null'], maxLength: 2000 },
-    logoBinaryDescriptorId: { type: ['string', 'null'], format: 'uuid' },
     defaultTaxMode: { type: 'string', enum: [...TAX_MODES] },
   },
 } as const;
@@ -101,7 +100,6 @@ export function companyProfileRoutes(db: Database) {
           iban?: string | null;
           accentColor?: string | null;
           footerText?: string | null;
-          logoBinaryDescriptorId?: string | null;
           defaultTaxMode: TaxMode;
         };
 

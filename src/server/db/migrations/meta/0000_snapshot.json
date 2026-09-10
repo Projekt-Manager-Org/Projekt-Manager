@@ -550,12 +550,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "logo_binary_descriptor_id": {
-          "name": "logo_binary_descriptor_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "default_tax_mode": {
           "name": "default_tax_mode",
           "type": "text",

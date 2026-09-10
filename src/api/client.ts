@@ -772,14 +772,6 @@ export interface CompanyProfileInput {
   iban: string | null;
   accentColor: string | null;
   footerText: string | null;
-  /**
-   * Required — PUT semantics demand every writable field be present
-   * (api.md §14.2.15). Callers that don't manage the descriptor must
-   * pass through the value loaded by GET; sending `null` clears it.
-   * The current UI has no upload affordance (#189), so the
-   * `CompanyProfileSection` round-trips the loaded value unchanged.
-   */
-  logoBinaryDescriptorId: string | null;
   defaultTaxMode: TaxMode;
 }
 
