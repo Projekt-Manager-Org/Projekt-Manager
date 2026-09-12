@@ -51,7 +51,7 @@ COMPOSE_PROJECT="projekt-manager"
 # Must match docker/init-storage.sh. Used locally (for the restore mc run)
 # and on the VPS (for the dump mc run). Tag drift would break both legs
 # silently; kept literal to match the forward script.
-MC_IMAGE="minio/mc:RELEASE.2025-08-13T08-35-41Z"
+MC_IMAGE="quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 LOCAL_TMP="/tmp/pm-rsync-$TS"
