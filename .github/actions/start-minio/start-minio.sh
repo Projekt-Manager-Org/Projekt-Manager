@@ -18,8 +18,12 @@ set -euo pipefail
 # Pinned to match docker-compose.minio.yml (ADR-0009 — version pinning
 # across environments). Renovate tracks both tags via the
 # `.github/actions/<name>/*.{yml,sh}` customManager in renovate.json.
-MINIO_IMAGE="minio/minio:RELEASE.2025-09-07T16-13-09Z"
-MC_IMAGE="minio/mc:RELEASE.2025-08-13T08-35-41Z"
+#
+# quay.io, not Docker Hub: `minio/minio` and `minio/mc` were delisted from
+# Docker Hub on 2026-09-11, the tail end of the community-edition wind-down
+# ADR-0003 § Dep lifecycle health records. Same tags, same vendor mirror.
+MINIO_IMAGE="quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+MC_IMAGE="quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
 NETWORK="pm-storage-net"
 CONTAINER="storage"
 # MinIO answers in ~2s on a healthy runner. The 2026-07-27 flake

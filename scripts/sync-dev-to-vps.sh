@@ -68,11 +68,12 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # `prmng-object-storage`).
 LOCAL_BUCKET="projekt-manager"
 COMPOSE_PROJECT="projekt-manager"
-# Must match docker/init-storage.sh (same image, so we rely on it being
-# present on the VPS — it was pulled on the first deploy that ran
-# storage-init). Keeping this in sync with the compose file is a manual
-# discipline; a tag drift here would mean a mirror against an older client.
-MC_IMAGE="minio/mc:RELEASE.2025-08-13T08-35-41Z"
+# Must match docker/init-storage.sh. Keeping this in sync with the compose
+# file is a manual discipline; a tag drift here would mean a mirror against
+# an older client. The VPS's cached copy is under the old Docker Hub name,
+# so the first sync after the quay.io move pulls once — quay is public and
+# needs no credential.
+MC_IMAGE="quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 LOCAL_TMP="/tmp/pm-sync-$TS"
