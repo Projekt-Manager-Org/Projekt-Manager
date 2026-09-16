@@ -214,6 +214,8 @@ Every entry is keyed by a directory, and `scripts/check-module-map.sh` resolves 
 
 **`src/pwa/`** — `pushClient.ts` handles subscribe/unsubscribe, VAPID public-key fetch and the permission prompt. The service worker is a separate bundle: `src/sw/index.ts` → `dist/sw.js`, dev-served at `/sw.js` (push event handler → `showNotification`).
 
+**`src/build/`** — Vite plugins that need their own tests. `brandAppShell.ts` feeds the app shell from `src/config/brandingConfig.ts` (AC-363): it substitutes the `%…%` placeholders in `index.html` and generates the PWA manifest — `src/config/pwaManifest.ts` → `dist/manifest.webmanifest`, dev-served at `/manifest.webmanifest`. The manifest is a build output; no static copy ships under `public/`. Modules here sit in the Vite config's import graph, so their import specifiers carry explicit `.ts` extensions (Vite's coming native config loader does no extension resolution).
+
 **`src/ui/`** — components grouped by feature area: `audit`, `auth`, `calendar`, `common`, `detail`, `extraction`, `kanban`, `layout`, `management`. The one non-obvious split is project detail: `src/ui/detail/ProjectDetailPage.tsx` is the full page at `/projects/:id`, while `ProjectDetailPanel.tsx` stays as the quick-glance overlay on Kanban/Calendar and exposes an `Öffnen` affordance to the page.
 
 ### Configuration Files

@@ -15,6 +15,8 @@
 
 /// <reference lib="webworker" />
 
+import { BRANDING } from '@/config/brandingConfig';
+
 declare const self: ServiceWorkerGlobalScope;
 
 interface PushPayload {
@@ -29,7 +31,9 @@ interface PushPayload {
  * to a generic notification so the user still sees *something*.
  */
 function parsePayload(event: PushEvent): PushPayload {
-  const fallback: PushPayload = { title: 'Projekt-Manager', body: '', url: '/' };
+  // AC-363: the notification names the installation, so the name comes
+  // from the branding config rather than a literal that drifts from it.
+  const fallback: PushPayload = { title: BRANDING.appName, body: '', url: '/' };
   if (!event.data) return fallback;
   try {
     const data = event.data.json() as Partial<PushPayload>;

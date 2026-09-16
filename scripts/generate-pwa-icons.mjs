@@ -1,8 +1,10 @@
 /**
- * Rasterizes SVG sources in public/ into the PNG icons referenced by
- * public/manifest.webmanifest. Run whenever the source SVGs change.
+ * Rasterizes the SVG sources in public/ into the PNG icons the PWA
+ * manifest declares (`ICONS` in src/config/pwaManifest.ts). Run
+ * whenever the source SVGs change, and commit the output — nothing
+ * regenerates these at build time.
  *
- * Usage: node scripts/generate-pwa-icons.mjs
+ * Usage: npm run gen:pwa-icons
  */
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';

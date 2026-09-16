@@ -4,6 +4,7 @@ import type { Plugin } from 'vite';
 import { build as esbuildBuild } from 'esbuild';
 import { execSync } from 'child_process';
 import path from 'path';
+import { brandAppShell } from './src/build/brandAppShell.ts';
 
 /**
  * Resolve the git short-SHA baked into the client bundle for the footer
@@ -137,7 +138,7 @@ function buildServiceWorker(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), stripTestAttributes(), buildServiceWorker()],
+  plugins: [react(), stripTestAttributes(), buildServiceWorker(), brandAppShell()],
   // `JSON.stringify` so Vite inlines the value as a string literal at
   // every `__APP_GIT_SHA__` reference (not an identifier). Resolved at
   // config-load time so the SHA is captured once per build, not per
