@@ -168,6 +168,8 @@ Editing rules:
 - **Keep both values at 3.** Renovate skips its `--before` flag when it sees `min-release-age` in `.npmrc` and lets npm own the cutoff, so they should not disagree. Raising the npm value widens the ETARGET window below (`min-release-age=60` fails on `@fastify/static@^10.1.2` today).
 - **Security updates bypass the Renovate half only.** npm has no exemption — `min-release-age` flattens to `before = now - 3 days` for every resolution. A fix published inside the window ETARGETs.
 
+**The cutoff can also select a broken release.** It takes the newest version older than the cutoff, which may be one a newer patch already fixes. When a lockfile-maintenance PR goes red, check the chosen version's recency before debugging the dep itself — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits) for the worked case.
+
 `npm ci` replays the lockfile and ignores the setting, so image builds and CI installs are unaffected.
 
 ### When resolution ETARGETs
@@ -177,15 +179,25 @@ npm error code ETARGET
 npm error notarget No matching version found for <pkg>@<range> with a date before <date>.
 ```
 
-A direct range's floor is newer than the cutoff — most often a security bump Renovate raised inside the 3-day window.
-
-**There is no automatic recovery.** Renovate retries without `--before` on ETARGET, but the retry is guarded on that flag being set and Renovate deliberately leaves it empty when `.npmrc` carries `min-release-age`. The PR stays broken until someone acts.
+A direct range's floor is newer than the cutoff. Only a **re-resolution** trips it; an install whose lockfile already satisfies the range does not:
 
 ```bash
-npm install --min-release-age=0
+npm install --package-lock-only               # lock already holds the version → up to date
+rm package-lock.json && npm install …         # re-resolves the whole tree     → ETARGET
 ```
 
-Then commit the lockfile onto the Renovate branch. `--before` is refused (npm marks the two mutually exclusive). Waiting out the window works too, and is the right call when the bump is not a CVE fix.
+The second shape is what `lockFileMaintenance` does, so the recovery differs by which branch is broken:
+
+| Broken branch               | Cause                                                           | Do                                                                                                                                                                                   |
+| --------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Vulnerability / direct bump | The PR's own range floor sits inside the window                 | `npm install --min-release-age=0`, commit the lockfile onto the branch. A conservative install moves that dep only — everything else stays at its locked version.                    |
+| `lockFileMaintenance`       | A same-day bump landed on `main`; the rebase inherits its floor | **Wait it out.** This path discards the lockfile, so the bypass would re-resolve _every_ transitive at zero cooldown — the exposure the setting exists to prevent. Never do it here. |
+
+The window clears 3 days after the blocking version's publish, not 3 days after the failure.
+
+**There is no automatic recovery** either way. Renovate retries without `--before` on ETARGET, but the retry is guarded on that flag being set and Renovate deliberately leaves it empty when `.npmrc` carries `min-release-age`. `--before` is refused as mutually exclusive with `--min-release-age`.
+
+[#413](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/413) is the worked example of row 2 — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
 **Not covered:** the cooldown is npm-only. Docker base images, digest-pinned Actions, and the checksum-pinned CLI binaries have no release-age delay — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
