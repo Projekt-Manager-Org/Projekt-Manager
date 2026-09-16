@@ -243,9 +243,16 @@ npm error code ETARGET
 npm error notarget No matching version found for <pkg>@<range> with a date before <date>.
 ```
 
-Renovate's own recovery is dead here. It retries lockfile generation without `--before` on ETARGET, but the retry is guarded on the flag being set (`if (beforeFlag && …)`) — and it deliberately leaves the flag empty when it sees `min-release-age` in `.npmrc`. The PR just stays broken until a human runs `npm install --min-release-age=0` (`--before` is refused as exclusive) or waits out the window.
+Renovate's own recovery is dead here. It retries lockfile generation without `--before` on ETARGET, but the retry is guarded on the flag being set (`if (beforeFlag && …)`) — and it deliberately leaves the flag empty when it sees `min-release-age` in `.npmrc`. The PR just stays broken until a human runs `npm install --min-release-age=0` (`--before` is refused as exclusive) or waits out the window — but only the second option is safe on a `lockFileMaintenance` branch, see the 2026-09-16 note below.
 
-Accepted because the alternative is worse: dropping `.npmrc` reopens the `lockFileMaintenance` gap, which is the daily auto-merged path carrying the most unreviewed surface. The failure is loud, bounded at 3 days, and has a one-command manual override. Revisit if it fires in practice.
+Accepted because the alternative is worse: dropping `.npmrc` reopens the `lockFileMaintenance` gap, which is the daily auto-merged path carrying the most unreviewed surface. The failure is loud and bounded at 3 days.
+
+**Fired 2026-09-16** ([#413](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/413)), correcting two claims above.
+
+1. **The manual override is not universal.** It is safe on a vulnerability PR, where a conservative install moves one dep — [#422](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/422) used it to land `fastify@5.12.5` ~1 h after publish. On a `lockFileMaintenance` branch it is not: that path discards the lockfile, so `--min-release-age=0` would re-resolve every transitive at zero cooldown. There the only recovery is to wait — procedure in [dep-management.md § When resolution ETARGETs](../ops/dep-management.md#when-resolution-etargets).
+2. **The cutoff can select a known-broken version and hide its fix** — a cost not anticipated here. `@cantoo/pdf-lib@2.11.0` (09-11) ships bare `.json` imports in its ESM build, so Node's loader throws `ERR_IMPORT_ATTRIBUTE_MISSING`; `2.11.1` (09-15) adds `with { type: 'json' }`. Only 2.11.0 was eligible under the 3-day cutoff, so the refresh took the breakage and excluded the repair.
+
+No decision change. (2) is the buggy-release window, which this cooldown explicitly does not buy — it buys the malicious-publish window — and CI caught it before merge. Recorded so the next occurrence reads as a known cost, not a new defect.
 
 ### 2026-08-06 — Renovate does not remediate transitive deps
 
