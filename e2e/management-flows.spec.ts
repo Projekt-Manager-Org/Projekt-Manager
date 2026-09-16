@@ -391,8 +391,13 @@ test.describe('Management flows', () => {
     await expect(page.getByTestId('worker-filter-toggle')).toContainText('Mitarbeiter (2)');
     await page.keyboard.press('Escape');
 
-    const unionCount = await rows.count();
-    expect(unionCount).toBeGreaterThan(janOnlyCount);
+    // `locator.count()` is a one-shot read with no auto-retry, and the
+    // toggle's own label updates before the table re-renders — so a
+    // bare count here races the re-render and returns the Jan-only rows
+    // (both counts 4, union "not greater"). `expect.poll` retries the
+    // read until the union lands. The Jan-only count above is shielded
+    // by the `toBeHidden()` wait preceding it.
+    await expect.poll(() => rows.count()).toBeGreaterThan(janOnlyCount);
 
     // Every row matches Jan Nowak OR has an empty workers cell ("—").
     const workerCells = rows.locator('td:nth-child(4)');
