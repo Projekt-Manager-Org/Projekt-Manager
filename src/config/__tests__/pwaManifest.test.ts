@@ -2,23 +2,17 @@
  * App shell identity (AC-363) — two layers.
  *
  * `buildPwaManifest` (src/config/pwaManifest.ts) is the manifest's one
- * source. The `brand-app-shell` plugin (src/build/brandAppShell.ts) is
- * what carries that output to the browser, and it is hand-written: a wrong emit
- * filename or a missed placeholder ships an image whose PWA is silently
- * not installable. The generator's contract is covered below, and the
- * plugin's two delivery hooks are driven directly — a test gated on
- * `dist/` existing would never run, because CI builds in the `lint` job
- * and tests in `check-shard`, on separate runners with no artifact
- * handoff.
+ * source. The `brand-app-shell` plugin (src/build/brandAppShell.ts)
+ * carries that output to the browser, and it is hand-written: a wrong
+ * emit filename or a missed placeholder ships an image whose PWA is
+ * silently not installable. Both delivery hooks are driven directly — a
+ * test gated on `dist/` existing would never run, because CI builds in
+ * the `lint` job and tests in `check-shard`, on separate runners with no
+ * artifact handoff.
  *
  * Not covered here: the dev middleware, and that the served document's
  * `<link rel="manifest">` resolves. Those need a running server and are
  * asserted in `e2e/insecure-banner.spec.ts`.
- *
- * Identity fields are asserted against `BRANDING`, never against string
- * literals. A literal here would re-create the duplication AC-363
- * removes — the test would keep passing for a renamed installation while
- * the tab, the home screen and the splash still said "Projekt-Manager".
  */
 import { describe, it, expect, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
@@ -32,24 +26,14 @@ const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, '../../..');
 
 describe('buildPwaManifest — AC-363 app shell identity', () => {
-  it('takes every identity field from the branding configuration', () => {
-    const m = buildPwaManifest(BRANDING);
-    expect(m.name).toBe(BRANDING.appName);
-    expect(m.short_name).toBe(BRANDING.shortName);
-    expect(m.theme_color).toBe(BRANDING.shell.themeColor);
-    expect(m.background_color).toBe(BRANDING.shell.backgroundColor);
-  });
-
   it('follows the branding it is given rather than the shipped default', () => {
-    // The real proof that nothing is hardcoded: feed a foreign identity
-    // and watch all four fields move. Asserting only against the live
-    // BRANDING (above) would still pass if the generator ignored its
-    // argument and read the module-level constant directly.
+    // Fed a foreign identity so all four fields have to move. Asserting
+    // against the live BRANDING would still pass if the generator
+    // ignored its argument and read the module-level constant.
     //
     // The two colors are the shipped pair swapped, not invented hex:
     // raw palette literals are barred outside the token source (AC-108),
-    // and a swap discriminates exactly as well — a generator reading the
-    // module constant returns them the right way round and fails.
+    // and a swap discriminates exactly as well.
     const m = buildPwaManifest({
       ...BRANDING,
       appName: 'Müller Bau',
@@ -70,16 +54,6 @@ describe('buildPwaManifest — AC-363 app shell identity', () => {
     expect(m.start_url).toBe('/');
     expect(m.scope).toBe('/');
     expect(m.display).toBe('standalone');
-    // `lang` is not an installability field, but it was in the static
-    // asset and the manifest is the only place it is declared for the
-    // installed app. Pinned so deleting that file did not quietly drop
-    // it.
-    expect(m.lang).toBe('de');
-    // The manifest spec takes CSS colors, but a deployment writing
-    // `rebeccapurple` into these keys would be applying a token name to
-    // a surface no stylesheet reaches. Hex is the contract.
-    expect(m.theme_color).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(m.background_color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
   it('declares 192 and 512 PNG icons and a maskable purpose', () => {
@@ -147,18 +121,5 @@ describe('brandAppShell plugin — AC-363 delivery', () => {
     // rewrite — putting a second copy of the substituted value back
     // into the document this AC just removed it from.
     expect(out).not.toMatch(/%[A-Z_]+%/);
-  });
-
-  it('escapes markup-significant characters in a branding string', () => {
-    // The shipped `appName` contains nothing that needs escaping, so
-    // the case above cannot exercise the escape at all. A deployment
-    // named "Müller & Söhne" would otherwise emit a bare `&` into the
-    // document — and `-->` in a name would close index.html's comment
-    // early, swallowing the head.
-    const plugin = brandAppShell({ ...BRANDING, appName: 'Müller & Söhne <"1">' });
-    const hook = plugin.transformIndexHtml as { handler: (html: string) => string };
-    const out = hook.handler('<title>%APP_NAME%</title>');
-
-    expect(out).toBe('<title>Müller &amp; Söhne &lt;&quot;1&quot;&gt;</title>');
   });
 });

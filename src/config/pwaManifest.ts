@@ -1,27 +1,23 @@
 /**
  * PWA manifest source (AC-363).
  *
- * The manifest is built here rather than checked in at
- * `public/manifest.webmanifest`, so the installation's name and shell
- * colors have one definition site — `brandingConfig.ts` — instead of a
- * copy the browser reads and nothing keeps true. `vite.config.ts`'s
- * `brand-app-shell` plugin (`src/build/brandAppShell.ts`) is the only
- * caller: it serves this object on `/manifest.webmanifest` in dev and
- * emits it into `dist/` at build.
+ * Built here rather than checked in at `public/manifest.webmanifest`, so
+ * the installation's name and shell colors have one definition site —
+ * `brandingConfig.ts` — instead of a copy the browser reads and nothing
+ * keeps true. The `brand-app-shell` plugin (`src/build/brandAppShell.ts`)
+ * is the only caller: it serves this object on `/manifest.webmanifest`
+ * in dev and emits it into `dist/` at build.
  *
  * `branding` is a required parameter rather than a defaulted one: the
  * generator stays pure, and every caller says which branding it means.
- *
- * The one import carries an explicit `.ts` extension, unlike the rest
- * of `src/`, because this module sits in `vite.config.ts`'s import
- * graph — Vite's coming native config loader (Node type-stripping) does
- * no extension resolution, and an extensionless specifier there becomes
- * a hard `ERR_MODULE_NOT_FOUND` at that bump.
  *
  * Everything that is NOT branding stays a literal here — routing
  * (`start_url`, `scope`), display mode, language, and the icon set.
  * Those are app structure, not per-deployment identity, and promoting
  * them to config would invent knobs no deployment has asked for.
+ *
+ * The import carries an explicit `.ts` extension — see ARCHITECTURE.md
+ * § `src/build/`.
  */
 import type { BrandingConfig } from './brandingConfig.ts';
 
@@ -41,7 +37,7 @@ export interface PwaManifest {
   theme_color: string;
   background_color: string;
   lang: string;
-  icons: PwaManifestIcon[];
+  icons: readonly PwaManifestIcon[];
 }
 
 /**
@@ -65,10 +61,9 @@ export function buildPwaManifest(branding: BrandingConfig): PwaManifest {
     display: 'standalone',
     theme_color: branding.shell.themeColor,
     background_color: branding.shell.backgroundColor,
-    // Matches `<html lang>` in index.html. The UI is German-only
-    // (spec §12.2 "German UI and error strings"); when a second locale
-    // arrives, both sites move together.
+    // Matches `<html lang>` in index.html; when a second locale arrives,
+    // both sites move together.
     lang: 'de',
-    icons: ICONS.map((icon) => ({ ...icon })),
+    icons: ICONS,
   };
 }
