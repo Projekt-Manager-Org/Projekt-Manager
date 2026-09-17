@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import os from 'node:os';
+import { BRANDING } from '../src/config/brandingConfig';
 
 /**
  * Insecure connection banner — verifies the red warning bar appears
@@ -32,7 +33,25 @@ test.describe('Insecure connection banner', () => {
     await expect(page.getByTestId('login-form')).toBeVisible();
 
     await expect(page.getByTestId('insecure-banner')).not.toBeVisible();
-    await expect(page).toHaveTitle('Projekt-Manager');
+    // AC-363: the shell's identity reaches the browser only through the
+    // `brand-app-shell` plugin, so this is where it is observable.
+    // index.html ships `%APP_NAME%` / `%SHELL_THEME_COLOR%` rather than
+    // literals — a failed injection renders the placeholder and fails
+    // these, instead of coinciding with the default name.
+    await expect(page).toHaveTitle(BRANDING.appName);
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+      'content',
+      BRANDING.shell.themeColor,
+    );
+    // The dev middleware and the `<link rel="manifest">` target, which
+    // no unit test can reach: a 404 here is a PWA that will not install.
+    const manifest = await page.request.get('/manifest.webmanifest');
+    expect(manifest.ok()).toBeTruthy();
+    expect(await manifest.json()).toMatchObject({
+      name: BRANDING.appName,
+      short_name: BRANDING.shortName,
+      theme_color: BRANDING.shell.themeColor,
+    });
   });
 
   test('banner and title prefix on non-localhost HTTP', async ({ page }) => {

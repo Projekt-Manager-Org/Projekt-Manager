@@ -3,10 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1e293b" />
+    <!-- Placeholders below are substituted from src/config/brandingConfig.ts
+         by the brand-app-shell plugin (src/build/brandAppShell.ts, AC-363). -->
+    <meta name="theme-color" content="%SHELL_THEME_COLOR%" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Projekt-Manager</title>
+    <title>%APP_NAME%</title>
     <!--
       Pre-paint theme restoration. Blocks HTML parsing synchronously so
       data-theme is set before any themed content paints. Kept as a

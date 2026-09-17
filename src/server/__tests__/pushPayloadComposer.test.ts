@@ -231,7 +231,7 @@ describe('composePushPayload — AC-211', () => {
   });
 
   it('never produces an empty title or body — every code path renders strings', () => {
-    // Defensive: the SW falls back to "Projekt-Manager" / "" when keys
+    // Defensive: the SW falls back to `BRANDING.appName` / "" when keys
     // are missing. AC-211 pins that the server always sends both, so a
     // regression that drops one would surface as an empty assertion
     // here rather than a silent UI fallback.

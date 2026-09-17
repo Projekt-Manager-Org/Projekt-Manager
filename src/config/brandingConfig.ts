@@ -51,9 +51,30 @@
  *     and the PDF engine embeds no other format.
  *   - Ship it 84px tall or more. The header paints it up to 28px tall,
  *     so 3x stays crisp on dense displays.
+ *
+ * Favicon and PWA icons (issue #408). Not config — files, and a
+ * separate asset from `mark.logo`: square marks rather than a wide
+ * header strip. A deployment replaces the two SVG sources and
+ * regenerates the PNG set:
+ *   - `public/favicon.svg` — the browser-tab mark, also the source for
+ *     `icon-192.png` / `icon-512.png` and the push notification's icon.
+ *   - `public/favicon-maskable.svg` — the Android adaptive icon. Its
+ *     `viewBox` pads the artwork on every side so the launcher may crop
+ *     to a circle, a squircle or a rounded square without clipping it.
+ *     Keep that padding: a maskable icon drawn edge to edge loses its
+ *     corners on most Android launchers.
+ *   - `npm run gen:pwa-icons` rasterizes both into `public/icons/`.
+ *     Commit the PNGs — nothing regenerates them at build time.
  */
 export interface BrandingConfig {
   appName: string;
+  /**
+   * Home-screen label of the installed PWA (`short_name` in the
+   * manifest). Separate from `appName` because launchers truncate:
+   * Android shows roughly 12 characters under the icon, so this is the
+   * name that has to survive on its own.
+   */
+  shortName: string;
   /**
    * Brand line in the application's own footer (`src/ui/layout/Footer.tsx`).
    *
@@ -73,10 +94,25 @@ export interface BrandingConfig {
     bars: readonly [string, string, string];
     logo?: string;
   };
+  /**
+   * App-shell chrome, consumed only by the generated PWA manifest and
+   * the `theme-color` meta the same build step injects into
+   * `index.html` (AC-363). Deliberately NOT the brand accent: that one
+   * is a light/dark pair under a contrast contract, these are single
+   * values on surfaces the browser paints outside the document, where
+   * no stylesheet and no theme attribute reaches.
+   */
+  shell: {
+    /** Browser and installed-app chrome (address bar, task switcher). */
+    themeColor: string;
+    /** Splash background behind the icon, before the app's first paint. */
+    backgroundColor: string;
+  };
 }
 
 export const BRANDING: BrandingConfig = {
   appName: 'Projekt-Manager',
+  shortName: 'Projekte',
   footerBrandLine: 'Projekt-Manager',
   accent: {
     light: '#3b82f6', // tailwind blue-500 — 4.97:1 against slate-900
@@ -90,5 +126,9 @@ export const BRANDING: BrandingConfig = {
       '#22c55e', // green-500
     ],
     // logo: '/brand/logo.png',  <- a deployment sets this; see the contract above.
+  },
+  shell: {
+    themeColor: '#1e293b', // slate-800 — matches the generic mark's background
+    backgroundColor: '#f8fafc', // slate-50 — the light theme's surface base
   },
 };
