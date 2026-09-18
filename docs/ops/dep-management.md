@@ -153,12 +153,17 @@ No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason 
 
 A newly-published npm version is not resolvable here until it is **3 days** old. This is the malicious-publish window (`event-stream`, `ua-parser-js`, `chalk`+`debug`), not the buggy-release window — the point is to let researchers and scanners see the package before we do.
 
-Two halves, because neither covers the other's path:
+Three layers, because none covers the others' path:
 
-| Half                                                   | Set where                              | Covers                                                                                |
+| Layer                                                  | Set where                              | Covers                                                                                |
 | ------------------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------- |
 | Renovate `minimumReleaseAge: 3 days` + `strict` filter | inherited from `config:best-practices` | Whether a **direct**-dep bump PR is raised at all. No branch until the age passes.    |
 | npm `min-release-age=3`                                | `.npmrc`                               | What **npm itself resolves** — lockfile maintenance, transitives, local + CI installs |
+| Release-age gate                                       | `scripts/check-release-age.mjs`, CI    | Every version in the candidate lockfile that is **not already in `main`**             |
+
+The gate **complements** the `.npmrc` cutoff, it does not replace it. The cutoff prevents — young versions never enter the lockfile, which is what lets a daily regeneration converge. The gate reports — it names the package and can be overruled. Dropping the cutoff was measured and rejected: a cooldown-free regeneration introduces 70 new versions, 33 under 3 days, a fresh crop daily, which would leave the auto-merged branch permanently red ([ADR-0027 § 2026-09-17](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff)).
+
+Waive a finding by adding `{ package, version, reason, ignoreUntil }` to `release-age-allowlist.json` — same `reason`/`ignoreUntil` rules and 90-day ceiling as the [scanner allowlist](#allowlist-osv-scanner--trivy), validated by the gate itself rather than by `check-allowlist-schema.sh`, which exists for files third-party scanners read. `security`-labelled PRs waive age findings automatically, matching Renovate's own vulnerability carve-out.
 
 Renovate cannot enforce its half on `lockFileMaintenance` (or `pin`, `bump`, `rollback`, `lockfileUpdate`, `replacement`): those update types are [documented as unsupported](https://docs.renovatebot.com/key-concepts/minimum-release-age/) because it delegates the resolution to the package manager. `lockFileMaintenance` runs daily here, is exempt from the PR limits, and auto-merges — so it is precisely the path that needs the npm-side half.
 
