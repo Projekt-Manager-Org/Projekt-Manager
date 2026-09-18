@@ -45,9 +45,11 @@
  *
  * ALLOWLIST
  *   `release-age-allowlist.json` at the repo root — a JSON array of
- *   { package, version, reason, expires }. `reason` must start with
- *   `@<github-handle>:`; `expires` is YYYY-MM-DD inside
- *   [today, today+90d]. Schema is validated here rather than in
+ *   { package, version, reason, ignoreUntil }. `reason` must start with
+ *   `@<github-handle>:`; `ignoreUntil` is YYYY-MM-DD inside
+ *   [today, today+90d] — same field name and window as
+ *   `osv-scanner.toml`, deliberately, so one rule is learned once.
+ *   Schema is validated here rather than in
  *   scripts/check-allowlist-schema.sh because that script exists to
  *   police files THIRD-PARTY scanners read and ignore extra fields in.
  *   This file has exactly one reader, so a second script would be
@@ -75,10 +77,12 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT =
   process.env.RELEASE_AGE_REPO_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const MIN_DAYS = Number(process.env.RELEASE_AGE_MIN_DAYS ?? 3);
+const RAW_MIN_DAYS = process.env.RELEASE_AGE_MIN_DAYS;
+const MIN_DAYS = RAW_MIN_DAYS === undefined || RAW_MIN_DAYS === '' ? 3 : Number(RAW_MIN_DAYS);
 const NOW = process.env.RELEASE_AGE_NOW ? new Date(process.env.RELEASE_AGE_NOW) : new Date();
 const REGISTRY = 'https://registry.npmjs.org';
 const CONCURRENCY = 8;
+const FETCH_TIMEOUT_MS = 10_000;
 
 const findings = [];
 const finding = (kind, detail) => findings.push(`${kind}: ${detail}`);
@@ -87,6 +91,22 @@ const finding = (kind, detail) => findings.push(`${kind}: ${detail}`);
 function bail(message) {
   console.error(`::error::release-age gate could not run — ${message}`);
   process.exit(2);
+}
+
+// Misconfiguration must not read as "nothing to report". Number('') is 0
+// and every comparison against NaN is false, so an unset or malformed
+// value would otherwise disable the gate while still printing OK.
+//
+// Empty and unset both fall back to the 3-day default rather than
+// bailing: a workflow expression that resolves to nothing is the common
+// case, and quietly enforcing the secure default beats failing the build.
+// A value that is present but not a positive number is a genuine typo
+// and has no safe reading, so it stops the run.
+if (!Number.isFinite(MIN_DAYS) || MIN_DAYS <= 0) {
+  bail(`RELEASE_AGE_MIN_DAYS must be a positive number, got ${JSON.stringify(RAW_MIN_DAYS)}`);
+}
+if (Number.isNaN(NOW.getTime())) {
+  bail(`RELEASE_AGE_NOW is not a valid date: ${JSON.stringify(process.env.RELEASE_AGE_NOW)}`);
 }
 
 function readJson(path, what) {
@@ -181,7 +201,7 @@ function loadAllowlist() {
 
   entries.forEach((entry, i) => {
     const at = `release-age-allowlist.json[${i}]`;
-    const { package: pkg, version, reason, expires } = entry ?? {};
+    const { package: pkg, version, reason, ignoreUntil } = entry ?? {};
     let ok = true;
     const bad = (field, msg) => {
       finding('allowlist', `${at}: ${field}: ${msg}`);
@@ -193,13 +213,13 @@ function loadAllowlist() {
     if (typeof reason !== 'string' || !HANDLE_RE.test(reason)) {
       bad('reason', 'must start with `@<github-handle>:`');
     }
-    if (typeof expires !== 'string' || !DATE_RE.test(expires)) {
-      bad('expires', 'must be YYYY-MM-DD');
+    if (typeof ignoreUntil !== 'string' || !DATE_RE.test(ignoreUntil)) {
+      bad('ignoreUntil', 'must be YYYY-MM-DD');
     } else {
-      const d = new Date(`${expires}T00:00:00Z`);
-      if (Number.isNaN(d.getTime())) bad('expires', `not a real date: ${expires}`);
-      else if (d < today) bad('expires', `expired on ${expires}`);
-      else if (d > maxDate) bad('expires', `more than 90 days out (${expires})`);
+      const d = new Date(`${ignoreUntil}T00:00:00Z`);
+      if (Number.isNaN(d.getTime())) bad('ignoreUntil', `not a real date: ${ignoreUntil}`);
+      else if (d < today) bad('ignoreUntil', `expired on ${ignoreUntil}`);
+      else if (d > maxDate) bad('ignoreUntil', `more than 90 days out (${ignoreUntil})`);
     }
 
     if (ok) out.set(`${pkg}@${version}`, entry);
@@ -213,8 +233,14 @@ async function fetchTimes(name) {
   const url = `${REGISTRY}/${name.replace('/', '%2f')}`;
   let lastErr;
   for (let attempt = 0; attempt < 2; attempt++) {
+    // A required check must not be able to park CI on a hung socket, and
+    // an immediate retry buys nothing against a 429 — back off first.
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 500));
     try {
-      const res = await fetch(url, { headers: { accept: 'application/json' } });
+      const res = await fetch(url, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = await res.json();
       if (!body.time) throw new Error('packument carries no `time`');

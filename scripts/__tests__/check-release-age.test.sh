@@ -124,7 +124,7 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'young-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
 cat > "$d/release-age-allowlist.json" <<JSON
-[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: CVE fix, reviewed by hand","expires":"$EXPIRES_OK"}]
+[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: CVE fix, reviewed by hand","ignoreUntil":"$EXPIRES_OK"}]
 JSON
 run 'allowlisted' 0 "$d"
 
@@ -133,7 +133,7 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'young-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
 cat > "$d/release-age-allowlist.json" <<JSON
-[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: stale","expires":"$EXPIRES_PAST"}]
+[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: stale","ignoreUntil":"$EXPIRES_PAST"}]
 JSON
 run 'allowlist expired' 1 "$d"
 
@@ -142,7 +142,7 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'young-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
 cat > "$d/release-age-allowlist.json" <<JSON
-[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: too far out","expires":"$EXPIRES_FAR"}]
+[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: too far out","ignoreUntil":"$EXPIRES_FAR"}]
 JSON
 run 'allowlist expiry too far out' 1 "$d"
 
@@ -151,7 +151,7 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'young-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
 cat > "$d/release-age-allowlist.json" <<JSON
-[{"package":"young-pkg","version":"2.0.0","reason":"no owner prefix","expires":"$EXPIRES_OK"}]
+[{"package":"young-pkg","version":"2.0.0","reason":"no owner prefix","ignoreUntil":"$EXPIRES_OK"}]
 JSON
 run 'allowlist reason missing handle' 1 "$d"
 
@@ -180,12 +180,30 @@ lockfile "$d/baseline.json" 'old-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'old-pkg@1.0.0' 'unknown-pkg@1.0.0'
 run 'advisory bypass does not waive lookup failure' 1 "$d" RELEASE_AGE_ADVISORY_BYPASS=1
 
-# 13. Missing head lockfile is a setup error, not a policy violation.
+# 13-16. Misconfiguration must never read as "nothing to report". Each of
+#        these silently passed the young version before the guards landed:
+#        Number('') is 0, and every comparison against NaN is false.
+d="$(mktmp)"
+lockfile "$d/baseline.json" 'young-pkg@1.0.0'
+lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
+run 'control: young version is rejected' 1 "$d"
+run 'empty RELEASE_AGE_MIN_DAYS falls back to the 3d default, still enforcing' 1 "$d" RELEASE_AGE_MIN_DAYS=
+run 'non-numeric RELEASE_AGE_MIN_DAYS exits 2' 2 "$d" RELEASE_AGE_MIN_DAYS=garbage
+run 'zero RELEASE_AGE_MIN_DAYS exits 2' 2 "$d" RELEASE_AGE_MIN_DAYS=0
+
+# 17. An unparseable clock is a setup error, not a silent pass. Overrides
+#     the suite-wide RELEASE_AGE_NOW, which `run` sets before "$@".
+d="$(mktmp)"
+lockfile "$d/baseline.json" 'young-pkg@1.0.0'
+lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
+run 'unparseable RELEASE_AGE_NOW exits 2' 2 "$d" RELEASE_AGE_NOW=not-a-date
+
+# 18. Missing head lockfile is a setup error, not a policy violation.
 d="$(mktmp)"
 lockfile "$d/baseline.json" 'old-pkg@1.0.0'
 run 'missing lockfile exits 2' 2 "$d"
 
-# 14. Missing baseline is likewise a setup error — never an empty baseline.
+# 19. Missing baseline is likewise a setup error — never an empty baseline.
 d="$(mktmp)"
 lockfile "$d/package-lock.json" 'old-pkg@1.0.0'
 rm -f "$d/baseline.json"

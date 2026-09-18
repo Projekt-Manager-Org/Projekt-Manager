@@ -76,6 +76,10 @@ jobs:
   # ---------------------------------------------------------------
   lint:
     runs-on: ubuntu-latest
+    # The release-age gate reaches the npm registry, so this job can now
+    # block on a remote host. Without a bound a hung socket parks it at
+    # the 6-hour default; the job otherwise runs in ~4 min.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0

@@ -48,7 +48,7 @@ We will adopt **three coupled changes**:
 - **Grouping:** seven lockstep clusters, one PR per cluster — AWS SDK (`@aws-sdk/**`), ESLint cluster (`eslint` + `@eslint/js` + `globals` + `typescript-eslint` + `eslint-plugin-react-hooks` + `eslint-plugin-react-refresh`), Vitest pair (`vitest` + `@vitest/coverage-v8`), React quartet (`react` + `react-dom` + `@types/react` + `@types/react-dom`), Fastify family (`fastify` + `@fastify/**`), Drizzle pair (`drizzle-orm` + `drizzle-kit`), and Caddy (the two `caddy` base-image FROM tags and the `xcaddy build` version all track the `caddy` Docker image, grouped into one PR so all three advance to the same version together; sharing one datasource keeps them in lockstep. The `caddy-dns/cloudflare` plugin SHA tracks separately via git-refs).
 - **Per-major-version PRs.** No grouping across majors; each major bump gets its own PR with the changelog inline.
 - **Auto-merge** for patch + minor (plus digest/pin/lockfile) when CI is green, including the lockstep clusters — grouping consolidates one PR per cluster, it does not gate the merge. Majors never auto-merge.
-- **Release-age cooldown, 3 days, npm only.** Inherited from `config:best-practices` → `security:minimumReleaseAgeNpm` on the Renovate side; on the paths Renovate hands to npm, enforced by a required CI check on the candidate lockfile ([2026-09-17 amendment](#2026-09-17--release-age-is-enforced-at-the-merge-gate-not-in-the-resolver)), not by a resolver constraint. Non-npm datasources are excluded — [2026-08-28 amendment](#2026-08-28--release-age-cooldown-and-its-limits).
+- **Release-age cooldown, 3 days, npm only.** Inherited from `config:best-practices` → `security:minimumReleaseAgeNpm` on the Renovate side; set again in `.npmrc` (`min-release-age=3`) for the resolution paths Renovate hands to npm, and backstopped by a required CI check on the candidate lockfile ([2026-09-17 amendment](#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff)). Non-npm datasources are excluded — [2026-08-28 amendment](#2026-08-28--release-age-cooldown-and-its-limits).
 - **Lockfile maintenance** PR daily to bound transitive drift, exempt from the PR limits (see the [2026-08-06 amendment](#2026-08-06--renovate-does-not-remediate-transitive-deps)).
 - **Managers:** `npm`, `dockerfile`, `docker-compose`, `github-actions`, and six `customManagers` of type `regex`, each covering a pin the built-in managers cannot see:
 
@@ -169,25 +169,25 @@ Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of
 
 ## Amendments
 
-### 2026-09-17 — Release age is enforced at the merge gate, not in the resolver
+### 2026-09-17 — A release-age gate on the lockfile, complementing the resolver cutoff
 
-Supersedes the `.npmrc` half of §2026-08-28: a required CI check applies the same 3-day policy to the candidate lockfile, and `min-release-age` goes away. Sequencing is load-bearing — the check lands and is required first; `min-release-age` is removed only once it is green. Dropping it earlier would leave no release-age control at all.
-
-**Why the resolver is the wrong place.** A constraint applied during resolution cannot be overridden, cannot explain itself — `ETARGET` names a package, not a policy — and fails by producing nothing, so `lockFileMaintenance` stalls rather than reports. The stall is not bounded at 3 days: it re-arms on every direct-dep floor raise, and vulnerability PRs raise floors `at any time` against a daily branch.
+`scripts/check-release-age.mjs` fails any PR whose lockfile introduces a version younger than 3 days. It **complements** `.npmrc`'s `min-release-age`; it does not replace it. The two do different jobs:
 
 ```
-resolver   package.json ─► npm resolve (cutoff) ─► ✗ ETARGET, no lockfile
-gate       package.json ─► npm resolve ─► lockfile ─► age check ─► merge
-                                                          └─► allowlist (owner/reason/expiry)
+min-release-age (resolver)  prevents — young versions never enter the lockfile
+release-age gate (CI)       reports  — judges what landed, names the package,
+                                       can be overruled on the record
 ```
 
-The check diffs the branch lockfile against `main`, reads `time[version]` for each newly-introduced version, and fails on anything younger than 3 days. Overrides use the schema `osv-scanner.toml` already carries, enforced by `scripts/check-allowlist-schema.sh`.
+**Why replacement was rejected.** The resolver cutoff is not only policy, it is what makes a daily regeneration converge on aged versions. Without it `lockFileMaintenance` resolves everything to newest-available, and the gate — which can only block, never delay — goes red on the fresh crop. Measured against `main` on 2026-09-18: a cooldown-free regeneration introduces **70 new versions, 33 of them under 3 days**, the youngest at 0.0d, with a new crop each day and no version stable long enough for an allowlist entry to track. That is the §2026-08-06 starvation through a different door. Upstream says the same — `security:minimumReleaseAgeNpm` nulls `minimumReleaseAge` on `lockFileMaintenance` and attaches a PR note telling you to "confirm whether your package manager perform its own validation".
 
-**What the cooldown buys, either way.** Only versions withdrawn from the registry inside the window — the malicious-publish case. Under daily re-resolution the cutoff advances a day per day, making it a delay line over the version history rather than a filter on it: a broken release is reached 3 days late, never skipped, because at the moment it becomes eligible its fix is younger than the cutoff. A longer cutoff moves the window right without shrinking it. Known-broken releases are therefore excluded by version — a narrowed range in `package.json`, which is what npm resolves against, plus `allowedVersions` to stop Renovate widening that range back.
+**What each side still gets wrong, and who covers it.** A resolver cutoff cannot explain itself (`ETARGET` names a package, not a policy), cannot be overridden below npm 11.17.0, and fails by producing nothing — so the stall re-arms on every direct-dep floor raise. The gate covers exactly that: it names the package and version, and `release-age-allowlist.json` waives a finding under the `osv-scanner.toml` owner/`reason`/`ignoreUntil` rules, validated by the gate itself. `security`-labelled PRs waive age findings wholesale, mirroring Renovate's own vulnerability carve-out — without it the gate would be stricter than the policy it implements.
 
-**Rejected: `min-release-age-exclude`** (npm ≥ 11.17.0). Keeps policy in the resolver, so the deadlock survives for anything unexcluded; and exempting a direct dep removes its cutoff outright, letting `lockFileMaintenance` float it to a same-day version and auto-merge.
+**Available once npm ≥ 11.17.0 (Node 24.21.0): `min-release-age-exclude`.** Previously rejected here because exempting a direct dep let `lockFileMaintenance` float it to a same-day version and auto-merge. The gate catches precisely that, so the objection no longer holds, and npm's exclusion does not extend to a package's own dependencies — a bounded, per-case ETARGET escape. Gated on the Node bump.
 
-**Cost.** A script plus CI wiring and registry lookups. `.npmrc` also aged a developer's bare `npm install`; the gate does not. `npm ci` replays the lockfile and was never affected, so the loss is confined to the act of proposing a lockfile change — which the gate judges before it reaches `main`.
+**What no cooldown buys.** Only versions withdrawn from the registry inside the window — the malicious-publish case. Under daily re-resolution the cutoff advances a day per day, so it is a delay line over the version history rather than a filter on it: a broken release is reached 3 days late, never skipped, because at the moment it becomes eligible its fix is younger than the cutoff. Known-broken releases are excluded by version instead — a narrowed range in `package.json`, which is what npm resolves against, plus `allowedVersions` to stop Renovate widening it back.
+
+**Cost.** A script plus CI wiring and registry lookups on every PR that moves the lockfile.
 
 ### 2026-08-28 — Repo-level advisories, and what no layer covers
 
