@@ -93,6 +93,11 @@
       "abandonmentThreshold": "3 years"
     },
     {
+      "description": "Known-broken releases. @cantoo/pdf-lib 2.11.0 ships bare `.json` imports in its ESM standard-fonts build, so Node's loader throws ERR_IMPORT_ATTRIBUTE_MISSING on any import of the package — it crash-loops the app, not just the tests (https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/413). Fixed in 2.11.1 by `with { type: 'json' }`; 2.10.x does not exist. This rule is only half the exclusion: `allowedVersions` governs what Renovate PROPOSES, and npm never sees it, so it cannot keep the version out of a regenerated lockfile. The binding half is the narrowed range in package.json, which is what npm resolves against; this rule stops Renovate replacing that range with one that re-admits 2.11.0. Both are required — see ADR-0027 § 2026-09-17. Entries are permanent: a release that shipped broken stays broken.",
+      "matchPackageNames": ["@cantoo/pdf-lib"],
+      "allowedVersions": "!/^2\\.11\\.0$/"
+    },
+    {
       "description": "Auto-merge all non-major updates (patch, minor, digest, pin, lockfile maintenance) on green CI — grouped clusters included; grouping consolidates PRs, it does not gate the merge (requires repo Settings → General → Pull Requests → Allow auto-merge)",
       "matchUpdateTypes": ["patch", "minor", "digest", "pin", "lockFileMaintenance"],
       "automerge": true,
