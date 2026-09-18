@@ -155,7 +155,7 @@ A newly-published npm version is not resolvable here until it is **3 days** old.
 
 Three layers, because none covers the others' path:
 
-| Half                                                   | Set where                              | Covers                                                                                |
+| Layer                                                  | Set where                              | Covers                                                                                |
 | ------------------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------- |
 | Renovate `minimumReleaseAge: 3 days` + `strict` filter | inherited from `config:best-practices` | Whether a **direct**-dep bump PR is raised at all. No branch until the age passes.    |
 | npm `min-release-age=3`                                | `.npmrc`                               | What **npm itself resolves** — lockfile maintenance, transitives, local + CI installs |
