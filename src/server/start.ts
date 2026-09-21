@@ -295,14 +295,9 @@ async function start(): Promise<void> {
   // Boot-time bucket-safety probe (ADR-0022 / docs/ops/object-storage-provisioning.md).
   // Refuses to start on data-corruption-class drift (versioning off,
   // Object Lock not Compliance, lifecycle missing or with disallowed
-  // actions, R > L). The retention envelope passed here also asserts
-  // the deployed bucket covers the configured invoice retention
-  // (ADR-0026 / AC-296); a 0 value disables that assertion (dev).
-  // Runs before reapers so a misconfigured bucket cannot accumulate
-  // side-effects.
-  await assertStorageBucketSafe(attachmentStorageForReaper, {
-    invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
-  });
+  // actions, R > L). Runs before reapers so a misconfigured bucket
+  // cannot accumulate side-effects.
+  await assertStorageBucketSafe(attachmentStorageForReaper);
 
   // Boot-time binary `age` identity probe (ADR-0024 §"Boot probe").
   // Refuses to start when the operator-loaded binary private identity is

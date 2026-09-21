@@ -592,6 +592,7 @@ function buildInvoiceBinaryDeps(): InvoiceBinaryDeps {
     storage,
     binaryAgeRecipient: env.BINARY_AGE_RECIPIENT,
     binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
+    invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
   };
 }
 

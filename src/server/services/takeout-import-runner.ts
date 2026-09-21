@@ -85,6 +85,7 @@ import { Unzip, UnzipInflate, UnzipPassThrough } from 'fflate';
 import type { Database } from '../db/connection.js';
 import { attachments } from '../db/schema.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
+import { invoicePdfKey } from '../repositories/attachment.js';
 import type { ServiceLogger } from './Logger.js';
 import { DataExchangeJobService } from './DataExchangeJobService.js';
 import { ImportService } from './ImportService.js';
@@ -113,6 +114,8 @@ export interface RunTakeoutImportDeps {
   binaryAgeRecipient: string;
   /** Tmpfs-resident path to the operator-loaded binary `age` private identity. */
   binaryAgeIdentityPath: string;
+  /** `INVOICE_OBJECT_LOCK_DAYS` — lock on a restored rendered invoice PDF (AC-296). */
+  invoiceObjectLockDays: number;
 }
 
 /**
@@ -394,6 +397,12 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
       recipient: deps.binaryAgeRecipient,
       identityPath: deps.binaryAgeIdentityPath,
     });
+    // An attachment an envelope invoice references is that invoice's
+    // rendered PDF: restore it into the invoice namespace, under the
+    // invoice lock, so it stays off the attachment surface (AC-365).
+    const invoicePdfIds = new Set(
+      envelope.invoices.map((inv) => inv.renderedPdfBinaryDescriptorId).filter(Boolean),
+    );
     const filesTotal = envelope.attachments.length;
     const bytesTotal = envelope.attachments.reduce((sum, a) => sum + a.sizeBytes, 0);
     let filesDone = 0;
@@ -425,11 +434,15 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
         // instance recipient; PUT ciphertext to B2; insert the ready row.
         const { ciphertext, dek } = encryptInvoicePayload(plaintext);
         const wrapped = await envelopeService.wrap(Buffer.from(dek));
-        const originalKey = storageKey(att.projectId, att.id, 'orig');
+        const isInvoicePdf = invoicePdfIds.has(att.id);
+        const originalKey = isInvoicePdf
+          ? invoicePdfKey(att.projectId, att.id)
+          : storageKey(att.projectId, att.id, 'orig');
         const originalUpload = await storage.upload(
           originalKey,
           Buffer.from(ciphertext),
           'application/octet-stream',
+          isInvoicePdf ? { complianceDays: deps.invoiceObjectLockDays } : undefined,
         );
 
         // Regenerate the gallery thumbnail for photos (the export bundles

@@ -1,7 +1,7 @@
 # ADR-0026: Invoices — immutable snapshot, gapless sequence, ZUGFeRD EN 16931
 
 - **Status:** Accepted
-- **Date:** 2026-05-12
+- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417)
 - **Confidence:** High
 
 ## Context
@@ -13,7 +13,7 @@ Forces:
 - **Legal anchors are non-negotiable.** German statute pins the shape directly:
   - **§14 UStG** mandates issuer block, recipient block, sequential invoice number, issue date, performance date, line items, tax breakdown.
   - **§14a UStG** mandates B2B e-invoicing capability: receive EN 16931 from 2025-01-01; send from 2027-01-01 (with phase-in for low-turnover issuers through 2028).
-  - **§147 AO** requires invoices and supporting records be retained 10 years.
+  - **§147 AO** requires invoices (Buchungsbelege) be retained 8 years from the end of the issue year.
   - **§19 UStG** Kleinunternehmer issuers must omit VAT and carry the mandatory boilerplate.
   - **§13b UStG** reverse-charge inverts VAT liability — for Handwerker, Abs. 2 Nr. 4 covers Bauleistungen.
   - **GoBD** requires immutability, traceability, and retention — enforced at the storage layer, not by application convention.
@@ -53,8 +53,8 @@ We will model invoices as **immutable issued snapshots with a gapless year-scope
 
 ### Storage and retention
 
-- PDF/A-3 (ZUGFeRD-wrapped) stored via the existing binary descriptor flow — same init/complete pipeline as attachments, same E2E envelope ([ADR-0024](0024-binary-attachment-e2e-encryption.md)) so B2 sees only ciphertext.
-- **Object Lock retention is env-driven.** `INVOICE_OBJECT_LOCK_DAYS` defaults to `3650` (10 years, §147 AO); `.env.example` ships `0` to disable retention in dev so binaries can be cleaned up freely. The boot-time bucket configuration assertion ([ADR-0022](0022-binary-storage-b2-compliance-object-lock.md) `assertStorageBucketSafe()`) is extended to verify the invoice retention envelope covers the env value (bucket retention ≥ env) — under-retention refuses to start (project principle: refuse to serve when an integrity criterion cannot be met); over-retention is accepted (the env declares the minimum, not an equality).
+- PDF/A-3 (ZUGFeRD-wrapped) stored as an `attachments` descriptor row under the E2E envelope ([ADR-0024](0024-binary-attachment-e2e-encryption.md)), so B2 sees only ciphertext — but in its own key namespace, which keeps it off the attachment surface: no attachment operation lists, hides, restores, or serves it, and the full-account import restores it into the same namespace.
+- **Object Lock retention is per object.** Each rendered PDF is PUT with its own Compliance lock until write time + `INVOICE_OBJECT_LOCK_DAYS`: `3650` in production, which covers §147 AO; `.env.example` ships `0` (no lock) so dev binaries stay disposable. Not the bucket default: [ADR-0022](0022-binary-storage-b2-compliance-object-lock.md) requires `R ≤ L`, so a multi-year `R` would stretch every attachment's trash window to years. The original design asserted bucket default ≥ env at boot, which no bucket could satisfy together with `R ≤ L` (#417).
 - Lifecycle and capability split from ADR-0022 are reused unchanged — the bucket primitives operate on opaque bytes, so the Object Lock window defends ciphertext exactly as it defends attachment ciphertext.
 
 ### Tax modes
@@ -137,7 +137,7 @@ Keep `company_profile.defaultTaxMode` plus a `taxModeOverride boolean` on the in
 
 - Schema delta lands as edits to `src/server/db/schema.ts` + a regenerated baseline migration (project convention: no incremental Drizzle migration files, no production data to preserve). The new `invoices`, `invoice_sequence`, and `company_profile` tables, the `AUDIT_ENTITY_TYPES` extension, the `AUDIT_ENTITY_TO_TABLE` map entry, and the two `audit_log_*_type_valid` CHECK updates land in the same edit.
 - New env var `INVOICE_OBJECT_LOCK_DAYS` and corresponding entries in `.env.production.example` + the env-drift gate (`scripts/check-env-drift.sh`). Dev `.env.example` ships `0`.
-- The boot-time `assertStorageBucketSafe()` is extended to verify the invoice retention envelope covers the env value (bucket retention ≥ env); under-retention refuses to start the `app` service, over-retention is accepted.
+- The storage client's PUT accepts a per-object Compliance lock. It needs the app key's `writeFileRetentions` (B2) / `s3:PutObjectRetention` (dev MinIO); a PUT whose lock the provider rejects fails and the issuance rolls back.
 - New SSE event name `invoice_changed` registered with the event-name registry — no `/api/events` route change.
 - New permission keys `invoice:read` and `invoice:write` added to the permission registry; the bookkeeper role (currently a stub) gains `invoice:read`.
 - ZUGFeRD generation lands as a Node-native rendering pipeline (PDF/A-3 + embedded `factur-x.xml` with per-render XSD validation against the EN 16931 schemas); concrete libraries and paths are documented in [`ARCHITECTURE.md` § Invoices Module](../../ARCHITECTURE.md#invoices-module). No JVM, no external service.

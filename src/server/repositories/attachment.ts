@@ -44,6 +44,26 @@ function flattenWithUploader(row: {
   return { ...row.attachments, uploaderDisplayName: row.users?.displayName ?? null };
 }
 
+/**
+ * Key namespace of rendered invoice PDFs, written by
+ * `InvoiceBinaryService` and by the takeout import restoring one. Those
+ * rows are §147 AO records, not uploads: every read behind the attachment
+ * surface excludes them (`notInvoicePdf`), so no attachment operation can
+ * list, hide, restore, or serve one (AC-364). Only the invoice's own PDF
+ * route reads them (data-model.md §5.15). The prefix is always minted
+ * server-side; uploads land under `attachments/`.
+ */
+export const INVOICE_PDF_KEY_PREFIX = 'invoices/';
+
+export function invoicePdfKey(projectId: string, descriptorId: string): string {
+  return `${INVOICE_PDF_KEY_PREFIX}${projectId}/${descriptorId}.orig`;
+}
+
+/** WHERE fragment that keeps rendered invoice PDFs off the attachment surface. */
+function notInvoicePdf() {
+  return notLike(attachments.originalKey, `${INVOICE_PDF_KEY_PREFIX}%`);
+}
+
 export interface CreatePendingAttachmentInput {
   id?: string;
   projectId: string;
@@ -102,18 +122,7 @@ export interface CreatePendingAttachmentInput {
  * so a worker sees only rows on projects they are assigned to. Excludes
  * `pending` rows — the list surface in api.md §14.2.11 returns ready-only
  * rows; the service layer is responsible for that filter so repositories
- * stay composable.
- *
- * Invoice-rendered PDFs (written by `InvoiceService.persistRenderedBinary`
- * under the `invoices/<projectId>/<descriptorId>.orig` key prefix) are
- * hidden from this list. They are surfaced via the dedicated
- * `GET /api/invoices/:id/pdf` route; double-rendering them under the
- * generic attachment list would confuse the project-detail UI's
- * attachments block (ADR-0026 storage reuse note). The `originalKey`
- * prefix is the cleanest schema-free discriminator: the `label='rechnung'`
- * value is also user-selectable for human-uploaded Rechnung PDFs, and
- * `kind='binary'` covers every non-photo upload. The key namespace is
- * the renderer's own and never collides with user uploads.
+ * stay composable. Rendered invoice PDFs are excluded (`notInvoicePdf`).
  */
 export async function listByProject(
   db: Database,
@@ -124,7 +133,7 @@ export async function listByProject(
   const conditions = [
     eq(attachments.projectId, projectId),
     eq(attachments.status, 'ready'),
-    notLike(attachments.originalKey, 'invoices/%'),
+    notInvoicePdf(),
   ];
   if (scope) conditions.push(scope);
   const rows = await db
@@ -140,6 +149,8 @@ export async function listByProject(
  * Get a single attachment by id WITHOUT the scope predicate. Used by
  * the service layer's get-by-id which decides `404 / 403 / 200` with a
  * distinct scope lookup (parallel to `getProject` in `project-read.ts`).
+ * A rendered invoice PDF reads as absent (`notInvoicePdf`), so every
+ * by-id attachment operation answers 404 for it.
  */
 export async function getById(
   db: TransactionalDatabase,
@@ -149,7 +160,7 @@ export async function getById(
     .select({ attachments, users: { displayName: users.displayName } })
     .from(attachments)
     .leftJoin(users, eq(attachments.createdBy, users.id))
-    .where(eq(attachments.id, id))
+    .where(and(eq(attachments.id, id), notInvoicePdf()))
     .limit(1);
   const row = rows[0];
   return row ? flattenWithUploader(row) : null;
@@ -326,16 +337,12 @@ export async function listHiddenByProject(
   caller: AuthUser,
 ): Promise<AttachmentRowWithUploader[]> {
   const scope = attachmentScopeForCaller(caller);
-  // Same invoice-rendered-PDF exclusion as the live list — the
-  // Papierkorb is the user-facing trash surface for documents the
-  // operator uploaded; rendered invoice PDFs cannot reach `hidden`
-  // through any user action today, but the symmetric filter guards
-  // against a future code path that does (and against direct-SQL
-  // poisoning).
+  // No API path hides a rendered invoice PDF; the filter keeps one
+  // hidden by other means (direct SQL) out of the Papierkorb too.
   const conditions = [
     eq(attachments.projectId, projectId),
     eq(attachments.status, 'hidden'),
-    notLike(attachments.originalKey, 'invoices/%'),
+    notInvoicePdf(),
   ];
   if (scope) conditions.push(scope);
   const rows = await db
@@ -376,7 +383,11 @@ export async function listByIdsForProject(
 ): Promise<AttachmentRow[]> {
   if (ids.length === 0) return [];
   const scope = attachmentScopeForCaller(caller);
-  const conditions = [eq(attachments.projectId, projectId), inArray(attachments.id, ids)];
+  const conditions = [
+    eq(attachments.projectId, projectId),
+    inArray(attachments.id, ids),
+    notInvoicePdf(),
+  ];
   if (scope) conditions.push(scope);
   return db
     .select()
@@ -478,9 +489,9 @@ export async function deleteHiddenForReap(
  * `attachments_wrapped_dek_required_when_ready` CHECK demands the
  * wrapped envelope + ciphertext size are non-null at `status='ready'`
  * — the service computes both upfront (DEK wrap + AES-GCM ciphertext
- * byte count) and passes them in here. The bucket's default-retention
- * envelope (`INVOICE_OBJECT_LOCK_DAYS`, asserted at boot per AC-296)
- * attaches Object Lock at PUT time; the row is just the descriptor.
+ * byte count) and passes them in here. The PUT carries the object's
+ * own Compliance lock (`INVOICE_OBJECT_LOCK_DAYS`, AC-296); the row is
+ * just the descriptor.
  */
 export interface InsertRenderedInvoiceBinaryFields {
   id: string;
@@ -528,9 +539,8 @@ export interface InsertRenderedInvoiceBinaryFields {
  *
  * Pinned fields:
  *   - `kind='binary'` / `label='rechnung'` — rendered invoice PDFs
- *     are surfaced via `GET /api/invoices/:id/pdf`, NOT in the
- *     generic attachment list (the list filters on the `invoices/`
- *     key prefix; see `listByProject`).
+ *     are surfaced via `GET /api/invoices/:id/pdf` only; the key under
+ *     `INVOICE_PDF_KEY_PREFIX` keeps the row off the attachment surface.
  *   - `mimeType='application/pdf'`.
  *   - `hasThumbnail=false` / `thumb*` columns null — invoices have
  *     no thumbnail today.

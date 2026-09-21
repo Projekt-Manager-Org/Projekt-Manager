@@ -158,10 +158,11 @@ POLICY_FILE="/tmp/${POLICY_NAME}.json"
 #   - s3:BypassGovernanceRetention    (would bypass GOVERNANCE locks; we
 #                                      use COMPLIANCE so this is moot,
 #                                      but defensive omission is cheap)
-#   - s3:PutObjectRetention / s3:PutObjectLegalHold
-#                                     (would let the app shorten retention
-#                                      or apply a legal hold — defaults
-#                                      come from the bucket, not the app)
+#   - s3:PutObjectLegalHold          (would let the app apply a legal hold)
+# s3:PutObjectRetention IS granted — parity with the B2 key's
+# writeFileRetentions. Rendered invoice PDFs are PUT with their own
+# Compliance lock (ADR-0026), which needs it; Compliance retention can
+# only be extended, never shortened, so the capability split holds.
 # Bucket-mutating actions (PutBucket*, DeleteBucket*, PutLifecycleConfig)
 # are absent from the allow list and not explicitly listed here — the
 # implicit-deny floor handles them and there is no granular-action
@@ -206,6 +207,7 @@ cat > "$POLICY_FILE" <<EOF
         "s3:GetObject",
         "s3:GetObjectVersion",
         "s3:PutObject",
+        "s3:PutObjectRetention",
         "s3:DeleteObject"
       ],
       "Resource": [${RESOURCES_OBJECTS}]
@@ -215,7 +217,6 @@ cat > "$POLICY_FILE" <<EOF
       "Action": [
         "s3:DeleteObjectVersion",
         "s3:BypassGovernanceRetention",
-        "s3:PutObjectRetention",
         "s3:PutObjectLegalHold"
       ],
       "Resource": [${RESOURCES_OBJECTS}]

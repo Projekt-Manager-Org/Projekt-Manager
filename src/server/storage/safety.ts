@@ -311,43 +311,22 @@ export interface BucketSafetyReader {
 }
 
 /**
- * Optional retention envelopes asserted against the bucket's default
- * retention days at boot. Each `*ObjectLockDays > 0` requires the
- * bucket's `defaultDays >= *ObjectLockDays` — i.e., the bucket can
- * over-retain (10y bucket for a 1y env value is fine), but it cannot
- * under-retain (env says 10y, bucket says 1y → refuse to start).
- *
- * `0` (or omitted) skips the assertion — dev runs with retention
- * disabled, no bucket envelope is required.
- *
- * Currently a single member (`invoiceObjectLockDays`, ADR-0026 /
- * AC-296). A future attachment retention env will land alongside it
- * with the same shape. Independent envelopes because attachments and
- * invoices carry separate legal retention horizons.
- */
-export interface RetentionEnvelopes {
-  invoiceObjectLockDays?: number;
-}
-
-/**
  * Reads the bucket configuration via the storage client, applies the
- * shape validator, runs the capability self-test, and (optionally)
- * asserts the bucket retention envelope covers each configured
- * `RetentionEnvelopes` value. Throws an aggregated error on failure —
- * same fail-fast shape as the existing assertX helpers in
- * src/server/config/env.ts.
+ * shape validator, and runs the capability self-test. Throws an
+ * aggregated error on failure — same fail-fast shape as the existing
+ * assertX helpers in src/server/config/env.ts.
  *
- * All checks run unconditionally and their failures aggregate into a
+ * Both checks run unconditionally and their failures aggregate into a
  * single thrown error: the operator sees every defect at once instead
  * of fixing one and re-deploying to discover the next. Order is fixed
- * (shape first, capability second, retention envelopes third) only
- * for deterministic error output, not because checks depend on each
- * other.
+ * (shape first, capability second) only for deterministic error
+ * output, not because the checks depend on each other.
+ *
+ * Invoice retention is not a bucket property: rendered invoice PDFs
+ * carry their own per-object lock (ADR-0026, AC-296), because the
+ * bucket default `R` must stay within `L` and so cannot hold years.
  */
-export async function assertStorageBucketSafe(
-  client: BucketSafetyReader,
-  envelopes: RetentionEnvelopes = {},
-): Promise<void> {
+export async function assertStorageBucketSafe(client: BucketSafetyReader): Promise<void> {
   const config = await client.getBucketSafetyConfig();
   const verdict = evaluateBucketSafety(config);
 
@@ -381,26 +360,6 @@ export async function assertStorageBucketSafe(
           `is provably absent. See docs/ops/object-storage-provisioning.md.`,
       );
       break;
-  }
-
-  // Retention-envelope assertions (ADR-0026 / AC-296). Each
-  // `*ObjectLockDays > 0` requires the bucket's default-retention
-  // window to cover the env value. The bucket-shape probe above
-  // already requires `defaultDays >= 1`; this is the per-domain
-  // refinement. A 0 env value skips the assertion (dev retention-off).
-  const { invoiceObjectLockDays } = envelopes;
-  if (invoiceObjectLockDays && invoiceObjectLockDays > 0) {
-    const bucketDays = config.objectLock.defaultDays;
-    if (!bucketDays || bucketDays < invoiceObjectLockDays) {
-      failures.push(
-        `invoice retention envelope drift: INVOICE_OBJECT_LOCK_DAYS=${invoiceObjectLockDays} ` +
-          `but bucket Object Lock default retention days = ${bucketDays ?? 'unset'}. ` +
-          `Rendered invoice PDF/A-3 binaries would be deletable before the legal ` +
-          `retention horizon (§147 AO 10 years; ADR-0026 §Storage). Bring the bucket's ` +
-          `default retention up to at least ${invoiceObjectLockDays} days, OR set ` +
-          `INVOICE_OBJECT_LOCK_DAYS=0 to disable the assertion (dev only).`,
-      );
-    }
   }
 
   if (failures.length > 0) {

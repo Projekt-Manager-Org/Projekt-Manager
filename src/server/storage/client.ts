@@ -30,6 +30,7 @@ import {
   GetBucketLifecycleConfigurationCommand,
   CopyObjectCommand,
   type LifecycleRule,
+  type PutObjectCommandInput,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Readable } from 'node:stream';
@@ -95,6 +96,29 @@ export interface UploadResult {
    * source for browser-uploaded blobs).
    */
   versionId?: string;
+}
+
+/**
+ * Per-object Compliance Object Lock for one write, overriding the bucket
+ * default retention for that version. Rendered invoice PDFs use it
+ * (ADR-0026 § Storage and retention): their legal horizon is years,
+ * while the bucket default `R` must stay within the trash window `L`.
+ * `complianceDays <= 0` writes no per-object lock.
+ */
+export interface ObjectLock {
+  complianceDays: number;
+}
+
+const MS_PER_DAY = 86_400_000;
+
+function objectLockParams(
+  lock: ObjectLock | undefined,
+): Pick<PutObjectCommandInput, 'ObjectLockMode' | 'ObjectLockRetainUntilDate'> {
+  if (!lock || lock.complianceDays <= 0) return {};
+  return {
+    ObjectLockMode: 'COMPLIANCE',
+    ObjectLockRetainUntilDate: new Date(Date.now() + lock.complianceDays * MS_PER_DAY),
+  };
 }
 
 export interface DownloadResult {
@@ -164,7 +188,12 @@ export class StorageObjectNotFoundError extends Error {
 }
 
 export interface StorageClient {
-  upload(key: string, data: Buffer | Uint8Array, contentType: string): Promise<UploadResult>;
+  upload(
+    key: string,
+    data: Buffer | Uint8Array,
+    contentType: string,
+    lock?: ObjectLock,
+  ): Promise<UploadResult>;
   download(key: string): Promise<DownloadResult>;
   getSignedUrl(key: string, expirySeconds: number): Promise<string>;
   /**
@@ -291,7 +320,12 @@ export interface StorageClient {
    * 20 MB bulk-download cap. Content length is passed explicitly because
    * the streaming-upload path needs it to set `Content-Length` up-front.
    */
-  putObject?: (key: string, body: Buffer | Uint8Array, contentType: string) => Promise<void>;
+  putObject?: (
+    key: string,
+    body: Buffer | Uint8Array,
+    contentType: string,
+    lock?: ObjectLock,
+  ) => Promise<void>;
 
   /**
    * List keys under the given prefix. `olderThan`, when supplied, filters
@@ -345,7 +379,12 @@ export interface AttachmentStorageClient extends StorageClient {
   hide: (key: string) => Promise<void>;
   copyFromVersion: (key: string, sourceVersionId: string) => Promise<string | undefined>;
   getObject: (key: string) => Promise<Readable>;
-  putObject: (key: string, body: Buffer | Uint8Array, contentType: string) => Promise<void>;
+  putObject: (
+    key: string,
+    body: Buffer | Uint8Array,
+    contentType: string,
+    lock?: ObjectLock,
+  ) => Promise<void>;
   listObjects: (prefix: string, olderThan?: Date) => Promise<string[]>;
   getBucketSafetyConfig: () => Promise<BucketSafetyConfig>;
   probeDeleteVersionCapability: () => Promise<CapabilityProbeResult>;
@@ -537,6 +576,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
       key: string,
       data: Buffer | Uint8Array,
       contentType: string,
+      lock?: ObjectLock,
     ): Promise<UploadResult> {
       validateKey(key);
       const res = await s3.send(
@@ -545,6 +585,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
           Key: wireKey(key),
           Body: data,
           ContentType: contentType,
+          ...objectLockParams(lock),
         }),
       );
       // On a versioned bucket the PUT response carries the new VersionId;
@@ -849,7 +890,12 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
       }
     },
 
-    async putObject(key: string, body: Buffer | Uint8Array, contentType: string): Promise<void> {
+    async putObject(
+      key: string,
+      body: Buffer | Uint8Array,
+      contentType: string,
+      lock?: ObjectLock,
+    ): Promise<void> {
       validateKey(key);
       await s3.send(
         new PutObjectCommand({
@@ -857,6 +903,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
           Key: wireKey(key),
           Body: body,
           ContentType: contentType,
+          ...objectLockParams(lock),
         }),
       );
     },
