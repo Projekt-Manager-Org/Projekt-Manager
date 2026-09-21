@@ -51,9 +51,10 @@
  *   6. Bucket-safety probe — `assertStorageBucketSafe()`, the same
  *      data-integrity gate `start.ts` runs at boot (ADR-0022): versioning
  *      on, Object Lock = Compliance, lifecycle present, and the running
- *      credential provably CANNOT destroy versions. It runs only at boot today, so config drift or an over-capable app
- *      key refuses to start the just-recreated container; surfacing it here
- *      fails the deploy non-destructively instead.
+ *      credential provably CANNOT destroy versions. It runs only at boot
+ *      today, so config drift or an over-capable app key refuses to start
+ *      the just-recreated container; surfacing it here fails the deploy
+ *      non-destructively instead.
  *
  * Why a dedicated entry:
  *   - The existing `start.ts` entry point validates AND boots Fastify,

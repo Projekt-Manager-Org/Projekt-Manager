@@ -160,7 +160,7 @@ The named npm dependencies that implement this ADR's shape (PDF/A-3 + factur-x.x
 - §14a UStG — [Elektronische Rechnung / E-Rechnungspflicht](https://www.gesetze-im-internet.de/ustg_1980/__14a.html).
 - §19 UStG — [Kleinunternehmer](https://www.gesetze-im-internet.de/ustg_1980/__19.html).
 - §13b UStG — [Leistungsempfänger als Steuerschuldner / Reverse-Charge](https://www.gesetze-im-internet.de/ustg_1980/__13b.html).
-- §147 AO — [Aufbewahrungspflichten, 10-Jahres-Frist](https://www.gesetze-im-internet.de/ao_1977/__147.html).
+- §147 AO — [Aufbewahrungspflichten, 8 Jahre für Buchungsbelege](https://www.gesetze-im-internet.de/ao_1977/__147.html).
 - [GoBD](https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Weitere_Steuerthemen/Abgabenordnung/2019-11-28-GoBD.html) — Grundsätze zur ordnungsmäßigen Führung und Aufbewahrung von Büchern, Aufzeichnungen und Unterlagen in elektronischer Form.
 - [EN 16931](https://standards.cen.eu/dyn/www/f?p=204:110:0::::FSP_PROJECT,FSP_LANG_ID:60602,25) — Electronic invoicing: semantic data model of the core elements of an electronic invoice.
 - [ZUGFeRD / Factur-X specification](https://www.ferd-net.de/standards/zugferd/) — hybrid PDF/A-3 + embedded EN 16931 XML.
