@@ -24,8 +24,8 @@ set -euo pipefail
 # regex joins them with `\s+`, so an interposed comment silently drops the
 # pin out of tracking. Prose goes ABOVE the annotation, as here.
 # renovate: datasource=github-release-attachments depName=FiloSottile/age
-version="v1.3.1"
-expected_sha="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
+version="v1.3.2"
+expected_sha="cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10"
 url="https://github.com/FiloSottile/age/releases/download/${version}/age-${version}-linux-amd64.tar.gz"
 curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/age.tar.gz "$url"
 actual_sha=$(sha256sum /tmp/age.tar.gz | awk '{print $1}')
