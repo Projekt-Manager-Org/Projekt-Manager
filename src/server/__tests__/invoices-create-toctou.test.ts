@@ -101,6 +101,7 @@ describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup 
       storage,
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
       binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH!,
+      invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
     };
     const binary = new InvoiceBinaryService(db, deps);
     const issue = new InvoiceIssueService(db, binary);

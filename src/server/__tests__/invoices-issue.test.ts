@@ -713,6 +713,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
       storage,
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
       binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH!,
+      invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
     };
     const binary = new InvoiceBinaryService(db, deps);
     return new InvoiceIssueService(db, binary, renderer);
@@ -1007,6 +1008,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
       storage,
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
       binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH!,
+      invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
     };
     const binary = new InvoiceBinaryService(db, deps);
     return new InvoiceIssueService(db, binary, renderer);

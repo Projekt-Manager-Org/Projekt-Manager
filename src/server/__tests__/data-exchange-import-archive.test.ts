@@ -35,6 +35,11 @@
  *   - AC-334 / AT-148 — the staging reaper sweeps an ABANDONED/terminal
  *     IMPORT upload (not just `ready` export artifacts), deleting the
  *     staged file and nulling `archiveRef`.
+ *   - AC-365 — an attachment an envelope invoice references as its
+ *     rendered PDF is restored into the invoice namespace, under the
+ *     invoice lock, off the attachment surface. The file runs with
+ *     `INVOICE_OBJECT_LOCK_DAYS = 1` (set before `startApp()`, which wires
+ *     the import route) so the restore PUT carries a lock to assert.
  *
  * SEEDING REAL CIPHERTEXT (AC-328): the export builder unwraps each ready
  * attachment's `wrappedDek` against the per-fork binary `age` identity,
@@ -58,6 +63,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { PutObjectCommand, S3Client, type PutObjectCommandInput } from '@aws-sdk/client-s3';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { unzipSync, zipSync } from 'fflate';
@@ -97,6 +103,7 @@ interface JobRow {
 const UPLOAD_OCTET_STREAM = 'application/offset+octet-stream';
 
 const POLL_TIMEOUT_MS = 15_000;
+const INVOICE_LOCK_DAYS = 1;
 const POLL_INTERVAL_MS = 100;
 
 // ---------------------------------------------------------------------
@@ -147,6 +154,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   let recipient: string;
   let ownerToken: string;
   let projectId: string;
+  let previousLockDays: string | undefined;
 
   // -------------------------------------------------------------------
   // Seed one `status='ready'` attachment with REAL backing ciphertext so
@@ -324,6 +332,8 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   }
 
   beforeAll(async () => {
+    previousLockDays = process.env.INVOICE_OBJECT_LOCK_DAYS;
+    process.env.INVOICE_OBJECT_LOCK_DAYS = String(INVOICE_LOCK_DAYS);
     await startApp();
     const conn = createDatabase();
     db = conn.db;
@@ -356,6 +366,8 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   afterAll(async () => {
     await stopApp();
     await pool.end();
+    if (previousLockDays === undefined) delete process.env.INVOICE_OBJECT_LOCK_DAYS;
+    else process.env.INVOICE_OBJECT_LOCK_DAYS = previousLockDays;
   });
 
   beforeEach(async () => {
@@ -579,6 +591,98 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const longestEdge = Math.max(meta.width ?? 0, meta.height ?? 0);
       expect(longestEdge).toBeGreaterThan(0);
       expect(longestEdge).toBeLessThanOrEqual(320);
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // AC-365 — a rendered invoice PDF survives the roundtrip AS an invoice
+  // PDF. The export carries it in `attachments[]` like any other file; the
+  // import must recognise it through the envelope invoice that references
+  // it, or it lands under `attachments/…` and becomes a deletable upload.
+  // -------------------------------------------------------------------
+  describe('AC-365: import restores a rendered invoice PDF as one', () => {
+    async function issueInvoice(token: string): Promise<{ id: string; descriptorId: string }> {
+      const pr = await authGet(token, '/api/projects?status=rechnung_faellig&limit=200');
+      const project = (pr.json() as { data: { id: string }[] }).data[0];
+      if (!project) throw new Error('seed missing a project in rechnung_faellig');
+      const draft = await authPost(token, '/api/invoices', {
+        projectId: project.id,
+        lines: [
+          {
+            description: 'Anstrich Fassade',
+            quantity: 1,
+            unit: 'pauschal',
+            unitPrice: 1500,
+            lineTotal: 1500,
+            taxRate: 19,
+          },
+        ],
+        performanceDate: '2026-04-10',
+      });
+      expect(draft.statusCode).toBe(201);
+      const id = (draft.json() as { id: string }).id;
+      const issued = await authPost(token, `/api/invoices/${id}/issue`);
+      expect(issued.statusCode).toBe(200);
+      const descriptorId = (issued.json() as { renderedPdfBinaryDescriptorId: string })
+        .renderedPdfBinaryDescriptorId;
+      return { id, descriptorId };
+    }
+
+    async function invoicePdf(token: string, invoiceId: string): Promise<Buffer> {
+      const res = await getApp().inject({
+        method: 'GET',
+        url: `/api/invoices/${invoiceId}/pdf`,
+        headers: { cookie: `session=${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      return res.rawPayload;
+    }
+
+    it('keeps the invoice namespace and lock, stays off the attachment list, serves byte-equal bytes', async () => {
+      const invoice = await issueInvoice(ownerToken);
+      const sourcePdf = await invoicePdf(ownerToken, invoice.id);
+      const archive = await buildExportArchive(ownerToken);
+
+      const send = vi.spyOn(S3Client.prototype, 'send');
+      let putInputs: PutObjectCommandInput[];
+      let reauth: string;
+      const importStartedAt = Date.now();
+      try {
+        const jobId = await uploadArchiveToNewJob(ownerToken, archive);
+        reauth = await awaitWipeAndReauth(ownerToken, jobId);
+        const terminal = await pollImportTerminal(reauth, jobId);
+        expect(terminal.status).toBe('ready');
+        putInputs = send.mock.calls
+          .map(([command]) => command)
+          .filter((command) => command instanceof PutObjectCommand)
+          .map((command) => (command as PutObjectCommand).input);
+      } finally {
+        send.mockRestore();
+      }
+
+      const restored = (
+        await db.execute(sql`
+          SELECT project_id, original_key FROM attachments WHERE id = ${invoice.descriptorId}
+        `)
+      ).rows as { project_id: string; original_key: string }[];
+      expect(restored.length).toBe(1);
+      const row = restored[0]!;
+      expect(row.original_key.startsWith('invoices/')).toBe(true);
+
+      const put = putInputs.find((input) => input.Key?.endsWith(row.original_key));
+      expect(put, 'no PutObjectCommand for the restored invoice PDF').toBeDefined();
+      expect(put!.ObjectLockMode).toBe('COMPLIANCE');
+      expect(new Date(put!.ObjectLockRetainUntilDate!).getTime()).toBeGreaterThanOrEqual(
+        importStartedAt + INVOICE_LOCK_DAYS * 86_400_000,
+      );
+
+      const list = await authGet(reauth, `/api/projects/${row.project_id}/attachments`);
+      expect(list.statusCode).toBe(200);
+      const listed = (list.json() as { data: { id: string }[] }).data.map((a) => a.id);
+      expect(listed).not.toContain(invoice.descriptorId);
+
+      const restoredPdf = await invoicePdf(reauth, invoice.id);
+      expect(Buffer.compare(restoredPdf, sourcePdf)).toBe(0);
     });
   });
 

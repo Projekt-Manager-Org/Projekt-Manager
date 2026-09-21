@@ -28,7 +28,7 @@ import { encryptInvoicePayload, decryptInvoicePayload } from './invoice/payloadC
 import { KeyEnvelopeService, KeyEnvelopeUnwrapError } from './KeyEnvelopeService.js';
 import { notFound, invoiceNotIssued, dekUnwrapFailed } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
-import { insertRenderedInvoiceBinary } from '../repositories/attachment.js';
+import { insertRenderedInvoiceBinary, invoicePdfKey } from '../repositories/attachment.js';
 
 /**
  * Binary-pipeline dependencies. `persistRendered` uses these to
@@ -39,10 +39,9 @@ import { insertRenderedInvoiceBinary } from '../repositories/attachment.js';
  *   2. Encrypt the plaintext PDF bytes (`nonce(12) || ct || tag(16)`).
  *   3. Wrap the DEK against the operator-loaded `age` recipient via
  *      `KeyEnvelopeService.wrap()` — parity with attachment init.
- *   4. `putObject(key, ciphertext, "application/octet-stream")` —
- *      server-side direct PUT, no presign round-trip. The bucket's
- *      default-retention envelope (`INVOICE_OBJECT_LOCK_DAYS`,
- *      asserted at boot per AC-296) attaches Object Lock to the PUT.
+ *   4. `putObject(key, ciphertext, "application/octet-stream", lock)` —
+ *      server-side direct PUT, no presign round-trip, carrying its own
+ *      Compliance lock of `invoiceObjectLockDays` (AC-296).
  *   5. Insert an `attachments` row at `status='ready'` carrying the
  *      ciphertext key + size + the wrapped DEK + MIME `application/pdf`
  *      + label `'rechnung'`. The row id is returned and stored on
@@ -57,6 +56,8 @@ export interface InvoiceBinaryDeps {
   storage: AttachmentStorageClient;
   binaryAgeRecipient: string;
   binaryAgeIdentityPath: string;
+  /** `INVOICE_OBJECT_LOCK_DAYS` — per-object Compliance lock; 0 writes none. */
+  invoiceObjectLockDays: number;
 }
 
 export class InvoiceBinaryService {
@@ -78,10 +79,9 @@ export class InvoiceBinaryService {
    *   3. Wrap the DEK against the operator-loaded `age` recipient
    *      (`BINARY_AGE_RECIPIENT`) via `KeyEnvelopeService`.
    *   4. `putObject` the ciphertext to the bucket under
-   *      `invoices/<projectId>/<descriptorId>.orig`. The bucket's
-   *      default-retention envelope (`INVOICE_OBJECT_LOCK_DAYS`,
-   *      asserted at boot per AC-296) attaches Object Lock to the PUT
-   *      — no per-call retention header needed.
+   *      `invoices/<projectId>/<descriptorId>.orig` with its own
+   *      Compliance lock (AC-296). A provider rejecting the lock fails
+   *      the PUT, and the issuance rolls back.
    *   5. Insert one `attachments` row at `status='ready'`. The row id
    *      is the descriptor reference returned to the caller and
    *      stored on `invoices.renderedPdfBinaryDescriptorId`.
@@ -100,7 +100,7 @@ export class InvoiceBinaryService {
     invoice: Pick<Invoice, 'id' | 'number' | 'recipient'>,
     userId: string,
   ): Promise<string> {
-    const { storage, binaryAgeRecipient, binaryAgeIdentityPath } = this.deps;
+    const { storage, binaryAgeRecipient, binaryAgeIdentityPath, invoiceObjectLockDays } = this.deps;
 
     // 1 + 2. Encrypt the plaintext PDF bytes under a fresh DEK.
     const { ciphertext, dek } = encryptInvoicePayload(rendered.pdfBytes);
@@ -117,8 +117,10 @@ export class InvoiceBinaryService {
     // convention so the lifecycle / safety probe surfaces both paths
     // under a predictable prefix.
     const descriptorId = crypto.randomUUID();
-    const originalKey = `invoices/${projectId}/${descriptorId}.orig`;
-    await storage.putObject(originalKey, ciphertext, 'application/octet-stream');
+    const originalKey = invoicePdfKey(projectId, descriptorId);
+    await storage.putObject(originalKey, ciphertext, 'application/octet-stream', {
+      complianceDays: invoiceObjectLockDays,
+    });
 
     // 5. Insert the attachments row at `status='ready'` via the repo.
     // The stored filename is the human-readable label the operator

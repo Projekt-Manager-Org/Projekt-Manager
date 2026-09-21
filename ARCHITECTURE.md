@@ -742,7 +742,7 @@ Spec contract: [docs/spec/data-model.md §5.15–§5.17](docs/spec/data-model.md
 
 - **`InvoiceIssueService`** — draft CRUD + the issue transaction (sequence allocation, content freeze, project status flip to `abgerechnet`, render via `InvoiceRenderer`, binary write via `InvoiceBinaryService`, audit + SSE).
 - **`InvoiceCancelService`** — Storno-sibling creation, audit + SSE. Does NOT auto-revert project state ([AC-290](docs/spec/verification.md#1530-invoices) trailing clause): a user staring at an `abgerechnet` project with a cancelled invoice sees the gap and acts on it manually.
-- **`InvoiceBinaryService`** — wraps the binary-descriptor flow for the rendered PDF/A-3. Sits on top of the same `BinaryDescriptorService` the attachment module uses, with the company-tax retention applied per `INVOICE_OBJECT_LOCK_DAYS`. Unlike attachments, the descriptor is server-rendered (no client encrypt path): the PDF/A-3 is constructed server-side, then PUT to B2 under the same E2E-encryption envelope ([ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md)) so the storage layer sees only ciphertext.
+- **`InvoiceBinaryService`** — persists and serves the rendered PDF/A-3 (see [Rendered PDF storage](#rendered-pdf-storage)). Unlike attachments, the bytes are server-rendered (no client encrypt path): the PDF/A-3 is encrypted server-side under the same E2E envelope ([ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md)), so the storage layer sees only ciphertext.
 - **`InvoiceRenderer`** — orchestrates the PDF/A-3 + `factur-x.xml` build (see below). Returns the bytes; the binary service owns persistence.
 
 ### ZUGFeRD EN 16931 renderer
@@ -754,9 +754,13 @@ Spec contract: [docs/spec/data-model.md §5.15–§5.17](docs/spec/data-model.md
 - **Profile column.** `invoices.profile` snapshots the renderer profile (`zugferd-en16931` today) so the UI's PDF download affordance can label itself appropriately (`ZUGFeRD herunterladen` vs the generic `PDF herunterladen`). A future XRECHNUNG renderer drops in as a sibling builder keyed off the same column.
 - **Boilerplate.** `src/server/services/invoice/boilerplate.ts` carries the German tax-mode legal text — `kleinunternehmer` (§19 UStG: "Gemäß §19 UStG wird keine Umsatzsteuer berechnet."), `reverse_charge` (§13b UStG reverse-charge notice). Single source of truth so a §-text revision is one file.
 
-### Object Lock retention — env-driven
+### Rendered PDF storage
 
-`INVOICE_OBJECT_LOCK_DAYS` is the retention envelope `assertStorageBucketSafe()` enforces against the bucket-level default-retention for the configured invoices bucket. Prod: 3650 (10 years per §147 AO). Dev: 0 (no retention, drop on `force` reseed). The bucket-shape probe verifies the configured retention is **≥** the env value at boot — a configured shorter retention than the env requires fails closed. Per [AC-296](docs/spec/verification.md#1530-invoices), the bucket may legitimately carry a longer retention than the env (e.g. tightened compliance horizon) without failing the probe — the env names the minimum, not the equality.
+The rendered PDF is an `attachments` row whose key sits under `invoices/` (`INVOICE_PDF_KEY_PREFIX` / `invoicePdfKey` in `src/server/repositories/attachment.ts`):
+
+- **Off the attachment surface.** Every attachment-repository read behind an endpoint excludes the prefix, so no attachment endpoint lists, hides, restores, or serves an invoice PDF ([AC-364](docs/spec/verification.md#1530-invoices)). `GET /api/invoices/:id/pdf` is the only read path.
+- **Per-object lock.** The PUT carries its own Compliance lock of `INVOICE_OBJECT_LOCK_DAYS` (the storage client's `ObjectLock` option; prod 3650, dev 0). Not the bucket default: that is `R`, which must stay ≤ `L` ([AC-296](docs/spec/verification.md#1530-invoices)).
+- **Restore.** `takeout-import-runner.ts` puts an attachment that an envelope invoice references back under the prefix, with the lock ([AC-365](docs/spec/verification.md#1514-data-exchange)).
 
 ### Tax modes (per-invoice, snapshotted)
 
