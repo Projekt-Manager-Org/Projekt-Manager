@@ -426,7 +426,7 @@ The table is complete by construction. What an endpoint _means_ lives in § Endp
 
 **HEAD companions are filtered.** Fastify exposes a HEAD route for every GET. Those are dropped by handler identity — same URL, same handler reference — so a HEAD row means a route someone declared deliberately, today only the tus offset probe.
 
-**Prose below the end marker is never overwritten**, the same split the nav matrix draws: coverage and access rules are generated, meaning is hand-written. That is why the generator does not also try to produce § Endpoint Notes.
+**Prose below the end marker is never overwritten**: coverage and access rules are generated, meaning is hand-written. That is why the generator does not also try to produce § Endpoint Notes.
 
 ### OpenAPI Document Generation
 

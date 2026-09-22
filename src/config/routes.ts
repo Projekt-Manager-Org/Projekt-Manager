@@ -7,14 +7,14 @@
  * Both the nav renderer (`Header`) and the route guard (`App`) consume
  * this table, so what the user sees and what the guard allows cannot
  * disagree. The per-role matrix in `docs/spec/ui/index.md §8.7.1` is
- * generated from this table, not hand-authored, and CI fails on drift
+ * hand-written and checked against this table, and CI fails on drift
  * (AC-349) — the same guarantee the permission matrix carries.
  *
  * Access rules are DATA, not closures (`RouteAccess` below). A
  * predicate can be evaluated but not read: `(u) => hasPermission(u.roles,
  * 'invoice:read')` resolves to a role set and loses the rule that
- * produced it, so a generated matrix could only ever publish the
- * outcome. Declaring the rule and deriving the predicate from it —
+ * produced it, so a check could only ever compare the outcome.
+ * Declaring the rule and deriving the predicate from it —
  * policy-as-data, the shape IAM policy documents and OPA/Rego use —
  * means one source answers both "may this caller enter?" and "what does
  * the spec say gates this view?".
@@ -165,8 +165,8 @@ function landingViewFor(caller: RouteCaller): RouteView | undefined {
 
 /**
  * Route table — ordered to match the nav matrix in `docs/spec/ui/index.md
- * §8.7.1`. The Header renders in this order, and the generator publishes
- * the table in this order, so the spec and the nav agree on sequence too.
+ * §8.7.1`. The Header renders in this order, and `routes.test.ts` checks
+ * §8.7.1 in this order, so the spec and the nav agree on sequence too.
  *
  * Declarations only. `ROUTES` below compiles each into a `RouteEntry` by
  * deriving `canAccess` from `access` and `isDefaultFor` from
@@ -279,7 +279,7 @@ const ROUTE_DEFINITIONS: readonly RouteDefinition[] = [
 /**
  * The compiled table. Consumers keep calling `entry.canAccess(user)` /
  * `entry.isDefaultFor(user)`; the difference is that both now come from
- * data a generator can read.
+ * data a test can compare.
  */
 export const ROUTES: readonly RouteEntry[] = ROUTE_DEFINITIONS.map((definition) => ({
   ...definition,
@@ -367,9 +367,9 @@ export function pathFromView(view: RouteView): string {
  * bookkeeper" line.
  *
  * Exported so Header and MobileTabBar consume a single source of truth.
- * Unlike the nav matrix itself, this grouping is NOT generated — it is
+ * Unlike the nav matrix itself, this grouping is NOT checked — it is
  * hand-synced with the "Primary / secondary header grouping" paragraph
- * in `docs/spec/ui/index.md §8.7.1`, below the generated block.
+ * in `docs/spec/ui/index.md §8.7.1`, below the checked block.
  */
 export const SECONDARY_VIEWS: readonly RouteView[] = [
   'rechnungen',
