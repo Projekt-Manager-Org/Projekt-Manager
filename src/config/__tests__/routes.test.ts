@@ -155,19 +155,10 @@ describe('ROUTES — per-role nav matrix (AC-75)', () => {
   for (const role of ROLE_NAMES) {
     it(`role '${role}' sees exactly the matrix set`, () => {
       const visible = visibleRoutesForUser(caller(role)).map((r) => r.view);
+      // Order included: the Header renders in this order.
       expect(visible).toEqual(navViewsFor(role));
     });
   }
-
-  it('preserves matrix order in the visible list', () => {
-    // The header renders in table order; swapping the table order would
-    // silently reshuffle the nav buttons.
-    const ownerCaller = caller('owner');
-    const owner = visibleRoutesForUser(ownerCaller).map((r) => r.view);
-    expect(owner).toEqual(
-      ROUTES.filter((r) => !r.path.includes('/:') && r.canAccess(ownerCaller)).map((r) => r.view),
-    );
-  });
 
   it('never exposes a Daten tab to a caller without data:export', () => {
     // worker has neither user:read nor data:export under the default
