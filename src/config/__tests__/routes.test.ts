@@ -33,115 +33,28 @@ type RoleName = 'owner' | 'office' | 'worker' | 'bookkeeper';
 const caller = (role: RoleName): RouteCaller => ({ roles: [role] });
 
 /**
- * Hand-written mirror of the route table, one row per entry in table
- * order — the code-side pin.
- *
- * §8.7.1 is checked against `ROUTES` as well (below), but it publishes
- * only the nav entries and resolves roles through `ROLE_KEYS`. This table
- * also covers the parametrized entries (deep-link targets, omitted from
- * the published table), spells every role set out literally, and feeds
- * the per-role nav sets (AC-75).
+ * Hand-written pins for the parametrized entries — deep-link targets,
+ * which §8.7.1 omits, so its check (below) does not cover them. Every nav
+ * entry is pinned by §8.7.1 itself.
  *
  * Every column is pinned, `access` included: the rule, not only the role
  * set it resolves to today. `roles` is that rule resolved against the
- * production role set and `landing` the post-login view for a caller
- * holding that role alone — both per api.md §14.3 + ADR-0023 + AC-198.
+ * production role set; neither entry is a landing view. Gating per
+ * project-detail.md §8.15 and invoices.md §8.16.3.
  */
-const ROUTE_TABLE: readonly {
+const DEEP_LINKS: readonly {
   readonly view: string;
   readonly path: string;
   readonly label: string;
   readonly access: RouteAccess;
   readonly roles: readonly RoleName[];
-  readonly landing: readonly RoleName[];
 }[] = [
-  {
-    view: 'meineProjekte',
-    path: '/meine-projekte',
-    label: 'Meine Projekte',
-    access: { kind: 'role', roles: ['worker'] },
-    roles: ['worker'],
-    landing: ['worker'],
-  },
-  {
-    view: 'kanban',
-    path: '/kanban',
-    label: 'Kanban',
-    access: { kind: 'role', roles: ['owner', 'office', 'worker'] },
-    roles: ['owner', 'office', 'worker'],
-    landing: ['owner', 'office'],
-  },
-  {
-    view: 'kalender',
-    path: '/calendar',
-    label: 'Kalender',
-    access: { kind: 'role', roles: ['owner', 'office', 'worker'] },
-    roles: ['owner', 'office', 'worker'],
-    landing: [],
-  },
-  {
-    view: 'projekte',
-    path: '/projects',
-    label: 'Projekte',
-    access: { kind: 'role', roles: ['owner', 'office', 'bookkeeper'] },
-    roles: ['owner', 'office', 'bookkeeper'],
-    landing: [],
-  },
-  {
-    view: 'kunden',
-    path: '/customers',
-    label: 'Kunden',
-    access: { kind: 'role', roles: ['owner', 'office', 'bookkeeper'] },
-    roles: ['owner', 'office', 'bookkeeper'],
-    landing: [],
-  },
-  {
-    view: 'rechnungen',
-    path: '/rechnungen',
-    label: 'Rechnungen',
-    access: { kind: 'permission', permission: 'invoice:read' },
-    roles: ['owner', 'office', 'bookkeeper'],
-    landing: ['bookkeeper'],
-  },
   {
     view: 'rechnungDetail',
     path: '/rechnungen/:id',
     label: 'Rechnungen',
     access: { kind: 'permission', permission: 'invoice:read' },
     roles: ['owner', 'office', 'bookkeeper'],
-    landing: [],
-  },
-  {
-    view: 'benutzer',
-    path: '/users',
-    label: 'Benutzer',
-    access: { kind: 'permission', permission: 'user:manage' },
-    roles: ['owner'],
-    landing: [],
-  },
-  {
-    view: 'daten',
-    path: '/daten',
-    label: 'Daten',
-    access: { kind: 'permission', permission: 'data:export' },
-    roles: ['owner', 'office'],
-    landing: [],
-  },
-  {
-    view: 'aktivitaet',
-    path: '/audit',
-    label: 'Aktivität',
-    access: { kind: 'permission', permission: 'audit:read' },
-    roles: ['owner', 'office'],
-    landing: [],
-  },
-  {
-    view: 'benachrichtigungen',
-    path: '/benachrichtigungen',
-    label: 'Benachrichtigungen',
-    access: { kind: 'permission', permission: 'notifications:manage' },
-    roles: ['owner'],
-    landing: [],
   },
   {
     view: 'projektDetail',
@@ -149,25 +62,10 @@ const ROUTE_TABLE: readonly {
     label: 'Projekte',
     access: { kind: 'permission', permission: 'project:read' },
     roles: ['owner', 'office', 'worker', 'bookkeeper'],
-    landing: [],
   },
 ];
 
 const ROLE_NAMES: readonly RoleName[] = ['owner', 'office', 'worker', 'bookkeeper'];
-
-// Per-role visible-view sets, derived from the hand-written table above —
-// derived from the FIXTURE, not from `ROUTES`, so independence holds.
-// Parametrized entries are deep links, not nav, and `visibleRoutesForUser`
-// filters them out.
-const navViewsFor = (role: RoleName): readonly string[] =>
-  ROUTE_TABLE.filter((r) => !r.path.includes('/:') && r.roles.includes(role)).map((r) => r.view);
-
-const MATRIX: Record<RoleName, readonly string[]> = {
-  owner: navViewsFor('owner'),
-  office: navViewsFor('office'),
-  worker: navViewsFor('worker'),
-  bookkeeper: navViewsFor('bookkeeper'),
-};
 
 const LANDINGS: Record<RoleName, string> = {
   owner: '/kanban',
@@ -175,18 +73,6 @@ const LANDINGS: Record<RoleName, string> = {
   worker: '/meine-projekte',
   bookkeeper: '/rechnungen',
 };
-
-/**
- * The landing rule as published in §8.7.1, first-match.
- * Pinned as an ordered list because the ORDER is the exclusion rule — the
- * per-role `landing` column above cannot express that an owner who is
- * also the bookkeeper lands on Kanban.
- */
-const LANDING_RULES: readonly { roles: readonly RoleName[]; view: string }[] = [
-  { roles: ['worker'], view: 'meineProjekte' },
-  { roles: ['owner', 'office'], view: 'kanban' },
-  { roles: ['bookkeeper'], view: 'rechnungen' },
-];
 
 const NAV_DOC = 'docs/spec/ui/index.md';
 
@@ -205,6 +91,16 @@ const publishedRow = (entry: RouteEntry): string[] => [
   roleCell(entry.canAccess),
   roleCell(entry.isDefaultFor),
 ];
+
+/**
+ * The nav views §8.7.1 publishes for a role, in table order. Read from
+ * the hand-written matrix rather than from `ROUTES`, so AC-75 checks
+ * `visibleRoutesForUser` against the spec, not against its own source.
+ */
+const navViewsFor = (role: RoleName): string[] =>
+  tableRows(readCheckedBlock(NAV_DOC, 'nav-matrix'))
+    .filter(([, , , , roles]) => roles.split(', ').includes(role))
+    .map(([view]) => view.replaceAll('`', ''));
 
 describe('ROUTES — published nav matrix (AC-349)', () => {
   it('ui/index.md §8.7.1 publishes exactly the nav entries of ROUTES', () => {
@@ -226,15 +122,17 @@ describe('ROUTES — published nav matrix (AC-349)', () => {
       LANDING_ORDER.map((entry) => ({ roles: [...entry.roles], view: entry.view })),
     );
   });
+});
 
-  it('has exactly the pinned rows, in table order', () => {
-    // Order is load-bearing twice over: the Header renders in table order
-    // and §8.7.1 publishes in table order.
-    expect(ROUTES.map((r) => r.view)).toEqual(ROUTE_TABLE.map((r) => r.view));
+describe('ROUTES — deep-link entries', () => {
+  it('has exactly the pinned deep links, in table order', () => {
+    expect(ROUTES.filter((r) => r.path.includes('/:')).map((r) => r.view)).toEqual(
+      DEEP_LINKS.map((r) => r.view),
+    );
   });
 
-  for (const row of ROUTE_TABLE) {
-    it(`'${row.view}' publishes the pinned path, label and access rule`, () => {
+  for (const row of DEEP_LINKS) {
+    it(`'${row.view}' has the pinned path, label and access rule`, () => {
       const entry = ROUTES.find((r) => r.view === row.view);
       expect(entry, `no route entry for '${row.view}'`).toBeDefined();
       expect(entry?.path).toBe(row.path);
@@ -243,27 +141,21 @@ describe('ROUTES — published nav matrix (AC-349)', () => {
       expect(entry?.access).toEqual(row.access);
     });
 
-    it(`'${row.view}' resolves to the pinned roles and landing`, () => {
+    it(`'${row.view}' resolves to the pinned roles and is no landing`, () => {
       const entry = ROUTES.find((r) => r.view === row.view);
       const granted = ROLE_NAMES.filter((role) => entry?.canAccess(caller(role)));
       const lands = ROLE_NAMES.filter((role) => entry?.isDefaultFor(caller(role)));
       expect(granted).toEqual(row.roles);
-      expect(lands).toEqual(row.landing);
+      expect(lands).toEqual([]);
     });
   }
-
-  it('publishes the landing ORDER, not just the per-role outcome', () => {
-    expect(LANDING_ORDER.map((entry) => ({ roles: [...entry.roles], view: entry.view }))).toEqual(
-      LANDING_RULES.map((rule) => ({ roles: [...rule.roles], view: rule.view })),
-    );
-  });
 });
 
 describe('ROUTES — per-role nav matrix (AC-75)', () => {
-  for (const role of Object.keys(MATRIX) as RoleName[]) {
+  for (const role of ROLE_NAMES) {
     it(`role '${role}' sees exactly the matrix set`, () => {
       const visible = visibleRoutesForUser(caller(role)).map((r) => r.view);
-      expect(visible).toEqual(MATRIX[role]);
+      expect(visible).toEqual(navViewsFor(role));
     });
   }
 
