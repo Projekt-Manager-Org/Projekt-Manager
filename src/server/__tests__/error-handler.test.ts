@@ -147,8 +147,8 @@ describe('AC-247 / AT-108 — Global error handler 4xx pass-through', () => {
   });
 
   it('known URL under a verb it does not serve → 404 ROUTE_NOT_FOUND (api.md §14.4.1)', async () => {
-    // No per-endpoint 405: an unserved verb is routed exactly like an
-    // unknown URL, so every endpoint answers it the same way.
+    // An unserved verb is routed exactly like an unknown URL, so every
+    // endpoint answers it the same way.
     const res = await app.inject({ method: 'GET', url: '/test/echo' });
     expect(res.statusCode).toBe(404);
     expect(res.json().code).toBe('ROUTE_NOT_FOUND');
