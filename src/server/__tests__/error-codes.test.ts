@@ -17,10 +17,6 @@
  *
  * Note the exact claim there: a *factory exists*, not that a request can
  * reach it. Reachability is a route test's job.
- *
- * `methodNotAllowed()` gets its own block — the four 405 route sites
- * build their response through it, so this pins the shape they emit,
- * `Allow` included.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -28,8 +24,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as errors from '../errors.js';
-import { AppError, ERROR_CODES, methodNotAllowed, type ErrorCode } from '../errors.js';
-import { STRINGS } from '../../config/strings.js';
+import { AppError, ERROR_CODES, type ErrorCode } from '../errors.js';
 
 const API_DOC = resolve(dirname(fileURLToPath(import.meta.url)), '../../../docs/spec/api.md');
 const CHECKED_BLOCK =
@@ -62,7 +57,6 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['uploadNotAccepted', () => errors.uploadNotAccepted()],
   ['notFound', () => errors.notFound()],
   ['routeNotFound', () => errors.routeNotFound()],
-  ['methodNotAllowed', () => errors.methodNotAllowed(['GET'])],
   ['gone', () => errors.gone('any')],
   ['rateLimited', () => errors.rateLimited()],
   ['serverError', () => errors.serverError()],
@@ -113,30 +107,5 @@ describe('AC-354: error-code catalogue', () => {
     // drifting. Existence of a factory only; whether a request can reach
     // that factory is a route test's question.
     expect(unminted).toEqual([]);
-  });
-});
-
-describe('AC-354: methodNotAllowed()', () => {
-  it('carries the catalogued code, 405, and the German user message', () => {
-    const err = methodNotAllowed(['GET']);
-
-    expect(err.code).toBe('METHOD_NOT_ALLOWED');
-    expect(err.statusCode).toBe(405);
-    // Pinned to STRINGS, not to the text, so a wording change stays a
-    // one-line edit — and so a regression to a hand-rolled English
-    // literal fails here rather than shipping.
-    expect(err.userMessage).toBe(STRINGS.errors.methodNotAllowed);
-    expect(err.toResponse()).toEqual({
-      code: 'METHOD_NOT_ALLOWED',
-      message: STRINGS.errors.methodNotAllowed,
-    });
-  });
-
-  it('carries Allow, so a guard cannot ship the status without the header', () => {
-    // Taking the verbs as a *required* argument is the whole mechanism:
-    // it is what makes status and header inseparable. Pinned here so a
-    // signature change that reintroduces an optional header fails.
-    expect(methodNotAllowed(['GET']).headers).toEqual({ allow: 'GET' });
-    expect(methodNotAllowed(['GET', 'PUT']).headers).toEqual({ allow: 'GET, PUT' });
   });
 });

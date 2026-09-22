@@ -6,8 +6,7 @@
  *   - AC-268: authenticated GET returns 200 with `Content-Type:
  *     text/event-stream`, no `Cache-Control` directive, an open response
  *     stream that does not close on its own. Unauthenticated GET returns
- *     401 UNAUTHENTICATED / SESSION_EXPIRED with no stream. Non-GET
- *     verbs return 405 METHOD_NOT_ALLOWED with `Allow: GET`. A subscribed
+ *     401 UNAUTHENTICATED / SESSION_EXPIRED with no stream. A subscribed
  *     connection observes synthetic broadcasts as `event: <name>` frames.
  *
  *   - AC-269: a connection held idle observes a `:` keepalive comment
@@ -21,13 +20,6 @@
  *     If the implementer chooses a different mechanism (constructor arg,
  *     dedicated module export, …), the implementer rewrites the
  *     heartbeat-arm fixture; the assertion stays the same.
- *
- * Pre-impl red state: the route does not exist, so Fastify's default
- * 404 handler answers `GET /api/events` for the auth + content-type +
- * broadcast arms. The 405 arm fails because POST/PUT/PATCH/DELETE are
- * also unrouted (404, not 405). The heartbeat arm fails because no
- * keepalive line is ever written. All four paths surface as per-test
- * red, matching the project's TDD convention.
  *
  * Streaming response handling under `inject()`: Fastify's `inject()` is
  * built on `light-my-request`, which exposes `payloadAsStream: true` to
@@ -51,7 +43,6 @@ import {
   createTestUserSession,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
-import { STRINGS } from '../../config/strings.js';
 
 /**
  * Inject a streaming response and return both the `light-my-request`
@@ -246,32 +237,6 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
         closeStream(stream);
       }
     });
-  });
-
-  // -------------------------------------------------------------------
-  // AC-268 — method gate.
-  // -------------------------------------------------------------------
-  describe('AC-268: method gate', () => {
-    it.each(['POST', 'PUT', 'PATCH', 'DELETE'] as const)(
-      'returns 405 METHOD_NOT_ALLOWED with Allow: GET on %s /api/events',
-      async (method) => {
-        const res = await app.inject({
-          method,
-          url: '/api/events',
-          headers: { cookie: `session=${ownerToken}` },
-        });
-        expect(res.statusCode).toBe(405);
-        // `Allow` header is part of the 405 contract — the storage-usage
-        // route mounts it the same way (storage-usage.ts L60-70).
-        expect(String(res.headers['allow'] ?? '').toUpperCase()).toContain('GET');
-        const body = res.json() as { code?: string; message?: string };
-        expect(body.code).toBe('METHOD_NOT_ALLOWED');
-        // Pins the guard to the shared factory (AC-354). The literal it
-        // replaced carried an English message; asserting the code alone
-        // would not notice a regression back to a hand-rolled body.
-        expect(body.message).toBe(STRINGS.errors.methodNotAllowed);
-      },
-    );
   });
 
   // -------------------------------------------------------------------

@@ -303,87 +303,83 @@ All HTTP endpoints exposed by the Fastify server. Concrete URL structure lives h
 
 <!-- GENERATED:api-surface:START — generated from the routes buildApp() registers (src/server/app.ts); do not hand-edit. See § API Surface Generation below (AC-352). -->
 
-| Method                   | Path                                                | Auth    | Access                 | Rate limit    |
-| ------------------------ | --------------------------------------------------- | ------- | ---------------------- | ------------- |
-| OPTIONS                  | `*`                                                 | none    | —                      | none          |
-| GET                      | `/api/health`                                       | none    | —                      | none          |
-| POST                     | `/api/auth/login`                                   | none    | —                      | 5 / 1 minute  |
-| POST                     | `/api/auth/logout`                                  | session | —                      | none          |
-| GET                      | `/api/auth/me`                                      | session | —                      | none          |
-| PATCH                    | `/api/auth/me`                                      | session | —                      | none          |
-| POST                     | `/api/auth/change-password`                         | session | `auth:change-password` | 5 / 1 minute  |
-| GET                      | `/api/projects`                                     | session | `project:read`         | none          |
-| POST                     | `/api/projects`                                     | session | `project:create`       | none          |
-| GET                      | `/api/projects/:id`                                 | session | `project:read`         | none          |
-| POST                     | `/api/projects/:id/transition/forward`              | session | `project:transition`   | none          |
-| POST                     | `/api/projects/:id/transition/backward`             | session | `project:transition`   | none          |
-| PATCH                    | `/api/projects/:id/dates`                           | session | `project:dates`        | none          |
-| PATCH                    | `/api/projects/:id`                                 | session | `project:update`       | none          |
-| DELETE                   | `/api/projects/:id`                                 | session | `project:delete`       | none          |
-| DELETE                   | `/api/projects/:id/purge`                           | session | `project:purge`        | none          |
-| POST                     | `/api/projects/:id/restore`                         | session | `project:delete`       | none          |
-| GET                      | `/api/customers`                                    | session | `customer:read`        | none          |
-| GET                      | `/api/customers/:id`                                | session | `customer:read`        | none          |
-| POST                     | `/api/customers`                                    | session | `customer:write`       | none          |
-| PATCH                    | `/api/customers/:id`                                | session | `customer:write`       | none          |
-| DELETE                   | `/api/customers/:id`                                | session | `customer:delete`      | none          |
-| GET                      | `/api/users`                                        | session | `user:read`            | none          |
-| GET                      | `/api/users/:id`                                    | session | `user:read`            | none          |
-| POST                     | `/api/users`                                        | session | `user:manage`          | none          |
-| PATCH                    | `/api/users/:id`                                    | session | `user:manage`          | none          |
-| DELETE                   | `/api/users/:id`                                    | session | `user:delete`          | none          |
-| POST                     | `/api/users/:id/deactivate`                         | session | `user:manage`          | none          |
-| POST                     | `/api/users/:id/reactivate`                         | session | `user:manage`          | none          |
-| POST                     | `/api/users/:id/reset-password`                     | session | `user:manage`          | none          |
-| GET                      | `/api/workers`                                      | session | `project:read`         | none          |
-| POST                     | `/api/export-jobs`                                  | session | `data:export`          | none          |
-| GET                      | `/api/export-jobs`                                  | session | `data:export`          | none          |
-| GET                      | `/api/export-jobs/:id`                              | session | `data:export`          | none          |
-| GET                      | `/api/export-jobs/:id/download`                     | session | `data:export`          | none          |
-| POST                     | `/api/import-jobs`                                  | session | `data:restore`         | none          |
-| GET                      | `/api/import-jobs`                                  | session | `data:restore`         | none          |
-| GET                      | `/api/import-jobs/:id`                              | session | `data:restore`         | none          |
-| HEAD                     | `/api/import-jobs/:id/archive`                      | session | `data:restore`         | none          |
-| PATCH                    | `/api/import-jobs/:id/archive`                      | session | `data:restore`         | none          |
-| POST                     | `/api/extract`                                      | session | `customer:write`       | none          |
-| GET                      | `/api/audit`                                        | session | `audit:read`           | none          |
-| GET                      | `/api/audit/:id`                                    | session | `audit:read`           | none          |
-| GET                      | `/api/notification-rules`                           | session | `notifications:manage` | none          |
-| GET                      | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
-| POST                     | `/api/notification-rules`                           | session | `notifications:manage` | none          |
-| PATCH                    | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
-| DELETE                   | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
-| POST                     | `/api/push-subscriptions`                           | session | —                      | 20 / 1 minute |
-| DELETE                   | `/api/push-subscriptions`                           | session | —                      | 20 / 1 minute |
-| DELETE                   | `/api/push-subscriptions/:id`                       | session | —                      | 20 / 1 minute |
-| GET                      | `/api/projects/:id/attachments`                     | session | `attachment:read`      | none          |
-| POST                     | `/api/projects/:id/attachments/init`                | session | `attachment:write`     | none          |
-| POST                     | `/api/projects/:id/attachments/:attId/complete`     | session | `attachment:write`     | none          |
-| DELETE                   | `/api/projects/:id/attachments/:attId`              | session | `attachment:hide`      | none          |
-| GET                      | `/api/projects/:id/attachments/trash`               | session | `attachment:trash`     | none          |
-| POST                     | `/api/projects/:id/attachments/:attId/restore`      | session | `attachment:trash`     | none          |
-| GET                      | `/api/projects/:id/attachments/:attId/download-url` | session | `attachment:read`      | none          |
-| POST                     | `/api/projects/:id/attachments/bulk-fetch`          | session | `attachment:read`      | none          |
-| GET                      | `/api/projects/:id/storage-usage`                   | session | `project:read`         | none          |
-| POST, PUT, PATCH, DELETE | `/api/projects/:id/storage-usage`                   | session | —                      | none          |
-| GET                      | `/api/storage-usage`                                | session | `data:export`          | none          |
-| POST, PUT, PATCH, DELETE | `/api/storage-usage`                                | session | —                      | none          |
-| GET                      | `/api/invoices`                                     | session | —                      | none          |
-| GET                      | `/api/invoices/years`                               | session | —                      | none          |
-| GET                      | `/api/invoices/:id`                                 | session | —                      | none          |
-| POST                     | `/api/invoices`                                     | session | `invoice:write`        | none          |
-| PATCH                    | `/api/invoices/:id`                                 | session | `invoice:write`        | none          |
-| DELETE                   | `/api/invoices/:id`                                 | session | `invoice:write`        | none          |
-| POST                     | `/api/invoices/:id/issue`                           | session | `invoice:write`        | none          |
-| POST                     | `/api/invoices/:id/cancel`                          | session | `invoice:write`        | none          |
-| GET                      | `/api/invoices/:id/pdf`                             | session | `invoice:read`         | none          |
-| POST                     | `/api/invoices/export`                              | session | `invoice:read`         | none          |
-| GET                      | `/api/company-profile`                              | session | —                      | none          |
-| PUT                      | `/api/company-profile`                              | session | Role: owner            | none          |
-| GET                      | `/api/events`                                       | session | —                      | none          |
-| POST, PUT, PATCH, DELETE | `/api/events`                                       | session | —                      | none          |
-| GET                      | `/api/push/vapid-public-key`                        | none    | —                      | none          |
-| POST, PUT, PATCH, DELETE | `/api/push/vapid-public-key`                        | none    | —                      | none          |
+| Method  | Path                                                | Auth    | Access                 | Rate limit    |
+| ------- | --------------------------------------------------- | ------- | ---------------------- | ------------- |
+| OPTIONS | `*`                                                 | none    | —                      | none          |
+| GET     | `/api/health`                                       | none    | —                      | none          |
+| POST    | `/api/auth/login`                                   | none    | —                      | 5 / 1 minute  |
+| POST    | `/api/auth/logout`                                  | session | —                      | none          |
+| GET     | `/api/auth/me`                                      | session | —                      | none          |
+| PATCH   | `/api/auth/me`                                      | session | —                      | none          |
+| POST    | `/api/auth/change-password`                         | session | `auth:change-password` | 5 / 1 minute  |
+| GET     | `/api/projects`                                     | session | `project:read`         | none          |
+| POST    | `/api/projects`                                     | session | `project:create`       | none          |
+| GET     | `/api/projects/:id`                                 | session | `project:read`         | none          |
+| POST    | `/api/projects/:id/transition/forward`              | session | `project:transition`   | none          |
+| POST    | `/api/projects/:id/transition/backward`             | session | `project:transition`   | none          |
+| PATCH   | `/api/projects/:id/dates`                           | session | `project:dates`        | none          |
+| PATCH   | `/api/projects/:id`                                 | session | `project:update`       | none          |
+| DELETE  | `/api/projects/:id`                                 | session | `project:delete`       | none          |
+| DELETE  | `/api/projects/:id/purge`                           | session | `project:purge`        | none          |
+| POST    | `/api/projects/:id/restore`                         | session | `project:delete`       | none          |
+| GET     | `/api/customers`                                    | session | `customer:read`        | none          |
+| GET     | `/api/customers/:id`                                | session | `customer:read`        | none          |
+| POST    | `/api/customers`                                    | session | `customer:write`       | none          |
+| PATCH   | `/api/customers/:id`                                | session | `customer:write`       | none          |
+| DELETE  | `/api/customers/:id`                                | session | `customer:delete`      | none          |
+| GET     | `/api/users`                                        | session | `user:read`            | none          |
+| GET     | `/api/users/:id`                                    | session | `user:read`            | none          |
+| POST    | `/api/users`                                        | session | `user:manage`          | none          |
+| PATCH   | `/api/users/:id`                                    | session | `user:manage`          | none          |
+| DELETE  | `/api/users/:id`                                    | session | `user:delete`          | none          |
+| POST    | `/api/users/:id/deactivate`                         | session | `user:manage`          | none          |
+| POST    | `/api/users/:id/reactivate`                         | session | `user:manage`          | none          |
+| POST    | `/api/users/:id/reset-password`                     | session | `user:manage`          | none          |
+| GET     | `/api/workers`                                      | session | `project:read`         | none          |
+| POST    | `/api/export-jobs`                                  | session | `data:export`          | none          |
+| GET     | `/api/export-jobs`                                  | session | `data:export`          | none          |
+| GET     | `/api/export-jobs/:id`                              | session | `data:export`          | none          |
+| GET     | `/api/export-jobs/:id/download`                     | session | `data:export`          | none          |
+| POST    | `/api/import-jobs`                                  | session | `data:restore`         | none          |
+| GET     | `/api/import-jobs`                                  | session | `data:restore`         | none          |
+| GET     | `/api/import-jobs/:id`                              | session | `data:restore`         | none          |
+| HEAD    | `/api/import-jobs/:id/archive`                      | session | `data:restore`         | none          |
+| PATCH   | `/api/import-jobs/:id/archive`                      | session | `data:restore`         | none          |
+| POST    | `/api/extract`                                      | session | `customer:write`       | none          |
+| GET     | `/api/audit`                                        | session | `audit:read`           | none          |
+| GET     | `/api/audit/:id`                                    | session | `audit:read`           | none          |
+| GET     | `/api/notification-rules`                           | session | `notifications:manage` | none          |
+| GET     | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
+| POST    | `/api/notification-rules`                           | session | `notifications:manage` | none          |
+| PATCH   | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
+| DELETE  | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
+| POST    | `/api/push-subscriptions`                           | session | —                      | 20 / 1 minute |
+| DELETE  | `/api/push-subscriptions`                           | session | —                      | 20 / 1 minute |
+| DELETE  | `/api/push-subscriptions/:id`                       | session | —                      | 20 / 1 minute |
+| GET     | `/api/projects/:id/attachments`                     | session | `attachment:read`      | none          |
+| POST    | `/api/projects/:id/attachments/init`                | session | `attachment:write`     | none          |
+| POST    | `/api/projects/:id/attachments/:attId/complete`     | session | `attachment:write`     | none          |
+| DELETE  | `/api/projects/:id/attachments/:attId`              | session | `attachment:hide`      | none          |
+| GET     | `/api/projects/:id/attachments/trash`               | session | `attachment:trash`     | none          |
+| POST    | `/api/projects/:id/attachments/:attId/restore`      | session | `attachment:trash`     | none          |
+| GET     | `/api/projects/:id/attachments/:attId/download-url` | session | `attachment:read`      | none          |
+| POST    | `/api/projects/:id/attachments/bulk-fetch`          | session | `attachment:read`      | none          |
+| GET     | `/api/projects/:id/storage-usage`                   | session | `project:read`         | none          |
+| GET     | `/api/storage-usage`                                | session | `data:export`          | none          |
+| GET     | `/api/invoices`                                     | session | —                      | none          |
+| GET     | `/api/invoices/years`                               | session | —                      | none          |
+| GET     | `/api/invoices/:id`                                 | session | —                      | none          |
+| POST    | `/api/invoices`                                     | session | `invoice:write`        | none          |
+| PATCH   | `/api/invoices/:id`                                 | session | `invoice:write`        | none          |
+| DELETE  | `/api/invoices/:id`                                 | session | `invoice:write`        | none          |
+| POST    | `/api/invoices/:id/issue`                           | session | `invoice:write`        | none          |
+| POST    | `/api/invoices/:id/cancel`                          | session | `invoice:write`        | none          |
+| GET     | `/api/invoices/:id/pdf`                             | session | `invoice:read`         | none          |
+| POST    | `/api/invoices/export`                              | session | `invoice:read`         | none          |
+| GET     | `/api/company-profile`                              | session | —                      | none          |
+| PUT     | `/api/company-profile`                              | session | Role: owner            | none          |
+| GET     | `/api/events`                                       | session | —                      | none          |
+| GET     | `/api/push/vapid-public-key`                        | none    | —                      | none          |
 
 <!-- GENERATED:api-surface:END -->
 
@@ -391,7 +387,7 @@ Requests to session-protected endpoints without a valid session return `401 UNAU
 
 `—` under **Access** means no gate at the route boundary, which is not "open to every role". Several reads narrow rows by the caller's scope instead of rejecting the call (ADR-0019): a worker's `GET /api/invoices` answers `200` with an empty set, because a permission gate there would collapse the out-of-scope and unknown-id arms into one status (AC-298). Where existence is not a secret at the role boundary, an out-of-scope row answers `403` and an unknown id `404` (AC-147, AC-214).
 
-The rows carrying `POST, PUT, PATCH, DELETE` are explicit `405 METHOD_NOT_ALLOWED` guards sending `Allow: GET`; Fastify's default would be `404`, which [verification.md §15.28](docs/spec/verification.md) does not allow. Session gating runs first, so an unauthenticated call to one of the session-gated three gets `401`, not `405`. `OPTIONS *` is `@fastify/cors`'s preflight route — not an endpoint anyone calls directly, but in the table because the table is the app's route set without exceptions.
+`OPTIONS *` is `@fastify/cors`'s preflight route — not an endpoint anyone calls directly, but in the table because the table is the app's route set without exceptions.
 
 Rate limits are the production values (`getRateLimit()`, `src/server/config/index.ts`). The login default is environment-aware — 5/min in production, 30/min in dev and test so the Playwright suite's per-context logins are not throttled — and `LOGIN_RATE_LIMIT_MAX` overrides both.
 
@@ -438,13 +434,13 @@ The table is complete by construction. What an endpoint _means_ lives in § Endp
 
 **Coverage is exactly `buildApp()`, and enforced in both directions.** `app.swagger()` reports the routes registered on the instance the generator built, so the API surface is complete only while every API route is registered by the factory — which the `no-restricted-syntax` rule in `eslint.config.js` enforces (see § API Surface), with the static-asset registration as its one stated exception. Registration alone is not sufficient, though: `@fastify/swagger` drops every HEAD route unless it opts in — `HEAD /api/import-jobs/:id/archive`, the tus offset probe normative in [api.md §14.2.4](docs/spec/api.md#1424-unified-data-exchange), is one. The generator therefore fails the build (exit 2) on a registered route the document does not publish, excluding only Fastify's automatic HEAD companions (matched by handler identity, as § API Surface Generation does) and routes carrying `@fastify/swagger`'s own `schema: { hide: true }` opt-out, which `@fastify/cors` sets on its `OPTIONS *` preflight. Both exclusions are structural; neither is a list of names.
 
-A route with no `schema:` block still appears, carrying only what is derived from the route rather than from a schema: `/api/health` publishes `{"get": {"security": []}}`, which says the endpoint exists and needs no session, and nothing more. **26 of the document's 90 operations carry nothing beyond that security requirement** — every registration that declares no `schema:` block, the `405` method guards on `/api/events`, `/api/storage-usage` and `/api/push/vapid-public-key` included. Closing that gap is #282's work; the count is stated here so the gap is visible from the document rather than something a reader has to count.
+A route with no `schema:` block still appears, carrying only what is derived from the route rather than from a schema: `/api/health` publishes `{"get": {"security": []}}`, which says the endpoint exists and needs no session, and nothing more. **14 of the document's 74 operations carry nothing beyond that security requirement** — every registration that declares no `schema:` block. Closing that gap is #282's work; the count is stated here so the gap is visible from the document rather than something a reader has to count.
 
 **Not in `docs/spec/`, deliberately.** The spec is the upstream contract the app must fulfil; this artifact is derived from the code, so it is downstream by construction (A-TRDO). Filing it under `docs/spec/` would point CI at enforcing that an upstream contract matches the implementation — a route schema regressing would silently drag the "spec" along with it. [api.md §14.2](docs/spec/api.md#142-operations) stays normative and hand-authored; `openapi.json` is a machine-readable view of the request surface only, and where the two disagree, api.md wins.
 
 The document targets OpenAPI **3.1.x**, not 3.0.x, for two reasons: 3.0's Draft-4-based Schema Object rejects array-valued `type` (the `type: ['string', 'null']` nullable idiom used throughout the route schemas) and numeric `exclusiveMinimum`, both of which 3.1's JSON Schema 2020-12 Schema Object accepts natively; and 3.1 makes `responses` optional on the Operation Object, which 3.0 required.
 
-That second point is what keeps the artifact honest. No route declares a `response:` schema today, and `@fastify/swagger` fills the gap with a synthetic `200 Default Response` derived from nothing — false for every operation (nine routes return 201, eight return 204, four sites return 405). The generator strips it, so the document is silent about responses rather than wrong about them, and **documents requests only** is literally true. The all-empty `components` block `@fastify/swagger` emits (`{"schemas": {}}`) goes for the same reason — the block the published document does carry holds nothing but the `securitySchemes` entry added below.
+That second point is what keeps the artifact honest. No route declares a `response:` schema today, and `@fastify/swagger` fills the gap with a synthetic `200 Default Response` derived from nothing — false for every operation (nine routes return 201, eight return 204). The generator strips it, so the document is silent about responses rather than wrong about them, and **documents requests only** is literally true. The all-empty `components` block `@fastify/swagger` emits (`{"schemas": {}}`) goes for the same reason — the block the published document does carry holds nothing but the `securitySchemes` entry added below.
 
 **Two things are gated, not one.** `--check` catches _drift_ (generated ≠ committed). On its own that would stay green on a structurally invalid document, because both sides would be equally wrong. So the generator also validates every document it produces against the OpenAPI 3.1 schema (`@seriousme/openapi-schema-validator`) before writing or comparing, and asserts the version it validated as — the validator picks its schema from the document's own `openapi:` field, so a document that silently declared 3.0 would otherwise be checked against 3.0's schema and pass. `$OPENAPI_INJECT_INVALID` is the fault-injection seam that lets the scenario harness prove the gate is wired; without it the gate is unfalsifiable, since a document built from the real routes is always valid.
 
@@ -471,10 +467,6 @@ The document's header — the version it declares, `info`, `servers` — lives i
 `ERROR_CODES` (`src/server/errors.ts`) is the one runtime form of the code set; `ErrorCode` is derived from it (`(typeof ERROR_CODES)[number]`) — a union has no runtime form, so nothing can read it, publish it, or emit it as an OpenAPI enum. Every code is minted by a named factory in the same module.
 
 [api.md §14.4.1](docs/spec/api.md#1441-error-categories) mirrors the array between `CHECKED:error-codes` markers, checked rather than generated: the block is a transcription, not a derivation, so `src/server/__tests__/error-codes.test.ts` pins it (AC-354) and absent markers fail rather than pass vacuously. **The rule: generate a derived artifact, check a transcribed one.** Only the set is pinned — the per-code prose below the end marker exists nowhere in the code and stays hand-written.
-
-Headers a status is invalid without ride on the error (`AppError.headers`) and are written by the global handler with the body: `methodNotAllowed(['GET'])` takes the admitted verbs, the handler emits `Allow` (RFC 9110 §15.5.6). 405 is its only use today.
-
-Four endpoint groups ([api.md §14.2](docs/spec/api.md#142-operations) §14.2.8, §14.2.11, §14.2.14, §14.2.15) still answer `404 ROUTE_NOT_FOUND` where the contract requires a 405 — tracked in #282.
 
 ---
 

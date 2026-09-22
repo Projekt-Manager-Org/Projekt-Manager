@@ -24,11 +24,6 @@
  *     mutation.
  *   - AT-125 / AC-305: issue rejected when profile incomplete; sequence
  *     lock released; subsequent successful issue claims the value.
- *
- * Pre-impl red state: no route, no schema for `company_profile`,
- * no audit-entity-type entry, no DB CHECK. Every test fails at
- * either the route layer (404 ROUTE_NOT_FOUND) or the table-exists
- * step (`relation "company_profile" does not exist`).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -188,17 +183,14 @@ describe('AT-121 / AC-300, AC-301: company-profile role matrix + singleton invar
     expect(res.statusCode).toBe(401);
   });
 
-  it('POST is not addressable (no create surface — spec §14.2.15) → 404 / 405', async () => {
+  it('POST is not addressable (no create surface — spec §14.2.15) → 404', async () => {
     const res = await authPost(ownerToken, '/api/company-profile', completeProfileBody);
-    // Either 404 ROUTE_NOT_FOUND (no handler bound to POST) or 405
-    // METHOD_NOT_ALLOWED (explicit deny) is spec-conformant. The
-    // load-bearing assertion is that POST is NOT a viable create path.
-    expect([404, 405]).toContain(res.statusCode);
+    expect(res.statusCode).toBe(404);
   });
 
-  it('DELETE is not addressable (the singleton row cannot be deleted) → 404 / 405', async () => {
+  it('DELETE is not addressable (the singleton row cannot be deleted) → 404', async () => {
     const res = await authDelete(ownerToken, '/api/company-profile');
-    expect([404, 405]).toContain(res.statusCode);
+    expect(res.statusCode).toBe(404);
   });
 
   // -----------------------------------------------------------------

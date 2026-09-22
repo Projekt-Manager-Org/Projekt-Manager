@@ -37,15 +37,6 @@
  * the AC-179 architecture-check allowlist (mirrors the pattern in
  * `attachments-hidden-reaper.test.ts` which also drives raw SQL inserts
  * to backdate row timestamps the service surface won't allow).
- *
- * Pre-impl red state: the `project_storage_usage` table does not exist
- * yet, so the AC-263 `readUsageRow` SQL throws "relation does not
- * exist" — surfacing as a per-test failure. The AC-264 / AC-265 routes
- * do not exist yet, so the framework's not-found handler returns
- * `code: 'ROUTE_NOT_FOUND'` (per `error-handler.ts:installNotFoundHandler`)
- * which fails the `statusCode === 200` and `code === 'NOT_FOUND'`
- * assertions — distinct from a successful resource-not-found response,
- * matching the project's TDD red convention.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -61,10 +52,8 @@ import {
   authPost,
   authDelete,
   createTestUserSession,
-  getApp,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
-import { STRINGS } from '../../config/strings.js';
 import { createDatabase } from '../db/connection.js';
 import type { Database } from '../db/connection.js';
 
@@ -657,28 +646,6 @@ describe('Project storage usage tracking', () => {
       expect(res.statusCode).toBe(200);
       expect(await countAuditRows(db)).toBe(before);
     });
-
-    it.each(['POST', 'PUT', 'PATCH', 'DELETE'] as const)(
-      'rejects %s with 405 METHOD_NOT_ALLOWED (api.md §14.2.12 error path)',
-      async (method) => {
-        const res = await getApp().inject({
-          method,
-          url: `/api/projects/${assignedProjectId}/storage-usage`,
-          headers: { cookie: `session=${ownerToken}` },
-        });
-        expect(res.statusCode).toBe(405);
-        // RFC 9110 §15.5.6 — mandatory on a 405. Carried by the factory
-        // rather than set here, so this asserts the wiring reaches the
-        // wire, not that this call site remembered it (AC-354).
-        expect(res.headers['allow']).toBe('GET');
-        const body = res.json() as { code?: string; message?: string };
-        // The status alone left the body untested: this guard answered
-        // with a code absent from the catalogue and an English message
-        // for as long as it existed (AC-354).
-        expect(body.code).toBe('METHOD_NOT_ALLOWED');
-        expect(body.message).toBe(STRINGS.errors.methodNotAllowed);
-      },
-    );
   });
 
   // -------------------------------------------------------------------
@@ -769,27 +736,5 @@ describe('Project storage usage tracking', () => {
       expect(body.ready.plaintext).toBeGreaterThanOrEqual(7777);
       expect(body.ready.ciphertext).toBeGreaterThanOrEqual(7841);
     });
-
-    it.each(['POST', 'PUT', 'PATCH', 'DELETE'] as const)(
-      'rejects %s with 405 METHOD_NOT_ALLOWED (api.md §14.2.12 error path)',
-      async (method) => {
-        const res = await getApp().inject({
-          method,
-          url: '/api/storage-usage',
-          headers: { cookie: `session=${ownerToken}` },
-        });
-        expect(res.statusCode).toBe(405);
-        // RFC 9110 §15.5.6 — mandatory on a 405. Carried by the factory
-        // rather than set here, so this asserts the wiring reaches the
-        // wire, not that this call site remembered it (AC-354).
-        expect(res.headers['allow']).toBe('GET');
-        const body = res.json() as { code?: string; message?: string };
-        // The status alone left the body untested: this guard answered
-        // with a code absent from the catalogue and an English message
-        // for as long as it existed (AC-354).
-        expect(body.code).toBe('METHOD_NOT_ALLOWED');
-        expect(body.message).toBe(STRINGS.errors.methodNotAllowed);
-      },
-    );
   });
 });

@@ -2,9 +2,9 @@
  * Company-profile routes — singleton GET + owner-only PUT
  * (api.md §14.2.15, ADR-0026, data-model.md §5.17).
  *
- * POST and DELETE are deliberately NOT registered — the row is a
- * singleton (DB CHECK + BEFORE-DELETE trigger). The default Fastify
- * 404 covers both. AT-121 accepts either 404 or 405; 404 is fine.
+ * POST and DELETE are deliberately NOT registered (singleton row: DB
+ * CHECK + BEFORE-DELETE trigger); like any unserved verb they answer
+ * `404 ROUTE_NOT_FOUND` (api.md §14.4.1).
  *
  * Authorization:
  *   - GET: any authenticated role (the profile is referenced by invoice

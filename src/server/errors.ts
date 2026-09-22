@@ -32,7 +32,6 @@ export const ERROR_CODES = [
   'IDEMPOTENCY_CONFLICT',
   'NOT_FOUND',
   'ROUTE_NOT_FOUND',
-  'METHOD_NOT_ALLOWED',
   'GONE',
   'RATE_LIMITED',
   'SCHEMA_VERSION_MISMATCH',
@@ -76,13 +75,6 @@ export class AppError extends Error {
     public readonly userMessage: string,
     public readonly statusCode: number,
     public readonly details?: unknown,
-    /**
-     * Response headers the status code is not valid without. Applied by
-     * the global handler (`error-handler.ts`) in the same place the body
-     * is written, so a status whose contract includes a header cannot
-     * reach the wire missing it — see `methodNotAllowed()`.
-     */
-    public readonly headers?: Readonly<Record<string, string>>,
   ) {
     super(userMessage);
     this.name = 'AppError';
@@ -282,28 +274,13 @@ export function notFound(entity: string = STRINGS.entities.resource): AppError {
 }
 
 /**
- * The requested URL has no registered handler. Distinct from `notFound()`
- * (entity missing on a known endpoint) — see api.md §14.4.1 / AC-247.
+ * The request's method and URL match no registered handler — an unknown
+ * URL, or a known one under a verb it does not serve. Distinct from
+ * `notFound()` (entity missing on a known endpoint) — see api.md §14.4.1
+ * / AC-247.
  */
 export function routeNotFound(): AppError {
   return new AppError('ROUTE_NOT_FOUND', STRINGS.errors.routeNotFound, 404);
-}
-
-/**
- * The URL has a registered handler, but not for the requested verb —
- * api.md §14.4.1. Distinct from `routeNotFound()`: the endpoint exists,
- * the verb does not.
- *
- * The admitted verbs are the route's knowledge, so the caller supplies
- * them — but it supplies them *here* rather than setting `Allow` itself,
- * which is what makes status and header inseparable. RFC 9110 §15.5.6
- * and the argument for binding the two:
- * [ARCHITECTURE.md § Error-Code Catalogue](../../ARCHITECTURE.md#error-code-catalogue).
- */
-export function methodNotAllowed(allowed: readonly string[]): AppError {
-  return new AppError('METHOD_NOT_ALLOWED', STRINGS.errors.methodNotAllowed, 405, undefined, {
-    allow: allowed.join(', '),
-  });
 }
 
 /**
