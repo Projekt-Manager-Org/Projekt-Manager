@@ -43,8 +43,9 @@ export type Role =
  * variant forces an update to this map — otherwise `tsc` errors with a
  * missing key — mirroring `ROLE_CLASSIFICATION` in
  * `src/server/repositories/scope.ts`. `ROLE_KEYS` (src/config/roleKeys.ts)
- * and the generated permission matrix (docs/spec/api.md §14.3) both derive
- * their production-role set from this map rather than hand-listing roles.
+ * derives its production-role set from this map rather than hand-listing
+ * roles, and the published permission matrix (docs/spec/api.md §14.3) is
+ * checked against that set.
  */
 export const IS_TEST_ONLY_ROLE: Record<Role, boolean> = {
   owner: false,

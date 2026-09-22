@@ -23,36 +23,29 @@ import {
   visibleRoutesForUser,
   type RouteAccess,
   type RouteCaller,
+  type RouteEntry,
 } from '@/config/routes';
+import { ROLE_KEYS } from '@/config/roleKeys';
+import { readCheckedBlock, tableRows } from '@/test/checkedBlock';
 
 type RoleName = 'owner' | 'office' | 'worker' | 'bookkeeper';
 
 const caller = (role: RoleName): RouteCaller => ({ roles: [role] });
 
 /**
- * Hand-written mirror of the nav matrix published at
- * `docs/spec/ui/index.md §8.7.1`, one row per route in table order.
+ * Hand-written mirror of the route table, one row per entry in table
+ * order — the code-side pin.
  *
- * This is the binding assertion, and it has to be hand-written to be
- * worth anything: §8.7.1 is GENERATED from `ROUTE_DEFINITIONS`, so it
- * agrees with the code by construction and cannot by itself catch an
- * unintended change. Reconciling a diff here is the manual step the
- * generator removed everywhere else.
+ * §8.7.1 is checked against `ROUTES` as well (below), but it publishes
+ * only the nav entries and resolves roles through `ROLE_KEYS`. This table
+ * also covers the parametrized entries (deep-link targets, omitted from
+ * the published table), spells every role set out literally, and feeds
+ * the per-role nav sets (AC-75).
  *
- * Every column the generator publishes is pinned, `access` included.
- * Pinning only the resolved role set would leave the RULE unguarded:
- * `{kind:'permission', permission:'invoice:read'}` could become
- * `{kind:'role', roles:['owner','office','bookkeeper']}` with every test
- * green, while the published spec silently stopped saying that
- * `invoice:read` is what gates the view. That rule is the reason
- * `RouteAccess` is data rather than a closure, so it is the last column
- * that should go unasserted.
- *
- * `roles` is the rule resolved against the production role set and
- * `landing` the post-login view for a caller holding that role alone —
- * both per api.md §14.3 + ADR-0023 + AC-198. Parametrized entries are
- * deep-link targets, omitted from the published table but pinned here so
- * no row of the route table is unasserted.
+ * Every column is pinned, `access` included: the rule, not only the role
+ * set it resolves to today. `roles` is that rule resolved against the
+ * production role set and `landing` the post-login view for a caller
+ * holding that role alone — both per api.md §14.3 + ADR-0023 + AC-198.
  */
 const ROUTE_TABLE: readonly {
   readonly view: string;
@@ -184,7 +177,7 @@ const LANDINGS: Record<RoleName, string> = {
 };
 
 /**
- * The landing rule as published below the generated block, first-match.
+ * The landing rule as published in §8.7.1, first-match.
  * Pinned as an ordered list because the ORDER is the exclusion rule — the
  * per-role `landing` column above cannot express that an owner who is
  * also the bookkeeper lands on Kanban.
@@ -195,13 +188,48 @@ const LANDING_RULES: readonly { roles: readonly RoleName[]; view: string }[] = [
   { roles: ['bookkeeper'], view: 'rechnungen' },
 ];
 
-describe('ROUTES — published nav matrix (AC-349)', () => {
-  // §8.7.1 is generated from this table, so the generator can only ever
-  // report agreement. These are the assertions that can disagree.
+const NAV_DOC = 'docs/spec/ui/index.md';
 
-  it('has exactly the published rows, in published order', () => {
+/** The production roles a per-role predicate admits, as a §8.7.1 cell. */
+const roleCell = (admits: (caller: RouteCaller) => boolean): string =>
+  ROLE_KEYS.filter((role) => admits({ roles: [role] })).join(', ') || '—';
+
+/** A route as §8.7.1 publishes it: the rule, then what it resolves to. */
+const publishedRow = (entry: RouteEntry): string[] => [
+  `\`${entry.view}\``,
+  `\`${entry.path}\``,
+  `"${entry.label}"`,
+  entry.access.kind === 'role'
+    ? `Role: ${entry.access.roles.join(', ')}`
+    : `\`${entry.access.permission}\``,
+  roleCell(entry.canAccess),
+  roleCell(entry.isDefaultFor),
+];
+
+describe('ROUTES — published nav matrix (AC-349)', () => {
+  it('ui/index.md §8.7.1 publishes exactly the nav entries of ROUTES', () => {
+    const published = tableRows(readCheckedBlock(NAV_DOC, 'nav-matrix'));
+    // Parametrized paths are deep-link targets, not nav entries — the
+    // same `/:` filter `visibleRoutesForUser` applies.
+    const expected = ROUTES.filter((r) => !r.path.includes('/:')).map(publishedRow);
+    expect(published).toEqual(expected);
+  });
+
+  it('ui/index.md §8.7.1 publishes exactly LANDING_ORDER', () => {
+    const block = readCheckedBlock(NAV_DOC, 'nav-matrix');
+    // `owner / office → \`kanban\`` — the table carries no arrows, so
+    // every match belongs to the first-match order below it.
+    const published = [...block.matchAll(/(\w+(?: \/ \w+)*) → `(\w+)`/g)].map(
+      ([, roles, view]) => ({ roles: roles.split(' / '), view }),
+    );
+    expect(published).toEqual(
+      LANDING_ORDER.map((entry) => ({ roles: [...entry.roles], view: entry.view })),
+    );
+  });
+
+  it('has exactly the pinned rows, in table order', () => {
     // Order is load-bearing twice over: the Header renders in table order
-    // and the generator publishes in table order.
+    // and §8.7.1 publishes in table order.
     expect(ROUTES.map((r) => r.view)).toEqual(ROUTE_TABLE.map((r) => r.view));
   });
 

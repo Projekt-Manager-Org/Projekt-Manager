@@ -30,8 +30,6 @@
     "demo:hero": "node scripts/demo/encode.mjs --hero",
     "gen:pwa-icons": "node scripts/generate-pwa-icons.mjs",
     "check:tokens": "bash scripts/check-theme-tokens.sh",
-    "check:permissions-doc": "tsx scripts/generate-permissions-doc.ts --check",
-    "check:nav-doc": "tsx scripts/generate-nav-doc.ts --check",
     "check:openapi": "tsx scripts/generate-openapi.ts --check",
     "check:api-surface": "tsx scripts/generate-api-surface.ts --check",
     "check:doc-paths": "bash scripts/check-doc-paths.sh",
@@ -48,11 +46,7 @@
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": "eslint --fix",
-    "**/*": "prettier --write --ignore-unknown",
-    "src/config/{permissions,roleKeys}.ts": [
-      "tsx scripts/generate-permissions-doc.ts",
-      "git add docs/spec/api.md"
-    ]
+    "**/*": "prettier --write --ignore-unknown"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1047.0",

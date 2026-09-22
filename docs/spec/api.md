@@ -495,7 +495,7 @@ Design notes:
 - All API operations require authentication (valid, active session).
 - The system implements a basic role-based permission matrix. All authenticated, active users can view all projects (list, get) and change their own password. Other operations — including mutations, imports, and exports — require specific permissions granted by role:
 
-<!-- GENERATED:permissions-table:START — generated from ROLE_PERMISSIONS (src/config/permissions.ts); do not hand-edit. See ARCHITECTURE.md for the generation mechanism (AC-343). -->
+<!-- CHECKED:permissions-table:START — mirrors ROLE_PERMISSIONS (src/config/permissions.ts) over the production roles, pinned by src/config/__tests__/permissions.test.ts (AC-343). Edit the config, then this block. -->
 
 | Role       | Permissions                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -504,7 +504,7 @@ Design notes:
 | worker     | attachment:hide, attachment:read, attachment:write, auth:change-password, customer:read, project:read                                                                                                                                                                                                                                                                                     |
 | bookkeeper | attachment:read, auth:change-password, customer:read, invoice:read, project:read                                                                                                                                                                                                                                                                                                          |
 
-<!-- GENERATED:permissions-table:END -->
+<!-- CHECKED:permissions-table:END -->
 
 Design notes:
 

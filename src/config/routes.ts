@@ -73,9 +73,11 @@ export type RouteView =
  * directly on role (Kanban, Kalender, Projekte, Kunden) or on a
  * permission the role matrix grants (Benutzer → `user:manage`).
  *
- * Readable by construction — `scripts/generate-nav-doc.ts` publishes
- * the rule verbatim, and resolves it against `ROLE_KEYS` to publish the
- * role set alongside. Neither is hand-transcribed into the spec.
+ * Readable by construction: the spec's nav matrix (ui/index.md §8.7.1)
+ * publishes the rule verbatim beside the role set it resolves to, and
+ * `routes.test.ts` checks both against this table (AC-349). A closure
+ * could be evaluated but not compared, so only the role set would be
+ * checkable.
  */
 export type RouteAccess =
   | { readonly kind: 'role'; readonly roles: readonly Role[] }
@@ -142,10 +144,10 @@ function allows(access: RouteAccess, caller: RouteCaller): boolean {
  * - **bookkeeper → Rechnungen.** The invoice register
  *   (search/filter/export) is their primary workflow.
  *
- * Exported so `scripts/generate-nav-doc.ts` can publish the ORDER, not
- * just the per-role outcome. Resolving each role on its own loses the
- * rule — the matrix would show `bookkeeper → Rechnungen` and never say
- * that an owner who is also the bookkeeper lands on Kanban.
+ * Exported so `routes.test.ts` can check the ORDER §8.7.1 publishes,
+ * not just the per-role outcome. Resolving each role on its own loses
+ * the rule — the matrix would show `bookkeeper → Rechnungen` and never
+ * say that an owner who is also the bookkeeper lands on Kanban.
  */
 export const LANDING_ORDER: readonly {
   readonly roles: readonly Role[];

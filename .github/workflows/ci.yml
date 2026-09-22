@@ -473,26 +473,6 @@ jobs:
       - name: Check theme token hygiene
         run: npm run check:tokens
 
-      # Enforce AC-343 — the role-permission matrix in docs/spec/api.md
-      # §14.3 is generated from ROLE_PERMISSIONS (src/config/permissions.ts),
-      # not hand-authored. Fails the build when the published table and the
-      # source config diverge.
-      - name: Permissions doc drift check (AC-343)
-        run: npm run check:permissions-doc
-
-      - name: Permissions doc drift check — self-test
-        run: bash scripts/__tests__/check-permissions-doc.test.sh
-
-      # Enforce AC-349 — the per-role nav matrix in docs/spec/ui/index.md
-      # §8.7.1 is generated from ROUTE_DEFINITIONS (src/config/routes.ts).
-      # Only the derivable columns are generated; the per-view prose below
-      # the end marker is hand-written spec intent and stays untouched.
-      - name: Nav matrix drift check (AC-349)
-        run: npm run check:nav-doc
-
-      - name: Nav matrix drift check — self-test
-        run: bash scripts/__tests__/check-nav-doc.test.sh
-
       # Enforce AC-351 — docs/api/openapi.json is generated from the native
       # Fastify route `schema:` blocks, not hand-authored. The generator
       # self-provisions its env placeholders, so this needs no DB/MinIO.

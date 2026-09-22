@@ -20,15 +20,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import * as errors from '../errors.js';
 import { AppError, ERROR_CODES, type ErrorCode } from '../errors.js';
-
-const API_DOC = resolve(dirname(fileURLToPath(import.meta.url)), '../../../docs/spec/api.md');
-const CHECKED_BLOCK =
-  /<!-- CHECKED:error-codes:START[\s\S]*?-->([\s\S]*?)<!-- CHECKED:error-codes:END -->/;
+import { readCheckedBlock } from '../../test/checkedBlock.js';
 
 /**
  * Every factory, with arguments good enough to call it. Hand-maintained
@@ -75,13 +69,9 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
 
 describe('AC-354: error-code catalogue', () => {
   it('api.md §14.4.1 publishes exactly ERROR_CODES', () => {
-    const block = CHECKED_BLOCK.exec(readFileSync(API_DOC, 'utf8'))?.[1];
-    // A lost marker must fail rather than skip: the equality below would
-    // otherwise pass vacuously on a document that no longer carries the
-    // block at all.
-    expect(block, 'CHECKED:error-codes markers not found in docs/spec/api.md').toBeDefined();
-
-    const published = [...(block ?? '').matchAll(/`([A-Z_]+)`/g)].map(([, code]) => code);
+    // Throws on lost markers rather than returning an empty block.
+    const block = readCheckedBlock('docs/spec/api.md', 'error-codes');
+    const published = [...block.matchAll(/`([A-Z_]+)`/g)].map(([, code]) => code);
     // Order included — declaration order is publication order, and a
     // sorted catalogue loses the domain grouping that is its only
     // structure. One equality covers both drift directions: a code the
