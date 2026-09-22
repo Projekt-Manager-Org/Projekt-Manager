@@ -11,11 +11,6 @@
  * `authenticate` preHandler as every other gated `/api/*` plugin and
  * does not narrow further by role.
  *
- * Method gate: `POST` / `PUT` / `PATCH` / `DELETE` return 405 with
- * `Allow: GET`, mirroring `storage-usage.ts`. Without an explicit
- * handler Fastify would answer 404 on these verbs, which the spec
- * (verification.md §15.28) does not allow.
- *
  * The 25-second heartbeat is configurable via `SSE_HEARTBEAT_INTERVAL_MS`
  * — see `src/server/config/env.ts`. Each connection runs its own
  * `setInterval` (architecture.md §11.13: "Independent per connection;
@@ -36,7 +31,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
 import { requireSession } from '../middleware/auth.js';
-import { methodNotAllowed } from '../errors.js';
 import { subscribe, unsubscribe, type SseConnection } from '../sse/bus.js';
 import { AuthService } from '../services/AuthService.js';
 import { getEnv } from '../config/env.js';
@@ -130,14 +124,6 @@ export function eventsRoutes(db: Database) {
       request.raw.on('close', teardown);
       request.raw.on('error', teardown);
       subscribe(conn);
-    });
-
-    app.route({
-      method: ['POST', 'PUT', 'PATCH', 'DELETE'],
-      url: '/api/events',
-      handler: async () => {
-        throw methodNotAllowed(['GET']);
-      },
     });
   };
 }

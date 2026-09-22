@@ -29,7 +29,7 @@ import {
   installNotFoundHandler,
   installSpaAwareNotFoundHandler,
 } from '../error-handler.js';
-import { methodNotAllowed, serverError } from '../errors.js';
+import { notFound, serverError } from '../errors.js';
 import { registerStaticAssets } from '../staticCache.js';
 
 const TINY_BODY_LIMIT = 100;
@@ -146,6 +146,14 @@ describe('AC-247 / AT-108 — Global error handler 4xx pass-through', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  it('known URL under a verb it does not serve → 404 ROUTE_NOT_FOUND (api.md §14.4.1)', async () => {
+    // An unserved verb is routed exactly like an unknown URL, so every
+    // endpoint answers it the same way.
+    const res = await app.inject({ method: 'GET', url: '/test/echo' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('ROUTE_NOT_FOUND');
+  });
+
   // ---------------- Existing branches: regression guards ----------------
 
   it('schema-validation rejection still → 422 VALIDATION_ERROR with details', async () => {
@@ -227,13 +235,13 @@ describe('AT-108 — an AppError carrying a 5xx logs at the operational error le
 
   it('4xx AppError stays below error level — 5xx alerting keeps its meaning', async () => {
     // The other half of AC-247's rationale. Logging every `AppError`
-    // would fix the silence by drowning it: a 405 from a stale client is
-    // not an incident.
+    // would fix the silence by drowning it: a 404 for a stale id is not
+    // an incident.
     const { res, errorLines } = await inject('/nope', async () => {
-      throw methodNotAllowed(['GET']);
+      throw notFound();
     });
 
-    expect(res.statusCode).toBe(405);
+    expect(res.statusCode).toBe(404);
     expect(errorLines).toEqual([]);
   });
 });

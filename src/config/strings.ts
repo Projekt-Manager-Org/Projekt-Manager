@@ -32,7 +32,6 @@ export const STRINGS = {
     invalidInput: 'Ungültige Eingabe.',
     notFound: (entity: string) => `${entity} nicht gefunden.`,
     routeNotFound: 'Die angeforderte URL existiert nicht.',
-    methodNotAllowed: 'Diese Methode ist für diesen Endpunkt nicht erlaubt.',
     // Resumable-upload (tus) header rejections — api.md §14.2.4. The
     // header names stay untranslated: they are protocol tokens the
     // client sends verbatim, not prose.

@@ -17,16 +17,12 @@
  *
  * Both surfaces are pure reads; no `audit_log` row, no `Cache-Control`
  * header (the maintained-aggregate pattern keeps reads constant-time
- * already, and a stale cache serves no purpose). Non-GET verbs on
- * either path return 405 with `Allow: GET` — explicit method handling
- * because Fastify's default 404-for-unknown-method response would not
- * carry the documented status code.
+ * already, and a stale cache serves no purpose).
  */
 
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
 import { requirePermission, requireSession } from '../middleware/auth.js';
-import { methodNotAllowed } from '../errors.js';
 import { StorageUsageService } from '../services/StorageUsageService.js';
 
 export function storageUsageRoutes(db: Database) {
@@ -57,14 +53,6 @@ export function storageUsageRoutes(db: Database) {
       },
     );
 
-    app.route({
-      method: ['POST', 'PUT', 'PATCH', 'DELETE'],
-      url: '/api/projects/:id/storage-usage',
-      handler: async () => {
-        throw methodNotAllowed(['GET']);
-      },
-    });
-
     // ---------------------------------------------------------------
     // GET /api/storage-usage — AC-265 (data:export gate)
     // ---------------------------------------------------------------
@@ -78,13 +66,5 @@ export function storageUsageRoutes(db: Database) {
         return reply.code(200).send(usage);
       },
     );
-
-    app.route({
-      method: ['POST', 'PUT', 'PATCH', 'DELETE'],
-      url: '/api/storage-usage',
-      handler: async () => {
-        throw methodNotAllowed(['GET']);
-      },
-    });
   };
 }

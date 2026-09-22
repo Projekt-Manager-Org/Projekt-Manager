@@ -31,14 +31,6 @@ import { STRINGS } from '../config/strings.js';
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
-      // Headers the status is not valid without (e.g. `Allow` on a 405,
-      // RFC 9110 §15.5.6). Written here, with the body, so the pair
-      // cannot come apart at an individual call site.
-      if (error.headers) {
-        for (const [name, value] of Object.entries(error.headers)) {
-          reply.header(name, value);
-        }
-      }
       // AC-247's triage contract is about the status class, not about
       // which branch produced it: a 5xx is a genuine server failure and
       // logs at `error` like any other.

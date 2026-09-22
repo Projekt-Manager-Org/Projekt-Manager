@@ -1901,106 +1901,10 @@
             "sessionCookie": []
           }
         ]
-      },
-      "post": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "put": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "patch": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "delete": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
       }
     },
     "/api/storage-usage": {
       "get": {
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "post": {
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "put": {
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "patch": {
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "delete": {
         "security": [
           {
             "sessionCookie": []
@@ -2575,50 +2479,10 @@
             "sessionCookie": []
           }
         ]
-      },
-      "post": {
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "put": {
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "patch": {
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      },
-      "delete": {
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
       }
     },
     "/api/push/vapid-public-key": {
       "get": {
-        "security": []
-      },
-      "post": {
-        "security": []
-      },
-      "put": {
-        "security": []
-      },
-      "patch": {
-        "security": []
-      },
-      "delete": {
         "security": []
       }
     }
