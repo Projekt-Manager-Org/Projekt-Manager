@@ -367,7 +367,7 @@ export function pathFromView(view: RouteView): string {
  *
  * Exported so Header and MobileTabBar consume a single source of truth.
  * Unlike the nav matrix itself, this grouping is NOT checked — it is
- * hand-synced with the "Primary / secondary header grouping" paragraph
+ * hand-synced with the "Primary / secondary grouping" paragraph
  * in `docs/spec/ui/index.md §8.7.1`, below the checked block.
  */
 export const SECONDARY_VIEWS: readonly RouteView[] = [
