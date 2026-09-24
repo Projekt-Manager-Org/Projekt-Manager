@@ -35,10 +35,6 @@ function setAuthUser(roles: string[]): void {
 }
 
 // Expected nav affordances per role — primary + secondary combined.
-// Worker deliberately excludes `aktivitaet`: the permission is retained
-// (deep-link and server-side scoping still work), but the tab is not
-// surfaced because worker-visible rows are too narrow to justify the
-// nav slot (see Header.tsx comment + docs/spec/ui/index.md §8.7.1 note).
 // `rechnungen` (invoice:read) — owner / office surface it via Verwaltung;
 // bookkeeper renders it inline (only secondary entry → menu suppressed).
 const MATRIX: Record<string, readonly string[]> = {
