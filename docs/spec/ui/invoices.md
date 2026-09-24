@@ -8,7 +8,7 @@ Shell and navigation live in [index.md](index.md); cross-cutting behavioral rule
 
 ## 8.16 Invoices View
 
-Reachable at `/rechnungen` from primary navigation (secondary "Verwaltung" group for owner / office, primary for bookkeeper). Visible to callers with `invoice:read`. Workers do not see the entry.
+Reachable at `/rechnungen`; nav placement per [index.md §8.7.1](index.md#871-views). Visible to callers with `invoice:read`. Workers do not see the entry.
 
 ### 8.16.1 List View
 

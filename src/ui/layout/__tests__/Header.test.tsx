@@ -61,7 +61,7 @@ const MATRIX: Record<string, readonly string[]> = {
 // menu trigger. Others render their (zero or one) secondary routes
 // inline, so no trigger is rendered. Bookkeeper has only `rechnungen` in
 // its secondary bucket, so no menu — see the SECONDARY_VIEWS rationale
-// in Header.tsx.
+// in src/config/routes.ts.
 const ROLES_WITH_ADMIN_MENU = new Set(['owner', 'office']);
 
 const ALL_VIEWS = [

@@ -30,8 +30,8 @@ export function MobileTabBar() {
   // single-item secondary bucket renders inline alongside the primary
   // tabs so the user reaches it in one tap. Bookkeeper's only secondary
   // entry is `rechnungen`, so on a phone they see `Rechnungen` next to
-  // Projekte / Kunden rather than buried in a Verwaltung dropdown the
-  // mobile shell never renders.
+  // Projekte / Kunden rather than behind the header's Verwaltung
+  // dropdown.
   const visibleRoutes = visibleRoutesForUser(authUser);
   const primaryRoutes = visibleRoutes.filter((r) => !SECONDARY_VIEWS.includes(r.view));
   const secondaryRoutes = visibleRoutes.filter((r) => SECONDARY_VIEWS.includes(r.view));

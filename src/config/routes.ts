@@ -138,7 +138,7 @@ function allows(access: RouteAccess, caller: RouteCaller): boolean {
  *   on phones; the kanban board is a manager's view. The personal list
  *   is one tap from any of their projects' detail pages, with no
  *   horizontal scroll and no per-state column collapse. Kanban and
- *   Kalender remain available as secondary nav.
+ *   Kalender remain in the nav.
  * - **owner / office → Kanban.** The board is the shared operational
  *   surface.
  * - **bookkeeper → Rechnungen.** The invoice register
@@ -363,8 +363,7 @@ export function pathFromView(view: RouteView): string {
  * (their secondary bucket has ≥2 entries). Bookkeeper has only
  * `rechnungen` in their secondary bucket — the "≥2 to render the menu"
  * rule in Header / MobileTabBar routes it inline alongside Projekte /
- * Kunden, which matches the `docs/spec/ui/invoices.md §8.16` "primary for
- * bookkeeper" line.
+ * Kunden.
  *
  * Exported so Header and MobileTabBar consume a single source of truth.
  * Unlike the nav matrix itself, this grouping is NOT checked — it is
