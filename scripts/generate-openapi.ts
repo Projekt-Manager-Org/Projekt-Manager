@@ -237,7 +237,7 @@ const checkOnly = process.argv.includes('--check');
 
 if (checkOnly) {
   // Fail fast on a missing/unreadable target BEFORE paying the cost of
-  // booting the app — mirrors generate-permissions-doc.ts's ordering.
+  // booting the app.
   let actual: string;
   try {
     actual = readFileSync(OUT_PATH, 'utf8');

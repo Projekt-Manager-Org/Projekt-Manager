@@ -9,11 +9,11 @@
 # every case matches its expected exit code AND the message naming the
 # failure that produced it; 1 otherwise.
 #
-# Sibling of check-nav-doc.test.sh, and it inherits that generator's one
-# extra case: the prose BELOW the end marker must be free to change. The
-# whole reason this table is generated only in part is that § Endpoint
-# Notes is hand-written meaning — a check that fired on it would push the
-# prose back out of the document.
+# One case beyond in-sync / drifted / missing-markers: the prose BELOW
+# the end marker must be free to change. The whole reason this table is
+# generated only in part is that § Endpoint Notes is hand-written
+# meaning — a check that fired on it would push the prose back out of the
+# document.
 #
 # The two access columns get a case each. They are the ones where a
 # stale cell is a claim about who can reach an endpoint, so a silent

@@ -3,12 +3,11 @@
  * the routes `buildApp()` registers — the published table is not
  * hand-authored (AC-352).
  *
- * Fourth of the doc generators, same markers-and-`--check` shape as
- * `generate-permissions-doc.ts` (AC-343), `generate-nav-doc.ts` (AC-349)
- * and `generate-openapi.ts` (AC-351). What it publishes is coverage plus
- * the three access columns; the prose below the end marker — what an
- * endpoint is FOR — is hand-written and never overwritten, because that
- * is the part no route declaration contains.
+ * Sibling of `generate-openapi.ts` (AC-351) with the same `--check` mode,
+ * but it writes between markers inside a hand-written document. What it
+ * publishes is coverage plus the three access columns; the prose below
+ * the end marker — what an endpoint is FOR — is hand-written and never
+ * overwritten, because that is the part no route declaration contains.
  *
  * Every column is read off the route, not off a parallel list:
  *
