@@ -3,9 +3,9 @@
  * half of a doc table that a unit test pins to the code owning it
  * (ARCHITECTURE.md § Documentation drift guards).
  *
- * Missing markers throw rather than return empty. Every check built on
- * this is an equality, and an empty block would let it pass vacuously on
- * a document that no longer carries the table at all.
+ * Missing markers throw, so the failure names them. The equality checks
+ * built on this would fail on an empty block too, but as a diff against
+ * the whole table.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

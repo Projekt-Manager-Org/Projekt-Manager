@@ -2,7 +2,7 @@
 #
 # Scenario tests for scripts/generate-openapi.ts --check (AC-351, AC-353).
 #
-# Unlike the permissions-doc check (markers inside a hand-authored file),
+# Unlike the api-surface check (markers inside a hand-authored file),
 # docs/api/openapi.json is entirely generated, so "drift" means the whole
 # file differs from a fresh generation. Each case points the generator at
 # a fixture path via $OPENAPI_DOC_PATH; the route schemas themselves are
