@@ -7,7 +7,7 @@
 #
 # Env contract:
 #   REMOTE_TMP       directory on VPS holding db.sql and bucket/
-#   MC_IMAGE         minio/mc image tag
+#   MC_IMAGE         mc image ref, passed by scripts/sync-dev-to-vps.sh
 #   COMPOSE_PROJECT  compose project name (projekt-manager) — used to find
 #                    the running containers. The bucket itself lives at
 #                    Backblaze B2 since the ddff944 topology switch (ADR-0022);

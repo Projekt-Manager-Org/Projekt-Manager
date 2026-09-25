@@ -72,10 +72,10 @@
       "matchPackageNames": ["drizzle-orm", "drizzle-kit"]
     },
     {
-      "description": "MinIO RELEASE.* tags sort lexicographically — use loose versioning so timestamp order is respected",
+      "description": "MinIO `minio` and `mc` are a frozen, self-hosted copy of the last community images, digest-pinned — no upstream publishes images any more, so there is nothing to track (ADR-0003 § Dep lifecycle health)",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["minio/minio", "minio/mc"],
-      "versioning": "loose"
+      "matchPackageNames": ["ghcr.io/projekt-manager-org/minio", "ghcr.io/projekt-manager-org/mc"],
+      "enabled": false
     },
     {
       "description": "Caddy version appears in three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX), all tracked against the `caddy` Docker image — the two FROM tags via the built-in dockerfile manager, the xcaddy build version via the customManager below. Group them so one PR advances all three to the same version together; sharing one datasource is what makes that lockstep hold. The caddy-dns/cloudflare plugin SHA tracks separately (git-refs).",
@@ -128,27 +128,6 @@
       "depNameTemplate": "caddy-dns/cloudflare",
       "packageNameTemplate": "https://github.com/caddy-dns/cloudflare",
       "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
-      "description": "MinIO `mc` image tag in sync-*.sh helper scripts — track minio/mc Docker tags with loose versioning",
-      "managerFilePatterns": ["/^scripts/sync-(dev-to-vps|vps-to-dev)\\.sh$/"],
-      "matchStrings": ["MC_IMAGE=\"minio/mc:(?<currentValue>RELEASE\\.[0-9TZ-]+)\""],
-      "depNameTemplate": "minio/mc",
-      "datasourceTemplate": "docker",
-      "versioningTemplate": "loose"
-    },
-    {
-      "customType": "regex",
-      "description": "MinIO `minio` and `mc` images hardcoded in `docker run …` shell inside .github/workflows/<name>.yml and .github/actions/<name>/<file>.{yml,sh} (one directory level only — a nested action dir would silently drop out of tracking) — Renovate's github-actions manager doesn't parse docker images inside run: blocks or sibling scripts, so a custom regex keeps them in lockstep with the docker-compose copies",
-      "managerFilePatterns": [
-        "/^\\.github/workflows/[^/]+\\.ya?ml$/",
-        "/^\\.github/actions/[^/]+/[^/]+\\.(ya?ml|sh)$/"
-      ],
-      "matchStrings": ["minio/(?<depName>minio|mc):(?<currentValue>RELEASE\\.[0-9TZ-]+)"],
-      "packageNameTemplate": "minio/{{depName}}",
-      "datasourceTemplate": "docker",
-      "versioningTemplate": "loose"
     },
     {
       "customType": "regex",

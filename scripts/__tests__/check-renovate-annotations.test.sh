@@ -11,7 +11,7 @@
 # $WORKFLOW_DIR's parent.
 #
 # Three cases key off the actions root's SHAPE rather than a pin's content
-# — the root going missing, a pin nested below the level manager 6 reaches,
+# — the root going missing, a pin nested below the level manager 4 reaches,
 # and two pins sharing one script. Each is a way the sweep can cover less
 # than it claims to while still exiting 0.
 #
@@ -301,7 +301,7 @@ rm -rf "$d/actions"
 assert_case 2 "actions scan root missing" "$d"
 
 echo "Case: a pin nested deeper than .github/actions/<name>/<file>"
-# manager 6's patterns reach exactly one level, so a pin below that is
+# manager 4's patterns reach exactly one level, so a pin below that is
 # tracked by nothing. The sweep recurses anyway — scanning wider than the
 # managers is what turns "no manager covers this file" into a loud
 # untracked-pin error instead of a silent freeze. A one-level sweep would

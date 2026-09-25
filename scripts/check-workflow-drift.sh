@@ -36,7 +36,7 @@
 #   so a composite would have hidden the pin — was removed by widening
 #   the manager's `managerFilePatterns` and the scan in
 #   check-renovate-annotations.mjs to `.github/actions/*/*.{yml,yaml,sh}`.
-#   See #355 review, .github/renovate.json manager 6, ADR-0027 §Decision.1.
+#   See #355 review, .github/renovate.json manager 4, ADR-0027 §Decision.1.
 #
 #   One definition cannot drift, so the field-by-field comparison is gone.
 #   Presence is a separate invariant and is NOT covered by deduplication:

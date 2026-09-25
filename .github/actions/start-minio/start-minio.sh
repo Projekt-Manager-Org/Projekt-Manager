@@ -16,14 +16,12 @@
 set -euo pipefail
 
 # Pinned to match docker-compose.minio.yml (ADR-0009 — version pinning
-# across environments). Renovate tracks both tags via the
-# `.github/actions/<name>/*.{yml,sh}` customManager in renovate.json.
-#
-# quay.io, not Docker Hub: `minio/minio` and `minio/mc` were delisted from
-# Docker Hub on 2026-09-11, the tail end of the community-edition wind-down
-# ADR-0003 § Dep lifecycle health records. Same tags, same vendor mirror.
-MINIO_IMAGE="quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
-MC_IMAGE="quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+# across environments). Frozen, not Renovate-tracked: the org's own GHCR
+# copy of the last community images, digest-pinned to upstream's amd64
+# manifests, because no public registry serves them any more — see
+# ADR-0003 § Dep lifecycle health.
+MINIO_IMAGE="ghcr.io/projekt-manager-org/minio:RELEASE.2025-09-07T16-13-09Z@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2"
+MC_IMAGE="ghcr.io/projekt-manager-org/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780"
 NETWORK="pm-storage-net"
 CONTAINER="storage"
 # MinIO answers in ~2s on a healthy runner. The 2026-07-27 flake
@@ -115,8 +113,8 @@ wait_ready() {
 
 ready=false
 for attempt in $(seq 1 "$START_ATTEMPTS"); do
-  # `docker run` failing — an image pull hitting Docker Hub's anonymous
-  # rate limit is the common case — belongs inside the retry envelope too,
+  # `docker run` failing — a transient image pull failure is the common
+  # case — belongs inside the retry envelope too,
   # not escaping via errexit with a bare docker error and no diagnostics.
   # `&&` short-circuits, and an `if` condition is exempt from `set -e`.
   if start_minio && wait_ready; then

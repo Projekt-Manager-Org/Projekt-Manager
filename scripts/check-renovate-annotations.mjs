@@ -4,7 +4,7 @@
  * composite action is actually tracked by a Renovate customManager.
  *
  * WHY THIS EXISTS
- *   ADR-0027 §Decision.1 manager 6 pins CLI binaries by URL + SHA256 and
+ *   ADR-0027 §Decision.1 manager 4 pins CLI binaries by URL + SHA256 and
  *   relies on an inline `# renovate:` annotation to keep them current. The
  *   annotation is matched by a regex in .github/renovate.json whose
  *   `matchStrings` joins the annotation, `version=` and `expected_sha=`
@@ -29,7 +29,7 @@
  *      A pin no manager claims is an untracked pin. Applicability is
  *      per-file on purpose: a manager scoped to workflows tracks nothing in
  *      a composite action, and counting it would be a false green. The
- *      actions sweep recurses while manager 6's patterns reach exactly one
+ *      actions sweep recurses while manager 4's patterns reach exactly one
  *      level, so a pin nested deeper is reported untracked — loudly —
  *      rather than seen by neither side.
  *   2. SINGLE VERSION REFERENCE — within the same install block, the
@@ -138,7 +138,7 @@ function digestManagersFor(relPath) {
 if (digestManagersFor('.github/workflows/ci.yml').length === 0) {
   fail(
     'no customManager in .github/renovate.json captures a `currentDigest` for ' +
-      '.github/workflows/** — either the config changed shape or manager 6 was ' +
+      '.github/workflows/** — either the config changed shape or manager 4 was ' +
       'removed. Every checksum pin in a workflow is untracked until one exists.',
     2,
   );
@@ -174,7 +174,7 @@ const scanFiles = readdirSync(workflowDir)
 // untracked as one hidden in a script.
 //
 // RECURSIVE, deliberately, even though the repo lays composite actions out
-// one level deep and manager 6's `managerFilePatterns` reach exactly that
+// one level deep and manager 4's `managerFilePatterns` reach exactly that
 // far. A sweep that stopped at one level too would leave a pin nested any
 // deeper seen by NEITHER side — tracked by no manager and reported by no
 // check, which is the silent freeze this whole file exists to prevent.
@@ -187,7 +187,7 @@ const ACTION_FILE_RE = /\.(ya?ml|sh)$/;
 if (!existsSync(actionsDir)) {
   fail(
     `${path.relative(repoRoot, actionsDir)} does not exist — composite actions are a scan root ` +
-      'for checksum pins (.github/renovate.json manager 6). If they moved, move this check and ' +
+      'for checksum pins (.github/renovate.json manager 4). If they moved, move this check and ' +
       'the manager patterns with them; scanning nothing silently is not an option.',
     2,
   );
@@ -325,7 +325,7 @@ if (problems.length > 0) {
   console.error('A checksum pin with no update path is the failure ADR-0027 exists to retire:');
   console.error('the version freezes silently while CI stays green. See');
   console.error(
-    '.github/renovate.json manager 6 and docs/ops/dep-management.md § Weekly wrangler.',
+    '.github/renovate.json manager 4 and docs/ops/dep-management.md § Weekly wrangler.',
   );
   process.exit(1);
 }
