@@ -70,10 +70,9 @@ LOCAL_BUCKET="projekt-manager"
 COMPOSE_PROJECT="projekt-manager"
 # Must match docker/init-storage.sh. Keeping this in sync with the compose
 # file is a manual discipline; a tag drift here would mean a mirror against
-# an older client. The VPS's cached copy is under the old Docker Hub name,
-# so the first sync after the quay.io move pulls once — quay is public and
-# needs no credential.
-MC_IMAGE="quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+# an older client. The VPS pulls it anonymously from the org's public GHCR
+# mirror (ADR-0003 § Dep lifecycle health) — no credential.
+MC_IMAGE="ghcr.io/projekt-manager-org/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 LOCAL_TMP="/tmp/pm-sync-$TS"

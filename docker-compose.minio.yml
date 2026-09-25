@@ -38,7 +38,7 @@ services:
         condition: service_completed_successfully
 
   storage:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: ghcr.io/projekt-manager-org/minio:RELEASE.2025-09-07T16-13-09Z@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2
     mem_limit: 512m
     command: server /data --console-address ":9001"
     volumes:
@@ -69,7 +69,7 @@ services:
     restart: unless-stopped
 
   storage-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: ghcr.io/projekt-manager-org/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780
     depends_on:
       - storage
     entrypoint: /bin/sh

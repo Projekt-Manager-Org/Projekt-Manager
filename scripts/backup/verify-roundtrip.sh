@@ -128,12 +128,12 @@ image_pin() {
 }
 
 PG_IMAGE="$(image_pin docker-compose.yml 'postgres:[0-9]+(\.[0-9]+)*-alpine')"
-# The registry prefix is part of the match on purpose: `grep -oE` returns
-# only the matched span, so a pattern that starts at `minio/` would strip
-# `quay.io/` off a quay-hosted pin and silently resolve to the Docker Hub
-# name — which no longer exists (delisted 2026-09-11).
-MINIO_IMAGE="$(image_pin docker-compose.minio.yml 'quay\.io/minio/minio:RELEASE\.[0-9TZ-]+')"
-MC_IMAGE="$(image_pin docker-compose.minio.yml 'quay\.io/minio/mc:RELEASE\.[0-9TZ-]+')"
+# The pattern spans the whole reference, registry through digest, on
+# purpose: `grep -oE` returns only the matched span. Starting later strips
+# the registry and silently resolves to Docker Hub, which no longer serves
+# MinIO; stopping at the tag drops the digest pin.
+MINIO_IMAGE="$(image_pin docker-compose.minio.yml 'ghcr\.io/projekt-manager-org/minio:RELEASE\.[0-9TZ-]+@sha256:[0-9a-f]{64}')"
+MC_IMAGE="$(image_pin docker-compose.minio.yml 'ghcr\.io/projekt-manager-org/mc:RELEASE\.[0-9TZ-]+@sha256:[0-9a-f]{64}')"
 
 # --- Fixed test parameters -------------------------------------------
 #

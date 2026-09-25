@@ -14,7 +14,7 @@
 #
 # Safety:
 #   - Refuses to run unless the storage container's image is
-#     quay.io/minio/minio, so it cannot point at B2 by accident.
+#     ghcr.io/projekt-manager-org/minio, so it cannot point at B2 by accident.
 #   - Refuses unless the compose project is `projekt-manager`.
 #   - Default mode is a dry-run — no deletions happen without --apply.
 #   - Deletes only at the current-version level (creates delete markers).
@@ -53,9 +53,9 @@ done
 # real delete calls against B2. Asserting the local image prevents that.
 storage_image=$(docker inspect --format '{{.Config.Image}}' "$STORAGE_CONTAINER" 2>/dev/null || true)
 case "$storage_image" in
-  quay.io/minio/minio:*) ;;
+  ghcr.io/projekt-manager-org/minio:*) ;;
   *)
-    echo "ERROR: $STORAGE_CONTAINER image is '$storage_image', expected quay.io/minio/minio:*." >&2
+    echo "ERROR: $STORAGE_CONTAINER image is '$storage_image', expected ghcr.io/projekt-manager-org/minio:*." >&2
     echo "  This script must only run against the local dev MinIO mirror." >&2
     exit 1
     ;;
