@@ -69,7 +69,7 @@ Classic grandfather-father-son: promote a daily to weekly on Sundays and monthly
 ### Positive
 
 - Off-site encrypted full-state backups exist for the first time, covering what Layer 1 cannot (users, sessions, schema, audit FKs).
-- Every backup is immediately verified via Tier 1 — silent corruption fails the run before it reaches R2.
+- Every backup is immediately verified via Tier 1 — a corrupt dump fails the run before it reaches R2. Tier 1 reads source and restore from the same pages, so source storage corruption is caught by page checksums instead ([AC-366](../spec/verification.md#1522-backup-and-recovery)).
 - Tier 2 proves the encrypted round-trip continuously whenever the operator is engaged, without a standing decrypt key on the server.
 - Bucket locks make the destination resistant to accidental and data-plane-S3-token-leak-driven deletion or overwrite within the retention window.
 - Restore runs from the operator workstation with only the envelope file and the private identity — no VPS required.

@@ -233,6 +233,12 @@ services:
       POSTGRES_DB: projekt_manager
       POSTGRES_USER: pm
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Page checksums turn storage corruption into a read error — without
+      # them it dumps silently and passes backup verification (AC-366; the
+      # backup run refuses a source without them). Read at initdb only: an
+      # existing cluster needs a one-off offline `pg_checksums --enable`
+      # (docs/ops/backup/troubleshooting.md).
+      POSTGRES_INITDB_ARGS: --data-checksums
     healthcheck:
       # `-h 127.0.0.1` — TCP, not pg_isready's default unix socket. The
       # image's entrypoint runs an init-phase temporary server with

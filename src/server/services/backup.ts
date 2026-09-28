@@ -1,9 +1,12 @@
 /**
  * Layer 2 backup service — Tier 1 verify-on-create + upload.
  *
- * Implements verification.md §15.22 AC-165..AC-167, AC-169, AC-174
+ * Implements verification.md §15.22 AC-165..AC-167, AC-169, AC-174,
+ * AC-344, AC-345, AC-366
  * and ADR-0020. This service:
  *
+ *   0. Refuses a source without page checksums (AC-366) — without them
+ *      storage corruption reads back silently and passes Tier 1.
  *   1. Computes the per-table manifest (row count + deterministic content
  *      checksum) inside a REPEATABLE READ read-only transaction. The
  *      checksum formula follows ADR-0020 §Decision verbatim so two runs
@@ -147,6 +150,13 @@ export interface RunBackupOptions {
    * `ephemeralPgVerify()` which runs real initdb + pg_restore.
    */
   verifyManifest?: VerifyManifestFn;
+  /**
+   * Test hook. Returns the source cluster's `data_checksums` setting
+   * (AC-366). Defaults to reading it from `db`. The setting is fixed at
+   * cluster init, so the off-case cannot be produced on a shared test
+   * cluster any other way.
+   */
+  readDataChecksums?: () => Promise<string>;
 }
 
 export type BackupRunResult =
@@ -260,6 +270,20 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
   // Safety net: if the migration hasn't pre-seeded the row on this DB,
   // ensure it exists before the upsert path runs. Idempotent.
   await ensureBackupStatusRow(opts.db);
+
+  // ---------------------------------------------------------------
+  // Precondition: page checksums (AC-366) — see module header, step 0.
+  // ---------------------------------------------------------------
+  const checksums = await (opts.readDataChecksums ?? (() => showDataChecksums(opts.db)))();
+  if (checksums !== 'on') {
+    const error = `precondition: data checksums are ${checksums} on the source database — storage corruption would pass verification`;
+    await updateBackupStatus(opts.db, {
+      lastBackupAt: now.toISOString(),
+      lastBackupOk: false,
+      lastError: error,
+    });
+    return { ok: false, error };
+  }
 
   // ---------------------------------------------------------------
   // Source manifest + dump — one REPEATABLE READ snapshot, exported to
@@ -471,6 +495,12 @@ function defaultDumpSource(manifest: Manifest): Uint8Array {
   // this synthetic dump apart from a real pg_dump artifact.
   const payload = `MANIFEST-DUMP\n${JSON.stringify(manifest)}`;
   return new TextEncoder().encode(payload);
+}
+
+/** The source cluster's `data_checksums` setting: `on` or `off`. */
+async function showDataChecksums(db: Database): Promise<string> {
+  const result = await db.execute<{ data_checksums: string }>(sql`SHOW data_checksums`);
+  return result.rows[0]?.data_checksums ?? 'unknown';
 }
 
 /**

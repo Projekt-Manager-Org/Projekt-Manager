@@ -131,7 +131,7 @@ docker stop pm-restore-scratch
 
 Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table-level restore — is out of scope for this iteration.
 
-**(a) Rebuild the VPS DB volume (maintenance window, downtime).** You are about to destroy the current `pgdata` volume and replace it with the restored state. This is irreversible on the live volume.
+**(a) Replace the database in place (maintenance window, downtime).** You are about to drop `projekt_manager` and replace it with the restored state — irreversible. The cluster and its `pgdata` volume stay: the new database gets fresh files, cluster-wide state and the disk are reused.
 
 1. Announce the maintenance window.
 2. SSH to the VPS as the admin user. All subsequent VPS-side steps run via `sudo -u deploy`. Use `docker` directly, not `docker compose`. The compose path re-parses `docker-compose.yml`, which requires the full set of interpolation vars (`POSTGRES_PASSWORD`, `CLOUDFLARE_API_TOKEN`, etc.) in shell env; a bare sudo shell doesn't have them sourced, so parse aborts with `CLOUDFLARE_API_TOKEN must be declared`. Same class of problem fixed in `server-setup.md` Phase 8.1 (commit 5484903).

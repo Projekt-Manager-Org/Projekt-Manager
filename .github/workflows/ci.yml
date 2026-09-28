@@ -677,6 +677,8 @@ jobs:
           # connection-string parsing and pool warm-up.
           POSTGRES_USER: pm
           POSTGRES_PASSWORD: postgres
+          # Backup runs refuse a source without page checksums (AC-366).
+          POSTGRES_INITDB_ARGS: --data-checksums
         ports:
           - 5432:5432
         # `-h 127.0.0.1` — TCP, not pg_isready's default unix socket. The
