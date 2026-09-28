@@ -383,6 +383,35 @@ runs:
         fi
         echo "::endgroup::"
 
+        echo "::group::Service Worker served from the image?"
+        # Nothing else checks the shipped /sw.js: E2E bundles it through
+        # the dev middleware, the unit suite never builds. Without it
+        # attachments stop decrypting and push goes dead. A missing file
+        # still answers 200 no-cache — the SPA fallback serves index.html
+        # — so content type and both listeners are the load-bearing
+        # checks. no-cache is staticCache.ts's update-propagation tier.
+        if ! docker exec -i projekt-manager-app-1 node --input-type=module - <<'EOF'; then
+        const res = await fetch('http://localhost:3000/sw.js');
+        const body = await res.text();
+        const failures = [];
+        if (res.status !== 200) failures.push(`status ${res.status}, want 200`);
+        const type = res.headers.get('content-type') ?? '';
+        if (!type.includes('javascript')) failures.push(`content-type "${type}", want javascript`);
+        const cache = res.headers.get('cache-control') ?? '';
+        if (cache !== 'no-cache') failures.push(`cache-control "${cache}", want no-cache`);
+        if (!body.includes('/encrypted-storage/')) failures.push('decrypt surface missing (no /encrypted-storage/ route)');
+        for (const event of ['fetch', 'push']) {
+          if (!new RegExp(`addEventListener\\(["']${event}["']`).test(body)) failures.push(`no '${event}' listener`);
+        }
+        for (const f of failures) console.log(`  ${f}`);
+        if (failures.length > 0) process.exit(1);
+        console.log(`  /sw.js: ${body.length} bytes, fetch + push wired, no-cache — smoke OK`);
+        EOF
+          echo "::error::/sw.js is missing or incomplete in the app image"
+          exit 1
+        fi
+        echo "::endgroup::"
+
         echo "::group::Create R2 smoke bucket on MinIO"
         # One-off mc container attached to the compose network,
         # reusing the storage-init service definition so no network-
