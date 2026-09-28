@@ -65,6 +65,7 @@ jobs:
           # needs to be reachable for the service health probe.
           POSTGRES_USER: pm
           POSTGRES_PASSWORD: postgres
+          POSTGRES_INITDB_ARGS: --data-checksums
         ports:
           - 5432:5432
         # `-h 127.0.0.1` — TCP, not the unix socket. See the identical

@@ -194,6 +194,7 @@ The Layer 2 implementation of [§11.9](#119-data-persistence-and-recovery) is a 
 
 - **Tier 1 — verify-on-create** runs every backup, unattended. The freshly produced plaintext dump is restored into an ephemeral database instance, container-internal (not a sibling service), the manifest is recomputed, and it is compared to the source manifest. A mismatch fails the run: no upload, and the status surface reports failure.
 - **Tier 2 — verify-on-cycle** runs every backup when the operator's identity is present in tmpfs. The just-uploaded encrypted dump is downloaded, decrypted, restored into the ephemeral database instance, and its manifest is compared. When the key is absent, the drill is skipped with a distinct log line; freshness surfaces via the status row rather than as a failure.
+- **Precondition — page checksums.** Both tiers read from the same source pages and cannot see storage corruption; page checksums turn it into a read error. A run against a source without them fails ([AC-366](verification.md#1522-backup-and-recovery)).
 
 **Status surface (dual-write).**
 

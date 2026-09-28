@@ -20,6 +20,8 @@ Symptoms that appear during or right after [setup.md §4](setup.md#4-first-deplo
 | `lastError` contains `canceling statement due to lock timeout`                                 | Something held ACCESS EXCLUSIVE on a manifest table (deploy migration, `VACUUM FULL`, `REINDEX`) while the run was computing the source manifest                                                               | Expected fail-safe ([AC-345](../../spec/verification.md#1522-backup-and-recovery)) — unbounded, the manifest would block forever, the tick would never finish, and croner's `protect` would suppress every later run. Same cause and same remedy as the `pg_dump` LOCK TABLE row above: re-run once the DDL has finished, and reschedule an overlapping deploy rather than raising the bound. |
 | `lastError` contains `TimeoutError` / `exceeded the configured … requestTimeout`               | An R2 request (upload, status mirror, drill download) hit its wall-clock bound — endpoint unreachable, connection black-holed, or R2 degraded                                                                  | Expected fail-safe ([AC-345](../../spec/verification.md#1522-backup-and-recovery)). Check the Cloudflare status page and the endpoint host from the container; the next tick retries. Persistent hits with R2 healthy point at egress filtering on the VPS.                                                                                                                                   |
 | Runner logs `canceling statement due to lock timeout` on `meta_backup_status`, no status row   | Something held ACCESS EXCLUSIVE on the status table itself (deploy migration) — the run could not write its own outcome                                                                                        | Expected fail-safe ([AC-345](../../spec/verification.md#1522-backup-and-recovery)); the reason is in the container log, since the row is exactly what could not be written. Re-run once the migration has finished. The badge reads stale — correct: this run produced nothing.                                                                                                               |
+| `lastError` reads `precondition: data checksums are off …`                                     | The Postgres cluster predates `POSTGRES_INITDB_ARGS=--data-checksums` in compose — the setting is read at initdb only                                                                                          | [Enable page checksums](#enabling-page-checksums-on-an-existing-cluster)                                                                                                                                                                                                                                                                                                                      |
+| `lastError` contains `invalid page in block N of relation …`                                   | Storage corruption: a page on disk no longer matches its checksum. The run fails and uploads nothing, so the retained backups predate it                                                                       | Do not repair in place. Restore from the last green backup ([recovery.md](recovery.md)); check the host disk (`dmesg`, provider status)                                                                                                                                                                                                                                                       |
 | No row in `meta_backup_status` at all                                                          | Cron never fired; service crash-looping                                                                                                                                                                        | See "First-line diagnostics" below.                                                                                                                                                                                                                                                                                                                                                           |
 
 ## First-line diagnostics (5 minutes)
@@ -33,6 +35,19 @@ sudo -u deploy docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -c
 ```
 
 `lastError` is a short machine cue from the backup script — the log tail carries the detail.
+
+## Enabling page checksums on an existing cluster
+
+Offline, in place, seconds on this data size. Only `db` stops: `app` reconnects on its own (stopping it would drop the tmpfs binary key), and a backup tick inside the window fails and the next one succeeds.
+
+```bash
+sudo -u deploy docker stop projekt-manager-db-1
+sudo -u deploy docker run --rm --volumes-from projekt-manager-db-1 --user postgres \
+  --entrypoint pg_checksums "$(sudo -u deploy docker inspect -f '{{.Image}}' projekt-manager-db-1)" \
+  --enable --progress -D /var/lib/postgresql/data
+sudo -u deploy docker start projekt-manager-db-1
+sudo -u deploy docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -tAc 'SHOW data_checksums'  # → on
+```
 
 ## Second-line (manual one-shot, deep-dive)
 

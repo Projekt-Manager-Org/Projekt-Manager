@@ -212,6 +212,7 @@ docker run -d --name "$DB_CONTAINER" --network "$NETWORK" \
   -e POSTGRES_USER="$PG_USER" \
   -e POSTGRES_PASSWORD="$PG_PASSWORD" \
   -e POSTGRES_DB="$PG_DB" \
+  -e POSTGRES_INITDB_ARGS=--data-checksums \
   "$PG_IMAGE" >/dev/null
 
 docker run -d --name "$MINIO_CONTAINER" --network "$NETWORK" \
