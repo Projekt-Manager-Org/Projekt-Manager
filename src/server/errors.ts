@@ -57,6 +57,7 @@ export const ERROR_CODES = [
   'COMPANY_PROFILE_REQUIRED',
   'CUSTOMER_HAS_INVOICES',
   'PROJECT_HAS_INVOICES',
+  'IMPORT_DROPS_ISSUED_INVOICES',
   'SERVER_ERROR',
 ] as const;
 
@@ -432,6 +433,19 @@ export function customerHasInvoices(details: InvoiceRetentionDetails): AppError 
  */
 export function projectHasInvoices(details: InvoiceRetentionDetails): AppError {
   return new AppError('PROJECT_HAS_INVOICES', STRINGS.errors.projectHasInvoices, 409, details);
+}
+
+/**
+ * Override import rejected: the target holds an issued or cancelled
+ * invoice the envelope lacks, a retained record whose number reached a
+ * customer. AC-367.
+ */
+export function importDropsIssuedInvoices(): AppError {
+  return new AppError(
+    'IMPORT_DROPS_ISSUED_INVOICES',
+    STRINGS.errors.importDropsIssuedInvoices,
+    409,
+  );
 }
 
 /**

@@ -21,7 +21,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
+import { isNotNull, sql } from 'drizzle-orm';
 import {
   auditLog,
   companyProfile,
@@ -32,8 +32,9 @@ import {
   projectWorkers,
   users,
 } from '../db/schema.js';
-import type { Database } from '../db/connection.js';
+import type { Database, TransactionalDatabase } from '../db/connection.js';
 import {
+  importDropsIssuedInvoices,
   missingUserRefs,
   restoreConfirmationMismatch,
   schemaVersionMismatch,
@@ -508,6 +509,49 @@ function toInvoiceSequenceInsert(seq: EnvelopeInvoiceSequence) {
   };
 }
 
+/**
+ * AC-367: an override import must not drop an issued or cancelled invoice
+ * — it is a retained record whose number reached a customer (GoBD, §147
+ * AO). Drafts carry no number and may go.
+ * Matching on `(id, number)` also rejects an envelope from another
+ * instance that reuses a number for a different document.
+ *
+ * The ACCESS EXCLUSIVE lock is the one the wipe's TRUNCATE takes anyway;
+ * taking it before the read keeps a concurrent issuance from committing
+ * between this check and the wipe.
+ */
+async function assertKeepsNumberedInvoices(
+  tx: TransactionalDatabase,
+  envelopeInvoices: EnvelopeInvoice[],
+): Promise<void> {
+  await tx.execute(sql`LOCK TABLE invoices IN ACCESS EXCLUSIVE MODE`);
+  const target = await tx
+    .select({ id: invoices.id, number: invoices.number })
+    .from(invoices)
+    .where(isNotNull(invoices.number));
+  const carried = new Set(envelopeInvoices.map((inv) => `${inv.id}|${inv.number}`));
+  if (target.some((row) => !carried.has(`${row.id}|${row.number}`))) {
+    throw importDropsIssuedInvoices();
+  }
+}
+
+type SequenceRow = typeof invoiceSequence.$inferSelect;
+
+/**
+ * AC-369: `invoice_sequence` is a high-water mark — an override never
+ * lowers it. Per `(year, kind)` the higher value wins; a target key the
+ * envelope lacks survives the wipe. A target counter ahead of its highest
+ * stored number carries numbers a DR restore lost (data-model.md §6.13).
+ */
+function mergeSequence(target: SequenceRow[], envelope: SequenceRow[]): SequenceRow[] {
+  const merged = new Map(target.map((row) => [`${row.year}|${row.kind}`, row]));
+  for (const row of envelope) {
+    const kept = merged.get(`${row.year}|${row.kind}`);
+    if (!kept || row.nextValue > kept.nextValue) merged.set(`${row.year}|${row.kind}`, row);
+  }
+  return [...merged.values()];
+}
+
 export class ImportService {
   /**
    * The optional `storage` client is required only for the override
@@ -689,6 +733,7 @@ export class ImportService {
     const projectRows = envelope.projects.map(toProjectInsert);
     const assignmentRows = envelope.project_workers.map(toAssignmentInsert);
     const invoiceSequenceRows = envelope.invoice_sequence.map(toInvoiceSequenceInsert);
+    let sequenceRowsToInsert: SequenceRow[] = invoiceSequenceRows;
 
     // Invoice two-pass: insert originals (cancellationOf IS NULL) first,
     // then Stornos (cancellationOf !== null). The envelope arrives ordered
@@ -749,9 +794,15 @@ export class ImportService {
           // (e.g. the seed) never reach this branch.
           throw new Error('ImportService.import: override path requires storage + logger');
         }
+        await assertKeepsNumberedInvoices(tx, envelope.invoices);
       }
 
       if (opts.override) {
+        // AC-369: read the target counters before the wipe clears them.
+        sequenceRowsToInsert = mergeSequence(
+          await tx.select().from(invoiceSequence),
+          invoiceSequenceRows,
+        );
         // AC-254 / issue #230: the wipe is unconditional under override
         // and now covers the expanded set. CASCADE handles dependency
         // order — TRUNCATE … CASCADE propagates through every FK
@@ -862,8 +913,8 @@ export class ImportService {
       if (assignmentRows.length > 0) {
         await tx.insert(projectWorkers).values(assignmentRows);
       }
-      if (invoiceSequenceRows.length > 0) {
-        await tx.insert(invoiceSequence).values(invoiceSequenceRows);
+      if (sequenceRowsToInsert.length > 0) {
+        await tx.insert(invoiceSequence).values(sequenceRowsToInsert);
       }
       if (invoiceOriginals.length > 0) {
         await tx.insert(invoices).values(invoiceOriginals);

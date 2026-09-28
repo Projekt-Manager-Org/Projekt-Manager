@@ -841,6 +841,7 @@ Timestamp ownership rules are defined in section 5.5. Additionally, `statusChang
 - An `invoices` row with `status = 'issued'` is **write-once** at the persistence layer. The only field that may transition is `status: 'issued' → 'cancelled'`, paired with the creation of a sibling Storno row ([§5.15](#515-invoice-entity)).
 - The application enforces immutability at every write surface: the API rejects mutations on issued rows ([api.md §14.4](api.md#144-error-handling) `INVOICE_FROZEN`), the service layer refuses to dispatch an update that touches a frozen row, and the persistence layer is the last line of defense — direct DB writes to issued rows other than the cancellation flip are out of contract.
 - Rationale anchors in §147 AO (retention of business records) and GoBD (immutability of issued documents). A correction is a fresh `draft → issued` cycle producing a new sibling row, not an edit. See [ADR-0026 §State machine](../adr/0026-invoices-immutability-and-zugferd.md#state-machine).
+- The business-data import never removes an issued or cancelled invoice: an `override` import into a target holding one that the envelope does not carry with the same id and number is rejected ([api.md §14.2.4](api.md#1424-unified-data-exchange)). Drafts carry no number and are not protected.
 - Object-storage retention on the rendered PDF/A-3 ([architecture.md §11.14](architecture.md#1114-invoice-domain)) is the storage-layer backstop on the artifact bytes; this principle is the row-side counterpart.
 
 ### 6.15 Takeout Staging Reaper

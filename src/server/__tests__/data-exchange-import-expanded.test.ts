@@ -33,7 +33,11 @@ import { fileURLToPath } from 'url';
 import type pg from 'pg';
 
 import { startApp, stopApp } from '../../test/api-helpers.js';
-import { exportEnvelope, importEnvelope } from '../../test/data-exchange-helpers.js';
+import {
+  clearSeededInvoices,
+  exportEnvelope,
+  importEnvelope,
+} from '../../test/data-exchange-helpers.js';
 import { EXPECTED_RESTORE_PHRASE } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
@@ -448,6 +452,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       expect(sessionsBefore.length).toBeGreaterThan(0);
 
       try {
+        await clearSeededInvoices();
         const env = buildExpandedEnvelope();
         const result = (await importEnvelope(env, {
           dryRun: false,
@@ -510,6 +515,148 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         // consume an invoice number — so both are asserted.
         expect(allocated.invoice.number).toBe('RE-2026-0042');
         expect(allocated.storno.number).toBe('ST-2026-0007');
+      } finally {
+        await reseed();
+      }
+    });
+  });
+
+  const OVERRIDE: ImportOptions = {
+    dryRun: false,
+    override: true,
+    confirmationPhrase: EXPECTED_RESTORE_PHRASE,
+  };
+
+  // -------------------------------------------------------------------
+  // AC-367 — an override import must not drop an issued or cancelled
+  // invoice, nor replace it with another document under its number: it
+  // is a retained record whose number already reached a customer.
+  // -------------------------------------------------------------------
+  describe('override refuses to drop an issued or cancelled invoice (AC-367)', () => {
+    it('rejects an archive predating the target invoices and leaves the target unchanged', async () => {
+      await wipeBusinessDataExceptUsers();
+      try {
+        // Target: RE-2026-0001 (issued) + ST-2026-0001 (cancelled).
+        await importEnvelope(buildExpandedEnvelope(), {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+        const sequenceBefore = await db.select().from(invoiceSequence);
+
+        // The same instance's archive from before the first issuance.
+        const older = buildExpandedEnvelope();
+        older.invoices = [];
+        older.invoice_sequence = [];
+
+        const err = await expectImportRejection(older, OVERRIDE);
+        expect(err.code).toBe('IMPORT_DROPS_ISSUED_INVOICES');
+        expect(err.statusCode).toBe(409);
+
+        const numbersAfter = (await db.select().from(invoices)).map((i) => i.number).sort();
+        expect(numbersAfter).toEqual(['RE-2026-0001', 'ST-2026-0001']);
+        expect(await db.select().from(invoiceSequence)).toEqual(sequenceBefore);
+      } finally {
+        await reseed();
+      }
+    });
+
+    it('rejects an archive that carries a target number under a different invoice', async () => {
+      await wipeBusinessDataExceptUsers();
+      try {
+        await importEnvelope(buildExpandedEnvelope(), {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+
+        // Another instance's archive: same numbers, different documents.
+        const foreign = buildExpandedEnvelope();
+        const [original, storno] = foreign.invoices;
+        foreign.invoices = [
+          { ...original!, id: uuid('frgn', 1) },
+          { ...storno!, id: uuid('frgn', 2), cancellationOf: uuid('frgn', 1) },
+        ];
+
+        const err = await expectImportRejection(foreign, OVERRIDE);
+        expect(err.code).toBe('IMPORT_DROPS_ISSUED_INVOICES');
+      } finally {
+        await reseed();
+      }
+    });
+
+    it('drops a draft invoice absent from the archive without rejecting', async () => {
+      await wipeBusinessDataExceptUsers();
+      try {
+        const withDraft = buildExpandedEnvelope();
+        const draftId = uuid('inv', 9);
+        withDraft.invoices = [
+          ...withDraft.invoices,
+          {
+            ...withDraft.invoices[0]!,
+            id: draftId,
+            status: 'draft',
+            number: null,
+            issueDate: null,
+          },
+        ];
+        await importEnvelope(withDraft, {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+
+        await importEnvelope(buildExpandedEnvelope(), OVERRIDE);
+
+        const draftAfter = await db.select().from(invoices).where(eq(invoices.id, draftId));
+        expect(draftAfter).toEqual([]);
+      } finally {
+        await reseed();
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // AC-369 — an override never lowers `invoice_sequence`. After a DR
+  // restore the counter runs ahead of the stored invoices (numbers issued
+  // but lost); importing a takeout to recover some of them must not pull
+  // it back, or the next issuance reissues a number a customer holds.
+  // -------------------------------------------------------------------
+  describe('override keeps the invoice_sequence high-water mark (AC-369)', () => {
+    it('keeps the higher counter per (year, kind), including target-only keys', async () => {
+      await wipeBusinessDataExceptUsers();
+      try {
+        await importEnvelope(buildExpandedEnvelope(), {
+          dryRun: false,
+          override: false,
+          confirmationPhrase: null,
+        });
+        await db
+          .update(invoiceSequence)
+          .set({ nextValue: 50 })
+          .where(and(eq(invoiceSequence.year, 2026), eq(invoiceSequence.kind, 'invoice')));
+        await db.insert(invoiceSequence).values({ year: 2025, kind: 'invoice', nextValue: 5 });
+
+        const newer = buildExpandedEnvelope();
+        newer.invoice_sequence = [
+          { year: 2026, kind: 'invoice', nextValue: 45, updatedAt: '2026-01-15T00:00:00.000Z' },
+          { year: 2026, kind: 'storno', nextValue: 9, updatedAt: '2026-01-20T00:00:00.000Z' },
+        ];
+        await importEnvelope(newer, OVERRIDE);
+
+        const after = await db
+          .select({
+            year: invoiceSequence.year,
+            kind: invoiceSequence.kind,
+            nextValue: invoiceSequence.nextValue,
+          })
+          .from(invoiceSequence)
+          .orderBy(asc(invoiceSequence.year), asc(invoiceSequence.kind));
+        expect(after).toEqual([
+          { year: 2025, kind: 'invoice', nextValue: 5 }, // target-only
+          { year: 2026, kind: 'invoice', nextValue: 50 }, // target higher
+          { year: 2026, kind: 'storno', nextValue: 9 }, // envelope higher
+        ]);
       } finally {
         await reseed();
       }

@@ -81,7 +81,7 @@ import {
   SEED_USERS,
   EXPECTED_RESTORE_PHRASE,
 } from '../../test/seedAssumptions.js';
-import { importEnvelope } from '../../test/data-exchange-helpers.js';
+import { clearSeededInvoices, importEnvelope } from '../../test/data-exchange-helpers.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
@@ -732,6 +732,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
       const conn = subscribeFake(bus);
       try {
+        await clearSeededInvoices();
         await importEnvelope(buildOverrideEnvelope() as unknown as Envelope, {
           dryRun: false,
           override: true,
