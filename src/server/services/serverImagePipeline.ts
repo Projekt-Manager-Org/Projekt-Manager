@@ -23,6 +23,12 @@
 import sharp from 'sharp';
 import { ATTACHMENT_PIPELINE } from '../../config/attachmentPipeline.js';
 
+// sharp picks the loader from the bytes, not the declared kind, so a crafted
+// takeout can route SVG to librsvg (GHSA-wq5f-xc86-pv6w, #460). Photos never
+// need it. Process-global: keep it here, out of shared code — the PWA icon
+// script renders SVG in its own process.
+sharp.block({ operation: ['VipsForeignLoadSvg'] });
+
 /**
  * Derive a WebP thumbnail from decrypted image `plaintext`, sized to
  * `thumbnailMaxDimension` longest edge (aspect preserved, never upscaled)

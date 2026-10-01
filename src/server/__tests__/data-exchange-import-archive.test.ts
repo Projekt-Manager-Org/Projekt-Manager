@@ -592,6 +592,36 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(longestEdge).toBeGreaterThan(0);
       expect(longestEdge).toBeLessThanOrEqual(320);
     });
+
+    it('a photo whose bytes are SVG restores without a thumbnail (SVG decoding blocked)', async () => {
+      // sharp picks the loader from the bytes, not the declared kind/MIME, so a
+      // crafted archive can route SVG to librsvg. The server blocks that loader
+      // (#460): the SVG reads as undecodable and the opportunistic thumb is skipped.
+      const svg = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600"/></svg>',
+      );
+      const seeded = await seedReadyAttachment({
+        plaintext: svg,
+        fileName: 'baustelle.jpg',
+        kind: 'photo',
+        mimeType: 'image/jpeg',
+        label: 'foto',
+      });
+
+      const archive = await buildExportArchive(ownerToken);
+      const jobId = await uploadArchiveToNewJob(ownerToken, archive);
+      const reauth = await awaitWipeAndReauth(ownerToken, jobId);
+      expect((await pollImportTerminal(reauth, jobId)).status).toBe('ready');
+
+      const row = (
+        await db.execute(sql`
+          SELECT kind, has_thumbnail, thumb_key FROM attachments WHERE id = ${seeded.id}
+        `)
+      ).rows[0] as { kind: string; has_thumbnail: boolean; thumb_key: string | null };
+      expect(row.kind).toBe('photo');
+      expect(row.has_thumbnail).toBe(false);
+      expect(row.thumb_key).toBeNull();
+    });
   });
 
   // -------------------------------------------------------------------
