@@ -35,7 +35,11 @@ import { fileURLToPath } from 'url';
 import type pg from 'pg';
 
 import { startApp, stopApp } from '../../test/api-helpers.js';
-import { exportEnvelope, importEnvelope } from '../../test/data-exchange-helpers.js';
+import {
+  clearSeededInvoices,
+  exportEnvelope,
+  importEnvelope,
+} from '../../test/data-exchange-helpers.js';
 import { EXPECTED_RESTORE_PHRASE } from '../../test/seedAssumptions.js';
 import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
 import { createDatabase } from '../db/connection.js';
@@ -896,6 +900,7 @@ describe('Unified Data Exchange', () => {
       for (const c of env.customers) expect(seedIds.has(c.id)).toBe(false);
 
       try {
+        await clearSeededInvoices();
         await importEnvelope(env as unknown as Envelope, {
           dryRun: false,
           override: true,
@@ -1126,6 +1131,7 @@ describe('Unified Data Exchange', () => {
     it('accepts override with a matching confirmation_phrase', async () => {
       const env = buildOverrideEnvelope();
       try {
+        await clearSeededInvoices();
         await importEnvelope(env as unknown as Envelope, {
           dryRun: false,
           override: true,
@@ -1145,6 +1151,7 @@ describe('Unified Data Exchange', () => {
     it('accepts override when confirmation_phrase has surrounding whitespace', async () => {
       const env = buildOverrideEnvelope();
       try {
+        await clearSeededInvoices();
         await importEnvelope(env as unknown as Envelope, {
           dryRun: false,
           override: true,
@@ -1634,6 +1641,7 @@ describe('Unified Data Exchange', () => {
       expect(await countAttachments()).toBeGreaterThanOrEqual(2);
 
       try {
+        await clearSeededInvoices();
         // ImportService never restores attachment rows (it ignores the
         // envelope's `attachments` slot). The load-bearing AC-254
         // assertion is that the override truncate ran AND no path
@@ -1757,6 +1765,7 @@ describe('Unified Data Exchange', () => {
       expect(await objectAbsent(originalKey)).toBe(false);
 
       try {
+        await clearSeededInvoices();
         // Pass this test's own storage instance so the hide side-effect
         // lands on the bucket this test inspects (issue #163).
         const envelope = buildOverrideEnvelope();

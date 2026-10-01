@@ -15,6 +15,7 @@
  * Success returns the `Envelope` / `ImportResult` / `DryRunPreview` directly.
  */
 
+import { sql } from 'drizzle-orm';
 import type { AuthUser } from '../server/middleware/auth.js';
 import type {
   Envelope,
@@ -98,4 +99,14 @@ export async function importEnvelope(
   const log = options.log ?? SILENT_LOG;
   const caller = options.caller !== undefined ? options.caller : TEST_OWNER;
   return new ImportService(getDb(), storage).import(envelope, opts, log, caller);
+}
+
+/**
+ * The seed issues invoices, and an override import whose envelope does not
+ * carry them is rejected (AC-367). Tests of override mechanics that bring
+ * their own unrelated envelope clear them first. TRUNCATE bypasses the
+ * issued-row immutability trigger (BEFORE UPDATE only).
+ */
+export async function clearSeededInvoices(): Promise<void> {
+  await getDb().execute(sql`TRUNCATE invoices`);
 }

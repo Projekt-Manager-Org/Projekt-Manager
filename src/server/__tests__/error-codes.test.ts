@@ -63,6 +63,7 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['companyProfileRequired', () => errors.companyProfileRequired({ missingFields: [] })],
   ['customerHasInvoices', () => errors.customerHasInvoices({ invoiceCount: 1 })],
   ['projectHasInvoices', () => errors.projectHasInvoices({ invoiceCount: 1 })],
+  ['importDropsIssuedInvoices', () => errors.importDropsIssuedInvoices()],
   ['draftNotExportable', () => errors.draftNotExportable({ invoiceId: 'invoice-id' })],
   ['exportTooLarge', () => errors.exportTooLarge({ total: 2, cap: 1 })],
 ];

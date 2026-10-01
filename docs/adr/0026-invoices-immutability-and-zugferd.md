@@ -1,7 +1,7 @@
 # ADR-0026: Invoices — immutable snapshot, gapless sequence, ZUGFeRD EN 16931
 
 - **Status:** Accepted
-- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417)
+- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417; restore gap amended 2026-09-28, #429)
 - **Confidence:** High
 
 ## Context
@@ -120,7 +120,7 @@ Keep `company_profile.defaultTaxMode` plus a `taxModeOverride boolean` on the in
 
 - **Legal compliance from day 1.** §14, §14a, §147, §19, §13b, GoBD all anchored — receive-EN-16931 capability is met for 2025-01-01 and send-EN-16931 capability is met for 2027-01-01 without a follow-up program.
 - **Historical readability is structural.** Issued invoices render identically forever because the snapshot is on the row, not chased through joins against mutable parents.
-- **Gapless numbering survives rollback** by construction (single atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE … RETURNING next_value` inside the issuing transaction takes a row-exclusive lock equivalent to `SELECT FOR UPDATE`). No reconciliation pass, no "missing number" auditor question.
+- **Gapless numbering survives rollback** by construction (single atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE … RETURNING next_value` inside the issuing transaction takes a row-exclusive lock equivalent to `SELECT FOR UPDATE`). No reconciliation pass, no "missing number" auditor question — outside a DR restore (Negative below).
 - **Immutability is storage-enforced**, not policy-enforced. Compliance Object Lock on the rendered PDF/A-3 means even a compromised app credential cannot destroy issued artifacts within the retention window.
 - **No new infrastructure.** Reuses audit, storage, encryption, SSE, and the scope predicate. The invoice domain is a fifth audited entity type, not a parallel stack.
 - **Stornorechnung is a regular row.** The cancellation primitive does not need special-casing in audit, storage, listing, or permissions — it is an invoice with `cancellationOf` set and a Storno prefix.
@@ -132,6 +132,7 @@ Keep `company_profile.defaultTaxMode` plus a `taxModeOverride boolean` on the in
 - **ZUGFeRD adds a toolchain surface.** PDF/A-3 generation, the `factur-x.xml` builder against the EN 16931 schema, and per-render XSD validation against the canonical EN 16931 schemas before embed. A non-conformant XML aborts the issuance transaction at the validator step before any binary lands on B2. The Node-native rendering pipeline (libraries, paths) is documented in [`ARCHITECTURE.md` § Invoices Module](../../ARCHITECTURE.md#invoices-module).
 - **Stornorechnung surfaces as a distinct row in invoice lists.** UI must group it visually under the original; bookkeeper exports include both. Acceptable — it is the artifact a tax auditor expects to see.
 - **Object Lock + Compliance retention is unforgiving.** A Storno-then-correct cycle is the only correction path; there is no "fix a typo on the issued invoice" door, by design.
+- **A DR restore to an earlier DB state leaves a gap.** Invoices issued after the backup vanish from the DB, but their numbers reached customers. The DR procedure advances the counter past them ([data-model.md §6.13](../spec/data-model.md#613-gapless-sequence-allocation)) — §14 Abs. 4 Nr. 4 UStG requires a number issued once; gaplessness is this ADR's stricter choice and yields. The gap is recorded in the incident record.
 
 ### Operational
 

@@ -156,11 +156,39 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
    sudo -u deploy docker exec -i projekt-manager-db-1 \
      pg_restore --clean --if-exists --no-owner --no-privileges -U pm -d projekt_manager < /tmp/${TS}.dump
    ```
-5. On the VPS: shred the plaintext dump.
+5. Advance the invoice numbering ([AC-368](../../spec/verification.md#1522-backup-and-recovery)). Each issuance writes one PDF under `invoices/`, so the versions written since the backup bound the lost numbers from above; any surplus becomes a legal gap. The cutoff sits one hour before `TS` because an issuance writes its PDF before it commits.
+
+   On the workstation, with the B2 app key exported as in [object-storage-provisioning.md § Verify against the live bucket](../object-storage-provisioning.md#verify-against-the-live-bucket):
+
+   ```bash
+   CUTOFF=$(date -u -d "@$(( $(date -u -d "$TS" +%s) - 3600 ))" +%Y-%m-%dT%H:%M:%S)
+   N=$(aws --endpoint-url "$EP" s3api list-object-versions --bucket "$B" --prefix invoices/ --output json \
+     | jq --arg c "$CUTOFF" '[.Versions[]? | select(.LastModified[:19] >= $c)] | length')
+   echo "N=${N} Y0=${CUTOFF:0:4}"
+   ```
+
+   If `N` is 0, skip to step 6. Otherwise, on the VPS, advance every `(year, kind)` from `Y0` to the current year by `N`:
+
+   ```bash
+   N=<N>; Y0=<Y0>   # from the workstation output
+   sudo -u deploy docker exec -i projekt-manager-db-1 psql -U pm -d projekt_manager -v ON_ERROR_STOP=1 <<SQL
+   INSERT INTO invoice_sequence (year, kind, next_value)
+   SELECT y, k, 1 + ${N}
+   FROM generate_series(${Y0}, EXTRACT(YEAR FROM now() AT TIME ZONE 'UTC')::int) AS y,
+        unnest(ARRAY['invoice', 'storno']) AS k
+   ON CONFLICT (year, kind) DO UPDATE
+     SET next_value = invoice_sequence.next_value + ${N}, updated_at = now();
+   SELECT year, kind, next_value FROM invoice_sequence ORDER BY year, kind;
+   SQL
+   ```
+
+   Record `N` and the printed sequence in the incident record — it explains the gap. Invoices issued after `TS` are missing from the DB, and their PDFs are unreadable without their rows; collect copies from wherever they were sent.
+
+6. On the VPS: shred the plaintext dump.
    ```bash
    sudo shred -u /tmp/${TS}.dump
    ```
-6. On the VPS: restart the stack and verify. `scripts/deploy.sh` already includes `--profile backup` so this also brings the backup service back up:
+7. On the VPS: restart the stack and verify. `scripts/deploy.sh` already includes `--profile backup` so this also brings the backup service back up:
    ```bash
    sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
    ```
