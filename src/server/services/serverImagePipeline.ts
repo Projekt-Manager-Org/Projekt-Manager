@@ -23,6 +23,16 @@
 import sharp from 'sharp';
 import { ATTACHMENT_PIPELINE } from '../../config/attachmentPipeline.js';
 
+// Decoder allowlist matching the attachment MIME contract (JPEG/PNG/WebP).
+// sharp picks the loader from the bytes, not the declared type, so without it
+// a crafted takeout reaches every libvips loader — SVG/librsvg included
+// (GHSA-wq5f-xc86-pv6w, #460). Process-global: keep it here, out of shared
+// code — the PWA icon script renders SVG in its own process.
+sharp.block({ operation: ['VipsForeignLoad'] });
+sharp.unblock({
+  operation: ['VipsForeignLoadJpegBuffer', 'VipsForeignLoadPngBuffer', 'VipsForeignLoadWebpBuffer'],
+});
+
 /**
  * Derive a WebP thumbnail from decrypted image `plaintext`, sized to
  * `thumbnailMaxDimension` longest edge (aspect preserved, never upscaled)

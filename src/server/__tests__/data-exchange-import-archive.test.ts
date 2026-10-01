@@ -592,6 +592,65 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(longestEdge).toBeGreaterThan(0);
       expect(longestEdge).toBeLessThanOrEqual(320);
     });
+
+    it('thumbnails only JPEG/PNG/WebP bytes; other formats restore without a thumb (#460)', async () => {
+      // Pins the decoder allowlist both ways — a misspelled operation name in
+      // sharp.block/unblock fails silently. JPEG is covered by the test above.
+      // Rejected formats are declared image/jpeg: the label never picks the loader.
+      const raster = () =>
+        sharp({ create: { width: 64, height: 48, channels: 3, background: { r: 0, g: 0, b: 0 } } });
+      const svg = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48"><rect width="64" height="48"/></svg>',
+      );
+      const cases = [
+        { name: 'png', bytes: await raster().png().toBuffer(), mimeType: 'image/png', thumb: true },
+        {
+          name: 'webp',
+          bytes: await raster().webp().toBuffer(),
+          mimeType: 'image/webp',
+          thumb: true,
+        },
+        { name: 'svg', bytes: svg, mimeType: 'image/jpeg', thumb: false },
+        {
+          name: 'gif',
+          bytes: await raster().gif().toBuffer(),
+          mimeType: 'image/jpeg',
+          thumb: false,
+        },
+        {
+          name: 'tiff',
+          bytes: await raster().tiff().toBuffer(),
+          mimeType: 'image/jpeg',
+          thumb: false,
+        },
+      ] as const;
+      const seeded = [];
+      for (const c of cases) {
+        const { id } = await seedReadyAttachment({
+          plaintext: c.bytes,
+          fileName: `${c.name}.jpg`,
+          kind: 'photo',
+          mimeType: c.mimeType,
+          label: 'foto',
+        });
+        seeded.push({ ...c, id });
+      }
+
+      const archive = await buildExportArchive(ownerToken);
+      const jobId = await uploadArchiveToNewJob(ownerToken, archive);
+      const reauth = await awaitWipeAndReauth(ownerToken, jobId);
+      expect((await pollImportTerminal(reauth, jobId)).status).toBe('ready');
+
+      for (const c of seeded) {
+        const row = (
+          await db.execute(sql`SELECT has_thumbnail FROM attachments WHERE id = ${c.id}`)
+        ).rows[0] as { has_thumbnail: boolean };
+        expect({ format: c.name, thumb: row.has_thumbnail }).toEqual({
+          format: c.name,
+          thumb: c.thumb,
+        });
+      }
+    });
   });
 
   // -------------------------------------------------------------------
