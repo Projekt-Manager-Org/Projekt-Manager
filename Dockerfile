@@ -4,7 +4,6 @@ FROM node:24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd2
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY patches ./patches
 RUN npm ci
 
 COPY . .

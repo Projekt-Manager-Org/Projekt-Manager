@@ -35,8 +35,7 @@
     "check:doc-paths": "bash scripts/check-doc-paths.sh",
     "check:module-map": "bash scripts/check-module-map.sh",
     "check:links": "bash scripts/check-links.sh",
-    "prepare": "husky || true",
-    "postinstall": "patch-package"
+    "prepare": "husky || true"
   },
   "overrides": {
     "shell-quote": "^1.9.0",
@@ -102,7 +101,6 @@
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^17.0.5",
-    "patch-package": "^8.0.1",
     "prettier": "3.9.6",
     "semver": "7.8.5",
     "tsx": "^4.22.0",
