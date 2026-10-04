@@ -40,11 +40,18 @@ Follow [CONTRIBUTING.md § Workflow](CONTRIBUTING.md#workflow).
 
 ## Current phase — converge, don't expand
 
-No feature is in flight ([plan.md](docs/project/plan.md): MVP, no fixed iteration), so "the feature works" is not available as a criterion to close work against. Scope discipline supplies it: maximum impact, minimum intervention.
+[plan.md](docs/project/plan.md): MVP, feature freeze. Every change needs a target to converge to, stated before work starts (in the issue):
 
-Speculative improvements and rare corner cases are dropped, not filed — if they matter, they resurface by themselves. Correctness, data integrity, security and compounding debt are never dropped.
+| Work                  | Converges to                                                        |
+| --------------------- | ------------------------------------------------------------------- |
+| Bug                   | The reproduced defect no longer occurs                              |
+| Polish / optimization | The observed friction is gone, or a measured value meets its budget |
 
-This makes no convention obsolete (`review/conventions-*.md`) — it drops overengineering for corner cases with little real value and a lot of engineering and maintenance complexity.
+No observable problem → no target → no work.
+
+Speculative improvements and rare corner cases are dropped, not filed - if they matter, they resurface by themselves. Correctness, data integrity, security and compounding debt are never dropped.
+
+This makes no convention obsolete (`review/conventions-*.md`) - it drops overengineering for corner cases with little real value and a lot of maintenance complexity.
 
 ## Principles
 
