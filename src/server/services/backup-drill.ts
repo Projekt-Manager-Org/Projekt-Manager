@@ -1,7 +1,8 @@
 /**
  * Layer 2 drill service — Tier 2 verify-on-cycle.
  *
- * Implements verification.md §15.22 AC-168. Downloads the latest
+ * Implements verification.md §15.22 AC-168 and the drill half of
+ * AC-169. Downloads the latest
  * encrypted dump + manifest, decrypts with the operator-loaded tmpfs
  * identity, restores into an ephemeral Postgres, and compares the
  * restore-side manifest against the sidecar manifest.
@@ -14,6 +15,9 @@
  *     "the row moved" signal with no Tier-2 outcome behind it).
  *   - A skip is NOT a failure. It returns { outcome: 'skipped',
  *     reason: 'key-absent' } so the caller can log it distinctly.
+ *
+ * Every other outcome is recorded via `recordBackupStatus`: the status
+ * row, then the status mirror (AC-169).
  *
  * Production wires the downloader + decrypt against R2 + `age -d`.
  * Tests pass stubs; the skip-branch never calls them (the test asserts
@@ -31,8 +35,13 @@
 
 import fs from 'node:fs/promises';
 import type { Database } from '../db/connection.js';
-import { getBackupStatus, updateBackupStatus } from '../repositories/backupStatus.js';
-import { type Manifest } from './backup.js';
+import { getBackupStatus } from '../repositories/backupStatus.js';
+import {
+  errorMessage,
+  recordBackupStatus,
+  type Manifest,
+  type StatusMirrorWriter,
+} from './backup.js';
 
 export interface DrillResult {
   outcome: 'ok' | 'failed' | 'skipped';
@@ -44,6 +53,8 @@ export interface DrillResult {
 
 export interface DrillOptions {
   db: Database;
+  /** Receives the status mirror after every status write (AC-169). */
+  uploader: StatusMirrorWriter;
   /**
    * Path to the tmpfs-resident decryption identity. Resolution rule:
    *   - missing file OR empty file → skip (no state change).
@@ -89,11 +100,17 @@ export interface DrillOptions {
 export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
   const identityState = await inspectIdentity(opts.identityPath);
   if (identityState === 'absent' || identityState === 'empty') {
-    // AC-168: skip → NO state change. No updateBackupStatus call.
+    // AC-168: skip → NO state change: no status row or mirror write.
     return { outcome: 'skipped', reason: 'key-absent' };
   }
 
   const now = opts.now ?? new Date();
+  const record = (lastDrillOk: boolean, lastError: string | null): Promise<void> =>
+    recordBackupStatus(opts.db, opts.uploader, {
+      lastDrillAt: now.toISOString(),
+      lastDrillOk,
+      lastError,
+    });
 
   // Download the latest dump.
   let ciphertext: Uint8Array;
@@ -101,11 +118,7 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
     ciphertext = await opts.downloadLatestDump();
   } catch (err) {
     const message = errorMessage(err);
-    await updateBackupStatus(opts.db, {
-      lastDrillAt: now.toISOString(),
-      lastDrillOk: false,
-      lastError: `drill-download: ${message}`,
-    });
+    await record(false, `drill-download: ${message}`);
     return { outcome: 'failed', reason: `download: ${message}` };
   }
 
@@ -118,25 +131,16 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
     // Scrub any details: the path was passed in by the caller, but we
     // still avoid echoing it back — an operator tailing logs should not
     // see the literal tmpfs path in an error cue (defense-in-depth).
-    await updateBackupStatus(opts.db, {
-      lastDrillAt: now.toISOString(),
-      lastDrillOk: false,
-      lastError: 'drill-decrypt: failed',
-    });
+    await record(false, 'drill-decrypt: failed');
     return { outcome: 'failed', reason: 'decrypt-failed' };
   }
 
   // Verify. The verify hook is mandatory for non-skip paths; if the
   // caller forgot to wire it, fail loudly rather than silently "pass".
   if (!opts.verifyManifest || !opts.expectedManifest) {
-    // Treat as configuration error — not a drill failure — so the status
-    // row doesn't flip to lastDrillOk=false for an operator-side bug.
-    // But we also can't leave the caller thinking the drill succeeded.
-    await updateBackupStatus(opts.db, {
-      lastDrillAt: now.toISOString(),
-      lastDrillOk: false,
-      lastError: 'drill-config: verify hooks missing',
-    });
+    // A configuration error, not a verify failure — but recorded as a
+    // failed drill all the same: an unverified backup must not read green.
+    await record(false, 'drill-config: verify hooks missing');
     return { outcome: 'failed', reason: 'verify-not-wired' };
   }
 
@@ -145,29 +149,17 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
     restoreManifest = await opts.verifyManifest(plaintext);
   } catch (err) {
     const message = errorMessage(err);
-    await updateBackupStatus(opts.db, {
-      lastDrillAt: now.toISOString(),
-      lastDrillOk: false,
-      lastError: `drill-verify: ${message}`,
-    });
+    await record(false, `drill-verify: ${message}`);
     return { outcome: 'failed', reason: `verify: ${message}` };
   }
 
   const mismatchedTable = firstDivergingTable(opts.expectedManifest, restoreManifest);
   if (mismatchedTable) {
-    await updateBackupStatus(opts.db, {
-      lastDrillAt: now.toISOString(),
-      lastDrillOk: false,
-      lastError: `drill-mismatch on ${mismatchedTable}`,
-    });
+    await record(false, `drill-mismatch on ${mismatchedTable}`);
     return { outcome: 'failed', reason: 'manifest-mismatch', mismatchedTable };
   }
 
-  await updateBackupStatus(opts.db, {
-    lastDrillAt: now.toISOString(),
-    lastDrillOk: true,
-    lastError: null,
-  });
+  await record(true, null);
   return { outcome: 'ok' };
 }
 
@@ -212,20 +204,4 @@ function firstDivergingTable(source: Manifest, restore: Manifest): string | null
     if (s.checksum !== r.checksum) return table;
   }
   return null;
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    // drizzle wraps a driver failure as `Failed query: <sql>` and tucks
-    // the real Postgres message (e.g. `relation "x" does not exist`) onto
-    // `.cause`. Surface the cause so the drill cue is actionable rather
-    // than the opaque wrapper — the #1 reason a drill failure is slow to
-    // diagnose. The wrapper's `params:` tail stays for the SQL context.
-    const cause = err.cause;
-    if (cause instanceof Error && cause.message && cause.message !== err.message) {
-      return `${err.message} (cause: ${cause.message})`;
-    }
-    return err.message;
-  }
-  return typeof err === 'string' ? err : 'unknown';
 }

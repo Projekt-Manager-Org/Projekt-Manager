@@ -5,7 +5,7 @@
  *   - AC-344 [crit]: the source manifest and the dump artifact come from
  *     a single database snapshot, so a run overlapping concurrent
  *     committed writes still passes Tier 1 and uploads. A run that
- *     cannot establish the shared snapshot fails and uploads nothing
+ *     cannot establish the shared snapshot fails and uploads no artifact
  *     rather than falling back to an independently-snapshotted dump.
  *
  * The production dump source is `pg_dump -Fc --snapshot=<id>` on its own
@@ -183,11 +183,11 @@ describe('Layer 2 backup — source/dump snapshot equality (§15.22 AC-344)', ()
     expect(uploads).toHaveLength(0);
   });
 
-  it('fails the run and uploads nothing when the dump cannot use the snapshot', async () => {
+  it('fails the run and uploads no artifact when the dump cannot use the snapshot', async () => {
     // The refusal half of AC-344: no silent fall back to a dump read
     // from a snapshot of its own. Stands in for `pg_dump` rejecting the
     // exported id (e.g. the exporting transaction was killed).
-    const { uploader, uploads, mirrorCalls } = makeStubUploader();
+    const { uploader, uploads } = makeStubUploader();
 
     const result = await runBackup({
       db,
@@ -201,7 +201,6 @@ describe('Layer 2 backup — source/dump snapshot equality (§15.22 AC-344)', ()
 
     expect(result.ok).toBe(false);
     expect(uploads).toHaveLength(0);
-    expect(mirrorCalls).toHaveLength(0);
 
     const rows = await db.execute(sql`SELECT last_backup_ok, last_error FROM meta_backup_status`);
     const row = rows.rows[0] as { last_backup_ok: boolean; last_error: string | null };

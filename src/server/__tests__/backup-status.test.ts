@@ -2,20 +2,19 @@
  * API integration tests: Layer 2 status dual-write + manifest determinism.
  *
  * Covers the status-surface and determinism slice of verification.md §15.22:
- *   - AC-169 [crit]: Every successful run upserts `meta_backup_status`
- *     AND writes the unencrypted status mirror object with the same field
- *     values. If the mirror write throws after the artifact uploads
- *     succeeded, the artifacts remain in place (R2 immutability window —
- *     no rollback of immutable objects) and `lastError` records the
- *     mirror failure.
+ *   - AC-169 [crit]: Every run, whatever its outcome, upserts
+ *     `meta_backup_status` AND writes the unencrypted status mirror object
+ *     with the same field values. If the mirror write throws, the failure
+ *     is appended to `lastError` and any uploaded artifacts remain in
+ *     place (R2 immutability window — no rollback of immutable objects).
+ *     The drill half of AC-169 lives in `backup-drill.test.ts`.
  *   - AC-174 [crit]: The per-table manifest checksum is deterministic
  *     across runs on identical data. Non-deterministic checksums would
  *     invalidate Tier 1 and Tier 2 comparison.
  *
- * AC-165/166/167 (Tier 1 run contract) live in `backup.test.ts`. Split
- * to keep each file under the 250-line cap in the test conventions, and
- * because the dual-write + determinism story is a separate failure mode
- * from the "run outcome" suite.
+ * AC-165/166/167 (Tier 1 run contract) live in `backup.test.ts` — the
+ * dual-write + determinism story is a separate failure mode from the
+ * "run outcome" suite.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
@@ -32,10 +31,16 @@ import type { Database } from '../db/connection.js';
 import {
   makeStubUploader,
   fakeEncrypt,
-  type BackupUploader,
+  readStatusRowAsMirror,
 } from '../../test/backupTestHarness.js';
 
-import { runBackup, computeManifest, type Manifest } from '../services/backup.js';
+import {
+  runBackup,
+  computeManifest,
+  type BackupStatusMirror,
+  type Manifest,
+  type RunBackupOptions,
+} from '../services/backup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -148,74 +153,96 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
   });
 
   // --------------------------------------------------------------
-  // AC-169: dual-write on success; orphan-artifact path when the
-  // mirror write fails after artifacts landed.
+  // AC-169: the mirror equals the DB row after every run, success or
+  // failure; a failed mirror write is appended to `lastError`.
   // --------------------------------------------------------------
-  describe('AC-169: status dual-write + orphan-artifact handling', () => {
-    it('writes meta_backup_status AND the status mirror with equal field values', async () => {
+  describe('AC-169: status dual-write', () => {
+    const rowAsMirror = (): Promise<BackupStatusMirror> => readStatusRowAsMirror(db);
+
+    const fail = async (): Promise<never> => {
+      throw new Error('stage failure (test simulation)');
+    };
+
+    // One case per failure stage: each records the row on its own path,
+    // so each is a separate place the mirror write can be missed. The
+    // mirror's `lastError` is the stage cue alone — detail stays in the
+    // DB row, out of the plaintext off-site object.
+    const stages: Array<[string, string, Partial<RunBackupOptions>]> = [
+      ['precondition', 'precondition', { readDataChecksums: async () => 'off' }],
+      ['source-capture', 'source-capture', { dumpSource: fail }],
+      ['verify', 'verify', { verifyManifest: fail }],
+      [
+        'tier-1-mismatch',
+        'tier-1-mismatch on users',
+        {
+          manifestPerturb: (m: Manifest): Manifest => ({
+            ...m,
+            users: { rowCount: -1, checksum: '' },
+          }),
+        },
+      ],
+      ['encrypt', 'encrypt', { encrypt: fail }],
+      ['upload', 'upload', {}],
+    ];
+
+    it('writes the mirror equal to the DB row on success', async () => {
       const { uploader, mirrorCalls } = makeStubUploader();
-      const now = new Date('2026-04-17T12:00:00.000Z');
 
-      const result = await runBackup({ db, uploader, encrypt: fakeEncrypt, now });
+      const result = await runBackup({ db, uploader, encrypt: fakeEncrypt });
+
       expect(result.ok).toBe(true);
-
-      const rows = await db.execute(
-        sql`SELECT last_backup_ok, last_backup_at, last_drill_at, last_drill_ok, last_error
-            FROM meta_backup_status`,
-      );
-      const dbRow = rows.rows[0] as {
-        last_backup_ok: boolean;
-        last_backup_at: Date | string;
-        last_drill_at: Date | string | null;
-        last_drill_ok: boolean | null;
-        last_error: string | null;
-      };
-
-      expect(mirrorCalls).toHaveLength(1);
-      const mirror = mirrorCalls[0] as {
-        lastBackupOk: boolean;
-        lastBackupAt: string;
-        lastDrillAt: string | null;
-        lastDrillOk: boolean | null;
-        lastError: string | null;
-      };
-
-      // Mirror values equal the DB row — same success flag, same
-      // timestamp, same drill state, same error cue. This is the
-      // core "dual-write means the two surfaces agree" assertion.
-      expect(mirror.lastBackupOk).toBe(dbRow.last_backup_ok);
-      const dbTs =
-        dbRow.last_backup_at instanceof Date
-          ? dbRow.last_backup_at.toISOString()
-          : new Date(dbRow.last_backup_at).toISOString();
-      expect(new Date(mirror.lastBackupAt).toISOString()).toBe(dbTs);
-      expect(mirror.lastError).toBe(dbRow.last_error);
+      expect(mirrorCalls).toEqual([await rowAsMirror()]);
+      expect((mirrorCalls[0] as BackupStatusMirror).lastBackupOk).toBe(true);
     });
 
-    it('records lastError when the status mirror write fails after artifacts uploaded', async () => {
-      const uploads: Array<{ key: string }> = [];
-      const failingMirror: BackupUploader = {
-        upload: async (key) => {
-          uploads.push({ key });
-        },
+    it.each(stages)(
+      'writes the mirror equal to the DB row on a %s failure, error cut to %s',
+      async (stage, cue, opts) => {
+        const { uploader, mirrorCalls } = makeStubUploader(
+          stage === 'upload' ? { upload: fail } : {},
+        );
+
+        const result = await runBackup({ db, uploader, encrypt: fakeEncrypt, ...opts });
+
+        expect(result.ok).toBe(false);
+        const row = await rowAsMirror();
+        expect(row.lastBackupOk).toBe(false);
+        expect(row.lastError ?? '').toMatch(new RegExp(`^${cue}`));
+        expect(mirrorCalls).toEqual([{ ...row, lastError: cue }]);
+      },
+    );
+
+    it('appends a mirror-write failure to lastError after artifacts uploaded', async () => {
+      const putStatusMirror = vi.fn(async () => {
+        throw new Error('mirror write failed (test simulation)');
+      });
+      const { uploader, uploads } = makeStubUploader({ putStatusMirror });
+
+      const result = await runBackup({ db, uploader, encrypt: fakeEncrypt });
+
+      // Artifacts are not rolled back (R2 immutability window), and the
+      // run itself still succeeded.
+      expect(result.ok).toBe(true);
+      expect(uploads).toHaveLength(2);
+      const row = await rowAsMirror();
+      expect(row.lastBackupOk).toBe(true);
+      expect(row.lastError).toBe('mirror: mirror write failed (test simulation)');
+      // The follow-up write recording the failure is not mirrored.
+      expect(putStatusMirror).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the run's own failure cue when the mirror write also fails", async () => {
+      const { uploader } = makeStubUploader({
         putStatusMirror: async () => {
           throw new Error('mirror write failed (test simulation)');
         },
-      };
-      const uploadSpy = vi.spyOn(failingMirror, 'upload');
+      });
 
-      await runBackup({ db, uploader: failingMirror, encrypt: fakeEncrypt });
+      await runBackup({ db, uploader, encrypt: fail });
 
-      // The artifacts landed before the mirror failed — per ADR-0020
-      // they are not rolled back (R2 immutability window).
-      expect(uploadSpy).toHaveBeenCalled();
-      expect(uploads.length).toBeGreaterThan(0);
-
-      // The DB row records the mirror failure so operator attention is
-      // drawn to the orphan state.
-      const rows = await db.execute(sql`SELECT last_error FROM meta_backup_status`);
-      const row = rows.rows[0] as { last_error: string | null };
-      expect(row.last_error ?? '').toMatch(/mirror/i);
+      const row = await rowAsMirror();
+      expect(row.lastBackupOk).toBe(false);
+      expect(row.lastError ?? '').toMatch(/^encrypt: stage failure.*mirror: mirror write failed/);
     });
   });
 });

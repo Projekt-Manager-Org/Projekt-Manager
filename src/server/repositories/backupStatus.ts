@@ -62,11 +62,15 @@ export async function getBackupStatus(db: TransactionalDatabase): Promise<Backup
  * (data-model.md §5.9). `null` is a valid, explicit value for nullable
  * columns (`lastError`, `lastDrillOk`) — the patch differentiates
  * "omit this field" (no key) from "clear this field" (key set to null).
+ *
+ * Returns the row as written, so a caller mirroring it (AC-169) gets
+ * exactly these values rather than a later read that a concurrent
+ * writer could have changed.
  */
 export async function updateBackupStatus(
   db: TransactionalDatabase,
   patch: BackupStatusPatch,
-): Promise<void> {
+): Promise<BackupStatus> {
   // Build the SET clause explicitly so we only touch the columns the
   // caller asked about — a plain spread would turn `undefined` into
   // "write NULL to this column" via Drizzle's insert path and erase
@@ -88,7 +92,16 @@ export async function updateBackupStatus(
   if ('lastDrillOk' in patch) setClause.lastDrillOk = patch.lastDrillOk ?? null;
   if ('lastError' in patch) setClause.lastError = patch.lastError ?? null;
 
-  await db.update(metaBackupStatus).set(setClause).where(eq(metaBackupStatus.singleton, true));
+  const rows = await db
+    .update(metaBackupStatus)
+    .set(setClause)
+    .where(eq(metaBackupStatus.singleton, true))
+    .returning();
+  const row = rows[0];
+  if (!row) {
+    throw new Error('meta_backup_status row missing — baseline migration did not execute');
+  }
+  return rowToStatus(row);
 }
 
 /**

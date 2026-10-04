@@ -25,10 +25,9 @@
  *      function (production wires `age -r $AGE_RECIPIENT`; tests inject
  *      a fake). An encryption failure fails the run (AC-167).
  *   6. Uploads `daily/<iso>.dump.age` and `daily/<iso>.manifest.json.age`.
- *   7. Writes a status-mirror object carrying the same field values as
- *      the `meta_backup_status` row (AC-169). If the mirror write throws
- *      after the artifacts uploaded, the artifacts remain in place (R2
- *      immutability window) and the failure is recorded in `lastError`.
+ *   7. Records the outcome — success or a failure at any step — via
+ *      `recordBackupStatus`: the `meta_backup_status` row, then the
+ *      status mirror carrying the same values (AC-169).
  *
  * Architecture layering (architecture.md §11.2): this service orchestrates
  * the repository (`backupStatus`) and the external-subprocess surface
@@ -40,10 +39,10 @@ import { spawn } from 'node:child_process';
 import type { Database, TransactionalDatabase } from '../db/connection.js';
 import { boundRuntime, writeStdin } from './subprocessBound.js';
 import {
-  getBackupStatus,
   updateBackupStatus,
   ensureBackupStatusRow,
   type BackupStatus,
+  type BackupStatusPatch,
 } from '../repositories/backupStatus.js';
 
 // ---------------------------------------------------------------
@@ -82,6 +81,9 @@ export interface BackupUploader {
   upload(key: string, data: Uint8Array, contentType: string): Promise<void>;
   putStatusMirror(status: unknown): Promise<void>;
 }
+
+/** The slice of the upload surface a status write needs. */
+export type StatusMirrorWriter = Pick<BackupUploader, 'putStatusMirror'>;
 
 /**
  * Encryption surface. Async function that maps plaintext bytes to
@@ -266,6 +268,14 @@ const MANIFEST_STATEMENT_TIMEOUT_MS = 5 * 60_000;
 export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult> {
   const now = opts.now ?? new Date();
   const perturb = opts.manifestPerturb ?? ((m: Manifest) => m);
+  const fail = async (error: string, failedTable?: string): Promise<BackupRunResult> => {
+    await recordBackupStatus(opts.db, opts.uploader, {
+      lastBackupAt: now.toISOString(),
+      lastBackupOk: false,
+      lastError: error,
+    });
+    return failedTable ? { ok: false, error, failedTable } : { ok: false, error };
+  };
 
   // Safety net: if the migration hasn't pre-seeded the row on this DB,
   // ensure it exists before the upsert path runs. Idempotent.
@@ -276,13 +286,9 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
   // ---------------------------------------------------------------
   const checksums = await (opts.readDataChecksums ?? (() => showDataChecksums(opts.db)))();
   if (checksums !== 'on') {
-    const error = `precondition: data checksums are ${checksums} on the source database — storage corruption would pass verification`;
-    await updateBackupStatus(opts.db, {
-      lastBackupAt: now.toISOString(),
-      lastBackupOk: false,
-      lastError: error,
-    });
-    return { ok: false, error };
+    return fail(
+      `precondition: data checksums are ${checksums} on the source database — storage corruption would pass verification`,
+    );
   }
 
   // ---------------------------------------------------------------
@@ -369,13 +375,7 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
       },
     ));
   } catch (err) {
-    const message = errorMessage(err);
-    await updateBackupStatus(opts.db, {
-      lastBackupAt: now.toISOString(),
-      lastBackupOk: false,
-      lastError: `source-capture: ${message}`,
-    });
-    return { ok: false, error: `source-capture: ${message}` };
+    return fail(`source-capture: ${errorMessage(err)}`);
   }
 
   // ---------------------------------------------------------------
@@ -388,29 +388,18 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
     const verify = opts.verifyManifest ?? (async () => computeManifest(opts.db));
     restoreManifest = await verify(dump);
   } catch (err) {
-    const message = errorMessage(err);
-    await updateBackupStatus(opts.db, {
-      lastBackupAt: now.toISOString(),
-      lastBackupOk: false,
-      lastError: `verify: ${message}`,
-    });
-    return { ok: false, error: `verify: ${message}` };
+    return fail(`verify: ${errorMessage(err)}`);
   }
 
   const perturbed = perturb(restoreManifest);
   const mismatch = firstDivergingTable(sourceManifest, perturbed);
   if (mismatch) {
-    await updateBackupStatus(opts.db, {
-      lastBackupAt: now.toISOString(),
-      lastBackupOk: false,
-      lastError: `tier-1-mismatch on ${mismatch}`,
-    });
-    // AC-165: no upload, no mirror write. Status row carries the cue.
-    return { ok: false, error: `tier-1-mismatch on ${mismatch}`, failedTable: mismatch };
+    // AC-165: no artifact upload. The status row carries the cue.
+    return fail(`tier-1-mismatch on ${mismatch}`, mismatch);
   }
 
   // ---------------------------------------------------------------
-  // Encrypt + upload. Encryption failure = no upload at all (AC-167).
+  // Encrypt + upload. Encryption failure = no artifact upload (AC-167).
   // ---------------------------------------------------------------
   let dumpCipher: Uint8Array;
   let manifestCipher: Uint8Array;
@@ -418,13 +407,7 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
     dumpCipher = await opts.encrypt(dump);
     manifestCipher = await opts.encrypt(new TextEncoder().encode(JSON.stringify(sourceManifest)));
   } catch (err) {
-    const message = errorMessage(err);
-    await updateBackupStatus(opts.db, {
-      lastBackupAt: now.toISOString(),
-      lastBackupOk: false,
-      lastError: `encrypt: ${message}`,
-    });
-    return { ok: false, error: `encrypt: ${message}` };
+    return fail(`encrypt: ${errorMessage(err)}`);
   }
 
   const iso = now.toISOString();
@@ -435,49 +418,43 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
     await opts.uploader.upload(dumpKey, dumpCipher, 'application/octet-stream');
     await opts.uploader.upload(manifestKey, manifestCipher, 'application/octet-stream');
   } catch (err) {
-    const message = errorMessage(err);
-    await updateBackupStatus(opts.db, {
-      lastBackupAt: now.toISOString(),
-      lastBackupOk: false,
-      lastError: `upload: ${message}`,
-    });
-    return { ok: false, error: `upload: ${message}` };
+    return fail(`upload: ${errorMessage(err)}`);
   }
 
-  // ---------------------------------------------------------------
-  // Dual-write: primary DB row AND status mirror (AC-169). If the
-  // mirror write fails after artifacts landed, artifacts remain and
-  // `lastError` records the mirror failure (orphan-artifact semantics).
-  // ---------------------------------------------------------------
-  await updateBackupStatus(opts.db, {
+  await recordBackupStatus(opts.db, opts.uploader, {
     lastBackupAt: now.toISOString(),
     lastBackupOk: true,
     lastError: null,
   });
-  const postUpsertStatus = await getBackupStatus(opts.db);
-
-  try {
-    await opts.uploader.putStatusMirror(toMirror(postUpsertStatus));
-  } catch (err) {
-    const message = errorMessage(err);
-    await updateBackupStatus(opts.db, {
-      lastError: `mirror: ${message}`,
-    });
-    // The backup artifacts uploaded successfully; only the mirror
-    // failed. Report success with a populated `lastError` via the
-    // status row, mirroring AC-169.
-    return {
-      ok: true,
-      manifest: sourceManifest,
-      uploadedKeys: { dump: dumpKey, manifest: manifestKey },
-    };
-  }
-
   return {
     ok: true,
     manifest: sourceManifest,
     uploadedKeys: { dump: dumpKey, manifest: manifestKey },
   };
+}
+
+/**
+ * Write the status row, then the status mirror with the row's values
+ * (AC-169). Every status write — backup or drill — goes through here.
+ *
+ * A failed mirror write is appended to `lastError`, keeping the run's
+ * own cue; that follow-up row write is not mirrored. Artifacts already
+ * uploaded stay (R2 immutability window) — the run's verdict stands.
+ */
+export async function recordBackupStatus(
+  db: Database,
+  mirror: StatusMirrorWriter,
+  patch: BackupStatusPatch,
+): Promise<void> {
+  const status = await updateBackupStatus(db, patch);
+  try {
+    await mirror.putStatusMirror(toMirror(status));
+  } catch (err) {
+    const cue = `mirror: ${errorMessage(err)}`;
+    await updateBackupStatus(db, {
+      lastError: status.lastError ? `${status.lastError}; ${cue}` : cue,
+    });
+  }
 }
 
 // ---------------------------------------------------------------
@@ -531,7 +508,7 @@ function firstDivergingTable(source: Manifest, restore: Manifest): string | null
  * defense in depth against a future throw path that includes a
  * connection string or similar.
  */
-function errorMessage(err: unknown): string {
+export function errorMessage(err: unknown): string {
   if (typeof err === 'string') return sanitizeErrorMessage(err);
   if (!(err instanceof Error)) return sanitizeErrorMessage('unknown');
 
@@ -554,6 +531,12 @@ function errorMessage(err: unknown): string {
  * Convert a `BackupStatus` into the explicit-null mirror shape. Keeps
  * the mirror object's JSON stable across runs — same keys always
  * present, never a mix of missing / null.
+ *
+ * `lastError` is cut to its stage cue — the text before the first `:`,
+ * which this module and the drill write as fixed strings. The detail
+ * after it can echo subprocess stderr, and `pg_restore` stderr can
+ * quote row contents; the mirror is plaintext off-site (ADR-0020:
+ * destination is untrusted). The DB row keeps the full text (AC-169).
  */
 function toMirror(status: BackupStatus): BackupStatusMirror {
   return {
@@ -561,7 +544,7 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
     lastBackupOk: status.lastBackupOk,
     lastDrillAt: status.lastDrillAt ?? null,
     lastDrillOk: status.lastDrillOk,
-    lastError: status.lastError ?? null,
+    lastError: status.lastError?.split(':', 1)[0] ?? null,
     updatedAt: status.updatedAt,
   };
 }
@@ -639,7 +622,7 @@ export function pgDumpArgs(snapshotId: string): string[] {
  * hits a connection error it echoes the full conninfo it tried; if the
  * conninfo came from DATABASE_URL the password appears in that echo,
  * which bubbles up through stderr into `lastError` on the status row —
- * a string that is returned by a public status endpoint. Discrete vars
+ * a string returned to the owner via `GET /api/auth/me`. Discrete vars
  * are read natively by libpq and their values do not appear in the
  * error surface.
  */

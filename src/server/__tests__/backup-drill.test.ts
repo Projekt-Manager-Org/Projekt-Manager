@@ -5,7 +5,9 @@
  * private identity is absent from tmpfs, the Tier 2 drill is skipped.
  * A skip is NOT a failure — `lastDrillAt` and `lastDrillOk` are left
  * unchanged from their prior values, so freshness derivation reads
- * "stale" rather than "failed".
+ * "stale" rather than "failed". Also the drill half of AC-169 [crit]:
+ * a drill that writes the status row writes the mirror with it; a skip
+ * writes neither.
  *
  * Separated from `backup.test.ts` because the drill exercises a
  * distinct code path (decrypt-side / operator-key surface), and
@@ -30,11 +32,12 @@ import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
 
 import { runDrill } from '../services/backup-drill.js';
+import { makeStubUploader, readStatusRowAsMirror } from '../../test/backupTestHarness.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
 
-describe('Layer 2 drill — AC-168 skip when key absent', () => {
+describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
   let db: Database;
   let pool: pg.Pool;
   let keyDir: string;
@@ -92,6 +95,7 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     const result = await runDrill({
       db,
+      uploader: makeStubUploader().uploader,
       identityPath: missing,
       downloadLatestDump: async () => {
         throw new Error('downloader must not be called when key is absent');
@@ -116,6 +120,7 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     const result = await runDrill({
       db,
+      uploader: makeStubUploader().uploader,
       identityPath: empty,
       downloadLatestDump: async () => {
         throw new Error('downloader must not be called for an empty identity');
@@ -135,9 +140,11 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
     );
     const priorAt = (before.rows[0] as { last_drill_at: Date | string }).last_drill_at;
     const priorOk = (before.rows[0] as { last_drill_ok: boolean | null }).last_drill_ok;
+    const { uploader, mirrorCalls } = makeStubUploader();
 
     await runDrill({
       db,
+      uploader,
       identityPath: missing,
       downloadLatestDump: async () => new Uint8Array(),
       decrypt: async () => new Uint8Array(),
@@ -157,6 +164,8 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     expect(postIso).toBe(priorIso);
     expect(postOk).toBe(priorOk);
+    // A skip is not a write, so there is nothing to mirror (AC-169).
+    expect(mirrorCalls).toHaveLength(0);
   });
 
   it('does not bump updatedAt on a skip', async () => {
@@ -172,6 +181,7 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     await runDrill({
       db,
+      uploader: makeStubUploader().uploader,
       identityPath: missing,
       downloadLatestDump: async () => new Uint8Array(),
       decrypt: async () => new Uint8Array(),
@@ -207,6 +217,7 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     const result = await runDrill({
       db,
+      uploader: makeStubUploader().uploader,
       identityPath: identity,
       downloadLatestDump: async () => new Uint8Array([1, 2, 3]),
       decrypt: async () => new Uint8Array([1, 2, 3]),
@@ -225,5 +236,29 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
     const row = await db.execute(sql`SELECT last_error FROM meta_backup_status`);
     const lastError = (row.rows[0] as { last_error: string | null }).last_error ?? '';
     expect(lastError).toContain('relation "data_exchange_job" does not exist');
+  });
+
+  it.each([
+    ['passes', true, { users: { rowCount: 1, checksum: 'a' } }],
+    ['fails', false, { users: { rowCount: 2, checksum: 'b' } }],
+  ])('writes the mirror equal to the DB row when the drill %s', async (_, ok, restored) => {
+    const identity = path.join(keyDir, 'present.key');
+    await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
+    const { uploader, mirrorCalls } = makeStubUploader();
+
+    const result = await runDrill({
+      db,
+      uploader,
+      identityPath: identity,
+      downloadLatestDump: async () => new Uint8Array([1, 2, 3]),
+      decrypt: async () => new Uint8Array([1, 2, 3]),
+      expectedManifest: { users: { rowCount: 1, checksum: 'a' } },
+      verifyManifest: async () => restored,
+    });
+
+    expect(result.outcome).toBe(ok ? 'ok' : 'failed');
+    const row = await readStatusRowAsMirror(db);
+    expect(row.lastDrillOk).toBe(ok);
+    expect(mirrorCalls).toEqual([row]);
   });
 });

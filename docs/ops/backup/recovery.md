@@ -16,6 +16,8 @@ AWS_DEFAULT_REGION=auto \
   --endpoint-url "$R2_ENDPOINT" | jq .
 ```
 
+The mirror's `lastError` names only the failed stage (e.g. `verify`); the detail stays in the DB row and the backup container's log.
+
 List the daily artifacts and pick the newest `lastBackupOk = true` timestamp:
 
 ```bash

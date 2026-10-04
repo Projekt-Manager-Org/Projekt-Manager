@@ -41,6 +41,7 @@ import {
   LOCK_WAIT_TIMEOUT_MS,
   type BackupUploader,
   type DumpSource,
+  type StatusMirrorWriter,
   type Encryptor,
   type VerifyManifestFn,
 } from './services/backup.js';
@@ -329,6 +330,7 @@ function createBackupHandler(deps: BackupHandlerDeps): () => Promise<number> {
 
 interface DrillHandlerDeps {
   db: Database;
+  uploader: StatusMirrorWriter;
   downloader: BackupDownloader;
   verifyManifest: VerifyManifestFn;
   identityPath: string;
@@ -338,6 +340,7 @@ function buildDrillDeps(env: Env, db: Database): DrillHandlerDeps {
   const r2 = requireR2(env, 'drill');
   return {
     db,
+    uploader: createR2Uploader(r2),
     downloader: createR2Downloader(r2),
     verifyManifest: ephemeralPgVerify(),
     identityPath: env.AGE_IDENTITY_PATH,
@@ -374,6 +377,7 @@ function createDrillHandler(deps: DrillHandlerDeps): () => Promise<number> {
 
       const result = await runDrill({
         db: deps.db,
+        uploader: deps.uploader,
         identityPath: deps.identityPath,
         downloadLatestDump: async () => {
           if (dumpCipher === null) {

@@ -41,8 +41,8 @@ describe('Layer 2 backup — page-checksum precondition (§15.22 AC-366)', () =>
     await pool?.end();
   });
 
-  it('fails before the dump, uploads nothing, and names the missing checksums', async () => {
-    const { uploader, uploads, mirrorCalls } = makeStubUploader();
+  it('fails before the dump, uploads no artifact, and names the missing checksums', async () => {
+    const { uploader, uploads } = makeStubUploader();
     const dumpSource = vi.fn(async () => new Uint8Array());
 
     const result = await runBackup({
@@ -56,7 +56,6 @@ describe('Layer 2 backup — page-checksum precondition (§15.22 AC-366)', () =>
     expect(result.ok).toBe(false);
     expect(dumpSource).not.toHaveBeenCalled();
     expect(uploads).toHaveLength(0);
-    expect(mirrorCalls).toHaveLength(0);
 
     const rows = await db.execute(sql`SELECT last_backup_ok, last_error FROM meta_backup_status`);
     const row = rows.rows[0] as { last_backup_ok: boolean; last_error: string | null };

@@ -1,14 +1,14 @@
 /**
- * Shared fixtures for Layer 2 backup integration tests.
+ * Shared fixtures for the Layer 2 backup integration tests.
  *
- * Consumed by:
- *   - src/server/__tests__/backup.test.ts       (AC-165/166/167)
- *   - src/server/__tests__/backup-status.test.ts (AC-169/174)
- *
- * Kept separate from the tests so both files import the same fake
+ * Kept separate from the tests so every file imports the same fake
  * encrypt + stub uploader and cannot drift on behaviors like upload
  * recording or the encryption envelope shape.
  */
+
+import { sql } from 'drizzle-orm';
+import type { Database } from '../server/db/connection.js';
+import type { BackupStatusMirror } from '../server/services/backup.js';
 
 /**
  * Minimal re-declaration of the upload contract. Keep in sync with
@@ -89,4 +89,27 @@ export function startsWith(data: Uint8Array, magic: string): boolean {
     if (data[i] !== bytes[i]) return false;
   }
   return true;
+}
+
+/**
+ * The `meta_backup_status` row in the status mirror's explicit-null
+ * shape. Raw SQL on purpose: AC-169 assertions compare the mirror to
+ * the DB independently of the service's own row-to-mirror conversion.
+ */
+export async function readStatusRowAsMirror(db: Database): Promise<BackupStatusMirror> {
+  const rows = await db.execute(
+    sql`SELECT last_backup_at, last_backup_ok, last_drill_at, last_drill_ok, last_error, updated_at
+        FROM meta_backup_status`,
+  );
+  const r = rows.rows[0] as Record<string, unknown>;
+  const iso = (v: unknown): string | null =>
+    v === null ? null : new Date(v as string | Date).toISOString();
+  return {
+    lastBackupAt: iso(r.last_backup_at),
+    lastBackupOk: r.last_backup_ok as boolean,
+    lastDrillAt: iso(r.last_drill_at),
+    lastDrillOk: r.last_drill_ok as boolean | null,
+    lastError: r.last_error as string | null,
+    updatedAt: new Date(r.updated_at as string | Date).toISOString(),
+  };
 }
