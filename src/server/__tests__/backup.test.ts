@@ -4,7 +4,7 @@
  * Covers the core-pipeline slice of verification.md §15.22:
  *   - AC-165 [crit]: Tier 1 verify-on-create mismatch fails the run; no
  *     artifact is uploaded to the off-site store; status row records the
- *     failure with `lastBackupOk=false` and `lastError` identifying the
+ *     failure with `lastBackupOk=false` and `lastBackupError` identifying the
  *     table whose manifest diverged.
  *   - AC-166 [crit]: Tier 1 match path uploads the encrypted dump + the
  *     encrypted manifest sidecar to the off-site store; `meta_backup_status`
@@ -111,7 +111,7 @@ describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () =
       expect(uploads).toHaveLength(0);
     });
 
-    it('records the failing table in meta_backup_status.lastError', async () => {
+    it('records the failing table in meta_backup_status.lastBackupError', async () => {
       const { uploader } = makeStubUploader();
 
       await runBackup({
@@ -124,10 +124,12 @@ describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () =
         }),
       });
 
-      const rows = await db.execute(sql`SELECT last_backup_ok, last_error FROM meta_backup_status`);
-      const row = rows.rows[0] as { last_backup_ok: boolean; last_error: string | null };
+      const rows = await db.execute(
+        sql`SELECT last_backup_ok, last_backup_error FROM meta_backup_status`,
+      );
+      const row = rows.rows[0] as { last_backup_ok: boolean; last_backup_error: string | null };
       expect(row.last_backup_ok).toBe(false);
-      expect(row.last_error ?? '').toContain('customers');
+      expect(row.last_backup_error ?? '').toContain('customers');
     });
   });
 

@@ -39,7 +39,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
  *
  * One value for all of them on purpose. The point is "does not hang
  * forever", and nothing downstream branches on *which* binary overran —
- * the label in `lastError` already says that. Per-binary ceilings would
+ * the label in the error field already says that. Per-binary ceilings would
  * be config surface bought with no operational gain.
  *
  * Sized to be unreachable in normal operation rather than tight: at this
@@ -64,7 +64,7 @@ export const SUBPROCESS_SIGKILL_GRACE_MS = 5_000;
  * `runBackup` never sees it, and `backup-runner.ts` is a separate
  * entrypoint that registers no `uncaughtException` handler (the one in
  * `start.ts` covers the app only). The process would exit before the
- * status row is written: no `lastBackupOk=false`, no `lastError`, and a
+ * status row is written: no `lastBackupOk=false`, no `lastBackupError`, and a
  * freshness badge still green on the previous success — the
  * misleading-state class ADR-0014 rules out.
  *
@@ -156,7 +156,7 @@ export interface SubprocessCommand {
  * fired.
  *
  * `label` — not `command.cmd` — names the failure, because the operator
- * reads it off `meta_backup_status.lastError` where "initdb" is the
+ * reads it off the `meta_backup_status` error field where "initdb" is the
  * useful word and the full argv is noise.
  *
  * Use `spawnCollect` in `backup.ts` instead when the child's stdout IS

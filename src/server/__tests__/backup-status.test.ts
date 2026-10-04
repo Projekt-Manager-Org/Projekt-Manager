@@ -5,9 +5,11 @@
  *   - AC-169 [crit]: Every run, whatever its outcome, upserts
  *     `meta_backup_status` AND writes the unencrypted status mirror object
  *     with the same field values. If the mirror write throws, the failure
- *     is appended to `lastError` and any uploaded artifacts remain in
+ *     is appended to `lastBackupError` and any uploaded artifacts remain in
  *     place (R2 immutability window — no rollback of immutable objects).
  *     The drill half of AC-169 lives in `backup-drill.test.ts`.
+ *   - AC-370 [crit]: A backup run writes only the backup fields and a
+ *     drill only the drill fields, so neither erases the other's cue.
  *   - AC-174 [crit]: The per-table manifest checksum is deterministic
  *     across runs on identical data. Non-deterministic checksums would
  *     invalidate Tier 1 and Tier 2 comparison.
@@ -20,6 +22,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { sql } from 'drizzle-orm';
+import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type pg from 'pg';
@@ -32,6 +36,7 @@ import {
   makeStubUploader,
   fakeEncrypt,
   readStatusRowAsMirror,
+  type BackupUploader,
 } from '../../test/backupTestHarness.js';
 
 import {
@@ -41,6 +46,7 @@ import {
   type Manifest,
   type RunBackupOptions,
 } from '../services/backup.js';
+import { runDrill, type DrillOptions } from '../services/backup-drill.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -154,7 +160,7 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
 
   // --------------------------------------------------------------
   // AC-169: the mirror equals the DB row after every run, success or
-  // failure; a failed mirror write is appended to `lastError`.
+  // failure; a failed mirror write is appended to `lastBackupError`.
   // --------------------------------------------------------------
   describe('AC-169: status dual-write', () => {
     const rowAsMirror = (): Promise<BackupStatusMirror> => readStatusRowAsMirror(db);
@@ -165,7 +171,7 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
 
     // One case per failure stage: each records the row on its own path,
     // so each is a separate place the mirror write can be missed. The
-    // mirror's `lastError` is the stage cue alone — detail stays in the
+    // mirror's `lastBackupError` is the stage cue alone — detail stays in the
     // DB row, out of the plaintext off-site object.
     const stages: Array<[string, string, Partial<RunBackupOptions>]> = [
       ['precondition', 'precondition', { readDataChecksums: async () => 'off' }],
@@ -207,12 +213,12 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
         expect(result.ok).toBe(false);
         const row = await rowAsMirror();
         expect(row.lastBackupOk).toBe(false);
-        expect(row.lastError ?? '').toMatch(new RegExp(`^${cue}`));
-        expect(mirrorCalls).toEqual([{ ...row, lastError: cue }]);
+        expect(row.lastBackupError ?? '').toMatch(new RegExp(`^${cue}`));
+        expect(mirrorCalls).toEqual([{ ...row, lastBackupError: cue }]);
       },
     );
 
-    it('appends a mirror-write failure to lastError after artifacts uploaded', async () => {
+    it('appends a mirror-write failure to lastBackupError after artifacts uploaded', async () => {
       const putStatusMirror = vi.fn(async () => {
         throw new Error('mirror write failed (test simulation)');
       });
@@ -226,7 +232,7 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
       expect(uploads).toHaveLength(2);
       const row = await rowAsMirror();
       expect(row.lastBackupOk).toBe(true);
-      expect(row.lastError).toBe('mirror: mirror write failed (test simulation)');
+      expect(row.lastBackupError).toBe('mirror: mirror write failed (test simulation)');
       // The follow-up write recording the failure is not mirrored.
       expect(putStatusMirror).toHaveBeenCalledTimes(1);
     });
@@ -242,7 +248,97 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
 
       const row = await rowAsMirror();
       expect(row.lastBackupOk).toBe(false);
-      expect(row.lastError ?? '').toMatch(/^encrypt: stage failure.*mirror: mirror write failed/);
+      expect(row.lastBackupError ?? '').toMatch(
+        /^encrypt: stage failure.*mirror: mirror write failed/,
+      );
+    });
+  });
+
+  // --------------------------------------------------------------
+  // AC-370: each cycle owns its fields. The drill follows every
+  // backup, so neither may touch the other's outcome or error cue —
+  // and the mirror cuts the other cycle's cue too (AC-169).
+  // --------------------------------------------------------------
+  describe('AC-370: each cycle owns its fields', () => {
+    const SIDECAR: Manifest = { users: { rowCount: 1, checksum: 'a' } };
+    let keyDir: string;
+
+    beforeAll(async () => {
+      keyDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-ac370-key-'));
+      await fs.writeFile(path.join(keyDir, 'key'), 'AGE-SECRET-KEY-1-not-a-real-key');
+    });
+
+    afterAll(async () => {
+      await fs.rm(keyDir, { recursive: true, force: true });
+    });
+
+    const drill = (uploader: BackupUploader, overrides: Partial<DrillOptions> = {}) =>
+      runDrill({
+        db,
+        uploader,
+        identityPath: path.join(keyDir, 'key'),
+        download: async () => ({
+          dump: new Uint8Array([1, 2, 3]),
+          manifest: new TextEncoder().encode(JSON.stringify(SIDECAR)),
+        }),
+        decrypt: async (ciphertext) => ciphertext,
+        verifyManifest: async () => SIDECAR,
+        ...overrides,
+      });
+
+    const backupFields = ({ lastBackupAt, lastBackupOk, lastBackupError }: BackupStatusMirror) => ({
+      lastBackupAt,
+      lastBackupOk,
+      lastBackupError,
+    });
+    const drillFields = ({ lastDrillAt, lastDrillOk, lastDrillError }: BackupStatusMirror) => ({
+      lastDrillAt,
+      lastDrillOk,
+      lastDrillError,
+    });
+
+    it("a passing drill leaves a failed backup's fields in place", async () => {
+      await runBackup({
+        db,
+        uploader: makeStubUploader().uploader,
+        encrypt: async () => {
+          throw new Error('encryption surface unavailable (test simulation)');
+        },
+      });
+      const before = await readStatusRowAsMirror(db);
+      expect(before.lastBackupError ?? '').toMatch(/^encrypt: /);
+      const { uploader, mirrorCalls } = makeStubUploader();
+
+      expect((await drill(uploader)).outcome).toBe('ok');
+
+      const after = await readStatusRowAsMirror(db);
+      expect(after.lastDrillOk).toBe(true);
+      expect(backupFields(after)).toEqual(backupFields(before));
+      expect((mirrorCalls[0] as BackupStatusMirror).lastBackupError).toBe('encrypt');
+    });
+
+    it("a passing backup leaves a failed drill's fields in place", async () => {
+      await db.execute(
+        sql`INSERT INTO meta_backup_status (singleton, last_backup_ok) VALUES (TRUE, FALSE)`,
+      );
+      const failedDrill = await drill(makeStubUploader().uploader, {
+        download: async () => {
+          throw new Error('no backup artifacts found under daily/ prefix');
+        },
+      });
+      expect(failedDrill.outcome).toBe('failed');
+      const before = await readStatusRowAsMirror(db);
+      expect(before.lastDrillError).toBe(
+        'drill-download: no backup artifacts found under daily/ prefix',
+      );
+      const { uploader, mirrorCalls } = makeStubUploader();
+
+      expect((await runBackup({ db, uploader, encrypt: fakeEncrypt })).ok).toBe(true);
+
+      const after = await readStatusRowAsMirror(db);
+      expect(after.lastBackupOk).toBe(true);
+      expect(drillFields(after)).toEqual(drillFields(before));
+      expect((mirrorCalls[0] as BackupStatusMirror).lastDrillError).toBe('drill-download');
     });
   });
 });

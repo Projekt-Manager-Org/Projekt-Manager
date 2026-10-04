@@ -53,7 +53,7 @@ A weekday 09:00 tick, end to end:
        pg_dump -Fc   separate connection, --snapshot=<id> → same view
        └─ Tier 1  pg_restore into an ephemeral Postgres (initdb, socket in /tmp)
                   inside this container → recompute manifest → compare
-          ✗ mismatch → no artifact uploaded; lastBackupOk=false, lastError names the table
+          ✗ mismatch → no artifact uploaded; lastBackupOk=false, lastBackupError names the table
           ✓ → age-encrypt → PUT daily/*
        either way → meta_backup_status → status/latest.json
 

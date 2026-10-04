@@ -56,7 +56,7 @@ Expected one-liners on stdout:
 
 - `backup-runner: drill ok` — full Tier 2 round-trip succeeded. `meta_backup_status.lastDrillAt` advanced and `lastDrillOk` is true.
 - `backup-runner: drill skipped reason=key-absent` — no identity at `/run/drill-key/identity`. Load the key via [§Loading](#loading-the-drill-key-on-the-vps) and retry. Skip is not a failure ([AC-168](../../spec/verification.md#1522-backup-and-recovery)), so the status row is not mutated.
-- `backup-runner: drill failed reason=...` — something between download, decrypt, and verify broke. `lastDrillOk=false` and `lastError` carries the cue; see [troubleshooting.md](troubleshooting.md).
+- `backup-runner: drill failed reason=...` — something between download, decrypt, and verify broke. `lastDrillOk=false` and `lastDrillError` carries the cue; see [troubleshooting.md](troubleshooting.md).
 
 > A drill verifies the **latest** backup. After a deploy that adds a table, no existing dump has it yet, so the drill fails (`verify: Failed query: ... FROM "<new_table>"`) until a backup runs against the new schema. Take one `run` first:
 >

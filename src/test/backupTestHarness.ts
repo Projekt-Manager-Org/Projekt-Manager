@@ -98,7 +98,8 @@ export function startsWith(data: Uint8Array, magic: string): boolean {
  */
 export async function readStatusRowAsMirror(db: Database): Promise<BackupStatusMirror> {
   const rows = await db.execute(
-    sql`SELECT last_backup_at, last_backup_ok, last_drill_at, last_drill_ok, last_error, updated_at
+    sql`SELECT last_backup_at, last_backup_ok, last_backup_error, last_drill_at, last_drill_ok,
+               last_drill_error, updated_at
         FROM meta_backup_status`,
   );
   const r = rows.rows[0] as Record<string, unknown>;
@@ -107,9 +108,10 @@ export async function readStatusRowAsMirror(db: Database): Promise<BackupStatusM
   return {
     lastBackupAt: iso(r.last_backup_at),
     lastBackupOk: r.last_backup_ok as boolean,
+    lastBackupError: r.last_backup_error as string | null,
     lastDrillAt: iso(r.last_drill_at),
     lastDrillOk: r.last_drill_ok as boolean | null,
-    lastError: r.last_error as string | null,
+    lastDrillError: r.last_drill_error as string | null,
     updatedAt: new Date(r.updated_at as string | Date).toISOString(),
   };
 }

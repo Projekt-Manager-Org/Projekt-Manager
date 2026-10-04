@@ -144,7 +144,7 @@ describe('Layer 2 backup — the status write is bounded (§15.22 AC-345)', () =
       // "Failed query: INSERT INTO meta_backup_status …" and Postgres'
       // "canceling statement due to lock timeout" sits on `cause` —
       // which is why `errorMessage` walks the chain before it reaches
-      // `lastError` and the runner's log line.
+      // `lastBackupError` and the runner's log line.
       const chain: string[] = [];
       let current = settled.kind === 'rejected' ? settled.err : undefined;
       while (current instanceof Error && chain.length < 4) {

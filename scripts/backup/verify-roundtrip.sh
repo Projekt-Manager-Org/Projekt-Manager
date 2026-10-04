@@ -20,7 +20,7 @@
 #
 # WHAT IT ASSERTS
 #   1. `backup-runner run` exits 0 against a seeded DB.
-#   2. `meta_backup_status.last_backup_ok` is true with `last_error` NULL.
+#   2. `meta_backup_status.last_backup_ok` is true with `last_backup_error` NULL.
 #   3. The off-site `status/latest.json` mirror carries the same verdict —
 #      AC-169's other half, read from the bucket rather than inferred.
 #   4. The uploaded artifact decrypts to bytes starting with `PGDMP`.
@@ -337,19 +337,19 @@ docker run --rm --network "$NETWORK" \
 # --- 6. Status dual-write: DB row + off-site mirror -------------------
 
 step "Asserting meta_backup_status"
-# `last_error IS NULL` as well as ok=true on purpose: a status-mirror
+# `last_backup_error IS NULL` as well as ok=true on purpose: a status-mirror
 # failure after the artifacts land still returns ok:true from runBackup and
 # records the reason here (AC-169 orphan-artifact semantics), so ok alone
 # would not prove the mirror write was even attempted.
 #
 # `true`, not psql's `t`: the `||` renders the boolean through
 # `boolean::text` rather than through psql's own column formatting.
-status="$(psql_query "SELECT last_backup_ok || '|' || coalesce(last_error, '<null>') FROM meta_backup_status")"
+status="$(psql_query "SELECT last_backup_ok || '|' || coalesce(last_backup_error, '<null>') FROM meta_backup_status")"
 if [ "$status" != "true|<null>" ]; then
-  echo "ERROR: expected last_backup_ok=true with no last_error, got '${status}'" >&2
+  echo "ERROR: expected last_backup_ok=true with no last_backup_error, got '${status}'" >&2
   exit 1
 fi
-echo "last_backup_ok=true, last_error IS NULL"
+echo "last_backup_ok=true, last_backup_error IS NULL"
 
 # The row above only proves the mirror write did not raise. Read the object
 # itself: AC-169 is a DUAL-write, and half of it lives in the bucket, under
@@ -367,13 +367,13 @@ mirror="$(docker run --rm --network "$NETWORK" --user "$HOST_UID_GID" \
   --entrypoint mc "$MC_IMAGE" \
   --config-dir /tmp/.mc \
   cat "minio/${STORAGE_BUCKET}/status/latest.json")"
-for field in '"lastBackupOk":true' '"lastError":null'; do
+for field in '"lastBackupOk":true' '"lastBackupError":null'; do
   if ! printf '%s' "$mirror" | grep -qF "$field"; then
     echo "ERROR: status mirror does not carry ${field}: ${mirror}" >&2
     exit 1
   fi
 done
-echo "status/latest.json carries lastBackupOk=true, lastError=null"
+echo "status/latest.json carries lastBackupOk=true, lastBackupError=null"
 
 # --- 7. Fetch + decrypt the artifact ---------------------------------
 

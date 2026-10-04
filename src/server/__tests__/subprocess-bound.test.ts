@@ -73,7 +73,7 @@ describe('Layer 2 subprocess runtime bound (§15.22 AC-345)', () => {
     // dump is still queued in the pipe, which then errors EPIPE — and
     // with no listener that is an uncaught exception, fatal in the
     // backup runner, which registers no guard. The run would die before
-    // writing `lastError`, leaving the badge green on its last success.
+    // writing `lastBackupError`, leaving the badge green on its last success.
     const child = spawn('sh', ['-c', 'head -c 4096 >/dev/null; exit 1'], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });

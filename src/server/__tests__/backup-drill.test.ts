@@ -19,7 +19,7 @@
  * `src/server/services/backup-drill.ts`.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { sql } from 'drizzle-orm';
 import fs from 'node:fs/promises';
@@ -91,7 +91,7 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () 
     await db.execute(sql`DELETE FROM meta_backup_status`);
     await db.execute(sql`
       INSERT INTO meta_backup_status
-        (last_backup_ok, last_backup_at, last_drill_at, last_drill_ok, last_error, updated_at)
+        (last_backup_ok, last_backup_at, last_drill_at, last_drill_ok, last_drill_error, updated_at)
       VALUES
         (true,
          '2026-04-10T00:00:00.000Z',
@@ -244,9 +244,10 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () 
     expect(result.reason).toContain('Failed query');
 
     // And it lands in the durable status row, not just the return value.
-    const row = await db.execute(sql`SELECT last_error FROM meta_backup_status`);
-    const lastError = (row.rows[0] as { last_error: string | null }).last_error ?? '';
-    expect(lastError).toContain('relation "data_exchange_job" does not exist');
+    const row = await db.execute(sql`SELECT last_drill_error FROM meta_backup_status`);
+    const lastDrillError =
+      (row.rows[0] as { last_drill_error: string | null }).last_drill_error ?? '';
+    expect(lastDrillError).toContain('relation "data_exchange_job" does not exist');
   });
 
   it.each([
@@ -331,7 +332,33 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () 
     const row = await readStatusRowAsMirror(db);
     expect(row.lastDrillOk).toBe(false);
     expect(row.lastDrillAt).toBe(now.toISOString());
-    expect(row.lastError).toBe(cue);
-    expect(mirrorCalls).toEqual([{ ...row, lastError: mirrorCue }]);
+    expect(row.lastDrillError).toBe(cue);
+    expect(mirrorCalls).toEqual([{ ...row, lastDrillError: mirrorCue }]);
+  });
+
+  it('appends a mirror-write failure to lastDrillError, not the backup field (AC-169)', async () => {
+    const identity = path.join(keyDir, 'present.key');
+    await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
+    const putStatusMirror = vi.fn(async () => {
+      throw new Error('mirror write failed (test simulation)');
+    });
+    const { uploader } = makeStubUploader({ putStatusMirror });
+
+    const result = await runDrill({
+      db,
+      uploader,
+      identityPath: identity,
+      download: async () => artifacts({ users: { rowCount: 1, checksum: 'a' } }),
+      decrypt: passthrough,
+      verifyManifest: async () => ({ users: { rowCount: 1, checksum: 'a' } }),
+    });
+
+    expect(result.outcome).toBe('ok');
+    const row = await readStatusRowAsMirror(db);
+    expect(row.lastDrillOk).toBe(true);
+    expect(row.lastDrillError).toBe('mirror: mirror write failed (test simulation)');
+    expect(row.lastBackupError).toBeNull();
+    // The follow-up write recording the failure is not mirrored.
+    expect(putStatusMirror).toHaveBeenCalledTimes(1);
   });
 });

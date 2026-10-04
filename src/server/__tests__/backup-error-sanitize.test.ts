@@ -1,14 +1,14 @@
 /**
  * Unit tests for `sanitizeErrorMessage` — the defense-in-depth helper
  * that strips credential-shaped substrings from any error message
- * before it lands on `meta_backup_status.lastError` (which is returned
+ * before it lands on the `meta_backup_status` error fields (returned
  * verbatim to the owner via `backupStatus` on `GET /api/auth/me`).
  *
  * Covers the security-audit C1 finding: a `pg_dump` subprocess error
  * that echoes `DATABASE_URL` into stderr used to bubble the embedded
  * password through to the status surface. The service-side fix is
  * two-pronged — the subprocess now receives discrete PG* vars instead
- * of DATABASE_URL, AND every write to `lastError` runs through this
+ * of DATABASE_URL, AND every write to an error field runs through this
  * sanitizer as belt-and-suspenders.
  */
 

@@ -29,17 +29,18 @@ export type { BackupStatus } from '../../domain/backupBadge.js';
  * `updatedAt` prevents a subtle bug where a caller forwards a stale
  * timestamp from an earlier read.
  *
- * Nullable fields (`lastError`, `lastBackupAt`, `lastDrillAt`,
- * `lastDrillOk`) accept `null` explicitly so a caller can distinguish
+ * Nullable fields (`lastBackupAt`, `lastBackupError`, `lastDrillAt`,
+ * `lastDrillOk`, `lastDrillError`) accept `null` explicitly so a caller can distinguish
  * "clear this field" from "omit this field" (the latter leaves the
  * column untouched). See `updateBackupStatus`.
  */
 export interface BackupStatusPatch {
   lastBackupAt?: string | null;
   lastBackupOk?: boolean;
+  lastBackupError?: string | null;
   lastDrillAt?: string | null;
   lastDrillOk?: boolean | null;
-  lastError?: string | null;
+  lastDrillError?: string | null;
 }
 
 /**
@@ -60,7 +61,7 @@ export async function getBackupStatus(db: TransactionalDatabase): Promise<Backup
 /**
  * Partial upsert on the singleton row. `updatedAt` is server-generated
  * (data-model.md §5.9). `null` is a valid, explicit value for nullable
- * columns (`lastError`, `lastDrillOk`) — the patch differentiates
+ * columns (the error fields, `lastDrillOk`) — the patch differentiates
  * "omit this field" (no key) from "clear this field" (key set to null).
  *
  * Returns the row as written, so a caller mirroring it (AC-169) gets
@@ -88,9 +89,10 @@ export async function updateBackupStatus(
   if ('lastBackupOk' in patch && patch.lastBackupOk !== undefined) {
     setClause.lastBackupOk = patch.lastBackupOk;
   }
+  if ('lastBackupError' in patch) setClause.lastBackupError = patch.lastBackupError ?? null;
   if ('lastDrillAt' in patch) setClause.lastDrillAt = toDateOrNull(patch.lastDrillAt);
   if ('lastDrillOk' in patch) setClause.lastDrillOk = patch.lastDrillOk ?? null;
-  if ('lastError' in patch) setClause.lastError = patch.lastError ?? null;
+  if ('lastDrillError' in patch) setClause.lastDrillError = patch.lastDrillError ?? null;
 
   const rows = await db
     .update(metaBackupStatus)
@@ -123,9 +125,10 @@ function rowToStatus(row: MetaBackupStatusRow): BackupStatus {
   return {
     lastBackupAt: row.lastBackupAt ? row.lastBackupAt.toISOString() : undefined,
     lastBackupOk: row.lastBackupOk,
+    lastBackupError: row.lastBackupError ?? undefined,
     lastDrillAt: row.lastDrillAt ? row.lastDrillAt.toISOString() : undefined,
     lastDrillOk: row.lastDrillOk,
-    lastError: row.lastError ?? undefined,
+    lastDrillError: row.lastDrillError ?? undefined,
     updatedAt: row.updatedAt.toISOString(),
   };
 }

@@ -197,9 +197,10 @@ Expected shape (from [data-model.md §5.9](../../spec/data-model.md#59-backup-st
 {
   "lastBackupAt": "2026-04-17T02:00:12Z",
   "lastBackupOk": true,
+  "lastBackupError": null,
   "lastDrillAt": null,
   "lastDrillOk": null,
-  "lastError": null,
+  "lastDrillError": null,
   "updatedAt": "2026-04-17T02:00:12Z"
 }
 ```

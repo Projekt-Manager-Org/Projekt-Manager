@@ -77,14 +77,15 @@ setup('reseed database and storage', async () => {
     if (process.env.PLAYWRIGHT_RUN_DEMO) {
       await db.execute(sql`
         INSERT INTO meta_backup_status
-          (singleton, last_backup_ok, last_backup_at, last_drill_ok, last_drill_at, last_error)
-        VALUES (TRUE, TRUE, now() - interval '2 hours', TRUE, now() - interval '1 day', NULL)
+          (singleton, last_backup_ok, last_backup_at, last_drill_ok, last_drill_at, last_backup_error, last_drill_error)
+        VALUES (TRUE, TRUE, now() - interval '2 hours', TRUE, now() - interval '1 day', NULL, NULL)
         ON CONFLICT (singleton) DO UPDATE SET
           last_backup_ok = TRUE,
           last_backup_at = now() - interval '2 hours',
           last_drill_ok = TRUE,
           last_drill_at = now() - interval '1 day',
-          last_error = NULL,
+          last_backup_error = NULL,
+          last_drill_error = NULL,
           updated_at = now()
       `);
     }

@@ -61,9 +61,10 @@ export type Manifest = Record<string, { rowCount: number; checksum: string }>;
 export interface BackupStatusMirror {
   lastBackupAt: string | null;
   lastBackupOk: boolean;
+  lastBackupError: string | null;
   lastDrillAt: string | null;
   lastDrillOk: boolean | null;
-  lastError: string | null;
+  lastDrillError: string | null;
   updatedAt: string;
 }
 
@@ -269,10 +270,10 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
   const now = opts.now ?? new Date();
   const perturb = opts.manifestPerturb ?? ((m: Manifest) => m);
   const fail = async (error: string, failedTable?: string): Promise<BackupRunResult> => {
-    await recordBackupStatus(opts.db, opts.uploader, {
-      lastBackupAt: now.toISOString(),
-      lastBackupOk: false,
-      lastError: error,
+    await recordBackupStatus(opts.db, opts.uploader, 'backup', {
+      at: now.toISOString(),
+      ok: false,
+      error,
     });
     return failedTable ? { ok: false, error, failedTable } : { ok: false, error };
   };
@@ -421,10 +422,10 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
     return fail(`upload: ${errorMessage(err)}`);
   }
 
-  await recordBackupStatus(opts.db, opts.uploader, {
-    lastBackupAt: now.toISOString(),
-    lastBackupOk: true,
-    lastError: null,
+  await recordBackupStatus(opts.db, opts.uploader, 'backup', {
+    at: now.toISOString(),
+    ok: true,
+    error: null,
   });
   return {
     ok: true,
@@ -433,27 +434,44 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
   };
 }
 
+/** The status a backup run or a drill records about itself. */
+export interface CycleOutcome {
+  /** ISO 8601 run timestamp. */
+  at: string;
+  ok: boolean;
+  /** Failure cue; `null` on success. */
+  error: string | null;
+}
+
 /**
  * Write the status row, then the status mirror with the row's values
- * (AC-169). Every status write — backup or drill — goes through here.
+ * (AC-169). Every status write — backup or drill — goes through here,
+ * and touches only the writing cycle's fields (AC-370).
  *
- * A failed mirror write is appended to `lastError`, keeping the run's
- * own cue; that follow-up row write is not mirrored. Artifacts already
- * uploaded stay (R2 immutability window) — the run's verdict stands.
+ * A failed mirror write is appended to that cycle's error field, keeping
+ * the run's own cue; that follow-up row write is not mirrored. Artifacts
+ * already uploaded stay (R2 immutability window) — the verdict stands.
  */
 export async function recordBackupStatus(
   db: Database,
   mirror: StatusMirrorWriter,
-  patch: BackupStatusPatch,
+  cycle: 'backup' | 'drill',
+  outcome: CycleOutcome,
 ): Promise<void> {
-  const status = await updateBackupStatus(db, patch);
+  const errorPatch = (error: string | null): BackupStatusPatch =>
+    cycle === 'backup' ? { lastBackupError: error } : { lastDrillError: error };
+  const status = await updateBackupStatus(db, {
+    ...(cycle === 'backup'
+      ? { lastBackupAt: outcome.at, lastBackupOk: outcome.ok }
+      : { lastDrillAt: outcome.at, lastDrillOk: outcome.ok }),
+    ...errorPatch(outcome.error),
+  });
   try {
     await mirror.putStatusMirror(toMirror(status));
   } catch (err) {
     const cue = `mirror: ${errorMessage(err)}`;
-    await updateBackupStatus(db, {
-      lastError: status.lastError ? `${status.lastError}; ${cue}` : cue,
-    });
+    const prior = cycle === 'backup' ? status.lastBackupError : status.lastDrillError;
+    await updateBackupStatus(db, errorPatch(prior ? `${prior}; ${cue}` : cue));
   }
 }
 
@@ -483,7 +501,7 @@ async function showDataChecksums(db: Database): Promise<string> {
 /**
  * Compare source vs restore manifest table-by-table. Returns the first
  * table name whose row count or checksum diverges — the cue piped into
- * `lastError` so operators can triage without parsing the manifest.
+ * `lastBackupError` so operators can triage without parsing the manifest.
  */
 function firstDivergingTable(source: Manifest, restore: Manifest): string | null {
   const allTables = new Set([...Object.keys(source), ...Object.keys(restore)]);
@@ -502,8 +520,8 @@ function firstDivergingTable(source: Manifest, restore: Manifest): string | null
 
 /**
  * Extract a string message from an unknown throwable and scrub any
- * credential-shaped substrings. Every call site that writes to
- * `meta_backup_status.lastError` (which is returned to the owner via
+ * credential-shaped substrings. Every call site that writes a
+ * `meta_backup_status` error field (returned to the owner via
  * the `backupStatus` field on `GET /api/auth/me`) goes through this —
  * defense in depth against a future throw path that includes a
  * connection string or similar.
@@ -532,7 +550,7 @@ export function errorMessage(err: unknown): string {
  * the mirror object's JSON stable across runs — same keys always
  * present, never a mix of missing / null.
  *
- * `lastError` is cut to its stage cue — the text before the first `:`,
+ * Both error fields are cut to their stage cue — the text before the first `:`,
  * which this module and the drill write as fixed strings. The detail
  * after it can echo subprocess stderr, and `pg_restore` stderr can
  * quote row contents; the mirror is plaintext off-site (ADR-0020:
@@ -542,11 +560,16 @@ function toMirror(status: BackupStatus): BackupStatusMirror {
   return {
     lastBackupAt: status.lastBackupAt ?? null,
     lastBackupOk: status.lastBackupOk,
+    lastBackupError: stageCue(status.lastBackupError),
     lastDrillAt: status.lastDrillAt ?? null,
     lastDrillOk: status.lastDrillOk,
-    lastError: status.lastError?.split(':', 1)[0] ?? null,
+    lastDrillError: stageCue(status.lastDrillError),
     updatedAt: status.updatedAt,
   };
+}
+
+function stageCue(error: string | undefined): string | null {
+  return error?.split(':', 1)[0] ?? null;
 }
 
 // ---------------------------------------------------------------
@@ -621,7 +644,7 @@ export function pgDumpArgs(snapshotId: string): string[] {
  * DATABASE_URL itself into the subprocess env. Rationale: when libpq
  * hits a connection error it echoes the full conninfo it tried; if the
  * conninfo came from DATABASE_URL the password appears in that echo,
- * which bubbles up through stderr into `lastError` on the status row —
+ * which bubbles up through stderr into `lastBackupError` on the status row —
  * a string returned to the owner via `GET /api/auth/me`. Discrete vars
  * are read natively by libpq and their values do not appear in the
  * error surface.
@@ -683,8 +706,8 @@ export function parsePgEnv(databaseUrl: string): {
 
 /**
  * Strip credential-like substrings from an error message before it is
- * persisted to `meta_backup_status.lastError` or returned from a public
- * endpoint. Applied defensively on every path that writes `lastError`.
+ * persisted to a `meta_backup_status` error field or returned from a
+ * public endpoint. Applied defensively on every path that writes one.
  *
  * Patterns covered:
  *   - `postgresql://user:password@host` — replaces with
@@ -787,7 +810,7 @@ function spawnCollect(
     child.on('close', (code) => {
       bound.release();
       // AC-345: distinguish "we killed it" from an ordinary non-zero
-      // exit, so `lastError` names the real failure.
+      // exit, so the error field names the real failure.
       if (bound.expired()) {
         reject(bound.error(cmd));
         return;

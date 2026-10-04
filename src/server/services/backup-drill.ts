@@ -106,12 +106,8 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
   }
 
   const now = opts.now ?? new Date();
-  const record = (lastDrillOk: boolean, lastError: string | null): Promise<void> =>
-    recordBackupStatus(opts.db, opts.uploader, {
-      lastDrillAt: now.toISOString(),
-      lastDrillOk,
-      lastError,
-    });
+  const record = (ok: boolean, error: string | null): Promise<void> =>
+    recordBackupStatus(opts.db, opts.uploader, 'drill', { at: now.toISOString(), ok, error });
 
   // Download the latest dump + sidecar. Every step from here on records
   // its failure (AC-345) — none may escape to the caller unrecorded.

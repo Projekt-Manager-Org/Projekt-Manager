@@ -202,13 +202,15 @@ describe('Layer 2 backup — source/dump snapshot equality (§15.22 AC-344)', ()
     expect(result.ok).toBe(false);
     expect(uploads).toHaveLength(0);
 
-    const rows = await db.execute(sql`SELECT last_backup_ok, last_error FROM meta_backup_status`);
-    const row = rows.rows[0] as { last_backup_ok: boolean; last_error: string | null };
+    const rows = await db.execute(
+      sql`SELECT last_backup_ok, last_backup_error FROM meta_backup_status`,
+    );
+    const row = rows.rows[0] as { last_backup_ok: boolean; last_backup_error: string | null };
     expect(row.last_backup_ok).toBe(false);
     // The classification is the system-owned part; the message tail is
     // this test's own throw echoed back.
-    expect(row.last_error ?? '').toContain('source-capture');
-    expect(row.last_error ?? '').toContain('invalid snapshot identifier');
+    expect(row.last_backup_error ?? '').toContain('source-capture');
+    expect(row.last_backup_error ?? '').toContain('invalid snapshot identifier');
   });
 });
 

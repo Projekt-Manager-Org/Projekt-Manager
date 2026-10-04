@@ -30,7 +30,8 @@
  *       // failed" (data-model.md §5.9). `undefined` is not a valid
  *       // variant — callers hand through the raw DB row.
  *       lastDrillOk: boolean | null;
- *       lastError?: string;
+ *       lastBackupError?: string;
+ *       lastDrillError?: string;
  *       updatedAt: string;
  *     }
  *     export interface BadgeThresholds {
@@ -85,7 +86,7 @@ describe('#122: amber reasons are distinguishable', () => {
       lastBackupAt: daysAgo(3),
       lastDrillAt: daysAgo(0),
       lastDrillOk: true,
-      lastError: undefined,
+      lastBackupError: undefined,
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -99,7 +100,7 @@ describe('#122: amber reasons are distinguishable', () => {
       lastBackupAt: daysAgo(0),
       lastDrillAt: daysAgo(20),
       lastDrillOk: true,
-      lastError: undefined,
+      lastBackupError: undefined,
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -119,7 +120,7 @@ describe('#122: amber reasons are distinguishable', () => {
       lastBackupAt: daysAgo(3),
       lastDrillAt: daysAgo(20),
       lastDrillOk: true,
-      lastError: undefined,
+      lastBackupError: undefined,
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -133,7 +134,7 @@ describe('#122: amber reasons are distinguishable', () => {
       lastBackupAt: daysAgo(3),
       lastDrillAt: daysAgo(40),
       lastDrillOk: true,
-      lastError: undefined,
+      lastBackupError: undefined,
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -158,7 +159,7 @@ describe('#122: amber reasons are distinguishable', () => {
       lastBackupAt: daysAgo(0),
       lastDrillAt: daysAgo(THRESHOLDS.drillRedDays + 5),
       lastDrillOk: true,
-      lastError: undefined,
+      lastBackupError: undefined,
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -175,7 +176,7 @@ describe('#122: amber reasons are distinguishable', () => {
       lastBackupAt: daysAgo(0),
       lastDrillAt: undefined,
       lastDrillOk: true,
-      lastError: undefined,
+      lastBackupError: undefined,
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -209,7 +210,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
       lastBackupAt: daysAgo(0),
       lastDrillAt: undefined,
       lastDrillOk: null,
-      lastError: undefined,
+      lastBackupError: undefined,
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -230,7 +231,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
         lastBackupAt: daysAgo(0),
         lastDrillAt: undefined,
         lastDrillOk: null,
-        lastError: undefined,
+        lastBackupError: undefined,
         updatedAt: daysAgo(0),
       },
       {
@@ -238,7 +239,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
         lastBackupAt: daysAgo(1),
         lastDrillAt: daysAgo(1),
         lastDrillOk: false,
-        lastError: 'last run failed',
+        lastBackupError: 'last run failed',
         updatedAt: daysAgo(1),
       },
       {
@@ -246,7 +247,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
         lastBackupAt: daysAgo(THRESHOLDS.backupRedDays + 1),
         lastDrillAt: daysAgo(THRESHOLDS.drillRedDays + 1),
         lastDrillOk: true,
-        lastError: undefined,
+        lastBackupError: undefined,
         updatedAt: daysAgo(THRESHOLDS.backupRedDays + 1),
       },
       {
@@ -254,7 +255,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
         lastBackupAt: daysAgo(0),
         lastDrillAt: daysAgo(0),
         lastDrillOk: true,
-        lastError: undefined,
+        lastBackupError: undefined,
         updatedAt: daysAgo(0),
       },
     ];
@@ -275,7 +276,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
       lastBackupAt: daysAgo(0),
       lastDrillAt: daysAgo(0),
       lastDrillOk: false,
-      lastError: 'Tier 1 mismatch on projects',
+      lastBackupError: 'Tier 1 mismatch on projects',
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -293,7 +294,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
       lastBackupAt: undefined,
       lastDrillAt: undefined,
       lastDrillOk: null,
-      lastError: undefined,
+      lastBackupError: undefined,
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -313,7 +314,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
       lastBackupAt: daysAgo(0),
       lastDrillAt: daysAgo(0),
       lastDrillOk: false,
-      lastError: 'Tier 1 mismatch on projects',
+      lastBackupError: 'Tier 1 mismatch on projects',
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
@@ -340,7 +341,7 @@ describe('lastBackupAt propagation', () => {
         lastBackupAt: at,
         lastDrillAt: daysAgo(0),
         lastDrillOk: true,
-        lastError: undefined,
+        lastBackupError: undefined,
         updatedAt: at,
       },
       NOW,
@@ -358,7 +359,7 @@ describe('lastBackupAt propagation', () => {
         lastBackupAt: at,
         lastDrillAt: daysAgo(THRESHOLDS.drillAmberDays + 1),
         lastDrillOk: true,
-        lastError: undefined,
+        lastBackupError: undefined,
         updatedAt: at,
       },
       NOW,
@@ -376,7 +377,7 @@ describe('lastBackupAt propagation', () => {
         lastBackupAt: at,
         lastDrillAt: daysAgo(0),
         lastDrillOk: false,
-        lastError: 'Tier 1 mismatch on projects',
+        lastBackupError: 'Tier 1 mismatch on projects',
         updatedAt: at,
       },
       NOW,
@@ -397,7 +398,7 @@ describe('lastBackupAt propagation', () => {
         lastBackupAt: at,
         lastDrillAt: daysAgo(THRESHOLDS.drillRedDays + 1),
         lastDrillOk: true,
-        lastError: undefined,
+        lastBackupError: undefined,
         updatedAt: at,
       },
       NOW,
@@ -418,7 +419,7 @@ describe('lastBackupAt propagation', () => {
         lastBackupAt: at,
         lastDrillAt: undefined,
         lastDrillOk: null,
-        lastError: undefined,
+        lastBackupError: undefined,
         updatedAt: at,
       },
       NOW,
@@ -441,7 +442,7 @@ describe('lastBackupAt propagation', () => {
         lastBackupAt: undefined,
         lastDrillAt: undefined,
         lastDrillOk: null,
-        lastError: undefined,
+        lastBackupError: undefined,
         updatedAt: daysAgo(0),
       },
       NOW,
