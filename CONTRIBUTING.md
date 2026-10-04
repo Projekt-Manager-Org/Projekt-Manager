@@ -29,7 +29,7 @@ Steps happen in this order. Skipping or reordering must be flagged.
 8. **Security audit** (conditional) — needs to be confirmed by user. Propose it when trust boundaries change
 9. **Documentation update** — see review/conventions-docs-general.md
 10. **Commit** — group changes, including multiple files, in logical groups
-11. **Open Issues** — list all open issues, including findings discovered during the workflow, even if unrelated
+11. **Open Issues** — list all open issues, including findings discovered during the workflow, even if unrelated. Each finding carries a triage call: **act** (in scope now), **track** (correctness, data integrity, security, compounding debt), or **drop** (everything else).
 
 ### Security audit
 

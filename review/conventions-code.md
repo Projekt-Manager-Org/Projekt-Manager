@@ -21,5 +21,6 @@ Guidelines for the code (judgement is required):
 - **C-DRYY** — DRY.
 - **C-NAME** — Naming of variables, functions, files, etc. is clear.
 - **C-SIZE** — File size. Propose a split on files bigger than 200 LOC. Argumented exceptions are accepted (tests, reference lists,...).
+- **C-BUYB** — Buy before build. Prefer boring, well-maintained dependencies; own only what is differentiating.
 
 Note: All code in the project is written by AI agents and may contain errors, inaccuracies and/or omissions.
