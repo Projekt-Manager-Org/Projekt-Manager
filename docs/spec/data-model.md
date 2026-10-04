@@ -445,7 +445,7 @@ Design notes:
 - **No priority / no override.** Multiple matches produce a recipient **union**, deduplicated by `UserAccount.id`. No priority field, override flag, or AND/OR tree — see [ADR-0023 Alternatives](../adr/0023-notification-rules-db-stored-closed-event-catalog.md#rule-matching-with-priority--override).
 - **Invalid-recipient resilience.** A resolved recipient whose `UserAccount` is missing or `active = false` is skipped at dispatch; remaining recipients proceed. Zero live recipients completes without error.
 - **Rule take-effect.** A rule change affects the next event committed after the change; in-flight events use the rule set read at their own commit.
-- **Configuration layering.** Each `NotificationEventClass`'s German activity-feed description lives in the `[C]` catalogue ([architecture.md §12.2](architecture.md#122-company-configurable-settings)) under the audit activity-feed rendering entry — already keyed on `(action, payload)`, the per-event identity the publisher emits.
+- **Configuration layering.** Each mutation-sourced `NotificationEventClass`'s German activity-feed description lives in the `[C]` catalogue ([architecture.md §12.2](architecture.md#122-company-configurable-settings)) under the audit activity-feed rendering entry — already keyed on `(action, payload)`, the per-event identity the publisher emits.
 
 ### 5.12 Push Subscription
 

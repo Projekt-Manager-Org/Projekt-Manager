@@ -50,7 +50,7 @@ All views are role-gated. The system enforces that every pending action (unanswe
 ### Notifications
 
 - DB-stored admin-editable rules mapping a closed, code-defined event catalog to recipient specs ([ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)).
-- Two channels: browser push to the installed PWA and the in-app activity feed ([ui/workflow-views.md §8.4.1](ui/workflow-views.md#841-activity-feed), [ui/management.md §8.13](ui/management.md#813-audit-view)).
+- Two channels: browser push to the installed PWA and the in-app activity feed; system events are push-only ([ui/workflow-views.md §8.4.1](ui/workflow-views.md#841-activity-feed), [ui/management.md §8.13](ui/management.md#813-audit-view)).
 - Admin-only rule CRUD UI ([ui/management.md §8.14](ui/management.md#814-notification-rules-view)); rule list RBAC-scoped via the repository-layer predicate ([ADR-0019](../adr/0019-worker-data-scoping-repository-layer-predicate.md)).
 - Per-user push-mute toggle; push permission is user-initiated from the settings affordance ([ui/index.md §8.7.2](ui/index.md#872-user-menu)).
 
