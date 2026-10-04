@@ -2,7 +2,7 @@
 
 # Plan
 
-**CURRENT** The project is considered a successful MVP. There is no fixed iteration with pre-planned tasks in this repository at the moment; updates may be added as the need arises.
+**CURRENT** The project is a successful MVP in a _Feature Freeze_ - extensive testing, fixing bugs and improving the user experience.
 
 ## Iteration 0.A - Discovery
 
