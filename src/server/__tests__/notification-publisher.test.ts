@@ -56,6 +56,10 @@ interface DispatchObservation {
 
 interface Publisher {
   onEventDispatched: (h: (entry: DispatchObservation) => void) => () => void;
+  publishSystemEvent: (e: {
+    eventClass: 'backup.failed' | 'disk.threshold_reached';
+    payload?: Record<string, unknown>;
+  }) => Promise<void>;
 }
 
 // Dynamic import so TS --noEmit does not block the file. The module
@@ -767,6 +771,68 @@ describe('AT-135: actor excluded from own-action push (AC-321)', () => {
       // recipient (office).
       expect(obs!.pushAttemptedUserIds).not.toContain(ownerId);
       expect(obs!.pushAttemptedUserIds).toContain(officeId);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
+describe('AC-371: system events are push-only — no audit_log row', () => {
+  let ownerId: string;
+
+  beforeAll(async () => {
+    await startApp();
+    const ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+    const { db, pool } = createDatabase();
+    try {
+      await db.execute(sql`DELETE FROM notification_rule`);
+      const rows = await db.execute(
+        sql`SELECT id FROM users WHERE username = ${SEED_USERS.owner.username}`,
+      );
+      ownerId = (rows.rows[0] as { id: string }).id;
+    } finally {
+      await pool.end();
+    }
+    const ruleRes = await authPost(ownerToken, '/api/notification-rules', {
+      eventClass: 'backup.failed',
+      recipientSpec: { roles: ['owner'], includeAssignedWorkers: false, userIds: [] },
+      enabled: true,
+    });
+    expect(ruleRes.statusCode).toBe(201);
+  });
+
+  afterAll(async () => {
+    await stopApp();
+  });
+
+  async function auditRowCount(): Promise<number> {
+    const { db, pool } = createDatabase();
+    try {
+      const res = await db.execute(sql`SELECT count(*)::int AS n FROM audit_log`);
+      return (res.rows[0] as { n: number }).n;
+    } finally {
+      await pool.end();
+    }
+  }
+
+  it('dispatches to the resolved recipient without writing an audit_log row', async () => {
+    const pub = await loadPublisher();
+    const observations: DispatchObservation[] = [];
+    const unsubscribe = pub.onEventDispatched((entry) => observations.push(entry));
+
+    try {
+      const before = await auditRowCount();
+      await pub.publishSystemEvent({
+        eventClass: 'backup.failed',
+        payload: { kind: 'red', reason: 'last-run-failed' },
+      });
+
+      // The event was dispatched (guards against a vacuous pass on a
+      // publisher that silently dropped it) …
+      const obs = observations.find((o) => o.auditEntryId.startsWith('system:backup.failed:'));
+      expect(obs?.recipients).toContain(ownerId);
+      // … and left no row for any activity surface to read.
+      expect(await auditRowCount()).toBe(before);
     } finally {
       unsubscribe();
     }
