@@ -23,6 +23,7 @@ Thumbs.db
 # Build output
 dist/
 .vite/
+*.tsbuildinfo
 
 # Test output
 coverage/
