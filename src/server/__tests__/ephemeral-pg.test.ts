@@ -134,7 +134,7 @@ describe('ephemeral Postgres subprocess wrappers (§15.22 AC-165)', () => {
 
   it('rejects with the label and the stderr cue on a non-zero exit', async () => {
     // This rejection is what `runBackup` turns into
-    // `lastError = "verify: initdb exited 1: …"`. Without the stderr
+    // `lastBackupError = "verify: initdb exited 1: …"`. Without the stderr
     // tail the operator gets an exit code and no reason.
     await expect(
       runSubprocess(

@@ -60,8 +60,10 @@ export interface BackupStatus {
    * Distinct from "skipped" — skipped leaves this value unchanged.
    */
   lastDrillOk: boolean | null;
-  /** Short machine-readable failure cue; null on success. */
-  lastError?: string;
+  /** Short machine-readable cue of the last run's failure. */
+  lastBackupError?: string;
+  /** Short machine-readable cue of the last Tier-2 drill's failure. */
+  lastDrillError?: string;
   /** ISO 8601 — set by the backup service on every write (never on skip). */
   updatedAt: string;
 }

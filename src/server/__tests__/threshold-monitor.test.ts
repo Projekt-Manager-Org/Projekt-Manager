@@ -76,7 +76,7 @@ function greenStatus(): BackupStatus {
     lastBackupAt: daysAgo(0),
     lastDrillAt: daysAgo(0),
     lastDrillOk: true,
-    lastError: undefined,
+    lastBackupError: undefined,
     updatedAt: daysAgo(0),
   };
 }

@@ -146,7 +146,7 @@ if (rejection === null) {
 
 const reason = rejection instanceof Error ? rejection.message : String(rejection);
 // The label is what `runBackup` prefixes into
-// `meta_backup_status.lastError` as `verify: pg_restore exited 1: …`. A
+// `meta_backup_status.lastBackupError` as `verify: pg_restore exited 1: …`. A
 // rejection that does not carry it means the run failed for some other
 // reason — a missing binary, a readiness timeout — and this arm would
 // pass without ever testing the corruption path. `exited` only, not

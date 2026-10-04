@@ -176,7 +176,7 @@ The layers are complementary, not substitutes — app-level export is not disast
 
 ### 11.10 Full-state backup (Layer 2)
 
-The Layer 2 implementation of [§11.9](#119-data-persistence-and-recovery) is a dedicated `backup` compose service that runs on a configurable interval and writes, per run, three artifacts to an off-site object store — the encrypted dump, the encrypted manifest sidecar, and the unencrypted status mirror object — plus upserts a single row in the application database. Rationale, alternatives, consequences, provider choice, tool choice, and key-layout convention live in [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md).
+The Layer 2 implementation of [§11.9](#119-data-persistence-and-recovery) is a dedicated `backup` compose service that runs on a configurable interval and writes, per successful run, two artifacts to an off-site object store — the encrypted dump and the encrypted manifest sidecar. Every run and drill outcome is recorded in a single application-database row, mirrored to an unencrypted status object (see Status surface below). Rationale, alternatives, consequences, provider choice, tool choice, and key-layout convention live in [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md).
 
 **Topology.**
 
@@ -192,14 +192,14 @@ The Layer 2 implementation of [§11.9](#119-data-persistence-and-recovery) is a 
 
 **Verification (dual tier).**
 
-- **Tier 1 — verify-on-create** runs every backup, unattended. The freshly produced plaintext dump is restored into an ephemeral database instance, container-internal (not a sibling service), the manifest is recomputed, and it is compared to the source manifest. A mismatch fails the run: no upload, and the status surface reports failure.
+- **Tier 1 — verify-on-create** runs every backup, unattended. The freshly produced plaintext dump is restored into an ephemeral database instance, container-internal (not a sibling service), the manifest is recomputed, and it is compared to the source manifest. A mismatch fails the run: no artifact upload, and the status surface reports failure.
 - **Tier 2 — verify-on-cycle** runs every backup when the operator's identity is present in tmpfs. The just-uploaded encrypted dump is downloaded, decrypted, restored into the ephemeral database instance, and its manifest is compared. When the key is absent, the drill is skipped with a distinct log line; freshness surfaces via the status row rather than as a failure.
 - **Precondition — page checksums.** Both tiers read from the same source pages and cannot see storage corruption; page checksums turn it into a read error. A run against a source without them fails ([AC-366](verification.md#1522-backup-and-recovery)).
 
 **Status surface (dual-write).**
 
 - Primary: the `meta_backup_status` row ([data-model.md §5.9](data-model.md#59-backup-status-entity)), read by the backend on the authenticated admin landing view.
-- Mirror: an unencrypted status mirror object in the off-site object store carrying the same fields, readable without the application. This exists so backup health is inspectable during a database outage (operator inspects directly; no application surface required).
+- Mirror: an unencrypted status mirror object in the off-site object store carrying the same fields, rewritten after every write to the row, readable without the application. This exists so backup health is inspectable during a database outage (operator inspects directly; no application surface required).
 - On the authenticated admin landing view, the badge is visible only to callers with role `owner`. The badge surface scales by severity — green is a bare dot with a tooltip; amber, red, and unknown render the full pill with label. Amber and red thresholds are configurable **[C]** (see [§12.2](#122-company-configurable-settings)).
 - When the status source is unreachable, the rendering surface MUST display a neutral "status unknown" state — silent absence is a misleading-state defect class ([ADR-0014](../adr/0014-ac-tier-system-critical-vs-design.md)).
 

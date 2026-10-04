@@ -4,7 +4,7 @@
  * Covers the core-pipeline slice of verification.md §15.22:
  *   - AC-165 [crit]: Tier 1 verify-on-create mismatch fails the run; no
  *     artifact is uploaded to the off-site store; status row records the
- *     failure with `lastBackupOk=false` and `lastError` identifying the
+ *     failure with `lastBackupOk=false` and `lastBackupError` identifying the
  *     table whose manifest diverged.
  *   - AC-166 [crit]: Tier 1 match path uploads the encrypted dump + the
  *     encrypted manifest sidecar to the off-site store; `meta_backup_status`
@@ -12,11 +12,10 @@
  *   - AC-167 [crit]: Neither the dump nor the manifest sidecar is written
  *     to the off-site store in plaintext — the bytes handed to the upload
  *     surface must be an encrypted envelope. A run that cannot encrypt
- *     fails and uploads nothing.
+ *     fails and uploads no artifact.
  *
- * AC-169 (status dual-write + orphan-artifact handling) and AC-174
- * (manifest determinism) live in `backup-status.test.ts` so this file
- * stays under the 250-line cap in the test conventions.
+ * AC-169 (status dual-write) and AC-174 (manifest determinism) live in
+ * `backup-status.test.ts`.
  *
  * Shared test harness (fixtures + stub uploader + fake encrypt) lives in
  * `src/test/backupTestHarness.ts` so both backup test files import from
@@ -80,12 +79,12 @@ describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () =
   });
 
   // --------------------------------------------------------------
-  // AC-165: Tier 1 mismatch fails the run. No upload, no mirror
-  // side-effect, status row records the failing table.
+  // AC-165: Tier 1 mismatch fails the run. No artifact upload,
+  // status row records the failing table.
   // --------------------------------------------------------------
   describe('AC-165: Tier 1 verify-on-create mismatch fails the run', () => {
     it('does not upload any artifact when the restore-side manifest differs', async () => {
-      const { uploader, uploads, mirrorCalls } = makeStubUploader();
+      const { uploader, uploads } = makeStubUploader();
       const uploadSpy = vi.spyOn(uploader, 'upload');
 
       const result = await runBackup({
@@ -106,15 +105,13 @@ describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () =
         expect(result.failedTable).toBe('projects');
       }
 
-      // The critical behavioral assertion: upload is never called on
-      // mismatch. Even the status mirror is not written for a Tier 1
-      // failure — only the DB row records the failure.
+      // The critical behavioral assertion: no artifact is uploaded on
+      // mismatch. The status mirror is not an artifact (AC-169).
       expect(uploadSpy).not.toHaveBeenCalled();
       expect(uploads).toHaveLength(0);
-      expect(mirrorCalls).toHaveLength(0);
     });
 
-    it('records the failing table in meta_backup_status.lastError', async () => {
+    it('records the failing table in meta_backup_status.lastBackupError', async () => {
       const { uploader } = makeStubUploader();
 
       await runBackup({
@@ -127,10 +124,12 @@ describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () =
         }),
       });
 
-      const rows = await db.execute(sql`SELECT last_backup_ok, last_error FROM meta_backup_status`);
-      const row = rows.rows[0] as { last_backup_ok: boolean; last_error: string | null };
+      const rows = await db.execute(
+        sql`SELECT last_backup_ok, last_backup_error FROM meta_backup_status`,
+      );
+      const row = rows.rows[0] as { last_backup_ok: boolean; last_backup_error: string | null };
       expect(row.last_backup_ok).toBe(false);
-      expect(row.last_error ?? '').toContain('customers');
+      expect(row.last_backup_error ?? '').toContain('customers');
     });
   });
 
@@ -211,7 +210,7 @@ describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () =
       }
     });
 
-    it('fails the run and uploads nothing when encryption cannot produce output', async () => {
+    it('fails the run and uploads no artifact when encryption cannot produce output', async () => {
       const { uploader, uploads } = makeStubUploader();
       const failingEncrypt = async (): Promise<Uint8Array> => {
         throw new Error('encryption surface unavailable (test simulation)');

@@ -334,7 +334,8 @@ interface BackupStatus {
   lastBackupOk: boolean; // true when the last run produced an uploaded, Tier-1-verified artifact
   lastDrillAt?: string; // ISO 8601 — timestamp of the last Tier-2 drill attempt
   lastDrillOk: boolean | null; // true when the last Tier-2 drill succeeded; false when it failed; null before any Tier-2 drill has been attempted
-  lastError?: string; // short machine-readable failure cue; null on success
+  lastBackupError?: string; // short machine-readable cue of the last run's failure; null when the run and its mirror write succeeded
+  lastDrillError?: string; // short machine-readable cue of the last Tier-2 drill's failure; null when the drill and its mirror write succeeded
   updatedAt: string; // ISO 8601 — set by the backup service on every write
 }
 ```
@@ -343,7 +344,8 @@ Design notes:
 
 - **Single row, denormalized by design.** Only the most recent result is observable; history lives in the off-site object store's object timestamps and in container logs. The row is created by migration and is never deleted.
 - **Mutation semantics: upsert only.** The backup service writes via upsert on a fixed primary key; the application never mutates this row.
-- **Dual-write mirror.** Every backup run writes this row AND an unencrypted status mirror object in the off-site object store with the same fields. The mirror exists so backup health is readable when the database is unreachable ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)).
+- **Dual-write mirror.** Every write of this row is followed by a write of an unencrypted status mirror object in the off-site object store with the same fields ([AC-169](verification.md#1522-backup-and-recovery)). The mirror exists so backup health is readable when the database is unreachable ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)).
+- **Each cycle owns its fields.** A backup run writes only the `lastBackup*` fields and a drill only the `lastDrill*` fields (plus `updatedAt`), so neither outcome erases the other's failure cue ([AC-370](verification.md#1522-backup-and-recovery)).
 - **`lastDrillOk` semantics.** `lastDrillOk` is `null` before any Tier 2 drill has succeeded OR failed. A null value is not equivalent to "skipped" — skipped runs leave both `lastDrillAt` and `lastDrillOk` unchanged from the previous run, so freshness is derived from `lastDrillAt` rather than coerced to a boolean.
 - **Cross-references.** Freshness thresholds for the owner-only badge are defined under [architecture.md §12.2](architecture.md#122-company-configurable-settings); acceptance criteria in [verification.md §15.22](verification.md#1522-backup-and-recovery).
 

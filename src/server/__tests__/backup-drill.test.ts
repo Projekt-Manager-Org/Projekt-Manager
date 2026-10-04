@@ -5,7 +5,10 @@
  * private identity is absent from tmpfs, the Tier 2 drill is skipped.
  * A skip is NOT a failure — `lastDrillAt` and `lastDrillOk` are left
  * unchanged from their prior values, so freshness derivation reads
- * "stale" rather than "failed".
+ * "stale" rather than "failed". Also the drill half of AC-169 [crit]:
+ * a drill that writes the status row writes the mirror with it; a skip
+ * writes neither. And the drill half of AC-345 [crit]: a failure while
+ * fetching or opening the artifacts is recorded like any other.
  *
  * Separated from `backup.test.ts` because the drill exercises a
  * distinct code path (decrypt-side / operator-key surface), and
@@ -16,7 +19,7 @@
  * `src/server/services/backup-drill.ts`.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { sql } from 'drizzle-orm';
 import fs from 'node:fs/promises';
@@ -30,11 +33,23 @@ import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
 
 import { runDrill } from '../services/backup-drill.js';
+import type { Manifest } from '../services/backup.js';
+import { makeStubUploader, readStatusRowAsMirror } from '../../test/backupTestHarness.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
 
-describe('Layer 2 drill — AC-168 skip when key absent', () => {
+/** The downloaded pair; `passthrough` "decrypts" by returning the bytes as-is. */
+const DUMP = new Uint8Array([1, 2, 3]);
+const artifacts = async (
+  manifest: Manifest,
+): Promise<{ dump: Uint8Array; manifest: Uint8Array }> => ({
+  dump: DUMP,
+  manifest: new TextEncoder().encode(JSON.stringify(manifest)),
+});
+const passthrough = async (ciphertext: Uint8Array): Promise<Uint8Array> => ciphertext;
+
+describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () => {
   let db: Database;
   let pool: pg.Pool;
   let keyDir: string;
@@ -76,7 +91,7 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
     await db.execute(sql`DELETE FROM meta_backup_status`);
     await db.execute(sql`
       INSERT INTO meta_backup_status
-        (last_backup_ok, last_backup_at, last_drill_at, last_drill_ok, last_error, updated_at)
+        (last_backup_ok, last_backup_at, last_drill_at, last_drill_ok, last_drill_error, updated_at)
       VALUES
         (true,
          '2026-04-10T00:00:00.000Z',
@@ -92,8 +107,9 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     const result = await runDrill({
       db,
+      uploader: makeStubUploader().uploader,
       identityPath: missing,
-      downloadLatestDump: async () => {
+      download: async () => {
         throw new Error('downloader must not be called when key is absent');
       },
       decrypt: async () => {
@@ -116,8 +132,9 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     const result = await runDrill({
       db,
+      uploader: makeStubUploader().uploader,
       identityPath: empty,
-      downloadLatestDump: async () => {
+      download: async () => {
         throw new Error('downloader must not be called for an empty identity');
       },
       decrypt: async () => {
@@ -135,12 +152,14 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
     );
     const priorAt = (before.rows[0] as { last_drill_at: Date | string }).last_drill_at;
     const priorOk = (before.rows[0] as { last_drill_ok: boolean | null }).last_drill_ok;
+    const { uploader, mirrorCalls } = makeStubUploader();
 
     await runDrill({
       db,
+      uploader,
       identityPath: missing,
-      downloadLatestDump: async () => new Uint8Array(),
-      decrypt: async () => new Uint8Array(),
+      download: async () => artifacts({}),
+      decrypt: passthrough,
     });
 
     const after = await db.execute(
@@ -157,6 +176,8 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     expect(postIso).toBe(priorIso);
     expect(postOk).toBe(priorOk);
+    // A skip is not a write, so there is nothing to mirror (AC-169).
+    expect(mirrorCalls).toHaveLength(0);
   });
 
   it('does not bump updatedAt on a skip', async () => {
@@ -172,9 +193,10 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     await runDrill({
       db,
+      uploader: makeStubUploader().uploader,
       identityPath: missing,
-      downloadLatestDump: async () => new Uint8Array(),
-      decrypt: async () => new Uint8Array(),
+      download: async () => artifacts({}),
+      decrypt: passthrough,
     });
 
     const after = await db.execute(sql`SELECT updated_at FROM meta_backup_status`);
@@ -207,10 +229,10 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
 
     const result = await runDrill({
       db,
+      uploader: makeStubUploader().uploader,
       identityPath: identity,
-      downloadLatestDump: async () => new Uint8Array([1, 2, 3]),
-      decrypt: async () => new Uint8Array([1, 2, 3]),
-      expectedManifest: { data_exchange_job: { rowCount: 0, checksum: '' } },
+      download: async () => artifacts({ data_exchange_job: { rowCount: 0, checksum: '' } }),
+      decrypt: passthrough,
       verifyManifest: async () => {
         throw wrapped;
       },
@@ -222,8 +244,121 @@ describe('Layer 2 drill — AC-168 skip when key absent', () => {
     expect(result.reason).toContain('Failed query');
 
     // And it lands in the durable status row, not just the return value.
-    const row = await db.execute(sql`SELECT last_error FROM meta_backup_status`);
-    const lastError = (row.rows[0] as { last_error: string | null }).last_error ?? '';
-    expect(lastError).toContain('relation "data_exchange_job" does not exist');
+    const row = await db.execute(sql`SELECT last_drill_error FROM meta_backup_status`);
+    const lastDrillError =
+      (row.rows[0] as { last_drill_error: string | null }).last_drill_error ?? '';
+    expect(lastDrillError).toContain('relation "data_exchange_job" does not exist');
+  });
+
+  it.each([
+    ['passes', true, { users: { rowCount: 1, checksum: 'a' } }],
+    ['fails', false, { users: { rowCount: 2, checksum: 'b' } }],
+  ])('writes the mirror equal to the DB row when the drill %s', async (_, ok, restored) => {
+    const identity = path.join(keyDir, 'present.key');
+    await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
+    const { uploader, mirrorCalls } = makeStubUploader();
+
+    const result = await runDrill({
+      db,
+      uploader,
+      identityPath: identity,
+      download: async () => artifacts({ users: { rowCount: 1, checksum: 'a' } }),
+      decrypt: passthrough,
+      verifyManifest: async () => restored,
+    });
+
+    expect(result.outcome).toBe(ok ? 'ok' : 'failed');
+    const row = await readStatusRowAsMirror(db);
+    expect(row.lastDrillOk).toBe(ok);
+    expect(mirrorCalls).toEqual([row]);
+  });
+
+  // AC-345: the status row records why a drill failed — including the
+  // steps before verify: fetching the artifacts and opening the sidecar.
+  it.each([
+    [
+      'the download fails',
+      'drill-download: no backup artifacts found under daily/ prefix',
+      'drill-download',
+      {
+        download: async (): Promise<never> => {
+          throw new Error('no backup artifacts found under daily/ prefix');
+        },
+      },
+    ],
+    [
+      'the manifest does not decrypt',
+      // The reason survives; the identity path does not (AC-175).
+      'drill-decrypt: no identity matched any of the recipients in <identity>',
+      'drill-decrypt',
+      {
+        decrypt: async (ciphertext: Uint8Array, identityPath: string): Promise<Uint8Array> => {
+          if (ciphertext !== DUMP) {
+            throw new Error(`no identity matched any of the recipients in ${identityPath}`);
+          }
+          return ciphertext;
+        },
+      },
+    ],
+    [
+      'the manifest is unreadable',
+      'drill-manifest: unreadable',
+      'drill-manifest',
+      {
+        download: async () => ({
+          dump: DUMP,
+          manifest: new TextEncoder().encode('not a manifest'),
+        }),
+      },
+    ],
+  ])('records a failed drill when %s', async (_, cue, mirrorCue, overrides) => {
+    const identity = path.join(keyDir, 'present.key');
+    await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
+    const { uploader, mirrorCalls } = makeStubUploader();
+    const now = new Date('2026-05-01T09:02:00.000Z');
+
+    const result = await runDrill({
+      db,
+      uploader,
+      identityPath: identity,
+      download: async () => artifacts({ users: { rowCount: 1, checksum: 'a' } }),
+      decrypt: passthrough,
+      verifyManifest: async () => ({ users: { rowCount: 1, checksum: 'a' } }),
+      now,
+      ...overrides,
+    });
+
+    expect(result.outcome).toBe('failed');
+    const row = await readStatusRowAsMirror(db);
+    expect(row.lastDrillOk).toBe(false);
+    expect(row.lastDrillAt).toBe(now.toISOString());
+    expect(row.lastDrillError).toBe(cue);
+    expect(mirrorCalls).toEqual([{ ...row, lastDrillError: mirrorCue }]);
+  });
+
+  it('appends a mirror-write failure to lastDrillError, not the backup field (AC-169)', async () => {
+    const identity = path.join(keyDir, 'present.key');
+    await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
+    const putStatusMirror = vi.fn(async () => {
+      throw new Error('mirror write failed (test simulation)');
+    });
+    const { uploader } = makeStubUploader({ putStatusMirror });
+
+    const result = await runDrill({
+      db,
+      uploader,
+      identityPath: identity,
+      download: async () => artifacts({ users: { rowCount: 1, checksum: 'a' } }),
+      decrypt: passthrough,
+      verifyManifest: async () => ({ users: { rowCount: 1, checksum: 'a' } }),
+    });
+
+    expect(result.outcome).toBe('ok');
+    const row = await readStatusRowAsMirror(db);
+    expect(row.lastDrillOk).toBe(true);
+    expect(row.lastDrillError).toBe('mirror: mirror write failed (test simulation)');
+    expect(row.lastBackupError).toBeNull();
+    // The follow-up write recording the failure is not mirrored.
+    expect(putStatusMirror).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,7 +4,7 @@ Operator navigation page for the Layer 2 full-state backup feature ([ADR-0020](.
 
 ## What Layer 2 is
 
-A `backup` compose service that, on every scheduled tick, produces three R2 objects and updates a status row in the application database:
+A `backup` compose service that, on every successful scheduled tick, uploads two encrypted R2 artifacts. Every run and drill outcome updates a status row in the application database, mirrored to `status/latest.json`:
 
 ```
 ┌──────────────────────┐   pg_dump -Fc + manifest   ┌──────────────────────────────┐
@@ -53,11 +53,13 @@ A weekday 09:00 tick, end to end:
        pg_dump -Fc   separate connection, --snapshot=<id> → same view
        └─ Tier 1  pg_restore into an ephemeral Postgres (initdb, socket in /tmp)
                   inside this container → recompute manifest → compare
-          ✗ mismatch → nothing is uploaded; lastBackupOk=false, lastError names the table
-          ✓ → age-encrypt → PUT daily/* → meta_backup_status → status/latest.json
+          ✗ mismatch → no artifact uploaded; lastBackupOk=false, lastBackupError names the table
+          ✓ → age-encrypt → PUT daily/*
+       either way → meta_backup_status → status/latest.json
 
 09:02  Tier 2 drill  GET newest daily/*.dump.age → age -d (tmpfs identity)
                      → ephemeral Postgres → compare against the decrypted sidecar
+                     → meta_backup_status → status/latest.json
 ```
 
 Four consequences that change how the status row reads:

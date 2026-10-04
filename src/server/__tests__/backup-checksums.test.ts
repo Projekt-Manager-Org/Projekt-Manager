@@ -3,7 +3,7 @@
  *
  *   - AC-366 [crit]: A backup run against a source database without page
  *     checksums fails before producing an artifact — nothing uploaded,
- *     `lastBackupOk = false`, `lastError` names the missing checksums.
+ *     `lastBackupOk = false`, `lastBackupError` names the missing checksums.
  *
  * `data_checksums` is fixed at cluster init and cannot be switched per
  * test, so the off-case injects the setting's value at the read boundary.
@@ -41,8 +41,8 @@ describe('Layer 2 backup — page-checksum precondition (§15.22 AC-366)', () =>
     await pool?.end();
   });
 
-  it('fails before the dump, uploads nothing, and names the missing checksums', async () => {
-    const { uploader, uploads, mirrorCalls } = makeStubUploader();
+  it('fails before the dump, uploads no artifact, and names the missing checksums', async () => {
+    const { uploader, uploads } = makeStubUploader();
     const dumpSource = vi.fn(async () => new Uint8Array());
 
     const result = await runBackup({
@@ -56,11 +56,12 @@ describe('Layer 2 backup — page-checksum precondition (§15.22 AC-366)', () =>
     expect(result.ok).toBe(false);
     expect(dumpSource).not.toHaveBeenCalled();
     expect(uploads).toHaveLength(0);
-    expect(mirrorCalls).toHaveLength(0);
 
-    const rows = await db.execute(sql`SELECT last_backup_ok, last_error FROM meta_backup_status`);
-    const row = rows.rows[0] as { last_backup_ok: boolean; last_error: string | null };
+    const rows = await db.execute(
+      sql`SELECT last_backup_ok, last_backup_error FROM meta_backup_status`,
+    );
+    const row = rows.rows[0] as { last_backup_ok: boolean; last_backup_error: string | null };
     expect(row.last_backup_ok).toBe(false);
-    expect(row.last_error ?? '').toMatch(/^precondition: data checksums are off/);
+    expect(row.last_backup_error ?? '').toMatch(/^precondition: data checksums are off/);
   });
 });

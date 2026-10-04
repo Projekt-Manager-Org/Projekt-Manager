@@ -1241,6 +1241,12 @@
           "notNull": true,
           "default": false
         },
+        "last_backup_error": {
+          "name": "last_backup_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "last_drill_at": {
           "name": "last_drill_at",
           "type": "timestamp with time zone",
@@ -1253,8 +1259,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_error": {
-          "name": "last_error",
+        "last_drill_error": {
+          "name": "last_drill_error",
           "type": "text",
           "primaryKey": false,
           "notNull": false

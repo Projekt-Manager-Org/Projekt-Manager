@@ -27,7 +27,6 @@
  */
 
 import { spawn } from 'node:child_process';
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Cron } from 'croner';
@@ -41,6 +40,7 @@ import {
   LOCK_WAIT_TIMEOUT_MS,
   type BackupUploader,
   type DumpSource,
+  type StatusMirrorWriter,
   type Encryptor,
   type VerifyManifestFn,
 } from './services/backup.js';
@@ -329,6 +329,7 @@ function createBackupHandler(deps: BackupHandlerDeps): () => Promise<number> {
 
 interface DrillHandlerDeps {
   db: Database;
+  uploader: StatusMirrorWriter;
   downloader: BackupDownloader;
   verifyManifest: VerifyManifestFn;
   identityPath: string;
@@ -338,6 +339,7 @@ function buildDrillDeps(env: Env, db: Database): DrillHandlerDeps {
   const r2 = requireR2(env, 'drill');
   return {
     db,
+    uploader: createR2Uploader(r2),
     downloader: createR2Downloader(r2),
     verifyManifest: ephemeralPgVerify(),
     identityPath: env.AGE_IDENTITY_PATH,
@@ -353,37 +355,15 @@ function createDrillHandler(deps: DrillHandlerDeps): () => Promise<number> {
       // wild path through to `age -d -i`.
       assertIdentityPathUnderTmpfs(deps.identityPath);
 
-      // AC-168 — the drill service needs `expectedManifest` up front,
-      // but the downloader "must not be called when key is absent."
-      // Check ourselves, short-circuit to the skip branch.
-      const identityPresent = await isIdentityPresentAndNonEmpty(deps.identityPath);
-      let dumpCipher: Uint8Array | null = null;
-      let manifestPlain: Uint8Array | null = null;
-      if (identityPresent) {
-        const downloaded = await deps.downloader.downloadLatestDumpAndManifest();
-        dumpCipher = downloaded.dump;
-        manifestPlain = await ageDecrypt(downloaded.manifest, deps.identityPath);
-      }
-      const expectedManifest =
-        manifestPlain !== null
-          ? (JSON.parse(Buffer.from(manifestPlain).toString('utf-8')) as Record<
-              string,
-              { rowCount: number; checksum: string }
-            >)
-          : undefined;
-
       const result = await runDrill({
         db: deps.db,
+        uploader: deps.uploader,
         identityPath: deps.identityPath,
-        downloadLatestDump: async () => {
-          if (dumpCipher === null) {
-            throw new Error('dump not downloaded — drill key was absent');
-          }
-          return dumpCipher;
-        },
-        decrypt: async (ciphertext, idPath) => ageDecrypt(ciphertext, idPath),
+        // Fetched inside runDrill, so a failed download is recorded on
+        // the status row (AC-345) rather than escaping to the catch below.
+        download: () => deps.downloader.downloadLatestDumpAndManifest(),
+        decrypt: ageDecrypt,
         verifyManifest: deps.verifyManifest,
-        expectedManifest,
         now: new Date(),
       });
 
@@ -450,15 +430,6 @@ function assertIdentityPathUnderTmpfs(identityPath: string): void {
       `AGE_IDENTITY_PATH must resolve under ${DRILL_TMPFS_PREFIX} ` +
         `(got ${JSON.stringify(resolved)})`,
     );
-  }
-}
-
-async function isIdentityPresentAndNonEmpty(identityPath: string): Promise<boolean> {
-  try {
-    const stats = await fs.stat(identityPath);
-    return stats.isFile() && stats.size > 0;
-  } catch {
-    return false;
   }
 }
 

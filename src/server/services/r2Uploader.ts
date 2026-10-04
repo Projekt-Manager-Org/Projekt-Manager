@@ -118,7 +118,8 @@ export function createR2Uploader(config: R2Config): BackupUploader {
       // format. The status mirror is unencrypted by design (ADR-0020):
       // it exists so operators can read freshness even without age
       // identity material. The object carries no PII — only the
-      // data-model.md §5.9 badge fields — so plaintext is correct.
+      // data-model.md §5.9 badge fields, with the error fields cut to their
+      // stage cue by `toMirror` — so plaintext is correct.
       const body = Buffer.from(JSON.stringify(status), 'utf-8');
       await client.send(
         new PutObjectCommand({
