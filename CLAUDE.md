@@ -38,11 +38,21 @@ You may notice that even the Kickoff got couple revisions during development. Ev
 
 Follow [CONTRIBUTING.md § Workflow](CONTRIBUTING.md#workflow).
 
+## Current phase — converge, don't expand
+
+No feature is in flight ([plan.md](docs/project/plan.md): MVP, no fixed iteration), so "the feature works" is not available as a criterion to close work against. Scope discipline supplies it: maximum impact, minimum intervention.
+
+Speculative improvements and rare corner cases are dropped, not filed — if they matter, they resurface by themselves. Correctness, data integrity, security and compounding debt are never dropped.
+
+This makes no convention obsolete (`review/conventions-*.md`) — it drops overengineering for corner cases with little real value and a lot of engineering and maintenance complexity.
+
 ## Principles
 
-Data integrity, security and quality defaults are the baseline, **not open questions.** When an established professional practice applies (HTTPS everywhere, input validation, auth on every mutation, CSRF protection, test isolation, ...), the default is to do it. The discussion — when there is one — is about _how_ to implement it cleanly in the current topology, not _whether_ to.
+Data integrity and security defaults are the baseline, **not open questions.** When an established professional practice applies (HTTPS everywhere, input validation, auth on every mutation, CSRF protection, test isolation, ...), the default is to do it. The discussion — when there is one — is about _how_ to implement it cleanly in the current topology, not _whether_ to.
 
-If the environment cannot meet a data integrity, security or quality requirement, the correct behavior is to **refuse to serve, fail the deploy, or block the merge** — not to downgrade the requirement. When the implementation lags behind a safety criterion in the spec or an AC, fix the implementation. Do not rewrite the criterion to match the stub.
+Code quality is governed by [conventions-code.md](review/conventions-code.md): its **Rules** are non-negotiable, its **Guidelines** need judgement. Do not promote a guideline to a blocker.
+
+If the environment cannot meet a data integrity or security requirement, the correct behavior is to **refuse to serve, fail the deploy, or block the merge** — not to downgrade the requirement. When the implementation lags behind a safety criterion in the spec or an AC, fix the implementation. Do not rewrite the criterion to match the stub. Questioning a criterion on merit is welcome; weakening one to match a lagging implementation is not.
 
 ## Working with documentation
 
@@ -52,8 +62,12 @@ Where possible, prefer a simple diagram over a long explanation.
 
 ## Undecided Specifics
 
-Many details are deliberately left open until their iteration. When work hits something undefined:
+Many details are deliberately left open until their iteration. What to do when work hits something undefined depends on _what_ is undefined.
+
+**Contract-level** — observable behavior, an AC, data semantics, a security posture, scope:
 
 1. Stop — do not assume.
 2. Flag what is undefined and why it blocks.
 3. When decided — suggest recording it in its proper place.
+
+**Implementation-level** — the minute details the spec deliberately leaves to implementers (S-NDET): take the smallest option that satisfies the contract, state the assumption in the report, keep going. Do not stop for these.
