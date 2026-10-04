@@ -34,6 +34,7 @@
  */
 
 import fs from 'node:fs/promises';
+import { z } from 'zod';
 import type { Database } from '../db/connection.js';
 import { getBackupStatus } from '../repositories/backupStatus.js';
 import {
@@ -64,10 +65,10 @@ export interface DrillOptions {
    */
   identityPath: string;
   /**
-   * Download the most recent encrypted dump from the off-site store.
-   * Production wires R2; tests stub. Returns ciphertext bytes.
+   * Download the most recent encrypted dump and its encrypted manifest
+   * sidecar from the off-site store. Production wires R2; tests stub.
    */
-  downloadLatestDump: () => Promise<Uint8Array>;
+  download: () => Promise<{ dump: Uint8Array; manifest: Uint8Array }>;
   /**
    * Decrypt ciphertext using the identity at `identityPath`. Production
    * shells out to `age -d -i <identityPath>`; tests stub. The identity
@@ -82,17 +83,17 @@ export interface DrillOptions {
   now?: Date;
   /**
    * Verify hook — spawns an ephemeral Postgres, restores the plaintext
-   * dump, and recomputes the manifest. Tests that exercise the non-skip
-   * path inject this. Default raises because the skip-branch tests
-   * never reach it.
+   * dump, and recomputes the manifest. Missing on a non-skip path, the
+   * drill is recorded as failed (`drill-config`).
    */
   verifyManifest?: (dump: Uint8Array) => Promise<Manifest>;
-  /**
-   * Expected manifest for the verify comparison. Production reads this
-   * from the encrypted sidecar alongside the dump; tests inject directly.
-   */
-  expectedManifest?: Manifest;
 }
+
+/** The decrypted sidecar is file input: checked before it is compared. */
+const manifestSchema = z.record(
+  z.string(),
+  z.object({ rowCount: z.number(), checksum: z.string() }),
+);
 
 /**
  * Execute one Tier 2 drill. See module header for the skip semantics.
@@ -112,10 +113,11 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
       lastError,
     });
 
-  // Download the latest dump.
-  let ciphertext: Uint8Array;
+  // Download the latest dump + sidecar. Every step from here on records
+  // its failure (AC-345) — none may escape to the caller unrecorded.
+  let downloaded: { dump: Uint8Array; manifest: Uint8Array };
   try {
-    ciphertext = await opts.downloadLatestDump();
+    downloaded = await opts.download();
   } catch (err) {
     const message = errorMessage(err);
     await record(false, `drill-download: ${message}`);
@@ -125,22 +127,33 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
   // Decrypt. The identity path is passed through; the identity bytes
   // never enter this frame.
   let plaintext: Uint8Array;
+  let manifestPlain: Uint8Array;
   try {
-    plaintext = await opts.decrypt(ciphertext, opts.identityPath);
+    plaintext = await opts.decrypt(downloaded.dump, opts.identityPath);
+    manifestPlain = await opts.decrypt(downloaded.manifest, opts.identityPath);
+  } catch (err) {
+    // The reason (wrong key vs. timeout) is kept (AC-345), the identity
+    // path is not: an operator tailing logs should not see the literal
+    // tmpfs path in an error cue (defense-in-depth).
+    const message = errorMessage(err).replaceAll(opts.identityPath, '<identity>');
+    await record(false, `drill-decrypt: ${message}`);
+    return { outcome: 'failed', reason: `decrypt: ${message}` };
+  }
+
+  let expectedManifest: Manifest;
+  try {
+    expectedManifest = manifestSchema.parse(JSON.parse(new TextDecoder().decode(manifestPlain)));
   } catch {
-    // Scrub any details: the path was passed in by the caller, but we
-    // still avoid echoing it back — an operator tailing logs should not
-    // see the literal tmpfs path in an error cue (defense-in-depth).
-    await record(false, 'drill-decrypt: failed');
-    return { outcome: 'failed', reason: 'decrypt-failed' };
+    await record(false, 'drill-manifest: unreadable');
+    return { outcome: 'failed', reason: 'manifest-unreadable' };
   }
 
   // Verify. The verify hook is mandatory for non-skip paths; if the
   // caller forgot to wire it, fail loudly rather than silently "pass".
-  if (!opts.verifyManifest || !opts.expectedManifest) {
+  if (!opts.verifyManifest) {
     // A configuration error, not a verify failure — but recorded as a
     // failed drill all the same: an unverified backup must not read green.
-    await record(false, 'drill-config: verify hooks missing');
+    await record(false, 'drill-config: verify hook missing');
     return { outcome: 'failed', reason: 'verify-not-wired' };
   }
 
@@ -153,7 +166,7 @@ export async function runDrill(opts: DrillOptions): Promise<DrillResult> {
     return { outcome: 'failed', reason: `verify: ${message}` };
   }
 
-  const mismatchedTable = firstDivergingTable(opts.expectedManifest, restoreManifest);
+  const mismatchedTable = firstDivergingTable(expectedManifest, restoreManifest);
   if (mismatchedTable) {
     await record(false, `drill-mismatch on ${mismatchedTable}`);
     return { outcome: 'failed', reason: 'manifest-mismatch', mismatchedTable };

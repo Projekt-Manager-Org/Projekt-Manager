@@ -7,7 +7,8 @@
  * unchanged from their prior values, so freshness derivation reads
  * "stale" rather than "failed". Also the drill half of AC-169 [crit]:
  * a drill that writes the status row writes the mirror with it; a skip
- * writes neither.
+ * writes neither. And the drill half of AC-345 [crit]: a failure while
+ * fetching or opening the artifacts is recorded like any other.
  *
  * Separated from `backup.test.ts` because the drill exercises a
  * distinct code path (decrypt-side / operator-key surface), and
@@ -32,12 +33,23 @@ import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
 
 import { runDrill } from '../services/backup-drill.js';
+import type { Manifest } from '../services/backup.js';
 import { makeStubUploader, readStatusRowAsMirror } from '../../test/backupTestHarness.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
 
-describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
+/** The downloaded pair; `passthrough` "decrypts" by returning the bytes as-is. */
+const DUMP = new Uint8Array([1, 2, 3]);
+const artifacts = async (
+  manifest: Manifest,
+): Promise<{ dump: Uint8Array; manifest: Uint8Array }> => ({
+  dump: DUMP,
+  manifest: new TextEncoder().encode(JSON.stringify(manifest)),
+});
+const passthrough = async (ciphertext: Uint8Array): Promise<Uint8Array> => ciphertext;
+
+describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () => {
   let db: Database;
   let pool: pg.Pool;
   let keyDir: string;
@@ -97,7 +109,7 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
       db,
       uploader: makeStubUploader().uploader,
       identityPath: missing,
-      downloadLatestDump: async () => {
+      download: async () => {
         throw new Error('downloader must not be called when key is absent');
       },
       decrypt: async () => {
@@ -122,7 +134,7 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
       db,
       uploader: makeStubUploader().uploader,
       identityPath: empty,
-      downloadLatestDump: async () => {
+      download: async () => {
         throw new Error('downloader must not be called for an empty identity');
       },
       decrypt: async () => {
@@ -146,8 +158,8 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
       db,
       uploader,
       identityPath: missing,
-      downloadLatestDump: async () => new Uint8Array(),
-      decrypt: async () => new Uint8Array(),
+      download: async () => artifacts({}),
+      decrypt: passthrough,
     });
 
     const after = await db.execute(
@@ -183,8 +195,8 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
       db,
       uploader: makeStubUploader().uploader,
       identityPath: missing,
-      downloadLatestDump: async () => new Uint8Array(),
-      decrypt: async () => new Uint8Array(),
+      download: async () => artifacts({}),
+      decrypt: passthrough,
     });
 
     const after = await db.execute(sql`SELECT updated_at FROM meta_backup_status`);
@@ -219,9 +231,8 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
       db,
       uploader: makeStubUploader().uploader,
       identityPath: identity,
-      downloadLatestDump: async () => new Uint8Array([1, 2, 3]),
-      decrypt: async () => new Uint8Array([1, 2, 3]),
-      expectedManifest: { data_exchange_job: { rowCount: 0, checksum: '' } },
+      download: async () => artifacts({ data_exchange_job: { rowCount: 0, checksum: '' } }),
+      decrypt: passthrough,
       verifyManifest: async () => {
         throw wrapped;
       },
@@ -250,9 +261,8 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
       db,
       uploader,
       identityPath: identity,
-      downloadLatestDump: async () => new Uint8Array([1, 2, 3]),
-      decrypt: async () => new Uint8Array([1, 2, 3]),
-      expectedManifest: { users: { rowCount: 1, checksum: 'a' } },
+      download: async () => artifacts({ users: { rowCount: 1, checksum: 'a' } }),
+      decrypt: passthrough,
       verifyManifest: async () => restored,
     });
 
@@ -260,5 +270,68 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror', () => {
     const row = await readStatusRowAsMirror(db);
     expect(row.lastDrillOk).toBe(ok);
     expect(mirrorCalls).toEqual([row]);
+  });
+
+  // AC-345: the status row records why a drill failed — including the
+  // steps before verify: fetching the artifacts and opening the sidecar.
+  it.each([
+    [
+      'the download fails',
+      'drill-download: no backup artifacts found under daily/ prefix',
+      'drill-download',
+      {
+        download: async (): Promise<never> => {
+          throw new Error('no backup artifacts found under daily/ prefix');
+        },
+      },
+    ],
+    [
+      'the manifest does not decrypt',
+      // The reason survives; the identity path does not (AC-175).
+      'drill-decrypt: no identity matched any of the recipients in <identity>',
+      'drill-decrypt',
+      {
+        decrypt: async (ciphertext: Uint8Array, identityPath: string): Promise<Uint8Array> => {
+          if (ciphertext !== DUMP) {
+            throw new Error(`no identity matched any of the recipients in ${identityPath}`);
+          }
+          return ciphertext;
+        },
+      },
+    ],
+    [
+      'the manifest is unreadable',
+      'drill-manifest: unreadable',
+      'drill-manifest',
+      {
+        download: async () => ({
+          dump: DUMP,
+          manifest: new TextEncoder().encode('not a manifest'),
+        }),
+      },
+    ],
+  ])('records a failed drill when %s', async (_, cue, mirrorCue, overrides) => {
+    const identity = path.join(keyDir, 'present.key');
+    await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
+    const { uploader, mirrorCalls } = makeStubUploader();
+    const now = new Date('2026-05-01T09:02:00.000Z');
+
+    const result = await runDrill({
+      db,
+      uploader,
+      identityPath: identity,
+      download: async () => artifacts({ users: { rowCount: 1, checksum: 'a' } }),
+      decrypt: passthrough,
+      verifyManifest: async () => ({ users: { rowCount: 1, checksum: 'a' } }),
+      now,
+      ...overrides,
+    });
+
+    expect(result.outcome).toBe('failed');
+    const row = await readStatusRowAsMirror(db);
+    expect(row.lastDrillOk).toBe(false);
+    expect(row.lastDrillAt).toBe(now.toISOString());
+    expect(row.lastError).toBe(cue);
+    expect(mirrorCalls).toEqual([{ ...row, lastError: mirrorCue }]);
   });
 });
