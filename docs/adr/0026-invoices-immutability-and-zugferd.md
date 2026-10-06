@@ -1,7 +1,7 @@
 # ADR-0026: Invoices — immutable snapshot, gapless sequence, ZUGFeRD EN 16931
 
 - **Status:** Accepted
-- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417; restore gap amended 2026-09-28, #429)
+- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417; restore gap amended 2026-09-28, #429; backup gate amended 2026-10-05, #453)
 - **Confidence:** High
 
 ## Context
@@ -55,6 +55,7 @@ We will model invoices as **immutable issued snapshots with a gapless year-scope
 
 - PDF/A-3 (ZUGFeRD-wrapped) stored as an `attachments` descriptor row under the E2E envelope ([ADR-0024](0024-binary-attachment-e2e-encryption.md)), so B2 sees only ciphertext — but in its own key namespace, which keeps it off the attachment surface: no attachment operation lists, hides, restores, or serves it, and the full-account import restores it into the same namespace.
 - **Object Lock retention is per object.** Each rendered PDF is PUT with its own Compliance lock until write time + `INVOICE_OBJECT_LOCK_DAYS`: `3650` in production, which covers §147 AO; `.env.example` ships `0` (no lock) so dev binaries stay disposable. Not the bucket default: [ADR-0022](0022-binary-storage-b2-compliance-object-lock.md) requires `R ≤ L`, so a multi-year `R` would stretch every attachment's trash window to years. The original design asserted bucket default ≥ env at boot, which no bucket could satisfy together with `R ≤ L` (#417).
+- **Delivered only once backed up.** An issued row's PDF is withheld until a Layer 2 backup ([ADR-0020](0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)) holds the row; issuance triggers that backup. A restore can then lose only invoices that never left the system — their projects return to `Rechnung fällig`, visible as pending action. The mark lives outside the invoice row, which stays immutable. The alternative — wrapped DEK as B2 object metadata, recovering PDFs after a restore — yields files outside the app; putting them back means replaying issuance, a second write path exercised only in disasters (#453). Not gated: the full-account takeout — a deliberate whole-account act by a `data:export` holder, and itself an off-system copy. A mark that never clears (backup down) keeps the PDF withheld and notifies the owner; with backup disabled there is nothing to wait for and the gate does not apply.
 - Lifecycle and capability split from ADR-0022 are reused unchanged — the bucket primitives operate on opaque bytes, so the Object Lock window defends ciphertext exactly as it defends attachment ciphertext.
 
 ### Tax modes
@@ -132,7 +133,7 @@ Keep `company_profile.defaultTaxMode` plus a `taxModeOverride boolean` on the in
 - **ZUGFeRD adds a toolchain surface.** PDF/A-3 generation, the `factur-x.xml` builder against the EN 16931 schema, and per-render XSD validation against the canonical EN 16931 schemas before embed. A non-conformant XML aborts the issuance transaction at the validator step before any binary lands on B2. The Node-native rendering pipeline (libraries, paths) is documented in [`ARCHITECTURE.md` § Invoices Module](../../ARCHITECTURE.md#invoices-module).
 - **Stornorechnung surfaces as a distinct row in invoice lists.** UI must group it visually under the original; bookkeeper exports include both. Acceptable — it is the artifact a tax auditor expects to see.
 - **Object Lock + Compliance retention is unforgiving.** A Storno-then-correct cycle is the only correction path; there is no "fix a typo on the issued invoice" door, by design.
-- **A DR restore to an earlier DB state leaves a gap.** Invoices issued after the backup vanish from the DB, but their numbers reached customers. The DR procedure advances the counter past them ([data-model.md §6.13](../spec/data-model.md#613-gapless-sequence-allocation)) — §14 Abs. 4 Nr. 4 UStG requires a number issued once; gaplessness is this ADR's stricter choice and yields. The gap is recorded in the incident record.
+- **A DR restore to an earlier DB state leaves a gap.** Invoices issued after the backup vanish from the DB. The backup gate keeps their PDFs inside the system, but their numbers may have been seen — and restoring anything older than the newest backup loses delivered invoices. The DR procedure advances the counter past them ([data-model.md §6.13](../spec/data-model.md#613-gapless-sequence-allocation)) — §14 Abs. 4 Nr. 4 UStG requires a number issued once; gaplessness is this ADR's stricter choice and yields. The gap is recorded in the incident record.
 
 ### Operational
 
