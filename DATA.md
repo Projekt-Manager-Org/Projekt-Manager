@@ -10,11 +10,11 @@ The kickoff commits to automated DB backup ([kickoff § Done when](docs/project/
 
 Each class of data has different size, portability, and durability properties, so each gets its own tool and its own verification story. The layers are **complementary, not substitutes** — see [ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md) for why.
 
-| Layer                      | Captures                                                                          | Trigger                    | Off-site                                                                       | Status  |
-| -------------------------- | --------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------ | ------- |
-| **1 — Business data**      | Users, company profile, customers, projects, assignments, invoices, archived rows | Manual UI export / restore | No (file download)                                                             | Shipped |
-| **2 — Full DB state**      | Everything in PostgreSQL (the Layer 1 set plus sessions, audit log, schema)       | Scheduled, automatic       | Yes (encrypted with `age`, R2)                                                 | Shipped |
-| **3 — Binary attachments** | Uploaded files (photos, Aufmaß, PDFs, DOCX)                                       | Continuous (presigned PUT) | Provider-owned (B2 versioning + Object Lock), e2e per-blob (`age`-wrapped DEK) | Shipped |
+| Layer                      | Captures                                                                          | Trigger                         | Off-site                                                                       | Status  |
+| -------------------------- | --------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------ | ------- |
+| **1 — Business data**      | Users, company profile, customers, projects, assignments, invoices, archived rows | Manual UI export / restore      | No (file download)                                                             | Shipped |
+| **2 — Full DB state**      | Everything in PostgreSQL (the Layer 1 set plus sessions, audit log, schema)       | Scheduled + on invoice issuance | Yes (encrypted with `age`, R2)                                                 | Shipped |
+| **3 — Binary attachments** | Uploaded files (photos, Aufmaß, PDFs, DOCX)                                       | Continuous (presigned PUT)      | Provider-owned (B2 versioning + Object Lock), e2e per-blob (`age`-wrapped DEK) | Shipped |
 
 ---
 
@@ -41,7 +41,7 @@ Scheduled encrypted `pg_dump` → R2. Every run is verified on-create (Tier 1); 
 - **Design rationale:** [ADR-0020](docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)
 - **Contract:** [spec architecture.md §11.10](docs/spec/architecture.md#1110-full-state-backup-layer-2), [verification.md §15.22](docs/spec/verification.md#1522-backup-and-recovery)
 - **Operator procedures:** [docs/ops/backup/](docs/ops/backup/overview.md) — setup, recovery, drills, troubleshooting
-- **Code:** `src/server/services/{backup,backup-drill,ephemeralPg,r2Uploader}.ts`; shell wrappers in `scripts/backup/`
+- **Code:** `src/server/services/{backup,backup-trigger,backup-drill,ephemeralPg,r2Uploader}.ts`; shell wrappers in `scripts/backup/`
 
 **Retention is linear, not GFS.** No weekly/monthly promotion. Canonical values and scope rationale: [ADR-0020 §Retention](docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention).
 

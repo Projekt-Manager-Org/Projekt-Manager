@@ -316,7 +316,8 @@ services:
     cpus: 1.0
     environment:
       # Same DATABASE_URL as the app — the backup service reads the
-      # canonical DB for pg_dump + manifest (AC-174 checksum query).
+      # canonical DB for pg_dump + manifest (AC-174 checksum query), and
+      # writes its status row and the invoice backup-pending release.
       DATABASE_URL: postgresql://pm:${POSTGRES_PASSWORD}@db:5432/projekt_manager
       # Cloudflare R2 credentials + bucket + recipient — sourced from
       # secrets.env.age via scripts/deploy.sh (see

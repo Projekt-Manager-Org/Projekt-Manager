@@ -184,7 +184,7 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
    SQL
    ```
 
-   Record `N` and the printed sequence in the incident record — it explains the gap. Invoices issued after `TS` are missing from the DB, and their PDFs are unreadable without their rows; collect copies from wherever they were sent.
+   Record `N` and the printed sequence in the incident record — it explains the gap. Invoices issued after `TS` are missing from the DB. If `TS` is the newest backup, none of them was delivered — the backup gate withheld their PDFs ([ADR-0026](../../adr/0026-invoices-immutability-and-zugferd.md)) — and their projects are back at `Rechnung fällig`: re-issue. Restoring an older backup loses delivered invoices; their PDFs are unreadable without their rows — collect copies from wherever they were sent.
 
 6. On the VPS: shred the plaintext dump.
    ```bash
