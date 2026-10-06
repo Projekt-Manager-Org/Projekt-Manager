@@ -491,6 +491,57 @@ describe('Invoice issuance — happy path (AT-111 / AC-287)', () => {
 // rolls back the increment".
 // ---------------------------------------------------------------------
 
+// ---------------------------------------------------------------------
+// AC-374 — feature-disabled arm. The default test env carries no Layer 2
+// backup configuration, so the backup feature is disabled: issuance
+// writes no backup-pending mark and the PDF is deliverable at once. The
+// enabled arm lives in `invoices-backup-gate.test.ts`.
+// ---------------------------------------------------------------------
+describe('Invoice issuance — backup feature disabled (AC-374)', () => {
+  let ownerToken: string;
+
+  beforeAll(async () => {
+    await startApp();
+    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+    await ensureCompanyProfileComplete(ownerToken, 'standard');
+  });
+
+  afterAll(async () => {
+    await stopApp();
+  });
+
+  async function markCount(): Promise<number> {
+    const { db, pool } = createDatabase();
+    try {
+      const marks = await db.execute<{ c: string }>(
+        sql`SELECT COUNT(*)::text AS c FROM invoice_backup_pending`,
+      );
+      return Number(marks.rows[0]!.c);
+    } finally {
+      await pool.end();
+    }
+  }
+
+  it('issuance and cancellation write no mark; both PDFs are served at once', async () => {
+    const projectId = await rechnungFaelligProjectId(ownerToken);
+    const draftId = await createDraft(ownerToken, projectId);
+    const issued = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+    expect(issued.statusCode).toBe(200);
+    expect(issued.json().backupPending).toBe(false);
+    expect(await markCount()).toBe(0);
+    expect((await authGet(ownerToken, `/api/invoices/${draftId}/pdf`)).statusCode).toBe(200);
+
+    const cancelled = await authPost(ownerToken, `/api/invoices/${draftId}/cancel`, {
+      reason: 'Falscher Betrag',
+    });
+    expect(cancelled.statusCode).toBe(200);
+    const stornoId = cancelled.json().storno.id as string;
+    expect(cancelled.json().storno.backupPending).toBe(false);
+    expect(await markCount()).toBe(0);
+    expect((await authGet(ownerToken, `/api/invoices/${stornoId}/pdf`)).statusCode).toBe(200);
+  });
+});
+
 describe('Invoice issuance — gapless sequence (AT-112 / AC-288)', () => {
   let ownerToken: string;
   let projectId: string;
@@ -714,6 +765,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
       binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH!,
       invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
+      backupGateEnabled: false,
     };
     const binary = new InvoiceBinaryService(db, deps);
     return new InvoiceIssueService(db, binary, renderer);
@@ -1009,6 +1061,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
       binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH!,
       invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
+      backupGateEnabled: false,
     };
     const binary = new InvoiceBinaryService(db, deps);
     return new InvoiceIssueService(db, binary, renderer);

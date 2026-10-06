@@ -33,6 +33,7 @@ function mkInvoice(id: string, cancellationOf: string | null): Invoice {
     performanceDate: null,
     cancellationReason: null,
     renderedPdfBinaryDescriptorId: null,
+    backupPending: false,
     createdAt: '2026-04-12T00:00:00.000Z',
     updatedAt: '2026-04-12T00:00:00.000Z',
     createdBy: null,

@@ -94,6 +94,8 @@ export interface Invoice {
 
   cancellationReason: string | null;
   renderedPdfBinaryDescriptorId: string | null;
+  /** Derived: the PDF is withheld until an off-site backup holds the row. False on drafts. */
+  backupPending: boolean;
 
   createdAt: string;
   updatedAt: string;

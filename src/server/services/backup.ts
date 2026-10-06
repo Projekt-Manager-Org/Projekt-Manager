@@ -2,7 +2,7 @@
  * Layer 2 backup service — Tier 1 verify-on-create + upload.
  *
  * Implements verification.md §15.22 AC-165..AC-167, AC-169, AC-174,
- * AC-344, AC-345, AC-366
+ * AC-344, AC-345, AC-366, AC-373
  * and ADR-0020. This service:
  *
  *   0. Refuses a source without page checksums (AC-366) — without them
@@ -25,7 +25,9 @@
  *      function (production wires `age -r $AGE_RECIPIENT`; tests inject
  *      a fake). An encryption failure fails the run (AC-167).
  *   6. Uploads `daily/<iso>.dump.age` and `daily/<iso>.manifest.json.age`.
- *   7. Records the outcome — success or a failure at any step — via
+ *   7. Releases the backup-pending invoice marks the snapshot held
+ *      (AC-373) — a mark committed after the snapshot survives.
+ *   8. Records the outcome — success or a failure at any step — via
  *      `recordBackupStatus`: the `meta_backup_status` row, then the
  *      status mirror carrying the same values (AC-169).
  *
@@ -44,6 +46,10 @@ import {
   type BackupStatus,
   type BackupStatusPatch,
 } from '../repositories/backupStatus.js';
+import {
+  listInvoiceBackupPendingIds,
+  releaseInvoiceBackupMarks,
+} from '../repositories/invoiceBackupPending.js';
 
 // ---------------------------------------------------------------
 // Public contract types
@@ -194,6 +200,7 @@ export const MANIFEST_TABLES: ReadonlyArray<{
   { name: 'company_profile', pkColumns: ['id'] },
   { name: 'customers', pkColumns: ['id'] },
   { name: 'data_exchange_job', pkColumns: ['id'] },
+  { name: 'invoice_backup_pending', pkColumns: ['invoice_id'] },
   { name: 'invoice_sequence', pkColumns: ['year', 'kind'] },
   { name: 'invoices', pkColumns: ['id'] },
   { name: 'meta_backup_status', pkColumns: ['singleton'] },
@@ -300,8 +307,13 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
   // ---------------------------------------------------------------
   let sourceManifest: Manifest;
   let dump: Uint8Array;
+  let snapshotMarkIds: string[];
   try {
-    ({ manifest: sourceManifest, dump } = await opts.db.transaction(
+    ({
+      manifest: sourceManifest,
+      dump,
+      snapshotMarkIds,
+    } = await opts.db.transaction(
       async (tx) => {
         // Pin the transaction's session TimeZone to UTC. The manifest
         // checksum is `md5(row(t.*)::text)`, which serializes
@@ -357,6 +369,9 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
         }
 
         const manifest = await computeManifest(tx);
+        // The backup-pending marks this snapshot holds — exactly the ones
+        // a successful run may release (architecture.md §11.10 "Release").
+        const markIds = await listInvoiceBackupPendingIds(tx);
         const dumpSource = opts.dumpSource ?? (async () => defaultDumpSource(manifest));
 
         // Awaited inside the transaction on purpose. Committing once the
@@ -368,7 +383,7 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
         // dump finishes. `pg_dump` pins it for its own duration either
         // way; the fix only extends that pin backwards across the
         // manifest scan.
-        return { manifest, dump: await dumpSource(snapshotId) };
+        return { manifest, dump: await dumpSource(snapshotId), snapshotMarkIds: markIds };
       },
       {
         isolationLevel: 'repeatable read',
@@ -420,6 +435,15 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
     await opts.uploader.upload(manifestKey, manifestCipher, 'application/octet-stream');
   } catch (err) {
     return fail(`upload: ${errorMessage(err)}`);
+  }
+
+  // Both artifacts are off-site: release the invoices this snapshot
+  // holds. A failed release fails the run, so the invoice trigger
+  // retries rather than leaving the PDFs withheld behind a green run.
+  try {
+    await releaseInvoiceBackupMarks(opts.db, snapshotMarkIds);
+  } catch (err) {
+    return fail(`release: ${errorMessage(err)}`);
   }
 
   await recordBackupStatus(opts.db, opts.uploader, 'backup', {

@@ -26,9 +26,10 @@ import { buildInvoiceDownloadFilename } from '../../domain/invoice.js';
 import type { RenderedInvoice } from './InvoiceRenderer.js';
 import { encryptInvoicePayload, decryptInvoicePayload } from './invoice/payloadCrypto.js';
 import { KeyEnvelopeService, KeyEnvelopeUnwrapError } from './KeyEnvelopeService.js';
-import { notFound, invoiceNotIssued, dekUnwrapFailed } from '../errors.js';
+import { notFound, invoiceNotIssued, invoiceBackupPending, dekUnwrapFailed } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 import { insertRenderedInvoiceBinary, invoicePdfKey } from '../repositories/attachment.js';
+import { markInvoiceBackupPending } from '../repositories/invoiceBackupPending.js';
 
 /**
  * Binary-pipeline dependencies. `persistRendered` uses these to
@@ -58,6 +59,11 @@ export interface InvoiceBinaryDeps {
   binaryAgeIdentityPath: string;
   /** `INVOICE_OBJECT_LOCK_DAYS` — per-object Compliance lock; 0 writes none. */
   invoiceObjectLockDays: number;
+  /**
+   * The Layer 2 backup feature is enabled, so a fresh issued row is
+   * withheld until a backup holds it (architecture.md §11.14).
+   */
+  backupGateEnabled: boolean;
 }
 
 export class InvoiceBinaryService {
@@ -151,6 +157,18 @@ export class InvoiceBinaryService {
   }
 
   /**
+   * Mark a freshly issued row (invoice or Storno) backup-pending, inside
+   * the transaction that issued it — a rollback leaves no mark. No-op
+   * while the backup feature is disabled. Returns the row's
+   * `backupPending`. Call after the row is written (the mark references it).
+   */
+  async markBackupPending(tx: MutatingDatabase, invoiceId: string): Promise<boolean> {
+    if (!this.deps.backupGateEnabled) return false;
+    await markInvoiceBackupPending(tx, invoiceId);
+    return true;
+  }
+
+  /**
    * Resolve the rendered PDF for an issued / cancelled invoice and
    * return the plaintext bytes plus the suggested filename. Drafts
    * surface `INVOICE_NOT_ISSUED` (AC-299).
@@ -160,7 +178,8 @@ export class InvoiceBinaryService {
    * status / descriptor checks.
    *
    * Sequence:
-   *   1. Reject drafts with `INVOICE_NOT_ISSUED`.
+   *   1. Reject drafts with `INVOICE_NOT_ISSUED`, backup-pending rows
+   *      with `INVOICE_BACKUP_PENDING`.
    *   2. Look up the rendered-PDF attachment row by descriptor id;
    *      surface a synthetic `404` if the descriptor reference is
    *      missing on the invoice row, the attachment row is gone, or
@@ -177,6 +196,9 @@ export class InvoiceBinaryService {
   async downloadPdf(invoice: Invoice): Promise<{ bytes: Uint8Array; filename: string }> {
     if (invoice.status === 'draft') {
       throw invoiceNotIssued();
+    }
+    if (invoice.backupPending) {
+      throw invoiceBackupPending(invoice.id);
     }
     const descriptorId = invoice.renderedPdfBinaryDescriptorId;
     if (!descriptorId) {

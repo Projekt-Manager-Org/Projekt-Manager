@@ -44,6 +44,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { downloadAuthedFile } from '@/ui/utils/downloadFile';
 import { InvoiceDraftForm } from './InvoiceDraftForm';
 import { InvoiceCancelDialog } from './InvoiceCancelDialog';
+import { InvoiceDownloadButton } from '@/ui/invoices/InvoiceDownloadButton';
 import styles from './InvoiceSection.module.css';
 
 /**
@@ -500,14 +501,13 @@ function InvoiceRow({
           </>
         )}
         {!isDraft && (
-          <button
-            type="button"
-            className={styles.actionButton}
+          <InvoiceDownloadButton
+            backupPending={invoice.backupPending}
+            label={STRINGS.invoices.downloadPdfAction}
             onClick={onDownloadPdf}
-            data-testid="invoice-download-pdf"
-          >
-            {STRINGS.invoices.downloadPdfAction}
-          </button>
+            className={styles.actionButton}
+            testId="invoice-download-pdf"
+          />
         )}
         {isIssued && canWrite && (
           <button

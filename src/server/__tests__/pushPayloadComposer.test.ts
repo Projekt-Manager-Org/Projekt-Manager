@@ -185,6 +185,18 @@ describe('composePushPayload — AC-211', () => {
     }
   });
 
+  // AC-377 / AC-211 — the overdue invoice backup is not a badge reason:
+  // its own body, and the invoice list as target, where the withheld
+  // PDFs are.
+  it('renders invoice-backup-overdue with its own body and the invoice list as target', () => {
+    const out = composePushPayload('backup.failed', null, { reason: 'invoice-backup-overdue' });
+    expect(out.title).toBe('Backup-Warnung');
+    expect(out.body).toBe(
+      'Rechnungen warten auf die Sicherung – ihre PDFs bleiben bis dahin gesperrt.',
+    );
+    expect(out.url).toBe('/rechnungen');
+  });
+
   it('falls back to the generic backup body on an unknown reason', () => {
     const out = composePushPayload('backup.failed', null, { reason: 'not-a-real-reason' });
     expect(out.body).toBe('Backup konnte nicht abgeschlossen werden.');
@@ -197,7 +209,7 @@ describe('composePushPayload — AC-211', () => {
     expect(out.url).toBe('/daten');
   });
 
-  it('points both system events at paths the route table actually serves', () => {
+  it('points every system-event target at a path the route table actually serves', () => {
     // These URLs went to `/verwaltung` and `/verwaltung/backups`, which
     // no route defines. Nothing 404s — `viewFromPath` falls back to
     // kanban and the SPA handler serves index.html — so the only
@@ -207,6 +219,7 @@ describe('composePushPayload — AC-211', () => {
     const systemUrls = [
       composePushPayload('backup.failed', null, {}).url,
       composePushPayload('disk.threshold_reached', null, {}).url,
+      composePushPayload('backup.failed', null, { reason: 'invoice-backup-overdue' }).url,
     ];
     for (const url of systemUrls) {
       expect(

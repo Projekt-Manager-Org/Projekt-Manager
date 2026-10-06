@@ -36,6 +36,8 @@ import { startAttachmentOrphanReaperScheduler } from './attachment-orphan-reaper
 import { startAttachmentHiddenReaperScheduler } from './attachment-hidden-reaper-scheduler.js';
 import { startTakeoutStagingReaperScheduler } from './takeout-staging-reaper-scheduler.js';
 import { startThresholdMonitorScheduler } from './threshold-monitor-scheduler.js';
+import { startInvoiceBackupWatchScheduler } from './invoice-backup-watch-scheduler.js';
+import { applyInvoiceBackupGateAtBoot } from './invoice-backup-boot.js';
 import { reapAbandonedDataExchangeJobs } from './services/data-exchange-boot-reaper.js';
 import { setOperationalLogger as setAuditPublisherLogger } from './services/audit-publisher.js';
 import { AUDIT_RETENTION } from '../config/auditRetention.js';
@@ -250,6 +252,13 @@ async function start(): Promise<void> {
     console.log(`Reaped ${reapedJobs} abandoned data-exchange job(s) on boot.`);
   }
 
+  // Backup gate (architecture.md §11.14): with the backup feature
+  // disabled nothing would ever release a standing mark — drop them.
+  const droppedMarks = await applyInvoiceBackupGateAtBoot(db, env);
+  if (droppedMarks > 0) {
+    console.log(`Backup disabled: released ${droppedMarks} backup-pending invoice(s) on boot.`);
+  }
+
   // Schedule periodic cleanup so long-running deployments don't accumulate
   // expired rows between restarts. Handle is captured for the graceful
   // shutdown hook below.
@@ -412,6 +421,16 @@ async function start(): Promise<void> {
     },
   });
 
+  // Emits `invoice_changed` when the backup service releases a mark
+  // (architecture.md §11.13), so open surfaces enable the download.
+  const invoiceBackupWatch = startInvoiceBackupWatchScheduler({
+    db,
+    logger: {
+      info: (ctx, event) => console.log(event, ctx),
+      error: (ctx, event) => console.error(event, ctx),
+    },
+  });
+
   // Storage client for the health probe. Instantiated once at startup and
   // reused across health requests. The existing routes do not use storage
   // yet (walking skeleton), but #48 still wants MinIO liveness surfaced by
@@ -462,6 +481,7 @@ async function start(): Promise<void> {
         takeoutStagingReaper.stop(),
         bucketOrphanPrune.stop(),
         thresholdMonitor.stop(),
+        invoiceBackupWatch.stop(),
       ]);
       await app.close();
       await pool.end();

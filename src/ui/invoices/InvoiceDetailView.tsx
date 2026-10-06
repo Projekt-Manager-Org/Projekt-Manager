@@ -42,6 +42,7 @@ import { useToastStore } from '@/state/toastStore';
 import { downloadAuthedFile } from '@/ui/utils/downloadFile';
 import { NotPermittedView } from '@/ui/common/NotPermittedView';
 import { InvoiceCancelDialog } from '@/ui/detail/invoice/InvoiceCancelDialog';
+import { InvoiceDownloadButton } from './InvoiceDownloadButton';
 import styles from './InvoiceDetailView.module.css';
 
 interface RowAttrs {
@@ -216,14 +217,13 @@ export function InvoiceDetailView() {
           </span>
         </div>
         <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.actionButton}
+          <InvoiceDownloadButton
+            backupPending={invoice.backupPending}
+            label={downloadLabel}
             onClick={downloadPdf}
-            data-testid="invoice-detail-download-pdf"
-          >
-            {downloadLabel}
-          </button>
+            className={styles.actionButton}
+            testId="invoice-detail-download-pdf"
+          />
           {showCancelButton && (
             <button
               type="button"

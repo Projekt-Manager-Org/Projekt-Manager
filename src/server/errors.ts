@@ -51,6 +51,7 @@ export const ERROR_CODES = [
   'INVOICE_FROZEN',
   'INVOICE_PROJECT_STATE',
   'INVOICE_NOT_ISSUED',
+  'INVOICE_BACKUP_PENDING',
   'INVOICE_ALREADY_CANCELLED',
   'DRAFT_NOT_EXPORTABLE',
   'EXPORT_TOO_LARGE',
@@ -382,6 +383,16 @@ export function invoiceProjectState(): AppError {
  */
 export function invoiceNotIssued(): AppError {
   return new AppError('INVOICE_NOT_ISSUED', STRINGS.errors.invoiceNotIssued, 409);
+}
+
+/**
+ * PDF download or bulk export rejected — the invoice awaits its
+ * off-site backup (architecture.md §11.14 "Backup gate"). Transient.
+ */
+export function invoiceBackupPending(invoiceId: string): AppError {
+  return new AppError('INVOICE_BACKUP_PENDING', STRINGS.errors.invoiceBackupPending, 409, {
+    invoiceId,
+  });
 }
 
 /**

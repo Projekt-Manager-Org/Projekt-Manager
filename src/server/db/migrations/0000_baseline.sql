@@ -120,6 +120,11 @@ CREATE TABLE "data_exchange_job" (
 	CONSTRAINT "data_exchange_job_counts_non_negative" CHECK ("data_exchange_job"."files_total" >= 0 AND "data_exchange_job"."files_done" >= 0 AND "data_exchange_job"."bytes_total" >= 0 AND "data_exchange_job"."bytes_done" >= 0)
 );
 --> statement-breakpoint
+CREATE TABLE "invoice_backup_pending" (
+	"invoice_id" uuid PRIMARY KEY NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "invoice_sequence" (
 	"year" smallint NOT NULL,
 	"kind" text NOT NULL,
@@ -267,6 +272,7 @@ ALTER TABLE "company_profile" ADD CONSTRAINT "company_profile_updated_by_users_i
 ALTER TABLE "customers" ADD CONSTRAINT "customers_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "customers" ADD CONSTRAINT "customers_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "data_exchange_job" ADD CONSTRAINT "data_exchange_job_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "invoice_backup_pending" ADD CONSTRAINT "invoice_backup_pending_invoice_id_invoices_id_fk" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_cancellation_of_invoices_id_fk" FOREIGN KEY ("cancellation_of") REFERENCES "public"."invoices"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint

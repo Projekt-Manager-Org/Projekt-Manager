@@ -21,10 +21,12 @@
  *   7. Persist the binary descriptor through the ADR-0022 / ADR-0024
  *      pipeline (`InvoiceBinaryService.persistRendered`).
  *   8. UPDATE the row to attach the binary descriptor reference.
- *   9. UPDATE the parent project `status` to `'abgerechnet'`.
- *  10. Audit row via `mutate()` (action=`invoice:issue`,
+ *   9. Mark the row backup-pending (architecture.md §11.14), when the
+ *      backup feature is enabled.
+ *  10. UPDATE the parent project `status` to `'abgerechnet'`.
+ *  11. Audit row via `mutate()` (action=`invoice:issue`,
  *      ancestor=`('project', projectId)`).
- *  11. Commit. Post-commit: `emitInvoiceChanged()` AND
+ *  12. Commit. Post-commit: `emitInvoiceChanged()` AND
  *      `emitProjectChanged()` (AC-287, AT-111 — the project status
  *      flipped to `abgerechnet` in the same tx, so both surfaces
  *      invalidate).
@@ -51,7 +53,7 @@ import {
   allocateInvoiceNumber,
   applyIssuanceUpdate,
   flipParentProjectStatusToAbgerechnet,
-  type InvoiceRow,
+  type InvoiceReadRow,
 } from '../repositories/invoice-read.js';
 import { assertCompanyProfileCompleteForMode } from './CompanyProfileService.js';
 import { InvoiceRenderer, type RenderedInvoice } from './InvoiceRenderer.js';
@@ -133,7 +135,7 @@ export class InvoiceIssueService {
   ): Promise<{
     entityId: string;
     entityLabel: string | null;
-    value: InvoiceRow;
+    value: InvoiceReadRow;
     before: Record<string, unknown>;
     after: Record<string, unknown>;
     ancestorEntityType: 'project';
@@ -260,6 +262,7 @@ export class InvoiceIssueService {
         : null,
       cancellationReason: null,
       renderedPdfBinaryDescriptorId: null,
+      backupPending: false,
       createdAt: before.createdAt.toISOString(),
       updatedAt: issueDate.toISOString(),
       createdBy: before.createdBy,
@@ -312,7 +315,11 @@ export class InvoiceIssueService {
       updatedBy: userId,
     });
 
-    // 9. Flip the parent project's status to `abgerechnet` inside
+    // 9. Withhold the PDF until a backup holds the row
+    //    (architecture.md §11.14 "Backup gate").
+    const backupPending = await this.binary.markBackupPending(tx, invoiceId);
+
+    // 10. Flip the parent project's status to `abgerechnet` inside
     //    this same tx (the project transition is part of the issue
     //    atom — AC-287). The repo function holds the ADR-0026
     //    rationale (side-effect of issuance, not its own audit event).
@@ -333,7 +340,7 @@ export class InvoiceIssueService {
     return {
       entityId: invoiceId,
       entityLabel: number,
-      value: issuedRow,
+      value: { ...issuedRow, backupPending },
       before: {
         status: before.status,
         number: before.number,

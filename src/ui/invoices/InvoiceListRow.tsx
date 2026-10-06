@@ -38,6 +38,7 @@ import { useConfirmStore } from '@/state/confirmStore';
 import { useToastStore } from '@/state/toastStore';
 import { usePermission } from '@/hooks/usePermission';
 import { downloadAuthedFile } from '@/ui/utils/downloadFile';
+import { InvoiceDownloadButton } from './InvoiceDownloadButton';
 import styles from './InvoiceListView.module.css';
 
 interface RowAttrs {
@@ -151,10 +152,16 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
           type="checkbox"
           className={styles.selectCheckbox}
           checked={isSelected}
-          disabled={isDraft}
+          disabled={isDraft || invoice.backupPending}
           onChange={() => toggleSelection(invoice.id)}
           aria-label={STRINGS.invoices.selectRowAria(invoice.number)}
-          title={isDraft ? STRINGS.invoices.draftNotExportableTooltip : undefined}
+          title={
+            isDraft
+              ? STRINGS.invoices.draftNotExportableTooltip
+              : invoice.backupPending
+                ? STRINGS.invoices.backupPendingTooltip
+                : undefined
+          }
           data-testid="invoice-select"
         />
       </div>
@@ -202,14 +209,13 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
           </>
         )}
         {showDownload && (
-          <button
-            type="button"
-            className={styles.actionButton}
+          <InvoiceDownloadButton
+            backupPending={invoice.backupPending}
+            label={STRINGS.invoices.downloadPdfAction}
             onClick={downloadPdf}
-            data-testid="invoice-download-pdf"
-          >
-            {STRINGS.invoices.downloadPdfAction}
-          </button>
+            className={styles.actionButton}
+            testId="invoice-download-pdf"
+          />
         )}
       </div>
     </div>

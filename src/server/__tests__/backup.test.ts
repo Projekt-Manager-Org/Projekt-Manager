@@ -14,6 +14,14 @@
  *     surface must be an encrypted envelope. A run that cannot encrypt
  *     fails and uploads no artifact.
  *
+ *   - AC-373 [crit]: after uploading both artifacts, a run releases
+ *     exactly the backup-pending invoice marks visible in its snapshot;
+ *     a mark created after the snapshot survives; a run failing before
+ *     the release releases none; a failed release fails the run.
+ *   - AC-372 [crit] (database half): the invoice trigger's due-check
+ *     reads the live marks and status row; the decision itself is in
+ *     `backup-trigger.test.ts`.
+ *
  * AC-169 (status dual-write) and AC-174 (manifest determinism) live in
  * `backup-status.test.ts`.
  *
@@ -41,12 +49,13 @@ import {
   type Manifest,
 } from '../../test/backupTestHarness.js';
 
-import { runBackup } from '../services/backup.js';
+import { runBackup, computeManifest } from '../services/backup.js';
+import { invoiceTriggerDue } from '../services/backup-trigger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
 
-describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () => {
+describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167/372/373)', () => {
   let db: Database;
   let pool: pg.Pool;
 
@@ -224,6 +233,190 @@ describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () =
 
       expect(result.ok).toBe(false);
       expect(uploads).toHaveLength(0);
+    });
+  });
+
+  // --------------------------------------------------------------
+  // AC-373: the run releases exactly its snapshot's backup-pending
+  // invoice marks, and only once both artifacts are uploaded.
+  // --------------------------------------------------------------
+  describe('AC-373: release of backup-pending invoice marks', () => {
+    let issuedIds: string[];
+
+    async function markedIds(): Promise<string[]> {
+      const r = await pool.query<{ invoice_id: string }>(
+        'SELECT invoice_id FROM invoice_backup_pending ORDER BY invoice_id',
+      );
+      return r.rows.map((row) => row.invoice_id);
+    }
+
+    async function mark(invoiceId: string): Promise<void> {
+      await pool.query('INSERT INTO invoice_backup_pending (invoice_id) VALUES ($1)', [invoiceId]);
+    }
+
+    beforeAll(async () => {
+      const r = await pool.query<{ id: string }>(
+        "SELECT id FROM invoices WHERE status <> 'draft' ORDER BY id LIMIT 2",
+      );
+      issuedIds = r.rows.map((row) => row.id);
+      expect(issuedIds).toHaveLength(2);
+    });
+
+    beforeEach(async () => {
+      await pool.query('DELETE FROM invoice_backup_pending');
+    });
+
+    it('keeps a mark committed after the snapshot, even one created before the run started', async () => {
+      const [inSnapshot, afterSnapshot] = issuedIds as [string, string];
+      await mark(inSnapshot);
+
+      // The real race: issuance is a long transaction, and its mark's
+      // `created_at` (now() = transaction start) predates a backup
+      // snapshot taken before that transaction commits. A release keyed
+      // on timestamps would wrongly take it; only snapshot visibility
+      // is right. So: insert before the run, commit inside the dump
+      // (which runs within the snapshot transaction).
+      const issuance = await pool.connect();
+      try {
+        await issuance.query('BEGIN');
+        await issuance.query('INSERT INTO invoice_backup_pending (invoice_id) VALUES ($1)', [
+          afterSnapshot,
+        ]);
+
+        let snapshotManifest: Manifest | undefined;
+        const { uploader } = makeStubUploader();
+        const result = await runBackup({
+          db,
+          uploader,
+          encrypt: fakeEncrypt,
+          dumpSource: async () => {
+            // Read before the commit: the committed state then equals the
+            // snapshot, which is what the restored dump would hold.
+            snapshotManifest = await computeManifest(db);
+            await issuance.query('COMMIT');
+            return new TextEncoder().encode('MANIFEST-DUMP\n{}');
+          },
+          verifyManifest: async () => snapshotManifest!,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(await markedIds()).toEqual([afterSnapshot]);
+      } finally {
+        await issuance.query('ROLLBACK').catch(() => undefined);
+        issuance.release();
+      }
+    });
+
+    it('releases no mark when the run fails before the release (Tier 1 mismatch)', async () => {
+      await mark(issuedIds[0]!);
+      const { uploader } = makeStubUploader();
+
+      const result = await runBackup({
+        db,
+        uploader,
+        encrypt: fakeEncrypt,
+        manifestPerturb: (m: Manifest): Manifest => ({
+          ...m,
+          projects: { ...m.projects!, rowCount: m.projects!.rowCount + 1 },
+        }),
+      });
+
+      expect(result.ok).toBe(false);
+      expect(await markedIds()).toEqual([issuedIds[0]]);
+    });
+
+    it('releases no mark when the second artifact fails to upload', async () => {
+      await mark(issuedIds[0]!);
+      // An override replaces the stub's recorder, so record through a
+      // second stub.
+      const recorder = makeStubUploader();
+      const uploads = recorder.uploads;
+      const { uploader } = makeStubUploader({
+        upload: async (key, data, contentType) => {
+          if (key.endsWith('.manifest.json.age')) {
+            throw new Error('upload refused (test simulation)');
+          }
+          await recorder.uploader.upload(key, data, contentType);
+        },
+      });
+
+      const result = await runBackup({ db, uploader, encrypt: fakeEncrypt });
+
+      expect(result.ok).toBe(false);
+      // The dump went up first; the release must still not have run.
+      expect(uploads.filter((u) => u.key.endsWith('.dump.age'))).toHaveLength(1);
+      expect(await markedIds()).toEqual([issuedIds[0]]);
+    });
+
+    it('fails the run when the release fails, with the release cue on the status row', async () => {
+      await mark(issuedIds[0]!);
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION release_test_refuse() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'release refused (test simulation)'; END $$`);
+      await pool.query(`
+        CREATE TRIGGER release_test_refuse BEFORE DELETE ON invoice_backup_pending
+        FOR EACH ROW EXECUTE FUNCTION release_test_refuse()`);
+      try {
+        const { uploader, uploads } = makeStubUploader();
+        const result = await runBackup({ db, uploader, encrypt: fakeEncrypt });
+
+        expect(result.ok).toBe(false);
+        // Both artifacts were uploaded before the release was attempted.
+        expect(uploads.filter((u) => u.key.endsWith('.dump.age'))).toHaveLength(1);
+        expect(uploads.filter((u) => u.key.endsWith('.manifest.json.age'))).toHaveLength(1);
+        const row = (
+          await pool.query<{ last_backup_ok: boolean; last_backup_error: string | null }>(
+            'SELECT last_backup_ok, last_backup_error FROM meta_backup_status',
+          )
+        ).rows[0]!;
+        expect(row.last_backup_ok).toBe(false);
+        expect(row.last_backup_error ?? '').toMatch(/^release/);
+      } finally {
+        await pool.query('DROP TRIGGER IF EXISTS release_test_refuse ON invoice_backup_pending');
+        await pool.query('DROP FUNCTION IF EXISTS release_test_refuse()');
+      }
+      expect(await markedIds()).toEqual([issuedIds[0]]);
+    });
+  });
+
+  // --------------------------------------------------------------
+  // AC-372: the trigger's due-check reads its inputs from the live
+  // marks and status row (the decision itself is pinned in
+  // backup-trigger.test.ts).
+  // --------------------------------------------------------------
+  describe('AC-372: invoice trigger due-check against the database', () => {
+    const NOW = new Date('2026-10-05T10:00:00.000Z');
+
+    beforeEach(async () => {
+      await pool.query('DELETE FROM invoice_backup_pending');
+    });
+
+    async function setLastBackup(ok: boolean, at: Date): Promise<void> {
+      await pool.query(
+        `INSERT INTO meta_backup_status (singleton, last_backup_ok, last_backup_at)
+         VALUES (TRUE, $1, $2)
+         ON CONFLICT (singleton) DO UPDATE SET last_backup_ok = $1, last_backup_at = $2`,
+        [ok, at],
+      );
+    }
+
+    it('is due only while a mark stands, and honours the retry delay after a failure', async () => {
+      await setLastBackup(true, NOW);
+      expect(await invoiceTriggerDue(db, { now: NOW, retryMinutes: 15 })).toBe(false);
+
+      const r = await pool.query<{ id: string }>(
+        "SELECT id FROM invoices WHERE status <> 'draft' ORDER BY id LIMIT 1",
+      );
+      await pool.query('INSERT INTO invoice_backup_pending (invoice_id) VALUES ($1)', [
+        r.rows[0]!.id,
+      ]);
+      expect(await invoiceTriggerDue(db, { now: NOW, retryMinutes: 15 })).toBe(true);
+
+      await setLastBackup(false, new Date(NOW.getTime() - 5 * 60_000));
+      expect(await invoiceTriggerDue(db, { now: NOW, retryMinutes: 15 })).toBe(false);
+
+      await setLastBackup(false, new Date(NOW.getTime() - 15 * 60_000));
+      expect(await invoiceTriggerDue(db, { now: NOW, retryMinutes: 15 })).toBe(true);
     });
   });
 });

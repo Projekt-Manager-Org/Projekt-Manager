@@ -41,6 +41,7 @@ import { notFound, invoiceNotIssued, invoiceAlreadyCancelled } from '../errors.j
 import { STRINGS } from '../../config/strings.js';
 import { emitInvoiceChanged } from '../sse/emitters.js';
 import { InvoiceBinaryService } from './InvoiceBinaryService.js';
+import { isInvoiceBackupPending } from '../repositories/invoiceBackupPending.js';
 
 /**
  * Shape returned by the cancel call (api.md §14.2.14 — pinned exactly
@@ -163,6 +164,7 @@ export class InvoiceCancelService {
           : null,
         cancellationReason,
         renderedPdfBinaryDescriptorId: null,
+        backupPending: false,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
         createdBy: userId,
@@ -199,8 +201,14 @@ export class InvoiceCancelService {
         updatedBy: userId,
       });
 
-      // 4. Flip the original to `cancelled`.
+      // 4. Withhold the Storno's PDF until a backup holds it
+      //    (architecture.md §11.14 "Backup gate"). The original's mark,
+      //    if still standing, is untouched.
+      const stornoBackupPending = await this.binary.markBackupPending(tx, stornoId);
+
+      // 5. Flip the original to `cancelled`.
       const originalRow = await applyCancellationFlip(tx, id, userId, now);
+      const originalBackupPending = await isInvoiceBackupPending(tx, id);
 
       // Snapshot the parent project's audit label once, inside the
       // same tx. Both audit rows below share the same ancestor; one
@@ -213,7 +221,7 @@ export class InvoiceCancelService {
       }
       const ancestorLabel = projectAuditLabel(projectRow);
 
-      // 5. Two audit rows in one tx (AC-290). Project status is
+      // 6. Two audit rows in one tx (AC-290). Project status is
       //    deliberately NOT flipped — AC-290 trailing clause.
       const cancelAudit = await mutateInTx(tx, ctx, {
         entityType: 'invoice',
@@ -260,8 +268,8 @@ export class InvoiceCancelService {
       collected.push(stornoAudit.auditRow);
 
       return {
-        original: toInvoiceResponse(originalRow),
-        storno: toInvoiceResponse(stornoRow),
+        original: toInvoiceResponse({ ...originalRow, backupPending: originalBackupPending }),
+        storno: toInvoiceResponse({ ...stornoRow, backupPending: stornoBackupPending }),
       };
     });
 

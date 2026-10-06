@@ -18,7 +18,12 @@
 import type { AuthUser } from '../middleware/auth.js';
 import type { Invoice } from '../../domain/invoice.js';
 import type { InvoiceService, ListInvoicesOpts } from './InvoiceService.js';
-import { draftNotExportable, exportTooLarge, validationError } from '../errors.js';
+import {
+  draftNotExportable,
+  exportTooLarge,
+  invoiceBackupPending,
+  validationError,
+} from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 
 /** Filter shape mirrors the GET /api/invoices opts surface (api.md §14.2.14). */
@@ -69,7 +74,9 @@ export interface ResolvedExport {
 }
 
 /**
- * Resolve the caller's selection into a sorted, draft-free list.
+ * Resolve the caller's selection into a sorted, draft-free list. A
+ * selection holding a backup-pending invoice is rejected with
+ * `INVOICE_BACKUP_PENDING`.
  *
  * Sort order: `issueDate` ascending, then `number` ascending — gives the
  * bookkeeper a reproducible chronological manifest. Drafts (status =
@@ -100,6 +107,13 @@ export async function resolveExportInvoices(
   } else {
     invoices = await resolveByFilter(service, caller, input.filter!);
     scopeLabel = input.filter!.year !== undefined ? String(input.filter!.year) : 'alle';
+  }
+
+  // Reject rather than omit: the archive never silently drops an issued
+  // invoice (architecture.md §11.14 "Backup gate").
+  const pending = invoices.find((invoice) => invoice.backupPending);
+  if (pending) {
+    throw invoiceBackupPending(pending.id);
   }
 
   invoices.sort(compareForExport);

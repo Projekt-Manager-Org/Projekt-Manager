@@ -59,6 +59,10 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['invoiceFrozen', () => errors.invoiceFrozen()],
   ['invoiceProjectState', () => errors.invoiceProjectState()],
   ['invoiceNotIssued', () => errors.invoiceNotIssued()],
+  [
+    'invoiceBackupPending',
+    () => errors.invoiceBackupPending('00000000-0000-0000-0000-000000000000'),
+  ],
   ['invoiceAlreadyCancelled', () => errors.invoiceAlreadyCancelled()],
   ['companyProfileRequired', () => errors.companyProfileRequired({ missingFields: [] })],
   ['customerHasInvoices', () => errors.customerHasInvoices({ invoiceCount: 1 })],

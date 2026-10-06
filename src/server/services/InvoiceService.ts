@@ -59,6 +59,7 @@ import {
 } from './InvoiceCancelService.js';
 import { createStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
+import { featureStatus } from '../config/features.js';
 
 /** Re-export the read-side opts shape so routes don't import the repo. */
 export type { ListInvoicesOpts };
@@ -358,7 +359,7 @@ export class InvoiceService {
     );
     log.info({ invoiceId: created.id, projectId: input.projectId }, 'invoice_draft_created');
     emitInvoiceChanged();
-    return toInvoiceResponse(created);
+    return toInvoiceResponse({ ...created, backupPending: false });
   }
 
   /**
@@ -473,7 +474,7 @@ export class InvoiceService {
     );
     log.info({ invoiceId: id }, 'invoice_draft_updated');
     emitInvoiceChanged();
-    return toInvoiceResponse(updated);
+    return toInvoiceResponse({ ...updated, backupPending: false });
   }
 
   /**
@@ -593,6 +594,7 @@ function buildInvoiceBinaryDeps(): InvoiceBinaryDeps {
     binaryAgeRecipient: env.BINARY_AGE_RECIPIENT,
     binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
     invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
+    backupGateEnabled: featureStatus(env, 'backup').enabled,
   };
 }
 

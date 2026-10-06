@@ -768,6 +768,8 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
         'device- and VAPID-bound; a restored endpoint would be dead on any other instance',
       attachments:
         'the `hidden` (Papierkorb) rows deliberately do not travel — AC-220; the `ready` rows are pinned by the next arm',
+      invoice_backup_pending:
+        'Layer 2 delivery state, not business data — an import writes no marks and its wipe drops standing ones (AC-374)',
     };
 
     /** Every base table in the live `public` schema. */

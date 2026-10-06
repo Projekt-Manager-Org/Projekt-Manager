@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Database } from '../db/connection.js';
 import type { BackupStatus } from '../../domain/backupBadge.js';
+import { THRESHOLD_MONITOR } from '../../config/thresholdMonitor.js';
 import {
   runThresholdMonitor,
   __resetThresholdMonitorState,
@@ -42,6 +43,15 @@ vi.mock('../services/StorageUsageService.js', () => ({
   },
 }));
 
+// Oldest backup-pending invoice mark (AC-377). Default: none standing,
+// so the badge and storage suites below see no overdue condition.
+const oldestInvoiceBackupMarkAt = vi.hoisted(() =>
+  vi.fn<() => Promise<Date | null>>().mockResolvedValue(null),
+);
+vi.mock('../repositories/invoiceBackupPending.js', () => ({
+  oldestInvoiceBackupMarkAt,
+}));
+
 // Mocked so the default (production) publisher branch is assertable —
 // see the "production publisher path" describe.
 const publishSystemEventMock = vi.hoisted(() =>
@@ -52,6 +62,11 @@ vi.mock('../services/notification-publisher.js', () => ({
 }));
 
 const FAKE_DB = {} as Database;
+
+// Every suite starts with no standing invoice mark unless it sets one.
+beforeEach(() => {
+  oldestInvoiceBackupMarkAt.mockReset().mockResolvedValue(null);
+});
 const NOW = new Date('2026-09-02T12:00:00.000Z');
 const GB = 1024 * 1024 * 1024;
 
@@ -377,5 +392,95 @@ describe('threshold monitor — failure isolation', () => {
       eventClass: 'disk.threshold_reached',
       payload: expect.objectContaining({ percent: 90 }),
     });
+  });
+});
+
+/** Date `n` minutes before NOW. */
+function minutesAgo(n: number): Date {
+  return new Date(NOW.getTime() - n * 60_000);
+}
+
+describe('threshold monitor — invoice backup overdue (AC-377)', () => {
+  const overdue = THRESHOLD_MONITOR.invoiceBackupOverdueMinutes;
+
+  beforeEach(() => {
+    __resetThresholdMonitorState();
+    readBackupStatus.mockReset().mockResolvedValue(greenStatus());
+    getGlobalUsage.mockReset().mockResolvedValue(usage(0));
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('publishes invoice-backup-overdue for a mark older than the threshold, though the badge is green', async () => {
+    oldestInvoiceBackupMarkAt.mockResolvedValue(minutesAgo(overdue + 1));
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await run({ publish });
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith({
+      eventClass: 'backup.failed',
+      payload: expect.objectContaining({ reason: 'invoice-backup-overdue' }),
+    });
+  });
+
+  it('publishes nothing for a mark younger than the threshold', async () => {
+    oldestInvoiceBackupMarkAt.mockResolvedValue(minutesAgo(overdue - 1));
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await run({ publish });
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('notifies alongside a non-green badge — the two conditions are independent', async () => {
+    readBackupStatus.mockResolvedValue({ ...greenStatus(), lastBackupOk: false });
+    oldestInvoiceBackupMarkAt.mockResolvedValue(minutesAgo(overdue + 1));
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await run({ publish });
+    const reasons = publish.mock.calls.map(
+      (c) => (c[0] as { payload: { reason: string } }).payload.reason,
+    );
+    expect(reasons.sort()).toEqual(['invoice-backup-overdue', 'last-run-failed']);
+
+    // Each condition keeps its own de-duplication state: a second sweep
+    // inside the repeat window publishes neither again. A shared slot
+    // would read every sweep as a reason change and re-publish both.
+    await run({ publish, now: new Date(NOW.getTime() + 15 * 60_000) });
+    expect(publish).toHaveBeenCalledTimes(2);
+  });
+
+  it('follows the re-notify policy: once per repeat window, again after the condition clears', async () => {
+    oldestInvoiceBackupMarkAt.mockResolvedValue(minutesAgo(overdue + 1));
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await run({ publish });
+    await run({ publish, now: new Date(NOW.getTime() + 15 * 60_000) });
+    expect(publish).toHaveBeenCalledTimes(1);
+
+    const later = new Date(NOW.getTime() + THRESHOLD_MONITOR.repeatMinutes * 60_000);
+    await run({ publish, now: later });
+    expect(publish).toHaveBeenCalledTimes(2);
+
+    oldestInvoiceBackupMarkAt.mockResolvedValue(null);
+    await run({ publish, now: later });
+    oldestInvoiceBackupMarkAt.mockResolvedValue(minutesAgo(overdue + 1));
+    await run({ publish, now: later });
+    expect(publish).toHaveBeenCalledTimes(3);
+  });
+
+  it('still evaluates the overdue check when the badge check throws, then rethrows (AC-359)', async () => {
+    readBackupStatus.mockRejectedValue(new Error('boom'));
+    oldestInvoiceBackupMarkAt.mockResolvedValue(minutesAgo(overdue + 1));
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await expect(run({ publish })).rejects.toThrow('boom');
+    expect(publish).toHaveBeenCalledWith({
+      eventClass: 'backup.failed',
+      payload: expect.objectContaining({ reason: 'invoice-backup-overdue' }),
+    });
+  });
+
+  it('still evaluates the badge and storage checks when the overdue check throws (AC-359)', async () => {
+    readBackupStatus.mockResolvedValue({ ...greenStatus(), lastBackupOk: false });
+    getGlobalUsage.mockResolvedValue(usage(90 * GB));
+    oldestInvoiceBackupMarkAt.mockRejectedValue(new Error('marks unreadable'));
+    const publish = vi.fn().mockResolvedValue(undefined);
+    await expect(run({ publish, quotaBytes: 100 * GB })).rejects.toThrow('marks unreadable');
+    const classes = publish.mock.calls.map((c) => (c[0] as { eventClass: string }).eventClass);
+    expect(classes.sort()).toEqual(['backup.failed', 'disk.threshold_reached']);
   });
 });

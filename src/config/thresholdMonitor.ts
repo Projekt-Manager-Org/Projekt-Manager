@@ -2,8 +2,9 @@
  * Threshold-monitor policy constants — architecture.md §12.2 [C].
  *
  * Drives the periodic monitor (`src/server/services/threshold-monitor.ts`)
- * that turns two *conditions* into notification *events*:
+ * that turns three *conditions* into notification *events*:
  *   - the backup badge sitting on any non-green state;
+ *   - a backup-pending invoice mark older than the overdue threshold;
  *   - global storage usage crossing `storageWarnPercent` of the
  *     deployment's declared capacity (`STORAGE_QUOTA_GB`).
  *
@@ -42,6 +43,11 @@
  *     owner to swipe every notification away, which costs more than it
  *     buys. Daily is the compromise. A condition that *changes* (amber
  *     → red) re-notifies immediately regardless of this window.
+ *   - invoiceBackupOverdueMinutes = 30 — age at which a backup-pending
+ *     invoice mark (architecture.md §11.14) means the backup is not
+ *     running or keeps failing. A healthy trigger releases a mark within
+ *     a few minutes; 30 clears one failed run plus its 15-minute retry
+ *     delay, so a single transient failure does not page the owner.
  */
 export interface ThresholdMonitorConfig {
   /** Percent of `STORAGE_QUOTA_GB` at which the warning fires. [C] */
@@ -55,6 +61,8 @@ export interface ThresholdMonitorConfig {
   intervalMinutes: number;
   /** Re-notify cadence in minutes while a condition persists. [C] */
   repeatMinutes: number;
+  /** Age in minutes at which a backup-pending invoice mark is overdue. [C] */
+  invoiceBackupOverdueMinutes: number;
 }
 
 /** [C] — customer-configurable; see module docstring for rationale. */
@@ -63,6 +71,7 @@ export const THRESHOLD_MONITOR: ThresholdMonitorConfig = {
   storageClearMarginPoints: 2,
   intervalMinutes: 15,
   repeatMinutes: 1440,
+  invoiceBackupOverdueMinutes: 30,
 };
 
 /**

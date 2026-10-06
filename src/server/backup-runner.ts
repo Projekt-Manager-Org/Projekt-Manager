@@ -45,6 +45,7 @@ import {
   type VerifyManifestFn,
 } from './services/backup.js';
 import { runDrill } from './services/backup-drill.js';
+import { invoiceTriggerDue } from './services/backup-trigger.js';
 import { boundRuntime, writeStdin } from './services/subprocessBound.js';
 import { ephemeralPgVerify } from './services/ephemeralPg.js';
 import {
@@ -138,7 +139,7 @@ async function drillSubcommand(env: Env): Promise<number> {
 // ---------------------------------------------------------------
 
 /**
- * Cron expressions for the four registered jobs. Pulled out for tests
+ * Cron expressions for the five registered jobs. Pulled out for tests
  * to assert pattern correctness against the canonical schedule in
  * ADR-0020 / the former `scripts/backup/crontab`.
  *
@@ -154,7 +155,18 @@ export const SCHEDULES = {
   backupWeekend: '0 12 * * 6,0',
   drillWeekday: '2 9,12,15,18,21 * * 1-5',
   drillWeekend: '2 12 * * 6,0',
+  // Invoice trigger poll (architecture.md §11.10): runs the regular
+  // backup only while a backup-pending invoice exists.
+  invoiceTrigger: '* * * * *',
 } as const;
+
+/**
+ * After a failed run, how long the invoice trigger waits before the next
+ * triggered run (architecture.md §12.2 [C]). Bounds the load of a
+ * persistently failing backup — each run spins up an ephemeral Postgres —
+ * while invoices wait; the threshold monitor alerts the owner meanwhile.
+ */
+export const TRIGGER_RETRY_MINUTES = 15;
 
 export const SCHEDULE_TZ = 'Europe/Berlin';
 
@@ -162,10 +174,12 @@ export interface ScheduleHandlers {
   /** Resolves with the per-tick exit code (informational; not used by croner). */
   backupHandler: () => Promise<number>;
   drillHandler: () => Promise<number>;
+  /** Whether the invoice trigger should start a backup now. */
+  invoiceTriggerDue: () => Promise<boolean>;
 }
 
 /**
- * Build the four croner jobs the production schedule registers.
+ * Build the five croner jobs the production schedule registers.
  * Exported so tests can assert pattern + TZ + dispatch wiring without
  * spinning up a real DB or R2.
  *
@@ -175,6 +189,11 @@ export interface ScheduleHandlers {
  * we used `flock -n` from bash; the semantics here are identical with
  * one fewer external dep.
  *
+ * `protect` is per job, so the three jobs that start a backup — the two
+ * clock jobs and the invoice trigger — share one in-flight guard on top:
+ * a tick finding a backup already running is skipped (architecture.md
+ * §11.10). The drill jobs keep their own per-job protection only.
+ *
  * `mode: '5-part'` pins the parser to standard five-field cron format
  * (minute hour dom month dow). croner's default "auto" mode would also
  * accept it but pinning makes a stray space or typo fail loudly rather
@@ -182,26 +201,50 @@ export interface ScheduleHandlers {
  */
 export function buildScheduleJobs(handlers: ScheduleHandlers): Cron[] {
   const common = { timezone: SCHEDULE_TZ, protect: true, mode: '5-part' as const };
-  return [
-    new Cron(
-      SCHEDULES.backupWeekday,
-      { ...common, name: 'backup-weekday' },
-      // croner expects void | Promise<void>; the handlers return a
-      // numeric exit code for the one-shot subcommands' sake. Throw
-      // away the number here — the per-tick log line is the operator
-      // signal in schedule mode.
-      async () => {
-        await handlers.backupHandler();
-      },
-    ),
-    new Cron(SCHEDULES.backupWeekend, { ...common, name: 'backup-weekend' }, async () => {
+  let backupInFlight = false;
+  const exclusiveBackup = async (body: () => Promise<void>): Promise<void> => {
+    if (backupInFlight) return;
+    backupInFlight = true;
+    try {
+      await body();
+    } finally {
+      backupInFlight = false;
+    }
+  };
+  // croner expects void | Promise<void>; the handlers return a numeric
+  // exit code for the one-shot subcommands' sake. Throw away the number
+  // here — the per-tick log line is the operator signal in schedule mode.
+  const scheduledBackup = () =>
+    exclusiveBackup(async () => {
       await handlers.backupHandler();
-    }),
+    });
+  return [
+    new Cron(SCHEDULES.backupWeekday, { ...common, name: 'backup-weekday' }, scheduledBackup),
+    new Cron(SCHEDULES.backupWeekend, { ...common, name: 'backup-weekend' }, scheduledBackup),
     new Cron(SCHEDULES.drillWeekday, { ...common, name: 'drill-weekday' }, async () => {
       await handlers.drillHandler();
     }),
     new Cron(SCHEDULES.drillWeekend, { ...common, name: 'drill-weekend' }, async () => {
       await handlers.drillHandler();
+    }),
+    // The due-check runs outside the guard: both patterns fire at second
+    // 0, so a guard held across a not-due check would make a coinciding
+    // clock tick skip its backup with none running.
+    new Cron(SCHEDULES.invoiceTrigger, { ...common, name: 'invoice-trigger' }, async () => {
+      let due: boolean;
+      try {
+        due = await handlers.invoiceTriggerDue();
+      } catch (err) {
+        process.stderr.write(
+          `backup-runner: invoice-trigger: due-check failed: ${errorMessage(err)}\n`,
+        );
+        return;
+      }
+      if (!due) return;
+      await exclusiveBackup(async () => {
+        process.stdout.write('backup-runner: invoice-trigger: backup-pending invoices, running\n');
+        await handlers.backupHandler();
+      });
     }),
   ];
 }
@@ -224,7 +267,12 @@ async function scheduleSubcommand(env: Env): Promise<number> {
 
   const backupHandler = createBackupHandler(buildBackupDeps(env, db));
   const drillHandler = createDrillHandler(buildDrillDeps(env, db));
-  const jobs = buildScheduleJobs({ backupHandler, drillHandler });
+  const jobs = buildScheduleJobs({
+    backupHandler,
+    drillHandler,
+    invoiceTriggerDue: () =>
+      invoiceTriggerDue(db, { now: new Date(), retryMinutes: TRIGGER_RETRY_MINUTES }),
+  });
 
   // Per-job next-tick log line — mirrors the spirit of dcron's NOTICE
   // wakeup lines so operators tailing `docker compose logs backup` can

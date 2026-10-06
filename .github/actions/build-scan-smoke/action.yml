@@ -434,25 +434,25 @@ runs:
         fi
         echo "::endgroup::"
 
-        echo "::group::Scheduler registered all four cron jobs?"
+        echo "::group::Scheduler registered all five cron jobs?"
         # scheduleSubcommand logs one "registered <name> next=..." line
-        # per croner job at boot. Confirming all four are present
+        # per croner job at boot. Confirming all five are present
         # catches a regression where a job's cron expression is
         # malformed (croner throws at construction → only the earlier
         # jobs ever registered), or where buildScheduleJobs returned
-        # fewer than four entries. The unit tests in
+        # fewer than five entries. The unit tests in
         # backup-runner-schedule.test.ts cover the wiring at the
         # function level; this smoke proves the wiring survives an
         # actual container boot.
         backup_logs=$(docker logs projekt-manager-backup-1 2>&1)
         echo "$backup_logs"
-        for name in backup-weekday backup-weekend drill-weekday drill-weekend; do
+        for name in backup-weekday backup-weekend drill-weekday drill-weekend invoice-trigger; do
           if ! printf '%s' "$backup_logs" | grep -q "schedule: registered ${name} next="; then
             echo "::error::scheduler did not log a 'registered ${name}' line at boot"
             exit 1
           fi
         done
-        echo "  all four croner jobs registered — smoke OK"
+        echo "  all five croner jobs registered — smoke OK"
         echo "::endgroup::"
 
         echo "::group::Run one backup cycle"

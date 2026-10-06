@@ -108,5 +108,5 @@ export async function importEnvelope(
  * issued-row immutability trigger (BEFORE UPDATE only).
  */
 export async function clearSeededInvoices(): Promise<void> {
-  await getDb().execute(sql`TRUNCATE invoices`);
+  await getDb().execute(sql`TRUNCATE invoices, invoice_backup_pending`);
 }

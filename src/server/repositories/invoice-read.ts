@@ -15,11 +15,12 @@
  * — defense in depth against the route-layer permission gate (AC-298).
  */
 
-import { eq, and, desc, asc, inArray, count, sql, type SQL } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, count, sql, getTableColumns, type SQL } from 'drizzle-orm';
 import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
 import { invoices, projects } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { isUnscoped, OUT_OF_SCOPE, type ScopedReadResult } from './scope.js';
+import { invoiceBackupPendingColumn } from './invoiceBackupPending.js';
 import {
   formatInvoiceNumber,
   INVOICE_SEQUENCE_KINDS,
@@ -35,6 +36,15 @@ import {
 } from '../../domain/invoice.js';
 
 export type InvoiceRow = typeof invoices.$inferSelect;
+
+/** An `invoices` row plus its derived backup-pending flag (§5.15). */
+export type InvoiceReadRow = InvoiceRow & { backupPending: boolean };
+
+/** Select shape yielding `InvoiceReadRow`. */
+const invoiceReadColumns = {
+  ...getTableColumns(invoices),
+  backupPending: invoiceBackupPendingColumn,
+};
 
 /** Escape LIKE-pattern metacharacters so user input is treated literally. */
 function escapeLike(value: string): string {
@@ -58,7 +68,7 @@ function dateToIso(value: Date | null | undefined): string | null {
  * documented shape here. Casts are localised to this projection
  * function (the entrypoint for "raw row → wire shape").
  */
-export function toInvoiceResponse(row: InvoiceRow): Invoice {
+export function toInvoiceResponse(row: InvoiceReadRow): Invoice {
   return {
     id: row.id,
     number: row.number,
@@ -75,6 +85,7 @@ export function toInvoiceResponse(row: InvoiceRow): Invoice {
     performanceDate: dateToIso(row.performanceDate),
     cancellationReason: row.cancellationReason,
     renderedPdfBinaryDescriptorId: row.renderedPdfBinaryDescriptorId,
+    backupPending: row.backupPending,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     createdBy: row.createdBy,
@@ -167,12 +178,12 @@ export async function listInvoices(
 
   const baseQuery = whereClause
     ? db
-        .select()
+        .select(invoiceReadColumns)
         .from(invoices)
         .where(whereClause)
         .orderBy(...orderBy)
     : db
-        .select()
+        .select(invoiceReadColumns)
         .from(invoices)
         .orderBy(...orderBy);
   const paginated =
@@ -225,7 +236,11 @@ export async function getInvoice(
   caller: AuthUser,
   id: string,
 ): Promise<ScopedReadResult<Invoice>> {
-  const rows = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+  const rows = await db
+    .select(invoiceReadColumns)
+    .from(invoices)
+    .where(eq(invoices.id, id))
+    .limit(1);
   if (rows.length === 0) return null;
   if (!isUnscoped(caller)) return OUT_OF_SCOPE;
   return toInvoiceResponse(rows[0]!);

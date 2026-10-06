@@ -953,6 +953,24 @@ export const invoices = pgTable(
 );
 
 // ---------------------------------------------------------------
+// Invoice backup-pending marks (data-model.md §5.15, architecture.md
+// §11.14 "Backup gate", ADR-0026)
+//
+// One row per issued invoice / Storno whose PDF is withheld until an
+// off-site backup holds it. Written by the issuance / cancellation
+// transaction, deleted by the `backup` service once its snapshot's
+// upload succeeds. Kept outside `invoices` so marking and releasing
+// never write the immutable row — the immutability trigger would
+// otherwise strand the mark of an invoice cancelled before its backup.
+// ---------------------------------------------------------------
+export const invoiceBackupPending = pgTable('invoice_backup_pending', {
+  invoiceId: uuid('invoice_id')
+    .primaryKey()
+    .references(() => invoices.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------
 // Schema-level audit-payload exclusion (ADR-0024 § Audit-log boundary,
 // data-model.md §5.13 "Audit exclusion", architecture.md §
 // "Schema-level audit exclusion")

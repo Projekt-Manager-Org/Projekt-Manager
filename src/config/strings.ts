@@ -57,6 +57,8 @@ export const STRINGS = {
     invoiceProjectState:
       'Das Projekt steht nicht im Status „Rechnung fällig" — die Rechnung kann nicht ausgestellt werden.',
     invoiceNotIssued: 'Die Rechnung ist noch ein Entwurf.',
+    invoiceBackupPending:
+      'Eine Rechnung wird noch extern gesichert. Bitte in wenigen Minuten erneut versuchen.',
     invoiceAlreadyCancelled: 'Die Rechnung wurde bereits storniert.',
     companyProfileRequired:
       'Firmendaten sind unvollständig. Bitte erst im Bereich „Rechnungen" vervollständigen.',
@@ -652,6 +654,9 @@ export const STRINGS = {
     selectRowAria: (number: string | null) =>
       number ? `Rechnung ${number} auswählen` : 'Entwurf auswählen',
     draftNotExportableTooltip: 'Entwürfe können nicht exportiert werden.',
+    backupPendingLabel: 'Wird gesichert…',
+    backupPendingTooltip:
+      'Die Rechnung wird zuerst extern gesichert, damit sie bei einem Systemausfall nicht verloren geht. Das PDF steht in der Regel nach wenigen Minuten bereit.',
 
     // Cross-link from the per-project block to the standalone view
     // (ui/project-detail.md §8.15.11).
@@ -998,6 +1003,8 @@ export const STRINGS = {
     lastRunFailed: 'Backup: fehlgeschlagen',
     backupNeverRun: 'Backup: noch nie ausgeführt',
     drillNeverRun: 'Drill: noch nie ausgeführt',
+    invoiceBackupOverdue:
+      'Rechnungen warten auf die Sicherung – ihre PDFs bleiben bis dahin gesperrt.',
     unknown: 'Status unbekannt',
     /**
      * Augments any badge label with the timestamp of the last backup

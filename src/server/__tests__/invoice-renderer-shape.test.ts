@@ -82,6 +82,7 @@ function makeInvoice(mode: TaxMode): Invoice {
     performanceDate: '2026-04-10',
     cancellationReason: null,
     renderedPdfBinaryDescriptorId: null,
+    backupPending: false,
     createdAt: '2026-05-12T00:00:00Z',
     updatedAt: '2026-05-12T00:00:00Z',
     createdBy: null,

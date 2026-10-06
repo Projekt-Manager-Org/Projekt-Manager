@@ -832,6 +832,8 @@ export class ImportService {
         //     wiped here so the TRUNCATE users (step B) has no live referrers.
         //   company_profile, invoice_sequence — no FK back to the wipe set,
         //     so CASCADE would NOT reach them; listed explicitly.
+        //   invoice_backup_pending — references invoices; an import writes
+        //     no marks, so the standing ones go too (architecture.md §11.14).
         //
         // Step B — DELETE FROM users (not TRUNCATE) so that Postgres honours
         //   the ON DELETE SET NULL FKs: audit_log.actor_id, data_exchange_job.
@@ -843,6 +845,7 @@ export class ImportService {
             sessions,
             push_subscriptions,
             attachments,
+            invoice_backup_pending,
             invoices,
             invoice_sequence,
             project_workers,

@@ -92,6 +92,15 @@ const BACKUP_REASON_BODY: Readonly<Record<BackupBadgeReason, string>> = {
   'drill-stale': STRINGS.backup.drillStale,
 };
 
+/**
+ * The threshold monitor's overdue invoice backup (architecture.md
+ * §11.14 "Overdue") — not a badge reason: the badge may be green while
+ * the trigger is dead. Its target is the invoice list, where the
+ * withheld PDFs are.
+ */
+const INVOICE_BACKUP_OVERDUE_REASON = 'invoice-backup-overdue';
+const INVOICE_BACKUP_OVERDUE_URL = '/rechnungen';
+
 function readStringField(payload: Record<string, unknown> | null, key: string): string | null {
   if (payload === null) return null;
   const value = payload[key];
@@ -163,6 +172,13 @@ export function composePushPayload(
       // through to the generic sentence instead of rendering a
       // non-string.
       const reason = readStringField(systemPayload, 'reason');
+      if (reason === INVOICE_BACKUP_OVERDUE_REASON) {
+        return {
+          title,
+          body: STRINGS.backup.invoiceBackupOverdue,
+          url: INVOICE_BACKUP_OVERDUE_URL,
+        };
+      }
       const body =
         reason !== null && Object.hasOwn(BACKUP_REASON_BODY, reason)
           ? BACKUP_REASON_BODY[reason as BackupBadgeReason]

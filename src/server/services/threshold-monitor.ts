@@ -1,5 +1,5 @@
 /**
- * Threshold monitor — turns two standing *conditions* into notification
+ * Threshold monitor — turns three standing *conditions* into notification
  * *events* (ADR-0023 catalog classes `backup.failed` and
  * `disk.threshold_reached`).
  *
@@ -47,6 +47,7 @@ import type { Database } from '../db/connection.js';
 import { BackupStatusService } from './BackupStatusService.js';
 import { StorageUsageService } from './StorageUsageService.js';
 import { publishSystemEvent } from './notification-publisher.js';
+import { oldestInvoiceBackupMarkAt } from '../repositories/invoiceBackupPending.js';
 import type { ServiceLogger } from './Logger.js';
 
 /** Injectable publish surface — the real one is `publishSystemEvent`. */
@@ -70,7 +71,7 @@ export interface RunThresholdMonitorOptions {
   publish?: PublishSystemEventFn;
 }
 
-type SlotName = 'backup' | 'storage';
+type SlotName = 'backup' | 'storage' | 'invoiceBackup';
 
 interface SlotState {
   conditionKey: string;
@@ -217,11 +218,46 @@ async function evaluateStorage(
 }
 
 /**
- * One sweep: evaluate both conditions and publish what is due.
+ * A backup-pending invoice mark older than the overdue threshold: the
+ * backup is not running or keeps failing, and the PDF stays withheld
+ * (architecture.md §11.14 "Overdue"). Independent of the badge — a mark
+ * can be overdue while the last clock-driven run was green, e.g. when
+ * the trigger itself is dead.
+ */
+async function evaluateInvoiceBackup(
+  opts: RunThresholdMonitorOptions,
+  now: Date,
+  repeatMs: number,
+  publish: PublishSystemEventFn,
+): Promise<void> {
+  const oldest = await oldestInvoiceBackupMarkAt(opts.db);
+  const overdueMs = THRESHOLD_MONITOR.invoiceBackupOverdueMinutes * 60 * 1000;
+  const nowMs = now.getTime();
+  if (oldest === null || nowMs - oldest.getTime() < overdueMs) {
+    slots.delete('invoiceBackup');
+    return;
+  }
+
+  const conditionKey = 'overdue';
+  if (!shouldNotify('invoiceBackup', conditionKey, nowMs, repeatMs)) return;
+
+  await publish({
+    eventClass: 'backup.failed',
+    payload: { reason: 'invoice-backup-overdue', oldestMarkAt: oldest.toISOString() },
+  });
+  markNotified('invoiceBackup', conditionKey, nowMs);
+  opts.logger.info(
+    { event: 'threshold_monitor_invoice_backup_notified', oldestMarkAt: oldest.toISOString() },
+    'threshold-monitor: invoice backup overdue notified',
+  );
+}
+
+/**
+ * One sweep: evaluate every condition and publish what is due.
  *
- * The two checks are independent — a failure in one must not suppress
- * the other, or a programmer error on the backup side would silently
- * disable storage warnings forever. Both run, then the first failure
+ * The checks are independent — a failure in one must not suppress the
+ * others, or a programmer error on the backup side would silently
+ * disable storage warnings forever. All run, then the first failure
  * (if any) is rethrown so the sweeper's failure counter and backoff
  * engage as they do for every other scheduler.
  */
@@ -233,6 +269,7 @@ export async function runThresholdMonitor(opts: RunThresholdMonitorOptions): Pro
   const results = await Promise.allSettled([
     evaluateBackup(opts, now, repeatMs, publish),
     evaluateStorage(opts, now, repeatMs, publish),
+    evaluateInvoiceBackup(opts, now, repeatMs, publish),
   ]);
 
   const failure = results.find((r) => r.status === 'rejected');

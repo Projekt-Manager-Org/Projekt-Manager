@@ -312,6 +312,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "ancestor_entity_label": {
+          "name": "ancestor_entity_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "action": {
           "name": "action",
           "type": "text",
@@ -886,6 +892,46 @@
           "value": "\"data_exchange_job\".\"files_total\" >= 0 AND \"data_exchange_job\".\"files_done\" >= 0 AND \"data_exchange_job\".\"bytes_total\" >= 0 AND \"data_exchange_job\".\"bytes_done\" >= 0"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.invoice_backup_pending": {
+      "name": "invoice_backup_pending",
+      "schema": "",
+      "columns": {
+        "invoice_id": {
+          "name": "invoice_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invoice_backup_pending_invoice_id_invoices_id_fk": {
+          "name": "invoice_backup_pending_invoice_id_invoices_id_fk",
+          "tableFrom": "invoice_backup_pending",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.invoice_sequence": {
