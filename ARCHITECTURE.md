@@ -1,10 +1,8 @@
 # Architecture
 
-Navigation guide to the implementation. Use it to locate modules, understand dependency rules, and find the right file before diving into code. Not a substitute for reading the code itself.
+The high-level entry point to the implementation: where things live and how they fit together. Detail lives in the code, the [spec](docs/spec/index.md) and the [ADRs](docs/adr/index.md); this file links to it rather than restating it.
 
-For the full product specification, see [docs/spec/](docs/spec/index.md). `AC-NNN` references throughout point to numbered Acceptance Criteria in [verification.md §15](docs/spec/verification.md#15-acceptance-criteria).
-
-**Length — a standing D-BLSI exception** ([review/conventions-docs-general.md](review/conventions-docs-general.md)). An index is worth reading because one file answers "where does this live?" for the whole tree; splitting it by section puts half the answers behind a link and reintroduces the drift the [§ Module Map](#module-map) gate exists to catch. Depth is what is delegated instead: [docs/spec/](docs/spec/index.md) and [docs/adr/](docs/adr/index.md) carry the reasoning, this file the map.
+`AC-NNN` references throughout point to numbered Acceptance Criteria in [verification.md §15](docs/spec/verification.md#15-acceptance-criteria).
 
 ## Contents
 
@@ -76,7 +74,7 @@ Seven responsibility layers. Dependency flows left-to-right only, never reversed
 - **Storage**, **Services**, **Routes** run server-side only.
 - **State**, **UI** run client-side only.
 
-**Enforcement**: the layer rules are machine-enforced by `no-restricted-imports` zones in [`eslint.config.js`](eslint.config.js). A PR that reaches from `src/ui/**` into `src/server/**`, from `src/server/routes/**` into `src/server/repositories/**`, or from `src/domain/**` into any higher layer fails lint. Type-only imports of `Database` from `src/server/db/connection` are allowed in route files because routes take the connection as a typed parameter.
+**Enforcement**: `no-restricted-imports` zones in [`eslint.config.js`](eslint.config.js) fail lint on any import against the arrows (e.g. `src/ui/**` → `src/server/**`, routes → repositories). Routes may type-import `Database` from `src/server/db/connection`.
 
 ---
 
@@ -228,47 +226,21 @@ Maps spec `[C]` markers (values that vary per deployment) to files. For how oper
 
 ## Request Lifecycle
 
-```
-Browser (React)
-  |  user action triggers Zustand store method
-  v
-Zustand store
-  |  fetch("/api/projects/42/transition", { method: "POST", ... })
-  v
-Vite dev proxy  (dev: localhost:5173 -> :3000)
-Caddy           (prod: HTTPS termination, reverse_proxy -> app:3000)
-  v
-Fastify
-  |  trustProxy = TRUSTED_PROXY_CIDRS -> request.ip
-  |  @fastify/cookie parses session cookie
-  |  auth middleware validates session via session repository
-  |  -> 401 if missing/expired
-  v
-Route handler (src/server/routes/)
-  |  validates request body (Fastify JSON schema)
-  |  delegates to service
-  v
-Service (src/server/services/)
-  |  business logic, domain validation
-  |  calls repository for data access
-  v
-Repository (src/server/repositories/) -> Drizzle ORM -> PostgreSQL
-  |  query executes, returns rows
-  v
-Route handler
-  |  serializes response as JSON
-  v
-Fastify -> Caddy/proxy -> Browser
-  v
-Zustand store
-  |  updates local state on success
-  v
-React re-renders affected components
+```mermaid
+sequenceDiagram
+  participant U as React + Zustand store
+  participant P as Caddy (prod) / Vite proxy (dev)
+  participant R as Route
+  participant S as Service
+  participant D as Repository → Postgres
+  U->>P: fetch /api/…
+  P->>R: schema validation (422), then session (401) and permission (403) gates
+  R->>S: delegate
+  S->>D: domain rules, then query (writes via mutate())
+  D-->>U: JSON response → store updates → React re-renders
 ```
 
-**Client IP attribution.** `request.ip` keys the login rate limiter and the login audit trail, so it must be the client — not Caddy. Fastify believes `X-Forwarded-For` only from the addresses in `TRUSTED_PROXY_CIDRS`, which names the `networks.default` subnet pinned in `docker-compose.yml` (`172.16.0.0/16`); that subnet is pinned precisely so the trust boundary has a fixed address to name, and it is disjoint from the WireGuard client range (ADR-0008). Unset means trust nothing — correct for dev, which bypasses Caddy — and the app refuses to start in production without it, because the silent fallback attributes every request to the proxy and collapses the rate limiter into one global bucket.
-
-> Not a hop count. Fastify 5.12.1 removed the numeric `trustProxy` form (GHSA-3m5p-2c4r-xxw2): a hop count never validated _which_ peer connected.
+**Client IP.** `request.ip` keys the login rate limiter and the audit trail, so Fastify trusts `X-Forwarded-For` only from `TRUSTED_PROXY_CIDRS` (the compose network); production refuses to start without it (`src/server/config/env.ts`).
 
 ---
 
@@ -285,15 +257,11 @@ Routes live in `src/server/routes/`, and `buildApp()` (`src/server/app.ts`) regi
 
 ## Permission Gating
 
-The role-to-permission matrix in `src/config/permissions.ts` is the single source of truth for both layers: server routes import `hasPermission` via `requirePermission(...)` (403 on violation), and UI components import it via the `usePermission('<permission>')` hook in `src/hooks/usePermission.ts` (hide the affordance). Client-side gating is UX, not security — the server check is always authoritative. UI code never hardcodes role names; it asks for a permission. See [spec AC-121](docs/spec/verification.md) for the invariant and [§14.3](docs/spec/api.md#143-authorization-rules) for the server contract.
-
-`requireRole(...)` is the single, spec-sanctioned exception: `PUT /api/company-profile` is owner-only and the spec deliberately declines to mint `company_profile:*` keys for one singleton ([api.md §14.2.15](docs/spec/api.md#14215-company-profile-operations)). It is a route gate like any other, so the [endpoint table](docs/api/README.md#endpoints) publishes it as `Role: owner` rather than as a blank cell.
-
-The published matrix at [api.md §14.3](docs/spec/api.md#143-authorization-rules) mirrors `ROLE_PERMISSIONS` over the production roles between `CHECKED:permissions-table` markers; `src/config/__tests__/permissions.test.ts` fails on drift (AC-343). Production-vs-test-only role classification is `IS_TEST_ONLY_ROLE: Record<Role, boolean>` in the same file — exhaustive over `Role` by construction, mirroring `ROLE_CLASSIFICATION` in `src/server/repositories/scope.ts`. `ROLE_KEYS` (`src/config/roleKeys.ts`) and every other consumer of the production-role set (e.g. the user-management route schemas) derive from that classification rather than hand-listing roles.
-
-Per-view navigation and the route guard share a second table in `src/config/routes.ts`. Access is declared as **data**, not a closure: each entry carries a `RouteAccess` rule (`{kind:'role'}` or `{kind:'permission'}`) and `canAccess` is derived from it; landing is an ordered first-match list (`LANDING_ORDER`), so two views cannot both claim a role. The `Header` nav and the `App` route guard both consume this one table, so those two cannot disagree with each other — and the spec's per-role nav matrix ([spec ui/index.md §8.7.1](docs/spec/ui/index.md#871-views)) mirrors it between `CHECKED:nav-matrix` markers: `src/config/__tests__/routes.test.ts` checks the View / Path / Label / Access / Roles / Landing columns and the landing order against it (AC-349). Declaring the rule rather than writing a predicate is what makes that possible — a closure can be evaluated but not compared, so a check could cover only the role set it resolves to, never `invoice:read` itself. The per-view prose below the end marker is spec intent that exists nowhere in the code and is not checked.
-
-**Data scoping** is orthogonal to permissions ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)). `project:read` and `customer:read` grant the _capability_ to read; `src/server/repositories/scope.ts` narrows the _extent_ (which rows are visible) with a predicate ANDed into repository queries — currently scoping workers to projects they are assigned to. Services that must bypass scope (e.g., `ExportService`) fail-fast when threaded a scoped caller, so a permission-churn regression cannot silently leak every row.
+- **One matrix, two layers.** `src/config/permissions.ts` feeds server gates (`requirePermission`, 403) and UI affordances (`usePermission`). The server is authoritative; UI code asks for a permission, never a role ([api.md §14.3](docs/spec/api.md#143-authorization-rules)).
+- **One exception:** `requireRole('owner')` on `PUT /api/company-profile` — the spec mints no `company_profile:*` key for a singleton.
+- **Navigation:** `src/config/routes.ts` declares each view's access rule as data; nav, route guard and landing derive from it.
+- **Data scoping is orthogonal** ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)): permissions grant the capability, `src/server/repositories/scope.ts` narrows the rows.
+- Both matrices are mirrored in the spec and checked against the code (AC-343, AC-349).
 
 ---
 
@@ -305,7 +273,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 
 **Pattern to copy**: the `Project` entity — read `schema.ts`, `types.ts`, the repo/service/route/store/UI chain for projects.
 
-1. **Schema**: add table in `src/server/db/schema.ts` (same audit-field pattern as `projects`). `npx drizzle-kit generate`. Never edit an existing migration.
+1. **Schema**: add the table in `src/server/db/schema.ts` (audit fields as on `projects`), then regenerate `0000_baseline.sql` and reapply its hand-edited tail — no incremental migrations ([ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md)). Existing databases: [recover-from-schema-change.md](docs/ops/recover-from-schema-change.md).
 2. **Domain types**: add interface in `src/domain/types.ts`. Optional fields stay optional ([spec §13.5](docs/spec/architecture.md#135-robustness)).
 3. **Repository**: split by concern (`src/server/repositories/supplier-read.ts`, etc.), barrel re-export. Add a `toSupplier(row)` projection so Drizzle types don't leak upward.
 4. **Service**: `src/server/services/SupplierService.ts`. Must not import `fastify` types ([spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries)).
@@ -323,7 +291,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 
 1. Add view name to `ViewMode` in `src/domain/types.ts`.
 2. Create component under `src/ui/<view>/`. Reads from `useProjectStore`, filters client-side.
-3. Add an entry to `ROUTE_DEFINITIONS` in `src/config/routes.ts` with an `access` rule — `{ kind: 'role', roles: [...] }` or `{ kind: 'permission', permission: ... }`. `canAccess` is derived from it, and `isDefaultFor` from `LANDING_ORDER`; neither is written per entry. If the view is a landing view for some role, add the rule to `LANDING_ORDER` (first match wins). The `Header` nav and the `ProtectedRoute` guard both derive from the entry automatically. Add a nav entry's row to the spec's per-role nav matrix ([spec ui/index.md §8.7.1](docs/spec/ui/index.md#871-views)), or a deep-link entry's (`/:` parameter) to `DEEP_LINKS` in `src/config/__tests__/routes.test.ts`; that test fails until the row agrees with the entry.
+3. Add an entry to `ROUTE_DEFINITIONS` in `src/config/routes.ts` with an `access` rule; for a landing view, add it to `LANDING_ORDER` (first match wins). Add its row to the spec's nav matrix ([ui/index.md §8.7.1](docs/spec/ui/index.md#871-views)) — `src/config/__tests__/routes.test.ts` fails until they agree.
 4. Wire the component into the `VIEW_ELEMENTS` lookup in `src/App.tsx` so `<Routes>` knows what to render for the new key.
 5. Tests: copy structure from `src/ui/detail/__tests__/ProjectDetailPage.test.tsx`.
 
@@ -335,9 +303,9 @@ Backend changes are usually not needed — the store exposes the full project li
 
 1. **Where**: extend an existing route file if it belongs to that entity/group; create a new one otherwise.
 2. **Validation**: Fastify JSON Schema on the route (see `projects.ts`). Don't validate inside the handler.
-3. **Auth**: `requireSession(app, db)` once per plugin; `requirePermission('...')` per route. Add new keys to `src/config/permissions.ts` (shared with the client-side `usePermission` hook — see [§ Permission Gating](#permission-gating)). Both gates carry their rule as data, so the [endpoint table](docs/api/README.md#endpoints) picks the endpoint up on its next generation — there is no table row to add by hand.
+3. **Auth**: `requireSession(app, db)` once per plugin, `requirePermission('...')` per route; new keys go in `src/config/permissions.ts`. The endpoint table regenerates — no row to add by hand.
 4. **Delegate to service**. Never call repos from a route ([spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries)).
-5. **Errors**: use factories from `src/server/errors.ts` (`notFound()`, `validationError()`, etc.). Never throw raw `Error`. For endpoints accepting composite payloads, translate DB constraint violations via the service layer: classify with `extractSqlState()` / `extractPgConstraint()` and disambiguate against the named constraints in `src/server/db/constraints.ts` (see `ProjectCrudService.createProjectWithClientId` for the 23505 pattern).
+5. **Errors**: factories from `src/server/errors.ts`, never a raw `Error`. Map DB constraint violations in the service against `src/server/db/constraints.ts` (pattern: `ProjectCrudService.createProjectWithClientId`).
 6. **Register** in `src/server/app.ts`.
 7. **Tests**: integration in `src/server/__tests__/` using `api-helpers.ts` (`startApp()`, `login()`, `authPost()`/`authGet()`).
 8. **Spec**: add operation to `docs/spec/api.md §14.2`, AC in `docs/spec/verification.md`.
@@ -347,8 +315,8 @@ Backend changes are usually not needed — the store exposes the full project li
 Most of the Kanban, calendar, and aging rendering is genuinely config-driven. Two specific places still hardcode boundary-state literals and will need updating in addition to the config:
 
 1. Update the state array in `src/config/stateConfig.ts` (name, type, color, aging thresholds, collapse tier).
-2. **Boundary-state references**: `src/domain/transitions.ts` uses hardcoded `'anfrage'` and `'erledigt'` literals for "first state" and "terminal state" checks. If the new state is inserted in the middle these are safe; if it replaces the first or last position, update the literals to match. The server-side repository path (`src/server/repositories/project-transitions.ts`) is config-driven via `WORKFLOW_ORDER` and does not need changes.
-3. **Database constraints**: `src/server/db/schema.ts` has (a) a `status` column default of `'anfrage'` and (b) a `projects_valid_status` CHECK constraint that hard-codes all nine state literals. Adding, renaming, or removing a state requires regenerating the migration via `npx drizzle-kit generate`, otherwise inserts for the new state will be rejected at the DB layer.
+2. **Boundary states**: `src/domain/transitions.ts` hardcodes `'anfrage'` (first) and `'erledigt'` (terminal). Update them only if the new state takes the first or last position.
+3. **Database constraints**: `src/server/db/schema.ts` has (a) a `status` column default of `'anfrage'` and (b) a `projects_valid_status` CHECK constraint that hard-codes all nine state literals. Adding, renaming or removing a state means regenerating the baseline (see the entity recipe), or the DB rejects the new state.
 4. **Hardcoded test fixtures**: a couple of tests pin the full state list — grep for the state keys and update as needed.
 5. Re-seed the database if existing data must be migrated to a new state (`SEED=force npm run dev`).
 
