@@ -15,9 +15,9 @@
  *
  * These tests assert that what the setup file WRITES is exactly what the
  * sweeper MATCHES. They read `process.env` as the running fork left it — no
- * app, no database. The storage key prefix additionally has to reach every
- * storage client; that is pinned by a source scan (single env → config
- * mapping).
+ * app, no database. Two more guards for the storage namespace (#481): the
+ * sweeper cannot silently skip, and the prefix reaches every storage client
+ * (a source scan pins a single env → config mapping).
  *
  * The Playwright config carries a fifth copy of the staging convention (it
  * must not import project `.ts` files, by its own stated convention), so that
@@ -37,6 +37,7 @@ import {
   TEST_DB_PREFIX,
   TEST_KEY_PREFIX_PATTERN,
   TEST_TAKEOUT_DIR_PATTERN,
+  sweepOrphanStoragePrefixes,
 } from '../../test/integration-globalsetup.js';
 
 const PID = String(process.pid);
@@ -79,6 +80,15 @@ describe('per-fork isolation — setup writes what globalsetup reaps', () => {
     expect(resolved).not.toBe(path.join(os.tmpdir(), 'projekt-manager-takeout'));
     expect(resolved).toBe(process.env.TAKEOUT_STAGING_DIR);
     expect(TEST_TAKEOUT_DIR_PATTERN.test(path.basename(resolved))).toBe(true);
+  });
+});
+
+describe('bucket sweep cannot silently skip (#481)', () => {
+  it('refuses to run without storage config', async () => {
+    // globalSetup runs in vitest's main process, outside `test.env`; a
+    // sweep missing its storage config must throw, not skip — a skip
+    // silently strands every dead fork's prefix.
+    await expect(sweepOrphanStoragePrefixes({})).rejects.toThrow(/STORAGE_ENDPOINT/);
   });
 });
 

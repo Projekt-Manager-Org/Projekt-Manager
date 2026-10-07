@@ -15,6 +15,11 @@
  * `process.exit()`, which skips `beforeExit`, so a per-fork cleanup hook
  * is not viable.
  *
+ * The main process does not get the `.env` values vitest hands the
+ * workers via `test.env`, so every sweep reads its config from
+ * `project.config.env` (loadEnv output, which already includes
+ * `process.env`) — never from `process.env` directly.
+ *
  * Bucket sweep uses DeleteObject without VersionId — Compliance Object
  * Lock allows that (it stacks a delete marker on top of the retained
  * version). The underlying bytes survive until the lifecycle rule
@@ -28,6 +33,9 @@ import { S3Client, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/cl
 import { readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import type { TestProject } from 'vitest/node';
+
+type SweepEnv = Partial<Record<string, string>>;
 
 // What this sweeper matches on. Exported so
 // `src/server/__tests__/test-harness-isolation.test.ts` can assert that what
@@ -47,9 +55,8 @@ export const TEST_TAKEOUT_DIR_PATTERN = /^projekt-manager-takeout-test-(\d+)$/;
 // production identity lives on tmpfs at a configured path, never here.
 export const TEST_BINARY_IDENTITY_PATTERN = /^projekt-manager-binary-identity-(\d+)\.txt$/;
 
-function adminConnectionString(): string {
-  const baseUrl =
-    process.env.DATABASE_URL ?? 'postgresql://pm:changeme@localhost:5432/projekt_manager';
+function adminConnectionString(env: SweepEnv): string {
+  const baseUrl = env.DATABASE_URL ?? 'postgresql://pm:changeme@localhost:5432/projekt_manager';
   const u = new URL(baseUrl);
   u.pathname = '/postgres';
   return u.toString();
@@ -66,8 +73,8 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-async function sweepOrphanDatabases(): Promise<void> {
-  const client = new pg.Client({ connectionString: adminConnectionString() });
+async function sweepOrphanDatabases(env: SweepEnv): Promise<void> {
+  const client = new pg.Client({ connectionString: adminConnectionString(env) });
   await client.connect();
   try {
     const { rows } = await client.query<{ datname: string }>(
@@ -100,17 +107,22 @@ async function sweepOrphanDatabases(): Promise<void> {
  * be O(objects) instead of O(forks). Then, per dead-PID prefix, paginate
  * through ListObjectsV2 + DeleteObject to delete-marker every key.
  *
- * No-ops cleanly when the env doesn't have storage configured (the
- * unit-test slice of vitest doesn't need MinIO) — no STORAGE_ENDPOINT,
- * no sweep.
+ * Throws when storage is not configured: globalSetup runs only for the
+ * integration project, which needs MinIO anyway, and a skipped sweep
+ * strands dead prefixes silently (#481).
  */
-async function sweepOrphanStoragePrefixes(): Promise<void> {
-  const endpoint = process.env.STORAGE_ENDPOINT;
-  const accessKey = process.env.STORAGE_ACCESS_KEY;
-  const secretKey = process.env.STORAGE_SECRET_KEY;
-  const bucket = process.env.STORAGE_BUCKET_TEST ?? 'projekt-manager-test';
-  const region = process.env.STORAGE_REGION ?? 'us-east-1';
-  if (!endpoint || !accessKey || !secretKey) return;
+export async function sweepOrphanStoragePrefixes(env: SweepEnv): Promise<void> {
+  const endpoint = env.STORAGE_ENDPOINT;
+  const accessKey = env.STORAGE_ACCESS_KEY;
+  const secretKey = env.STORAGE_SECRET_KEY;
+  const bucket = env.STORAGE_BUCKET_TEST ?? 'projekt-manager-test';
+  const region = env.STORAGE_REGION ?? 'us-east-1';
+  if (!endpoint || !accessKey || !secretKey) {
+    throw new Error(
+      'Integration globalSetup: STORAGE_ENDPOINT, STORAGE_ACCESS_KEY and STORAGE_SECRET_KEY ' +
+        'must be set to sweep dead-PID test-bucket prefixes.',
+    );
+  }
 
   const s3 = new S3Client({
     endpoint,
@@ -123,21 +135,15 @@ async function sweepOrphanStoragePrefixes(): Promise<void> {
   const deadPrefixes: string[] = [];
   let continuationToken: string | undefined;
   do {
-    let response;
-    try {
-      response = await s3.send(
-        new ListObjectsV2Command({
-          Bucket: bucket,
-          Delimiter: '/',
-          ContinuationToken: continuationToken,
-        }),
-      );
-    } catch {
-      // Bucket may not exist yet (first-time fresh MinIO). Nothing to
-      // sweep — the configure step in init-storage.sh will provision it
-      // when the dev compose stack comes up.
-      return;
-    }
+    // No catch: a missing bucket, bad credentials or an unreachable
+    // endpoint must surface, not skip — the suite needs the bucket anyway.
+    const response = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Delimiter: '/',
+        ContinuationToken: continuationToken,
+      }),
+    );
     for (const cp of response.CommonPrefixes ?? []) {
       if (typeof cp.Prefix !== 'string') continue;
       const match = TEST_KEY_PREFIX_PATTERN.exec(cp.Prefix);
@@ -232,17 +238,18 @@ async function sweepOrphanTempArtifacts(): Promise<void> {
   }
 }
 
-async function sweepOrphans(): Promise<void> {
+async function sweepOrphans(env: SweepEnv): Promise<void> {
   await Promise.all([
-    sweepOrphanDatabases(),
-    sweepOrphanStoragePrefixes(),
+    sweepOrphanDatabases(env),
+    sweepOrphanStoragePrefixes(env),
     sweepOrphanTempArtifacts(),
   ]);
 }
 
-export default async function setup(): Promise<() => Promise<void>> {
-  await sweepOrphans();
+export default async function setup(project: TestProject): Promise<() => Promise<void>> {
+  const env = project.config.env;
+  await sweepOrphans(env);
   return async () => {
-    await sweepOrphans();
+    await sweepOrphans(env);
   };
 }
