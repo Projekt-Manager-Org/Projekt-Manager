@@ -110,109 +110,88 @@ Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directo
 
 ### Directory Detail
 
-**A subsection here is a coverage contract**: every source file directly inside that directory is named, and `scripts/check-module-map.sh` (AC-350) fails the build on a file it omits or a name whose file is gone. Adding a `#### <dir>` heading is the act of accepting that contract; the document's own structure is the checker's configuration, so no parallel list exists.
-
-The contract binds every file, with nothing held back. The baseline that froze the pre-existing gap while it was burned down (#306) reached zero and is gone, so a new file in a gated directory fails the build until it is named here. Opting a directory out is still allowed, but not silently: the gated set is recorded in `scripts/module-map-gated.txt`, and dropping a subsection fails until that line goes too. Deleting or emptying the record is not a way around that: it is a required input.
-
-A directory earns a subsection when the _set_ of files is itself architecture and a missing one is a missing subsystem. Everywhere else a complete file list would be inventory rather than architecture, and what is worth saying about those directories is in [§ Directory Notes](#directory-notes) below.
+**Each subsection is a coverage contract** (AC-350): it names every source file directly in its directory, and `scripts/check-module-map.sh` fails the build on an omitted file or a dead name. The gated set is recorded in `scripts/module-map-gated.txt`, so dropping a subsection is a reviewable diff. Only directories whose file set _is_ the architecture get one.
 
 #### `src/server/routes/`
 
-- `auth.ts` — login / logout / `me` / change-password. The only module that sets the session cookie; `POST /api/auth/login` and `GET /api/auth/me` both carry the owner-only backup badge, omitting the field rather than faking a value when the status row is unreachable (AC-176). The two session-establishment paths are kept symmetric; the reason is in [api.md §14.2.7](docs/spec/api.md#1427-backup-status).
+- `auth.ts` — login / logout / `me` / change-password; the only module that sets the session cookie
 - `users.ts` — user CRUD, deactivate / reactivate, admin password reset
-- `workers.ts` — the assignee pool. Separate from `users.ts` because it is gated by `project:read` rather than admin-only `user:read`, and returns only `{userId, displayName}` so no admin-only field can leak into a filter dropdown.
+- `workers.ts` — the assignee pool, `project:read`-gated and limited to `{userId, displayName}`
 - `customers.ts` — customer CRUD
-- `projects.ts` — project CRUD, forward / backward transitions, date edits, archive, restore and purge; delegates to the three services behind `src/server/services/project.ts`
-- `invoices.ts` — per-project draft CRUD plus issue / cancel / PDF download, the bulk export and the year list (ADR-0026). The PDF handler unwraps the row's DEK server-side and returns the plaintext in the response body rather than a presigned GET. `POST /api/invoices/export` is the ZIP takeout: every PDF is decrypted _before_ the first header is written, because once `archiver` starts writing a fault can only be a truncated stream — hence the 5000-invoice cap on both request shapes. Drafts never enter the archive: 422 `DRAFT_NOT_EXPORTABLE` in ids-mode, silently omitted in filter-mode.
-- `company-profile.ts` — singleton `GET` + owner-only `PUT`. `POST` and `DELETE` are deliberately unregistered — the row is a DB-enforced singleton. The owner check is inline because the spec allocates no `company_profile:*` permission key.
-- `audit.ts` — read-only list + get-by-id, with the three-way 200 / 403 / 404 result; response shaping lives in `AuditService` — by actor kind, not by role — scope in the repository predicates
-- `extract.ts` — `POST /api/extract`, LLM email-to-structured-data via OpenRouter (ADR-0016)
-- `notification-rules.ts` — CRUD for notification rules (ADR-0023)
-- `push-subscriptions.ts` — subscribe/unsubscribe VAPID endpoints
-- `push.ts` — VAPID public-key endpoint
-- `health.ts` — `GET /api/health`; delegates to the probe in `src/server/health.ts`
-- `attachments.ts` — init / complete / delete / list / download-url / `bulk-fetch` under `/api/projects/:id/attachments/…`
-- `storage-usage.ts` — `GET /api/projects/:id/storage-usage` and `GET /api/storage-usage` per [api.md §14.2.12](docs/spec/api.md#14212-storage-usage)
-- `events.ts` — `GET /api/events` SSE channel per [api.md §14.2.13](docs/spec/api.md#14213-realtime-events) and ADR-0025
-- `export-jobs.ts` / `import-jobs.ts` — server-side full-account takeout: `POST /api/export-jobs` / `POST /api/import-jobs` plus status, Range-capable download, and resumable-upload endpoints per [api.md §14.2.4](docs/spec/api.md#1424-unified-data-exchange), ADR-0018/0024
+- `projects.ts` — project CRUD, transitions, date edits, archive / restore / purge
+- `invoices.ts` — drafts, issue / cancel, server-decrypted PDF, ZIP export, year list (ADR-0026)
+- `company-profile.ts` — singleton `GET` + owner-only `PUT`
+- `audit.ts` — read-only list + get-by-id
+- `extract.ts` — LLM email-to-structured-data via OpenRouter (ADR-0016)
+- `notification-rules.ts` — notification rule CRUD (ADR-0023)
+- `push-subscriptions.ts` — Web Push subscribe / unsubscribe
+- `push.ts` — VAPID public key
+- `health.ts` — `GET /api/health`
+- `attachments.ts` — init / complete / delete / list / download-url / bulk-fetch
+- `storage-usage.ts` — per-project and global storage usage
+- `events.ts` — `GET /api/events`, the SSE channel (ADR-0025)
+- `export-jobs.ts` / `import-jobs.ts` — server-side takeout jobs (ADR-0018/0024)
 
 #### `src/server/services/invoice/`
 
-The EN 16931 e-invoicing core (ADR-0026). Gated on its own rather than inherited from `src/server/services/`: coverage reaches direct children only, so a nested directory is invisible until it takes a subsection.
+The EN 16931 core (ADR-0026). Gated on its own: coverage reaches direct children only.
 
-- `facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile). A hand-rolled serializer, because EN 16931 pins element order; the snapshotted tax mode selects the CategoryCode and the statutory exemption reason, both mapped in `boilerplate.ts`.
-- `pdfDrawer.ts` — the human-readable A4 body the XML rides in. Standard-14 fonts only, so the glyph repertoire is WinAnsi and anything outside it normalizes to `?` rather than crashing the encoder. Structurally correct PDF/A-3, not certified: no XMP packet is written.
-- `xsdValidator.ts` — validates every render against the canonical Factur-X 1.07.2 schemas under `src/server/services/invoice/xsd/`, inside the issuance transaction. A payload that fails rolls the issuance back instead of reaching storage.
-- `payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, one single-use DEK per render. Byte-identical on the wire to the browser's `nonce(12) || ct || tag(16)` in `src/domain/clientEncryption.ts`; duplicated rather than shared because this path runs synchronously inside `mutate()`.
-- `logoAsset.ts` — reads the deploy-time brand logo (`BRANDING.mark.logo`) off disk so the header and the rendered PDF are fed by the same file (#189). Resolves against the two static roots defined under [`src/server/` root files](#srcserver-root-files), requires an absolute same-origin path, confines it to that root's `brand/` subdirectory, sniffs PNG / JPEG from magic bytes rather than the extension, and caps the size. Every refusal returns no asset instead of throwing — it runs inside the issuance transaction holding the number-sequence lock, so a branding typo must not be able to abort an issuance.
-- `boilerplate.ts` — every per-tax-mode mapping in one place: the statutory footer paragraph, the EN 16931 CategoryCode (`S` / `E` / `AE`) and the BT-120 exemption reason. The `§ 19 UStG` / `§ 13b UStG` anchors are pinned by AT-116; the German copy around them is not. `standard` mode has no paragraph and no exemption reason — its legal anchor is the VAT breakdown in the layout.
+- `facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile)
+- `pdfDrawer.ts` — the human-readable A4 PDF/A-3 body
+- `xsdValidator.ts` — validates every render against the bundled schemas in `src/server/services/invoice/xsd/`
+- `payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, wire-identical to the browser's
+- `logoAsset.ts` — the brand logo for the PDF; never throws inside issuance
+- `boilerplate.ts` — per-tax-mode legal text, CategoryCode and exemption reason
 
 #### `src/server/` (root files)
 
-- `app.ts` — app assembly
+- `app.ts` — app assembly (`buildApp()`)
 - `start.ts` — entry point
 - `bootstrap.ts` — first-run admin bootstrap
 - `health.ts` — health probe
 - `seed.ts` — seed orchestrator, delegates to `src/server/seed/`
-- `password.ts` — password hashing; thin `bcryptjs` wrapper. bcrypt's silent 72-UTF-8-byte truncation is fenced off by the ceiling in `src/server/config/password-policy.ts`.
-- `staticRoot.ts` — the one definition of `dist/` and `public/` on disk, shared by `start.ts` (which serves the former) and `services/invoice/logoAsset.ts` (which reads the brand logo out of either). Single-sited because `import.meta.url` resolves differently either side of the esbuild bundle; the module's depth under `src/server/` is what makes both modes agree.
-- `staticCache.ts` — the `@fastify/static` registration plus its three Cache-Control tiers: content-hashed `/assets/*` immutable for a year, `index.html` and `sw.js` no-cache so deploys propagate, everything else a day.
-- `deploy-preflight-cli.ts` — the binary behind the configuration boundary's deploy checkpoint ([§ Design Decisions](#design-decisions-not-adr-worthy)): a one-shot container on the pulled image that probes env, storage reachability and the upload / copy verbs, so a credential or provider failure aborts the deploy while the previous replica is still running (AC-230/231).
-- `periodicSweeper.ts` — the shared factory behind the four retention and reaper schedulers: timer drive, overlap guard, sustained-failure backoff, and a `stop()` that drains the in-flight sweep. Deliberately topology-agnostic — the single-process invariant (ADR-0021) lives on its callers, not here.
-- `session-reaper.ts` — periodic session reaper. Predates the factory above and still carries its own copy of that plumbing.
-- `audit-retention-scheduler.ts` — audit retention scheduler (ADR-0021)
-- `attachment-orphan-reaper-scheduler.ts` — attachment orphan reaper scheduler
-- `attachment-hidden-reaper-scheduler.ts` — hidden-attachment reaper scheduler ([data-model.md §6.12](docs/spec/data-model.md#612-attachment-hidden-reaper))
-- `takeout-staging-reaper-scheduler.ts` — takeout staging reaper scheduler ([data-model.md §6.15](docs/spec/data-model.md#615-takeout-staging-reaper)). Schedule only; the sweep itself is a service one layer down, listed in [§ Directory Notes](#directory-notes).
-- `threshold-monitor-scheduler.ts` — threshold monitor scheduler ([architecture.md §11.15](docs/spec/architecture.md#1115-threshold-monitor)). Schedule only; the evaluator is a service one layer down, listed in [§ Directory Notes](#directory-notes).
-- `bucket-orphan-prune-scheduler.ts` — bucket/DB reconciliation scheduler (issue #169). Schedule only; the diff is `src/server/storage/pruneBucketOrphans.ts`. Lives in the app process rather than in an ops script so the bucket it lists and the database it diffs are the ones this process serves — the diff is meaningless for any other pairing.
-- `backup-runner.ts` — Layer 2 backup CLI entry with `schedule` / `run` / `drill` subcommands. `schedule` is the `backup` container's PID 1 and registers the cron jobs via croner, per ADR-0020.
-- `errors.ts` — error factories: `notFound()`, `validationError()`, `bulkLimitExceeded()`, etc. return `AppError` instances
-- `error-handler.ts` — the global error and 404 handlers that turn those into responses. The 4xx pass-through rule is in [§ Design Decisions](#design-decisions-not-adr-worthy).
-- `format-error-chain.ts` — walks `err.cause` so a wrapped driver failure surfaces its real cause and SQLSTATE, instead of drizzle's bare `Failed query: …`. Used by the startup catch and by the process-level handlers, both in `start.ts`.
+- `password.ts` — `bcryptjs` wrapper; the 72-byte ceiling is in `src/server/config/password-policy.ts`
+- `staticRoot.ts` — the one definition of `dist/` and `public/` on disk
+- `staticCache.ts` — static file serving and its Cache-Control tiers
+- `deploy-preflight-cli.ts` — deploy-time config and storage checks (AC-230/231)
+- `periodicSweeper.ts` — shared factory behind the reaper and retention schedulers
+- `session-reaper.ts` — session reaper (predates the factory)
+- `audit-retention-scheduler.ts` — audit retention (ADR-0021)
+- `attachment-orphan-reaper-scheduler.ts` — pending-attachment reaper
+- `attachment-hidden-reaper-scheduler.ts` — hidden-attachment reaper
+- `takeout-staging-reaper-scheduler.ts` — takeout staging reaper
+- `threshold-monitor-scheduler.ts` — threshold monitor
+- `bucket-orphan-prune-scheduler.ts` — bucket ↔ DB reconciliation (#169)
+- `backup-runner.ts` — backup CLI: `schedule` / `run` / `drill` (ADR-0020)
+- `errors.ts` — error factories returning `AppError`
+- `error-handler.ts` — global error and 404 handlers
+- `format-error-chain.ts` — surfaces the real cause and SQLSTATE of a wrapped driver error
 
 ### Directory Notes
 
-What a filename does not tell you: disambiguation, invariants, and negative space. **No entry here claims to be a complete file list** — for that, read the directory. An entry exists because something about it would otherwise surprise you; a file with nothing surprising about it is deliberately absent.
+What a filename does not tell you. Not a file list. Names resolve under their bold directory key (`scripts/check-module-map.sh`).
 
-Every entry is keyed by a directory, and `scripts/check-module-map.sh` resolves the names it cites — with or without a source extension — under that key. So a note cannot outlive the file it describes, and cannot be propped up by a same-named file elsewhere: `events.ts` under `src/server/services/` means that file, not the sibling the entry exists to distinguish it from.
+**`src/config/`** — `sseEvents.ts` is the SSE event catalogue shared by server and client, not a tunable.
 
-**`src/config/`** — deployment-tunable values are indexed in [§ Configuration Files](#configuration-files) below; that table is the single list. `sseEvents.ts` is not one of them: it is the realtime SSE event catalog, the wire vocabulary shared by `src/server/sse/` and `src/sse/`, and its `SSE_EVENT_NAMES` backs the AC-338 subscriber-coverage guard.
+**`src/server/config/`** — `vapid.ts` derives the VAPID public key from the private one and auto-bootstraps it in dev.
 
-**`src/domain/`** — framework-free types and pure rules. `imagePipeline.ts` is the client-side downscale + WebP thumbnail pass, preserving EXIF via an `@uploadcare/image-shrink` byte-splice. `dataExchange.ts` holds the unified envelope contract (ADR-0018), `attachments.ts` the label catalog + MIME whitelist + delete-gate helper, `auditRowDescription.ts` the action-to-German one-liner derivation.
+**`src/server/services/`** — one service per entity, plus subsystems:
 
-**`src/server/config/`** — as above, [§ Configuration Files](#configuration-files) is the single list. `vapid.ts` is the exception: VAPID key-material resolver, deriving the public key from the private one and auto-bootstrapping in dev.
+- `mutate.ts` — the single write path for audited tables (ADR-0021).
+- `events.ts` — the **domain** event bus (audit, notifications). Not the SSE pair `src/server/routes/events.ts` / `src/server/sse/`.
+- `KeyEnvelopeService.ts` — the entire crypto perimeter on B2 ciphertext (ADR-0024).
+- `backup.ts`, `backup-drill.ts`, `ephemeralPg.ts`, `r2Uploader.ts` — the Layer 2 backup pipeline (ADR-0020).
+- `threshold-monitor.ts` — runs in `app`, not `backup`: the notification publisher binds there.
+- `DataExchangeJobService.ts`, `takeout-export-builder.ts`, `takeout-export-runner.ts`, `takeout-import-runner.ts`, `takeout-staging.ts`, `takeout-staging-reaper.ts`, `data-exchange-boot-reaper.ts` — the takeout subsystem.
+- Bulk download has **no** server-side orchestrator: the browser assembles the zip (ADR-0024). Absence is a decision.
 
-**`src/server/services/`** — one service per entity or concern, plus subsystems. What the filenames hide:
+**`src/server/repositories/`** — audited-table writes take a `MutatingDatabase` (transaction-only), so bypassing `mutate()` fails `tsc`. `scope.ts` holds the role-based read-scope predicates (ADR-0019).
 
-- `mutate.ts` — the single write path for audited tables (ADR-0021). Nothing else may write them.
-- `events.ts` — the **domain** event bus: process-local pub/sub for audit and notifications. Not the SSE pair `src/server/routes/events.ts` / `src/server/sse/`, which is a different mechanism with a colliding name.
-- `KeyEnvelopeService.ts` — DEK envelope wrap/unwrap against the operator-loaded binary `age` identity (ADR-0024). The entire crypto perimeter on B2 ciphertext.
-- `backup.ts`, `backup-drill.ts`, `ephemeralPg.ts`, `r2Uploader.ts` — the Layer 2 backup pipeline (ADR-0020), four files that only make sense together.
-- `threshold-monitor.ts` — evaluates the backup-badge state and global storage fill on a timer and publishes `backup.failed` / `disk.threshold_reached` ([architecture.md §11.15](docs/spec/architecture.md#1115-threshold-monitor)). It lives here, not in the `backup` container, because the notification publisher binds in the `app` process; a publish from the runner would reach an unbound publisher. Its scheduler is `src/server/threshold-monitor-scheduler.ts`, one layer up.
-- `DataExchangeJobService.ts`, `takeout-export-builder.ts`, `takeout-export-runner.ts`, `takeout-import-runner.ts`, `takeout-staging.ts`, `takeout-staging-reaper.ts`, `data-exchange-boot-reaper.ts` — the server-side takeout subsystem (ADR-0018/0024): job lifecycle, archive build, VPS staging and the two reapers that sweep it. Its scheduler is `src/server/takeout-staging-reaper-scheduler.ts`, one layer up.
-- The invoice service layer — the `InvoiceService.ts` facade plus four focused services — is listed in [§ Invoices Module](#invoices-module); that section is the single list.
-- Bulk download has **no** server-side orchestrator, reaper or scheduler (ADR-0024 § Decision "Bulk download") — the per-file `bulk-fetch` route returns DEK material + presigned GETs and the browser assembles the zip locally via streaming-zip. Absence here is a decision, not a gap.
+**`src/server/seed/`** — `business.ts` seeds through `ImportService.import`, exercising the public restore contract. Only `src/test/api-helpers.ts` inserts users directly.
 
-**`src/server/repositories/`** — one module per entity, project split by concern behind a `project.ts` barrel. Write functions on audited tables accept `MutatingDatabase` (a transaction-only handle — see `src/server/db/connection.ts`) so a caller bypassing `mutate()` fails `tsc`. `scope.ts` holds the role-based read-scope predicates, including the two audit predicates and the attachment predicate (ADR-0019).
+**`src/build/`** — Vite plugins. `brandAppShell.ts` brands `index.html` and generates the PWA manifest (AC-363). Modules here sit in the Vite config's import graph, so their imports carry explicit `.ts` extensions.
 
-**`src/server/storage/`** — `client.ts` carries the `AttachmentStorageClient` surface: `createPresignedPut` (browser uploads; signs Content-Type + Content-Length + Content-MD5 + the `x-amz-meta-*` envelope headers via SigV4 against ciphertext metadata per ADR-0024 — `Content-Type` at the call site is the sentinel `application/octet-stream`, not the plaintext MIME), `createPresignedGet` with optional attachment-disposition filename, plus `headObject` / `getObject` / `putObject` / `listObjects` / `hide` / `copyFromVersion` / `getBucketSafetyConfig`. `safety.ts` runs the boot-time bucket-safety and binary `age`-identity probes. `objectMetadata.ts` owns the self-describing-object metadata (wire names, encode/decode); `recoverObjects.ts` is the DB-less recovery tool behind `scripts/binary-key/recover-objects.ts` (AC-373).
-
-**`src/server/middleware/`** — `auth.ts` exports `createAuthMiddleware` (cookie-only session validation, applied as a plugin-level `preHandler` on every authenticated route) and `requirePermission` (role→permission check per route).
-
-**`src/server/sse/`** — typed pub/sub fan-out over its own transport-agnostic `SseConnection` interface (`write`, optional `onClose`), one entry per subscribed connection populated by the `/api/events` route handler. Owns the subscriber set, per-subscriber failure isolation, and the post-commit emit primitive consumed by `AttachmentService.completeUpload` / `hide` / `restore` and the `attachment-hidden-reaper`. Spec contract: [architecture.md §11.13](docs/spec/architecture.md#1113-realtime-invalidation-channel), [api.md §14.2.13](docs/spec/api.md#14213-realtime-events), ADR-0025.
-
-**`src/server/seed/`** — `business.ts` assembles the full envelope (users, company_profile, customers, projects, assignments) and ships it through `ImportService.import` in one call, so every seed run exercises the public restore contract for every envelope slot. Only `src/test/api-helpers.ts` retains a direct-DB user insert, for unit-setup speed.
-
-**`src/state/`** — one Zustand store per domain slice, a `store.ts` barrel, the client-side cache, and one `*SseSubscription` module per realtime-invalidated slice. `storageUsageStore` is the odd one: a shared subscription / refresh-trigger fan-in for the Footer badge and the DatenView storage row, owning the fetch lifecycle for `GET /api/storage-usage`.
-
-**`src/sse/`** — `client.ts` exposes `onSseEvent` over an `EventSource` opened against `/api/events`. Auto-reconnect uses the WHATWG default; cookies ride along automatically. Spec contract: [api.md §14.2.13](docs/spec/api.md#14213-realtime-events), ADR-0025.
-
-**`src/pwa/`** — `pushClient.ts` handles subscribe/unsubscribe, VAPID public-key fetch and the permission prompt. The service worker is a separate bundle: `src/sw/index.ts` → `dist/sw.js`, dev-served at `/sw.js` (push event handler → `showNotification`).
-
-**`src/build/`** — Vite plugins that need their own tests. `brandAppShell.ts` feeds the app shell from `src/config/brandingConfig.ts` (AC-363): it substitutes the `%…%` placeholders in `index.html` and generates the PWA manifest — `src/config/pwaManifest.ts` → `dist/manifest.webmanifest`, dev-served at `/manifest.webmanifest`. The manifest is a build output; no static copy ships under `public/`. Modules here sit in the Vite config's import graph, so their import specifiers carry explicit `.ts` extensions (Vite's coming native config loader does no extension resolution).
-
-**`src/ui/`** — components grouped by feature area: `audit`, `auth`, `calendar`, `common`, `detail`, `extraction`, `kanban`, `layout`, `management`. The one non-obvious split is project detail: `src/ui/detail/ProjectDetailPage.tsx` is the full page at `/projects/:id`, while `ProjectDetailPanel.tsx` stays as the quick-glance overlay on Kanban/Calendar and exposes an `Öffnen` affordance to the page.
+**`src/ui/`** — `src/ui/detail/ProjectDetailPage.tsx` is the full page; `ProjectDetailPanel.tsx` is the quick-glance overlay on Kanban / Calendar.
 
 ### Configuration Files
 

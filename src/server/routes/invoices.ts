@@ -443,6 +443,10 @@ export function invoiceRoutes(db: Database) {
     // `archiver` and handed to Fastify as a Readable — `reply.send()`
     // pipes it to the wire, so the compressed ZIP bytes never collect
     // in memory.
+    //
+    // Every PDF is decrypted before the archive emits its first byte:
+    // once bytes are on the wire, a fault can only surface as a
+    // truncated stream. Hence EXPORT_FILTER_SAFETY_CAP.
     // ---------------------------------------------------------------
     app.post(
       '/api/invoices/export',
