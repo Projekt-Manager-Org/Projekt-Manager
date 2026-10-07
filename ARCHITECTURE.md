@@ -379,7 +379,7 @@ flowchart LR
   shard --> check
   lint & check & docker --> publish["publish<br/>tag digests"]
   publish --> merge([squash merge])
-  merge --> promote["promote<br/>re-tag as main SHA"]
+  merge -->|"push: lint + check"| promote["promote<br/>re-tag as main SHA"]
   promote -.-> deploy["scripts/deploy.sh<br/>manual, on the VPS"]
 ```
 
@@ -422,6 +422,7 @@ sequenceDiagram
 | No version-destroying delete anywhere (AC-238)                   | `src/server/__tests__/storage-architecture-detector.ts`                                            |
 | Pending-row reaper                                               | `src/server/services/attachment-orphan-reaper.ts`                                                  |
 | Storage usage — trigger-maintained side table                    | `project_storage_usage` in `src/server/db/schema.ts`; `src/server/services/StorageUsageService.ts` |
+| Envelope columns never reach the audit log (AC-240)              | `AUDIT_EXCLUDED_FIELDS` in `src/server/db/schema.ts`, applied in `src/server/services/mutate.ts`   |
 | Takeout export / import (server-side jobs)                       | `src/server/services/takeout-export-runner.ts`, `src/server/services/takeout-import-runner.ts`     |
 
 ## Realtime Invalidation
@@ -444,7 +445,7 @@ flowchart LR
   issued -->|cancel| storno["Stornorechnung<br/>sibling row"]
 ```
 
-Issuing, in one transaction: allocate the gapless number → freeze the snapshot → render PDF/A-3 with embedded `factur-x.xml` (XSD-validated; failure rolls everything back) → store the PDF under a per-object Compliance lock → project to `abgerechnet` → audit row + `invoice_changed`.
+Issuing, in one transaction: allocate the gapless number → freeze the snapshot → render PDF/A-3 with embedded `factur-x.xml` (XSD-validated; failure rolls everything back) → store the PDF under a per-object Compliance lock → project to `abgerechnet` → audit row; after commit, `invoice_changed` + `project_changed` ([architecture.md §11.14](docs/spec/architecture.md#1114-invoice-domain)).
 
 | Concern                                              | Where                                                                                                                                |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
