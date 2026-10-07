@@ -488,64 +488,27 @@ Contract: [architecture.md §11.13](docs/spec/architecture.md#1113-realtime-inva
 
 ## Invoices Module
 
-Spec contract: [docs/spec/data-model.md §5.15–§5.17](docs/spec/data-model.md#515-invoice-entity) (entities), [docs/spec/api.md §14.2.14–§14.2.15](docs/spec/api.md#14214-invoice-operations) (operations), [docs/spec/ui/invoices.md §8.16](docs/spec/ui/invoices.md#816-invoices-view) + [project-detail.md §8.15.11](docs/spec/ui/project-detail.md#81511-invoice) + [daten.md §8.11.4](docs/spec/ui/daten.md#8114-company-profile) (UI), [ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md). This section pins implementation choices that fall under §14 / §14a UStG and GoBD compliance.
+Contract: [data-model.md §5.15–§5.17](docs/spec/data-model.md#515-invoice-entity), [api.md §14.2.14–§14.2.15](docs/spec/api.md#14214-invoice-operations). Design: [ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md) (immutability, ZUGFeRD, libraries). GoBD system description: [Verfahrensdokumentation](docs/compliance/verfahrensdokumentation.md).
 
-### Immutable snapshot at issuance
+```mermaid
+flowchart LR
+  draft["draft<br/>editable"] -->|"issue — one transaction"| issued["issued<br/>frozen"]
+  issued -->|cancel| storno["Stornorechnung<br/>sibling row"]
+```
 
-`InvoiceIssueService.issue` opens a single transaction that allocates the number, freezes the content, flips the project, renders the PDF/A-3, writes the binary descriptor, and emits the audit row + `invoice_changed` SSE frame. The wire shape sealed on issuance — `issuer` (copied from `company_profile`), `recipient` (copied from the project's customer), `lines`, `taxMode`, `profile`, `totals`, `performanceDate` — is then immutable for GoBD. Subsequent PATCH attempts return `INVOICE_FROZEN` and DELETE on issued is refused at the service layer; beneath both, a Postgres `BEFORE UPDATE` trigger (`invoices_enforce_immutability` in `src/server/db/migrations/0000_baseline.sql`) is the persistence-layer backstop — it rejects every column change on an `issued` row except the `status → cancelled` flip and its `updated_at` / `updated_by` bump, so even a raw SQL write that bypasses the route and service layers cannot mutate a frozen invoice. The spec keeps the mechanism abstract ([AC-294](docs/spec/verification.md#1530-invoices) — trigger, constraint, or invariant); the trigger is the concrete choice today. Cancellation produces a Stornorechnung as a sibling row (`cancellationOf` points to the original) — the original stays untouched. A correction is a fresh draft → issue cycle, never an edit.
+Issuing, in one transaction: allocate the gapless number → freeze the snapshot → render PDF/A-3 with embedded `factur-x.xml` (XSD-validated; failure rolls everything back) → store the PDF under a per-object Compliance lock → project to `abgerechnet` → audit row + `invoice_changed`.
 
-### Gapless year-scoped sequence
+| Concern                                              | Where                                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Route facade; issue; cancel                          | `src/server/services/InvoiceService.ts`, `src/server/services/InvoiceIssueService.ts`, `src/server/services/InvoiceCancelService.ts` |
+| Immutability backstop below the services             | `invoices_enforce_immutability` trigger in `src/server/db/migrations/0000_baseline.sql`                                              |
+| Gapless number per `(year, kind)`                    | `invoice_sequence` in `src/server/db/schema.ts`                                                                                      |
+| PDF/A-3 + Factur-X (drawer, XML, XSD, tax-mode text) | `src/server/services/InvoiceRenderer.ts`, `src/server/services/invoice/`                                                             |
+| PDF storage — off the attachment API, locked         | `src/server/services/InvoiceBinaryService.ts`, `INVOICE_PDF_KEY_PREFIX` in `src/server/repositories/attachment.ts`                   |
+| Bookkeeper bulk export                               | `src/server/services/InvoiceExportService.ts`                                                                                        |
+| Client stores                                        | `src/state/invoiceStore.ts` (per project), `src/state/invoiceListStore.ts` (`/rechnungen`)                                           |
 
-`invoice_sequence` carries one row per `(year, kind)` (`kind ∈ 'invoice' | 'storno'`). Allocation is a single `INSERT … ON CONFLICT (year, kind) DO UPDATE SET next_value = next_value + 1 RETURNING next_value` against the matching row — Postgres takes a row-exclusive lock equivalent to `SELECT FOR UPDATE`, allocated atomically inside the issuance transaction. The single statement collapses the first-of-year case (INSERT) and the steady-state case (DO UPDATE) into one race-free path. The lock holds until commit, so a rollback returns the value to the sequence — the canonical Postgres gapless-counter pattern. Postgres `SERIAL` / `IDENTITY` are incompatible by design (they advance on rollback). The `RE-YYYY-NNNN` / `ST-YYYY-NNNN` format is pinned by a DB `CHECK` constraint so a wire-shape bug cannot insert a malformed number even via raw SQL. The year segment is the JS-side wall-clock UTC year (`new Date().getUTCFullYear()`) captured at the start of the issuance atom; a year-end issuance does not reuse the prior year's counter even if the row sits over the boundary.
-
-### Service split
-
-`src/server/services/InvoiceService.ts` is the route-facing facade; four focused services own the issuance/cancellation moving parts (read-only bulk export lives separately in `InvoiceExportService.ts` — see the `archiver` row under [Dep lifecycle health](#dep-lifecycle-health-as-of-2026-05-15)):
-
-- **`InvoiceIssueService`** — draft CRUD + the issue transaction (sequence allocation, content freeze, project status flip to `abgerechnet`, render via `InvoiceRenderer`, binary write via `InvoiceBinaryService`, audit + SSE).
-- **`InvoiceCancelService`** — Storno-sibling creation, audit + SSE. Does NOT auto-revert project state ([AC-290](docs/spec/verification.md#1530-invoices) trailing clause): a user staring at an `abgerechnet` project with a cancelled invoice sees the gap and acts on it manually.
-- **`InvoiceBinaryService`** — persists and serves the rendered PDF/A-3 (see [Rendered PDF storage](#rendered-pdf-storage)). Unlike attachments, the bytes are server-rendered (no client encrypt path): the PDF/A-3 is encrypted server-side under the same E2E envelope ([ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md)), so the storage layer sees only ciphertext.
-- **`InvoiceRenderer`** — orchestrates the PDF/A-3 + `factur-x.xml` build (see below). Returns the bytes; the binary service owns persistence.
-
-### ZUGFeRD EN 16931 renderer
-
-`src/server/services/InvoiceRenderer.ts` drives a Node-native pipeline (no headless browser, no external service):
-
-- **PDF/A-3 base.** `src/server/services/invoice/pdfDrawer.ts` lays out the visible invoice using `@cantoo/pdf-lib` (maintained fork of the dormant upstream `pdf-lib`) — German typography, EUR/DE numerics, address block, per-line table, totals breakdown, tax-mode boilerplate (Kleinunternehmer §19 or Reverse-Charge §13b text where applicable), IBAN footer when set on the profile. Output is conformance level PDF/A-3 (no JavaScript, no external resources, embedded fonts, XMP metadata, color profile).
-- **Embedded `factur-x.xml`.** `src/server/services/invoice/facturXmlBuilder.ts` emits the EN 16931 Comfort profile XML from the snapshotted invoice fields. `src/server/services/invoice/xsdValidator.ts` validates the payload against the canonical EN 16931 schemas at `src/server/services/invoice/xsd/` before embed; a validation failure throws and the surrounding issuance transaction rolls back (no non-conformant binary on B2). Industry shape: Mustangproject, akretion factur-x, SAP / Datev all XSD-validate at render time. The XML is then attached to the PDF as a Factur-X-compliant file attachment (relationship `Alternative`, AFRelationship metadata on the embedded file spec).
-- **Profile column.** `invoices.profile` snapshots the renderer profile (`zugferd-en16931` today) so the UI's PDF download affordance can label itself appropriately (`ZUGFeRD herunterladen` vs the generic `PDF herunterladen`). A future XRECHNUNG renderer drops in as a sibling builder keyed off the same column.
-- **Boilerplate.** `src/server/services/invoice/boilerplate.ts` carries the German tax-mode legal text — `kleinunternehmer` (§19 UStG: "Gemäß §19 UStG wird keine Umsatzsteuer berechnet."), `reverse_charge` (§13b UStG reverse-charge notice). Single source of truth so a §-text revision is one file.
-
-### Rendered PDF storage
-
-The rendered PDF is an `attachments` row whose key sits under `invoices/` (`INVOICE_PDF_KEY_PREFIX` / `invoicePdfKey` in `src/server/repositories/attachment.ts`):
-
-- **Off the attachment surface.** Every attachment-repository read behind an endpoint excludes the prefix, so no attachment endpoint lists, hides, restores, or serves an invoice PDF ([AC-364](docs/spec/verification.md#1530-invoices)). `GET /api/invoices/:id/pdf` is the only read path.
-- **Per-object lock.** The PUT carries its own Compliance lock of `INVOICE_OBJECT_LOCK_DAYS` (the storage client's `ObjectLock` option; prod 3650, dev 0). Not the bucket default: that is `R`, which must stay ≤ `L` ([AC-296](docs/spec/verification.md#1530-invoices)).
-- **Restore.** `takeout-import-runner.ts` puts an attachment that an envelope invoice references back under the prefix, with the lock ([AC-365](docs/spec/verification.md#1514-data-exchange)).
-
-### Tax modes (per-invoice, snapshotted)
-
-`taxMode ∈ 'standard' | 'kleinunternehmer' | 'reverse_charge'` is snapshotted onto each invoice at draft creation (defaulted from `company_profile.defaultTaxMode`); editable on the draft, frozen at issuance. The mode drives both the totals computation (no per-line tax for kleinunternehmer + reverse_charge; per-rate breakdown for standard) and the renderer boilerplate. `company_profile.ustId` is structurally optional; the issue gate refuses when the snapshotted mode is `standard` or `reverse_charge` and the profile's `ustId` is empty (`COMPANY_PROFILE_REQUIRED`). The UI's company-profile form mirrors the validation as a UX affordance ([docs/spec/ui/daten.md §8.11.4](docs/spec/ui/daten.md#8114-company-profile)); the server is authoritative.
-
-### `company_profile` singleton
-
-One row per deployment, pinned by `UNIQUE(singleton) + CHECK(singleton = true)`. Owner-only mutation through `PUT /api/company-profile`; every authenticated role may read so the values invoices will snapshot are visible (office / worker / bookkeeper see a read-only summary on the Daten view). No dedicated `company_profile:*` permission key — the route-layer role check is the gate (mutations restricted to `owner`). The company logo is **not** on this row: it is a deploy-time branding asset (`BRANDING.mark.logo`) — the browser fetches it over the served path, and the invoice renderer reads the same file off the static root (#189). `accentColor` is document styling for the rendered invoice, not an app-theme override — the app accent needs a light/dark pair and lives in `brandingConfig.ts`.
-
-### Realtime + repository scope
-
-`invoice_changed` SSE frames emit post-commit from the issue / cancel / draft-CRUD paths through `src/server/sse/emitters.ts`. The browser-side store fan-in mirrors the storage-usage pattern: `src/state/invoiceStore.ts` owns per-project cache; `src/state/invoiceListStore.ts` owns the cross-project `/rechnungen` view; both refresh on `invoice_changed` via `src/state/invoiceSseSubscription.ts` (the auth-gated `useEffect` in `src/App.tsx` is the only entry point). Worker callers are excluded structurally via the repository scope predicate ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)) — no `invoice:read` permission gate on the list / get routes (a worker probe returns `200 + []` for list, `404` for single-row, never `403` — matches the spec contract that worker exclusion is invisible).
-
-### Dep lifecycle health (as of 2026-05-15)
-
-[ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md) delegates its lib choice here. Per [ADR-0027](docs/adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md), this table is the canonical source for the invoice rendering pipeline's deps.
-
-| Dep                  | Last release                                                                               | License         | Maintainership                  | Notes                                                                                                                                                                                                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------------ | --------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@cantoo/pdf-lib`    | 2.6.5 (2026-03-20)                                                                         | MIT             | active maintainer               | Maintained fork of upstream `pdf-lib` (last upstream publish 2021-11-06). Adopted per audit [#187](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/187) to replace the dormant upstream. [deps.dev](https://deps.dev/npm/%40cantoo%2Fpdf-lib) |
-| `xmllint-wasm`       | 5.2.0 (2026-03-24)                                                                         | MIT             | `noppa/xmllint-wasm`, active    | Pure-WASM XSD validator. Replaces unmaintained `libxmljs2` ([#192](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/192) / PR #194). Drops the only native binding from the project's dep graph. [deps.dev](https://deps.dev/npm/xmllint-wasm) |
-| `archiver`           | 8.0.0 (per [#187](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/187) bump) | MIT             | active                          | Server-side ZIP for bookkeeper bulk-export. [deps.dev](https://deps.dev/npm/archiver)                                                                                                                                                                       |
-| EN 16931 XSD schemas | Bundled from `akretion/factur-x@d7fa1e7`                                                   | EU/CEN standard | Versioned at the standards body | Standards-track artifact (not a runtime dep); refreshed when the standard publishes a new version.                                                                                                                                                          |
+Workers are excluded by the repository scope predicate ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)), not by a permission gate.
 
 ---
 
