@@ -102,7 +102,8 @@ Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directo
 | `src/sse/`                     | Browser-side SSE primitive — `onSseEvent` over an `EventSource`.                                                                                       | Contain business logic or import server code                                                                                                    |
 | `src/api/`                     | Centralized API client, typed fetch wrappers.                                                                                                          | Contain business logic or UI concerns                                                                                                           |
 | `src/hooks/`                   | Shared React hooks (transitions, routing, permission gating).                                                                                          | Contain API calls directly (must use stores)                                                                                                    |
-| `src/pwa/`                     | Web Push client-side plumbing and the service-worker bundle.                                                                                           | Contain business logic; import server code                                                                                                      |
+| `src/pwa/`                     | Web Push client plumbing (subscribe, permission prompt).                                                                                               | Contain business logic; import server code                                                                                                      |
+| `src/sw/`                      | The one Service Worker: attachment decrypt-on-fetch and push.                                                                                          | Contain business logic; import server code                                                                                                      |
 | `src/ui/`                      | React components, grouped by feature area.                                                                                                             | Contain business logic beyond dispatching to state                                                                                              |
 | `src/test/`                    | Shared test setup, API test helpers, and seed fixtures.                                                                                                | Be imported in production code                                                                                                                  |
 
@@ -135,7 +136,7 @@ Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directo
 The EN 16931 core (ADR-0026). Gated on its own: coverage reaches direct children only.
 
 - `facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile)
-- `pdfDrawer.ts` — the human-readable A4 PDF/A-3 body
+- `pdfDrawer.ts` — the human-readable A4 body (structurally PDF/A-3, not certified)
 - `xsdValidator.ts` — validates every render against the bundled schemas in `src/server/services/invoice/xsd/`
 - `payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, wire-identical to the browser's
 - `logoAsset.ts` — the brand logo for the PDF; never throws inside issuance
@@ -187,7 +188,7 @@ What a filename does not tell you. Not a file list. Names resolve under their bo
 
 **`src/server/seed/`** — `business.ts` seeds through `ImportService.import`, exercising the public restore contract. Only `src/test/api-helpers.ts` inserts users directly.
 
-**`src/build/`** — Vite plugins. `brandAppShell.ts` brands `index.html` and generates the PWA manifest (AC-363). Modules here sit in the Vite config's import graph, so their imports carry explicit `.ts` extensions.
+**`src/build/`** — Vite plugins. `brandAppShell.ts` brands `index.html` and generates the PWA manifest (AC-363). Modules here sit in the Vite config's import graph, and Vite's native config loader does no extension resolution — so their imports carry explicit `.ts` extensions.
 
 **`src/ui/`** — `src/ui/detail/ProjectDetailPage.tsx` is the full page; `ProjectDetailPanel.tsx` is the quick-glance overlay on Kanban / Calendar.
 
@@ -236,7 +237,7 @@ sequenceDiagram
   U->>P: fetch /api/…
   P->>R: schema validation (422), then session (401) and permission (403) gates
   R->>S: delegate
-  S->>D: domain rules, then query (writes via mutate())
+  S->>D: domain rules, then query (audited writes via mutate())
   D-->>U: JSON response → store updates → React re-renders
 ```
 
@@ -257,7 +258,7 @@ Routes live in `src/server/routes/`, and `buildApp()` (`src/server/app.ts`) regi
 
 ## Permission Gating
 
-- **One matrix, two layers.** `src/config/permissions.ts` feeds server gates (`requirePermission`, 403) and UI affordances (`usePermission`). The server is authoritative; UI code asks for a permission, never a role ([api.md §14.3](docs/spec/api.md#143-authorization-rules)).
+- **One matrix, two layers.** `src/config/permissions.ts` feeds server gates (`requirePermission`, 403) and UI affordances (`usePermission`). The server is authoritative. UI code asks for a permission, not a role — except owner-only surfaces (company profile, backup badge) ([api.md §14.3](docs/spec/api.md#143-authorization-rules)).
 - **One exception:** `requireRole('owner')` on `PUT /api/company-profile` — the spec mints no `company_profile:*` key for a singleton.
 - **Navigation:** `src/config/routes.ts` declares each view's access rule as data; nav, route guard and landing derive from it.
 - **Data scoping is orthogonal** ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)): permissions grant the capability, `src/server/repositories/scope.ts` narrows the rows.
@@ -466,12 +467,12 @@ Workers are excluded by the repository scope predicate ([ADR-0019](docs/adr/0019
 - **Site vs billing address**: `projects.siteAddress` (Baustelle) beside `customers.address` (Rechnung) — the standard ERP split; null means "at the billing address". No `addresses` table: no need for several per customer.
 - **Bulk transitions**: not supported.
 - **One DB role** (`pm`) serves app, backup and migrations. The integrity backstop is external (immutable R2 backups, B2 Compliance lock); a least-privilege split would only stop an attacker holding the app but not the host (#418).
-- **Client-side routing**: declarative mode (`<BrowserRouter>`, no data router). `src/config/routes.ts` is the single route table — URL, access rule, per-role landing; nav and guard derive from it.
+- **Client-side routing**: declarative mode (`<BrowserRouter>`, no data router). `src/config/routes.ts` is the single route table — URL, access rule, per-role landing; nav and guard derive from it, landing from its `LANDING_ORDER`.
 - **Escape-to-dismiss**: every Esc-closable surface registers on the LIFO `src/hooks/escapeStack.ts`, so only the topmost closes. Modals use `src/ui/common/useDialogA11y.ts`, the rest `src/hooks/useEscapeKey.ts`; no hand-rolled `keydown` listeners.
 - **Menu close on outside click**: `src/ui/common/MenuBackdrop.tsx`, an invisible overlay, so one click closes the menu without activating what lies beneath (#130).
-- **Errors**: `src/server/error-handler.ts` passes Fastify 4xx through as stable codes, everything else becomes `SERVER_ERROR` ([api.md §14.4.2](docs/spec/api.md#1442-error-principles)). Every `pg.Pool` gets an error listener; uncaught errors log once and exit.
+- **Errors**: `src/server/error-handler.ts` passes Fastify 4xx through as stable codes; an `AppError` keeps its own; any other 5xx or status-less error becomes `SERVER_ERROR` ([api.md §14.4.2](docs/spec/api.md#1442-error-principles)). Every `pg.Pool` gets an error listener; uncaught errors log once and exit.
 - **Configuration boundary** ([architecture.md §12.6](docs/spec/architecture.md#126-feature-manifest-and-operator-confidence)): env schema vs examples in CI (`scripts/check-env-drift.sh`), aggregated validation in deploy pre-flight (`src/server/deploy-preflight-cli.ts`), and a boot-time feature manifest (`src/server/config/features.ts`).
-- **Documentation drift guards** — every check fails the build. The rule: generate what is expensive to repair by hand; check the rest.
+- **Documentation drift guards** — each fails the build (traceability only warns on a `[crit]` coverage gap). The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway (the endpoint table: `buildApp()` route collection); check the rest.
 
 | Kind                      | Guards                                                                                                                                                                                          |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
