@@ -15,7 +15,9 @@
  *
  * These tests assert that what the setup file WRITES is exactly what the
  * sweeper MATCHES. They read `process.env` as the running fork left it — no
- * app, no database.
+ * app, no database. Two more guards for the storage namespace (#481): the
+ * sweeper cannot silently skip, and the prefix reaches every storage client
+ * (a source scan pins a single env → config mapping).
  *
  * The Playwright config carries a fifth copy of the staging convention (it
  * must not import project `.ts` files, by its own stated convention), so that
@@ -23,7 +25,7 @@
  * call-site pin in `env.test.ts`.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +37,7 @@ import {
   TEST_DB_PREFIX,
   TEST_KEY_PREFIX_PATTERN,
   TEST_TAKEOUT_DIR_PATTERN,
+  sweepOrphanStoragePrefixes,
 } from '../../test/integration-globalsetup.js';
 
 const PID = String(process.pid);
@@ -77,6 +80,39 @@ describe('per-fork isolation — setup writes what globalsetup reaps', () => {
     expect(resolved).not.toBe(path.join(os.tmpdir(), 'projekt-manager-takeout'));
     expect(resolved).toBe(process.env.TAKEOUT_STAGING_DIR);
     expect(TEST_TAKEOUT_DIR_PATTERN.test(path.basename(resolved))).toBe(true);
+  });
+});
+
+describe('bucket sweep cannot silently skip (#481)', () => {
+  it('refuses to run without storage config', async () => {
+    // globalSetup runs in vitest's main process, outside `test.env`; a
+    // sweep missing its storage config must throw, not skip — a skip
+    // silently strands every dead fork's prefix.
+    await expect(sweepOrphanStoragePrefixes({})).rejects.toThrow(/STORAGE_ENDPOINT/);
+  });
+});
+
+describe('env → storage config mapping has a single owner (#481)', () => {
+  it('createStorageClient is called only by storage/fromEnv.ts and the client unit test', () => {
+    // A hand-built config is where STORAGE_KEY_PREFIX gets dropped: route
+    // clients written that way left bare-key objects at the test bucket
+    // root, outside every fork's namespace. Every other caller goes
+    // through `createStorageClientFromEnv`. Scans source text — the drift
+    // this guards against compiles and runs green.
+    const srcRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+    const callers = readdirSync(srcRoot, { recursive: true, encoding: 'utf8' })
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => /\bcreateStorageClient\(/.test(readFileSync(path.join(srcRoot, f), 'utf8')))
+      .sort();
+    expect(callers).toEqual([
+      // Unit test of the client: explicit configs (invalid prefixes, a
+      // bogus bucket, an unprefixed control) are its subject.
+      'server/__tests__/storage.test.ts',
+      // The definition.
+      'server/storage/client.ts',
+      // The mapping.
+      'server/storage/fromEnv.ts',
+    ]);
   });
 });
 

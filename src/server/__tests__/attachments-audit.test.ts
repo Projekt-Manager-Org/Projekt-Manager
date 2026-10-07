@@ -60,7 +60,7 @@ import {
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { photoInitBody } from '../../test/fixtures/attachmentInit.js';
 
@@ -144,12 +144,7 @@ async function stageAndComplete(
   const attachmentId = body.attachment.id as string;
 
   const env = getEnv();
-  const s = createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT!,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY!,
-    secretKey: env.STORAGE_SECRET_KEY!,
-  });
+  const s = createStorageClientFromEnv(env);
   await s.upload(
     body.attachment.originalKey,
     Buffer.alloc(120_064, 0xff),
@@ -208,12 +203,7 @@ describe('Attachment audit contract (AC-219)', () => {
     // passes. Sizes match the photo fixture's ciphertext defaults
     // (120_064 + 8_064); content-type is the sentinel per ADR-0024.
     const env = getEnv();
-    const s = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-    });
+    const s = createStorageClientFromEnv(env);
     await s.upload(
       body.attachment.originalKey,
       Buffer.alloc(120_064, 0xff),

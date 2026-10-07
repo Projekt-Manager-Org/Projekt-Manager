@@ -37,7 +37,8 @@ import {
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
-import { createStorageClient, type AttachmentStorageClient } from '../storage/client.js';
+import { type AttachmentStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 
 const LOCK_DAYS = 1;
@@ -105,13 +106,7 @@ describe('Rendered invoice PDF protection (#417)', () => {
     db = conn.db;
     pool = conn.pool;
     const env = getEnv();
-    storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-      region: env.STORAGE_REGION,
-    }) as AttachmentStorageClient;
+    storage = createStorageClientFromEnv(env) as AttachmentStorageClient;
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
 
     const projects = await authGet(ownerToken, '/api/projects?status=rechnung_faellig&limit=200');

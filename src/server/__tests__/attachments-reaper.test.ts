@@ -43,7 +43,7 @@ import type pg from 'pg';
 import { createDatabase } from '../db/connection.js';
 import type { Database } from '../db/connection.js';
 import { seed } from '../seed.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import type { StorageClient } from '../storage/client.js';
 import { getEnv, validateEnvRuntime } from '../config/env.js';
 
@@ -180,12 +180,7 @@ describe('Attachment orphan reaper (AC-213)', () => {
     await seed(db, { force: true });
 
     const env = getEnv();
-    storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-    });
+    storage = createStorageClientFromEnv(env);
 
     // Pick any seeded project — the reaper sweeps globally; project id
     // is incidental to the assertion, just needed as a FK target.

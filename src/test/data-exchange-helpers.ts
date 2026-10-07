@@ -27,7 +27,7 @@ import type { AttachmentStorageClient } from '../server/storage/client.js';
 import type { ServiceLogger } from '../server/services/Logger.js';
 import { ExportService } from '../server/services/ExportService.js';
 import { ImportService } from '../server/services/ImportService.js';
-import { createStorageClient } from '../server/storage/client.js';
+import { createStorageClientFromEnv } from '../server/storage/fromEnv.js';
 import { getEnv } from '../server/config/env.js';
 import { getDb } from './api-helpers.js';
 
@@ -62,14 +62,7 @@ let cachedStorage: AttachmentStorageClient | null = null;
 function defaultStorage(): AttachmentStorageClient {
   if (!cachedStorage) {
     const env = getEnv();
-    cachedStorage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-      region: env.STORAGE_REGION,
-    });
+    cachedStorage = createStorageClientFromEnv(env);
   }
   return cachedStorage;
 }

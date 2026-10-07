@@ -45,7 +45,7 @@ import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
 import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 import { AppError } from '../errors.js';
@@ -1716,12 +1716,7 @@ describe('Unified Data Exchange', () => {
 
     beforeAll(() => {
       const env = getEnv();
-      storage = createStorageClient({
-        endpoint: env.STORAGE_ENDPOINT!,
-        bucket: env.STORAGE_BUCKET,
-        accessKey: env.STORAGE_ACCESS_KEY!,
-        secretKey: env.STORAGE_SECRET_KEY!,
-      });
+      storage = createStorageClientFromEnv(env);
     });
 
     async function objectAbsent(key: string): Promise<boolean> {

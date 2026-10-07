@@ -30,13 +30,14 @@
  * route DOES query at boot, this fails loudly instead of silently
  * touching a real database.
  *
- * `createInvoiceService` (invoices.ts) is the one exception to
- * "registration never touches config beyond presence checks" — it calls
- * `buildInvoiceBinaryDeps()`, which throws unless STORAGE_ENDPOINT /
- * STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY / BINARY_AGE_RECIPIENT are
- * non-empty. It only checks presence and constructs an `S3Client` (no
- * I/O at construction), so the placeholder values below satisfy it —
- * which is also why the CI check needs no DB/MinIO services.
+ * Route plugins that build a storage client are the exception to
+ * "registration never touches config beyond presence checks" —
+ * `createStorageClientFromEnv` throws unless STORAGE_ENDPOINT /
+ * STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY are non-empty, and the invoice
+ * routes additionally require BINARY_AGE_RECIPIENT. They only check
+ * presence and construct an `S3Client` (no I/O at construction), so the
+ * placeholder values below satisfy them — which is also why the CI check
+ * needs no DB/MinIO services.
  *
  * The route reads this shares with `generate-api-surface.ts` — which gate
  * reaches a route, what rule it enforces, which HEAD routes are Fastify's

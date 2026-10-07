@@ -86,7 +86,7 @@ import { createDatabase } from '../db/connection.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
 import { SCHEMA_VERSION, type Envelope } from '../../domain/dataExchange.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { ProjectCrudService } from '../services/ProjectCrudService.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
@@ -168,12 +168,7 @@ function ciphertextBuffer(length: number): Buffer {
 
 function storageClient() {
   const env = getEnv();
-  return createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT!,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY!,
-    secretKey: env.STORAGE_SECRET_KEY!,
-  });
+  return createStorageClientFromEnv(env);
 }
 
 interface PhotoInitBody {

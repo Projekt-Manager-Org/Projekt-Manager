@@ -46,7 +46,7 @@ import {
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { createDatabase } from '../db/connection.js';
 import { bootstrapAdminIfEmpty } from '../bootstrap.js';
@@ -1189,12 +1189,7 @@ describe('AT-124: ancestor-scoped filter unions project + nested entities', () =
     // (50_064); content-type is the `application/octet-stream` sentinel
     // (ADR-0024).
     const env = getEnv();
-    const storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-    });
+    const storage = createStorageClientFromEnv(env);
     await storage.upload(
       initBody.attachment.originalKey,
       Buffer.alloc(50_064, 0xff),

@@ -57,7 +57,7 @@ import {
   type CancelInput,
   type CancelResult,
 } from './InvoiceCancelService.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 
 /** Re-export the read-side opts shape so routes don't import the repo. */
@@ -566,28 +566,15 @@ export class InvoiceService {
  */
 function buildInvoiceBinaryDeps(): InvoiceBinaryDeps {
   const env = getEnv();
-  if (
-    !env.STORAGE_ENDPOINT ||
-    !env.STORAGE_ACCESS_KEY ||
-    !env.STORAGE_SECRET_KEY ||
-    !env.BINARY_AGE_RECIPIENT ||
-    !env.BINARY_AGE_IDENTITY_PATH
-  ) {
+  if (!env.BINARY_AGE_RECIPIENT || !env.BINARY_AGE_IDENTITY_PATH) {
     throw new Error(
-      'Refusing to register invoice routes: STORAGE_* and BINARY_AGE_RECIPIENT / ' +
+      'Refusing to register invoice routes: BINARY_AGE_RECIPIENT / ' +
         'BINARY_AGE_IDENTITY_PATH are required for invoice binary persistence. ' +
         'assertAppServerEnv should have rejected this configuration at boot — see ' +
         'src/server/config/env.ts.',
     );
   }
-  const storage = createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT,
-    publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY,
-    secretKey: env.STORAGE_SECRET_KEY,
-    region: env.STORAGE_REGION,
-  });
+  const storage = createStorageClientFromEnv(env);
   return {
     storage,
     binaryAgeRecipient: env.BINARY_AGE_RECIPIENT,

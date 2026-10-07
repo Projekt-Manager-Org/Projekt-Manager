@@ -47,7 +47,7 @@ import { DataExchangeJobService, toExchangeJobDto } from '../services/DataExchan
 import { ImportService } from '../services/ImportService.js';
 import { runTakeoutImport } from '../services/takeout-import-runner.js';
 import { stagedArtifactPath, sweepStagedArtifact } from '../services/takeout-staging.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import {
   importJobActive,
@@ -78,15 +78,7 @@ export function importJobRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
     const jobs = new DataExchangeJobService(db);
     const env = getEnv();
-    // Storage client — same construction convention as export-jobs.ts.
-    const storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-      region: env.STORAGE_REGION,
-    });
+    const storage = createStorageClientFromEnv(env);
 
     requireSession(app, db);
 

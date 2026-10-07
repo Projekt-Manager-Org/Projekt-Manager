@@ -81,7 +81,8 @@ import {
   EXPECTED_RESTORE_PHRASE,
 } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
-import { createStorageClient, type StorageClient } from '../storage/client.js';
+import { type StorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
 import { stagedArtifactPath } from '../services/takeout-staging.js';
 import { getEnv } from '../config/env.js';
@@ -138,12 +139,7 @@ async function runTakeoutStagingReaper(opts: TakeoutStagingReaperOptions): Promi
 
 function storageClient(): StorageClient {
   const env = getEnv();
-  return createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT!,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY!,
-    secretKey: env.STORAGE_SECRET_KEY!,
-  });
+  return createStorageClientFromEnv(env);
 }
 
 describe('Import job — archive validation, restore fidelity, session, reaper', () => {

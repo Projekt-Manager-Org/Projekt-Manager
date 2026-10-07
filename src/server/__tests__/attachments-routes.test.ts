@@ -48,7 +48,7 @@ import { readFileSync } from 'node:fs';
 import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { AttachmentService } from '../services/AttachmentService.js';
 import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
@@ -164,12 +164,7 @@ function photoInit(projectId: string) {
  */
 function storage() {
   const env = getEnv();
-  return createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT!,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY!,
-    secretKey: env.STORAGE_SECRET_KEY!,
-  });
+  return createStorageClientFromEnv(env);
 }
 
 async function seededProjectIdForWorker1(ownerToken: string): Promise<string> {
@@ -291,7 +286,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(body.originalUpload.headers['Content-Length']).toBe('50064');
     });
 
-    it('pins the presigned PUT URL to the exact originalKey issued on the row', async () => {
+    it('pins the presigned PUT URL to the issued key inside the fork prefix', async () => {
       const res = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -299,17 +294,21 @@ describe('Attachment routes — integration (issue #108)', () => {
       );
       expect(res.statusCode).toBe(201);
       const body = res.json();
-      // The PUT URL's path encodes the storage key (S3 path-style:
-      // `<endpoint>/<bucket>/<key>?X-Amz-…`). A client that swaps the
-      // key would hit a different signed URL — keep the assertion at
-      // the URL level rather than the fields level (which presigned PUT
-      // doesn't have).
-      expect(body.originalUpload.url).toContain(
-        encodeURI(body.attachment.originalKey).replace(/%2F/gi, '/'),
+      // The browser PUTs to exactly this URL (S3 path-style:
+      // `<endpoint>/<bucket>/<key>?X-Amz-…`), so its path is where the
+      // object lands. A client that swaps the key would hit a different
+      // signed URL. A route client built without STORAGE_KEY_PREFIX signs
+      // the bare key — the write escapes the per-fork namespace and the
+      // dead-PID sweep never reaps it (#481).
+      const env = getEnv();
+      expect(env.STORAGE_KEY_PREFIX).toBeTruthy();
+      const objectPath = (key: string) => `/${env.STORAGE_BUCKET}/${env.STORAGE_KEY_PREFIX}${key}`;
+      expect(new URL(body.originalUpload.url).pathname).toBe(
+        objectPath(body.attachment.originalKey),
       );
       if (body.thumbnailUpload) {
-        expect(body.thumbnailUpload.url).toContain(
-          encodeURI(body.attachment.thumbKey).replace(/%2F/gi, '/'),
+        expect(new URL(body.thumbnailUpload.url).pathname).toBe(
+          objectPath(body.attachment.thumbKey),
         );
       }
     });
