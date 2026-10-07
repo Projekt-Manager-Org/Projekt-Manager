@@ -1,33 +1,26 @@
 /**
  * Invoice issuance atom — split off `InvoiceService` per C-SIZE.
  *
- * The issuance transaction is the load-bearing primitive — one DB
- * transaction commits:
+ * The issuance transaction is the load-bearing primitive. One DB
+ * transaction, inside `mutate()`; numbers match the step comments in
+ * `runIssueInsideTx`:
  *
- *   1. Atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE
- *      … RETURNING next_value` on `invoice_sequence` for
- *      `(year, 'invoice')` — single statement covers both
- *      first-of-year and steady-state. Postgres takes a row-exclusive
- *      lock on the row, equivalent to `SELECT FOR UPDATE`, held until
- *      commit — a rollback returns the value to the sequence (gapless
- *      property).
- *   2. Issuer snapshot from the live `company_profile` row.
- *   3. Recipient snapshot — live customer overlaid with body overrides.
- *   4. UPDATE the draft row to `status='issued'`, set `number`,
- *      `issueDate`, `taxMode`, `profile`, `issuer`, `recipient`, `lines`,
- *      `totals`, `performanceDate`.
- *   5. Server-computed totals from `lines + taxMode`.
- *   6. Renderer call.
- *   7. Persist the binary descriptor through the ADR-0022 / ADR-0024
- *      pipeline (`InvoiceBinaryService.persistRendered`).
- *   8. UPDATE the row to attach the binary descriptor reference.
- *   9. UPDATE the parent project `status` to `'abgerechnet'`.
- *  10. Audit row via `mutate()` (action=`invoice:issue`,
- *      ancestor=`('project', projectId)`).
- *  11. Commit. Post-commit: `emitInvoiceChanged()` AND
- *      `emitProjectChanged()` (AC-287, AT-111 — the project status
- *      flipped to `abgerechnet` in the same tx, so both surfaces
- *      invalidate).
+ *   1–3. Preconditions: lines, performance date and recipient complete,
+ *        project in `rechnung_faellig`, company profile complete for
+ *        the tax mode — all before any sequence lock is taken.
+ *   4.   Allocate the gapless `(year, 'invoice')` number (row lock held
+ *        until commit; a rollback returns the value).
+ *   5.   Build the issuer snapshot (the recipient is already on the
+ *        draft); compute totals.
+ *   6.   Render — BEFORE the row turns `issued`, because the
+ *        immutability trigger rejects any later UPDATE of an issued
+ *        row except the cancel flip.
+ *   7.   Persist the encrypted PDF (`InvoiceBinaryService.persistRendered`).
+ *   8.   ONE UPDATE: draft → issued, snapshot and descriptor together.
+ *   9.   Flip the parent project to `abgerechnet`.
+ *   Then `mutate()` writes the `invoice:issue` audit row and commits.
+ *   Post-commit: `emitInvoiceChanged()` and `emitProjectChanged()`
+ *   (AC-287, AT-111).
  */
 
 import { eq, and } from 'drizzle-orm';
