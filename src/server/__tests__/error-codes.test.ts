@@ -6,7 +6,7 @@
  * `CHECKED:error-codes` block publishes it (pinned here, in both drift
  * directions — a code the array gained and a code the block invented are
  * the same equality failure). Why checked rather than generated:
- * ARCHITECTURE.md § Error-Code Catalogue.
+ * ARCHITECTURE.md § Design Decisions (documentation drift guards).
  *
  * The rest is what neither the compiler nor the doc check can see. A
  * duplicate entry: `(typeof ERROR_CODES)[number]` deduplicates as a

@@ -1,9 +1,9 @@
 /**
  * Emits `docs/api/openapi.json` — the OpenAPI 3.1 document AC-351
  * publishes, built from the routes `buildApp()` registers and their
- * native Fastify `schema:` blocks. What the artifact is for, why 3.1,
- * why it is not in `docs/spec/`, and why validity is gated separately
- * from drift: ARCHITECTURE.md § OpenAPI Document Generation.
+ * native Fastify `schema:` blocks. Why 3.1, why requests only, and why
+ * validity is gated separately from drift: docs/api/README.md § OpenAPI
+ * Document.
  *
  * Usage:
  *   npx tsx scripts/generate-openapi.ts           # write in place
@@ -128,8 +128,7 @@ const DOC_OPTIONS: OpenApiDocOptions = {
       'registered by buildApp() via `npx tsx scripts/generate-openapi.ts`; ' +
       'CI fails on drift. Describes requests and the session requirement ' +
       'only — responses are not declared yet. The normative API contract ' +
-      'is docs/spec/api.md §14.2; see ARCHITECTURE.md § OpenAPI Document ' +
-      'Generation.',
+      'is docs/spec/api.md §14.2; see docs/api/README.md.',
     // 3.1 accepts an SPDX `identifier` in place of 3.0's `url`. Kept in
     // step with `LICENSE` and package.json's `license` field.
     license: { name: 'GNU Affero General Public License v3.0 only', identifier: 'AGPL-3.0-only' },

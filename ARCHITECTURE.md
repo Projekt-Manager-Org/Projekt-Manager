@@ -16,10 +16,6 @@ For the full product specification, see [docs/spec/](docs/spec/index.md). `AC-NN
   - [Configuration Files](#configuration-files)
 - [Request Lifecycle](#request-lifecycle)
 - [API Surface](#api-surface)
-  - [Endpoint Notes](#endpoint-notes)
-  - [API Surface Generation](#api-surface-generation)
-  - [OpenAPI Document Generation](#openapi-document-generation)
-  - [Error-Code Catalogue](#error-code-catalogue)
 - [Permission Gating](#permission-gating)
 - [How to Extend](#how-to-extend)
   - [Adding a new entity](#adding-a-new-entity-eg-supplier)
@@ -299,174 +295,12 @@ React re-renders affected components
 
 ## API Surface
 
-All HTTP endpoints exposed by the Fastify server. Concrete URL structure lives here because [`docs/spec/api.md`](docs/spec/api.md) is intentionally stack-agnostic (operations, inputs, outputs — not URLs).
+Routes live in `src/server/routes/`, and `buildApp()` (`src/server/app.ts`) registers every one — `eslint.config.js` fails the build on a route mounted elsewhere, so generated artifacts see the whole surface.
 
-<!-- GENERATED:api-surface:START — generated from the routes buildApp() registers (src/server/app.ts); do not hand-edit. See § API Surface Generation below (AC-352). -->
-
-| Method  | Path                                                | Auth    | Access                 | Rate limit    |
-| ------- | --------------------------------------------------- | ------- | ---------------------- | ------------- |
-| OPTIONS | `*`                                                 | none    | —                      | none          |
-| GET     | `/api/health`                                       | none    | —                      | none          |
-| POST    | `/api/auth/login`                                   | none    | —                      | 5 / 1 minute  |
-| POST    | `/api/auth/logout`                                  | session | —                      | none          |
-| GET     | `/api/auth/me`                                      | session | —                      | none          |
-| PATCH   | `/api/auth/me`                                      | session | —                      | none          |
-| POST    | `/api/auth/change-password`                         | session | `auth:change-password` | 5 / 1 minute  |
-| GET     | `/api/projects`                                     | session | `project:read`         | none          |
-| POST    | `/api/projects`                                     | session | `project:create`       | none          |
-| GET     | `/api/projects/:id`                                 | session | `project:read`         | none          |
-| POST    | `/api/projects/:id/transition/forward`              | session | `project:transition`   | none          |
-| POST    | `/api/projects/:id/transition/backward`             | session | `project:transition`   | none          |
-| PATCH   | `/api/projects/:id/dates`                           | session | `project:dates`        | none          |
-| PATCH   | `/api/projects/:id`                                 | session | `project:update`       | none          |
-| DELETE  | `/api/projects/:id`                                 | session | `project:delete`       | none          |
-| DELETE  | `/api/projects/:id/purge`                           | session | `project:purge`        | none          |
-| POST    | `/api/projects/:id/restore`                         | session | `project:delete`       | none          |
-| GET     | `/api/customers`                                    | session | `customer:read`        | none          |
-| GET     | `/api/customers/:id`                                | session | `customer:read`        | none          |
-| POST    | `/api/customers`                                    | session | `customer:write`       | none          |
-| PATCH   | `/api/customers/:id`                                | session | `customer:write`       | none          |
-| DELETE  | `/api/customers/:id`                                | session | `customer:delete`      | none          |
-| GET     | `/api/users`                                        | session | `user:read`            | none          |
-| GET     | `/api/users/:id`                                    | session | `user:read`            | none          |
-| POST    | `/api/users`                                        | session | `user:manage`          | none          |
-| PATCH   | `/api/users/:id`                                    | session | `user:manage`          | none          |
-| DELETE  | `/api/users/:id`                                    | session | `user:delete`          | none          |
-| POST    | `/api/users/:id/deactivate`                         | session | `user:manage`          | none          |
-| POST    | `/api/users/:id/reactivate`                         | session | `user:manage`          | none          |
-| POST    | `/api/users/:id/reset-password`                     | session | `user:manage`          | none          |
-| GET     | `/api/workers`                                      | session | `project:read`         | none          |
-| POST    | `/api/export-jobs`                                  | session | `data:export`          | none          |
-| GET     | `/api/export-jobs`                                  | session | `data:export`          | none          |
-| GET     | `/api/export-jobs/:id`                              | session | `data:export`          | none          |
-| GET     | `/api/export-jobs/:id/download`                     | session | `data:export`          | none          |
-| POST    | `/api/import-jobs`                                  | session | `data:restore`         | none          |
-| GET     | `/api/import-jobs`                                  | session | `data:restore`         | none          |
-| GET     | `/api/import-jobs/:id`                              | session | `data:restore`         | none          |
-| HEAD    | `/api/import-jobs/:id/archive`                      | session | `data:restore`         | none          |
-| PATCH   | `/api/import-jobs/:id/archive`                      | session | `data:restore`         | none          |
-| POST    | `/api/extract`                                      | session | `customer:write`       | none          |
-| GET     | `/api/audit`                                        | session | `audit:read`           | none          |
-| GET     | `/api/audit/:id`                                    | session | `audit:read`           | none          |
-| GET     | `/api/notification-rules`                           | session | `notifications:manage` | none          |
-| GET     | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
-| POST    | `/api/notification-rules`                           | session | `notifications:manage` | none          |
-| PATCH   | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
-| DELETE  | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
-| POST    | `/api/push-subscriptions`                           | session | —                      | 20 / 1 minute |
-| DELETE  | `/api/push-subscriptions`                           | session | —                      | 20 / 1 minute |
-| DELETE  | `/api/push-subscriptions/:id`                       | session | —                      | 20 / 1 minute |
-| GET     | `/api/projects/:id/attachments`                     | session | `attachment:read`      | none          |
-| POST    | `/api/projects/:id/attachments/init`                | session | `attachment:write`     | none          |
-| POST    | `/api/projects/:id/attachments/:attId/complete`     | session | `attachment:write`     | none          |
-| DELETE  | `/api/projects/:id/attachments/:attId`              | session | `attachment:hide`      | none          |
-| GET     | `/api/projects/:id/attachments/trash`               | session | `attachment:trash`     | none          |
-| POST    | `/api/projects/:id/attachments/:attId/restore`      | session | `attachment:trash`     | none          |
-| GET     | `/api/projects/:id/attachments/:attId/download-url` | session | `attachment:read`      | none          |
-| POST    | `/api/projects/:id/attachments/bulk-fetch`          | session | `attachment:read`      | none          |
-| GET     | `/api/projects/:id/storage-usage`                   | session | `project:read`         | none          |
-| GET     | `/api/storage-usage`                                | session | `data:export`          | none          |
-| GET     | `/api/invoices`                                     | session | —                      | none          |
-| GET     | `/api/invoices/years`                               | session | —                      | none          |
-| GET     | `/api/invoices/:id`                                 | session | —                      | none          |
-| POST    | `/api/invoices`                                     | session | `invoice:write`        | none          |
-| PATCH   | `/api/invoices/:id`                                 | session | `invoice:write`        | none          |
-| DELETE  | `/api/invoices/:id`                                 | session | `invoice:write`        | none          |
-| POST    | `/api/invoices/:id/issue`                           | session | `invoice:write`        | none          |
-| POST    | `/api/invoices/:id/cancel`                          | session | `invoice:write`        | none          |
-| GET     | `/api/invoices/:id/pdf`                             | session | `invoice:read`         | none          |
-| POST    | `/api/invoices/export`                              | session | `invoice:read`         | none          |
-| GET     | `/api/company-profile`                              | session | —                      | none          |
-| PUT     | `/api/company-profile`                              | session | Role: owner            | none          |
-| GET     | `/api/events`                                       | session | —                      | none          |
-| GET     | `/api/push/vapid-public-key`                        | none    | —                      | none          |
-
-<!-- GENERATED:api-surface:END -->
-
-Requests to session-protected endpoints without a valid session return `401 UNAUTHENTICATED` (`"Nicht angemeldet."`); authenticated requests failing the **Access** rule return `403 NOT_PERMITTED` (`"Keine Berechtigung."`). Both gates live in `src/server/middleware/auth.ts` — `requireSession` applies the session check to every route in a plugin, `requirePermission` and `requireRole` gate single routes — and permission keys resolve against the role matrix in `src/config/permissions.ts` (see [spec §14.3](docs/spec/api.md#143-authorization-rules)).
-
-`—` under **Access** means no gate at the route boundary, which is not "open to every role". Several reads narrow rows by the caller's scope instead of rejecting the call (ADR-0019): a worker's `GET /api/invoices` answers `200` with an empty set, because a permission gate there would collapse the out-of-scope and unknown-id arms into one status (AC-298). Where existence is not a secret at the role boundary, an out-of-scope row answers `403` and an unknown id `404` (AC-147, AC-214).
-
-`OPTIONS *` is `@fastify/cors`'s preflight route — not an endpoint anyone calls directly, but in the table because the table is the app's route set without exceptions.
-
-Rate limits are the production values (`getRateLimit()`, `src/server/config/index.ts`). The login default is environment-aware — 5/min in production, 30/min in dev and test so the Playwright suite's per-context logins are not throttled — and `LOGIN_RATE_LIMIT_MAX` overrides both.
-
-Route definitions live in `src/server/routes/`, and every one of them is registered by `buildApp()` in `src/server/app.ts` — including `/api/health`, whose probe dependencies (`pg.Pool`, `StorageClient`) `start.ts` passes in. A route mounted on the instance `buildApp()` returns would be invisible to both generated artifacts below, so `eslint.config.js` fails the build on one.
-
-**One exception, deliberate and bounded:** in production `start.ts` calls `registerStaticAssets` (`src/server/staticCache.ts`), and `@fastify/static` registers a HEAD+GET pair per built file under `dist/` on the returned instance. Those are the compiled SPA's own assets, not API surface, so neither artifact describes them; the call carries an inline `eslint-disable` naming the reason rather than slipping past a selector that happens not to match it.
-
-### Endpoint Notes
-
-What a route declaration cannot carry and [api.md §14.2](docs/spec/api.md#142-operations) does not already own. An endpoint absent here is described there.
-
-- `GET /api/health` — probes `SELECT 1` and a `HeadBucket` in parallel, returns `{status,checks:{db,storage}}`, `503` on either failure (#48). Built without probe dependencies it reports `degraded` rather than a placebo `200`.
-- `POST /api/auth/login` sets the HttpOnly `session` cookie. For role `owner` it and `GET /api/auth/me` both carry `backupStatus`, so the badge is populated on either session-establishment path (AC-170). `PATCH /api/auth/me` is self-scope only — it cannot affect another user.
-- `POST /api/projects` and `POST /api/customers` accept a client-supplied id, which is what makes a retried create idempotent (`idempotency.ts`).
-- The two `/transition/` endpoints require `expectedStatus`; that is what makes a concurrent double-advance deterministic (AC-94).
-- `DELETE /api/projects/:id` archives (soft-delete, ADR-0017); `/purge` hard-deletes an already-archived project and cascades to object storage (AC-218). `DELETE /api/customers/:id` is refused while an active project references the customer, and purges that customer's already-archived projects in the same transaction.
-- `GET /api/audit` narrows destructive actions by role — owner unfiltered, office blind to purges, user deletions and role changes (ADR-0021).
-- `POST /api/extract` needs `OPENROUTER_API_KEY`; the route registers without it and the call fails (ADR-0016).
-- The export and import job sets are asynchronous: create answers `201` with a `pending` row and the client polls. Import streams the archive to `.../archive` in tus-style chunks — `HEAD` for the resume offset, `PATCH` to append — and reaching `Upload-Length` is what fires the restore. The destructive guard (`override` plus a matching confirmation phrase) runs at create time, before a byte is uploaded (AC-329, [api.md §14.2.4](docs/spec/api.md#1424-unified-data-exchange)).
-- The attachment endpoints are the client-side-encryption path end to end — § Attachments Module carries the DEK envelope, the two-blob layout and the presigned-URL contract. `download-url` takes `?variant=original|thumbnail`.
-- `GET /api/events` is the single SSE channel; consumers refetch the read endpoint matching each event (`src/config/sseEvents.ts`). The session is re-validated every heartbeat and the stream ends on revocation (AC-275, ADR-0025).
-
-### API Surface Generation
-
-The table above is generated from the routes `buildApp()` registers (AC-352), the same way the OpenAPI document is generated (AC-351). `scripts/generate-api-surface.ts` builds the app, collects every route through an `onRoute` hook, and renders the five columns between the `GENERATED:api-surface` markers; `--check` fails CI on drift (`npm run check:api-surface`, plus the scenario harness `scripts/__tests__/check-api-surface.test.sh`).
-
-The table is complete by construction. What an endpoint _means_ lives in § Endpoint Notes rather than in a `Purpose` column restating [api.md §14.2](docs/spec/api.md#142-operations).
-
-**Access is derived from the enforcement, not restated beside it.** A plugin-level `preHandler` is invisible to `onRoute`, so `requireSession` writes an `auth: 'session'` route-config marker in the same call that installs the hook; absence of that marker is what makes an endpoint public, and there is no list of public endpoints to fall out of date. `requirePermission` and `requireRole` return closures — callable but not readable — so each carries its keys as data (`requiredPermissions`, `requiredRoles`), the same move AC-349 made for `RouteAccess`. The column therefore publishes the rule, not the role set the rule happens to resolve to today.
-
-**One gate combination fails the build rather than publishing.** `requirePermission` and `requireRole` both reject a request carrying no authenticated user, and only `createAuthMiddleware` ever attaches one — so an access gate no session gate reaches is a route that answers 401 to every caller, including one holding the permission. Both generators would publish it as public (`Auth: none` beside a populated `Access` column here; `security: []` in the OpenAPI document), so the guard sits with the introspection both read and exits 2 from either generator.
-
-**Reached means reached first.** Fastify runs a route's `preHandler` array in declaration order, so `[requirePermission(…), authenticate]` carries both gates and is still dead: the access gate runs first and finds no user. The guard therefore compares positions rather than testing presence — and needs no position for `requireSession`'s marker, because that gate is an instance hook, and every instance hook runs before any route-level one. No such route exists in either direction; nothing but this stops the next one. Both generators' calls are pinned by a fault-injection case in their own harness (`$API_SURFACE_INJECT_ORPHAN_GATE`, `$OPENAPI_INJECT_ORPHAN_GATE`, `$OPENAPI_INJECT_MISORDERED_GATE`), so neither call can be deleted while the suites stay green.
-
-**Both generators read the routes through `scripts/lib/route-introspection.ts`** — which gate reaches a route, what rule it enforces, which HEAD routes are Fastify's automatic companions. Two copies agreeing only by comment is the failure mode these generators exist to remove; it applies to the generators themselves.
-
-**HEAD companions are filtered.** Fastify exposes a HEAD route for every GET. Those are dropped by handler identity — same URL, same handler reference — so a HEAD row means a route someone declared deliberately, today only the tus offset probe.
-
-**Prose below the end marker is never overwritten**: coverage and access rules are generated, meaning is hand-written. That is why the generator does not also try to produce § Endpoint Notes.
-
-### OpenAPI Document Generation
-
-`docs/api/openapi.json` is generated from the native Fastify `schema:` blocks the routes already carry — no hand-authored OpenAPI annotations (AC-351). `scripts/generate-openapi.ts` builds the app via `buildApp({ openapi: … })` (the option `@fastify/swagger` registers behind, carrying the document's header), calls `app.swagger()`, and writes the Prettier-formatted result; `--check` mode fails CI on drift (`npm run check:openapi`, plus the scenario harness `scripts/__tests__/check-openapi-doc.test.sh`).
-
-**Coverage is exactly `buildApp()`, and enforced in both directions.** `app.swagger()` reports the routes registered on the instance the generator built, so the API surface is complete only while every API route is registered by the factory — which the `no-restricted-syntax` rule in `eslint.config.js` enforces (see § API Surface), with the static-asset registration as its one stated exception. Registration alone is not sufficient, though: `@fastify/swagger` drops every HEAD route unless it opts in — `HEAD /api/import-jobs/:id/archive`, the tus offset probe normative in [api.md §14.2.4](docs/spec/api.md#1424-unified-data-exchange), is one. The generator therefore fails the build (exit 2) on a registered route the document does not publish, excluding only Fastify's automatic HEAD companions (matched by handler identity, as § API Surface Generation does) and routes carrying `@fastify/swagger`'s own `schema: { hide: true }` opt-out, which `@fastify/cors` sets on its `OPTIONS *` preflight. Both exclusions are structural; neither is a list of names.
-
-A route with no `schema:` block still appears, carrying only what is derived from the route rather than from a schema: `/api/health` publishes `{"get": {"security": []}}`, which says the endpoint exists and needs no session, and nothing more. **14 of the document's 74 operations carry nothing beyond that security requirement** — every registration that declares no `schema:` block. The count is stated here so the gap is visible from the document rather than something a reader has to count.
-
-**Not in `docs/spec/`, deliberately.** The spec is the upstream contract the app must fulfil; this artifact is derived from the code, so it is downstream by construction (A-TRDO). Filing it under `docs/spec/` would point CI at enforcing that an upstream contract matches the implementation — a route schema regressing would silently drag the "spec" along with it. [api.md §14.2](docs/spec/api.md#142-operations) stays normative and hand-authored; `openapi.json` is a machine-readable view of the request surface only, and where the two disagree, api.md wins.
-
-The document targets OpenAPI **3.1.x**, not 3.0.x, for two reasons: 3.0's Draft-4-based Schema Object rejects array-valued `type` (the `type: ['string', 'null']` nullable idiom used throughout the route schemas) and numeric `exclusiveMinimum`, both of which 3.1's JSON Schema 2020-12 Schema Object accepts natively; and 3.1 makes `responses` optional on the Operation Object, which 3.0 required.
-
-That second point is what keeps the artifact honest. No route declares a `response:` schema today, and `@fastify/swagger` fills the gap with a synthetic `200 Default Response` derived from nothing — false for every operation (nine routes return 201, eight return 204). The generator strips it, so the document is silent about responses rather than wrong about them, and **documents requests only** is literally true. The all-empty `components` block `@fastify/swagger` emits (`{"schemas": {}}`) goes for the same reason — the block the published document does carry holds nothing but the `securitySchemes` entry added below.
-
-**Two things are gated, not one.** `--check` catches _drift_ (generated ≠ committed). On its own that would stay green on a structurally invalid document, because both sides would be equally wrong. So the generator also validates every document it produces against the OpenAPI 3.1 schema (`@seriousme/openapi-schema-validator`) before writing or comparing, and asserts the version it validated as — the validator picks its schema from the document's own `openapi:` field, so a document that silently declared 3.0 would otherwise be checked against 3.0's schema and pass. `$OPENAPI_INJECT_INVALID` is the fault-injection seam that lets the scenario harness prove the gate is wired; without it the gate is unfalsifiable, since a document built from the real routes is always valid.
-
-A linter (`@redocly/cli`) is deliberately **not** the gate. Its remaining findings — `operation-summary`, `operation-operationId` — are completeness, not spec conformance, and were dropped in #282 for want of a consumer. Structural errors are zero, and that is the property enforced here.
-
-**The session requirement is derived, not hand-listed (AC-353).** The generator collects the registered routes through an `onRoute` hook — the same mechanism, and the same after-`buildApp()`-before-`ready()` timing, as § API Surface Generation — and annotates each operation from the gate that reaches its route: `[{ "sessionCookie": [] }]` where `requireSession`'s `auth: 'session'` marker or a route-level `requiresSession` gate applies, `[]` (explicitly "no auth needed") where neither does. So the seven ungated operations publish as public because no gate reaches them, not because an allowlist says so — the argument AC-352 makes for the Auth column, applied to the same data.
-
-Only the scheme itself is hand-written: `sessionCookie`, an `apiKey` in the `session` cookie. No route declaration carries that fact, so nothing can derive it.
-
-Two things this deliberately does not publish. **Permission keys do not ride in the requirement array** — scopes are meaningful only on `oauth2` / `openIdConnect` schemes, so `{"sessionCookie": ["project:read"]}` would be valid syntax asserting nothing; the permission dimension stays in § API Surface. And the requirement is never inferred: an operation the generator cannot trace back to a registered route fails the build (exit 2) rather than publishing with no requirement at all, because that direction advertises a protected endpoint as public. Together with the coverage check above, the route set and the operation set are pinned to each other in both directions — and the third door into the same fail-open claim, an access gate on a route no session gate reaches, is closed at the route side (see § API Surface Generation).
-
-`@fastify/swagger` is a **devDependency**, imported lazily inside the `opts.openapi` branch in `src/server/app.ts`. The two facts that decide the import style: esbuild runs with `--packages=external`, so the specifier survives bundling verbatim either way; and the Dockerfile runs `npm prune --omit=dev` after the build, so the package is not in the runtime image. A static top-level import would therefore be evaluated on every production boot against a `node_modules` that no longer contains it — the container would fail to start. Lazily, the specifier is still in `dist/server/start.js` (one occurrence, inside the branch) but is never reached, because nothing in production passes `openapi`. The branch is a build-tooling seam, not dead code (C-DEAD): its caller is the generator, and CI exercises it on every run.
-
-One gap remains by decision: **response/error schemas**, dropped in #282 while the API has no external consumer. A route that gains a `response:` schema is published automatically. Adding a `response:` schema is not a documentation-only change — Fastify serializes through `fast-json-stringify` once one is present, so a field the schema omits disappears from the wire.
-
-**Where the code sits.** `scripts/generate-openapi.ts` owns boot, env pinning, drift and I/O. Everything that decides what the document may claim — the strip, the two coverage guards, the security annotation, the validity gate — is decided by `(doc, routes)` alone in `scripts/lib/openapi-document.ts`, callable without booting an app (each mutates the document in place or throws; none is pure). Both guards index operations through one `operationKey`, so the pair cannot come to disagree about what identifies an operation. The `schema: { hide: true }` opt-out is read more strictly there than `@fastify/swagger` reads it — the plugin hides a strict superset — so the divergence fails closed, costing a build break that demands `hide: true` spelled exactly, never a silently shrunken surface.
-
-The document's header — the version it declares, `info`, `servers` — lives in `scripts/generate-openapi.ts` and reaches the factory as `buildApp({ openapi: … })`. `app.ts` only wires it through: what the artifact says about itself is a documentation decision, and `app.ts` ships in the production bundle. `info.version` is a fixed constant there, not `package.json`'s version: the app's release version says nothing about whether the HTTP surface changed, and coupling them would turn every release bump into a red build until someone regenerated the artifact.
-
-`lint-staged` is deliberately **not** extended to run this check on commit. The generator boots the whole Fastify app; that is seconds of latency on every commit touching `src/server/`, against a guard CI already enforces on every push.
-
-### Error-Code Catalogue
-
-`ERROR_CODES` (`src/server/errors.ts`) is the one runtime form of the code set; `ErrorCode` is derived from it (`(typeof ERROR_CODES)[number]`) — a union has no runtime form, so nothing can read it, publish it, or emit it as an OpenAPI enum. Every code is minted by a named factory in the same module.
-
-[api.md §14.4.1](docs/spec/api.md#1441-error-categories) mirrors the array between `CHECKED:error-codes` markers; `src/server/__tests__/error-codes.test.ts` pins it (AC-354), and absent markers fail rather than pass vacuously. Checked rather than generated, per the rule under [Design Decisions § Documentation drift guards](#design-decisions-not-adr-worthy). Only the set is pinned — the per-code prose below the end marker exists nowhere in the code and stays hand-written.
+- **Contract:** [api.md §14.2](docs/spec/api.md#142-operations).
+- **Endpoint table and OpenAPI document** (generated, CI-checked): [docs/api/](docs/api/README.md).
+- **Error codes:** `ERROR_CODES` in `src/server/errors.ts`, mirrored in [api.md §14.4.1](docs/spec/api.md#1441-error-categories) (AC-354).
+- **Access model:** [§ Permission Gating](#permission-gating).
 
 ---
 
@@ -474,7 +308,7 @@ The document's header — the version it declares, `info`, `servers` — lives i
 
 The role-to-permission matrix in `src/config/permissions.ts` is the single source of truth for both layers: server routes import `hasPermission` via `requirePermission(...)` (403 on violation), and UI components import it via the `usePermission('<permission>')` hook in `src/hooks/usePermission.ts` (hide the affordance). Client-side gating is UX, not security — the server check is always authoritative. UI code never hardcodes role names; it asks for a permission. See [spec AC-121](docs/spec/verification.md) for the invariant and [§14.3](docs/spec/api.md#143-authorization-rules) for the server contract.
 
-`requireRole(...)` is the single, spec-sanctioned exception: `PUT /api/company-profile` is owner-only and the spec deliberately declines to mint `company_profile:*` keys for one singleton ([api.md §14.2.15](docs/spec/api.md#14215-company-profile-operations)). It is a route gate like any other, so [§ API Surface](#api-surface) publishes it as `Role: owner` rather than as a blank cell.
+`requireRole(...)` is the single, spec-sanctioned exception: `PUT /api/company-profile` is owner-only and the spec deliberately declines to mint `company_profile:*` keys for one singleton ([api.md §14.2.15](docs/spec/api.md#14215-company-profile-operations)). It is a route gate like any other, so the [endpoint table](docs/api/README.md#endpoints) publishes it as `Role: owner` rather than as a blank cell.
 
 The published matrix at [api.md §14.3](docs/spec/api.md#143-authorization-rules) mirrors `ROLE_PERMISSIONS` over the production roles between `CHECKED:permissions-table` markers; `src/config/__tests__/permissions.test.ts` fails on drift (AC-343). Production-vs-test-only role classification is `IS_TEST_ONLY_ROLE: Record<Role, boolean>` in the same file — exhaustive over `Role` by construction, mirroring `ROLE_CLASSIFICATION` in `src/server/repositories/scope.ts`. `ROLE_KEYS` (`src/config/roleKeys.ts`) and every other consumer of the production-role set (e.g. the user-management route schemas) derive from that classification rather than hand-listing roles.
 
@@ -522,7 +356,7 @@ Backend changes are usually not needed — the store exposes the full project li
 
 1. **Where**: extend an existing route file if it belongs to that entity/group; create a new one otherwise.
 2. **Validation**: Fastify JSON Schema on the route (see `projects.ts`). Don't validate inside the handler.
-3. **Auth**: `requireSession(app, db)` once per plugin; `requirePermission('...')` per route. Add new keys to `src/config/permissions.ts` (shared with the client-side `usePermission` hook — see [§ Permission Gating](#permission-gating)). Both gates carry their rule as data, so [§ API Surface](#api-surface) picks the endpoint up on its next generation — there is no table row to add by hand.
+3. **Auth**: `requireSession(app, db)` once per plugin; `requirePermission('...')` per route. Add new keys to `src/config/permissions.ts` (shared with the client-side `usePermission` hook — see [§ Permission Gating](#permission-gating)). Both gates carry their rule as data, so the [endpoint table](docs/api/README.md#endpoints) picks the endpoint up on its next generation — there is no table row to add by hand.
 4. **Delegate to service**. Never call repos from a route ([spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries)).
 5. **Errors**: use factories from `src/server/errors.ts` (`notFound()`, `validationError()`, etc.). Never throw raw `Error`. For endpoints accepting composite payloads, translate DB constraint violations via the service layer: classify with `extractSqlState()` / `extractPgConstraint()` and disambiguate against the named constraints in `src/server/db/constraints.ts` (see `ProjectCrudService.createProjectWithClientId` for the 23505 pattern).
 6. **Register** in `src/server/app.ts`.
@@ -791,7 +625,7 @@ One row per deployment, pinned by `UNIQUE(singleton) + CHECK(singleton = true)`.
 - **Menu close on outside click**: shared `src/ui/common/MenuBackdrop.tsx` primitive — invisible fixed-inset overlay rendered as a sibling before the open dropdown. The browser hit-tests the backdrop first, so a single click closes the menu without also activating the element underneath. Replaces the document-level `mousedown` listener pattern (cause of issue #130).
 - **Global error handler — 4xx pass-through.** The Fastify error handler in `src/server/error-handler.ts` (installed by `app.ts`) honors `error.statusCode` whenever it is in the 4xx range, mapping the error to an `AppError` that preserves the original statusCode and surfaces a stable machine-readable code (`VALIDATION_ERROR` for transport-layer rejections at 400/413/415, `ROUTE_NOT_FOUND` for 404 from `setNotFoundHandler`). 5xx FastifyErrors and any error without a statusCode collapse to `SERVER_ERROR`. The mapping helper (`mapFastify4xx` in `src/server/errors.ts`) is the only place that consumes Fastify's `code`/`statusCode` shape — adding a new transport-layer rejection class is a one-file change there. Pins [AC-247](docs/spec/verification.md#157-engineering) / [api.md §14.4.2](docs/spec/api.md#1442-error-principles).
 - **DB pool + process error supervision.** Every `pg.Pool` gets the canonical 'error' listener via `attachPoolErrorHandler` in `src/server/db/connection.ts`; `src/server/start.ts` also registers `uncaughtException` and `unhandledRejection` handlers that emit a single structured log line and exit non-zero. Pool listeners are required by node-postgres — idle clients emit 'error' when their backend is terminated externally (`scripts/ops/sync-restore-vps.sh` runs `pg_terminate_backend` before restoring the DB), and without a listener the process crashes. The container restart then wipes the tmpfs binary identity per [ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md). Process-level handlers are the Node.js production baseline for anything that escapes module-level handling.
-- **Documentation drift guards.** Six checks in the `lint` job plus three in the test job, each failing the build rather than warning. **The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway; check the rest.** A short block with a failing test pointing at it is a quick hand fix, cheaper than a generator with its own harness and CI steps; the OpenAPI document is not (#282). Two _generate_ a published artifact from the code that owns it and fail on drift: the OpenAPI document (AC-351, `scripts/generate-openapi.ts` — see [§ OpenAPI Document Generation](#openapi-document-generation) for what it does beyond drift) and the § API Surface table (AC-352, `scripts/generate-api-surface.ts` — short, but checking it would take the same `buildApp()` route collection that generating it does). Three _check_ a short hand-written block between `CHECKED:` markers against the code, as unit tests in the test job reading it through `src/test/checkedBlock.ts`: the role-permission matrix (AC-343, `src/config/__tests__/permissions.test.ts`), the per-role nav matrix and its landing order (AC-349, `src/config/__tests__/routes.test.ts`), and the error-code catalogue (AC-354, `src/server/__tests__/error-codes.test.ts` — see [§ Error-Code Catalogue](#error-code-catalogue)). Four _verify_ without a source to compare against, because the prose they protect is not derivable: every repository path cited in a code span resolves (AC-347, `scripts/check-doc-paths.sh`); the Module Map and the tree agree in both directions for any directory with a `#### <dir>` subsection (AC-350, `scripts/check-module-map.sh`, with the gated set recorded in `scripts/module-map-gated.txt`); every relative link and `#anchor` resolves (AC-348, `lychee`); every spec §15 AC has a row in `docs/testing/traceability.md` and vice versa (S-ACTR, `scripts/check-traceability.sh` — a `[crit]` AC with no test reference warns without failing). Note what generation does not buy: a generated artifact agrees with its source by construction, so it cannot catch an unintended change to that source — the source's own tests have to.
+- **Documentation drift guards.** Six checks in the `lint` job plus three in the test job, each failing the build rather than warning. **The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway; check the rest.** A short block with a failing test pointing at it is a quick hand fix, cheaper than a generator with its own harness and CI steps; the OpenAPI document is not (#282). Two _generate_ a published artifact from the code that owns it and fail on drift: the OpenAPI document (AC-351, `scripts/generate-openapi.ts` — see [docs/api/](docs/api/README.md#openapi-document) for what it does beyond drift) and the endpoint table in `docs/api/README.md` (AC-352, `scripts/generate-api-surface.ts` — short, but checking it would take the same `buildApp()` route collection that generating it does). Three _check_ a short hand-written block between `CHECKED:` markers against the code, as unit tests in the test job reading it through `src/test/checkedBlock.ts`: the role-permission matrix (AC-343, `src/config/__tests__/permissions.test.ts`), the per-role nav matrix and its landing order (AC-349, `src/config/__tests__/routes.test.ts`), and the error-code catalogue (AC-354, `src/server/__tests__/error-codes.test.ts`). Four _verify_ without a source to compare against, because the prose they protect is not derivable: every repository path cited in a code span resolves (AC-347, `scripts/check-doc-paths.sh`); the Module Map and the tree agree in both directions for any directory with a `#### <dir>` subsection (AC-350, `scripts/check-module-map.sh`, with the gated set recorded in `scripts/module-map-gated.txt`); every relative link and `#anchor` resolves (AC-348, `lychee`); every spec §15 AC has a row in `docs/testing/traceability.md` and vice versa (S-ACTR, `scripts/check-traceability.sh` — a `[crit]` AC with no test reference warns without failing). Note what generation does not buy: a generated artifact agrees with its source by construction, so it cannot catch an unintended change to that source — the source's own tests have to.
 - **Prettier runs over the whole repository** — `prettier --check .` in `format:check`, `**/*` → `prettier --write --ignore-unknown` in lint-staged. An enumerated glob list has to be widened by hand for every new top-level directory and fails silently when nobody does (#361). Two consequences: `.gitignore` is a default `--ignore-path` in Prettier 3, so an unanchored rule there hides tracked sources from the check (`/data/`, not `data/`); and lint-staged's globs now overlap, so `.husky/pre-commit` passes `--concurrent false` and declaration order in `package.json` is load-bearing. `.prettierignore` covers only tracked files a **tool** owns — `src/server/db/migrations/meta/`, rewritten by every `drizzle-kit generate`. Generated docs need no entry: their generators emit Prettier-formatted bytes (#360).
 - **Link checking uses `lychee`, not a script or an npm plugin.** Config in `lychee.toml`, shared by the CI step (`lycheeverse/lychee-action`, SHA-pinned, `lycheeVersion` Renovate-tracked) and `npm run check:links`, so a local run and CI cannot diverge. The two requirements #289 established the hard way are the two that are easy to get wrong, and both are stock behaviour: GitHub's heading-slug algorithm (`"A & B"` → `a--b`, duplicate `-1` suffixes included) and inline HTML anchors (ADR-0020's `<a id="retention">`, cited ten times across eight documents — a heading-only checker reports every one of them broken). Rolling our own means owning GitHub's slugger forever. The cost is a Rust binary in a Node repo: `scripts/check-links.sh` prefers a native `lychee` and falls back to the pinned container image, so the only hard prerequisite is a container runtime. `remark-validate-links` would have stayed inside the npm toolchain, but its anchor sources are mdast node properties (`hProperties.id`, `hProperties.name`, `data.id`) rather than raw HTML — the inline-anchor requirement is what decided it. `offline = true` — external and `mailto:` targets are never resolved, so a third-party host cannot fail the build.
 - **Configuration boundary** (see [docs/spec/architecture.md §12.6](docs/spec/architecture.md#126-feature-manifest-and-operator-confidence) / spec ACs 228–231): operator-supplied config flows through three checkpoints — a CI gate diffing the Zod schema (`src/server/config/env.ts`) against `.env.production.example` ∪ `secrets.manifest.txt` (`scripts/check-env-drift.sh`); a deploy pre-flight invoking `validateEnvAggregated()` against the loaded `.env` before `docker compose up` (`scripts/deploy.sh` → `src/server/deploy-preflight-cli.ts`); and a boot-time feature manifest log line (`event = 'config-feature-manifest'`) emitted by `start.ts` reporting every feature in `src/server/config/features.ts:FEATURE_CATALOG` as `enabled` or `disabled (reason)`. The catalog is single-source-of-truth for feature ↔ required-vars; `featureStatus(env, feature)` is the only path for "is this feature wired?". The boot path uses `validateEnvRuntime()` (schema + dev-default credential guard); the aggregated form runs every cross-field guard in one pass so a misconfigured deploy reports every offending key in one error and iterates once, not N times.

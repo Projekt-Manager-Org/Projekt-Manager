@@ -482,8 +482,8 @@ jobs:
       - name: OpenAPI doc drift check — self-test
         run: bash scripts/__tests__/check-openapi-doc.test.sh
 
-      # Enforce AC-352 — the endpoint table in ARCHITECTURE.md § API
-      # Surface is generated from the routes buildApp() registers, and its
+      # Enforce AC-352 — the endpoint table in docs/api/README.md is
+      # generated from the routes buildApp() registers, and its
       # Auth / Access / Rate limit columns are read off the gates
       # themselves. Same self-provisioned env as the OpenAPI check, so no
       # DB/MinIO here either.
