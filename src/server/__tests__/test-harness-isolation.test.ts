@@ -15,7 +15,9 @@
  *
  * These tests assert that what the setup file WRITES is exactly what the
  * sweeper MATCHES. They read `process.env` as the running fork left it — no
- * app, no database.
+ * app, no database. The storage key prefix additionally has to reach every
+ * storage client; that is pinned by a source scan (single env → config
+ * mapping).
  *
  * The Playwright config carries a fifth copy of the staging convention (it
  * must not import project `.ts` files, by its own stated convention), so that
@@ -23,7 +25,7 @@
  * call-site pin in `env.test.ts`.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +79,30 @@ describe('per-fork isolation — setup writes what globalsetup reaps', () => {
     expect(resolved).not.toBe(path.join(os.tmpdir(), 'projekt-manager-takeout'));
     expect(resolved).toBe(process.env.TAKEOUT_STAGING_DIR);
     expect(TEST_TAKEOUT_DIR_PATTERN.test(path.basename(resolved))).toBe(true);
+  });
+});
+
+describe('env → storage config mapping has a single owner (#481)', () => {
+  it('createStorageClient is called only by storage/fromEnv.ts and the client unit test', () => {
+    // A hand-built config is where STORAGE_KEY_PREFIX gets dropped: route
+    // clients written that way left bare-key objects at the test bucket
+    // root, outside every fork's namespace. Every other caller goes
+    // through `createStorageClientFromEnv`. Scans source text — the drift
+    // this guards against compiles and runs green.
+    const srcRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+    const callers = readdirSync(srcRoot, { recursive: true, encoding: 'utf8' })
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => /\bcreateStorageClient\(/.test(readFileSync(path.join(srcRoot, f), 'utf8')))
+      .sort();
+    expect(callers).toEqual([
+      // Unit test of the client: explicit configs (invalid prefixes, a
+      // bogus bucket, an unprefixed control) are its subject.
+      'server/__tests__/storage.test.ts',
+      // The definition.
+      'server/storage/client.ts',
+      // The mapping.
+      'server/storage/fromEnv.ts',
+    ]);
   });
 });
 

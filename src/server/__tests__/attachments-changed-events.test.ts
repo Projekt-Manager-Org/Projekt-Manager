@@ -40,7 +40,7 @@ import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../t
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import type { Database } from '../db/connection.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
 
@@ -83,12 +83,7 @@ function ciphertextBuffer(length: number): Buffer {
 }
 function storageClient() {
   const env = getEnv();
-  return createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT!,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY!,
-    secretKey: env.STORAGE_SECRET_KEY!,
-  });
+  return createStorageClientFromEnv(env);
 }
 
 function photoInit() {

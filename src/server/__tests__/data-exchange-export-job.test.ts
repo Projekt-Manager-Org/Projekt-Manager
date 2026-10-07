@@ -44,11 +44,8 @@ import type pg from 'pg';
 import { startApp, stopApp, getApp, login, authGet, authPost } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
-import {
-  createStorageClient,
-  type StorageClient,
-  type AttachmentStorageClient,
-} from '../storage/client.js';
+import { type StorageClient, type AttachmentStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { DATA_EXCHANGE_JOB_CHANGED } from '../../config/sseEvents.js';
 import {
@@ -200,12 +197,7 @@ async function createExportJob(token: string): Promise<ExportJobRow> {
 
 function storageClient(): StorageClient {
   const env = getEnv();
-  return createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT!,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY!,
-    secretKey: env.STORAGE_SECRET_KEY!,
-  });
+  return createStorageClientFromEnv(env);
 }
 
 /** Count audit_log rows tagged with the synthetic deployment-level type. */

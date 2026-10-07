@@ -21,21 +21,14 @@ import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
 import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
 import { AttachmentService, type DownloadVariant } from '../services/AttachmentService.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 
 export function attachmentRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
     const authenticate = createAuthMiddleware(db);
     const env = getEnv();
-    const storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-      region: env.STORAGE_REGION,
-    });
+    const storage = createStorageClientFromEnv(env);
     const service = new AttachmentService({
       db,
       storage,

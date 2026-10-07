@@ -35,7 +35,7 @@ import {
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
 
@@ -125,12 +125,7 @@ async function stageAndComplete(token: string, projectId: string): Promise<strin
   const body = initRes.json() as { attachment: { id: string; originalKey: string } };
 
   const env = getEnv();
-  const s = createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT!,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY!,
-    secretKey: env.STORAGE_SECRET_KEY!,
-  });
+  const s = createStorageClientFromEnv(env);
   await s.upload(
     body.attachment.originalKey,
     Buffer.alloc(50_064, 0xff),

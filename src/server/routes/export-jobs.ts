@@ -34,7 +34,7 @@ import { requirePermission, requireSession } from '../middleware/auth.js';
 import { DataExchangeJobService, toExchangeJobDto } from '../services/DataExchangeJobService.js';
 import { runExportBuild } from '../services/takeout-export-runner.js';
 import { sweepStagedArtifact } from '../services/takeout-staging.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { exportJobActive, exportJobNotReady, notFound } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
@@ -98,20 +98,7 @@ export function exportJobRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
     const jobs = new DataExchangeJobService(db);
     const env = getEnv();
-    // Storage client construction mirrors the data-exchange routes:
-    // env-derived endpoints, no key prefix (the per-fork test prefix is
-    // applied only on the start.ts boot clients, never on the route-layer
-    // clients that speak bare logical keys — the same convention the
-    // attachment + data-exchange routes follow). The `?? ''` collapses
-    // satisfy tsc; the boot probes refuse to start without these populated.
-    const storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-      region: env.STORAGE_REGION,
-    });
+    const storage = createStorageClientFromEnv(env);
 
     requireSession(app, db);
 

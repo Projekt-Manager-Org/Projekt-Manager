@@ -27,7 +27,7 @@ import crypto from 'node:crypto';
 import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import type { StorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 
@@ -141,12 +141,7 @@ describe('Attachment purge cascade (AC-218)', () => {
     customerId = await seedCustomerId(ownerToken);
 
     const env = getEnv();
-    storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-    });
+    storage = createStorageClientFromEnv(env);
   });
 
   afterAll(async () => {

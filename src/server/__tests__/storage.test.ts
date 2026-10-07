@@ -29,10 +29,12 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { createStorageClient, StorageObjectNotFoundError } from '../../server/storage/client.js';
 import type { AttachmentStorageClient } from '../../server/storage/client.js';
+import { storageConfigFromEnv } from '../../server/storage/fromEnv.js';
+import { getEnv } from '../../server/config/env.js';
 
 /**
- * STORAGE_* env vars are required. If they are not set, this file fails loud
- * at `beforeAll` instead of silently reporting green. The storage module is
+ * STORAGE_* env vars are required. If they are not set, `storageConfigFromEnv`
+ * throws at `beforeAll` instead of silently reporting green. The storage module is
  * a core boundary of the architecture (architecture.md §11.4) and whether it
  * is wired up correctly is not optional state — it must be observable from
  * CI. Running tests that skip themselves on missing config teaches you
@@ -42,31 +44,11 @@ import type { AttachmentStorageClient } from '../../server/storage/client.js';
  * choice, not a test concern — either way the env must be set.
  */
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `Storage tests require ${name} to be set. ` +
-        'STORAGE_ENDPOINT, STORAGE_BUCKET, STORAGE_ACCESS_KEY, and STORAGE_SECRET_KEY ' +
-        'must all be present. Point them at your S3-compatible backend ' +
-        '(e.g. MinIO at http://localhost:9000 in local dev). ' +
-        'Silent skipping is not allowed — see file header.',
-    );
-  }
-  return value;
-}
-
 describe('Object Storage Module', () => {
   let storage: AttachmentStorageClient;
 
   beforeAll(() => {
-    storage = createStorageClient({
-      endpoint: requireEnv('STORAGE_ENDPOINT'),
-      bucket: requireEnv('STORAGE_BUCKET'),
-      accessKey: requireEnv('STORAGE_ACCESS_KEY'),
-      secretKey: requireEnv('STORAGE_SECRET_KEY'),
-      region: process.env.STORAGE_REGION ?? 'us-east-1',
-    });
+    storage = createStorageClient(storageConfigFromEnv(getEnv()));
   });
 
   // ---------------------------------------------------------------
@@ -170,11 +152,8 @@ describe('Object Storage Module', () => {
 
     it('rejects when the bucket does not exist', async () => {
       const bogusStorage = createStorageClient({
-        endpoint: requireEnv('STORAGE_ENDPOINT'),
+        ...storageConfigFromEnv(getEnv()),
         bucket: 'definitely-not-a-real-bucket-xyz-' + Date.now(),
-        accessKey: requireEnv('STORAGE_ACCESS_KEY'),
-        secretKey: requireEnv('STORAGE_SECRET_KEY'),
-        region: process.env.STORAGE_REGION ?? 'us-east-1',
       });
       await expect(bogusStorage.ping()).rejects.toThrow();
     });
@@ -273,25 +252,19 @@ describe('Object Storage Module', () => {
   // continue to read/write bare logical keys.
   //
   // Two clients against the same bucket: `prefixedStorage` is the unit
-  // under test; `unprefixedStorage` (defined at the top-level describe)
-  // is the control used to observe the raw bucket-side key shape.
+  // under test, built from env with this fork's STORAGE_KEY_PREFIX;
+  // `rawStorage` is the same config without a prefix — the control used
+  // to observe the raw bucket-side key shape.
   // ---------------------------------------------------------------
   describe('keyPrefix transparency', () => {
-    // Per-run namespace — `keyPrefix` regex requires lowercase + digits
-    // + `_-` only and a trailing slash. PID + timestamp keep parallel
-    // CI runs and parallel local vitest workers from sharing a namespace.
-    const namespace = `unittest-${process.pid}-${Date.now()}/`;
+    const namespace = getEnv().STORAGE_KEY_PREFIX!;
     let prefixedStorage: AttachmentStorageClient;
+    let rawStorage: AttachmentStorageClient;
 
     beforeAll(() => {
-      prefixedStorage = createStorageClient({
-        endpoint: requireEnv('STORAGE_ENDPOINT'),
-        bucket: requireEnv('STORAGE_BUCKET'),
-        accessKey: requireEnv('STORAGE_ACCESS_KEY'),
-        secretKey: requireEnv('STORAGE_SECRET_KEY'),
-        region: process.env.STORAGE_REGION ?? 'us-east-1',
-        keyPrefix: namespace,
-      });
+      expect(namespace).toBeTruthy();
+      prefixedStorage = createStorageClient(storageConfigFromEnv(getEnv()));
+      rawStorage = createStorageClient({ ...storageConfigFromEnv(getEnv()), keyPrefix: undefined });
     });
 
     afterEach(async () => {
@@ -328,10 +301,10 @@ describe('Object Storage Module', () => {
       // The control client (no keyPrefix) reads the bucket raw — it sees
       // the wire key `namespace + logicalKey`. If the prefix were not
       // applied, this list would be empty.
-      const rawKeys = await storage.listObjects(namespace);
+      const rawKeys = await rawStorage.listObjects(namespace);
       expect(rawKeys).toContain(`${namespace}${logicalKey}`);
       // And the same path is NOT visible at the bare logical key.
-      const bareKeys = await storage.listObjects('kp/');
+      const bareKeys = await rawStorage.listObjects('kp/');
       expect(bareKeys).not.toContain(logicalKey);
     });
 
@@ -362,7 +335,7 @@ describe('Object Storage Module', () => {
       // wouldn't appear in either view; the wire key was, but its
       // current version is now a delete marker, so a current-version
       // list excludes it.
-      const rawKeys = await storage.listObjects(namespace);
+      const rawKeys = await rawStorage.listObjects(namespace);
       expect(rawKeys).not.toContain(`${namespace}${logicalKey}`);
     });
   });
@@ -372,13 +345,7 @@ describe('Object Storage Module', () => {
   // not at the first PUT.
   // ---------------------------------------------------------------
   describe('keyPrefix validation', () => {
-    const baseConfig = () => ({
-      endpoint: requireEnv('STORAGE_ENDPOINT'),
-      bucket: requireEnv('STORAGE_BUCKET'),
-      accessKey: requireEnv('STORAGE_ACCESS_KEY'),
-      secretKey: requireEnv('STORAGE_SECRET_KEY'),
-      region: process.env.STORAGE_REGION ?? 'us-east-1',
-    });
+    const baseConfig = () => storageConfigFromEnv(getEnv());
 
     it.each([
       ['no trailing slash', 'test-123'],

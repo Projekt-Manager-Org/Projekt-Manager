@@ -57,11 +57,8 @@ import { readFile } from 'node:fs/promises';
 import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
-import {
-  createStorageClient,
-  type StorageClient,
-  type AttachmentStorageClient,
-} from '../storage/client.js';
+import { type StorageClient, type AttachmentStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
 import { buildExportArchive } from '../services/takeout-export-builder.js';
 import type { ServiceLogger } from '../services/Logger.js';
@@ -235,12 +232,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
     await pool.query('SELECT 1');
 
     const env = getEnv();
-    storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-    });
+    storage = createStorageClientFromEnv(env);
 
     recipient = process.env.BINARY_AGE_RECIPIENT!;
     const identityPath = process.env.BINARY_AGE_IDENTITY_PATH;

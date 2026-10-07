@@ -44,7 +44,7 @@ import { STORAGE_CONFIG } from './config/index.js';
 import { BYTES_PER_GB, THRESHOLD_MONITOR } from '../config/thresholdMonitor.js';
 import { STATE_KEYS } from '../config/stateConfig.js';
 import { assertBinaryIdentityLoaded } from './storage/binaryIdentity.js';
-import { createStorageClient } from './storage/client.js';
+import { createStorageClientFromEnv, storageConfigFromEnv } from './storage/fromEnv.js';
 import { assertStorageBucketSafe } from './storage/safety.js';
 import { probeStagingDurability } from './config/assertStagingDurable.js';
 import { registerStaticAssets } from './staticCache.js';
@@ -178,22 +178,10 @@ async function start(): Promise<void> {
       // via scripts/sync-dev-to-vps.sh if its pollution guard didn't
       // refuse. Prune here so "force" actually means full reset.
       if (env.SEED === 'force') {
-        const prunerConfig = {
-          endpoint: env.STORAGE_ENDPOINT,
-          bucket: env.STORAGE_BUCKET,
-          accessKey: env.STORAGE_ACCESS_KEY,
-          secretKey: env.STORAGE_SECRET_KEY,
-          region: env.STORAGE_REGION,
-          keyPrefix: env.STORAGE_KEY_PREFIX,
-        };
-        const prunerStorage = createStorageClient({
-          ...prunerConfig,
-          publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-        });
         await pruneBucketOrphans({
           db,
-          storage: prunerStorage,
-          listBucketObjects: createBucketObjectLister(prunerConfig),
+          storage: createStorageClientFromEnv(env),
+          listBucketObjects: createBucketObjectLister(storageConfigFromEnv(env)),
           logger: { info: (m) => console.log(m), warn: (m) => console.warn(m) },
           bucketLabel: env.STORAGE_BUCKET,
           // Both guards are off for the same reason: this caller just
@@ -282,15 +270,7 @@ async function start(): Promise<void> {
   // 5 min — tighter than audit retention because a stuck pending row
   // has a correlated storage object that needs cleanup before it
   // accretes.
-  const attachmentStorageForReaper = createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT,
-    publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY,
-    secretKey: env.STORAGE_SECRET_KEY,
-    region: env.STORAGE_REGION,
-    keyPrefix: env.STORAGE_KEY_PREFIX,
-  });
+  const attachmentStorageForReaper = createStorageClientFromEnv(env);
 
   // Boot-time bucket-safety probe (ADR-0022 / docs/ops/object-storage-provisioning.md).
   // Refuses to start on data-corruption-class drift (versioning off,
@@ -371,14 +351,7 @@ async function start(): Promise<void> {
   const bucketOrphanPrune = startBucketOrphanPruneScheduler({
     db,
     storage: attachmentStorageForReaper,
-    listBucketObjects: createBucketObjectLister({
-      endpoint: env.STORAGE_ENDPOINT,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY,
-      secretKey: env.STORAGE_SECRET_KEY,
-      region: env.STORAGE_REGION,
-      keyPrefix: env.STORAGE_KEY_PREFIX,
-    }),
+    listBucketObjects: createBucketObjectLister(storageConfigFromEnv(env)),
     bucketLabel: env.STORAGE_BUCKET,
     intervalMinutes: STORAGE_CONFIG.pruneIntervalMinutes,
     minAgeMinutes: STORAGE_CONFIG.pruneMinAgeMinutes,
@@ -416,15 +389,7 @@ async function start(): Promise<void> {
   // reused across health requests. The existing routes do not use storage
   // yet (walking skeleton), but #48 still wants MinIO liveness surfaced by
   // /api/health so operational outages show up before they cascade.
-  const storageClient = createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT,
-    publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY,
-    secretKey: env.STORAGE_SECRET_KEY,
-    region: env.STORAGE_REGION,
-    keyPrefix: env.STORAGE_KEY_PREFIX,
-  });
+  const storageClient = createStorageClientFromEnv(env);
 
   // The probe itself lives in `src/server/routes/health.ts` and is
   // registered by buildApp — routes mounted here would be invisible to

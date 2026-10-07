@@ -76,7 +76,8 @@ import crypto from 'node:crypto';
 import { S3Client, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { assertAppServerEnv, validateEnvAggregated } from './config/env.js';
 import { formatFeatureManifest } from './config/features.js';
-import { createStorageClient, type AttachmentStorageClient } from './storage/client.js';
+import { type AttachmentStorageClient } from './storage/client.js';
+import { createStorageClientFromEnv } from './storage/fromEnv.js';
 import { assertStorageBucketSafe } from './storage/safety.js';
 
 async function main(): Promise<void> {
@@ -105,15 +106,7 @@ async function main(): Promise<void> {
   // failure the schema can't see and the prior incarnation of this
   // CLI used to let through to crash-loop the recreated app container.
   assertAppServerEnv(env);
-  const storage = createStorageClient({
-    endpoint: env.STORAGE_ENDPOINT,
-    publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-    bucket: env.STORAGE_BUCKET,
-    accessKey: env.STORAGE_ACCESS_KEY,
-    secretKey: env.STORAGE_SECRET_KEY,
-    region: env.STORAGE_REGION,
-    keyPrefix: env.STORAGE_KEY_PREFIX,
-  });
+  const storage = createStorageClientFromEnv(env);
   try {
     await storage.ping();
     console.error(

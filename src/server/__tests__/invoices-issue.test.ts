@@ -56,7 +56,7 @@ import { InvoiceRenderer, type RenderedInvoice } from '../services/InvoiceRender
 import { validateFacturXml } from '../services/invoice/xsdValidator.js';
 import { InvoiceIssueService } from '../services/InvoiceIssueService.js';
 import { InvoiceBinaryService, type InvoiceBinaryDeps } from '../services/InvoiceBinaryService.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
 
@@ -701,14 +701,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
    */
   function buildIssueServiceFor(db: Database, renderer?: InvoiceRenderer): InvoiceIssueService {
     const env = getEnv();
-    const storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-      region: env.STORAGE_REGION,
-    });
+    const storage = createStorageClientFromEnv(env);
     const deps: InvoiceBinaryDeps = {
       storage,
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
@@ -996,14 +989,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
 
   function buildIssueServiceFor(db: Database, renderer?: InvoiceRenderer): InvoiceIssueService {
     const env = getEnv();
-    const storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-      region: env.STORAGE_REGION,
-    });
+    const storage = createStorageClientFromEnv(env);
     const deps: InvoiceBinaryDeps = {
       storage,
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,

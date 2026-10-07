@@ -18,7 +18,8 @@ import {
   type CapabilityProbeResult,
   type LifecycleRuleSnapshot,
 } from '../storage/safety.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
+import { getEnv } from '../config/env.js';
 
 // ---------------------------------------------------------------------
 // Fixtures — start from the canonical shape, mutate per-case.
@@ -369,25 +370,9 @@ describe('assertStorageBucketSafe — orchestration', () => {
 // expected shape.
 // ---------------------------------------------------------------------
 
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) {
-    throw new Error(
-      `${name} must be set. STORAGE_ENDPOINT, STORAGE_BUCKET, STORAGE_ACCESS_KEY, ` +
-        'STORAGE_SECRET_KEY are required. Silent skipping is not allowed.',
-    );
-  }
-  return v;
-}
-
 describe('assertStorageBucketSafe — integration with the dev MinIO bucket', () => {
   function makeClient() {
-    return createStorageClient({
-      endpoint: requireEnv('STORAGE_ENDPOINT'),
-      bucket: requireEnv('STORAGE_BUCKET'),
-      accessKey: requireEnv('STORAGE_ACCESS_KEY'),
-      secretKey: requireEnv('STORAGE_SECRET_KEY'),
-    });
+    return createStorageClientFromEnv(getEnv());
   }
 
   it('the canonical dev MinIO bucket + restricted user satisfy the full probe', async () => {

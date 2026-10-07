@@ -56,7 +56,7 @@ import { InvoiceService } from '../services/InvoiceService.js';
 import { InvoiceIssueService } from '../services/InvoiceIssueService.js';
 import { InvoiceCancelService } from '../services/InvoiceCancelService.js';
 import { InvoiceBinaryService, type InvoiceBinaryDeps } from '../services/InvoiceBinaryService.js';
-import { createStorageClient } from '../storage/client.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
 
@@ -89,14 +89,7 @@ describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup 
    */
   function buildServiceFor(db: Database): InvoiceService {
     const env = getEnv();
-    const storage = createStorageClient({
-      endpoint: env.STORAGE_ENDPOINT!,
-      publicEndpoint: env.STORAGE_PUBLIC_ENDPOINT,
-      bucket: env.STORAGE_BUCKET,
-      accessKey: env.STORAGE_ACCESS_KEY!,
-      secretKey: env.STORAGE_SECRET_KEY!,
-      region: env.STORAGE_REGION,
-    });
+    const storage = createStorageClientFromEnv(env);
     const deps: InvoiceBinaryDeps = {
       storage,
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
