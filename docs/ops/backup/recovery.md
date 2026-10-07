@@ -171,7 +171,21 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
        --identity ~/secrets/age-binary.key --since "$CUTOFF" --out ~/restore/objects
    ```
 
-   `~/restore/objects/index.json` lists every version since the cutoff. Keys still referenced by the restored DB (`SELECT original_key, thumb_key FROM attachments`) need nothing. For the rest: an `invoices/…` plaintext is the §14b copy of that invoice — file it per the [Verfahrensdokumentation § 4.2](../../compliance/verfahrensdokumentation.md#42-wiederherstellung-und-akzeptiertes-verlustfenster); an `attachments/….orig` plaintext is re-uploaded by hand (`.thumb` files are previews — skip them). A non-zero exit lists `failed` entries: record them in the incident record and continue — the numbering step covers their numbers.
+   `~/restore/objects/index.json` lists every version since the cutoff. Keys of non-`pending` rows in the restored DB need nothing. A `pending` row counts as lost: the orphan reaper deletes it and its objects once the app starts. List the rest:
+
+   ```bash
+   # VPS
+   sudo -u deploy docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -tAc "
+     SELECT original_key FROM attachments WHERE status <> 'pending'
+     UNION SELECT thumb_key FROM attachments WHERE status <> 'pending' AND thumb_key IS NOT NULL" > /tmp/kept-keys.txt
+   # workstation
+   scp <admin-username>@<vps-hostname>:/tmp/kept-keys.txt ~/restore/
+   jq -r --rawfile kept ~/restore/kept-keys.txt '
+     ($kept | split("\n") | map(select(. != "") | {(.): true}) | add // {}) as $k
+     | .[] | select($k[.key] | not) | "\(.outcome)\t\(.key)\t\(.file // .error)"' ~/restore/objects/index.json
+   ```
+
+   For each listed line: an `invoices/…` plaintext is the §14b copy of that invoice — file it per the [Verfahrensdokumentation § 4.2](../../compliance/verfahrensdokumentation.md#42-wiederherstellung-und-akzeptiertes-verlustfenster); an `attachments/….orig` plaintext is re-uploaded by hand (`.thumb` files are previews — skip them). A non-zero exit lists `failed` entries: record them in the incident record and continue — the numbering step covers their numbers.
 
    **b. Advance the numbering.** Per `(year, kind)`, the highest invoice number in the index — recovered and failed versions alike:
 
@@ -210,9 +224,10 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
 
    Record the printed sequence (`SELECT year, kind, next_value FROM invoice_sequence ORDER BY year, kind;`) in the incident record — it explains any gap. A recovered PDF whose number the DB still lacks may also be a never-issued orphan of a rolled-back issuance; the sent copy decides.
 
-6. On the VPS: shred the plaintext dump.
+6. On the VPS: shred the plaintext dump and drop the key list.
    ```bash
    sudo shred -u /tmp/${TS}.dump
+   rm /tmp/kept-keys.txt
    ```
 7. On the VPS: restart the stack and verify. `scripts/deploy.sh` already includes `--profile backup` so this also brings the backup service back up:
    ```bash
@@ -228,4 +243,5 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
 - [ ] `meta_backup_status` row exists and is fresh (the first post-restore scheduled tick will overwrite it).
 - [ ] Freshness badge renders green after the next backup run.
 - [ ] Shred local copies: `shred -u ~/restore/${TS}.dump ~/restore/${TS}.manifest.json`.
+- [ ] Once §6 (a) step 5's invoices are filed and attachments re-uploaded, shred the recovered plaintexts: `find ~/restore/objects -type f -exec shred -u {} + && rm -rf ~/restore/objects`.
 - [ ] Rotate any credentials that may have been exposed during the incident ([setup.md § Push R2 credentials + recipient to the VPS](setup.md#3-push-r2-credentials--recipient-to-the-vps)).
