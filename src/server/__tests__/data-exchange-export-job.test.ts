@@ -56,6 +56,7 @@ import { runExportBuild } from '../services/takeout-export-runner.js';
 import { stagedArtifactPath } from '../services/takeout-staging.js';
 import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
 import type { AuthUser } from '../middleware/auth.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -859,7 +860,12 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
         const ciphertext = Buffer.concat([nonce, body, tag]);
 
         const originalKey = `attachments/${projectId}/${id}.orig`;
-        await storage.upload(originalKey, ciphertext, 'application/octet-stream');
+        await storage.upload(
+          originalKey,
+          ciphertext,
+          'application/octet-stream',
+          TEST_OBJECT_METADATA,
+        );
         const wrapped = Buffer.from(await svc.wrap(dek)).toString('base64');
 
         await db.execute(sql`

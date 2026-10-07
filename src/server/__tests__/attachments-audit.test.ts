@@ -63,6 +63,7 @@ import { createDatabase } from '../db/connection.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { photoInitBody } from '../../test/fixtures/attachmentInit.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const year = new Date().getFullYear();
 
@@ -149,8 +150,14 @@ async function stageAndComplete(
     body.attachment.originalKey,
     Buffer.alloc(120_064, 0xff),
     'application/octet-stream',
+    TEST_OBJECT_METADATA,
   );
-  await s.upload(body.attachment.thumbKey, Buffer.alloc(8_064, 0xaa), 'application/octet-stream');
+  await s.upload(
+    body.attachment.thumbKey,
+    Buffer.alloc(8_064, 0xaa),
+    'application/octet-stream',
+    TEST_OBJECT_METADATA,
+  );
 
   const completeRes = await authPost(
     ownerToken,
@@ -208,8 +215,14 @@ describe('Attachment audit contract (AC-219)', () => {
       body.attachment.originalKey,
       Buffer.alloc(120_064, 0xff),
       'application/octet-stream',
+      TEST_OBJECT_METADATA,
     );
-    await s.upload(body.attachment.thumbKey, Buffer.alloc(8_064, 0xaa), 'application/octet-stream');
+    await s.upload(
+      body.attachment.thumbKey,
+      Buffer.alloc(8_064, 0xaa),
+      'application/octet-stream',
+      TEST_OBJECT_METADATA,
+    );
 
     // Init alone writes NO audit row (AC-219).
     const afterInit = await countAuditRows();

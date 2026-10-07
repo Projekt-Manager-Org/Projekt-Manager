@@ -57,6 +57,7 @@ import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
 import { STRINGS } from '../../config/strings.js';
 import { getEnv } from '../config/env.js';
 import type { Attachment } from '../../domain/types.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const year = new Date().getFullYear();
 
@@ -642,11 +643,13 @@ describe('Attachment routes — integration (issue #108)', () => {
         body.attachment.originalKey,
         ciphertextBuffer(init.ciphertextSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       await s.upload(
         body.attachment.thumbKey,
         ciphertextBuffer(init.ciphertextThumbSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       return body.attachment.id;
     }
@@ -727,8 +730,14 @@ describe('Attachment routes — integration (issue #108)', () => {
         body.attachment.originalKey,
         ciphertextBuffer(2 * 1024 * 1024),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
-      await s.upload(body.attachment.thumbKey, ciphertextBuffer(8064), 'application/octet-stream');
+      await s.upload(
+        body.attachment.thumbKey,
+        ciphertextBuffer(8064),
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
 
       const res = await authPost(
         ownerToken,
@@ -773,8 +782,18 @@ describe('Attachment routes — integration (issue #108)', () => {
         await pool.end();
       }
       const s = storage();
-      await s.upload(originalKey, ciphertextBuffer(ciphertextOversize), 'application/octet-stream');
-      await s.upload(thumbKey, ciphertextBuffer(1024), 'application/octet-stream');
+      await s.upload(
+        originalKey,
+        ciphertextBuffer(ciphertextOversize),
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
+      await s.upload(
+        thumbKey,
+        ciphertextBuffer(1024),
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
 
       const res = await authPost(
         ownerToken,
@@ -805,11 +824,13 @@ describe('Attachment routes — integration (issue #108)', () => {
         body.attachment.originalKey,
         ciphertextBuffer(init.ciphertextSizeBytes),
         'image/jpeg',
+        TEST_OBJECT_METADATA,
       );
       await s.upload(
         body.attachment.thumbKey,
         ciphertextBuffer(init.ciphertextThumbSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
 
       const res = await authPost(
@@ -840,12 +861,14 @@ describe('Attachment routes — integration (issue #108)', () => {
         body.attachment.originalKey,
         ciphertextBuffer(init.ciphertextSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       // Pre-e2e legitimate; under e2e a regression smell.
       await s.upload(
         body.attachment.thumbKey,
         ciphertextBuffer(init.ciphertextThumbSizeBytes),
         'image/webp',
+        TEST_OBJECT_METADATA,
       );
 
       const res = await authPost(
@@ -940,11 +963,13 @@ describe('Attachment routes — integration (issue #108)', () => {
         body.attachment.originalKey,
         ciphertextBuffer(init.ciphertextSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       await s.upload(
         body.attachment.thumbKey,
         ciphertextBuffer(init.ciphertextThumbSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
 
       // Archive lands between init and complete.
@@ -1341,11 +1366,13 @@ describe('Attachment routes — integration (issue #108)', () => {
         body.attachment.originalKey,
         ciphertextBuffer(init.ciphertextSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       await s.upload(
         body.attachment.thumbKey,
         ciphertextBuffer(init.ciphertextThumbSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       const completeRes = await authPost(
         ownerToken,
@@ -1628,7 +1655,12 @@ describe('Attachment routes — integration (issue #108)', () => {
       const originalKey = `attachments/${archProjectId}/${archAttId}.orig`;
       const s = storage();
       const ciphertext = ciphertextBuffer(74);
-      const putRes = await s.upload(originalKey, ciphertext, 'application/octet-stream');
+      const putRes = await s.upload(
+        originalKey,
+        ciphertext,
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
       expect(putRes).toBeDefined();
       // Read back the version-id of what we just put — this becomes the
       // source for copyFromVersion.
@@ -1924,11 +1956,13 @@ describe('Attachment routes — integration (issue #108)', () => {
         body.attachment.originalKey,
         ciphertextBuffer(initBody.ciphertextSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       await s.upload(
         body.attachment.thumbKey,
         ciphertextBuffer(initBody.ciphertextThumbSizeBytes),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
 
       const completeRes = await authPost(
@@ -2627,7 +2661,7 @@ async function seedReadyAttachmentsWithBytes(
       const thumbKey = kind === 'photo' ? `attachments/${projectId}/${id}.thumb` : null;
       // Storage object carries the sentinel content-type per ADR-0024
       // — the row's plaintext MIME stays in the row metadata only.
-      await s.upload(originalKey, spec.bytes, 'application/octet-stream');
+      await s.upload(originalKey, spec.bytes, 'application/octet-stream', TEST_OBJECT_METADATA);
       // Real wraps — `download-url` (the umlaut Content-Disposition
       // arm) goes through the unwrap pipeline. Synthetic envelopes
       // would surface as DEK_UNWRAP_FAILED instead of the URL the

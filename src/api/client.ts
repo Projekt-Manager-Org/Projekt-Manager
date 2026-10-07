@@ -624,8 +624,8 @@ export const pushApi = {
 /**
  * Presigned PUT descriptor returned by the init endpoint for each blob.
  * The client must PUT the body to `url` with these exact `headers`;
- * SigV4 binds Content-Type, Content-Length, and Content-MD5 into the
- * signature, so any divergence is rejected by the storage provider.
+ * SigV4 binds Content-Type, Content-Length, Content-MD5 and the
+ * `x-amz-meta-*` envelope metadata into the signature, so any divergence is rejected by the storage provider.
  */
 export interface PresignedUpload {
   url: string;

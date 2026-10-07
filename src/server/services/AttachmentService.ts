@@ -656,24 +656,30 @@ export class AttachmentService {
     log.info({ attachmentId: row.id, projectId }, 'attachment_init');
 
     // Sign one presigned PUT per blob against the *ciphertext* triplet
-    // (sentinel content-type, ciphertext size, ciphertext MD5). The
-    // SigV4 binding rejects any client-side divergence on these three
-    // fields before the bytes reach the storage provider; the provider
-    // additionally verifies Content-MD5 against received bytes
-    // (`BadDigest` on mismatch).
+    // (sentinel content-type, ciphertext size, ciphertext MD5) plus the
+    // blob's own envelope as object metadata (AC-372) — each object then
+    // decrypts without this row. The SigV4 binding rejects any
+    // client-side divergence on these fields before the bytes reach the
+    // storage provider; the provider additionally verifies Content-MD5
+    // against received bytes (`BadDigest` on mismatch).
     const originalUpload = await this.storage.createPresignedPut(
       originalKey,
       CIPHERTEXT_CONTENT_TYPE,
       input.ciphertextSizeBytes,
       input.ciphertextContentMd5,
+      { wrappedDek: wrappedDekBase64, wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION },
     );
     const thumbnailUpload =
-      thumbKey && ciphertextThumbSizeBytes !== undefined && ciphertextThumbContentMd5 !== undefined
+      thumbKey &&
+      wrappedThumbDekBase64 !== null &&
+      ciphertextThumbSizeBytes !== undefined &&
+      ciphertextThumbContentMd5 !== undefined
         ? await this.storage.createPresignedPut(
             thumbKey,
             CIPHERTEXT_CONTENT_TYPE,
             ciphertextThumbSizeBytes,
             ciphertextThumbContentMd5,
+            { wrappedDek: wrappedThumbDekBase64, wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION },
           )
         : undefined;
 

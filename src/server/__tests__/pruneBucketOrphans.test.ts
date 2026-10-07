@@ -8,7 +8,7 @@
  *   - keys still referenced by an attachment row — including `hidden`
  *     rows whose original/thumb keys back the un-hide flow — are
  *     preserved;
- *   - `RESERVED_KEY_PREFIXES` (the deploy-preflight `__probe/`
+ *   - `RESERVED_KEY_PREFIXES` (`keyNamespaces.ts`, the deploy-preflight `__probe/`
  *     sentinels) are outside the diff entirely, in every count;
  *   - an unreferenced object younger than `minAgeMinutes`, or carrying
  *     no `lastModified`, is skipped — that window is where the invoice

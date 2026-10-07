@@ -12,7 +12,7 @@ Common triggers:
 
 - **Workstation lost or wiped.** The working copy at `~/secrets/binary-identity.txt` is gone. The deployed VPS keeps serving until the next reboot — uploads and downloads still work because the identity is in the `app` tmpfs.
 - **Workstation copy corrupted.** The file exists but `age-keygen -y` rejects it. Same urgency as above.
-- **Off-system copy fails the monthly drill.** [drills.md § step 3](drills.md#3-unwrap-the-dek-with-the-off-system-identity) reported `no identity matched any of the recipients`. This is a custody-copy failure, not necessarily a deployment failure.
+- **Off-system copy fails the monthly drill.** [drills.md § step 3](drills.md#3-run-the-recovery-tool) reported `no identity matched any of the recipients` in the index entry's `error`. This is a custody-copy failure, not necessarily a deployment failure.
 - **Suspected key drift.** A subset of attachments decrypt fine, others don't, in a pattern matching a partial rotation or a replaced workstation copy.
 
 Do **not** reboot the VPS or recreate the `app` container until you have at least one working copy of the identity. A reboot wipes the tmpfs; the boot probe blocks startup; there is no copy of the identity left to paste. The window between custody loss and reboot is the recovery window.

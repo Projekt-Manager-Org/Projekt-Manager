@@ -53,7 +53,7 @@ We will model invoices as **immutable issued snapshots with a gapless year-scope
 
 ### Storage and retention
 
-- PDF/A-3 (ZUGFeRD-wrapped) stored as an `attachments` descriptor row under the E2E envelope ([ADR-0024](0024-binary-attachment-e2e-encryption.md)), so B2 sees only ciphertext — but in its own key namespace, which keeps it off the attachment surface: no attachment operation lists, hides, restores, or serves it, and the full-account import restores it into the same namespace.
+- PDF/A-3 (ZUGFeRD-wrapped) stored as an `attachments` descriptor row under the E2E envelope ([ADR-0024](0024-binary-attachment-e2e-encryption.md)), so B2 sees only ciphertext plus the invoice number as object metadata ([ADR-0024](0024-binary-attachment-e2e-encryption.md) § Self-describing objects) — but in its own key namespace, which keeps it off the attachment surface: no attachment operation lists, hides, restores, or serves it, and the full-account import restores it into the same namespace.
 - **Object Lock retention is per object.** Each rendered PDF is PUT with its own Compliance lock until write time + `INVOICE_OBJECT_LOCK_DAYS`: `3650` in production, which covers §147 AO; `.env.example` ships `0` (no lock) so dev binaries stay disposable. Not the bucket default: [ADR-0022](0022-binary-storage-b2-compliance-object-lock.md) requires `R ≤ L`, so a multi-year `R` would stretch every attachment's trash window to years. The original design asserted bucket default ≥ env at boot, which no bucket could satisfy together with `R ≤ L` (#417).
 - Lifecycle and capability split from ADR-0022 are reused unchanged — the bucket primitives operate on opaque bytes, so the Object Lock window defends ciphertext exactly as it defends attachment ciphertext.
 

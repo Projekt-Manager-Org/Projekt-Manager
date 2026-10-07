@@ -38,6 +38,7 @@ import { createDatabase } from '../db/connection.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 interface AuditApiEntry {
   id: string;
@@ -130,6 +131,7 @@ async function stageAndComplete(token: string, projectId: string): Promise<strin
     body.attachment.originalKey,
     Buffer.alloc(50_064, 0xff),
     'application/octet-stream',
+    TEST_OBJECT_METADATA,
   );
 
   const completeRes = await authPost(

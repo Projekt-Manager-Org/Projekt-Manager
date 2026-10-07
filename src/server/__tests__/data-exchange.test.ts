@@ -50,6 +50,7 @@ import type { AttachmentStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 import { AppError } from '../errors.js';
 import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -1754,7 +1755,12 @@ describe('Unified Data Exchange', () => {
                 ${originalKey}, NULL, FALSE,
                 ${wrappedDek}, NULL, 1)
       `);
-      await storage.upload(originalKey, Buffer.from('orig-bytes'), 'application/octet-stream');
+      await storage.upload(
+        originalKey,
+        Buffer.from('orig-bytes'),
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
 
       // Pre-state sanity: the seeded object is retrievable.
       expect(await objectAbsent(originalKey)).toBe(false);
@@ -1805,7 +1811,12 @@ describe('Unified Data Exchange', () => {
                 ${originalKey}, NULL, FALSE,
                 ${wrappedDek}, NULL, 1)
       `);
-      await storage.upload(originalKey, Buffer.from('rollback'), 'application/octet-stream');
+      await storage.upload(
+        originalKey,
+        Buffer.from('rollback'),
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
 
       try {
         // Force a validation rejection — same trick as the existing

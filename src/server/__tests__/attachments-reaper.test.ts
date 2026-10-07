@@ -46,6 +46,7 @@ import { seed } from '../seed.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import type { StorageClient } from '../storage/client.js';
 import { getEnv, validateEnvRuntime } from '../config/env.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 /**
  * Contract surface — resolved lazily via dynamic import so the test
@@ -151,7 +152,12 @@ async function countAuditRows(db: Database): Promise<number> {
 
 /** Direct-storage seed so the "storage object existed and was deleted" arm has a real target. */
 async function seedStorageObject(storage: StorageClient, key: string): Promise<void> {
-  await storage.upload(key, Buffer.from('pending-orphan-bytes'), 'application/octet-stream');
+  await storage.upload(
+    key,
+    Buffer.from('pending-orphan-bytes'),
+    'application/octet-stream',
+    TEST_OBJECT_METADATA,
+  );
 }
 
 /** True when the backing object is absent — the download call surfaces a provider error. */

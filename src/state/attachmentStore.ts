@@ -203,8 +203,8 @@ function newClientId(): string {
 
 /**
  * PUT a blob to object storage using the presigned-PUT descriptor. The
- * descriptor's `headers` (Content-Type + Content-Length + Content-MD5)
- * are signed by SigV4; the browser sends them verbatim, the storage
+ * descriptor's `headers` (Content-Type + Content-Length + Content-MD5 +
+ * the `x-amz-meta-*` envelope metadata) are signed by SigV4; the browser sends them verbatim, the storage
  * provider verifies the signature, then verifies Content-MD5 against
  * the received bytes (`BadDigest` on mismatch). A non-2xx response is
  * surfaced as a failure so the caller marks the pending row `failed`.

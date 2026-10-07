@@ -92,6 +92,16 @@ The master key has `deleteFiles` and can destroy versions outside their retentio
 
 App-key rotation: create the new key first, deploy the new credentials, verify, then revoke the old key with `b2 key delete <oldKeyId>`.
 
+### Recovery key (read-only)
+
+The binary recovery tool ([AC-374](../spec/verification.md#1526-attachments)) runs on the operator workstation with its own key — never the app key:
+
+```bash
+b2 key create --bucket prmng-object-storage prmng-recovery listFiles,readFiles
+```
+
+`listFiles` covers `ListObjectVersions`, `readFiles` covers `HeadObject` / `GetObject` ([B2 S3 app keys](https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys)). No write, no hide. Store both halves in the password manager only — not on the VPS. Used by the [monthly drill](binary-key/drills.md) and the [DR restore](backup/recovery.md#6-restore-into-production).
+
 ## CORS rule on the bucket
 
 The browser uploads attachments directly to B2 via presigned PUT and downloads via presigned GET. Same-origin policy still applies, so the bucket must echo `Access-Control-Allow-Origin: https://<your-domain>` on the preflight or every upload aborts client-side with no server-side trace.
