@@ -175,6 +175,8 @@ Seed user list and credentials: [docs/ops/local-dev.md § Seed users](docs/ops/l
 
 ### Run in production
 
+_Before going live: make sure to have a clear picture of roles, responsibilities and the system's limits - see [Betriebsverantwortung](docs/compliance/Betriebsverantwortung)._
+
 Check `docs/ops` for the full runbook.
 
 1. [Provision the server](docs/ops/server-setup.md) - hardened SSH, deploy user, ufw + fail2ban, Docker;
