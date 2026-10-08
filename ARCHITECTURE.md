@@ -445,7 +445,7 @@ flowchart LR
   issued -->|cancel| storno["Stornorechnung<br/>sibling row"]
 ```
 
-Issuing, in one transaction: allocate the gapless number → freeze the snapshot → render PDF/A-3 with embedded `factur-x.xml` (XSD-validated; failure rolls everything back) → store the PDF under a per-object Compliance lock → project to `abgerechnet` → audit row; after commit, `invoice_changed` + `project_changed` ([architecture.md §11.14](docs/spec/architecture.md#1114-invoice-domain)).
+Issuing is one transaction; any failure, an XSD rejection included, rolls back the number too. Step order: the `src/server/services/InvoiceIssueService.ts` header. After commit, `invoice_changed` + `project_changed` ([architecture.md §11.14](docs/spec/architecture.md#1114-invoice-domain)).
 
 | Concern                                              | Where                                                                                                                                |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -457,7 +457,7 @@ Issuing, in one transaction: allocate the gapless number → freeze the snapshot
 | Bookkeeper bulk export                               | `src/server/services/InvoiceExportService.ts`                                                                                        |
 | Client stores                                        | `src/state/invoiceStore.ts` (per project), `src/state/invoiceListStore.ts` (`/rechnungen`)                                           |
 
-Workers are excluded by the repository scope predicate ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)), not by a permission gate.
+Workers: list, years and single-row reads are narrowed by the repository scope predicate ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)) — empty set, or 403 / 404 on one row. The PDF, the export and every write are `invoice:*`-gated (403).
 
 ---
 
