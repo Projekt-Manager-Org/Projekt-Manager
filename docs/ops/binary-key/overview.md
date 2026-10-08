@@ -4,7 +4,7 @@ Operator navigation page for the binary-attachment end-to-end-encryption identit
 
 ## What the binary identity is
 
-A long-lived `age` X25519 key pair whose public recipient (`BINARY_AGE_RECIPIENT`) is embedded in the `app` container env, and whose private identity lives only on the operator workstation. Every binary uploaded through the app is encrypted in the browser with a fresh per-blob AES-256-GCM data-encryption key (DEK); the server wraps that DEK with the public recipient and stores the wrapped envelope (`wrappedDek`) on the `attachment` row. B2 sees only ciphertext — the bytes plus a per-blob nonce, opaque to the provider.
+A long-lived `age` X25519 key pair whose public recipient (`BINARY_AGE_RECIPIENT`) is embedded in the `app` container env, and whose private identity lives only on the operator workstation. Every binary uploaded through the app is encrypted in the browser with a fresh per-blob AES-256-GCM data-encryption key (DEK); the server wraps that DEK with the public recipient and stores the wrapped envelope (`wrappedDek`) on the `attachment` row **and** on the object as metadata — so the identity alone decrypts any object, even one whose row is lost ([drills.md](drills.md) exercises that path monthly). B2 sees only ciphertext — the bytes plus a per-blob nonce, opaque to the provider — and the wrapped envelopes, useless without the identity.
 
 ```
 ┌──────────────────────┐    presigned PUT (ciphertext)   ┌──────────────────────────┐

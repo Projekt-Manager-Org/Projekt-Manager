@@ -58,6 +58,7 @@ import {
   sessions as sessionsTable,
 } from '../db/schema.js';
 import type { Database } from '../db/connection.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -1194,6 +1195,7 @@ describe('AT-124: ancestor-scoped filter unions project + nested entities', () =
       initBody.attachment.originalKey,
       Buffer.alloc(50_064, 0xff),
       'application/octet-stream',
+      TEST_OBJECT_METADATA,
     );
 
     const completeRes = await authPost(

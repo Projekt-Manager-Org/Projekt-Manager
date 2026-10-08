@@ -70,6 +70,7 @@ import { AttachmentService } from '../services/AttachmentService.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 // ---------------------------------------------------------------------
 // Bus module surface — guess. The implementer conforms or asks for a
@@ -193,11 +194,13 @@ async function initAndUploadPending(
     body.attachment.originalKey,
     ciphertextBuffer(init.ciphertextSizeBytes),
     'application/octet-stream',
+    TEST_OBJECT_METADATA,
   );
   await s.upload(
     body.attachment.thumbKey,
     ciphertextBuffer(init.ciphertextThumbSizeBytes!),
     'application/octet-stream',
+    TEST_OBJECT_METADATA,
   );
   return { attachmentId: body.attachment.id };
 }

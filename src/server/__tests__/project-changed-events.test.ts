@@ -97,6 +97,7 @@ import type { ServiceLogger } from '../services/Logger.js';
 // `PROJECT_CHANGED` next to `STORAGE_USAGE_CHANGED`, this import
 // resolves and the runtime arms run.
 import { PROJECT_CHANGED, STORAGE_USAGE_CHANGED } from '../../config/sseEvents.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 // ---------------------------------------------------------------------
 // Bus module surface — same shape AC-270 uses. Dynamic import via a
@@ -227,11 +228,13 @@ async function seedReadyAttachment(ownerToken: string, projectId: string): Promi
     body.attachment.originalKey,
     ciphertextBuffer(init.ciphertextSizeBytes),
     'application/octet-stream',
+    TEST_OBJECT_METADATA,
   );
   await s.upload(
     body.attachment.thumbKey,
     ciphertextBuffer(init.ciphertextThumbSizeBytes!),
     'application/octet-stream',
+    TEST_OBJECT_METADATA,
   );
   const completeRes = await authPost(
     ownerToken,

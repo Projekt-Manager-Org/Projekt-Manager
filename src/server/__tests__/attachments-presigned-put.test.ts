@@ -41,17 +41,9 @@ import crypto from 'node:crypto';
 import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { photoInitBody } from '../../test/fixtures/attachmentInit.js';
+import { freshDekMaterial, md5Base64, presignedPut } from '../../test/fixtures/presignedPut.js';
 
 const year = new Date().getFullYear();
-
-/**
- * Compute RFC 1864 base64-of-MD5 for a buffer. The presigned PUT
- * descriptor's `Content-MD5` header expects this exact form (16-byte
- * digest → 24 chars ending in `==`).
- */
-function md5Base64(body: Buffer): string {
-  return crypto.createHash('md5').update(body).digest('base64');
-}
 
 /**
  * Synthesize an opaque ciphertext-shaped Buffer of `length` bytes.
@@ -65,42 +57,6 @@ function md5Base64(body: Buffer): string {
  */
 function ciphertextBuffer(length: number): Buffer {
   return crypto.randomBytes(length);
-}
-
-/**
- * Generate a 32-byte AES-256-GCM DEK encoded as base64. Mirrors what
- * the browser produces via `crypto.getRandomValues(new Uint8Array(32))`
- * before init. The server validates length-after-decode at the route
- * layer per AC-245.
- */
-function freshDekMaterial(): string {
-  return crypto.randomBytes(32).toString('base64');
-}
-
-/**
- * Issue a presigned PUT to MinIO using the descriptor returned by
- * `init`. The server-issued `headers` carries `Content-Type`,
- * `Content-Length`, and `Content-MD5` — every value bound by SigV4.
- * Node's `fetch` sets `Content-Length` automatically from the body,
- * so we drop that header to avoid a duplicate-header rejection.
- *
- * The `BodyInit` type from `lib.dom.d.ts` does not list Node's
- * `Buffer` / `Uint8Array` (it expects DOM-style `Blob` / `ArrayBuffer`
- * / `FormData`); Node's undici-based fetch accepts both at runtime.
- * Casting through `BodyInit` lets the test file stay aligned with the
- * project's ambient DOM types without mocking fetch.
- */
-async function presignedPut(
-  descriptor: { url: string; headers: Record<string, string> },
-  body: Buffer,
-): Promise<Response> {
-  const headers = { ...descriptor.headers };
-  delete headers['Content-Length'];
-  return fetch(descriptor.url, {
-    method: 'PUT',
-    headers,
-    body: body as unknown as BodyInit,
-  });
 }
 
 async function seededProjectId(ownerToken: string): Promise<string> {

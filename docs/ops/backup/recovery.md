@@ -158,21 +158,60 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
    sudo -u deploy docker exec -i projekt-manager-db-1 \
      pg_restore --clean --if-exists --no-owner --no-privileges -U pm -d projekt_manager < /tmp/${TS}.dump
    ```
-5. Advance the invoice numbering ([AC-368](../../spec/verification.md#1522-backup-and-recovery)). Each issuance writes one PDF under `invoices/`, so the versions written since the backup bound the lost numbers from above; any surplus becomes a legal gap. The cutoff sits one hour before `TS` because an issuance writes its PDF before it commits.
+5. Recover what the dump lost, then advance the invoice numbering ([AC-368](../../spec/verification.md#1522-backup-and-recovery)). Every object written after `TS` has no row now, but carries its own wrapped DEK — run this **before** the app serves again: the app's orphan sweep hides row-less objects, and the trash lifecycle (`L`) then destroys them.
 
-   On the workstation, with the B2 app key exported as in [object-storage-provisioning.md § Verify against the live bucket](../object-storage-provisioning.md#verify-against-the-live-bucket):
+   **a. Recover objects** — on the workstation, with the binary identity and the read-only recovery key ([object-storage-provisioning.md § Recovery key](../object-storage-provisioning.md#recovery-key-read-only)). The cutoff sits one hour plus the attachment orphan-reaper TTL before `TS`: an object is written before its row commits, and a row still `pending` in the dump is reaped after the restore.
 
    ```bash
-   CUTOFF=$(date -u -d "@$(( $(date -u -d "$TS" +%s) - 3600 ))" +%Y-%m-%dT%H:%M:%S)
-   N=$(aws --endpoint-url "$EP" s3api list-object-versions --bucket "$B" --prefix invoices/ --output json \
-     | jq --arg c "$CUTOFF" '[.Versions[]? | select(.LastModified[:19] >= $c)] | length')
-   echo "N=${N} Y0=${CUTOFF:0:4}"
+   TTL_MIN=15   # ATTACHMENT_ORPHAN_REAPER_TTL_MINUTES from the VPS .env (default 15)
+   CUTOFF=$(date -u -d "@$(( $(date -u -d "$TS" +%s) - 3600 - TTL_MIN * 60 ))" +%Y-%m-%dT%H:%M:%SZ)
+   STORAGE_ENDPOINT=<B2 S3 endpoint> STORAGE_BUCKET=<bucket> STORAGE_REGION=<region> \
+   STORAGE_ACCESS_KEY=<recovery keyId> STORAGE_SECRET_KEY=<recovery applicationKey> \
+     npx tsx scripts/binary-key/recover-objects.ts \
+       --identity ~/secrets/age-binary.key --since "$CUTOFF" --out ~/restore/objects
    ```
 
-   If `N` is 0, skip to step 6. Otherwise, on the VPS, advance every `(year, kind)` from `Y0` to the current year by `N`:
+   `~/restore/objects/index.json` lists every version since the cutoff. Keys of non-`pending` rows in the restored DB need nothing. A `pending` row counts as lost: the orphan reaper deletes it and its objects once the app starts. List the rest:
 
    ```bash
-   N=<N>; Y0=<Y0>   # from the workstation output
+   # VPS
+   sudo -u deploy docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -tAc "
+     SELECT original_key FROM attachments WHERE status <> 'pending'
+     UNION SELECT thumb_key FROM attachments WHERE status <> 'pending' AND thumb_key IS NOT NULL" > /tmp/kept-keys.txt
+   # workstation
+   scp <admin-username>@<vps-hostname>:/tmp/kept-keys.txt ~/restore/
+   jq -r --rawfile kept ~/restore/kept-keys.txt '
+     ($kept | split("\n") | map(select(. != "") | {(.): true}) | add // {}) as $k
+     | .[] | select($k[.key] | not) | "\(.outcome)\t\(.key)\t\(.file // .error)"' ~/restore/objects/index.json
+   ```
+
+   For each listed line: an `invoices/…` plaintext is the §14b copy of that invoice — file it per the [Verfahrensdokumentation § 4.2](../../compliance/verfahrensdokumentation.md#42-wiederherstellung-und-akzeptiertes-verlustfenster); an `attachments/….orig` plaintext is re-uploaded by hand (`.thumb` files are previews — skip them). A non-zero exit lists `failed` entries: record them in the incident record and continue — the numbering step covers their numbers.
+
+   **b. Advance the numbering.** Per `(year, kind)`, the highest invoice number in the index — recovered and failed versions alike:
+
+   ```bash
+   jq -r '[.[] | select(.key | startswith("invoices/"))] as $inv
+     | if ($inv | any(.invoiceNumber == null)) then "FALLBACK \($inv | length)"
+       else $inv | map(.invoiceNumber | capture("^(?<k>RE|ST)-(?<y>[0-9]{4})-(?<n>[0-9]+)$"))
+         | group_by(.k + .y)[]
+         | "\(if .[0].k == "RE" then "invoice" else "storno" end) \(.[0].y) \(map(.n | tonumber) | max)"
+       end' ~/restore/objects/index.json
+   ```
+
+   For each `<kind> <year> <max>` line, on the VPS (the stored `next_value` is the next number handed out):
+
+   ```bash
+   sudo -u deploy docker exec -i projekt-manager-db-1 psql -U pm -d projekt_manager -v ON_ERROR_STOP=1 <<SQL
+   INSERT INTO invoice_sequence (year, kind, next_value) VALUES (<year>, '<kind>', <max> + 1)
+   ON CONFLICT (year, kind) DO UPDATE
+     SET next_value = GREATEST(invoice_sequence.next_value, EXCLUDED.next_value), updated_at = now();
+   SQL
+   ```
+
+   `FALLBACK <N>` means an invoice PDF without a readable number: instead advance every `(year, kind)` from the cutoff's year to the current year by `N` — an upper bound, any surplus becomes a legal gap:
+
+   ```bash
+   N=<N>; Y0=${CUTOFF:0:4}
    sudo -u deploy docker exec -i projekt-manager-db-1 psql -U pm -d projekt_manager -v ON_ERROR_STOP=1 <<SQL
    INSERT INTO invoice_sequence (year, kind, next_value)
    SELECT y, k, 1 + ${N}
@@ -180,15 +219,15 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
         unnest(ARRAY['invoice', 'storno']) AS k
    ON CONFLICT (year, kind) DO UPDATE
      SET next_value = invoice_sequence.next_value + ${N}, updated_at = now();
-   SELECT year, kind, next_value FROM invoice_sequence ORDER BY year, kind;
    SQL
    ```
 
-   Record `N` and the printed sequence in the incident record — it explains the gap. Invoices issued after `TS` are missing from the DB, and their PDFs are unreadable without their rows; collect copies from wherever they were sent.
+   Record the printed sequence (`SELECT year, kind, next_value FROM invoice_sequence ORDER BY year, kind;`) in the incident record — it explains any gap. A recovered PDF whose number the DB still lacks may also be a never-issued orphan of a rolled-back issuance; the sent copy decides.
 
-6. On the VPS: shred the plaintext dump.
+6. On the VPS: shred the plaintext dump and drop the key list.
    ```bash
    sudo shred -u /tmp/${TS}.dump
+   rm /tmp/kept-keys.txt
    ```
 7. On the VPS: restart the stack and verify. `scripts/deploy.sh` already includes `--profile backup` so this also brings the backup service back up:
    ```bash
@@ -204,4 +243,5 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
 - [ ] `meta_backup_status` row exists and is fresh (the first post-restore scheduled tick will overwrite it).
 - [ ] Freshness badge renders green after the next backup run.
 - [ ] Shred local copies: `shred -u ~/restore/${TS}.dump ~/restore/${TS}.manifest.json`.
+- [ ] Once §6 (a) step 5's invoices are filed and attachments re-uploaded, shred the recovered plaintexts: `find ~/restore/objects -type f -exec shred -u {} + && rm -rf ~/restore/objects`.
 - [ ] Rotate any credentials that may have been exposed during the incident ([setup.md § Push R2 credentials + recipient to the VPS](setup.md#3-push-r2-credentials--recipient-to-the-vps)).

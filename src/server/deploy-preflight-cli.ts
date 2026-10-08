@@ -79,6 +79,7 @@ import { formatFeatureManifest } from './config/features.js';
 import { type AttachmentStorageClient } from './storage/client.js';
 import { createStorageClientFromEnv } from './storage/fromEnv.js';
 import { assertStorageBucketSafe } from './storage/safety.js';
+import { fromObjectMetadata } from './storage/objectMetadata.js';
 
 async function main(): Promise<void> {
   // Snapshot process.env into a record so the aggregated path runs
@@ -155,9 +156,17 @@ async function probeBucketSafety(storage: AttachmentStorageClient): Promise<void
 }
 
 /**
+ * Envelope-shaped probe metadata. The probe namespace carries no real
+ * envelope (architecture.md §11.4); this only proves the round-trip.
+ */
+const PROBE_METADATA = { wrappedDek: 'cHJvYmU=', wrappedDekVersion: 1 } as const;
+
+/**
  * Sign a presigned PUT against a sentinel key and execute it with a
  * 1-byte body. Asserts the storage provider implements the verb the
- * browser upload flow depends on (ADR-0022 § Upload protocol).
+ * browser upload flow depends on (ADR-0022 § Upload protocol), including
+ * the signed `x-amz-meta-*` envelope headers, which a HEAD must read back
+ * unchanged (AC-372 — objects carry their own wrapped DEK).
  *
  * The sentinel key is fixed (`__probe/upload`) so each deploy
  * overwrites the prior probe — Object Lock retention ages out on the
@@ -175,6 +184,7 @@ async function probeUploadVerb(storage: AttachmentStorageClient, bucket: string)
       'application/octet-stream',
       body.byteLength,
       md5Base64,
+      PROBE_METADATA,
       60,
     );
   } catch (err) {
@@ -216,6 +226,17 @@ async function probeUploadVerb(storage: AttachmentStorageClient, bucket: string)
         `Common causes: provider does not implement presigned PUT for this bucket, ` +
         `Content-MD5 missing/required by Object Lock policy, signed-header mismatch, ` +
         `bucket CORS rule rejects the call. See ADR-0022 § Upload protocol.`,
+    );
+  }
+  const stored = fromObjectMetadata((await storage.headObject(PROBE_KEY)).metadata);
+  if (
+    stored.envelope?.wrappedDek !== PROBE_METADATA.wrappedDek ||
+    stored.envelope.wrappedDekVersion !== PROBE_METADATA.wrappedDekVersion
+  ) {
+    throw new Error(
+      `probe-upload: FAILED bucket=${bucket} — the signed object metadata did not survive ` +
+        `the PUT (read back: ${JSON.stringify(stored)}). Objects would not be decryptable ` +
+        `without their DB row. See ADR-0024 § Self-describing objects.`,
     );
   }
   console.error(`probe-upload: OK bucket=${bucket} key=${PROBE_KEY}`);

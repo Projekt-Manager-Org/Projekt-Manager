@@ -35,6 +35,9 @@
  *   - AC-334 / AT-148 — the staging reaper sweeps an ABANDONED/terminal
  *     IMPORT upload (not just `ready` export artifacts), deleting the
  *     staged file and nulling `archiveRef`.
+ *   - AC-372 — every object the job writes (original, regenerated
+ *     thumbnail, invoice PDF) carries its own wrapped envelope +
+ *     version as object metadata; the invoice PDF also its number.
  *   - AC-365 — an attachment an envelope invoice references as its
  *     rendered PDF is restored into the invoice namespace, under the
  *     invoice lock, off the attachment surface. The file runs with
@@ -86,6 +89,13 @@ import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
 import { stagedArtifactPath } from '../services/takeout-staging.js';
 import { getEnv } from '../config/env.js';
+import {
+  headObjectMetadata,
+  META_INVOICE_NUMBER,
+  META_WRAPPED_DEK,
+  META_WRAPPED_DEK_VERSION,
+} from '../../test/storageObjectMetadata.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -180,7 +190,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
     const ciphertext = Buffer.concat([nonce, body, tag]); // nonce(12)||ct||tag(16)
 
     const originalKey = `attachments/${projectId}/${id}.orig`;
-    await storage.upload(originalKey, ciphertext, 'application/octet-stream');
+    await storage.upload(originalKey, ciphertext, 'application/octet-stream', TEST_OBJECT_METADATA);
 
     const svc = new KeyEnvelopeService({ recipient, identity });
     let wrapped: string;
@@ -534,10 +544,14 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const row = (
         await db.execute(sql`
           SELECT kind, has_thumbnail, thumb_key, wrapped_thumb_dek,
-                 ciphertext_thumb_size_bytes, version_id, thumb_version_id
+                 ciphertext_thumb_size_bytes, version_id, thumb_version_id,
+                 original_key, wrapped_dek, wrapped_dek_version
           FROM attachments WHERE id = ${seeded.id}
         `)
       ).rows[0] as {
+        original_key: string;
+        wrapped_dek: string;
+        wrapped_dek_version: number;
         kind: string;
         has_thumbnail: boolean;
         thumb_key: string | null;
@@ -556,6 +570,16 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(row.wrapped_thumb_dek).toBeTruthy();
       // bigint columns come back from raw db.execute as strings — coerce.
       expect(Number(row.ciphertext_thumb_size_bytes ?? 0)).toBeGreaterThan(0);
+
+      // AC-372 — both restored objects carry their own envelope + version.
+      expect(await headObjectMetadata(row.original_key)).toMatchObject({
+        [META_WRAPPED_DEK]: row.wrapped_dek,
+        [META_WRAPPED_DEK_VERSION]: String(row.wrapped_dek_version),
+      });
+      expect(await headObjectMetadata(row.thumb_key!)).toMatchObject({
+        [META_WRAPPED_DEK]: row.wrapped_thumb_dek,
+        [META_WRAPPED_DEK_VERSION]: String(row.wrapped_dek_version),
+      });
 
       // Version-id capture (server-side PUT into the versioned bucket): both
       // ids are non-null so a later hide → restore can copyFromVersion. Without
@@ -656,7 +680,9 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   // it, or it lands under `attachments/…` and becomes a deletable upload.
   // -------------------------------------------------------------------
   describe('AC-365: import restores a rendered invoice PDF as one', () => {
-    async function issueInvoice(token: string): Promise<{ id: string; descriptorId: string }> {
+    async function issueInvoice(
+      token: string,
+    ): Promise<{ id: string; number: string; descriptorId: string }> {
       const pr = await authGet(token, '/api/projects?status=rechnung_faellig&limit=200');
       const project = (pr.json() as { data: { id: string }[] }).data[0];
       if (!project) throw new Error('seed missing a project in rechnung_faellig');
@@ -678,9 +704,11 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const id = (draft.json() as { id: string }).id;
       const issued = await authPost(token, `/api/invoices/${id}/issue`);
       expect(issued.statusCode).toBe(200);
-      const descriptorId = (issued.json() as { renderedPdfBinaryDescriptorId: string })
-        .renderedPdfBinaryDescriptorId;
-      return { id, descriptorId };
+      const { number, renderedPdfBinaryDescriptorId: descriptorId } = issued.json() as {
+        number: string;
+        renderedPdfBinaryDescriptorId: string;
+      };
+      return { id, number, descriptorId };
     }
 
     async function invoicePdf(token: string, invoiceId: string): Promise<Buffer> {
@@ -717,12 +745,24 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
 
       const restored = (
         await db.execute(sql`
-          SELECT project_id, original_key FROM attachments WHERE id = ${invoice.descriptorId}
+          SELECT project_id, original_key, wrapped_dek, wrapped_dek_version
+          FROM attachments WHERE id = ${invoice.descriptorId}
         `)
-      ).rows as { project_id: string; original_key: string }[];
+      ).rows as {
+        project_id: string;
+        original_key: string;
+        wrapped_dek: string;
+        wrapped_dek_version: number;
+      }[];
       expect(restored.length).toBe(1);
       const row = restored[0]!;
       expect(row.original_key.startsWith('invoices/')).toBe(true);
+      // AC-372 — the restored PDF carries its envelope, version and number.
+      expect(await headObjectMetadata(row.original_key)).toMatchObject({
+        [META_WRAPPED_DEK]: row.wrapped_dek,
+        [META_WRAPPED_DEK_VERSION]: String(row.wrapped_dek_version),
+        [META_INVOICE_NUMBER]: invoice.number,
+      });
 
       const put = putInputs.find((input) => input.Key?.endsWith(row.original_key));
       expect(put, 'no PutObjectCommand for the restored invoice PDF').toBeDefined();

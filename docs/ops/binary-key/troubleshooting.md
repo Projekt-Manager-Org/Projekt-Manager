@@ -95,7 +95,7 @@ Two distinct causes, with different remediations:
      "SELECT id, octet_length(wrapped_dek) FROM attachments WHERE status='ready' ORDER BY created_at DESC LIMIT 10;"
    ```
 
-   A drastic outlier in `octet_length` is the smoking gun. Restore the row from Layer 2 backup ([docs/ops/backup/recovery.md](../backup/recovery.md)) — surgical row restore is out of scope, so this is a full-DB restore decision the owner approves.
+   A drastic outlier in `octet_length` is the smoking gun. The object carries its own copy of the envelope — `scripts/binary-key/recover-objects.ts --key <originalKey>` ([drills.md § 3](drills.md#3-run-the-recovery-tool)) decrypts the bytes regardless. Restore the row from Layer 2 backup ([docs/ops/backup/recovery.md](../backup/recovery.md)) — surgical row restore is out of scope, so this is a full-DB restore decision the owner approves.
 
 2. **Storage object replaced or missing.** The B2 object at `originalKey` is no longer the ciphertext that was uploaded — overwritten (rare, since the bucket is versioned + lock-protected per [ADR-0022](../../adr/0022-binary-storage-b2-compliance-object-lock.md)), or the key drifted from the row. Indicates a separate incident — investigate via [docs/ops/backup/troubleshooting.md](../backup/troubleshooting.md) escalation patterns and B2 audit logs. Not a binary-identity problem.
 
@@ -103,18 +103,18 @@ If decryption fails for **all** attachments and not just one, see § Drill failu
 
 ## Drill failure on the workstation
 
-The monthly drill ([drills.md](drills.md)) failed at step 3 (`age -d`) or step 4 (AES-GCM `InvalidTag`).
+The monthly drill ([drills.md](drills.md)) exited non-zero; the index entry's `error` names the cause.
 
-`age -d` failure (`no identity matched any of the recipients`):
+`no identity matched any of the recipients` (unwrap):
 
 - The custody copy you loaded does not match the deployed `BINARY_AGE_RECIPIENT`. Either the custody copy is from a previous keypair (rotation gap — the custody copy predates the most recent rotation) or the custody copy is corrupted.
 - **Action:** test the _other_ off-system custody copy immediately per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation). If both copies fail, you are in a custody emergency — extract the in-tmpfs identity per recovery.md before any reboot.
 
-AES-GCM `InvalidTag` (decrypt step):
+`object metadata carries no wrapped envelope`: the sample predates self-describing objects (#478) or was not written by the app. Pick a fresh upload.
 
-- The DEK is wrong (wrong attachment, wrong row's `wrappedDek`, base64 transcription error in step 1). Re-extract the row's `wrappedDek` and retry.
-- Or the ciphertext was modified after upload (extremely rare; would indicate a separate incident on the bucket).
-- Or the nonce framing drifted (check that the first 12 bytes are being treated as the nonce per [drills.md § step 4](drills.md#4-aes-256-gcm-decrypt-the-bytes)).
+`AccessDenied` / no versions listed: the recovery key lacks `listFiles` / `readFiles`, or `--since` / `--key` do not match the sample — see [object-storage-provisioning.md § Recovery key](../object-storage-provisioning.md#recovery-key-read-only).
+
+`Unsupported state or unable to authenticate data` (AES-GCM tag): the ciphertext was modified after upload — a separate incident on the bucket; escalate.
 
 ## Escalation threshold
 

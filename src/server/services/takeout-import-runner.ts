@@ -400,8 +400,13 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
     // An attachment an envelope invoice references is that invoice's
     // rendered PDF: restore it into the invoice namespace, under the
     // invoice lock, so it stays off the attachment surface (AC-365).
-    const invoicePdfIds = new Set(
-      envelope.invoices.map((inv) => inv.renderedPdfBinaryDescriptorId).filter(Boolean),
+    // Keyed by PDF id; the number rides on the restored object (AC-372).
+    const invoiceNumberByPdfId = new Map(
+      envelope.invoices.flatMap((inv) =>
+        inv.renderedPdfBinaryDescriptorId
+          ? [[inv.renderedPdfBinaryDescriptorId, inv.number ?? undefined] as const]
+          : [],
+      ),
     );
     const filesTotal = envelope.attachments.length;
     const bytesTotal = envelope.attachments.reduce((sum, a) => sum + a.sizeBytes, 0);
@@ -434,7 +439,8 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
         // instance recipient; PUT ciphertext to B2; insert the ready row.
         const { ciphertext, dek } = encryptInvoicePayload(plaintext);
         const wrapped = await envelopeService.wrap(Buffer.from(dek));
-        const isInvoicePdf = invoicePdfIds.has(att.id);
+        const isInvoicePdf = invoiceNumberByPdfId.has(att.id);
+        const invoiceNumber = invoiceNumberByPdfId.get(att.id);
         const originalKey = isInvoicePdf
           ? invoicePdfKey(att.projectId, att.id)
           : storageKey(att.projectId, att.id, 'orig');
@@ -442,6 +448,11 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
           originalKey,
           Buffer.from(ciphertext),
           'application/octet-stream',
+          {
+            wrappedDek: Buffer.from(wrapped).toString('base64'),
+            wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,
+            invoiceNumber,
+          },
           isInvoicePdf ? { complianceDays: deps.invoiceObjectLockDays } : undefined,
         );
 
@@ -461,12 +472,13 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
             const { ciphertext: thumbCt, dek: thumbDek } = encryptInvoicePayload(thumbPlain);
             const wrappedThumb = await envelopeService.wrap(Buffer.from(thumbDek));
             thumbKey = storageKey(att.projectId, att.id, 'thumb');
+            wrappedThumbDek = Buffer.from(wrappedThumb).toString('base64');
             const thumbUpload = await storage.upload(
               thumbKey,
               Buffer.from(thumbCt),
               'application/octet-stream',
+              { wrappedDek: wrappedThumbDek, wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION },
             );
-            wrappedThumbDek = Buffer.from(wrappedThumb).toString('base64');
             ciphertextThumbSizeBytes = thumbCt.byteLength;
             thumbVersionId = thumbUpload.versionId ?? null;
             hasThumbnail = true;

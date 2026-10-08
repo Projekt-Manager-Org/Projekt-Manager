@@ -16,10 +16,10 @@
  *     command to run and no flag to set.
  *   - `start.ts` under `SEED=force`, so a forced re-seed truly resets
  *     storage state along with the DB. Without this, a re-seed truncates
- *     `attachments` but leaves the bucket dirty — the orphan blobs are
- *     unreadable in practice (per-row wrapped DEKs went away with the
- *     truncate), but they still consume bucket space and would mirror
- *     real bytes onto B2's Compliance-locked bucket via
+ *     `attachments` but leaves the bucket dirty — the orphan blobs still
+ *     decrypt with the binary identity (each carries its own envelope,
+ *     AC-372), consume bucket space, and would mirror real bytes onto
+ *     B2's Compliance-locked bucket via
  *     `scripts/sync-dev-to-vps.sh` if its pollution guard didn't refuse.
  *
  * ## Why the set difference is sound
@@ -30,7 +30,7 @@
  * sentinels (`deploy-preflight-cli.ts`), which have no row and never
  * will. Backups live in a separate R2 bucket; takeout staging is local
  * VPS disk. So `attachments` indexes everything under the two app
- * namespaces, and `RESERVED_KEY_PREFIXES` carves out the third.
+ * namespaces, and `RESERVED_KEY_PREFIXES` (`keyNamespaces.ts`) carves out the third.
  *
  * ## Why a min-age is required, not optional
  *
@@ -96,25 +96,9 @@ import { sql } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
 import type { AttachmentStorageClient } from './client.js';
+import { isReservedKey } from './keyNamespaces.js';
 
 const MS_PER_MINUTE = 60 * 1000;
-
-/**
- * Key namespaces the bucket carries that are NOT indexed by
- * `attachments` and must never be treated as orphans.
- *
- * `__probe/` holds the deploy-preflight sentinels `__probe/upload` and
- * `__probe/copyobj` (`deploy-preflight-cli.ts`), rewritten on every
- * deploy. Hiding them is harmless — the next preflight PUTs a fresh
- * version before the copy reads it — but it would make every sweep on a
- * real deployment report orphans, and an operator who learns to ignore
- * this report loses the only signal that says the bucket is clean.
- */
-export const RESERVED_KEY_PREFIXES = ['__probe/'] as const;
-
-function isReserved(key: string): boolean {
-  return RESERVED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
-}
 
 export interface BucketKeyListerConfig {
   endpoint: string;
@@ -249,7 +233,7 @@ export async function pruneBucketOrphans(
   // 1. Bucket listing — current-version view only. Reserved namespaces
   // are dropped here so they cannot reach any count or the diff.
   const listed = await opts.listBucketObjects();
-  const candidates = listed.filter((obj) => !isReserved(obj.key));
+  const candidates = listed.filter((obj) => !isReservedKey(obj.key));
 
   // 2. DB-referenced keys — every status (`pending`, `ready`, `hidden`).
   // `hidden` rows hold a legitimate PUT version below the delete marker

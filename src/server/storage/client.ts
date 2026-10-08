@@ -34,6 +34,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Readable } from 'node:stream';
+import { toObjectMetadata, type ObjectEnvelopeMetadata } from './objectMetadata.js';
 import { STORAGE_CONFIG } from '../config/index.js';
 import {
   CAPABILITY_PROBE_KEY,
@@ -137,6 +138,8 @@ export interface HeadObjectResult {
    * provider response omits the field.
    */
   versionId: string | undefined;
+  /** S3 user metadata (`x-amz-meta-*`, names without the prefix). */
+  metadata: Record<string, string>;
 }
 
 export interface PresignedPutDescriptor {
@@ -163,6 +166,8 @@ export interface PresignedPutDescriptor {
    *   bytes and reject with `BadDigest` on mismatch, so a presigned URL
    *   is usable only for an upload of bytes that hash to this exact
    *   MD5.
+   * - `x-amz-meta-*` — the object's envelope metadata (`objectMetadata.ts`,
+   *   AC-372). Signed, so a PUT that omits or alters it is rejected.
    */
   headers: Record<string, string>;
   /** ISO 8601 — after this the descriptor is useless. */
@@ -192,6 +197,7 @@ export interface StorageClient {
     key: string,
     data: Buffer | Uint8Array,
     contentType: string,
+    metadata: ObjectEnvelopeMetadata,
     lock?: ObjectLock,
   ): Promise<UploadResult>;
   download(key: string): Promise<DownloadResult>;
@@ -228,7 +234,9 @@ export interface StorageClient {
    * lowest common denominator (AWS, B2, R2, MinIO, Wasabi all implement
    * it). See ADR-0022 § "Upload protocol".
    *
-   * Why these three signed headers: `Content-Type` and `Content-Length`
+   * Signed headers: the object metadata (`x-amz-meta-*`, AC-372 — the
+   * object carries its own wrapped DEK) plus the three below.
+   * `Content-Type` and `Content-Length`
    * pin what the POST policy used to pin (`starts-with` on type,
    * `content-length-range` collapsed to a single value); `Content-MD5`
    * is mandated by B2 because bucket-default Compliance retention
@@ -242,6 +250,7 @@ export interface StorageClient {
     contentType: string,
     sizeBytes: number,
     contentMd5Base64: string,
+    metadata: ObjectEnvelopeMetadata,
     expirySeconds?: number,
   ) => Promise<PresignedPutDescriptor>;
 
@@ -314,16 +323,15 @@ export interface StorageClient {
   getObject?: (key: string) => Promise<Readable>;
 
   /**
-   * Upload bytes under a server-issued key. Streaming body is accepted
-   * so the caller can pipe an archiver output straight into the upload
-   * without buffering the full zip in memory when it grows to the
-   * 20 MB bulk-download cap. Content length is passed explicitly because
-   * the streaming-upload path needs it to set `Content-Length` up-front.
+   * Server-side PUT of an in-memory body under a server-issued key,
+   * carrying the object's envelope metadata (AC-372) and an optional
+   * per-object Compliance lock. Used for rendered invoice PDFs.
    */
   putObject?: (
     key: string,
     body: Buffer | Uint8Array,
     contentType: string,
+    metadata: ObjectEnvelopeMetadata,
     lock?: ObjectLock,
   ) => Promise<void>;
 
@@ -368,6 +376,7 @@ export interface AttachmentStorageClient extends StorageClient {
     contentType: string,
     sizeBytes: number,
     contentMd5Base64: string,
+    metadata: ObjectEnvelopeMetadata,
     expirySeconds?: number,
   ) => Promise<PresignedPutDescriptor>;
   createPresignedGet: (
@@ -383,6 +392,7 @@ export interface AttachmentStorageClient extends StorageClient {
     key: string,
     body: Buffer | Uint8Array,
     contentType: string,
+    metadata: ObjectEnvelopeMetadata,
     lock?: ObjectLock,
   ) => Promise<void>;
   listObjects: (prefix: string, olderThan?: Date) => Promise<string[]>;
@@ -576,6 +586,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
       key: string,
       data: Buffer | Uint8Array,
       contentType: string,
+      metadata: ObjectEnvelopeMetadata,
       lock?: ObjectLock,
     ): Promise<UploadResult> {
       validateKey(key);
@@ -585,6 +596,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
           Key: wireKey(key),
           Body: data,
           ContentType: contentType,
+          Metadata: toObjectMetadata(metadata),
           ...objectLockParams(lock),
         }),
       );
@@ -662,6 +674,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
       contentType: string,
       sizeBytes: number,
       contentMd5Base64: string,
+      metadata: ObjectEnvelopeMetadata,
       expirySeconds: number = 60,
     ): Promise<PresignedPutDescriptor> {
       validateKey(key);
@@ -698,22 +711,36 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
         throw new Error('createPresignedPut: contentMd5Base64 must be RFC 1864 base64 of MD5');
       }
       const expiresIn = Math.max(1, expirySeconds);
+      const objectMetadata = toObjectMetadata(metadata);
+      const metadataHeaders = Object.fromEntries(
+        Object.entries(objectMetadata).map(([name, value]) => [`x-amz-meta-${name}`, value]),
+      );
       const command = new PutObjectCommand({
         Bucket: bucket,
         Key: wireKey(key),
         ContentType: contentType,
         ContentLength: sizeBytes,
         ContentMD5: contentMd5Base64,
+        Metadata: objectMetadata,
       });
       // `signableHeaders` overrides the SDK's default unsignable list
       // (which marks `content-type` as unsignable) so `Content-Type`,
-      // `Content-Length`, and `Content-MD5` all land in
-      // `X-Amz-SignedHeaders` and are bound by the signature.
-      // (`unhoistableHeaders` is for `x-amz-*` headers — it has no
-      // effect on these three, so it is omitted.)
+      // `Content-Length` and `Content-MD5` land in `X-Amz-SignedHeaders`
+      // and are bound by the signature; the `x-amz-meta-*` envelope
+      // headers are listed for explicitness (they are signed anyway).
+      // `unhoistableHeaders` is the load-bearing part for them: by
+      // default the presigner hoists `x-amz-*` into the query string; kept
+      // as headers, the browser sends them like the other three.
+      const metadataHeaderNames = Object.keys(metadataHeaders);
       const url = await getSignedUrl(s3Signing, command, {
         expiresIn,
-        signableHeaders: new Set(['content-type', 'content-length', 'content-md5']),
+        signableHeaders: new Set([
+          'content-type',
+          'content-length',
+          'content-md5',
+          ...metadataHeaderNames,
+        ]),
+        unhoistableHeaders: new Set(metadataHeaderNames),
       });
       return {
         url,
@@ -721,6 +748,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
           'Content-Type': contentType,
           'Content-Length': String(sizeBytes),
           'Content-MD5': contentMd5Base64,
+          ...metadataHeaders,
         },
         expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
       };
@@ -760,6 +788,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
           size: Number(res.ContentLength ?? 0),
           contentType: res.ContentType ?? 'application/octet-stream',
           versionId: res.VersionId,
+          metadata: res.Metadata ?? {},
         };
       } catch (err) {
         const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
@@ -894,6 +923,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
       key: string,
       body: Buffer | Uint8Array,
       contentType: string,
+      metadata: ObjectEnvelopeMetadata,
       lock?: ObjectLock,
     ): Promise<void> {
       validateKey(key);
@@ -903,6 +933,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
           Key: wireKey(key),
           Body: body,
           ContentType: contentType,
+          Metadata: toObjectMetadata(metadata),
           ...objectLockParams(lock),
         }),
       );

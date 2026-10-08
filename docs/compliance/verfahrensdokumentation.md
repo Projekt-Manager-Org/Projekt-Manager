@@ -63,11 +63,11 @@ Kanonische Beschreibung: [ADR-0026](../adr/0026-invoices-immutability-and-zugfer
 
 Folgen für Rechnungen, die in diesem Fenster ausgestellt wurden:
 
-| Folge                                        | Behandlung                                                                                                                                                                                                                    |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Rechnung fehlt in der wiederhergestellten DB | Das PDF bleibt gesperrt im Speicher, ist ohne den verlorenen DB-Eintrag aber nicht entschlüsselbar (offen: #478). Doppel aus dem Versandweg beschaffen (⟨gesendete E-Mails⟩, notfalls beim Empfänger), ablegen in ⟨Ablageort⟩ |
-| Nummernkreis                                 | Wird über die verlorenen Nummern hinaus fortgesetzt — keine Doppelvergabe; die Lücke wird im Störfallprotokoll begründet                                                                                                      |
-| Projektstatus zurück auf "Rechnung fällig"   | Manuell korrigieren — Doppelabrechnung vermeiden                                                                                                                                                                              |
+| Folge                                        | Behandlung                                                                                                                                                                                    |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rechnung fehlt in der wiederhergestellten DB | Das PDF bleibt gesperrt im Speicher und trägt seinen eigenen (verschlüsselten) Schlüssel. Vor dem Wiederanlauf mit dem Speicherschlüssel entschlüsselt und als Doppel abgelegt in ⟨Ablageort⟩ |
+| Nummernkreis                                 | Wird hinter der höchsten wiederhergestellten Nummer fortgesetzt — keine Doppelvergabe; eine verbleibende Lücke wird im Störfallprotokoll begründet                                            |
+| Projektstatus zurück auf "Rechnung fällig"   | Manuell korrigieren — Doppelabrechnung vermeiden                                                                                                                                              |
 
 Ablauf: [recovery.md](../ops/backup/recovery.md). Störfallprotokolle: ⟨Ablageort⟩.
 
@@ -98,7 +98,7 @@ Jede Programmänderung über Pull Request mit automatischen Prüfungen; ausgelie
 
 - **Frist:** Rechnungsdoppel 8 Jahre (§14b UStG, §147 AO) **[zu bestätigen]**.
 - **Form:** vollständiges PDF/A-3 inkl. eingebetteter XML, unverändert wie versandt (§3). Erfüllt die Anforderungen an hybride E-Rechnungen (strukturierter Teil) nach der GoBD-Änderung 2025: **[zu bestätigen]**.
-- **Lesbarkeit über die Frist:** setzt den Speicherschlüssel (§4.3) und derzeit die Datenbank voraus (§4.2). ⟨Exit-Strategie bei Systemwechsel: Export nach §7⟩.
+- **Lesbarkeit über die Frist:** setzt den Speicherschlüssel (§4.3) voraus, nicht die Datenbank (§4.2). ⟨Exit-Strategie bei Systemwechsel: Export nach §7⟩.
 
 ## 7. Datenzugriff der Finanzverwaltung (§147 Abs. 6 AO)
 

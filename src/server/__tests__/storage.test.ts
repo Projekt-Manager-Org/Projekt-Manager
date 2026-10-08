@@ -31,6 +31,7 @@ import { createStorageClient, StorageObjectNotFoundError } from '../../server/st
 import type { AttachmentStorageClient } from '../../server/storage/client.js';
 import { storageConfigFromEnv } from '../../server/storage/fromEnv.js';
 import { getEnv } from '../../server/config/env.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 /**
  * STORAGE_* env vars are required. If they are not set, `storageConfigFromEnv`
@@ -99,14 +100,19 @@ describe('Object Storage Module', () => {
     });
 
     it('uploads a file without error', async () => {
-      const result = await storage.upload(testKey, testContent, testContentType);
+      const result = await storage.upload(
+        testKey,
+        testContent,
+        testContentType,
+        TEST_OBJECT_METADATA,
+      );
       expect(result).toBeDefined();
       expect(result.key).toBe(testKey);
     });
 
     it('retrieves the uploaded file with matching contents', async () => {
       // Own upload: this test verifies retrieval fidelity, not ordering.
-      await storage.upload(testKey, testContent, testContentType);
+      await storage.upload(testKey, testContent, testContentType, TEST_OBJECT_METADATA);
 
       const downloaded = await storage.download(testKey);
       expect(Buffer.isBuffer(downloaded.data) || downloaded.data instanceof Uint8Array).toBe(true);
@@ -117,7 +123,7 @@ describe('Object Storage Module', () => {
     it('generates a signed URL for the uploaded file', async () => {
       // Own upload: this test verifies signed URL generation, independent
       // of whether any earlier test uploaded something.
-      await storage.upload(testKey, testContent, testContentType);
+      await storage.upload(testKey, testContent, testContentType, TEST_OBJECT_METADATA);
 
       const url = await storage.getSignedUrl(testKey, 60);
       expect(typeof url).toBe('string');
@@ -126,7 +132,7 @@ describe('Object Storage Module', () => {
 
     it('hides the uploaded file', async () => {
       // Own upload: hide needs something to hide. Setup, not ordering.
-      await storage.upload(testKey, testContent, testContentType);
+      await storage.upload(testKey, testContent, testContentType, TEST_OBJECT_METADATA);
 
       await expect(storage.hide(testKey)).resolves.not.toThrow();
     });
@@ -135,7 +141,7 @@ describe('Object Storage Module', () => {
       // Full setup: upload then hide, so the assertion under test is
       // purely "download of a hidden key fails". No reliance on any
       // other test having run first.
-      await storage.upload(testKey, testContent, testContentType);
+      await storage.upload(testKey, testContent, testContentType, TEST_OBJECT_METADATA);
       await storage.hide(testKey);
 
       await expect(storage.download(testKey)).rejects.toThrow();
@@ -196,7 +202,12 @@ describe('Object Storage Module', () => {
       // which is the exact shape the dev→VPS sync produces (key is
       // present on B2 with a fresh PUT version; DB carries the dev-side
       // MinIO UUID that B2 doesn't recognize).
-      await storage.upload(testKey, Buffer.from('hello'), 'application/octet-stream');
+      await storage.upload(
+        testKey,
+        Buffer.from('hello'),
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
 
       // A versionId that is structurally invalid for any provider. On
       // MinIO this is `NoSuchVersion` (404); on B2 this would be 400
@@ -226,7 +237,7 @@ describe('Object Storage Module', () => {
       // promote the original back to current. Mirrors the Papierkorb
       // restore flow on a versioned bucket.
       const original = Buffer.from('restore-me');
-      await storage.upload(testKey, original, 'application/octet-stream');
+      await storage.upload(testKey, original, 'application/octet-stream', TEST_OBJECT_METADATA);
       const head = await storage.headObject(testKey);
       expect(head.versionId).toBeDefined();
       const sourceVersionId = head.versionId!;
@@ -285,7 +296,12 @@ describe('Object Storage Module', () => {
     it('round-trips a logical key — caller never sees the prefix', async () => {
       const logicalKey = 'kp/round-trip';
       const body = Buffer.from('hello-from-prefixed-client', 'utf-8');
-      const { key: returnedKey } = await prefixedStorage.upload(logicalKey, body, 'text/plain');
+      const { key: returnedKey } = await prefixedStorage.upload(
+        logicalKey,
+        body,
+        'text/plain',
+        TEST_OBJECT_METADATA,
+      );
       // Returned key is the LOGICAL key the caller passed — not the
       // wire-key. Stripping happens at the boundary.
       expect(returnedKey).toBe(logicalKey);
@@ -296,7 +312,12 @@ describe('Object Storage Module', () => {
 
     it('places the object at the prefixed path in the bucket', async () => {
       const logicalKey = 'kp/wire-key-check';
-      await prefixedStorage.upload(logicalKey, Buffer.from('x'), 'application/octet-stream');
+      await prefixedStorage.upload(
+        logicalKey,
+        Buffer.from('x'),
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
 
       // The control client (no keyPrefix) reads the bucket raw — it sees
       // the wire key `namespace + logicalKey`. If the prefix were not
@@ -310,8 +331,18 @@ describe('Object Storage Module', () => {
 
     it('strips the prefix from listObjects results', async () => {
       // Two writes through the prefixed client.
-      await prefixedStorage.upload('kp/listing/a', Buffer.from('1'), 'text/plain');
-      await prefixedStorage.upload('kp/listing/b', Buffer.from('2'), 'text/plain');
+      await prefixedStorage.upload(
+        'kp/listing/a',
+        Buffer.from('1'),
+        'text/plain',
+        TEST_OBJECT_METADATA,
+      );
+      await prefixedStorage.upload(
+        'kp/listing/b',
+        Buffer.from('2'),
+        'text/plain',
+        TEST_OBJECT_METADATA,
+      );
 
       // Caller asks for `kp/listing/` and gets BARE keys back — the
       // wire prefix is invisible.
@@ -321,7 +352,12 @@ describe('Object Storage Module', () => {
 
     it('hide() targets the prefixed key', async () => {
       const logicalKey = 'kp/hide-target';
-      await prefixedStorage.upload(logicalKey, Buffer.from('x'), 'text/plain');
+      await prefixedStorage.upload(
+        logicalKey,
+        Buffer.from('x'),
+        'text/plain',
+        TEST_OBJECT_METADATA,
+      );
 
       // Hide via prefixed client — DeleteObject without VersionId
       // hits `namespace + logicalKey`. Caller-side view: gone.

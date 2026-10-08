@@ -29,6 +29,7 @@ import { createDatabase } from '../db/connection.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { photoInitBody } from '../../test/fixtures/attachmentInit.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const year = new Date().getFullYear();
 
@@ -189,10 +190,16 @@ describe('Attachment thumbnail-size cap + HEAD re-assertion', () => {
         body.attachment.originalKey,
         Buffer.alloc(120_064, 0xff),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       // Upload a thumb of WRONG size (1 byte vs the row's 8000). HEAD
       // reports 1, the row says 8000 → declared-size mismatch.
-      await s.upload(body.attachment.thumbKey, Buffer.from('x'), 'application/octet-stream');
+      await s.upload(
+        body.attachment.thumbKey,
+        Buffer.from('x'),
+        'application/octet-stream',
+        TEST_OBJECT_METADATA,
+      );
 
       const res = await authPost(
         ownerToken,
@@ -222,12 +229,14 @@ describe('Attachment thumbnail-size cap + HEAD re-assertion', () => {
         body.attachment.originalKey,
         Buffer.alloc(120_064, 0xff),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
       // 12 bytes — matches the declared ciphertextThumbSizeBytes exactly.
       await s.upload(
         body.attachment.thumbKey,
         Buffer.from('octet-thmb12'),
         'application/octet-stream',
+        TEST_OBJECT_METADATA,
       );
 
       const res = await authPost(

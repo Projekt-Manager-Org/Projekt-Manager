@@ -30,6 +30,7 @@ import { createDatabase } from '../db/connection.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import type { StorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 async function seedCustomerId(ownerToken: string): Promise<string> {
   const res = await authGet(ownerToken, '/api/customers');
@@ -104,9 +105,14 @@ async function seedReadyAttachment(
   } finally {
     await pool.end();
   }
-  await storage.upload(originalKey, Buffer.from('primary'), 'application/octet-stream');
+  await storage.upload(
+    originalKey,
+    Buffer.from('primary'),
+    'application/octet-stream',
+    TEST_OBJECT_METADATA,
+  );
   if (thumbKey) {
-    await storage.upload(thumbKey, Buffer.from('thumb'), 'image/webp');
+    await storage.upload(thumbKey, Buffer.from('thumb'), 'image/webp', TEST_OBJECT_METADATA);
   }
   return { id, originalKey, thumbKey };
 }

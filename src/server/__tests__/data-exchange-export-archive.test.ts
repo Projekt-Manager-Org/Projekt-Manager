@@ -64,6 +64,7 @@ import { buildExportArchive } from '../services/takeout-export-builder.js';
 import type { ServiceLogger } from '../services/Logger.js';
 import { getEnv } from '../config/env.js';
 import type { AuthUser } from '../middleware/auth.js';
+import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 // ---------------------------------------------------------------------
 // Job row wire shape — the subset this file reads (camelCase, §5.18).
@@ -194,7 +195,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
     const ciphertext = Buffer.concat([nonce, body, tag]); // nonce(12)||ct||tag(16)
 
     const originalKey = `attachments/${projectId}/${id}.orig`;
-    await storage.upload(originalKey, ciphertext, 'application/octet-stream');
+    await storage.upload(originalKey, ciphertext, 'application/octet-stream', TEST_OBJECT_METADATA);
 
     let wrapped: string;
     if (opts.corruptDek) {
