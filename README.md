@@ -175,7 +175,7 @@ Seed user list and credentials: [docs/ops/local-dev.md § Seed users](docs/ops/l
 
 ### Run in production
 
-_Before going live: make sure to have a clear picture of roles, responsibilities and the system's limits - see [Betriebsverantwortung](docs/compliance/Betriebsverantwortung)._
+_Before going live: make sure to have a clear picture of roles, responsibilities and the system's limits - see [Betriebsverantwortung](docs/compliance/betriebsverantwortung.md)._
 
 Check `docs/ops` for the full runbook.
 
