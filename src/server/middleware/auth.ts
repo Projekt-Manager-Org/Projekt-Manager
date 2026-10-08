@@ -9,7 +9,7 @@
  * Both gates carry their rule as readable data (`requiresSession`,
  * `requiredPermissions`, the `auth` route-config marker) so the published
  * API surface is derived from the enforcement rather than restated beside
- * it — ARCHITECTURE.md § API Surface, AC-352.
+ * it — docs/api/README.md, AC-352.
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';

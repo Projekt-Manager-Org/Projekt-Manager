@@ -179,7 +179,7 @@ export default tseslint.config(
           selector:
             'CallExpression[callee.object.name=/^(app|server|fastify|instance)$/][callee.property.name=/^(get|post|put|patch|delete|head|options|all|route|register)$/]',
           message:
-            'Register HTTP routes inside buildApp() (src/server/app.ts) — the generated OpenAPI document only sees the app factory. See ARCHITECTURE.md § OpenAPI Document Generation.',
+            'Register HTTP routes inside buildApp() (src/server/app.ts) — the generated OpenAPI document only sees the app factory. See ARCHITECTURE.md § API Surface.',
         },
       ],
     },

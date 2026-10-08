@@ -676,8 +676,7 @@ export const attachments = pgTable(
 
 // ---------------------------------------------------------------
 // Project storage usage — derived state, trigger-maintained
-// (data-model.md §5.14, ARCHITECTURE.md "Storage usage —
-// trigger-maintained side table")
+// (data-model.md §5.14)
 // ---------------------------------------------------------------
 /**
  * Per-project four-bucket aggregate of attachment byte counts. Maintained
@@ -704,6 +703,10 @@ export const attachments = pgTable(
  * storage" view. Both axes track each row's contribution to the matching
  * status bucket (`ready` or `hidden`); `pending` rows contribute to
  * neither.
+ *
+ * TRUNCATE skips row triggers. Truncating `projects` with CASCADE (the
+ * import wipe) clears this table in lockstep; truncating `attachments`
+ * alone would leave the totals stale.
  */
 export const projectStorageUsage = pgTable(
   'project_storage_usage',

@@ -245,8 +245,7 @@ describe('Attachment purge cascade (AC-218)', () => {
   // AC-266 — project purge removes the storage-usage view alongside
   // the project row. Cascade is a property of the data layer
   // (`project_storage_usage.project_id REFERENCES projects(id)
-  // ON DELETE CASCADE` per data-model.md §5.14 + ARCHITECTURE.md
-  // "Storage usage — trigger-maintained side table") — not an
+  // ON DELETE CASCADE` per data-model.md §5.14) — not an
   // orchestrated cleanup step.
   //
   // Two assertions:
@@ -257,8 +256,8 @@ describe('Attachment purge cascade (AC-218)', () => {
   //     prior totals — the global sum drops by exactly the bytes that
   //     were carried by the purged project at purge time.
   //
-  // The trigger short-circuit (`pg_trigger_depth() > 1` per
-  // ARCHITECTURE.md) is what keeps the cascade from re-firing the
+  // The trigger short-circuit (`pg_trigger_depth() > 1` in the
+  // baseline migration) is what keeps the cascade from re-firing the
   // delta trigger while the row is being removed; this test verifies
   // the externally-visible result, not the internals.
   // -------------------------------------------------------------------

@@ -2,8 +2,8 @@
  * Storage usage read service — projects + global roll-up.
  *
  * Surfaces the `project_storage_usage` side table maintained by the
- * two PL/pgSQL triggers (data-model.md §5.14, ARCHITECTURE.md "Storage
- * usage — trigger-maintained side table"). Pure read path; no writes,
+ * two PL/pgSQL triggers (data-model.md §5.14; design at
+ * `projectStorageUsage` in schema.ts). Pure read path; no writes,
  * no audit boundary, no caching layer.
  *
  * Three responsibilities:
@@ -75,8 +75,7 @@ export class StorageUsageService {
     const row = usageRows[0];
     if (!row) {
       // Trigger invariant: the projects-INSERT trigger seeds a zero
-      // row for every project (data-model.md §5.14, ARCHITECTURE.md
-      // "Storage usage — trigger-maintained side table"). A missing
+      // row for every project (data-model.md §5.14). A missing
       // row past the existence-check above is an out-of-band drift
       // (direct SQL deletion, trigger disabled, baseline regenerated
       // without the tail). Refuse to serve rather than fabricate

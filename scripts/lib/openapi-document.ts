@@ -70,7 +70,7 @@ function isSyntheticResponses(responses: Record<string, unknown> | undefined): b
  * Strip claims the route schemas do not support: the synthetic 200, and
  * an all-empty `components` (today `{"schemas": {}}`). Both are derived
  * from nothing, and 3.1 lets the document stay silent about them —
- * ARCHITECTURE.md § OpenAPI Document Generation.
+ * docs/api/README.md § OpenAPI Document.
  *
  * The published document does carry a `components` block regardless:
  * `applySecurity` runs after this and puts `securitySchemes` back. What
@@ -254,7 +254,7 @@ export function assertEveryRoutePublished(doc: DocLike, routes: RouteOptions[]):
 
 /**
  * Fail unless the document is valid OpenAPI 3.1 — the second of the two
- * gates (ARCHITECTURE.md § OpenAPI Document Generation).
+ * gates (docs/api/README.md § OpenAPI Document).
  *
  * The detected version is asserted too, not just validity: the validator
  * picks its schema from the document's own `openapi:` field, so a

@@ -2,7 +2,7 @@
 #
 # Scenario tests for scripts/generate-api-surface.ts --check (AC-352).
 #
-# Each case stages a copy of the real ARCHITECTURE.md in a temp file and
+# Each case stages a copy of the real docs/api/README.md in a temp file and
 # points the generator at it via $API_SURFACE_DOC_PATH. The ROUTES
 # themselves are always read from the real src/server/ — that's the
 # source of truth the check protects, not something to fake. Exits 0 when
@@ -11,7 +11,7 @@
 #
 # One case beyond in-sync / drifted / missing-markers: the prose BELOW
 # the end marker must be free to change. The whole reason this table is
-# generated only in part is that § Endpoint Notes is hand-written
+# generated only in part is that the prose below it is hand-written
 # meaning — a check that fired on it would push the prose back out of the
 # document.
 #
@@ -27,7 +27,7 @@
 set -u
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-REAL_DOC="$REPO_ROOT/ARCHITECTURE.md"
+REAL_DOC="$REPO_ROOT/docs/api/README.md"
 GENERATOR="$REPO_ROOT/scripts/generate-api-surface.ts"
 
 for f in "$GENERATOR" "$REAL_DOC"; do
@@ -51,8 +51,8 @@ mktmp_doc() {
   local d
   d="$(mktemp -d)"
   TMP_DIRS+=("$d")
-  cp "$REAL_DOC" "$d/ARCHITECTURE.md"
-  echo "$d/ARCHITECTURE.md"
+  cp "$REAL_DOC" "$d/README.md"
+  echo "$d/README.md"
 }
 
 pass=0
@@ -119,11 +119,14 @@ sed -i '\@^| GET .*`/api/invoices/years`@d' "$d"
 assert_case 1 "deleted row" "$d" "is stale"
 
 echo "Case: prose below the end marker changes freely"
-# Must pass. § Endpoint Notes is hand-written meaning that exists nowhere
-# in a route declaration; a check that fired on it would push the prose
-# out of the document, which is the outcome this design exists to avoid.
+# Must pass. The prose below the marker is hand-written meaning that
+# exists nowhere in a route declaration; a check that fired on it would
+# push the prose out of the document, which is the outcome this design
+# exists to avoid. The grep guards against a silent no-op edit, which
+# would turn this case into a copy of the in-sync one.
 d="$(mktmp_doc)"
-sed -i 's|^- `GET /api/health` — probes|- `GET /api/health` — reworded by hand; probes|' "$d"
+sed -i 's|^- \*\*Rate limit\*\* shows|- **Rate limit** (reworded by hand) shows|' "$d"
+grep -q 'reworded by hand' "$d" || { echo "ERROR: prose fixture edit did not apply" >&2; exit 2; }
 assert_case 0 "prose edit below markers" "$d" "is in sync with the registered routes"
 
 echo "Case: missing markers fails with a toolchain error, not a false pass"
