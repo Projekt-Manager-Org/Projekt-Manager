@@ -4,8 +4,8 @@
  *
  * Pins three contracts:
  *
- *   - AC-263 (data-model.md §5.14, ARCHITECTURE.md "Storage usage —
- *     trigger-maintained side table"): the four-bucket per-project view
+ *   - AC-263 (data-model.md §5.14; design at `projectStorageUsage` in
+ *     schema.ts): the four-bucket per-project view
  *     `project_storage_usage` is maintained accurately across every
  *     attachment lifecycle transition (init pending, complete, hide,
  *     restore, orphan-reaper delete pending, hidden-reaper delete

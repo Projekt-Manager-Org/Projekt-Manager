@@ -11,7 +11,7 @@
 - Type-safe language for both client and server code.
 - Testing: unit + component + API integration + at least one E2E smoke test.
 - All data mutations go through the API. The front end never accesses the database directly.
-- Decisions that need context and rationale are recorded in [ADRs](../adr/index.md). All important implementation choices are visible in [ARCHITECTURE.md](../../ARCHITECTURE.md).
+- Decisions that need context and rationale are recorded in [ADRs](../adr/index.md). [ARCHITECTURE.md](../../ARCHITECTURE.md) is the high-level entry point to the implementation: an overview that links to detail rather than holding it.
 
 ### 11.2 Responsibility Boundaries
 

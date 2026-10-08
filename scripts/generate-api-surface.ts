@@ -1,5 +1,5 @@
 /**
- * Generates the endpoint table in `ARCHITECTURE.md` § API Surface from
+ * Generates the endpoint table in `docs/api/README.md` § Endpoints from
  * the routes `buildApp()` registers — the published table is not
  * hand-authored (AC-352).
  *
@@ -91,7 +91,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  * The published doc. Also the path Prettier's configuration is always
  * resolved from, even when writing elsewhere — see `buildExpectedDoc`.
  */
-const CANONICAL_DOC_PATH = path.join(REPO_ROOT, 'ARCHITECTURE.md');
+const CANONICAL_DOC_PATH = path.join(REPO_ROOT, 'docs', 'api', 'README.md');
 const DOC_PATH = process.env.API_SURFACE_DOC_PATH ?? CANONICAL_DOC_PATH;
 
 const START_MARKER = '<!-- GENERATED:api-surface:START';

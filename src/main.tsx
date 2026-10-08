@@ -1,5 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+// Root import on purpose: `react-router/dom` holds only RouterProvider /
+// HydratedRouter (RSC, framework SSR); the v8 changelog wrongly implies
+// BrowserRouter lives there.
 import { BrowserRouter } from 'react-router';
 import { App } from './App';
 import { applyBranding } from './styles/applyBranding';

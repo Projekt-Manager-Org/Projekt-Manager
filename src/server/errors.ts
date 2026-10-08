@@ -16,8 +16,6 @@ import { STRINGS } from '../config/strings.js';
  *
  * api.md §14.4.1's `CHECKED:error-codes` block mirrors this array and is
  * pinned to it by `__tests__/error-codes.test.ts` — edit both together.
- * Rationale:
- * [ARCHITECTURE.md § Error-Code Catalogue](../../ARCHITECTURE.md#error-code-catalogue).
  *
  * Declaration order is publication order. Grouped by domain, so the
  * published catalogue reads as a catalogue and not as an alphabet.

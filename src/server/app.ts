@@ -86,8 +86,8 @@ export interface AppOptions {
    * (C-DEAD): its one caller, `scripts/generate-openapi.ts`, runs on
    * every CI run.
    *
-   * Everything else — the 3.1 target, the validity gate, why the import
-   * below is lazy — is ARCHITECTURE.md § OpenAPI Document Generation.
+   * The 3.1 target and the validity gate: docs/api/README.md § OpenAPI
+   * Document.
    */
   openapi?: OpenApiDocOptions;
 }
@@ -289,10 +289,10 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // `onRoute` hook is attached before any route (including the ones
   // gated on `opts.db`) is added.
   if (opts.openapi) {
-    // Lazy `import()` inside the branch, never a static top-level one —
-    // that is what keeps this devDependency out of the production
-    // runtime (ARCHITECTURE.md § OpenAPI Document Generation). Fastify's
-    // `register` accepts a module promise.
+    // Lazy `import()` inside the branch, never a static top-level one:
+    // the Dockerfile prunes devDependencies after the build, so a static
+    // import would fail every production boot. Fastify's `register`
+    // accepts a module promise.
     app.register(import('@fastify/swagger'), { openapi: opts.openapi });
   }
 
