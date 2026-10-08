@@ -24,7 +24,7 @@ Generalising: CD config is security-critical code running with root privilege on
 
 ## Decision
 
-Delete the push-based GHA deploy path; replace with a manual pull-based flow the operator runs on the VPS over WG. Secrets live encrypted at rest in a single age-wrapped file; plaintext never touches disk. ADR-0011's artifact pipeline (CI → GHCR, SHA-tagged immutable images) is preserved — only the distribution-to-host leg changes.
+Delete the push-based GHA deploy path; replace with a manual pull-based flow the operator runs on the VPS over WG. Secrets live encrypted at rest in a single age-wrapped file; the deploy step writes no plaintext file. Docker keeps the resolved values in each container's config on the VPS — accepted, the VPS is inside the trust zone. ADR-0011's artifact pipeline (CI → GHCR, SHA-tagged immutable images) is preserved — only the distribution-to-host leg changes.
 
 ### What's removed
 
@@ -67,7 +67,7 @@ The `deploy` user itself is kept: still owns `/opt/projekt-manager`, still in `d
 
 - **Remote trust link removed.** Compromising a workflow, an Action publisher, or GHA secrets no longer grants VPS access. The VPS is reachable only over WG by the operator's personal account, independent of the GHA supply chain.
 - **The `workflow_run` default-branch bug class is designed out.** No CD workflow file, no gotcha. `deploy.sh` lives in-tree, reviewed alongside every other code change.
-- **Secrets move off GitHub and off `docker-compose.yml`'s `environment:` at rest.** One age passphrase unlocks them at invocation; plaintext never on VPS disk. Secret surface = one encrypted file + one passphrase in the operator's password manager.
+- **Secrets move off GitHub and off `docker-compose.yml`'s `environment:` at rest.** One age passphrase unlocks them at invocation; no plaintext file in the repo or on GitHub. The values do persist in Docker's container config (`/var/lib/docker`, root-only) — accepted, the VPS is inside the trust zone: root there reaches the data anyway. Secret surface = one encrypted file + one passphrase in the operator's password manager.
 - **Rollback interface = forward-deploy interface.** `./deploy.sh sha-<old>` vs `./deploy.sh origin/main`. No separate "how to roll back" to remember under pressure.
 - **Builds and GHCR untouched.** ADR-0011's artifact pipeline stays — two concerns cleanly separated.
 - **The config that can misconfigure production is one shell script, reviewed as code.** Not a multi-stage GHA DAG assembled from third-party Actions whose SHAs drift.
@@ -78,7 +78,7 @@ Documented and accepted. Each has an upgrade trigger.
 
 - **`deploy` still in `docker` group.** Cutover reduces _exposure_ (no remote key hands it out) but not _posture_. Rootless Docker or Podman is the direction. Trigger: operational cost of migration justified by stack growth, or before repo/GHCR goes public. **The trigger fired 2026-09-04** (repo and packages both public) and was consciously not acted on: the app is still WG-only, so going public widened who can read the image, not who can reach the daemon. Re-examine when anything is served beyond the tunnel.
 - ~~**GHCR PAT on the VPS.**~~ **Closed 2026-09-04** — the packages went public ([ADR-0011 § Image visibility](0011-build-images-in-ci-distribute-via-ghcr.md)), `deploy` pulls anonymously, and there is no credential left to rotate.
-- **VPS reboot requires manual re-deploy.** Stack does not come back alone because secrets are not on disk. Acceptable at pilot scale / single operator. Trigger: reboot-miss incidents accumulate → VPS-local secrets manager (Docker secrets from a systemd-delivered unseal file, or minimal KMS).
+- **VPS reboot needs the operator.** Containers restart on their own (`restart: unless-stopped`; Docker kept their environment), but the app stays down until the operator pastes the binary identity ([ADR-0024](0024-binary-attachment-e2e-encryption.md)). Acceptable at pilot scale / single operator. Trigger: reboot-miss incidents accumulate → revisit the tmpfs-only identity in ADR-0024.
 - **Passphrase loss = regenerate secrets from sources of record** (password manager, Cloudflare dashboard, Postgres/MinIO reset paths). Recovery in `docs/ops/manual-deploy.md`.
 - **Compromised dev machine can publish a malicious image to GHCR.** Mitigated by manual promotion — an attacker-tagged image does not deploy itself; the operator reviews the SHA passed to `./deploy.sh`. Not fully mitigated by this ADR; signing (Sigstore cosign) is the scale-up answer.
 - **Solo-operator bus factor.** Passphrase lives with one person. Second operator → multi-recipient age or a shared password-manager entry. Cheap to add when needed.

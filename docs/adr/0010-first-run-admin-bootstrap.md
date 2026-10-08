@@ -71,7 +71,7 @@ Skip admin-in-DB by delegating auth. Rejected: scope is explicitly single-tenant
 
 ### Negative
 
-- Credentials live in `secrets.env.age`, decrypted only at deploy via process substitution (see [ADR-0012](0012-manual-pull-based-deploy-over-wireguard.md)). Plaintext never on disk, but the operator must remove the bootstrap vars from the encrypted file after first login.
+- Credentials live in `secrets.env.age`, decrypted only at deploy (see [ADR-0012](0012-manual-pull-based-deploy-over-wireguard.md)). No plaintext file — Docker's container config aside, per ADR-0012 — but the operator must remove the bootstrap vars from the encrypted file after first login.
 - "Remove vars after first login" is a human protocol, not enforced. Forgetting leaves dormant credentials in the file — no-op if users exist, but still a leak surface if the passphrase is later compromised. Documented in `.env.example` and `docs/ops/server-setup.md`.
 - Forced password rotation on first login is not implemented — the warning log + docs are the enforcement. Future iteration may add a "must change on first login" flag.
 - Walking-skeleton-scoped. A multi-operator production wants a user-management UI or SSO; this is a successor path, not a permanent answer.

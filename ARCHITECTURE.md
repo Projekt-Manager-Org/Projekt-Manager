@@ -610,7 +610,7 @@ A `workflow_run` listener rather than jobs inside `ci.yml` for three reasons, al
 
 1. Operator is already on the VPS (via WireGuard + sudo); invokes `sudo -u deploy /opt/projekt-manager/scripts/deploy.sh [<ref>]`. Default ref is `origin/main`; pass an explicit SHA for rollback.
 2. `git fetch origin`, `git checkout <expected-sha>`, assert `HEAD` landed at the expected SHA (hard-coded guard against a silently failed checkout).
-3. Decrypt `/opt/projekt-manager/secrets.env.age` via `age -d`, `source <(...)` with `set -a` so the KEY=VALUE lines reach compose. Plaintext is never written to disk.
+3. Decrypt `/opt/projekt-manager/secrets.env.age` via `age -d` into the shell env (capture-then-`eval`) so the KEY=VALUE lines reach compose. No plaintext file is written; Docker keeps the values in the container config ([ADR-0012](docs/adr/0012-manual-pull-based-deploy-over-wireguard.md)).
 4. `APP_IMAGE_TAG=sha-<sha> docker compose --profile backup pull app backup` — fetches both app and backup images from GHCR under the shared SHA tag (no build on the VPS, per ADR-0011). `--profile` is required on pull too, or the backup service is filtered out of the active set.
 5. `docker compose --profile backup up -d` — swaps the `app` and `backup` containers to the new images; `db`, `storage`, and `caddy` keep running on their pinned images.
 6. Smoke test: `scripts/smoke-app-health.sh` polls `/api/health` from inside the app container for up to 60 s — the same script CI's runtime smoke test and `sync-restore-vps.sh`'s post-restore check use (single source of truth; see the script's header). Failure dumps the last 50 lines of compose logs and exits non-zero, leaving the previously running version in place.
