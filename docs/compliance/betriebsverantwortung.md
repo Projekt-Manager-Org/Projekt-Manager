@@ -1,0 +1,96 @@
+# Betriebsverantwortung — Baseline Projekt-Manager
+
+> **Baseline, not the document of record.** The operating company keeps its own copy outside this public repo, fills the `⟨…⟩` placeholders and signs it there. This file holds only what the system itself determines; facts link to their canonical source instead of restating it ([D-SSOT](../../review/conventions-docs-general.md)). German by design — the readers are the company's management and the operator it appoints.
+
+**Grundsatz.** Das System gilt als potenziell unzuverlässig ([Kickoff §Done when](../project/kickoff.md#done-when-final-product)). Es liefert verschlüsselte, geprüfte Sicherungen und die Mittel, sie zu prüfen. Sicherungskonzept, Betrieb und Restrisiko liegen beim Betreiber ([Kickoff §Not Doing](../project/kickoff.md#not-doing)). Jede technische Entscheidung hatte ihren Preis; §2 nennt ihn offen.
+
+## 0. Rollen
+
+| Rolle                      | Wer                                            | Verantwortung                                                                                                                  |
+| -------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Projekt (Open Source)      | —                                              | Software, Anleitungen, Hinweise. Keine Zusage zu Wartung, Verfügbarkeit oder Gewährleistung ([AGPL-3.0 §15–16](../../LICENSE)) |
+| Betreiber (Unternehmen)    | ⟨Firma⟩, vertreten durch ⟨Name, Funktion⟩      | Trägt die Verantwortung: Konten, Kosten, Verträge, Sicherungskonzept, Risikoakzeptanz (§5). Bestellt den Operator              |
+| Operator (Person/Dienstl.) | ⟨Name oder Dienstleister⟩ · Vertretung: ⟨Name⟩ | Führt die Betriebsaufgaben aus (§3)                                                                                            |
+
+Der Betreiber kann Aufgaben delegieren, nicht die Verantwortung.
+
+## 1. Verantwortungsmatrix
+
+| Bereich                  | Projekt liefert                                                                                                                                                                        | Betreiber verantwortet                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Datenbanksicherung       | Automatische, verschlüsselte, geprüfte Sicherungen; Bereitstellungsfenster beim Speicheranbieter ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)) | Sicherungskonzept darüber hinaus: Kopien, Aufbewahrung, Offline-Medien, Wiederherstellungstests (§4)        |
+| Anhänge, Rechnungs-PDFs  | Ablage mit Versionierung und Object Lock ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md))                                                                         | Ob eine unabhängige Kopie nötig ist (§4)                                                                    |
+| Gesamtexport             | Export aller Geschäftsdaten inkl. Anhänge ([daten.md §8.11.1](../spec/ui/daten.md#8111-export))                                                                                        | Ob und wie oft exportiert wird; sichere Ablage                                                              |
+| Schlüssel, Geheimnisse   | Verfahren für Einrichtung, Laden, Prüfung, Wechsel ([backup/](../ops/backup/overview.md), [binary-key/](../ops/binary-key/overview.md))                                                | Verwahrung: Speicher- und Sicherungsschlüssel, Passphrase, Anbieter-Zugangsdaten, ausgemusterte Schlüssel   |
+| Anbieterkonten           | Einrichtungsanleitungen ([ops/](../ops/index.md))                                                                                                                                      | Konten, Abrechnung, Kostenwarnungen, AV-Verträge (Server, Sicherungs- und Dateispeicher, DNS, LLM-Anbieter) |
+| Betrieb                  | Anleitungen und Skripte                                                                                                                                                                | Operator bestellen; Aufgaben nach §3                                                                        |
+| Server, Software-Wartung | —                                                                                                                                                                                      | Sicherheitshinweise verfolgen, Updates einspielen: Betriebssystem, Docker, Anwendung und Abhängigkeiten     |
+| Zugänge                  | VPN und Rollenmodell ([ADR-0008](../adr/0008-vpn-first-network-access.md))                                                                                                             | Personen und Geräte aufnehmen und entfernen (VPN, Benutzerkonten)                                           |
+| Überwachung              | Statusanzeige, Benachrichtigungen ([ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md))                                                                       | Jemand schaut hin und reagiert                                                                              |
+| Speicherplatz            | Warnung bei Erreichen der Grenzwerte ([Kickoff §Done when](../project/kickoff.md#done-when-final-product))                                                                             | Aufräumen durch die Nutzer ([Kickoff §Not Doing](../project/kickoff.md#not-doing))                          |
+| Restrisiko               | Benennt die Grenzen (§2)                                                                                                                                                               | Akzeptiert sie namentlich (§5)                                                                              |
+
+## 2. Grenzen des Systems
+
+1. **Ein Server, keine Redundanz.** Fällt er aus, steht das System ([ADR-0003](../adr/0003-deployment-infrastructure-vps-docker-compose-github-actions.md)).
+2. **Kein selbständiger Wiederanlauf.** Nach jedem Neustart von Server oder Anwendung bleibt die Anwendung aus, bis der Operator den Speicherschlüssel lädt ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md), [load.md](../ops/binary-key/load.md)).
+3. **Verlustfenster.** Daten seit der letzten Sicherung können verloren gehen ([Zeitplan](../ops/backup/overview.md#cadence), [Verfahrensdokumentation §4.2](verfahrensdokumentation.md#42-wiederherstellung-und-akzeptiertes-verlustfenster)).
+4. **Sicherungen belegen Übereinstimmung, nicht Richtigkeit.** Jede Sicherung wird gegen die Datenbank geprüft. Unbemerkt fehlerhafte Daten werden aber getreu mitgesichert. Die Anwendung kann die Richtigkeit ihrer eigenen Daten nicht bestätigen ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)).
+5. **Begrenzte Aufbewahrung.** Sicherungen älter als das Bereitstellungsfenster werden gelöscht ([ADR-0020 §Retention](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention)).
+6. **Anhänge: eine Kopie, keine Sicherung.** Anhänge liegen nur beim Speicheranbieter, ohne eigene Sicherung. Beschädigte Dateien fallen beim Öffnen auf (authentifizierte Verschlüsselung) — verlorene bleiben verloren ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md), [ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
+7. **Schlüsselverlust ist endgültig.** Ohne Speicherschlüssel sind alle Anhänge und Rechnungs-PDFs unlesbar, ohne Sicherungsschlüssel alle Sicherungen ([binary-key/recovery.md](../ops/binary-key/recovery.md), [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)).
+8. **Wiederherstellung kostet die Daten danach.** Ausgestellte Rechnungsnummern bleiben als Lücke ([ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md)); Anhänge ohne Datensatz müssen vor dem Wiederanlauf gerettet werden ([recovery.md](../ops/backup/recovery.md)).
+9. **Warnungen teilen das Schicksal des Systems.** Statusanzeige und Benachrichtigungen laufen auf demselben Server. Steht er, meldet sich nichts ([ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)).
+10. **Ein Operator ist ein Ausfallpunkt.** Ohne Vertretung mit Zugriff auf Schlüssel und Passphrase steht der Betrieb mit ihm still ([ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)).
+11. **Operatorwechsel hat einen Preis.** Ein neuer Speicherschlüssel macht alle vorhandenen Dateien in der Anwendung unlesbar, bis sie neu hochgeladen sind. Ohne Wechsel behält der bisherige Operator einen gültigen Schlüssel ([binary-key/rotation.md](../ops/binary-key/rotation.md)).
+12. **Keine Übernahme bei geänderter Datenbankstruktur.** Programmversionen mit geänderter Datenbankstruktur setzen derzeit eine neue Datenbank voraus; einen Übernahmeweg für Bestandsdaten gibt es nicht ([recover-from-schema-change.md](../ops/recover-from-schema-change.md)). Der Gesamtexport überträgt die Geschäftsdaten, nicht das Änderungsprotokoll ([daten.md §8.11.1](../spec/ui/daten.md#8111-export)).
+
+## 3. Operator
+
+| Aufgabe                                                                       | Turnus                                                                    | Anleitung                                                                                                                                                                        |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Speicherschlüssel laden                                                       | nach jedem Neustart von Server oder Anwendung — Anwendung steht bis dahin | [binary-key/load.md](../ops/binary-key/load.md#two-paste-workflow)                                                                                                               |
+| Sicherungsstatus prüfen                                                       | ⟨täglich⟩                                                                 | Statusanzeige (nur für den Inhaber sichtbar) oder Benachrichtigung bei fehlgeschlagener Sicherung ([ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)) |
+| Probe-Wiederherstellung am Arbeitsplatz                                       | monatlich                                                                 | [backup/drills.md](../ops/backup/drills.md#monthly-operator-workstation-drill)                                                                                                   |
+| Prüfung der Verwahrkopie des Sicherungsschlüssels                             | ⟨Turnus⟩                                                                  | [Verfahrensdokumentation §4.3](verfahrensdokumentation.md#43-schlüsselverwahrung)                                                                                                |
+| Prüfung der Verwahrkopien des Speicherschlüssels                              | monatlich, Kopien im Wechsel                                              | [binary-key/drills.md](../ops/binary-key/drills.md)                                                                                                                              |
+| Sicherheitshinweise verfolgen, Updates einspielen (Anwendung, Abhängigkeiten) | laufend, Sicherheitsupdates sofort                                        | [manual-deploy.md](../ops/manual-deploy.md); Vorgehen des Projekts als Vorlage: [dep-management.md](../ops/dep-management.md)                                                    |
+| Betriebssystem, Docker aktualisieren                                          | bei Bedarf                                                                | [server-setup.md](../ops/server-setup.md)                                                                                                                                        |
+| Personen und Geräte aufnehmen und entfernen (VPN, Benutzerkonten)             | bei Bedarf                                                                | [wireguard-setup.md](../ops/wireguard-setup.md), Benutzerverwaltung in der Anwendung                                                                                             |
+| Zugangsdaten und Schlüssel wechseln                                           | Sicherungs-Token jährlich; alles bei Verdacht                             | [backup/rotation.md](../ops/backup/rotation.md), [binary-key/rotation.md](../ops/binary-key/rotation.md)                                                                         |
+| Wiederherstellung im Störfall                                                 | im Störfall                                                               | [backup/recovery.md](../ops/backup/recovery.md), [binary-key/recovery.md](../ops/binary-key/recovery.md)                                                                         |
+
+**Anforderungsprofil:** Linux-Kommandozeile und SSH, Docker Compose, WireGuard, `age` und Passwortmanager, git und Node.js/npm (Prüfskripte), S3-Kommandozeilenwerkzeuge, PostgreSQL-Grundlagen für die Wiederherstellung.
+
+**Erreichbarkeit:** nach jedem Neustart, sonst steht die Anwendung (§2.2). Vertretung mit eigenem Zugriff auf Schlüssel und Passphrase (§2.10).
+
+## 4. Empfehlungen an den Betreiber
+
+- **3-2-1-Regel:** drei Kopien, zwei Medien, eine außer Haus. Das System liefert eine Kopie außer Haus — nur anfangs gegen Löschen gesperrt, mit begrenzter Aufbewahrung ([ADR-0020 §Retention](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention)).
+- **Sicherungen übernehmen:** Sicherungen regelmäßig auf eigenen Speicher kopieren, mit eigener Aufbewahrung — z. B. monatliche Stände ≥ 13 Monate. Ausgemusterte Sicherungsschlüssel so lange verwahren, wie damit verschlüsselte Kopien existieren.
+- **Gesamtexport ablegen:** regelmäßig exportieren — Geschäftsdaten und Anhänge, lesbar ohne Anwendung und Schlüssel. Rechnungs-PDFs über den Rechnungsexport ([Verfahrensdokumentation §7](verfahrensdokumentation.md#7-datenzugriff-der-finanzverwaltung-147-abs-6-ao)). Exporte sind unverschlüsselt: nur verschlüsselt ablegen.
+- **Wiederherstellung üben:** an den eigenen Kopien, nicht nur an denen des Systems ([recovery.md](../ops/backup/recovery.md)).
+- **Kostenwarnungen** bei allen Speicheranbietern einrichten.
+- **Vertretung** des Operators bestellen und einweisen (§2.10).
+
+## 5. Risikoakzeptanz
+
+| Risiko                                                | Grenze      | Maßnahme des Betreibers                                                                                         | Akzeptiert durch · Datum |
+| ----------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Verlustfenster, Folgen der Wiederherstellung          | §2.3, §2.8  | [Verfahrensdokumentation §4.2](verfahrensdokumentation.md#42-wiederherstellung-und-akzeptiertes-verlustfenster) | dort                     |
+| Unerkannte Datenfehler                                | §2.4        | ⟨⟩                                                                                                              | ⟨Name · Datum⟩           |
+| Aufbewahrung über das Fenster hinaus                  | §2.5        | ⟨Sicherungskonzept⟩                                                                                             | ⟨Name · Datum⟩           |
+| Anhänge in einer Kopie                                | §2.6        | ⟨⟩                                                                                                              | ⟨Name · Datum⟩           |
+| Ausfall des Servers                                   | §2.1        | ⟨⟩                                                                                                              | ⟨Name · Datum⟩           |
+| Keine Meldung bei Serverausfall                       | §2.9        | ⟨externe Überwachung⟩                                                                                           | ⟨Name · Datum⟩           |
+| Operatorwechsel                                       | §2.11       | ⟨⟩                                                                                                              | ⟨Name · Datum⟩           |
+| Keine Datenübernahme bei geänderter Datenbankstruktur | §2.12       | ⟨⟩                                                                                                              | ⟨Name · Datum⟩           |
+| Ausfall oder Nichterreichbarkeit des Operators        | §2.2, §2.10 | ⟨Vertretung⟩                                                                                                    | ⟨Name · Datum⟩           |
+| Schlüsselverlust                                      | §2.7        | ⟨Verwahrorte⟩                                                                                                   | ⟨Name · Datum⟩           |
+| Keine Wartungszusage des Projekts                     | §0          | ⟨Wartung durch⟩                                                                                                 | ⟨Name · Datum⟩           |
+
+## Änderungshistorie
+
+| Datum   | Änderung                                    | Freigabe |
+| ------- | ------------------------------------------- | -------- |
+| ⟨Datum⟩ | Erstfassung auf Basis der Baseline ⟨Commit⟩ | ⟨⟩       |

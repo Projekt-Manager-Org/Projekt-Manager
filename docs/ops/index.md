@@ -1,5 +1,7 @@
 # Ops Docs
 
+Who does what in operations — the operating company's duties, the operator role, the system's limits: [Betriebsverantwortung](../compliance/betriebsverantwortung.md).
+
 ## Setup (one-time)
 
 | Document                                                         | Purpose                                                  |
