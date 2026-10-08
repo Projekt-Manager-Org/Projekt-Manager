@@ -12,7 +12,7 @@
 
 ## Context
 
-The kickoff commits to automated database backup (line 72) but declares "a backup concept and system beyond that" out of scope (line 80). Iteration 7 forces the open question: what "backup" actually means here, and how it relates to the test-seeding path that currently bypasses the API.
+The kickoff commits to automated database backup ([§Done when](../project/kickoff.md#done-when-final-product)) but declares "a backup concept and system beyond that" out of scope ([§Not Doing](../project/kickoff.md#not-doing)). Iteration 7 forces the open question: what "backup" actually means here, and how it relates to the test-seeding path that currently bypasses the API.
 
 Three classes of data with different properties:
 
@@ -92,7 +92,7 @@ Versioned export with translation code bridging old formats. Ruled out: speculat
 
 ## References
 
-- [Kickoff](../project/kickoff.md) — line 72 (automated DB backup as goal), line 80 (backup-system expansion as non-goal)
+- [Kickoff](../project/kickoff.md) — §Done when (automated DB backup as goal), §Not Doing (backup-system expansion as non-goal)
 - [ADR-0008](0008-vpn-first-network-access.md) — VPN-first threat model
 - [ADR-0010](0010-first-run-admin-bootstrap.md) — how the first user is created on fresh installs absent a loaded envelope
 - Issue [#230](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/230) — Layer 1 content set expanded to all user-meaningful business state (see top-of-doc 2026-05-22 update)
