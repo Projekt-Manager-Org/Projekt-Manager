@@ -41,10 +41,10 @@ You are about to write private key material into RAM on the VPS; this is cleared
      test -s /run/binary-key/identity && echo "binary identity loaded"
    ```
 
-5. The boot probe re-checks on the next health-poll tick; the `app` container flips to `healthy`. Confirm:
+5. The boot probe polls for the identity and resumes startup once it appears. It gives up after `DEFAULT_WAIT_TIMEOUT_MS` ([binaryIdentity.ts](../../../src/server/storage/binaryIdentity.ts)); the container then restarts with an empty tmpfs — paste again. `app` has no Docker healthcheck (`docker ps` shows only `Up`), so confirm readiness via `/api/health`:
 
    ```bash
-   sudo -u deploy docker ps --filter name=projekt-manager-app-1 --format '{{.Status}}'
+   sudo -u deploy /opt/projekt-manager/scripts/smoke-app-health.sh projekt-manager-app-1
    curl -fsS https://${DOMAIN}/api/health    # from a WireGuard client
    ```
 

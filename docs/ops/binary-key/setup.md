@@ -126,7 +126,7 @@ See [load.md](load.md). After the paste, `scripts/deploy.sh` re-polls `/api/heal
 
 First-run expectations:
 
-1. `app` container is `Up` and healthy (`docker ps --filter name=projekt-manager-app`).
+1. `app` container is `Up` and `scripts/smoke-app-health.sh projekt-manager-app-1` passes (no Docker healthcheck — `docker ps` shows only `Up`).
 2. The Service Worker registers on the next browser load of the SPA (`navigator.serviceWorker` in DevTools shows it as `activated`).
 3. A test upload via the UI lands at B2 as `application/octet-stream` opaque ciphertext (verify with the B2 console or a signed `aws s3 head-object` against the key).
 4. The same upload renders correctly in the gallery — the SW intercepts the synthetic origin, fetches the DEK, decrypts, serves plaintext bytes.
