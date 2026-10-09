@@ -493,6 +493,16 @@ jobs:
       - name: API surface drift check — self-test
         run: bash scripts/__tests__/check-api-surface.test.sh
 
+      # 0000_baseline.sql is assembled from schema.ts (drizzle-kit,
+      # offline — no DB) plus the hand-written SQL in
+      # src/server/db/baseline/. A hand edit or a regen that drops a
+      # hand-written part fails here, not on the next database.
+      - name: Baseline migration drift check
+        run: npm run check:baseline
+
+      - name: Baseline migration drift check — self-test
+        run: bash scripts/__tests__/check-baseline.test.sh
+
       # AC-351's API-surface-completeness clause rests on one ESLint
       # selector, which fails open: a typo or a widened `ignores:` leaves
       # `npm run lint` green while the document silently goes incomplete.

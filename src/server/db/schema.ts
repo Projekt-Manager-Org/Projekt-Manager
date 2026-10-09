@@ -414,7 +414,7 @@ export const auditLog = pgTable(
     // GIN trigram index powers the Aktivität view's substring search on
     // entity_label (ui/management.md §8.13.2). Without it, `ILIKE '%q%'`
     // falls back to a seq scan. The pg_trgm extension itself is enabled
-    // by a hand-edit in 0000_baseline.sql — drizzle-kit does not emit
+    // in src/server/db/baseline/head/ — drizzle-kit does not emit
     // CREATE EXTENSION statements.
     index('audit_log_entity_label_trgm_idx').using('gin', sql`${table.entityLabel} gin_trgm_ops`),
     check('audit_log_actor_kind_valid', sql`${table.actorKind} IN ('user', 'system')`),
@@ -843,9 +843,8 @@ export const invoiceSequence = pgTable(
 // Issued rows are write-once at the persistence layer (AC-294,
 // §6.14). The route layer rejects mutations on issued rows with
 // INVOICE_FROZEN; the DB-level immutability backstop is a row-level
-// trigger added in the baseline migration tail (parity with the
-// project_storage_usage triggers — drizzle-kit does not emit
-// triggers, hand-edited at regen time).
+// trigger in src/server/db/baseline/tail/ (drizzle-kit does not emit
+// triggers).
 //
 // `number` CHECK pins the canonical RE-YYYY-NNNN / ST-YYYY-NNNN
 // shape; null is allowed for drafts. A partial unique index over
