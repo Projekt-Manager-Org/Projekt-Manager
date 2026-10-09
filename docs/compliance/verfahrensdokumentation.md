@@ -8,14 +8,14 @@ Struktur nach [GoBD](https://www.bundesfinanzministerium.de/Content/DE/Downloads
 
 ## 0. Geltungsbereich und Stand
 
-| Punkt                | Inhalt                                                                                          |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| Unternehmen          | ⟨Firma, Anschrift, Steuernummer⟩                                                                |
-| Verantwortlich       | ⟨Name, Funktion⟩ · Betrieb/IT: ⟨Name⟩ · Steuerberatung: ⟨Kanzlei⟩                               |
-| System               | Projekt-Manager, eingesetzte Version ⟨Image-Tag / Commit⟩                                       |
-| Abgedeckt            | Erstellung, Stornierung und Archivierung von **Ausgangsrechnungen**                             |
-| Nicht abgedeckt      | Eingangsrechnungen, Buchführung, Zahlungsverkehr, Kasse — ⟨jeweilige Teil-Dokumentation/System⟩ |
-| Gültig ab · Freigabe | ⟨Datum⟩ · ⟨Name, Unterschrift⟩                                                                  |
+| Punkt                | Inhalt                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unternehmen          | ⟨Firma, Anschrift, Steuernummer⟩                                                                                                            |
+| Verantwortlich       | ⟨Name, Funktion⟩ · Betrieb/IT: ⟨Name⟩ · Steuerberatung: ⟨Kanzlei⟩ · Rollen und Pflichten: [Betriebsverantwortung](betriebsverantwortung.md) |
+| System               | Projekt-Manager, eingesetzte Version ⟨Image-Tag / Commit⟩                                                                                   |
+| Abgedeckt            | Erstellung, Stornierung und Archivierung von **Ausgangsrechnungen**                                                                         |
+| Nicht abgedeckt      | Eingangsrechnungen, Buchführung, Zahlungsverkehr, Kasse — ⟨jeweilige Teil-Dokumentation/System⟩                                             |
+| Gültig ab · Freigabe | ⟨Datum⟩ · ⟨Name, Unterschrift⟩                                                                                                              |
 
 ## 1. Allgemeine Beschreibung — Prozess Ausgangsrechnung
 
@@ -51,6 +51,8 @@ Kanonische Beschreibung: [ADR-0026](../adr/0026-invoices-immutability-and-zugfer
 | Infrastruktur     | Ein Server (VPS) mit PostgreSQL; Rechnungs-PDFs bei Backblaze B2; Datensicherungen bei Cloudflare R2. Standort/Region: ⟨je Anbieter⟩; AV-Verträge: ⟨Ablage⟩                                                                                                                                                                                                                                            | [DATA.md](../../DATA.md)                                                                                                                              |
 
 ## 4. Betriebsdokumentation
+
+Rollen, Betreiberpflichten und Grenzen des Systems: [Betriebsverantwortung](betriebsverantwortung.md).
 
 ### 4.1 Datensicherung
 

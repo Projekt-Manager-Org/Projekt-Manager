@@ -16,7 +16,7 @@ Forces:
 - **Compose is the source of truth** for deployment ([ADR-0012](0012-manual-pull-based-deploy-over-wireguard.md)). A host-managed scheduler splits that across two surfaces.
 - **No human at every backup.** A live operator per run defeats the schedule.
 - **Operator workstation is the one trusted enclave** for long-lived decrypt material — VPS and CI are not.
-- **Scope is mitigation, not archaeology.** Kickoff commits to "automated DB backup at regular intervals" (line 72) but declares "a backup concept and a backup system beyond that" out of scope (line 80). Multi-month restore points are out of this project's goals.
+- **Scope is snapshots, not the backup concept.** Kickoff commits to automated DB backups at regular intervals ([§Done when](../project/kickoff.md#done-when-final-product)); a backup concept beyond that is out of scope ([§Not Doing](../project/kickoff.md#not-doing)). Copies, long-term retention and restore tests on them are the operating company's ([Betriebsverantwortung](../compliance/betriebsverantwortung.md)).
 
 ## Decision
 
@@ -62,7 +62,7 @@ Extend the Layer 1 envelope so one artifact captures everything. Ruled out: Laye
 
 ### GFS-style rotation (7 daily, 4 weekly, 12 monthly)
 
-Classic grandfather-father-son: promote a daily to weekly on Sundays and monthly on the 1st, prune per-tier (7/4/12). Ruled out this iteration on two counts: (1) kickoff scopes the feature to mitigation, not long-term history — expansion beyond is explicitly out of scope ([kickoff line 80](../project/kickoff.md)); (2) R2's free-tier lifecycle rule is bucket-wide (no per-prefix scope), so a promoted monthly would be deleted at day 30 alongside its source daily — "12 monthly" is unreachable without a paid plan or a secondary bucket. The linear 14–30 day window is honest about what the provider actually delivers. Revisit when multi-month archaeology becomes a project goal.
+Classic grandfather-father-son: promote a daily to weekly on Sundays and monthly on the 1st, prune per-tier (7/4/12). Ruled out: long-term retention is part of the backup concept, which belongs to the operating company ([§Not Doing](../project/kickoff.md#not-doing), [Betriebsverantwortung §4](../compliance/betriebsverantwortung.md#4-empfehlungen-an-den-betreiber)). Not a provider limit — R2 bucket-lock and lifecycle rules both take a prefix, so per-tier prefixes are possible ([lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/), [bucket locks](https://developers.cloudflare.com/r2/buckets/bucket-locks/)).
 
 ## Consequences
 
@@ -99,7 +99,8 @@ Classic grandfather-father-son: promote a daily to weekly on Sundays and monthly
 
 ## References
 
-- [Kickoff](../project/kickoff.md) — automated DB backup as a goal (line 72); backup-system expansion as non-goal (line 80) — the scope anchor for the linear retention choice
+- [Kickoff](../project/kickoff.md) — automated DB backup as a goal (§Done when); a backup concept beyond as non-goal (§Not Doing) — the scope anchor for the linear retention choice
+- [Betriebsverantwortung](../compliance/betriebsverantwortung.md) — what the operating company owns beyond the delivered snapshots
 - [ADR-0012](0012-manual-pull-based-deploy-over-wireguard.md) — compose is the source of truth
 - [ADR-0014](0014-ac-tier-system-critical-vs-design.md) — misleading state is a critical defect class
 - [ADR-0018](0018-data-persistence-and-recovery-layered-strategy.md) — the three-layer persistence model; this ADR is the Layer 2 implementation
@@ -140,3 +141,7 @@ Two issues compounded:
 **Trade-off acknowledged:** the former bash flock provided inter-process serialization between the cron-fired tick and an operator's manual `docker exec ... run-backup.sh`. croner's `protect: true` is intra-process only — a manual `docker exec ... node backup-runner.js run` while a scheduled tick is in flight runs in parallel. Artifacts are independent (distinct ISO-timestamp keys, separate ephemeral pg instances); worst case is a duplicate log line and a status-mirror "last writer wins." Documented in `docs/ops/backup/troubleshooting.md`. If operationally needed, a Postgres advisory lock at the top of `runBackup` would restore the cross-process guarantee; not added now because the manual-run-during-scheduled-tick scenario is rare and the consequences are bounded.
 
 The Alpine OS-package coverage gap that hid dcron's stagnation (Renovate's `dockerfile` manager tracks base-image tags, not `apk add` packages on top) was closed in parallel by the [ADR-0027](0027-continuous-dependency-updates-with-supply-chain-scanning.md) work — `docs/ops/dep-management.md` now enumerates apk-installed packages per Dockerfile and requires per-package upstream-health checks at the quarterly review.
+
+### 2026-10-08 — GFS rationale corrected (#416)
+
+The GFS alternative was ruled out partly on a false premise: R2 lifecycle rules do take a prefix scope. Its window figure (14–30 days) also predated the 2026-04-19 amendment. The rejection now rests on scope alone — long-term retention is the operating company's backup concept ([Betriebsverantwortung](../compliance/betriebsverantwortung.md)). Decision unchanged; §Context scope bullet re-anchored accordingly.

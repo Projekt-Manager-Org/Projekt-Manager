@@ -116,7 +116,7 @@ This project makes heavy use of modern LLMs, mostly Claude Code. A "fully automa
 - `docs/spec/` - specification; configuration boundaries (where env vars come from, what happens when one is missing) live in [architecture.md §12](docs/spec/architecture.md#12-configuration-boundaries);
 - `docs/ops/` - runbooks with operator instructions;
 - `docs/adr/` - Architecture Decision Records (ADRs) - bigger decisions with some background and rationale;
-- `docs/compliance/` - baselines for the operating company's legal documents (GoBD Verfahrensdokumentation);
+- `docs/compliance/` - baselines for the operating company's documents (GoBD Verfahrensdokumentation, Betriebsverantwortung — who owns what in operations);
 - `src/` - code. See the [module map](./ARCHITECTURE.md#module-map) for details.
 
 ## How to run
@@ -174,6 +174,8 @@ Seeding is always skipped in production (`NODE_ENV=production`).
 Seed user list and credentials: [docs/ops/local-dev.md § Seed users](docs/ops/local-dev.md#seed-users).
 
 ### Run in production
+
+_Before going live: make sure to have a clear picture of roles, responsibilities and the system's limits - see [Betriebsverantwortung](docs/compliance/betriebsverantwortung.md)._
 
 Check `docs/ops` for the full runbook.
 

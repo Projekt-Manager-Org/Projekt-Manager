@@ -410,7 +410,7 @@ Wipes the Postgres and MinIO volumes, then re-runs the first-login ritual on a c
 
 The MinIO wipe matters because the attachment orphan reaper only handles `status='pending'` rows; once a row is gone, its backing object has no cleanup path and would accumulate forever (`src/server/services/AttachmentService.ts:468` comments aside — the "bucket lifecycle" safety net is only configured on the R2 backup bucket, not the primary MinIO bucket). Wiping `miniodata` keeps the dev environment aligned to the planned production pattern (soft-delete + provider lifecycle), where a full-DB reset can't happen in the first place.
 
-Unlike Phase 8.1 (which writes `BOOTSTRAP_ADMIN_*` to `.env` and relies on a later scrub step), 8.2 injects them as shell env on the admin account. The plaintext admin password never touches disk, removing the risk of a forgotten scrub leaving it in the repo.
+Unlike Phase 8.1 (which writes `BOOTSTRAP_ADMIN_*` to `.env` and relies on a later scrub step), 8.2 injects them as shell env on the admin account. The plaintext admin password never lands in `.env`, removing the risk of a forgotten scrub leaving it in the repo.
 
 1. Stop and remove app, db, and storage containers. Use `docker` directly rather than `docker compose down` — the latter requires all secret vars to interpolate, which aren't sourced at this point:
 
