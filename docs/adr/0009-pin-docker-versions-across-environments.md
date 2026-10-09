@@ -1,7 +1,7 @@
 # ADR-0009: Pin Docker Engine and Compose versions across environments
 
 - **Status:** Accepted
-- **Date:** 2026-04-07 (last bump: 2026-07-14)
+- **Date:** 2026-04-07 (last bump: 2026-10-09)
 - **Confidence:** High
 
 ## Context
@@ -21,13 +21,13 @@ Key forces:
 
 Pin Docker Engine, CLI, containerd, BuildKit plugin, and Compose plugin to explicit versions on every host; place all five on apt hold. Bumps are deliberate, lockstep across all environments.
 
-**Pinned versions (as of 2026-07-14):**
+**Pinned versions (as of 2026-10-09):**
 
 | Package                 | Version                         |
 | ----------------------- | ------------------------------- |
-| `docker-ce`             | `5:29.6.1-1~ubuntu.24.04~noble` |
-| `docker-ce-cli`         | `5:29.6.1-1~ubuntu.24.04~noble` |
-| `containerd.io`         | `2.2.6-1~ubuntu.24.04~noble`    |
+| `docker-ce`             | `5:29.8.2-1~ubuntu.24.04~noble` |
+| `docker-ce-cli`         | `5:29.8.2-1~ubuntu.24.04~noble` |
+| `containerd.io`         | `2.3.6-1~ubuntu.24.04~noble`    |
 | `docker-buildx-plugin`  | `0.35.0-1~ubuntu.24.04~noble`   |
 | `docker-compose-plugin` | `5.3.1-1~ubuntu.24.04~noble`    |
 
@@ -65,7 +65,7 @@ Pin Docker Engine, CLI, containerd, BuildKit plugin, and Compose plugin to expli
 - Security-advisory tracking mechanism is an open decision; interim backstop is manually checking Docker release notes before any bump.
 - `apt-mark showhold` is part of post-install verification (see `docs/ops/server-setup.md` Phase 4).
 
-## Dep lifecycle health (as of 2026-07-14)
+## Dep lifecycle health (as of 2026-10-09)
 
 The "Pinned versions" table above is the version surface. Upstream metadata:
 
