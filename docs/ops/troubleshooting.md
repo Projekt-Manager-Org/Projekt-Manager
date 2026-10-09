@@ -108,7 +108,7 @@ unset SECRETS_PLAINTEXT
 
 **Trap:** First request that touches a recently-added column 500s with this Postgres error, even though the deploy itself reported healthy.
 
-**Root cause:** Drizzle records baselines by hash in `drizzle.__drizzle_migrations`. An edit to `0000_baseline.sql` produces a new hash but `migrate()` skips it because the old hash is already in the ledger. The live DB stays on the previous schema while `schema.ts` describes the new one. Same trap exists locally on `projekt-manager_pgdata`.
+**Root cause:** `migrate()` skips an edited `0000_baseline.sql` — it compares the journal `when`, not the hash ([recover-from-schema-change.md](recover-from-schema-change.md)). The live DB stays on the previous schema while `schema.ts` describes the new one. Same trap exists locally on `projekt-manager_pgdata`.
 
 **Detection:** Both `scripts/deploy.sh` (pre-flight) and `npm run dev` / production boot (via `src/server/db/baseline-guard.ts`) compare the on-disk baseline's sha256 to the ledger entry and abort with `Baseline schema mismatch …` before serving traffic. Hitting this section means a guard was bypassed (e.g. a stale image), the message was missed, or the trap recurred between the guard and the next request.
 

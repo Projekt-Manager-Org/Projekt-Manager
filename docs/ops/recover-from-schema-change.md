@@ -1,6 +1,6 @@
 # Recover from a Schema Change
 
-`0000_baseline.sql` edits do not reach existing databases. Drizzle records baselines by hash in `drizzle.__drizzle_migrations`; the old hash is already there, so `migrate()` silently no-ops on the edited file. The live DB stays on the previous schema while `schema.ts` and the SQL describe the new one.
+`0000_baseline.sql` edits do not reach existing databases. `migrate()` applies a migration only when its `_journal.json` `when` is newer than the last row in `drizzle.__drizzle_migrations`; it records each file's sha256 but never compares it. An edited baseline keeps its `when`, so `migrate()` silently skips it. The live DB stays on the previous schema while `schema.ts` and the SQL describe the new one.
 
 Project policy is to wipe and reseed; no incremental migrations.
 

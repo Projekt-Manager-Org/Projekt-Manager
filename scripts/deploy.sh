@@ -189,12 +189,11 @@ if [ -n "$missing_secrets" ]; then
 fi
 
 # --- Pre-flight: baseline schema-state recurrence guard --------------
-# Drizzle records baseline migrations by sha256 hash in
-# `drizzle.__drizzle_migrations.hash`. An edit to 0000_baseline.sql
-# produces a new hash, but `migrate()` skips re-applying it because the
-# old hash is already in the ledger — the live DB stays on the previous
-# schema while schema.ts and the SQL describe the new one. The first
-# request that touches a new column 500s with
+# `migrate()` decides by the journal `when`, not the sha256 it records
+# in `drizzle.__drizzle_migrations.hash`. An edited 0000_baseline.sql
+# keeps its `when`, so `migrate()` skips it — the live DB stays on the
+# previous schema while schema.ts and the SQL describe the new one. The
+# first request that touches a new column 500s with
 # `column "<X>" does not exist`.
 #
 # This guard compares the on-disk sha256 of the baseline file (the
@@ -231,9 +230,9 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx db; then
     echo "  expected (file): $expected_baseline_hash" >&2
     echo "  recorded (db):   $recorded_baseline_hash" >&2
     echo "" >&2
-    echo "Drizzle records baselines by hash; an edit to 0000_baseline.sql is" >&2
-    echo "silently no-op'd against an existing ledger. Continuing this deploy" >&2
-    echo "would 500 on the first request that touches a new column." >&2
+    echo "migrate() silently skips an edited 0000_baseline.sql (its journal" >&2
+    echo "\`when\` is unchanged). Continuing this deploy would 500 on the first" >&2
+    echo "request that touches a new column." >&2
     echo "" >&2
     echo "See docs/ops/recover-from-schema-change.md." >&2
     exit 1
