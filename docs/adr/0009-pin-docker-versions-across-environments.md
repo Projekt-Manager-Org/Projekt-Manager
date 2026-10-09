@@ -62,7 +62,7 @@ Pin Docker Engine, CLI, containerd, BuildKit plugin, and Compose plugin to expli
 
 ### Mitigations
 
-- Security-advisory tracking mechanism is an open decision; interim backstop is manually checking Docker release notes before any bump.
+- Advisory tracking is an operator duty ([Betriebsverantwortung §3](../compliance/betriebsverantwortung.md#3-operator)); channels in § Dep lifecycle health below.
 - `apt-mark showhold` is part of post-install verification (see `docs/ops/server-setup.md` Phase 4).
 
 ## Dep lifecycle health (as of 2026-10-09)
