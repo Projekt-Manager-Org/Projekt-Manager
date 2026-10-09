@@ -135,20 +135,18 @@ async function start(): Promise<void> {
 
   const { db, pool } = createDatabase();
 
-  // Recurrence guard for the drizzle baseline-hash trap (see
-  // db/baseline-guard.ts and docs/ops/recover-from-schema-change.md).
-  // Drizzle's `migrate()` records each migration by sha256 hash and
-  // skips re-applying anything whose hash is already in the ledger —
-  // so an edit to 0000_baseline.sql against an existing volume silently
-  // no-ops, leaving the live schema diverged from schema.ts. Surface
-  // the mismatch BEFORE migrate() pretends success and the app starts
-  // taking traffic against a stale schema. Mirrors the pre-flight check
-  // in scripts/deploy.sh.
+  // Recurrence guard for the drizzle baseline no-op trap (see
+  // db/baseline-guard.ts and docs/ops/recover-from-schema-change.md):
+  // `migrate()` silently skips an edited 0000_baseline.sql against an
+  // existing volume, leaving the live schema diverged from schema.ts.
+  // Surface the mismatch BEFORE migrate() pretends success and the app
+  // starts taking traffic against a stale schema. Mirrors the pre-flight
+  // check in scripts/deploy.sh.
   await assertBaselineLedgerMatchesFile(db, migrationsFolder);
 
-  // Run database migrations (idempotent — drizzle tracks applied
-  // migrations by hash; the guard above ensures the hash matches what
-  // is on disk before we trust the idempotency).
+  // Run database migrations (idempotent — drizzle skips every migration
+  // whose journal `when` is not newer than the ledger's last entry; the
+  // guard above ensures the applied SQL matches what is on disk).
   await migrate(db, { migrationsFolder });
 
   // Wire the post-commit audit publisher's failure-surface logger

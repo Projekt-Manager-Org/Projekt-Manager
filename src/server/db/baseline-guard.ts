@@ -4,11 +4,11 @@
  * before `migrate()` pretends success and the app starts taking traffic
  * against a stale schema.
  *
- * The trap: drizzle records each migration by sha256 hash in
- * `drizzle.__drizzle_migrations`. An edit to `0000_baseline.sql`
- * produces a new hash, but `migrate()` skips re-applying it because the
- * old hash is already in the ledger — the live DB stays on the previous
- * schema while `schema.ts` and the SQL describe the new one. Symptom:
+ * The trap: `migrate()` decides by the journal `when`, not the hash it
+ * records in `drizzle.__drizzle_migrations`. An edited
+ * `0000_baseline.sql` keeps its `when`, so `migrate()` skips it — the
+ * live DB stays on the previous schema while `schema.ts` and the SQL
+ * describe the new one. Symptom:
  * first request that touches a new column 500s with `column "<X>" does
  * not exist`. See `docs/ops/recover-from-schema-change.md`.
  *
@@ -82,9 +82,9 @@ export function buildMismatchMessage(expected: string, recorded: string): string
     `  expected (file): ${expected}`,
     `  recorded (db):   ${recorded}`,
     '',
-    'Drizzle records baselines by hash; an edit to 0000_baseline.sql is',
-    "silently no-op'd against an existing ledger. Continuing this boot",
-    'would 500 on the first request that touches a new column.',
+    'migrate() silently skips an edited 0000_baseline.sql (its journal',
+    '`when` is unchanged). Continuing this boot would 500 on the first',
+    'request that touches a new column.',
     '',
     'See docs/ops/recover-from-schema-change.md.',
   ].join('\n');
