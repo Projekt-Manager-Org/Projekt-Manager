@@ -16,8 +16,7 @@
 #                  owner is encoded (OSV-Scanner has no dedicated owner
 #                  field). Brief explanation follows the prefix.
 #
-# Example (delete when the first real entry is added):
-# [[IgnoredVulns]]
-# id = "GHSA-xxxx-xxxx-xxxx"
-# ignoreUntil = 2026-08-16  # <= 90 days from add date 2026-05-18 (this PR)
-# reason = "@vlzware: dead code path — function is bundled but never reached at runtime; advisory tracking upstream fix at <link>"
+[[IgnoredVulns]]
+id = "GHSA-4cm8-f57v-mqm6"
+ignoreUntil = 2026-11-10  # <= 90 days from add date 2026-10-11
+reason = "@vlzware: prettier pinned to 3.9.10, the advisory's patched release. Repo-level range '>=3.9.0, <=3.9.9; 3.9.9 tested' carries free text, so check-repo-advisories.mjs reports it unevaluated. Drop once the global DB carries the advisory."
