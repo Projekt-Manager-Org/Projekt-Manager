@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Doc-drift check — repository paths cited in prose must exist.
+# Doc-drift check — files and functions cited in prose must exist (AC-347).
 #
 # Every tracked `*.md` names files: `src/server/services/mutate.ts`,
 # `scripts/backup/load-drill-key.sh`, `e2e/kanban-flows.spec.ts`. When a
@@ -8,13 +8,33 @@
 # notices — the third round of doc-vs-code drift fixed by hand (#289,
 # #292, #306) all included dead path references.
 #
-# Scope: inline code spans only (`` `like this` ``) whose content looks
-# like a repository path — contains a `/`, and its first segment is a
-# tracked top-level directory. That set is DERIVED from `git ls-files`,
-# not hardcoded: a hardcoded {src, scripts, e2e, docs, .github} silently
-# skipped `assets/`, `docker/`, `.husky/`, `review/`, `fixtures/`,
-# `patches/` and `public/`, and a checker that ignores a directory
-# nobody remembered to list is the drift it exists to catch.
+# Scope: inline code spans only (`` `like this` ``). Three forms are
+# claims:
+#
+#   1. Repository path — contains a `/`, and its first segment is a
+#      tracked top-level directory. That set is DERIVED from
+#      `git ls-files`, not hardcoded: a hardcoded {src, scripts, e2e,
+#      docs, .github} silently skipped `assets/`, `docker/`, `.husky/`,
+#      `review/`, `fixtures/`, `patches/` and `public/`.
+#   2. File name — bare (`mutate.ts`) or partial (`routes/auth.ts`),
+#      carrying an extension some tracked file carries. Resolves when a
+#      tracked path ends with it at a segment boundary, so `oauth.ts`
+#      does not keep a dead `auth.ts` alive. Basenames collide by the
+#      dozen here (`auth.ts`, `events.ts`); a partial path pins which
+#      one is meant. The extension set is read off the tree, which is
+#      what keeps `crypto.subtle`, `payload.after` and `10.213.17.1` out:
+#      no tracked file ends in `.subtle`. `invoices.test.ts` survived in
+#      the traceability ledger after the file was split (#490).
+#   3. Call form — `name()`. Resolves when its final segment
+#      (`app.swagger()` → `swagger`) occurs as a whole word in a tracked
+#      non-markdown file. ARCHITECTURE.md cited
+#      `assertBinaryAgeIdentityLoaded()` long after the rename (#490).
+#      A comment can keep a dead name alive; a full rename — the real
+#      failure — is caught. A bare identifier is not a claim: a type
+#      name and a deleted module are indistinguishable there.
+#
+# Host paths — `/etc/…`, `~/…`, `./deploy.sh` — name files on a machine,
+# not in this tree, and are not claims.
 #
 # Markdown LINK targets are out of scope; `lychee` resolves those in a
 # separate lint step. The two surfaces do not overlap: a path in a code
@@ -31,22 +51,13 @@
 #     before resolution.
 #   - ALLOWLIST entries — see the list.
 #
-# NOT CHECKABLE, by construction: a citation with no `/`. The docs are
-# full of dotted identifiers that are indistinguishable from bare
-# filenames — `ProjectCrudService.purgeProject`, `payload.after`,
-# `projects.updatedBy`, `crypto.subtle`, `10.213.17.1`, `v1.0.0-rc.2`.
-# Any rule broad enough to check `docker-compose.yml` also fires on
-# several hundred of those. So `docker-compose.yml`, `package.json` and
-# `ARCHITECTURE.md` go unverified when cited without a directory. Cite
-# a path if you want it checked.
-#
 # Resolution reads the git INDEX, not the working tree, so the result
 # does not depend on which untracked or gitignored files happen to be
 # lying around. A local run and CI see the same repository.
 #
 # Exit codes:
-#   0 — every cited path resolves
-#   1 — at least one dead reference; each printed as `doc -> path`
+#   0 — every claim resolves
+#   1 — at least one dead citation; each printed as `doc -> citation`
 #   2 — toolchain error (not a git work tree, no tracked markdown)
 
 set -euo pipefail
@@ -76,11 +87,37 @@ fi
 # TRACKED holds every tracked file; TRACKED_DIRS holds every directory
 # prefix implied by one, since git has no entry for a directory and the
 # docs cite plenty (`docs/ops/backup/`, `src/ui/kanban/`).
+#
+# TRACKED_TAILS holds every segment-boundary tail of a tracked path
+# (`src/server/routes/auth.ts` → `routes/auth.ts`, `auth.ts`, …), which
+# is what a bare or partial file name resolves against. TRACKED_EXTS is
+# the set of extensions those files carry — what makes a dotted name a
+# file claim at all.
 declare -A TRACKED=()
 declare -A TRACKED_DIRS=()
+declare -A TRACKED_TAILS=()
+declare -A TRACKED_EXTS=()
+
+# The extension of a basename, `os.path.splitext`-style: leading dots
+# belong to the name, so `.gitignore` and `.ts` carry none and
+# `.env.example` carries `example`. Sets EXT, empty when there is none —
+# a variable, not `$(…)`: a subshell per span made the scan 30x slower.
+extension_of() {
+  local name="${1#"${1%%[!.]*}"}"
+  EXT=""
+  case "$name" in *.*) EXT="${name##*.}" ;; esac
+}
 
 while IFS= read -r tracked_file; do
   TRACKED["$tracked_file"]=1
+  extension_of "${tracked_file##*/}"
+  [ -n "$EXT" ] && TRACKED_EXTS["$EXT"]=1
+  tracked_tail="$tracked_file"
+  while :; do
+    TRACKED_TAILS["$tracked_tail"]=1
+    [ "${tracked_tail#*/}" = "$tracked_tail" ] && break
+    tracked_tail="${tracked_tail#*/}"
+  done
   tracked_dir="${tracked_file%/*}"
   while [ "$tracked_dir" != "$tracked_file" ] && [ -n "$tracked_dir" ]; do
     TRACKED_DIRS["$tracked_dir"]=1
@@ -116,11 +153,12 @@ has_repo_prefix() {
 # must literally exist under that name.
 FALLBACK_EXTENSIONS=(".ts" ".tsx" ".js" ".mjs" ".sh" "/index.ts")
 
-# Citations that name a path which does not exist, on purpose. Entries
-# are `document|path`, both matched exactly — an exemption earned by one
-# ADR does not silently cover the same filename elsewhere.
+# Citations that name a file or function which does not exist, on
+# purpose. Entries are `document|citation`, both matched exactly — an
+# exemption earned by one ADR does not silently cover the same filename
+# elsewhere. A call-form entry keeps its `()`.
 #
-# Five legitimate classes, and nothing else belongs here:
+# Six legitimate classes, and nothing else belongs here:
 #
 #   1. Illustrative — a walkthrough over something the project does not
 #      have. The surrounding prose must make the hypothetical obvious.
@@ -138,6 +176,8 @@ FALLBACK_EXTENSIONS=(".ts" ".tsx" ".js" ".mjs" ".sh" "/index.ts")
 #      live in `resolves()` and exempted every ignored path in the tree,
 #      including all of `docs/wip/` and `dist/`, for the sake of these
 #      four citations.
+#   6. Outside the tracked tree — a file on a host, inside a dependency,
+#      or created at run time (an archive member, a bucket object).
 #
 # Keep this list small. An entry is a promise that a reader who greps
 # for the path and finds nothing has been told why.
@@ -151,18 +191,29 @@ ALLOWLIST=(
   "ARCHITECTURE.md|src/state/supplierStore.ts"
   "ARCHITECTURE.md|src/ui/suppliers/"
 
+  # (1) ARCHITECTURE.md § "Adding a new SSE event" — `X` stands for the
+  # entity; the recipe names the helper's shape, not one that exists.
+  "ARCHITECTURE.md|emitXChanged()"
+
+  # (1) CONTRIBUTING.md names the CSS-module file suffix as a convention.
+  "CONTRIBUTING.md|.module.css"
+
   # (2) ADR-0012 is the decision that deleted the workflow — it names it
   # in the problem statement, in the `workflow_run` incident, and in the
   # consequences list ("deleted").
   "docs/adr/0012-manual-pull-based-deploy-over-wireguard.md|.github/workflows/deploy.yml"
+  "docs/adr/0012-manual-pull-based-deploy-over-wireguard.md|deploy.yml"
 
   # (2) ADR-0020 § the dcron → croner rewrite: both paths are named in
   # the past tense as part of the superseded container design
   # ("The container's PID 1 was dcron…", "formerly … probe-r2.mjs").
   "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|scripts/backup/crontab"
   "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|scripts/backup/probe-r2.mjs"
+  "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|entrypoint.sh"
+  "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|run-backup.sh"
+  "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|run-drill.sh"
 
-  # The brand-logo drop-in directory (#189). A deployment creates
+  # (6) The brand-logo drop-in directory (#189). A deployment creates
   # `public/brand/` and commits its own asset there; this generalized
   # repo ships none of its own per ADR-0001, so the directory is empty
   # and git tracks nothing under it. The spec cites the path to say
@@ -175,6 +226,7 @@ ALLOWLIST=(
   "docs/testing/traceability.md|e2e/project-detail-page.spec.ts"
   "docs/testing/traceability.md|e2e/project-detail-attachments.spec.ts"
   "docs/testing/traceability.md|src/server/__tests__/project-detail-workers.test.ts"
+  "docs/testing/traceability.md|project-site-address.spec.ts"
 
   # (4) GitHub Actions published by the `docker` org, named in ADR-0011's
   # comparison of build approaches. Collides with this repo's `docker/`
@@ -195,6 +247,33 @@ ALLOWLIST=(
   "docs/testing/demo-recordings.md|e2e/fixtures/demo/site-1.jpg"
   "docs/testing/demo-recordings.md|e2e/fixtures/demo/site-2.jpg"
   "docs/testing/demo-recordings.md|scripts/demo/assets/phone-backdrop.jpg"
+
+  # (5) The Service Worker bundle, built from `src/sw/`.
+  "docs/adr/0024-binary-attachment-e2e-encryption.md|dist/sw.js"
+
+  # (6) Members of the takeout archive, created at export time.
+  "DATA.md|data.json"
+  "DATA.md|manifest.json"
+  "docs/spec/api.md|data.json"
+  "docs/spec/api.md|manifest.json"
+  "docs/spec/ui/daten.md|data.json"
+  "docs/spec/ui/daten.md|manifest.json"
+  "docs/spec/verification.md|data.json"
+  "docs/spec/verification.md|manifest.json"
+  "docs/testing/traceability.md|data.json"
+  "docs/testing/traceability.md|manifest.json"
+
+  # (6) The backup status object in the R2 bucket.
+  "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|status/latest.json"
+  "docs/ops/backup/overview.md|status/latest.json"
+  "docs/ops/backup/recovery.md|status/latest.json"
+  "docs/ops/backup/setup.md|status/latest.json"
+  "docs/testing/traceability.md|status/latest.json"
+
+  # (6) A file inside a dependency, and one in the deploy user's home on
+  # the VPS.
+  "docs/ops/dep-management.md|@noble/hashes/legacy.js"
+  "docs/ops/manual-deploy.md|~deploy/.docker/config.json"
 )
 
 is_allowlisted() {
@@ -218,7 +297,7 @@ is_allowlisted() {
 # Being gitignored is therefore not a pass either. It used to be an
 # explicit one, which exempted every ignored path in the tree —
 # `docs/wip/`, `dist/`, `data/` — to cover four demo-asset citations.
-# Documentation should not be pointing at ignored paths; the five that
+# Documentation should not be pointing at ignored paths; the ones that
 # legitimately do are ALLOWLIST class (5), each visible and reviewed.
 resolves() {
   local candidate="${1%/}" ext
@@ -229,6 +308,28 @@ resolves() {
   done
   return 1
 }
+
+# True iff the candidate is a file name — bare or partial — whose
+# extension some tracked file carries. Host paths are not claims.
+is_file_name() {
+  case "$1" in /* | \~/* | ./*) return 1 ;; esac
+  extension_of "${1##*/}"
+  [ -n "$EXT" ] && [ -n "${TRACKED_EXTS[$EXT]:-}" ]
+}
+
+# Call-form identifiers: dotted name segments, then `()`. Every final
+# segment cited anywhere is resolved in ONE `git grep` over the index
+# (`--cached`, same reason as `resolves()`), not a process per name.
+CALL_FORM='`[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*\(\)`'
+declare -A CALL_FOUND=()
+mapfile -t CALL_NAMES < <(grep -ohE "$CALL_FORM" "${DOCS[@]}" |
+  sed -E 's/^`(.*)\(\)`$/\1/; s/.*\.//' | sort -u || true)
+if [ "${#CALL_NAMES[@]}" -gt 0 ]; then
+  while IFS= read -r found; do
+    CALL_FOUND["$found"]=1
+  done < <(git grep --cached -ohwF -f <(printf '%s\n' "${CALL_NAMES[@]}") \
+    -- ':(exclude)*.md' | sort -u || true)
+fi
 
 findings=""
 checked=0
@@ -245,29 +346,47 @@ for doc in "${DOCS[@]}"; do
 
     # Repository-path shape: names a tracked top-level directory, and no
     # glob metacharacters (the extractor's charset already excludes
-    # them).
-    has_repo_prefix "$candidate" || continue
-
-    checked=$((checked + 1))
-    is_allowlisted "$doc" "$candidate" && continue
-    resolves "$candidate" && continue
+    # them). Otherwise a bare or partial file name, or not a claim.
+    if has_repo_prefix "$candidate"; then
+      checked=$((checked + 1))
+      is_allowlisted "$doc" "$candidate" && continue
+      resolves "$candidate" && continue
+    elif is_file_name "$candidate"; then
+      checked=$((checked + 1))
+      is_allowlisted "$doc" "$candidate" && continue
+      [ -n "${TRACKED_TAILS[$candidate]:-}" ] && continue
+    else
+      continue
+    fi
     findings="${findings}${doc} -> ${candidate}"$'\n'
-  done < <(grep -oE '`[A-Za-z0-9_./:-]+`' "$doc" | tr -d '`' || true)
+  done < <(grep -oE '`[A-Za-z0-9_./:~@-]+`' "$doc" | tr -d '`' || true)
+
+  # Call-form identifiers. The charset above excludes `(`, so the two
+  # scans never see the same span.
+  while IFS= read -r span; do
+    checked=$((checked + 1))
+    is_allowlisted "$doc" "$span" && continue
+    name="${span%\(\)}"
+    [ -n "${CALL_FOUND[${name##*.}]:-}" ] && continue
+    findings="${findings}${doc} -> ${span}"$'\n'
+  done < <(grep -oE "$CALL_FORM" "$doc" | tr -d '`' || true)
 done
 
 if [ -n "$findings" ]; then
-  echo "ERROR: documentation cites repository paths that do not exist." >&2
-  echo "       Update the prose to the current path, or add an" >&2
-  echo "       inline-documented \`document|path\` entry to ALLOWLIST in" >&2
-  echo "       $(basename "$0") if the citation is illustrative," >&2
-  echo "       historical, a named coverage gap, an external identifier," >&2
-  echo "       or a gitignored artifact." >&2
+  echo "ERROR: documentation cites files or functions that do not exist." >&2
+  echo "       Update the prose to the current name — a partial path" >&2
+  echo "       (\`routes/auth.ts\`) pins a basename several files share —" >&2
+  echo "       or add an inline-documented \`document|citation\` entry to" >&2
+  echo "       ALLOWLIST in $(basename "$0") if the citation is" >&2
+  echo "       illustrative, historical, a named coverage gap, an external" >&2
+  echo "       identifier, or names something outside the tracked tree" >&2
+  echo "       (built, on a host, in a dependency, created at run time)." >&2
   echo "" >&2
   printf "%s" "$findings" | sort -u >&2
   exit 1
 fi
 
-echo "OK: every repository path cited in documentation resolves."
+echo "OK: every file and function cited in documentation resolves."
 echo "    documents scanned: ${#DOCS[@]}"
-echo "    path references checked: ${checked}"
+echo "    citations checked: ${checked}"
 echo "    allowlist size: ${#ALLOWLIST[@]}"
