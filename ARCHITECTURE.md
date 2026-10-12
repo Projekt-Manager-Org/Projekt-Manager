@@ -109,66 +109,66 @@ Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directo
 
 ### Directory Detail
 
-**Each subsection is a coverage contract** (AC-350): it names every source file directly in its directory, and `scripts/check-module-map.sh` fails the build on an omitted file or a dead name. The gated set is recorded in `scripts/module-map-gated.txt`, so dropping a subsection is a reviewable diff. Only directories whose file set _is_ the architecture get one.
+Entries are cited by partial path (`routes/auth.ts`), so the citation check (AC-347) resolves each in its own directory — a basename another directory later reuses cannot keep a dead entry alive.
 
 #### `src/server/routes/`
 
-- `auth.ts` — login / logout / `me` / change-password; the only module that sets the session cookie
-- `users.ts` — user CRUD, deactivate / reactivate, admin password reset
-- `workers.ts` — the assignee pool, `project:read`-gated and limited to `{userId, displayName}`
-- `customers.ts` — customer CRUD
-- `projects.ts` — project CRUD, transitions, date edits, archive / restore / purge
-- `invoices.ts` — drafts, issue / cancel, server-decrypted PDF, ZIP export, year list (ADR-0026)
-- `company-profile.ts` — singleton `GET` + owner-only `PUT`
-- `audit.ts` — read-only list + get-by-id
-- `extract.ts` — LLM email-to-structured-data via OpenRouter (ADR-0016)
-- `notification-rules.ts` — notification rule CRUD (ADR-0023)
-- `push-subscriptions.ts` — Web Push subscribe / unsubscribe
-- `push.ts` — VAPID public key
-- `health.ts` — `GET /api/health`
-- `attachments.ts` — init / complete / delete / list / download-url / bulk-fetch
-- `storage-usage.ts` — per-project and global storage usage
-- `events.ts` — `GET /api/events`, the SSE channel (ADR-0025)
-- `export-jobs.ts` / `import-jobs.ts` — server-side takeout jobs (ADR-0018/0024)
+- `routes/auth.ts` — login / logout / `me` / change-password; the only module that sets the session cookie
+- `routes/users.ts` — user CRUD, deactivate / reactivate, admin password reset
+- `routes/workers.ts` — the assignee pool, `project:read`-gated and limited to `{userId, displayName}`
+- `routes/customers.ts` — customer CRUD
+- `routes/projects.ts` — project CRUD, transitions, date edits, archive / restore / purge
+- `routes/invoices.ts` — drafts, issue / cancel, server-decrypted PDF, ZIP export, year list (ADR-0026)
+- `routes/company-profile.ts` — singleton `GET` + owner-only `PUT`
+- `routes/audit.ts` — read-only list + get-by-id
+- `routes/extract.ts` — LLM email-to-structured-data via OpenRouter (ADR-0016)
+- `routes/notification-rules.ts` — notification rule CRUD (ADR-0023)
+- `routes/push-subscriptions.ts` — Web Push subscribe / unsubscribe
+- `routes/push.ts` — VAPID public key
+- `routes/health.ts` — `GET /api/health`
+- `routes/attachments.ts` — init / complete / delete / list / download-url / bulk-fetch
+- `routes/storage-usage.ts` — per-project and global storage usage
+- `routes/events.ts` — `GET /api/events`, the SSE channel (ADR-0025)
+- `routes/export-jobs.ts` / `routes/import-jobs.ts` — server-side takeout jobs (ADR-0018/0024)
 
 #### `src/server/services/invoice/`
 
-The EN 16931 core (ADR-0026). Gated on its own: coverage reaches direct children only.
+The EN 16931 core (ADR-0026).
 
-- `facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile)
-- `pdfDrawer.ts` — the human-readable A4 body (structurally PDF/A-3, not certified)
-- `xsdValidator.ts` — validates every render against the bundled schemas in `src/server/services/invoice/xsd/`
-- `payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, wire-identical to the browser's
-- `logoAsset.ts` — the brand logo for the PDF; never throws inside issuance
-- `boilerplate.ts` — per-tax-mode legal text, CategoryCode and exemption reason
+- `invoice/facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile)
+- `invoice/pdfDrawer.ts` — the human-readable A4 body (structurally PDF/A-3, not certified)
+- `invoice/xsdValidator.ts` — validates every render against the bundled schemas in `src/server/services/invoice/xsd/`
+- `invoice/payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, wire-identical to the browser's
+- `invoice/logoAsset.ts` — the brand logo for the PDF; never throws inside issuance
+- `invoice/boilerplate.ts` — per-tax-mode legal text, CategoryCode and exemption reason
 
 #### `src/server/` (root files)
 
-- `app.ts` — app assembly (`buildApp()`)
-- `start.ts` — entry point
-- `bootstrap.ts` — first-run admin bootstrap
-- `health.ts` — health probe
-- `seed.ts` — seed orchestrator, delegates to `src/server/seed/`
-- `password.ts` — `bcryptjs` wrapper; the 72-byte ceiling is in `src/server/config/password-policy.ts`
-- `staticRoot.ts` — the one definition of `dist/` and `public/` on disk
-- `staticCache.ts` — static file serving and its Cache-Control tiers
-- `deploy-preflight-cli.ts` — deploy-time config and storage checks (AC-230/231)
-- `periodicSweeper.ts` — shared factory behind the reaper and retention schedulers
-- `session-reaper.ts` — session reaper (predates the factory)
-- `audit-retention-scheduler.ts` — audit retention (ADR-0021)
-- `attachment-orphan-reaper-scheduler.ts` — pending-attachment reaper
-- `attachment-hidden-reaper-scheduler.ts` — hidden-attachment reaper
-- `takeout-staging-reaper-scheduler.ts` — takeout staging reaper
-- `threshold-monitor-scheduler.ts` — threshold monitor
-- `bucket-orphan-prune-scheduler.ts` — bucket ↔ DB reconciliation (#169)
-- `backup-runner.ts` — backup CLI: `schedule` / `run` / `drill` (ADR-0020)
-- `errors.ts` — error factories returning `AppError`
-- `error-handler.ts` — global error and 404 handlers
-- `format-error-chain.ts` — surfaces the real cause and SQLSTATE of a wrapped driver error
+- `server/app.ts` — app assembly (`buildApp()`)
+- `server/start.ts` — entry point
+- `server/bootstrap.ts` — first-run admin bootstrap
+- `server/health.ts` — health probe
+- `server/seed.ts` — seed orchestrator, delegates to `src/server/seed/`
+- `server/password.ts` — `bcryptjs` wrapper; the 72-byte ceiling is in `src/server/config/password-policy.ts`
+- `server/staticRoot.ts` — the one definition of `dist/` and `public/` on disk
+- `server/staticCache.ts` — static file serving and its Cache-Control tiers
+- `server/deploy-preflight-cli.ts` — deploy-time config and storage checks (AC-230/231)
+- `server/periodicSweeper.ts` — shared factory behind the reaper and retention schedulers
+- `server/session-reaper.ts` — session reaper (predates the factory)
+- `server/audit-retention-scheduler.ts` — audit retention (ADR-0021)
+- `server/attachment-orphan-reaper-scheduler.ts` — pending-attachment reaper
+- `server/attachment-hidden-reaper-scheduler.ts` — hidden-attachment reaper
+- `server/takeout-staging-reaper-scheduler.ts` — takeout staging reaper
+- `server/threshold-monitor-scheduler.ts` — threshold monitor
+- `server/bucket-orphan-prune-scheduler.ts` — bucket ↔ DB reconciliation (#169)
+- `server/backup-runner.ts` — backup CLI: `schedule` / `run` / `drill` (ADR-0020)
+- `server/errors.ts` — error factories returning `AppError`
+- `server/error-handler.ts` — global error and 404 handlers
+- `server/format-error-chain.ts` — surfaces the real cause and SQLSTATE of a wrapped driver error
 
 ### Directory Notes
 
-What a filename does not tell you. Not a file list. Names resolve under their bold directory key (`scripts/check-module-map.sh`).
+What a filename does not tell you. Not a file list.
 
 **`src/config/`** — `sseEvents.ts` is the SSE event catalogue shared by server and client, not a tunable.
 
@@ -177,7 +177,7 @@ What a filename does not tell you. Not a file list. Names resolve under their bo
 **`src/server/services/`** — one service per entity, plus subsystems:
 
 - `mutate.ts` — the single write path for audited tables (ADR-0021).
-- `events.ts` — the **domain** event bus (audit, notifications). Not the SSE pair `src/server/routes/events.ts` / `src/server/sse/`.
+- `services/events.ts` — the **domain** event bus (audit, notifications). Not the SSE pair `src/server/routes/events.ts` / `src/server/sse/`.
 - `KeyEnvelopeService.ts` — the entire crypto perimeter on B2 ciphertext (ADR-0024).
 - `backup.ts`, `backup-drill.ts`, `ephemeralPg.ts`, `r2Uploader.ts` — the Layer 2 backup pipeline (ADR-0020).
 - `threshold-monitor.ts` — runs in `app`, not `backup`: the notification publisher binds there.
@@ -283,7 +283,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 7. **State**: `src/state/supplierStore.ts` (model on `projectStore.ts`, optimistic updates with rollback).
 8. **UI**: components under `src/ui/suppliers/`.
 9. **Tests**: domain in `src/domain/__tests__/`, integration in `src/server/__tests__/` (copy `projects-list.test.ts`), component in the feature's own `__tests__/` (e.g. `src/ui/detail/__tests__/`).
-10. **Seed**: extend the relevant loader under `src/server/seed/` (`users.ts` for new user records; `business.ts` for customer/project-like entities that should flow through `ImportService`).
+10. **Seed**: extend the relevant loader under `src/server/seed/` (`seed/users.ts` for new user records; `business.ts` for customer/project-like entities that should flow through `ImportService`).
 11. **Spec**: update `docs/spec/data-model.md`, `docs/spec/api.md §14.2`, `docs/spec/verification.md`.
 
 ### Adding a new view (e.g., Worker view)
@@ -475,11 +475,11 @@ Workers: list, years and single-row reads are narrowed by the repository scope p
 - **Configuration boundary** ([architecture.md §12.6](docs/spec/architecture.md#126-feature-manifest-and-operator-confidence)): env schema vs examples in CI (`scripts/check-env-drift.sh`), aggregated validation in deploy pre-flight (`src/server/deploy-preflight-cli.ts`), and a boot-time feature manifest (`src/server/config/features.ts`).
 - **Documentation drift guards** — each fails the build (traceability only warns on a `[crit]` coverage gap). The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway (the endpoint table: `buildApp()` route collection); check the rest.
 
-| Kind                      | Guards                                                                                                                                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generated from code       | `docs/api/openapi.json` (AC-351), the endpoint table (AC-352) — see [docs/api/](docs/api/README.md)                                                                                             |
-| `CHECKED:` blocks vs code | permission matrix (AC-343), nav matrix (AC-349), error codes (AC-354) — read via `src/test/checkedBlock.ts`                                                                                     |
-| Verified without a source | doc paths (AC-347, `scripts/check-doc-paths.sh`), Module Map (AC-350, `scripts/check-module-map.sh`), links and anchors (AC-348, `lychee.toml`), traceability (`scripts/check-traceability.sh`) |
+| Kind                      | Guards                                                                                                                                                      |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generated from code       | `docs/api/openapi.json` (AC-351), the endpoint table (AC-352) — see [docs/api/](docs/api/README.md)                                                         |
+| `CHECKED:` blocks vs code | permission matrix (AC-343), nav matrix (AC-349), error codes (AC-354) — read via `src/test/checkedBlock.ts`                                                 |
+| Verified without a source | cited files and functions (AC-347, `scripts/check-doc-paths.sh`), links and anchors (AC-348, `lychee.toml`), traceability (`scripts/check-traceability.sh`) |
 
 Prettier formats the whole repository (#361); its exceptions are in `.prettierignore`.
 

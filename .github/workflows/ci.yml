@@ -580,25 +580,16 @@ jobs:
       - name: Audit single-write-path check (mutate() bypass)
         run: bash scripts/check-audit-mutations.sh
 
-      # Static check: every repository path cited in a code span across
-      # tracked *.md must exist (AC-347). Renames and deletions leave the
-      # prose behind — #289, #292 and #306 each fixed a batch of these by
-      # hand. Markdown LINK targets are out of scope here; they belong to
-      # the link-checker step.
-      - name: Doc path drift check (cited paths exist)
+      # Static check: every file and called function cited in a code span
+      # across tracked *.md must exist (AC-347). Renames and deletions
+      # leave the prose behind — #289, #292, #306 and #490 each found a
+      # batch of these by hand. Markdown LINK targets are out of scope
+      # here; they belong to the link-checker step.
+      - name: Doc citation drift check (cited files and functions exist)
         run: npm run check:doc-paths
 
-      - name: Doc path drift check — self-test
+      - name: Doc citation drift check — self-test
         run: bash scripts/__tests__/check-doc-paths.test.sh
-
-      # Static check, both directions, between ARCHITECTURE.md's Module
-      # Map and the tree (AC-350). Contract, scope limits and rejected
-      # alternatives: the header of scripts/check-module-map.sh.
-      - name: Module Map coverage check (AC-350)
-        run: npm run check:module-map
-
-      - name: Module Map coverage check — self-test
-        run: bash scripts/__tests__/check-module-map.test.sh
 
       # Static check: every relative file link and `#anchor` fragment
       # across tracked *.md must resolve (AC-348). 25 broken internal

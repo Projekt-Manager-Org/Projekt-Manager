@@ -38,8 +38,10 @@ cleanup() {
 trap cleanup EXIT
 
 # A fresh fixture repository per case, so a mutation cannot leak sideways.
-# Carries a small source tree the docs can cite: a plain file, an
-# extensionless-resolvable module, and a gitignored directory.
+# Carries a small source tree the docs can cite: a plain file defining a
+# function, an extensionless-resolvable module, a basename two
+# directories share (`events.ts`), a name that ends with another one
+# (`oauth.ts` vs `auth.ts`), and a gitignored directory.
 #
 # `review/` exists to exercise prefix DERIVATION. It is not one of the
 # five directories the check used to hardcode, so a case citing a dead
@@ -49,8 +51,12 @@ stage() {
   local d
   d="$(mktemp -d)"
   TMP_DIRS+=("$d")
-  mkdir -p "$d/src/server/db" "$d/src/ui/kanban" "$d/scripts/backup" "$d/docs" "$d/review"
-  : >"$d/src/server/db/connection.ts"
+  mkdir -p "$d/src/server/db" "$d/src/server/routes" "$d/src/server/services" \
+    "$d/src/ui/kanban" "$d/scripts/backup" "$d/docs" "$d/review"
+  printf 'export function openPool() {}\n' >"$d/src/server/db/connection.ts"
+  : >"$d/src/server/routes/events.ts"
+  : >"$d/src/server/services/events.ts"
+  : >"$d/src/server/oauth.ts"
   : >"$d/src/ui/kanban/KanbanBoard.tsx"
   : >"$d/scripts/backup/load-drill-key.sh"
   : >"$d/review/conventions-shell.md"
@@ -129,6 +135,13 @@ d="$(stage)"
 write_doc "$d" 'Type-only imports from `src/server/db/connection` are allowed.'
 assert_case 0 "extensionless module reference" "$d"
 
+echo "Case: an extensionless reference to a DEAD module"
+# Must FAIL. The fallback extensions resolve a module; they must not wave
+# every extensionless path through.
+d="$(stage)"
+write_doc "$d" 'Type-only imports from `src/server/db/gone` are allowed.'
+assert_case 1 "extensionless dead module reference" "$d"
+
 echo "Case: a glob"
 # Must pass. `src/ui/**` is a lint-zone expression, not a file.
 d="$(stage)"
@@ -184,13 +197,16 @@ d="$(stage)"
 write_doc "$d" 'House style lives in `review/conventions-shell.md`.'
 assert_case 0 "live path under derived prefix" "$d"
 
-echo "Case: a path under a directory this repository does not track"
-# Must pass. `dist/` holds build output and is not a tracked top-level
-# directory, so it is not this check's business — same for any
-# third-party or runtime path that happens to contain a slash.
+echo "Case: build output under a directory this repository does not track"
+# Must FAIL. `dist/` is not a tracked top-level directory, but the name
+# carries an extension the tree carries, so it is a file claim and
+# resolves nowhere. Build output is exempted per document (ALLOWLIST
+# class 5), never wholesale.
 d="$(stage)"
+: >"$d/scripts/backup/probe.js"
+git -C "$d" add scripts/backup/probe.js >/dev/null 2>&1
 write_doc "$d" 'The bundle lands at `dist/assets/index.js`.'
-assert_case 0 "untracked top-level directory ignored" "$d"
+assert_case 1 "untracked build output is a claim" "$d"
 
 echo "Case: a dead path inside a markdown LINK, not a code span"
 # Must pass. Link targets are lychee's lane (separate lint step); this
@@ -216,11 +232,179 @@ write_doc "$d" 'Create `src/server/services/SupplierService.ts`.'
 assert_case 1 "allowlisted path leaking to another document" "$d"
 
 echo "Case: a path outside the scanned first segments"
-# Must pass. `node_modules/...`, `dist/...` and bare filenames are not
-# repository-source citations and carry no drift guarantee.
+# Must pass. `node_modules/` is not a tracked top-level directory, and
+# `gone` carries no extension, so the span is neither a repository path
+# nor a file name.
 d="$(stage)"
 write_doc "$d" 'Resolved from `node_modules/@types/gone` at build time.'
 assert_case 0 "unscanned first segment" "$d"
+
+# ---- Bare and partial file names --------------------------------------
+#
+# A name with an extension some tracked file carries is a file claim even
+# without a `/`. `invoices.test.ts` sat in the traceability ledger as
+# coverage for three ACs after the file was split, and nothing noticed.
+
+echo "Case: a bare file name that exists"
+d="$(stage)"
+write_doc "$d" 'The pool lives in `connection.ts`.'
+assert_case 0 "live bare name" "$d"
+
+echo "Case: a bare file name that was deleted"
+d="$(stage)"
+write_doc "$d" 'Coverage lives in `invoices.test.ts`.'
+assert_case 1 "dead bare name" "$d"
+
+echo "Case: a bare name that only ends another file's name"
+# Must FAIL. Suffix matching is per path segment: `oauth.ts` does not
+# keep a citation of a deleted `auth.ts` alive.
+d="$(stage)"
+write_doc "$d" 'Login lives in `auth.ts`.'
+assert_case 1 "bare name matches at segment boundary only" "$d"
+
+echo "Case: a bare name several directories share"
+# Must pass. Ambiguity is not deadness; a partial path disambiguates.
+d="$(stage)"
+write_doc "$d" 'The SSE route is `events.ts`.'
+assert_case 0 "ambiguous bare name resolves" "$d"
+
+echo "Case: a partial path that exists"
+d="$(stage)"
+write_doc "$d" 'The SSE route is `routes/events.ts`, the audit catalogue `services/events.ts`.'
+assert_case 0 "live partial path" "$d"
+
+echo "Case: a partial path whose basename lives in another directory"
+# Must FAIL. This is what partial paths are for: `oauth.ts` exists, but
+# not under `routes/`.
+d="$(stage)"
+write_doc "$d" 'The OAuth route is `routes/oauth.ts`.'
+assert_case 1 "partial path in the wrong directory" "$d"
+
+echo "Case: line-number and symbol citations on a live bare name"
+d="$(stage)"
+write_doc "$d" 'See `connection.ts:12` and `connection.ts::openPool`.'
+assert_case 0 "bare name:LINE / ::SYMBOL on live name" "$d"
+
+echo "Case: a line-number citation on a DEAD bare name"
+d="$(stage)"
+write_doc "$d" 'See `gone.ts:3`.'
+assert_case 1 "bare name:LINE on dead name" "$d"
+
+echo "Case: a bare name present on disk but NOT in the index"
+d="$(stage)"
+: >"$d/src/server/db/scratch.ts"
+write_doc "$d" 'The helper lives in `scratch.ts`.'
+assert_case 1 "untracked bare name does not resolve" "$d"
+
+echo "Case: dotted identifiers whose suffix no tracked file carries"
+# Must pass. `process.env`, `crypto.subtle`, `rows.length` are not file
+# names. The extension set is read off the tree, so these stay out until
+# the repository tracks a file of that type.
+d="$(stage)"
+write_doc "$d" 'Read `process.env`, call `crypto.subtle`, check `rows.length` and `v1.0.0-rc.2`.'
+assert_case 0 "dotted identifiers are not claims" "$d"
+
+echo "Case: a name whose extension no tracked file carries"
+# Must pass. The same span as the build-output case above, without a
+# tracked `.js` file: the extension set is read off the tree, not
+# declared.
+d="$(stage)"
+write_doc "$d" 'The bundle lands at `dist/assets/index.js`.'
+assert_case 0 "extension not carried by the tree is not a claim" "$d"
+
+echo "Case: a bare extension"
+# Must pass. `.ts` names a file type, not a file. Leading dots belong to
+# the name, as in `os.path.splitext`, so it carries no extension.
+d="$(stage)"
+write_doc "$d" 'Every `.ts` file under `src/` is linted.'
+assert_case 0 "bare extension is not a claim" "$d"
+
+echo "Case: host paths"
+# Must pass. Absolute, `~/`- and `./`-prefixed paths name files on a
+# host, not in this tree. Each carries a tracked extension, so without
+# the host rule each would be a dead claim.
+d="$(stage)"
+write_doc "$d" 'Run `./deploy.sh`, keep `~/secrets/drill.sh`, see `/etc/app/run.sh`.'
+assert_case 0 "host paths are not claims" "$d"
+
+echo "Case: an allowlisted bare name, in the document that owns it"
+# Must pass. A takeout archive member (class 6): exists only at run time.
+# A tracked `.json` makes the name a claim in the first place.
+d="$(stage)"
+: >"$d/scripts/backup/config.json"
+git -C "$d" add scripts/backup/config.json >/dev/null 2>&1
+printf 'The archive carries `data.json`.\n' >"$d/DATA.md"
+git -C "$d" add DATA.md >/dev/null 2>&1
+assert_case 0 "allowlisted bare name in its own document" "$d"
+
+echo "Case: the same allowlisted bare name cited from a different document"
+d="$(stage)"
+: >"$d/scripts/backup/config.json"
+git -C "$d" add scripts/backup/config.json >/dev/null 2>&1
+write_doc "$d" 'The archive carries `data.json`.'
+assert_case 1 "allowlisted bare name leaking to another document" "$d"
+
+# ---- Call-form identifiers --------------------------------------------
+#
+# `assertBinaryAgeIdentityLoaded()` outlived its rename in ARCHITECTURE.md.
+# A trailing `()` makes a span a claim that the function exists.
+
+echo "Case: a call-form identifier defined in source"
+d="$(stage)"
+write_doc "$d" 'Boot calls `openPool()`.'
+assert_case 0 "live call-form identifier" "$d"
+
+echo "Case: a call-form identifier that no source carries"
+d="$(stage)"
+write_doc "$d" 'Boot calls `assertBinaryAgeIdentityLoaded()`.'
+assert_case 1 "dead call-form identifier" "$d"
+
+echo "Case: a qualified call resolves on its final segment"
+d="$(stage)"
+write_doc "$d" 'Boot calls `db.openPool()`.'
+assert_case 0 "qualified call, live final segment" "$d"
+
+echo "Case: a call-form identifier matching only part of a word"
+# Must FAIL. `Pool` occurs only inside `openPool`; whole words only.
+d="$(stage)"
+write_doc "$d" 'Boot calls `Pool()`.'
+assert_case 1 "call-form matches whole words only" "$d"
+
+echo "Case: a call-form identifier that only documentation mentions"
+# Must FAIL. Another doc naming the function does not make it exist.
+d="$(stage)"
+printf 'Legacy boot used `bootLegacy`.\n' >"$d/docs/history.md"
+git -C "$d" add docs/history.md >/dev/null 2>&1
+write_doc "$d" 'Boot calls `bootLegacy()`.'
+assert_case 1 "call-form resolved against documentation only" "$d"
+
+echo "Case: a call-form identifier present only in the working tree"
+# Must FAIL. Like paths, functions resolve against the git index: an
+# unstaged edit that CI will never see does not keep a citation alive.
+d="$(stage)"
+printf 'export function openPool() {}\nexport function bootLocal() {}\n' >"$d/src/server/db/connection.ts"
+write_doc "$d" 'Boot calls `bootLocal()`.'
+assert_case 1 "unstaged call-form does not resolve" "$d"
+
+echo "Case: a malformed call form"
+# Must pass, not crash: `foo.()` has no final name segment, so it is not
+# a call-form identifier.
+d="$(stage)"
+write_doc "$d" 'Not a call: `foo.()`.'
+assert_case 0 "malformed call form is not a claim" "$d"
+
+echo "Case: an allowlisted call-form placeholder, in the document that owns it"
+# Must pass. ARCHITECTURE.md's "add an emitter" recipe names a helper by
+# pattern, not one that exists.
+d="$(stage)"
+printf 'Add a typed `emitXChanged()` helper.\n' >"$d/ARCHITECTURE.md"
+git -C "$d" add ARCHITECTURE.md >/dev/null 2>&1
+assert_case 0 "allowlisted call-form in its own document" "$d"
+
+echo "Case: the same call-form placeholder cited from a different document"
+d="$(stage)"
+write_doc "$d" 'Add a typed `emitXChanged()` helper.'
+assert_case 1 "allowlisted call-form leaking to another document" "$d"
 
 echo "Case: the scan root is not a git work tree"
 # Structural, not drift. Without a dedicated code the run would report
