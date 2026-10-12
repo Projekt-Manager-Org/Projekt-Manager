@@ -227,6 +227,21 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
 
       const getRes = await authGet(ownerToken, `/api/projects/${id}`);
       expect(getRes.json().siteAddress).toBeNull();
+
+      // Clearing changes the stored value, so AC-279 owes an audit row
+      // here too — one `update`, recording the set → null transition.
+      const auditRes = await authGet(
+        ownerToken,
+        `/api/audit?ancestorType=project&ancestorId=${id}&action=update&limit=200`,
+      );
+      expect(auditRes.statusCode).toBe(200);
+      const updates = auditRes.json().data as { entityType: string; payload: unknown }[];
+      expect(updates).toHaveLength(1);
+      expect(updates[0].entityType).toBe('project');
+      expect(updates[0].payload).toMatchObject({
+        before: { siteAddress: SITE_BERLIN },
+        after: { siteAddress: null },
+      });
     });
 
     it('leaves a stored siteAddress untouched when the field is omitted (PATCH semantics)', async () => {
