@@ -109,62 +109,62 @@ Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directo
 
 ### Directory Detail
 
-A name several files share is cited by partial path (`routes/auth.ts`), so the citation check (AC-347) resolves the file meant.
+Entries are cited by partial path (`routes/auth.ts`), so the citation check (AC-347) resolves each in its own directory — a basename another directory later reuses cannot keep a dead entry alive.
 
 #### `src/server/routes/`
 
 - `routes/auth.ts` — login / logout / `me` / change-password; the only module that sets the session cookie
 - `routes/users.ts` — user CRUD, deactivate / reactivate, admin password reset
-- `workers.ts` — the assignee pool, `project:read`-gated and limited to `{userId, displayName}`
-- `customers.ts` — customer CRUD
-- `projects.ts` — project CRUD, transitions, date edits, archive / restore / purge
+- `routes/workers.ts` — the assignee pool, `project:read`-gated and limited to `{userId, displayName}`
+- `routes/customers.ts` — customer CRUD
+- `routes/projects.ts` — project CRUD, transitions, date edits, archive / restore / purge
 - `routes/invoices.ts` — drafts, issue / cancel, server-decrypted PDF, ZIP export, year list (ADR-0026)
-- `company-profile.ts` — singleton `GET` + owner-only `PUT`
+- `routes/company-profile.ts` — singleton `GET` + owner-only `PUT`
 - `routes/audit.ts` — read-only list + get-by-id
-- `extract.ts` — LLM email-to-structured-data via OpenRouter (ADR-0016)
-- `notification-rules.ts` — notification rule CRUD (ADR-0023)
-- `push-subscriptions.ts` — Web Push subscribe / unsubscribe
-- `push.ts` — VAPID public key
+- `routes/extract.ts` — LLM email-to-structured-data via OpenRouter (ADR-0016)
+- `routes/notification-rules.ts` — notification rule CRUD (ADR-0023)
+- `routes/push-subscriptions.ts` — Web Push subscribe / unsubscribe
+- `routes/push.ts` — VAPID public key
 - `routes/health.ts` — `GET /api/health`
 - `routes/attachments.ts` — init / complete / delete / list / download-url / bulk-fetch
-- `storage-usage.ts` — per-project and global storage usage
+- `routes/storage-usage.ts` — per-project and global storage usage
 - `routes/events.ts` — `GET /api/events`, the SSE channel (ADR-0025)
-- `export-jobs.ts` / `import-jobs.ts` — server-side takeout jobs (ADR-0018/0024)
+- `routes/export-jobs.ts` / `routes/import-jobs.ts` — server-side takeout jobs (ADR-0018/0024)
 
 #### `src/server/services/invoice/`
 
 The EN 16931 core (ADR-0026).
 
-- `facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile)
-- `pdfDrawer.ts` — the human-readable A4 body (structurally PDF/A-3, not certified)
-- `xsdValidator.ts` — validates every render against the bundled schemas in `src/server/services/invoice/xsd/`
-- `payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, wire-identical to the browser's
-- `logoAsset.ts` — the brand logo for the PDF; never throws inside issuance
-- `boilerplate.ts` — per-tax-mode legal text, CategoryCode and exemption reason
+- `invoice/facturXmlBuilder.ts` — the embedded `factur-x.xml` (CII, Comfort profile)
+- `invoice/pdfDrawer.ts` — the human-readable A4 body (structurally PDF/A-3, not certified)
+- `invoice/xsdValidator.ts` — validates every render against the bundled schemas in `src/server/services/invoice/xsd/`
+- `invoice/payloadCrypto.ts` — AES-256-GCM envelope for the rendered PDF, wire-identical to the browser's
+- `invoice/logoAsset.ts` — the brand logo for the PDF; never throws inside issuance
+- `invoice/boilerplate.ts` — per-tax-mode legal text, CategoryCode and exemption reason
 
 #### `src/server/` (root files)
 
-- `app.ts` — app assembly (`buildApp()`)
-- `start.ts` — entry point
-- `bootstrap.ts` — first-run admin bootstrap
+- `server/app.ts` — app assembly (`buildApp()`)
+- `server/start.ts` — entry point
+- `server/bootstrap.ts` — first-run admin bootstrap
 - `server/health.ts` — health probe
-- `seed.ts` — seed orchestrator, delegates to `src/server/seed/`
-- `password.ts` — `bcryptjs` wrapper; the 72-byte ceiling is in `src/server/config/password-policy.ts`
-- `staticRoot.ts` — the one definition of `dist/` and `public/` on disk
-- `staticCache.ts` — static file serving and its Cache-Control tiers
-- `deploy-preflight-cli.ts` — deploy-time config and storage checks (AC-230/231)
-- `periodicSweeper.ts` — shared factory behind the reaper and retention schedulers
-- `session-reaper.ts` — session reaper (predates the factory)
-- `audit-retention-scheduler.ts` — audit retention (ADR-0021)
-- `attachment-orphan-reaper-scheduler.ts` — pending-attachment reaper
-- `attachment-hidden-reaper-scheduler.ts` — hidden-attachment reaper
-- `takeout-staging-reaper-scheduler.ts` — takeout staging reaper
-- `threshold-monitor-scheduler.ts` — threshold monitor
-- `bucket-orphan-prune-scheduler.ts` — bucket ↔ DB reconciliation (#169)
-- `backup-runner.ts` — backup CLI: `schedule` / `run` / `drill` (ADR-0020)
-- `errors.ts` — error factories returning `AppError`
-- `error-handler.ts` — global error and 404 handlers
-- `format-error-chain.ts` — surfaces the real cause and SQLSTATE of a wrapped driver error
+- `server/seed.ts` — seed orchestrator, delegates to `src/server/seed/`
+- `server/password.ts` — `bcryptjs` wrapper; the 72-byte ceiling is in `src/server/config/password-policy.ts`
+- `server/staticRoot.ts` — the one definition of `dist/` and `public/` on disk
+- `server/staticCache.ts` — static file serving and its Cache-Control tiers
+- `server/deploy-preflight-cli.ts` — deploy-time config and storage checks (AC-230/231)
+- `server/periodicSweeper.ts` — shared factory behind the reaper and retention schedulers
+- `server/session-reaper.ts` — session reaper (predates the factory)
+- `server/audit-retention-scheduler.ts` — audit retention (ADR-0021)
+- `server/attachment-orphan-reaper-scheduler.ts` — pending-attachment reaper
+- `server/attachment-hidden-reaper-scheduler.ts` — hidden-attachment reaper
+- `server/takeout-staging-reaper-scheduler.ts` — takeout staging reaper
+- `server/threshold-monitor-scheduler.ts` — threshold monitor
+- `server/bucket-orphan-prune-scheduler.ts` — bucket ↔ DB reconciliation (#169)
+- `server/backup-runner.ts` — backup CLI: `schedule` / `run` / `drill` (ADR-0020)
+- `server/errors.ts` — error factories returning `AppError`
+- `server/error-handler.ts` — global error and 404 handlers
+- `server/format-error-chain.ts` — surfaces the real cause and SQLSTATE of a wrapped driver error
 
 ### Directory Notes
 
