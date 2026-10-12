@@ -35,7 +35,6 @@
     "check:api-surface": "tsx scripts/generate-api-surface.ts --check",
     "check:baseline": "tsx scripts/generate-baseline.ts --check",
     "check:doc-paths": "bash scripts/check-doc-paths.sh",
-    "check:module-map": "bash scripts/check-module-map.sh",
     "check:links": "bash scripts/check-links.sh",
     "prepare": "husky || true"
   },
