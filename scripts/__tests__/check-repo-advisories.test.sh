@@ -7,16 +7,21 @@
 # No network, no token.
 #
 # Fixtures reproduce the REAL response shapes, verified against live calls
-# to /repos/{owner}/{repo}/security-advisories and /advisories/{ghsa}:
+# to /repos/{owner}/{repo}/security-advisories and /advisories?ghsa_id={ghsa}:
 #
 #   repo-level    vulnerabilities[].patched_versions        string
-#   global        vulnerabilities[].first_patched_version   string (NOT an
+#   global        a LIST — `[]` when the id is not in the global DB, else
+#                 one record
+#                 vulnerabilities[].first_patched_version   string (NOT an
 #                 object — the `{ identifier }` form is the Dependabot
 #                 alerts API, which this script never calls)
 #
+# fixtures/advisories/{ghsa}.json is that list verbatim. A missing file is
+# `[]` — "not in the global DB" — which is what most cases rely on.
+#
 # An invented fixture shape proves the code handles input the API does not
-# produce, which is worse than no test. Both shapes above were previously
-# wrong here and hid a live bug.
+# produce, which is worse than no test. Both field shapes above were
+# previously wrong here and hid a live bug.
 #
 # Three cases carry most of the weight:
 #
@@ -132,6 +137,29 @@ JSON
 # returns it: two entries, one per release line, both unbounded below.
 REAL_REPO_VULNS="$(repo_vuln '<= 0.45.1' '0.45.2'),$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
 
+# The record /advisories?ghsa_id=GHSA-gpj5-g38j-94v9 returns, trimmed to the
+# fields the script reads. Its lower bound clears 0.45.2.
+REAL_GLOBAL_RECORD='{
+  "ghsa_id": "GHSA-gpj5-g38j-94v9",
+  "vulnerabilities": [
+    {
+      "package": { "ecosystem": "npm", "name": "drizzle-orm" },
+      "vulnerable_version_range": "< 0.45.2",
+      "first_patched_version": "0.45.2"
+    },
+    {
+      "package": { "ecosystem": "npm", "name": "drizzle-orm" },
+      "vulnerable_version_range": ">= 1.0.0-beta.2, < 1.0.0-beta.20",
+      "first_patched_version": "1.0.0-beta.20"
+    }
+  ]
+}'
+
+# Stage $2 as the raw response body for the GHSA-gpj5-g38j-94v9 query.
+write_global_answer() {
+  printf '%s\n' "$2" >"$1/fixtures/advisories/GHSA-gpj5-g38j-94v9.json"
+}
+
 pass=0
 fail=0
 failures=()
@@ -185,10 +213,11 @@ echo "Case: no advisories published for the repo"
 assert_case 0 "no advisories" "$(stage)"
 
 echo "Case: repo-level only, installed version in range"
-# The reason this gate exists. No global record, so the repo-level range is
-# the only evidence there is — and it matches.
+# The reason this gate exists. No global record (`[]`), so the repo-level
+# range is the only evidence there is — and it matches.
 d="$(stage)"
 write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+write_global_answer "$d" "[]"
 assert_output 1 "repo-level only, in range" "$d" "REPO-LEVEL ONLY"
 
 echo "Case: repo-level only, installed version out of range"
@@ -203,23 +232,7 @@ echo "Case: global record narrows the range"
 # this must pass — and must say the repo-level range still matched.
 d="$(stage)"
 write_repo_advisory "$d" "$REAL_REPO_VULNS"
-cat >"$d/fixtures/advisories/GHSA-gpj5-g38j-94v9.json" <<'JSON'
-{
-  "ghsa_id": "GHSA-gpj5-g38j-94v9",
-  "vulnerabilities": [
-    {
-      "package": { "ecosystem": "npm", "name": "drizzle-orm" },
-      "vulnerable_version_range": "< 0.45.2",
-      "first_patched_version": "0.45.2"
-    },
-    {
-      "package": { "ecosystem": "npm", "name": "drizzle-orm" },
-      "vulnerable_version_range": ">= 1.0.0-beta.2, < 1.0.0-beta.20",
-      "first_patched_version": "1.0.0-beta.20"
-    }
-  ]
-}
-JSON
+write_global_answer "$d" "[$REAL_GLOBAL_RECORD]"
 assert_output 0 "global record narrows the range" "$d" "cleared by the global DB"
 
 echo "Case: global record still matches"
@@ -232,16 +245,18 @@ echo "Case: global record still matches"
 d="$(stage)"
 write_repo_advisory "$d" "$REAL_REPO_VULNS"
 cat >"$d/fixtures/advisories/GHSA-gpj5-g38j-94v9.json" <<'JSON'
-{
-  "ghsa_id": "GHSA-gpj5-g38j-94v9",
-  "vulnerabilities": [
-    {
-      "package": { "ecosystem": "npm", "name": "drizzle-orm" },
-      "vulnerable_version_range": "<= 0.45.2",
-      "first_patched_version": "0.45.3"
-    }
-  ]
-}
+[
+  {
+    "ghsa_id": "GHSA-gpj5-g38j-94v9",
+    "vulnerabilities": [
+      {
+        "package": { "ecosystem": "npm", "name": "drizzle-orm" },
+        "vulnerable_version_range": "<= 0.45.2",
+        "first_patched_version": "0.45.3"
+      }
+    ]
+  }
+]
 JSON
 assert_output 1 "global record still matches" "$d" "patched: 0.45.3"
 
@@ -254,18 +269,47 @@ echo "Case: global record carries a null vulnerable range"
 d="$(stage)"
 write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
 cat >"$d/fixtures/advisories/GHSA-gpj5-g38j-94v9.json" <<'JSON'
-{
-  "ghsa_id": "GHSA-gpj5-g38j-94v9",
-  "vulnerabilities": [
-    {
-      "package": { "ecosystem": "npm", "name": "drizzle-orm" },
-      "vulnerable_version_range": null,
-      "first_patched_version": null
-    }
-  ]
-}
+[
+  {
+    "ghsa_id": "GHSA-gpj5-g38j-94v9",
+    "vulnerabilities": [
+      {
+        "package": { "ecosystem": "npm", "name": "drizzle-orm" },
+        "vulnerable_version_range": null,
+        "first_patched_version": null
+      }
+    ]
+  }
+]
 JSON
 assert_output 1 "null global vulnerable range" "$d" "range from: repo-level advisory"
+
+# The next three answers are unreadable for a query filtered by one id, so
+# each is a structural failure. All three carry the real record's ranges,
+# which clear 0.45.2: a probe that read past the anomaly would exit 0 —
+# a false negative — rather than 1.
+
+echo "Case: global answer is not a list"
+# The single-record shape of /advisories/{ghsa_id}, not the list the query
+# returns.
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+write_global_answer "$d" "$REAL_GLOBAL_RECORD"
+assert_case 2 "non-list global answer" "$d"
+
+echo "Case: global answer holds more than one record"
+# Both records carry the queried id, so only the count is wrong.
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+write_global_answer "$d" "[$REAL_GLOBAL_RECORD, $REAL_GLOBAL_RECORD]"
+assert_case 2 "multi-record global answer" "$d"
+
+echo "Case: global answer is a different advisory"
+# One record, but not the one asked for. Its ranges must not judge this one.
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+write_global_answer "$d" "[${REAL_GLOBAL_RECORD/GHSA-gpj5-g38j-94v9/GHSA-othr-0000-0000}]"
+assert_case 2 "global answer for another id" "$d"
 
 echo "Case: advisory for an installed dep is filed on a sibling repo"
 # Orgs that publish one package per repo still file some advisories centrally.
