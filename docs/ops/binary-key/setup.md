@@ -45,7 +45,7 @@ age-keygen -y ~/secrets/binary-identity.txt    # prints the public recipient (ag
 
 The `age1...` line is what `BINARY_AGE_RECIPIENT` takes in §3. The `AGE-SECRET-KEY-1...` inside the file is the private identity and stays on the workstation.
 
-**Back up the private identity to at least two off-system locations.** The two-copy minimum is mandated by [ADR-0024 §Decision "Operator workflow"](../../adr/0024-binary-attachment-e2e-encryption.md#decision) — binaries are deliverables, not recovery artifacts, and identity loss is worse than backup-key loss. Pick **two** of the following; document both in the password manager:
+**Back up the private identity to at least two off-system locations.** The two-copy minimum is mandated by [ADR-0024 §Decision "Operator workflow"](../../adr/0024-binary-attachment-e2e-encryption.md#decision) — binaries are deliverables, not recovery artifacts, and identity loss is worse than backup-key loss. Pick **two** of the following; label them (copy A, copy B) and record the label → location map in the password manager:
 
 - Encrypted USB kept in a physical safe (owner site).
 - Paper printout in a sealed envelope, stored in a separate physical location.

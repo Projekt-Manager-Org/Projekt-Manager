@@ -16,7 +16,7 @@ The recovery tool runs on the operator workstation, read-only: no database, no V
 
 **Prerequisites:** repo checkout with `npm ci` done, Node per `package.json` `engines`, `age` + `age-keygen` at `/usr/bin/`, and the read-only recovery key from the password manager ([object-storage-provisioning.md § Recovery key](../object-storage-provisioning.md#recovery-key-read-only)).
 
-**One-time setup:** a dedicated drill project in the app (e.g. `Betrieb – Schlüsselprobe`). Samples never go into a customer project: each upload is visible to that project's members and leaves permanent audit entries there.
+**One-time setup:** a dedicated drill customer and project in the app (e.g. the operating company as customer, project `Betrieb – Schlüsselprobe`). Samples never go under a real customer: each upload is visible to the project's members and leaves permanent audit entries in that customer's record.
 
 ### 1. Upload a sample
 
@@ -47,6 +47,7 @@ install -d -m 700 "$D"
 The secret is read without echo, so it stays out of shell history:
 
 ```bash
+cd <repo>
 read -rs STORAGE_SECRET_KEY && export STORAGE_SECRET_KEY   # paste the recovery applicationKey, Enter
 STORAGE_ENDPOINT=<B2 S3 endpoint> STORAGE_BUCKET=<bucket> STORAGE_REGION=<region> \
 STORAGE_ACCESS_KEY=<recovery keyId> \

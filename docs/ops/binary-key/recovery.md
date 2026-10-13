@@ -21,7 +21,7 @@ Do **not** reboot the VPS or recreate the `app` container until you have at leas
 
 This assumes at least one of the ≥2 off-system copies mandated in [setup.md §2](setup.md#2-generate-the-age-key-pair) is intact.
 
-1. Retrieve the off-system copy: encrypted USB from the safe, paper printout transcribed, KeePass entry exported. Place it on the workstation as `~/secrets/binary-identity.txt`.
+1. Retrieve an off-system copy by label (location per the password manager): encrypted USB mounted, paper printout transcribed, KeePass entry exported. Place it on the workstation as `~/secrets/binary-identity.txt`.
 2. Verify it parses and matches the deployed recipient:
 
    ```bash
