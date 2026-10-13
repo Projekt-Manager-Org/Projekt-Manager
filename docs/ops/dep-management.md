@@ -193,28 +193,21 @@ rm package-lock.json && npm install …         # re-resolves the whole tree    
 
 The second shape is what `lockFileMaintenance` does, so the recovery differs by which branch is broken:
 
-| Broken branch         | Cause                                                           | Do                                                                                                                                                                                                                                                                             |
-| --------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Vulnerability         | The PR's own range floor sits inside the window                 | **Verify the release first** (below), then `npm install <pkg>@<patched> --min-release-age=0` and commit the lockfile onto the branch. A conservative install keeps every other locked version, but resolves the fixed dep — and anything it newly requires — at zero cooldown. |
-| `lockFileMaintenance` | A same-day bump landed on `main`; the rebase inherits its floor | **Wait it out.** This path discards the lockfile, so the bypass would re-resolve _every_ transitive at zero cooldown — the exposure the setting exists to prevent. Never do it here.                                                                                           |
-| Any other direct bump | A floor raised to a version inside the window                   | **Wait it out.** Without an advisory nothing outweighs the cooldown — a young version is what it exists to delay.                                                                                                                                                              |
+| Broken branch         | Cause                                                           | Do                                                                                                                                                                                                                                                 |
+| --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vulnerability         | The PR's own range floor sits inside the window                 | **Verify the release** (below), then `npm install <pkg>@<patched> --min-release-age=0` and commit the lockfile onto the branch. `<patched>` is the advisory's version — the newest in range may be a later same-day release it does not vouch for. |
+| `lockFileMaintenance` | A same-day bump landed on `main`; the rebase inherits its floor | **Wait it out.** This path discards the lockfile, so the bypass would re-resolve _every_ transitive at zero cooldown — the exposure the setting exists to prevent. Never do it here.                                                               |
 
-**Before bypassing**, all of these hold — otherwise wait. The bypass is where a malicious "fix" would aim.
+**Before bypassing** — otherwise wait. The bypass is where a malicious "fix" would aim.
 
-Take `<owner>/<repo>` from the **currently locked** version — `npm view <pkg>@<locked> repository.url`. The new release's metadata is the attacker's to set: pointed at their own repo, checks 1 and 4 would pass against it.
-
-1. **The advisory is upstream's.** `gh api repos/<owner>/<repo>/security-advisories/<GHSA> --jq '.state, .vulnerabilities[].patched_versions'` prints `published` and the patched version. Only the repo's admins and security managers can publish one — a stolen npm token cannot.
-2. **The lockfile holds that patched version.** Installing `<pkg>@<patched>` locks it; a bare `npm install` takes the newest in range, possibly a later same-day release the advisory does not vouch for.
-3. **Only that package moved.** `git diff package-lock.json` changes no other `node_modules/…` entry; CI's release-age gate prints exactly one `waived under advisory bypass` warning. A new dependency enters at zero cooldown and the gate waives `security` PRs — the `event-stream` shape.
-4. **The tarball is upstream's build**, by either:
-   - **provenance from upstream** — the version's npmjs.com Provenance panel names the upstream repo and the commit the release tag points to. Presence alone proves nothing: an attacker can attest from their own fork.
-   - **a match with the tag** — `npm pack <pkg>@<version> --min-release-age=0` (the cutoff applies to `pack` too), extract, `diff -r package/ <tag checkout>`: no content diff, no `Only in package/`. Packages published as unbuilt source only; a built `dist/` cannot match.
+1. **Only `<pkg>` moved** in `git diff package-lock.json` — a new transitive enters at zero cooldown.
+2. **The tarball is upstream's build**: npm provenance naming the upstream repo at the release-tag commit, or `npm pack <pkg>@<patched> --min-release-age=0` matches the tag checkout (`diff -r`, no `Only in package/`; unbuilt packages only).
 
 The window clears 3 days after the blocking version's publish, not 3 days after the failure.
 
 **There is no automatic recovery** either way. Renovate retries without `--before` on ETARGET, but the retry is guarded on that flag being set and Renovate deliberately leaves it empty when `.npmrc` carries `min-release-age`. `--before` is refused as mutually exclusive with `--min-release-age`.
 
-[#514](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/514) is the worked example of the checks — no provenance, so check 4 by tag match. [#413](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/413) is the worked example of the `lockFileMaintenance` row — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
+[#514](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/514) is the worked example of the checks — no provenance, so the tag match. [#413](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/413) is the worked example of row 2 — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
 **Not covered:** the cooldown is npm-only. Docker base images, digest-pinned Actions, and the checksum-pinned CLI binaries have no release-age delay — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
