@@ -41,7 +41,7 @@ This assumes at least one of the ≥2 off-system copies mandated in [setup.md §
 
 ## 3. Drill-failure escalation
 
-A monthly drill that fails on `age -d` is a **custody emergency**: the off-system copy you trusted is dead. The deployment still works — the in-tmpfs copy is whatever the operator pasted last reboot — but the safety margin is now thinner than designed.
+A monthly drill that fails to unwrap with the custody copy is a **custody emergency**: the off-system copy you trusted is dead. The deployment still works — the in-tmpfs copy is whatever the operator pasted last reboot — but the safety margin is now thinner than designed.
 
 Escalation steps:
 

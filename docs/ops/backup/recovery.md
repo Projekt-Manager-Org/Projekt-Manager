@@ -165,10 +165,12 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
    ```bash
    TTL_MIN=15   # ATTACHMENT_ORPHAN_REAPER_TTL_MINUTES from the VPS .env (default 15)
    CUTOFF=$(date -u -d "@$(( $(date -u -d "$TS" +%s) - 3600 - TTL_MIN * 60 ))" +%Y-%m-%dT%H:%M:%SZ)
+   read -rs STORAGE_SECRET_KEY && export STORAGE_SECRET_KEY   # paste the recovery applicationKey, Enter
    STORAGE_ENDPOINT=<B2 S3 endpoint> STORAGE_BUCKET=<bucket> STORAGE_REGION=<region> \
-   STORAGE_ACCESS_KEY=<recovery keyId> STORAGE_SECRET_KEY=<recovery applicationKey> \
+   STORAGE_ACCESS_KEY=<recovery keyId> \
      npx tsx scripts/binary-key/recover-objects.ts \
-       --identity ~/secrets/age-binary.key --since "$CUTOFF" --out ~/restore/objects
+       --identity ~/secrets/binary-identity.txt --since "$CUTOFF" --out ~/restore/objects
+   unset STORAGE_SECRET_KEY
    ```
 
    `~/restore/objects/index.json` lists every version since the cutoff. Keys of non-`pending` rows in the restored DB need nothing. A `pending` row counts as lost: the orphan reaper deletes it and its objects once the app starts. List the rest:
