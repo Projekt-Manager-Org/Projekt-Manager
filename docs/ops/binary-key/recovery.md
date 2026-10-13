@@ -21,7 +21,7 @@ Do **not** reboot the VPS or recreate the `app` container until you have at leas
 
 This assumes at least one of the ≥2 off-system copies mandated in [setup.md §2](setup.md#2-generate-the-age-key-pair) is intact.
 
-1. Retrieve the off-system copy: encrypted USB from the safe, paper printout transcribed, KeePass entry exported. Place it on the workstation as `~/secrets/binary-identity.txt`.
+1. Retrieve an off-system copy by label (location per the password manager): encrypted USB mounted, paper printout transcribed, KeePass entry exported. Place it on the workstation as `~/secrets/binary-identity.txt`.
 2. Verify it parses and matches the deployed recipient:
 
    ```bash
@@ -35,13 +35,13 @@ This assumes at least one of the ≥2 off-system copies mandated in [setup.md §
 
 3. Run a workstation-side decrypt drill against a current attachment per [drills.md](drills.md). A clean pass confirms the copy is the deployed identity and is good against live ciphertext.
 
-4. Document the restore in `~/ops-log/binary-identity-restore-YYYY-MM-DD.md` — date, which custody location was used, why it was needed, and a note to schedule a custody-replenishment task (one copy is now in active use; the other off-system copies should be re-verified and a new redundant copy minted to replace any consumed copy).
+4. Record the restore per [Operations record](../index.md#operations-record) — date, which custody copy was used, why it was needed, and a note to schedule a custody-replenishment task (one copy is now in active use; the other off-system copies should be re-verified and a new redundant copy minted to replace any consumed copy).
 
 5. **Resume normal ops.** No production state changes; the deployed VPS keeps running because the identity in tmpfs was never touched. The recovered workstation copy now exists for the next reboot's paste and for monthly drills.
 
 ## 3. Drill-failure escalation
 
-A monthly drill that fails on `age -d` is a **custody emergency**: the off-system copy you trusted is dead. The deployment still works — the in-tmpfs copy is whatever the operator pasted last reboot — but the safety margin is now thinner than designed.
+A monthly drill that fails to unwrap with the custody copy is a **custody emergency**: the off-system copy you trusted is dead. The deployment still works — the in-tmpfs copy is whatever the operator pasted last reboot — but the safety margin is now thinner than designed.
 
 Escalation steps:
 

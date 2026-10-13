@@ -37,11 +37,12 @@ Deny-listed (do **not** set):
 
 ## App key — via `b2` CLI
 
-The B2 web UI cannot create capability-restricted keys; it grants only coarse Read / Write. Use the CLI:
+The B2 web UI cannot create capability-restricted keys; it grants only coarse Read / Write. Use the CLI (`uv tool install b2` or `pipx install b2`):
 
 ```bash
-# 1. Authorize once with master credentials (interactive — type yourself):
-b2 account authorize <masterKeyId> <masterAppKey>
+# 1. Authorize with master credentials. No arguments: the CLI prompts,
+#    which keeps the key out of shell history.
+b2 account authorize
 
 # 2. Create the bucket-scoped app key:
 b2 key create --bucket prmng-object-storage prmng-app \
@@ -87,7 +88,7 @@ If `deleteFiles`, `bypassGovernance`, `writeFileLegalHolds`, `writeBuckets`, `wr
 The master key has `deleteFiles` and can destroy versions outside their retention window. Per ADR-0022:
 
 - Stored offline (password manager). Not on the VPS, not in any deploy artifact, not in CI.
-- Used **only** for provisioning, key rotation, audited maintenance.
+- Used **only** for provisioning, key rotation, audited maintenance. `b2 account authorize` caches the credentials on the workstation — run `b2 account clear` when done.
 - Never set as `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` on any running service.
 
 App-key rotation: create the new key first, deploy the new credentials, verify, then revoke the old key with `b2 key delete <oldKeyId>`.
@@ -100,7 +101,7 @@ The binary recovery tool ([AC-374](../spec/verification.md#1526-attachments)) ru
 b2 key create --bucket prmng-object-storage prmng-recovery listFiles,readFiles
 ```
 
-`listFiles` covers `ListObjectVersions`, `readFiles` covers `HeadObject` / `GetObject` ([B2 S3 app keys](https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys)). No write, no hide. Store both halves in the password manager only — not on the VPS. Used by the [monthly drill](binary-key/drills.md) and the [DR restore](backup/recovery.md#6-restore-into-production).
+`prmng-recovery` is the key's name (a label in `b2 key list`); `--bucket` restricts the key to that bucket. `listFiles` covers `ListObjectVersions`, `readFiles` covers `HeadObject` / `GetObject` ([B2 S3 app keys](https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys)). No write, no hide. Store both halves in the password manager only — not on the VPS. Used by the [monthly drill](binary-key/drills.md) and the [DR restore](backup/recovery.md#6-restore-into-production).
 
 ## CORS rule on the bucket
 
