@@ -25,3 +25,7 @@ Who does what in operations — the operating company's duties, the operator rol
 | [local-dev.md](local-dev.md)                                   | Local development environment                                                                          |
 | [http-only-evaluation.md](http-only-evaluation.md)             | Domain-less HTTP testing on a bare VPS                                                                 |
 | [dep-management.md](dep-management.md)                         | Renovate cadence, CVE handling, quarterly lifecycle review                                             |
+
+## Operations record
+
+Drills, restores and rotations are recorded outside the systems they exercise — a file on the workstation dies with the workstation. Use the procedure's recurring calendar event (monthly drills) or a one-off event (restore, rotation), and name custody copies by label (copy A / copy B), never by location.

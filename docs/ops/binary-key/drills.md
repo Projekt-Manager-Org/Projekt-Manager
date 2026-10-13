@@ -69,11 +69,11 @@ rm -rf "$D"
 
 ## Recording the result
 
-Record the result in `~/ops-log/binary-drill-YYYY-MM.md` (create if absent) or in your operations calendar entry. Include:
+Record the result per [Operations record](../index.md#operations-record). Include:
 
 - Drill date.
 - Sample object key (no plaintext, no DEK).
-- Custody copy used (e.g., "USB in office safe", "paper copy in home safe").
+- Custody copy used, by label.
 - Pass / fail.
 - For fail: the index entry's `error`.
 - Workstation `age --version`, `node --version` (catches tooling drift).

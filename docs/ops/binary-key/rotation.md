@@ -63,7 +63,7 @@ After all attachments are re-uploaded (or after the operator accepts that the un
 
 1. Move the old custody copies to a "retired, read-only" vault. Keep them — historical compliance audits, late discoveries that an old attachment was actually needed, etc. Do not destroy.
 2. Remove the old workstation working copy: `shred -u ~/secrets/binary-identity.txt` then `mv ~/secrets/binary-identity.new.txt ~/secrets/binary-identity.txt` so the canonical filename keeps pointing at the active identity.
-3. Document the rotation in `~/ops-log/binary-rotation-YYYY-MM-DD.md` — date, reason, attachment count re-uploaded, attachment count abandoned.
+3. Record the rotation per [Operations record](../index.md#operations-record) — date, reason, attachment count re-uploaded, attachment count abandoned.
 
 ## Rollback
 

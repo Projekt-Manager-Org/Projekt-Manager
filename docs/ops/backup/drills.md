@@ -75,6 +75,6 @@ Tier 2 in-container drills exercise encrypt → upload → download → decrypt 
 
 **Procedure:** run [recovery.md steps 1–5](recovery.md) (download, decrypt, scratch restore, manifest verify) — **stop before step 6.** No production changes.
 
-Record the result in `~/ops-log/backup-drill-YYYY-MM.md` (create if absent) or in your operations calendar entry. Include: dump timestamp, pass/fail, any mismatch details, workstation `age --version`.
+Record the result per [Operations record](../index.md#operations-record). Include: dump timestamp, pass/fail, any mismatch details, workstation `age --version`.
 
 Cadence: first working day of each month. A missed month is not a failure — run it as soon as noticed.
