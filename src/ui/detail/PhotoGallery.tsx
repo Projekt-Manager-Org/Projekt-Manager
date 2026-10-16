@@ -220,7 +220,7 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
             return (
               <li key={photo.id} className={styles.photoItem} data-testid="attachment-thumbnail">
                 {error === 'load-failed' ? (
-                  // No verdict on the row: the next gallery mount re-probes.
+                  // No verdict on the row: `controllerchange` or the next mount re-probes.
                   <div
                     className={styles.photoMissing}
                     data-testid={`photo-load-failed-${photo.id}`}

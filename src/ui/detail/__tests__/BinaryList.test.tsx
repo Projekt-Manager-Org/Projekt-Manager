@@ -429,6 +429,57 @@ describe('BinaryList — download failure without an SW code (AC-224 boundary)',
       fetchSpy.mockRestore();
     }
   });
+
+  it('renders the generic state on a transport drop', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    try {
+      render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
+
+      const pdfRow = await screen.findByTestId('attachment-binary-row-bin-pdf');
+      await userEvent.click(within(pdfRow).getByTestId('attachment-download'));
+
+      await waitFor(() => {
+        expect(within(pdfRow).getByText('Datei konnte nicht geladen werden')).toBeInTheDocument();
+      });
+      expect(within(pdfRow).queryByText(/datei fehlt/i)).not.toBeInTheDocument();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('drops the badge once a retry succeeds', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        Response.json({ code: 'ROUTE_NOT_FOUND', message: 'not found' }, { status: 404 }),
+      )
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]).slice()));
+    // No-op the anchor click — jsdom cannot navigate to a Blob URL.
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    try {
+      render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
+
+      const pdfRow = await screen.findByTestId('attachment-binary-row-bin-pdf');
+      const download = within(pdfRow).getByTestId('attachment-download');
+      await userEvent.click(download);
+      await within(pdfRow).findByText('Datei konnte nicht geladen werden');
+
+      await userEvent.click(download);
+      await waitFor(() => {
+        expect(
+          within(pdfRow).queryByText('Datei konnte nicht geladen werden'),
+        ).not.toBeInTheDocument();
+      });
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+      clickSpy.mockRestore();
+    }
+  });
 });
 
 describe('BinaryList — Schlüssel nicht verfügbar render (AC-244)', () => {
