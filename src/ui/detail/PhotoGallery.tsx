@@ -7,10 +7,12 @@
  * and serves plaintext bytes. The component never calls `download-url`
  * itself — that is the SW's job per AC-243.
  *
- * Two failure-mode placeholders, distinguished by the SW's
+ * Failure-mode placeholders, distinguished by the SW's
  * `data-sw-error-code` attribute on the failing `<img>`:
  *   - `OBJECT_ABSENT` → AC-224 `"Datei fehlt"`
  *   - `DEK_UNWRAP_FAILED` → AC-244 `"Schlüssel nicht verfügbar"`
+ *   - no code (SW not controlling the page, generic SW failure) →
+ *     `"Datei konnte nicht geladen werden"`; delete stays available
  *
  * List fetching goes through the attachment store; this component is a
  * thin renderer.
@@ -26,7 +28,11 @@ import { useAttachmentStore } from '@/state/attachmentStore';
 import { useAuthStore } from '@/state/authStore';
 import { useConfirmStore } from '@/state/confirmStore';
 import { formatDateDE } from '@/domain/dateFormat';
-import { synthAttachmentUrl } from '@/sw/syntheticOrigin';
+import {
+  loadErrorForSwCode,
+  synthAttachmentUrl,
+  type AttachmentLoadError,
+} from '@/sw/syntheticOrigin';
 import styles from './ProjectDetail.module.css';
 
 interface PhotoGalleryProps {
@@ -35,7 +41,7 @@ interface PhotoGalleryProps {
   archived?: boolean;
 }
 
-type RowError = 'object-absent' | 'key-unavailable';
+type RowError = AttachmentLoadError;
 
 export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps) {
   // Select the raw per-project slice then filter inline so the
@@ -98,12 +104,26 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
     });
   }
 
+  // A thumbnail requested before the SW controlled the page (first
+  // visit) failed without a verdict; retry once the SW takes control.
+  useEffect(() => {
+    const sw = navigator.serviceWorker;
+    if (!sw) return;
+    const retryLoadFailed = () =>
+      setRowErrors((prev) => {
+        const next = Object.fromEntries(
+          Object.entries(prev).filter(([, err]) => err !== 'load-failed'),
+        );
+        return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+      });
+    sw.addEventListener('controllerchange', retryLoadFailed);
+    return () => sw.removeEventListener('controllerchange', retryLoadFailed);
+  }, []);
+
   const handleImgError = (photoId: string, target: HTMLElement | null) => {
     // SW signals divergence via `data-sw-error-code` on the failing
     // `<img>` element (spec §8.15.7 "Failure-mode signal contract").
-    // The two pinned values are `OBJECT_ABSENT` and `DEK_UNWRAP_FAILED`.
-    const code = target?.getAttribute('data-sw-error-code');
-    const verdict: RowError = code === 'DEK_UNWRAP_FAILED' ? 'key-unavailable' : 'object-absent';
+    const verdict = loadErrorForSwCode(target?.getAttribute('data-sw-error-code'));
     setRowErrors((prev) => ({ ...prev, [photoId]: verdict }));
   };
 
@@ -199,23 +219,33 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
             const thumbSrc = synthAttachmentUrl(projectId, photo.id, 'thumbnail');
             return (
               <li key={photo.id} className={styles.photoItem} data-testid="attachment-thumbnail">
-                <button
-                  type="button"
-                  className={styles.photoThumb}
-                  data-testid={`photo-thumb-${photo.id}`}
-                  aria-label={thumbButtonLabel(photo)}
-                  onClick={(e) => handleOpenLightbox(photo, e.currentTarget as HTMLElement)}
-                >
-                  {/* alt="" because the button's aria-label carries the
-                      accessible name; a non-empty alt would double-announce.
-                      The SW intercepts this `<img>`'s ciphertext fetch and
-                      returns plaintext bytes through the Fetch response. */}
-                  <img
-                    src={thumbSrc}
-                    alt=""
-                    onError={(e) => handleImgError(photo.id, e.currentTarget)}
-                  />
-                </button>
+                {error === 'load-failed' ? (
+                  // No verdict on the row: `controllerchange` or the next mount re-probes.
+                  <div
+                    className={styles.photoMissing}
+                    data-testid={`photo-load-failed-${photo.id}`}
+                  >
+                    {STRINGS.attachments.loadFailed}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.photoThumb}
+                    data-testid={`photo-thumb-${photo.id}`}
+                    aria-label={thumbButtonLabel(photo)}
+                    onClick={(e) => handleOpenLightbox(photo, e.currentTarget as HTMLElement)}
+                  >
+                    {/* alt="" because the button's aria-label carries the
+                        accessible name; a non-empty alt would double-announce.
+                        The SW intercepts this `<img>`'s ciphertext fetch and
+                        returns plaintext bytes through the Fetch response. */}
+                    <img
+                      src={thumbSrc}
+                      alt=""
+                      onError={(e) => handleImgError(photo.id, e.currentTarget)}
+                    />
+                  </button>
+                )}
                 {canDelete && (
                   <button
                     type="button"

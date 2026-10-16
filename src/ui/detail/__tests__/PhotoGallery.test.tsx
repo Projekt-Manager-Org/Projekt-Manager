@@ -15,11 +15,12 @@
  *   - `<img onError>` is the integration seam: the SW returns a non-2xx
  *     Response on either an object-absent path (AC-224) or an
  *     envelope-unwrap failure (AC-244), and the gallery flips the row
- *     to the matching German placeholder.
+ *     to the matching German placeholder. A failure without either code
+ *     renders the generic load-failure placeholder (§8.15.7).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiResult } from '@/api/client';
 import type { Attachment } from '@/domain/types';
@@ -235,12 +236,9 @@ describe('PhotoGallery — "Datei fehlt" render (AC-224 photo side)', () => {
     const img = thumb.querySelector('img');
     expect(img).not.toBeNull();
 
-    // Simulate the `<img>` error event the SW's non-2xx Response
-    // produces in a real browser. Without an explicit cause attribute
-    // the gallery's `onError` handler defaults to AC-224 (object-
-    // absent), the safer of the two failure modes — AC-244 requires
-    // the SW to surface DEK_UNWRAP_FAILED (covered in the AC-244
-    // describe below).
+    // The SW mirrors OBJECT_ABSENT onto the `<img>` before the error
+    // event fires (§8.15.7 failure-mode signal contract).
+    img!.setAttribute('data-sw-error-code', 'OBJECT_ABSENT');
     fireEvent.error(img!, { target: img });
 
     const placeholder = await screen.findByTestId('photo-missing-ph-ready');
@@ -252,12 +250,55 @@ describe('PhotoGallery — "Datei fehlt" render (AC-224 photo side)', () => {
 
     const thumb = await screen.findByTestId('photo-thumb-ph-ready');
     const img = thumb.querySelector('img');
+    img!.setAttribute('data-sw-error-code', 'OBJECT_ABSENT');
     fireEvent.error(img!, { target: img });
 
     const placeholder = await screen.findByTestId('photo-missing-ph-ready');
     await userEvent.click(placeholder);
 
     expect(screen.queryByTestId('photo-lightbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('PhotoGallery — load failure without an SW code (AC-224 boundary)', () => {
+  it('renders "Datei konnte nicht geladen werden", not "Datei fehlt", and keeps the delete action', async () => {
+    // No code on the `<img>`: the SW did not answer (page not controlled,
+    // the request reached the server) or failed without a pinned code.
+    // Nothing is known about the bytes, so the row stays deletable.
+    render(<PhotoGallery projectId="p-42" />);
+
+    const thumb = await screen.findByTestId('photo-thumb-ph-ready');
+    const img = thumb.querySelector('img');
+    fireEvent.error(img!, { target: img });
+
+    const placeholder = await screen.findByTestId('photo-load-failed-ph-ready');
+    expect(placeholder.textContent).toContain('Datei konnte nicht geladen werden');
+    expect(screen.queryByText('Datei fehlt')).not.toBeInTheDocument();
+    expect(screen.getByTestId('attachment-delete')).toBeInTheDocument();
+  });
+
+  it('re-requests the thumbnail once the SW takes control of the page', async () => {
+    // First visit: the thumbnail fetch ran before the SW claimed the
+    // page. The SW's `controllerchange` is the subsequent attempt.
+    const sw = new EventTarget();
+    Object.defineProperty(navigator, 'serviceWorker', { value: sw, configurable: true });
+
+    try {
+      render(<PhotoGallery projectId="p-42" />);
+
+      const img = (await screen.findByTestId('photo-thumb-ph-ready')).querySelector('img');
+      fireEvent.error(img!, { target: img });
+      await screen.findByTestId('photo-load-failed-ph-ready');
+
+      act(() => {
+        sw.dispatchEvent(new Event('controllerchange'));
+      });
+
+      const retried = await screen.findByTestId('photo-thumb-ph-ready');
+      expect(retried.querySelector('img')).not.toBe(img);
+    } finally {
+      Reflect.deleteProperty(navigator, 'serviceWorker');
+    }
   });
 });
 

@@ -14,6 +14,7 @@
 
 /// <reference lib="webworker" />
 
+import { SYNTHETIC_ORIGIN_PREFIX } from '@/config/syntheticOrigin';
 import { handleEncryptedStorageRequest } from './decryptHandler';
 import { handlePush, handleNotificationClick } from './pushHandlers';
 
@@ -30,7 +31,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/encrypted-storage/')) {
+  if (url.pathname.startsWith(SYNTHETIC_ORIGIN_PREFIX)) {
     event.respondWith(handleEncryptedStorageRequest(event.request));
     return;
   }

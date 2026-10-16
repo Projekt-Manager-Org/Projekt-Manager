@@ -170,7 +170,7 @@ The EN 16931 core (ADR-0026).
 
 What a filename does not tell you. Not a file list.
 
-**`src/config/`** — `sseEvents.ts` is the SSE event catalogue shared by server and client, not a tunable.
+**`src/config/`** — `sseEvents.ts` is the SSE event catalogue shared by server and client, not a tunable; `syntheticOrigin.ts` likewise pins the attachment Service Worker's path prefix for SW, SPA and server.
 
 **`src/server/config/`** — `vapid.ts` derives the VAPID public key from the private one and auto-bootstraps it in dev.
 
