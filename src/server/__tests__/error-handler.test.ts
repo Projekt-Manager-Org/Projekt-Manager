@@ -287,6 +287,15 @@ describe('production composition — SPA-aware not-found handler', () => {
     expect(res.body).toContain('SPA');
     expect(res.headers['content-type']).toMatch(/text\/html/);
   });
+
+  // AC-243: without SW control the synthetic-origin request reaches the
+  // server; the app shell would pass `response.ok` and be saved as the
+  // attachment (#519).
+  it('/encrypted-storage/<…> → 404 ROUTE_NOT_FOUND, never the SPA index.html', async () => {
+    const res = await app.inject({ method: 'GET', url: '/encrypted-storage/p-1/a-1.original' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('ROUTE_NOT_FOUND');
+  });
 });
 
 // Call-site pin (technique per env.test.ts / baseline-guard.test.ts) for the

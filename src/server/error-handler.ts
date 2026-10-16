@@ -27,6 +27,7 @@ import {
   validationError,
 } from './errors.js';
 import { STRINGS } from '../config/strings.js';
+import { SYNTHETIC_ORIGIN_PREFIX } from '../config/syntheticOrigin.js';
 
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
@@ -90,14 +91,16 @@ export function installNotFoundHandler(app: FastifyInstance): void {
 
 /**
  * Production variant: non-/api URLs fall through to the SPA's
- * `index.html` so client-side routing handles deep links; /api/*
- * URLs return the structured ROUTE_NOT_FOUND error. The caller must
- * register `@fastify/static` before calling — the SPA branch uses
- * `reply.sendFile`.
+ * `index.html` so client-side routing handles deep links; /api/* and
+ * synthetic-origin URLs return the structured ROUTE_NOT_FOUND error.
+ * A synthetic-origin request reaches the server only when the page is
+ * not SW-controlled — the app shell would pass `response.ok` and be
+ * saved as the attachment. The caller must register `@fastify/static`
+ * before calling — the SPA branch uses `reply.sendFile`.
  */
 export function installSpaAwareNotFoundHandler(app: FastifyInstance): void {
   app.setNotFoundHandler((request, reply) => {
-    if (!request.url.startsWith('/api')) {
+    if (!request.url.startsWith('/api') && !request.url.startsWith(SYNTHETIC_ORIGIN_PREFIX)) {
       return reply.sendFile('index.html');
     }
     const err = routeNotFound();

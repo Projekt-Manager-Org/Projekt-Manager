@@ -342,6 +342,14 @@ describe('BinaryList — Auswahl als ZIP triggers bulk-fetch (AC-223)', () => {
   });
 });
 
+/** The SW's storage-404 answer: the code rides on the response header (§8.15.7). */
+function objectAbsentResponse(): Response {
+  return new Response(JSON.stringify({ code: 'OBJECT_ABSENT' }), {
+    status: 404,
+    headers: { 'content-type': 'application/json', 'data-sw-error-code': 'OBJECT_ABSENT' },
+  });
+}
+
 describe('BinaryList — "Datei fehlt" on download 404 (AC-224 binary side)', () => {
   it('flips the row to "Datei fehlt" and disables the download when the SW signals object-absent', async () => {
     // Lazy detection per ui/project-detail.md §8.15.7: the list endpoint
@@ -350,12 +358,8 @@ describe('BinaryList — "Datei fehlt" on download 404 (AC-224 binary side)', ()
     // to a non-2xx Response (storage 404). The component flags the row
     // and disables the action.
     //
-    // Mock global fetch so the synthetic-origin request the SW would
-    // intercept fails with a 404 here, simulating the SW's translated
-    // response surface.
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(new Response('not found', { status: 404 }));
+    // Mock global fetch with the SW's translated storage-404 response.
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(objectAbsentResponse());
 
     try {
       render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
@@ -374,9 +378,7 @@ describe('BinaryList — "Datei fehlt" on download 404 (AC-224 binary side)', ()
   });
 
   it('excludes a "Datei fehlt" row from bulk-fetch selection', async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(new Response('not found', { status: 404 }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(objectAbsentResponse());
 
     try {
       render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
@@ -392,6 +394,90 @@ describe('BinaryList — "Datei fehlt" on download 404 (AC-224 binary side)', ()
       if (checkbox) expect(checkbox).toBeDisabled();
     } finally {
       fetchSpy.mockRestore();
+    }
+  });
+});
+
+describe('BinaryList — download failure without an SW code (AC-224 boundary)', () => {
+  it('shows "Datei konnte nicht geladen werden", not "Datei fehlt", and keeps download + delete enabled', async () => {
+    // The page is not controlled by the SW: the request reaches the
+    // server, which answers an uncoded 404 ROUTE_NOT_FOUND. Nothing is
+    // known about the bytes — a second click re-fetches.
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () =>
+        Response.json({ code: 'ROUTE_NOT_FOUND', message: 'not found' }, { status: 404 }),
+      );
+
+    try {
+      render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
+
+      const pdfRow = await screen.findByTestId('attachment-binary-row-bin-pdf');
+      await userEvent.click(within(pdfRow).getByTestId('attachment-download'));
+
+      await waitFor(() => {
+        expect(within(pdfRow).getByText('Datei konnte nicht geladen werden')).toBeInTheDocument();
+      });
+      expect(within(pdfRow).queryByText(/datei fehlt/i)).not.toBeInTheDocument();
+      expect(within(pdfRow).getByTestId('attachment-delete')).toBeInTheDocument();
+
+      const download = within(pdfRow).getByTestId('attachment-download');
+      expect(download).toBeEnabled();
+      await userEvent.click(download);
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('renders the generic state on a transport drop', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    try {
+      render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
+
+      const pdfRow = await screen.findByTestId('attachment-binary-row-bin-pdf');
+      await userEvent.click(within(pdfRow).getByTestId('attachment-download'));
+
+      await waitFor(() => {
+        expect(within(pdfRow).getByText('Datei konnte nicht geladen werden')).toBeInTheDocument();
+      });
+      expect(within(pdfRow).queryByText(/datei fehlt/i)).not.toBeInTheDocument();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('drops the badge once a retry succeeds', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        Response.json({ code: 'ROUTE_NOT_FOUND', message: 'not found' }, { status: 404 }),
+      )
+      .mockResolvedValueOnce(new Response(new Uint8Array([0x25, 0x50, 0x44, 0x46]).slice()));
+    // No-op the anchor click — jsdom cannot navigate to a Blob URL.
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    try {
+      render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
+
+      const pdfRow = await screen.findByTestId('attachment-binary-row-bin-pdf');
+      const download = within(pdfRow).getByTestId('attachment-download');
+      await userEvent.click(download);
+      await within(pdfRow).findByText('Datei konnte nicht geladen werden');
+
+      await userEvent.click(download);
+      await waitFor(() => {
+        expect(
+          within(pdfRow).queryByText('Datei konnte nicht geladen werden'),
+        ).not.toBeInTheDocument();
+      });
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+      clickSpy.mockRestore();
     }
   });
 });
