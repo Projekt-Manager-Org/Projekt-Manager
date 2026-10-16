@@ -433,6 +433,17 @@ Contract: [architecture.md §11.13](docs/spec/architecture.md#1113-realtime-inva
 - **Catalogue:** `src/config/sseEvents.ts`.
 - **Client:** `src/sse/client.ts` (`onSseEvent`); stores subscribe and refetch.
 
+## Edit Concurrency
+
+Contract: [data-model.md §6.4](docs/spec/data-model.md#64-concurrency), [ui/behavior.md §9.5](docs/spec/ui/behavior.md#95-asynchronous-mutation-behavior). SSE refreshes views; `version` stops stale writes.
+
+| Concern                                                    | Where                                                                                                 |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `version` bump on every UPDATE (cascades, frozen excepted) | `*_version_bump` triggers in `src/server/db/baseline/tail/50-row-version.sql`                         |
+| Lock row, check state, then version (atomic)               | `get*ForMutation` (`SELECT … FOR UPDATE`) in the repositories; the check in each service              |
+| `expectedVersion` route schema                             | `src/server/routes/expected-version.ts`                                                               |
+| Client: start version, per-entity lane, discard on 409     | `src/state/versionedWrites.ts`; captured on focus / form open / dialog open by the editing components |
+
 ---
 
 ## Invoices Module
