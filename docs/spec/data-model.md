@@ -53,7 +53,6 @@ interface Project {
   updatedAt: string; // ISO 8601
   createdBy?: string; // UserAccount.id — optional: seeded/imported records may lack a known actor
   updatedBy?: string; // UserAccount.id — optional: seeded/imported records may lack a known actor
-  version: number; // server-managed concurrency token — §6.4
 }
 ```
 
@@ -232,7 +231,7 @@ interface ExportEnvelope {
   users: EnvelopeUser[]; // every row, including inactive accounts (see below)
   company_profile: EnvelopeCompanyProfile[]; // singleton-array, length === 1 (see below)
   customers: EnvelopeCustomer[]; // every row, all fields from §5.6 (including `ustId`) except `version` (§6.4)
-  projects: EnvelopeProject[]; // every row, all fields from §5.1 except `version` (§6.4), including archived (deleted = true)
+  projects: EnvelopeProject[]; // every row, all fields from §5.1, including archived (deleted = true)
   project_workers: { projectId: string; userId: string }[]; // every row of the join
   invoices: EnvelopeInvoice[]; // every row, ordered (cancellation_of NULLS FIRST, id) — see below
   invoice_sequence: EnvelopeInvoiceSequence[]; // every (year, kind) row
@@ -766,13 +765,13 @@ The persistence design must support extraction of additional entities without re
 
 ### 6.4 Concurrency
 
-Low write concurrency is assumed. A write to a versioned entity based on a stale read is still rejected, never applied: an issued invoice is frozen ([§6.14](#614-immutability-of-issued-invoices)) together with the company profile snapshotted into it, and a lost customer or project edit goes unnoticed — rarity does not make either acceptable.
+Low write concurrency is assumed. A write to a versioned entity based on a stale read is still rejected, never applied: an issued invoice is frozen ([§6.14](#614-immutability-of-issued-invoices)) together with the company profile snapshotted into it, and a whole-form customer save silently reverts fields the saver never touched — rarity does not make either acceptable.
 
 - **State transitions** use optimistic concurrency on `status` — a transition is rejected as a conflict if the project's status has moved since the client's last read (see [AC-94](verification.md#1517-data-integrity)). The client should refetch and present the new state.
-- **Edits** use optimistic concurrency on `version`, a server-managed integer on Project, Customer, Invoice and Company Profile. Every committed API write to the row, or to the rows it owns (for a project: its `project_workers`), changes it — transitions, archive / restore and the issuance flip to `abgerechnet` included ([AC-378](verification.md#1517-data-integrity)). Two exceptions: an issued or cancelled invoice is frozen, so its version no longer changes; database-level cascades ([§6.6](#66-referential-integrity)) do not change it.
+- **Edits** to Customer, Invoice and Company Profile use optimistic concurrency on `version`, a server-managed integer. Every committed API write to the row changes it ([AC-378](verification.md#1517-data-integrity)). Two exceptions: an issued or cancelled invoice is frozen, so its version no longer changes; database-level cascades ([§6.6](#66-referential-integrity)) do not change it.
 - **Versioned operations** (input `expectedVersion` in [api.md](api.md)) carry the version their edit started from. A mismatch is rejected with `VERSION_CONFLICT` and nothing is written ([AC-375](verification.md#1517-data-integrity), [AC-376](verification.md#1517-data-integrity)). The check and the write are atomic: of two writes carrying the same current version, exactly one commits ([AC-381](verification.md#1517-data-integrity)).
 - **Check order.** Request-shape validation first — a missing `expectedVersion` is a validation error ([AC-377](verification.md#1517-data-integrity)). Then: not found and archived ([AC-95](verification.md#1517-data-integrity)); the invoice state checks (`INVOICE_FROZEN`, issue on a non-draft); the version check; business-rule checks (e.g. the issuance preconditions in [api.md §14.2.14](api.md#14214-invoice-operations)).
-- **Not versioned.** Lifecycle operations — project archive / restore / purge, customer delete — act on the row's existence, not its content; their preconditions are state checks ([§6.9](#69-soft-deletes)). Delete draft is versioned: discarding a draft is a judgement on its content. Invoice cancel — its target is frozen. Attachments — own state checks ([api.md §14.2.11](api.md#14211-attachments)). Users and notification rules — low-stakes rows whose stale overwrite freezes nothing.
+- **Not versioned.** Project edits (Update project, Update dates) are last-write-wins: the detail page saves one field at a time, so a lost update needs two users on the same field at once — rare, and recoverable from the audit `before`. A project-wide `version` would instead reject an edit to one field whenever anything else on the project moved (a transition, an assignment, the issuance flip), discarding the user's input. Lifecycle operations — project archive / restore / purge, customer delete — act on the row's existence, not its content; their preconditions are state checks ([§6.9](#69-soft-deletes)). Delete draft is versioned: discarding a draft is a judgement on its content. Invoice cancel — its target is frozen. Attachments — own state checks ([api.md §14.2.11](api.md#14211-attachments)). Users and notification rules — low-stakes rows whose stale overwrite freezes nothing.
 - **Not exported.** `version` is a concurrency token, not business data: the export envelope omits it ([§5.8](#58-export-envelope)) and import sets it fresh. No stale client survives an override import — it drops every session ([api.md §14.2.4](api.md#1424-unified-data-exchange)).
 
 ### 6.5 Schema Evolution
