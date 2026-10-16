@@ -30,7 +30,11 @@ import { useAttachmentStore } from '@/state/attachmentStore';
 import { useAuthStore } from '@/state/authStore';
 import { useConfirmStore } from '@/state/confirmStore';
 import { formatDateDE } from '@/domain/dateFormat';
-import { synthAttachmentUrl } from '@/sw/syntheticOrigin';
+import {
+  loadErrorForSwCode,
+  synthAttachmentUrl,
+  type AttachmentLoadError,
+} from '@/sw/syntheticOrigin';
 import { triggerBlobDownload } from '@/ui/utils/downloadFile';
 import styles from './ProjectDetail.module.css';
 
@@ -56,13 +60,7 @@ const LABEL_BY_VALUE = new Map<AttachmentLabel, string>(
   ATTACHMENT_LABELS.map((l) => [l.value, l.label]),
 );
 
-type RowError = 'object-absent' | 'key-unavailable' | 'load-failed';
-
-/** §8.15.7: only the two pinned SW codes carry a verdict on the row. */
-const VERDICT_BY_SW_CODE: Record<string, RowError> = {
-  OBJECT_ABSENT: 'object-absent',
-  DEK_UNWRAP_FAILED: 'key-unavailable',
-};
+type RowError = AttachmentLoadError;
 
 /** A verdict disables the row; `load-failed` asserts nothing about it. */
 function isVerdict(error: RowError | undefined): boolean {
@@ -199,7 +197,7 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
     }
     if (!response.ok) {
       const code = await readSwErrorCode(response);
-      return { ok: false, verdict: VERDICT_BY_SW_CODE[code ?? ''] ?? 'load-failed' };
+      return { ok: false, verdict: loadErrorForSwCode(code) };
     }
     const blob = await response.blob();
     return { ok: true, blob };

@@ -55,9 +55,9 @@
  * `buildServiceWorker` Vite plugin).
  */
 
+import { SYNTHETIC_ORIGIN_PREFIX } from '@/config/syntheticOrigin';
 import { decryptBlob, decodeDekMaterial } from '@/domain/clientEncryption';
 
-const SYNTHETIC_PREFIX = '/encrypted-storage/';
 const VALID_VARIANTS = new Set(['original', 'thumbnail']);
 
 /** Stable error codes per ui/project-detail.md §8.15.7. */
@@ -103,8 +103,8 @@ interface ParsedSyntheticPath {
  * "not our route, hand back to the network".
  */
 function parseSyntheticPath(pathname: string): ParsedSyntheticPath | null {
-  if (!pathname.startsWith(SYNTHETIC_PREFIX)) return null;
-  const rest = pathname.slice(SYNTHETIC_PREFIX.length);
+  if (!pathname.startsWith(SYNTHETIC_ORIGIN_PREFIX)) return null;
+  const rest = pathname.slice(SYNTHETIC_ORIGIN_PREFIX.length);
   const slashIdx = rest.indexOf('/');
   if (slashIdx <= 0) return null;
   const projectId = rest.slice(0, slashIdx);

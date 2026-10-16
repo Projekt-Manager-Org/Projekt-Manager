@@ -12,7 +12,8 @@
  * writes the `data-sw-error-code` attribute. The element's `onError`
  * handler (PhotoGallery, BinaryList) reads the attribute to choose
  * between the AC-224 `"Datei fehlt"` and AC-244
- * `"Schlüssel nicht verfügbar"` placeholders.
+ * `"Schlüssel nicht verfügbar"` placeholders; without the attribute
+ * it renders the generic `"Datei konnte nicht geladen werden"`.
  *
  * Wiring: invoked once from `src/main.tsx` at SPA bootstrap, before
  * React mounts. Idempotent — re-invocation closes the prior channel

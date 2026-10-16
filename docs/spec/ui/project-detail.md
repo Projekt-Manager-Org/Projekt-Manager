@@ -78,9 +78,9 @@ The delete affordance is a soft-hide: the row flips to `status = 'hidden'` and t
 
 Every soft-hide carries a Yes / No confirmation dialog with a German warning that names the Papierkorb destination, the bounded Aufbewahrungsfrist during which restore (§8.15.10) is possible, and the irreversible final destruction once that window elapses. Hide is forbidden on archived projects; restore remains permitted on archived projects so binaries are recoverable before lifecycle reap (§8.15.10).
 
-### 8.15.7 Restored Rows Without Backing Bytes
+### 8.15.7 Attachment Load Failures
 
-Two divergence states render an otherwise-valid `status = 'ready'` row in a degraded placeholder. Both placeholders disable the download action, exclude the row from `bulk-fetch` selection ([AC-216](../verification.md#1526-attachments)), exclude the row from the photo gallery's lightbox, and leave the row untouched in the database — the mismatch is an operational signal, not a schema error. The two states are distinct because the operator remediation differs: object-absent is a storage divergence, envelope-unwrap is a key-state divergence.
+Two divergence states render an otherwise-valid `status = 'ready'` row in a degraded placeholder. Both divergence placeholders disable the download action, exclude the row from `bulk-fetch` selection ([AC-216](../verification.md#1526-attachments)), exclude the row from the photo gallery's lightbox, and leave the row untouched in the database — the mismatch is an operational signal, not a schema error. The two states are distinct because the operator remediation differs: object-absent is a storage divergence, envelope-unwrap is a key-state divergence.
 
 **Object absent at storage — `"Datei fehlt"`.** A row whose backing object is absent in storage (possible after a Layer 1 restore whose Layer 3 storage has diverged — see [data-model.md §5.8](../data-model.md#58-export-envelope)) renders with a neutral German label `"Datei fehlt"` and a muted thumbnail placeholder ([AC-224](../verification.md#1526-attachments)).
 

@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiResult } from '@/api/client';
 import type { Attachment } from '@/domain/types';
@@ -275,6 +275,30 @@ describe('PhotoGallery — load failure without an SW code (AC-224 boundary)', (
     expect(placeholder.textContent).toContain('Datei konnte nicht geladen werden');
     expect(screen.queryByText('Datei fehlt')).not.toBeInTheDocument();
     expect(screen.getByTestId('attachment-delete')).toBeInTheDocument();
+  });
+
+  it('re-requests the thumbnail once the SW takes control of the page', async () => {
+    // First visit: the thumbnail fetch ran before the SW claimed the
+    // page. The SW's `controllerchange` is the subsequent attempt.
+    const sw = new EventTarget();
+    Object.defineProperty(navigator, 'serviceWorker', { value: sw, configurable: true });
+
+    try {
+      render(<PhotoGallery projectId="p-42" />);
+
+      const img = (await screen.findByTestId('photo-thumb-ph-ready')).querySelector('img');
+      fireEvent.error(img!, { target: img });
+      await screen.findByTestId('photo-load-failed-ph-ready');
+
+      act(() => {
+        sw.dispatchEvent(new Event('controllerchange'));
+      });
+
+      const retried = await screen.findByTestId('photo-thumb-ph-ready');
+      expect(retried.querySelector('img')).not.toBe(img);
+    } finally {
+      Reflect.deleteProperty(navigator, 'serviceWorker');
+    }
   });
 });
 
