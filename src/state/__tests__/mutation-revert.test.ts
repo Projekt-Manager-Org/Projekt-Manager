@@ -39,6 +39,7 @@ const { useProjectStore } = await import('@/state/projectStore');
 
 const SEED_PROJECT: Project = {
   id: 'test-1',
+  version: 1,
   number: 'P-001',
   title: 'Test Project',
   status: 'geplant',
@@ -48,7 +49,7 @@ const SEED_PROJECT: Project = {
   createdAt: '2026-04-01T00:00:00Z',
   updatedAt: '2026-04-01T00:00:00Z',
   customerId: 'c-1',
-  customer: { id: 'c-1', name: 'Testkunde', phone: null, email: null, address: null },
+  customer: { id: 'c-1', name: 'Testkunde', phone: null, email: null, address: null, version: 1 },
   siteAddress: null,
   assignedWorkers: [],
   estimatedValue: null,
@@ -81,7 +82,7 @@ describe('AC-53: failed mutation reverts optimistic update', () => {
       sessionExpired: false,
     });
 
-    useProjectStore.getState().updateDates('test-1', '2026-07-01', '2026-08-01');
+    useProjectStore.getState().updateDates('test-1', 1, '2026-07-01', '2026-08-01');
 
     // Optimistic update applied immediately.
     expect(useProjectStore.getState().projects[0].plannedStart).toBe('2026-07-01');
@@ -105,7 +106,7 @@ describe('AC-53: failed mutation reverts optimistic update', () => {
   it('reverts dates and shows German fallback on network error', async () => {
     updateDatesMock.mockRejectedValue(new Error('fetch failed'));
 
-    useProjectStore.getState().updateDates('test-1', '2026-09-01', null);
+    useProjectStore.getState().updateDates('test-1', 1, '2026-09-01', null);
 
     // Let the rejection settle.
     await vi.waitFor(() => {

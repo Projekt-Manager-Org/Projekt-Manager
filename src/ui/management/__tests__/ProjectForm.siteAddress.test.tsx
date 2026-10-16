@@ -95,6 +95,7 @@ const { useProjectStore } = await import('@/state/projectStore');
 
 const SEED_CUSTOMER: Customer = {
   id: 'c-1',
+  version: 1,
   name: 'Hausverwaltung Rheinblick',
   phone: null,
   email: null,
@@ -109,6 +110,7 @@ const SEED_CUSTOMER: Customer = {
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: 'p-1',
+    version: 1,
     number: 'P-001',
     title: 'Dachsanierung',
     status: 'geplant',
@@ -118,6 +120,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     customerId: SEED_CUSTOMER.id,
     customer: {
       id: SEED_CUSTOMER.id,
+      version: 1,
       name: SEED_CUSTOMER.name,
       phone: null,
       email: null,
@@ -771,8 +774,9 @@ describe('SiteAddressEditModal — Baustelle visual auto-fill (toggle ON)', () =
     await waitFor(() => {
       expect(projectUpdateMock).toHaveBeenCalledTimes(1);
     });
-    const [, body] = projectUpdateMock.mock.calls[0] as unknown as [
+    const [, , body] = projectUpdateMock.mock.calls[0] as unknown as [
       string,
+      number,
       Record<string, unknown>,
     ];
     expect(body.siteAddress).toBeNull();

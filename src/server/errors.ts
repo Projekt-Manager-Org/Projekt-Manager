@@ -28,6 +28,7 @@ export const ERROR_CODES = [
   'VALIDATION_ERROR',
   'CONFLICT',
   'IDEMPOTENCY_CONFLICT',
+  'VERSION_CONFLICT',
   'NOT_FOUND',
   'ROUTE_NOT_FOUND',
   'GONE',
@@ -121,6 +122,11 @@ export function conflict(message: string): AppError {
 
 export function idempotencyConflict(): AppError {
   return new AppError('IDEMPOTENCY_CONFLICT', STRINGS.errors.idempotencyConflict, 409);
+}
+
+/** A versioned edit's `expectedVersion` no longer matches the row (data-model.md §6.4). */
+export function versionConflict(): AppError {
+  return new AppError('VERSION_CONFLICT', STRINGS.errors.versionConflict, 409);
 }
 
 export function schemaVersionMismatch(expected: number, got: number): AppError {

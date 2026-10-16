@@ -25,6 +25,7 @@
  * Treat `false` as "did not confirm" only.
  */
 
+import type { ReactNode } from 'react';
 import { create } from 'zustand';
 import { STRINGS } from '@/config/strings';
 
@@ -34,11 +35,18 @@ interface ConfirmState {
   message: string;
   confirmLabel: string;
   cancelLabel: string;
+  /** Optional content below the message — e.g. what the action acts on. */
+  details: ReactNode;
   resolver: ((answer: boolean) => void) | null;
 
   request: (
     message: string,
-    options?: { title?: string; confirmLabel?: string; cancelLabel?: string },
+    options?: {
+      title?: string;
+      confirmLabel?: string;
+      cancelLabel?: string;
+      details?: ReactNode;
+    },
   ) => Promise<boolean>;
   resolve: (answer: boolean) => void;
 }
@@ -49,6 +57,7 @@ export const useConfirmStore = create<ConfirmState>((set, get) => ({
   message: '',
   confirmLabel: STRINGS.ui.ok,
   cancelLabel: STRINGS.ui.cancel,
+  details: null,
   resolver: null,
 
   request: (message, options = {}) => {
@@ -65,6 +74,7 @@ export const useConfirmStore = create<ConfirmState>((set, get) => ({
         message,
         confirmLabel: options.confirmLabel ?? STRINGS.ui.ok,
         cancelLabel: options.cancelLabel ?? STRINGS.ui.cancel,
+        details: options.details ?? null,
         resolver: resolve,
       });
     });
@@ -76,6 +86,7 @@ export const useConfirmStore = create<ConfirmState>((set, get) => ({
     set({
       isOpen: false,
       message: '',
+      details: null,
       resolver: null,
     });
   },

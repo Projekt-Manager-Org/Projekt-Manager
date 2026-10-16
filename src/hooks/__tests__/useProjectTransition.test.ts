@@ -38,6 +38,7 @@ const { useProjectStore } = await import('@/state/projectStore');
 
 const baseProject: Project = {
   id: 'p-1',
+  version: 1,
   number: 'P-1',
   title: 't',
   status: 'anfrage',

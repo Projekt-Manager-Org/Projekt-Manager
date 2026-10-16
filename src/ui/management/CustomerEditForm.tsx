@@ -35,6 +35,19 @@ export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
   const [zip, setZip] = useState(customer.address?.zip ?? '');
   const [city, setCity] = useState(customer.address?.city ?? '');
   const [submitting, setSubmitting] = useState(false);
+  // The version the form opened at — the edit's start version
+  // (behavior.md §9.5); replaced only by the refetch after a stale write.
+  const [startVersion, setStartVersion] = useState(customer.version);
+
+  const resetTo = (fresh: Customer) => {
+    setName(fresh.name);
+    setPhone(fresh.phone ?? '');
+    setEmail(fresh.email ?? '');
+    setStreet(fresh.address?.street ?? '');
+    setZip(fresh.address?.zip ?? '');
+    setCity(fresh.address?.city ?? '');
+    setStartVersion(fresh.version);
+  };
 
   const handleUpdate = async () => {
     if (submitting || !name.trim()) return;
@@ -45,7 +58,7 @@ export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
         ? { street: street.trim(), zip: zip.trim(), city: city.trim() }
         : null;
 
-    const ok = await updateCustomer(customer.id, {
+    const outcome = await updateCustomer(customer.id, startVersion, {
       name: name.trim(),
       phone: phone.trim() || null,
       email: email.trim() || null,
@@ -53,9 +66,11 @@ export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
     });
 
     setSubmitting(false);
-    if (ok) {
+    if (outcome.status === 'ok') {
       onSaved?.();
       onClose();
+    } else if (outcome.status === 'conflict') {
+      resetTo(outcome.customer);
     }
   };
 

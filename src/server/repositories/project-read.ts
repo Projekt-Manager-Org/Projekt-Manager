@@ -65,6 +65,7 @@ function toCustomer(row: CustomerRow) {
     phone: row.phone ?? null,
     email: row.email ?? null,
     address: row.address ?? null,
+    version: row.version,
   };
 }
 
@@ -92,6 +93,7 @@ export function toProject(
     estimatedValue: row.estimatedValue ? Number(row.estimatedValue) : null,
     notes: row.notes ?? null,
     deleted: row.deleted,
+    version: row.version,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     createdBy: row.createdBy ?? null,
@@ -629,21 +631,41 @@ export async function getProjectRowById(
 }
 
 /**
- * Fetch the active (non-archived) project row by id. Services use this
- * inside a `mutate()` callback to capture `payload.before` within the
- * same snapshot as the write. Returns null for missing or soft-deleted
- * rows — callers map to 404.
+ * Fetch and row-lock the active (non-archived) project by id. Services
+ * use this inside a `mutate()` callback to capture `payload.before` and
+ * check `version` (data-model.md §6.4) — the lock holds until commit, so
+ * no concurrent write lands between the check and the write. Returns
+ * null for missing or soft-deleted rows — callers map to 404.
  */
 export async function getProjectForMutation(
-  db: TransactionalDatabase,
+  db: MutatingDatabase,
   id: string,
 ): Promise<ProjectRow | null> {
   const rows = await db
     .select()
     .from(projects)
     .where(and(eq(projects.id, id), eq(projects.deleted, false)))
-    .limit(1);
+    .limit(1)
+    .for('update');
   return rows[0] ?? null;
+}
+
+/**
+ * Mark the project as written without changing a field — a worker
+ * (re)assignment touches only `project_workers`, but changes the
+ * project's `version` all the same (data-model.md §6.4).
+ */
+export async function touchProject(
+  db: MutatingDatabase,
+  id: string,
+  userId: string,
+): Promise<ProjectRow> {
+  const rows = await db
+    .update(projects)
+    .set({ updatedAt: new Date(), updatedBy: userId })
+    .where(eq(projects.id, id))
+    .returning();
+  return rows[0]!;
 }
 
 /**

@@ -13,6 +13,7 @@ import { create } from 'zustand';
 import type { CompanyProfile } from '@/domain/invoice';
 import { companyProfileApi, type CompanyProfileInput } from '@/api/client';
 import { handleSessionExpired } from './sessionExpired';
+import { isVersionConflict } from './versionedWrites';
 
 /**
  * Payload accepted by `save`. The full `CompanyProfileInput` shape per
@@ -25,11 +26,15 @@ export type CompanyProfileSavePayload = CompanyProfileInput;
  * `'validation'` — server returned a 422 (VALIDATION_ERROR or
  * COMPANY_PROFILE_REQUIRED); the caller may inspect `saveError` for the
  * server-supplied German copy and the optional `missingFields` for
- * field-level targeting. `'error'` — generic failure; the message lives
- * on `saveError`.
+ * field-level targeting. `'conflict'` — stale write (behavior.md §9.5);
+ * `data` has been refetched, `saveError` holds the message. `'error'` —
+ * generic failure; the message lives on `saveError`.
  */
 export type SaveOutcome =
-  { status: 'ok' } | { status: 'validation'; missingFields: string[] } | { status: 'error' };
+  | { status: 'ok' }
+  | { status: 'validation'; missingFields: string[] }
+  | { status: 'conflict' }
+  | { status: 'error' };
 
 interface CompanyProfileState {
   data: CompanyProfile | null;
@@ -51,7 +56,8 @@ interface CompanyProfileState {
   saveError: string | null;
 
   fetch: () => Promise<void>;
-  save: (payload: CompanyProfileSavePayload) => Promise<SaveOutcome>;
+  /** PUT from an edit that started at `startVersion` (the form's open). */
+  save: (startVersion: number, payload: CompanyProfileSavePayload) => Promise<SaveOutcome>;
   clearSaveError: () => void;
 }
 
@@ -65,7 +71,7 @@ function extractMissingFields(details: unknown): string[] {
   return [];
 }
 
-export const useCompanyProfileStore = create<CompanyProfileState>((set) => ({
+export const useCompanyProfileStore = create<CompanyProfileState>((set, get) => ({
   data: null,
   loading: false,
   fetchError: null,
@@ -86,13 +92,18 @@ export const useCompanyProfileStore = create<CompanyProfileState>((set) => ({
     set({ data: result.data, loading: false });
   },
 
-  save: async (payload) => {
+  save: async (startVersion, payload) => {
     set({ saveError: null });
-    const result = await companyProfileApi.put(payload);
+    const result = await companyProfileApi.put(startVersion, payload);
     if (!result.ok) {
       if (result.sessionExpired) {
         handleSessionExpired();
         return { status: 'error' };
+      }
+      if (isVersionConflict(result)) {
+        await get().fetch();
+        set({ saveError: result.error.message });
+        return { status: 'conflict' };
       }
       const missingFields = extractMissingFields(result.details);
       set({ saveError: result.error.message });

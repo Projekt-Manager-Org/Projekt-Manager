@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm';
 import type { MutatingDatabase } from '../db/connection.js';
 import { projects, customers } from '../db/schema.js';
 import { STRINGS } from '../../config/strings.js';
+import { versionConflict } from '../errors.js';
 import { toProject, fetchWorkersForProject, ProjectNotFoundError } from './project-read.js';
 
 export interface UpdateDatesResult {
@@ -20,26 +21,30 @@ export interface UpdateDatesResult {
  * Validates: end >= start, no end-only without start.
  *
  * Accepts a transactional handle — the caller (the `mutate()` wrapper
- * in ProjectDatesService.updateDates) owns the transaction so the read of
- * the current row and the write happen under the same snapshot.
+ * in ProjectDatesService.updateDates) owns the transaction; the row is
+ * locked, so the version check and the write are atomic. Check order
+ * per data-model.md §6.4: not found / archived, version, date rules.
  */
 export async function updateDates(
   db: MutatingDatabase,
   id: string,
   userId: string,
+  expectedVersion: number,
   dates: { plannedStart?: string | null; plannedEnd?: string | null },
 ): Promise<UpdateDatesResult> {
   const rows = await db
     .select()
     .from(projects)
     .where(and(eq(projects.id, id), eq(projects.deleted, false)))
-    .limit(1);
+    .limit(1)
+    .for('update');
 
   if (rows.length === 0) {
     throw new ProjectNotFoundError();
   }
 
   const project = rows[0]!;
+  if (project.version !== expectedVersion) throw versionConflict();
 
   // Effective dates after the update. PATCH is partial: a key that is
   // absent means "don't touch". An explicit `null` means "clear". A

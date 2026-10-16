@@ -10,6 +10,7 @@ import {
   CUSTOMER_SORT_KEYS,
   type CustomerSortKey,
 } from '../services/CustomerService.js';
+import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
 export function customerRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
@@ -138,8 +139,11 @@ export function customerRoutes(db: Database) {
           body: {
             type: 'object',
             additionalProperties: false,
-            minProperties: 1,
+            required: ['expectedVersion'],
+            // `expectedVersion` plus at least one field to change.
+            minProperties: 2,
             properties: {
+              expectedVersion: EXPECTED_VERSION_SCHEMA,
               name: { type: 'string', minLength: 1 },
               phone: { type: ['string', 'null'] },
               email: { type: ['string', 'null'] },
@@ -164,7 +168,8 @@ export function customerRoutes(db: Database) {
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };
-        const body = request.body as {
+        const { expectedVersion, ...fields } = request.body as {
+          expectedVersion: number;
           name?: string;
           phone?: string | null;
           email?: string | null;
@@ -174,7 +179,8 @@ export function customerRoutes(db: Database) {
         };
         const customer = await customerService.updateCustomer(
           id,
-          body,
+          expectedVersion,
+          fields,
           request.user!.id,
           request.log,
           request.id ?? null,

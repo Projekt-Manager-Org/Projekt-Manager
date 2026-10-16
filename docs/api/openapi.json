@@ -334,8 +334,13 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "minProperties": 1,
+                "required": ["expectedVersion"],
+                "minProperties": 2,
                 "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
                   "title": {
                     "type": "string",
                     "minLength": 1
@@ -522,7 +527,12 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
+                "required": ["expectedVersion"],
                 "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
                   "plannedStart": {
                     "type": ["string", "null"],
                     "format": "date"
@@ -735,8 +745,13 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "minProperties": 1,
+                "required": ["expectedVersion"],
+                "minProperties": 2,
                 "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
                   "name": {
                     "type": "string",
                     "minLength": 1
@@ -2136,7 +2151,12 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
+                "required": ["expectedVersion"],
                 "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
                   "lines": {
                     "type": "array",
                     "items": {
@@ -2242,6 +2262,15 @@
         "parameters": [
           {
             "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "in": "query",
+            "name": "expectedVersion",
+            "required": true
+          },
+          {
+            "schema": {
               "type": "string",
               "format": "uuid"
             },
@@ -2259,6 +2288,24 @@
     },
     "/api/invoices/{id}/issue": {
       "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["expectedVersion"],
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
         "parameters": [
           {
             "schema": {
@@ -2409,9 +2456,19 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["companyName", "address", "taxId", "defaultTaxMode"],
+                "required": [
+                  "expectedVersion",
+                  "companyName",
+                  "address",
+                  "taxId",
+                  "defaultTaxMode"
+                ],
                 "additionalProperties": false,
                 "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
                   "companyName": {
                     "type": "string",
                     "maxLength": 200

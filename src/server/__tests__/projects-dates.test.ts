@@ -9,7 +9,14 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { startApp, stopApp, login, authGet, authPatch } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPatch,
+  expectedVersion,
+} from '../../test/api-helpers.js';
 
 /** ISO 8601 date-time regex (loose — allows date-only or full timestamp) */
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?Z?)?$/;
@@ -56,6 +63,7 @@ describe('Project Operations — Dates', () => {
       const newEnd = '2026-05-10';
 
       const res = await authPatch(token, `/api/projects/${project.id}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${project.id}`)),
         plannedStart: newStart,
         plannedEnd: newEnd,
       });
@@ -86,6 +94,7 @@ describe('Project Operations — Dates', () => {
       expect(project).toBeDefined();
 
       const res = await authPatch(token, `/api/projects/${project.id}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${project.id}`)),
         plannedStart: '2026-06-15',
         plannedEnd: '2026-06-01', // end before start
       });
@@ -109,6 +118,7 @@ describe('Project Operations — Dates', () => {
       expect(project).toBeDefined();
 
       const res = await authPatch(token, `/api/projects/${project.id}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${project.id}`)),
         plannedEnd: '2026-06-15',
         // No plannedStart
       });
@@ -131,12 +141,14 @@ describe('Project Operations — Dates', () => {
       expect(project).toBeDefined();
 
       const clearRes = await authPatch(token, `/api/projects/${project.id}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${project.id}`)),
         plannedStart: null,
         plannedEnd: null,
       });
       expect(clearRes.statusCode).toBe(200);
 
       const res = await authPatch(token, `/api/projects/${project.id}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${project.id}`)),
         plannedStart: '2026-09-01',
         // No plannedEnd — valid per spec (partial PATCH: end stays null)
       });
@@ -168,6 +180,7 @@ describe('Project Operations — Dates', () => {
       // Move start earlier so end >= start still holds. The point of
       // this test is "end is not wiped", not "end migrates with start".
       const res = await authPatch(token, `/api/projects/${project.id}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${project.id}`)),
         plannedStart: '2026-03-01',
       });
 
@@ -195,6 +208,7 @@ describe('Project Operations — Dates', () => {
       expect(project).toBeDefined();
 
       const res = await authPatch(token, `/api/projects/${project.id}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${project.id}`)),
         plannedStart: null,
         plannedEnd: null,
       });
@@ -216,6 +230,8 @@ describe('Project Operations — Dates', () => {
     it('returns 404 NOT_FOUND for a well-formed but nonexistent UUID', async () => {
       const fakeId = '00000000-0000-0000-0000-000000000000';
       const res = await authPatch(token, `/api/projects/${fakeId}/dates`, {
+        // No row to read a version from; the lookup precedes the version check.
+        expectedVersion: 1,
         plannedStart: '2026-06-01',
       });
 
@@ -236,6 +252,7 @@ describe('Project Operations — Dates', () => {
       const project = listRes.json().data[0];
 
       const res = await authPatch(token, `/api/projects/${project.id}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${project.id}`)),
         plannedStart: 42, // wrong type: number instead of date string
       });
 

@@ -24,21 +24,26 @@ import { STRINGS } from '@/config/strings';
 import type { Invoice } from '@/domain/invoice';
 import {
   invoicesApi,
+  type ApiFailure,
   type InvoiceCreateDraftInput,
   type InvoiceUpdateDraftInput,
 } from '@/api/client';
 import { handleSessionExpired } from './sessionExpired';
+import { isVersionConflict } from './versionedWrites';
 
 /**
  * Result of a write action. `'ok'` — server committed; the per-project
  * list has been refetched. `'validation'` — server returned a 422 with a
  * decoded German message on `errorMessage`; the caller keeps the form
- * open and surfaces the message inline. `'error'` — generic failure;
- * same surfacing rule but the message is the generic catch-all.
+ * open and surfaces the message inline. `'conflict'` — stale write
+ * (behavior.md §9.5); the list has been refetched and `invoice` is the
+ * fresh row (absent if it is gone). `'error'` — generic failure; same
+ * surfacing rule but the message is the generic catch-all.
  */
 export type InvoiceWriteOutcome =
   | { status: 'ok'; invoice?: Invoice }
   | { status: 'validation'; errorMessage: string; missingFields?: string[] }
+  | { status: 'conflict'; errorMessage: string; invoice?: Invoice }
   | { status: 'error'; errorMessage: string };
 
 interface InvoiceState {
@@ -54,13 +59,26 @@ interface InvoiceState {
     projectId: string,
     payload: InvoiceCreateDraftInput,
   ) => Promise<InvoiceWriteOutcome>;
+  /**
+   * The versioned writes carry `startVersion`: the draft version the
+   * form or the confirmation dialog opened with (behavior.md §9.5).
+   */
   updateDraft: (
     invoiceId: string,
     projectId: string,
+    startVersion: number,
     payload: InvoiceUpdateDraftInput,
   ) => Promise<InvoiceWriteOutcome>;
-  deleteDraft: (invoiceId: string, projectId: string) => Promise<InvoiceWriteOutcome>;
-  issue: (invoiceId: string, projectId: string) => Promise<InvoiceWriteOutcome>;
+  deleteDraft: (
+    invoiceId: string,
+    projectId: string,
+    startVersion: number,
+  ) => Promise<InvoiceWriteOutcome>;
+  issue: (
+    invoiceId: string,
+    projectId: string,
+    startVersion: number,
+  ) => Promise<InvoiceWriteOutcome>;
   cancel: (invoiceId: string, projectId: string, reason: string) => Promise<InvoiceWriteOutcome>;
 }
 
@@ -91,143 +109,163 @@ function extractMissingFields(details: unknown): string[] | undefined {
   return undefined;
 }
 
-export const useInvoiceStore = create<InvoiceState>((set, get) => ({
-  byProject: {},
-  loadingByProject: {},
-  errorByProject: {},
+export const useInvoiceStore = create<InvoiceState>((set, get) => {
+  /** Stale write: refetch the project's invoices, hand back the fresh row. */
+  async function refetchAfterConflict(
+    invoiceId: string,
+    projectId: string,
+    result: ApiFailure,
+  ): Promise<InvoiceWriteOutcome> {
+    await get().fetchByProject(projectId);
+    const invoice = get().byProject[projectId]?.find((i) => i.id === invoiceId);
+    return {
+      status: 'conflict',
+      errorMessage: result.error.message,
+      ...(invoice ? { invoice } : {}),
+    };
+  }
 
-  fetchByProject: async (projectId) => {
-    set((s) => ({
-      loadingByProject: { ...s.loadingByProject, [projectId]: true },
-      errorByProject: { ...s.errorByProject, [projectId]: null },
-    }));
-    const result = await invoicesApi.listByProject(projectId);
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        // Reset the loading flag before bouncing so any re-render of
-        // the section after the session-expired toast does not get
-        // stuck on a stale spinner.
+  return {
+    byProject: {},
+    loadingByProject: {},
+    errorByProject: {},
+
+    fetchByProject: async (projectId) => {
+      set((s) => ({
+        loadingByProject: { ...s.loadingByProject, [projectId]: true },
+        errorByProject: { ...s.errorByProject, [projectId]: null },
+      }));
+      const result = await invoicesApi.listByProject(projectId);
+      if (!result.ok) {
+        if (result.sessionExpired) {
+          handleSessionExpired();
+          // Reset the loading flag before bouncing so any re-render of
+          // the section after the session-expired toast does not get
+          // stuck on a stale spinner.
+          set((s) => ({
+            loadingByProject: { ...s.loadingByProject, [projectId]: false },
+          }));
+          return;
+        }
         set((s) => ({
           loadingByProject: { ...s.loadingByProject, [projectId]: false },
+          errorByProject: { ...s.errorByProject, [projectId]: result.error.message },
         }));
         return;
       }
       set((s) => ({
+        byProject: { ...s.byProject, [projectId]: result.data.data },
         loadingByProject: { ...s.loadingByProject, [projectId]: false },
-        errorByProject: { ...s.errorByProject, [projectId]: result.error.message },
       }));
-      return;
-    }
-    set((s) => ({
-      byProject: { ...s.byProject, [projectId]: result.data.data },
-      loadingByProject: { ...s.loadingByProject, [projectId]: false },
-    }));
-  },
+    },
 
-  createDraft: async (projectId, payload) => {
-    const result = await invoicesApi.createDraft(projectId, payload);
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
+    createDraft: async (projectId, payload) => {
+      const result = await invoicesApi.createDraft(projectId, payload);
+      if (!result.ok) {
+        if (result.sessionExpired) {
+          handleSessionExpired();
+          return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
+        }
+        const message = decodeErrorMessage(result.error.code, result.error.message);
+        if (result.category === 'validation') {
+          const missing = extractMissingFields(result.details);
+          return {
+            status: 'validation',
+            errorMessage: message,
+            ...(missing !== undefined ? { missingFields: missing } : {}),
+          };
+        }
+        return { status: 'error', errorMessage: message };
       }
-      const message = decodeErrorMessage(result.error.code, result.error.message);
-      if (result.category === 'validation') {
-        const missing = extractMissingFields(result.details);
+      await get().fetchByProject(projectId);
+      return { status: 'ok', invoice: result.data };
+    },
+
+    updateDraft: async (invoiceId, projectId, startVersion, payload) => {
+      const result = await invoicesApi.updateDraft(invoiceId, startVersion, payload);
+      if (!result.ok) {
+        if (result.sessionExpired) {
+          handleSessionExpired();
+          return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
+        }
+        if (isVersionConflict(result)) return refetchAfterConflict(invoiceId, projectId, result);
+        const message = decodeErrorMessage(result.error.code, result.error.message);
+        if (result.category === 'validation') {
+          const missing = extractMissingFields(result.details);
+          return {
+            status: 'validation',
+            errorMessage: message,
+            ...(missing !== undefined ? { missingFields: missing } : {}),
+          };
+        }
+        return { status: 'error', errorMessage: message };
+      }
+      await get().fetchByProject(projectId);
+      return { status: 'ok', invoice: result.data };
+    },
+
+    deleteDraft: async (invoiceId, projectId, startVersion) => {
+      const result = await invoicesApi.deleteDraft(invoiceId, startVersion);
+      if (!result.ok) {
+        if (result.sessionExpired) {
+          handleSessionExpired();
+          return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
+        }
+        if (isVersionConflict(result)) return refetchAfterConflict(invoiceId, projectId, result);
         return {
-          status: 'validation',
-          errorMessage: message,
-          ...(missing !== undefined ? { missingFields: missing } : {}),
+          status: 'error',
+          errorMessage: decodeErrorMessage(result.error.code, result.error.message),
         };
       }
-      return { status: 'error', errorMessage: message };
-    }
-    await get().fetchByProject(projectId);
-    return { status: 'ok', invoice: result.data };
-  },
+      await get().fetchByProject(projectId);
+      return { status: 'ok' };
+    },
 
-  updateDraft: async (invoiceId, projectId, payload) => {
-    const result = await invoicesApi.updateDraft(invoiceId, payload);
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
+    issue: async (invoiceId, projectId, startVersion) => {
+      const result = await invoicesApi.issue(invoiceId, startVersion);
+      if (!result.ok) {
+        if (result.sessionExpired) {
+          handleSessionExpired();
+          return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
+        }
+        if (isVersionConflict(result)) return refetchAfterConflict(invoiceId, projectId, result);
+        const message = decodeErrorMessage(result.error.code, result.error.message);
+        // `COMPANY_PROFILE_REQUIRED` is a domain-level precondition gate, not
+        // a request-validation error — the server tags it with its own code
+        // (api.md §14.4) and `classifyCode` defaults it to `server_error`.
+        // For the surface, however, it carries actionable `details.missingFields`
+        // the F3 banner consumes, so it routes through the `validation`
+        // outcome branch alongside genuine VALIDATION_ERROR responses.
+        const isValidationLike =
+          result.category === 'validation' || result.error.code === 'COMPANY_PROFILE_REQUIRED';
+        if (isValidationLike) {
+          const missing = extractMissingFields(result.details);
+          return {
+            status: 'validation',
+            errorMessage: message,
+            ...(missing !== undefined ? { missingFields: missing } : {}),
+          };
+        }
+        return { status: 'error', errorMessage: message };
       }
-      const message = decodeErrorMessage(result.error.code, result.error.message);
-      if (result.category === 'validation') {
-        const missing = extractMissingFields(result.details);
+      await get().fetchByProject(projectId);
+      return { status: 'ok', invoice: result.data };
+    },
+
+    cancel: async (invoiceId, projectId, reason) => {
+      const result = await invoicesApi.cancel(invoiceId, reason);
+      if (!result.ok) {
+        if (result.sessionExpired) {
+          handleSessionExpired();
+          return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
+        }
         return {
-          status: 'validation',
-          errorMessage: message,
-          ...(missing !== undefined ? { missingFields: missing } : {}),
+          status: 'error',
+          errorMessage: decodeErrorMessage(result.error.code, result.error.message),
         };
       }
-      return { status: 'error', errorMessage: message };
-    }
-    await get().fetchByProject(projectId);
-    return { status: 'ok', invoice: result.data };
-  },
-
-  deleteDraft: async (invoiceId, projectId) => {
-    const result = await invoicesApi.deleteDraft(invoiceId);
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
-      }
-      return {
-        status: 'error',
-        errorMessage: decodeErrorMessage(result.error.code, result.error.message),
-      };
-    }
-    await get().fetchByProject(projectId);
-    return { status: 'ok' };
-  },
-
-  issue: async (invoiceId, projectId) => {
-    const result = await invoicesApi.issue(invoiceId);
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
-      }
-      const message = decodeErrorMessage(result.error.code, result.error.message);
-      // `COMPANY_PROFILE_REQUIRED` is a domain-level precondition gate, not
-      // a request-validation error — the server tags it with its own code
-      // (api.md §14.4) and `classifyCode` defaults it to `server_error`.
-      // For the surface, however, it carries actionable `details.missingFields`
-      // the F3 banner consumes, so it routes through the `validation`
-      // outcome branch alongside genuine VALIDATION_ERROR responses.
-      const isValidationLike =
-        result.category === 'validation' || result.error.code === 'COMPANY_PROFILE_REQUIRED';
-      if (isValidationLike) {
-        const missing = extractMissingFields(result.details);
-        return {
-          status: 'validation',
-          errorMessage: message,
-          ...(missing !== undefined ? { missingFields: missing } : {}),
-        };
-      }
-      return { status: 'error', errorMessage: message };
-    }
-    await get().fetchByProject(projectId);
-    return { status: 'ok', invoice: result.data };
-  },
-
-  cancel: async (invoiceId, projectId, reason) => {
-    const result = await invoicesApi.cancel(invoiceId, reason);
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
-      }
-      return {
-        status: 'error',
-        errorMessage: decodeErrorMessage(result.error.code, result.error.message),
-      };
-    }
-    await get().fetchByProject(projectId);
-    return { status: 'ok', invoice: result.data.original };
-  },
-}));
+      await get().fetchByProject(projectId);
+      return { status: 'ok', invoice: result.data.original };
+    },
+  };
+});

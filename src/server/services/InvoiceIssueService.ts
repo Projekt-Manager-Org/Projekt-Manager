@@ -5,6 +5,7 @@
  * transaction, inside `mutate()`; numbers match the step comments in
  * `runIssueInsideTx`:
  *
+ *   0.   Lock the draft row; state and version checks (data-model.md §6.4).
  *   1–3. Preconditions: lines, performance date and recipient complete,
  *        project in `rechnung_faellig`, company profile complete for
  *        the tax mode — all before any sequence lock is taken.
@@ -46,9 +47,18 @@ import {
   flipParentProjectStatusToAbgerechnet,
   type InvoiceRow,
 } from '../repositories/invoice-read.js';
-import { assertCompanyProfileCompleteForMode } from './CompanyProfileService.js';
+import {
+  assertCompanyProfileCompleteForMode,
+  toCompanyProfileResponse,
+} from './CompanyProfileService.js';
 import { InvoiceRenderer, type RenderedInvoice } from './InvoiceRenderer.js';
-import { notFound, validationError, invoiceFrozen, invoiceProjectState } from '../errors.js';
+import {
+  notFound,
+  validationError,
+  invoiceFrozen,
+  invoiceProjectState,
+  versionConflict,
+} from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 import { emitInvoiceChanged, emitProjectChanged } from '../sse/emitters.js';
 import { InvoiceBinaryService } from './InvoiceBinaryService.js';
@@ -82,6 +92,7 @@ export class InvoiceIssueService {
    */
   async issueDraft(
     id: string,
+    expectedVersion: number,
     userId: string,
     log: ServiceLogger,
     correlationId?: string | null,
@@ -98,7 +109,7 @@ export class InvoiceIssueService {
       {
         entityType: 'invoice',
         action: 'invoice:issue',
-        run: async (tx) => this.runIssueInsideTx(tx, id, userId, now),
+        run: async (tx) => this.runIssueInsideTx(tx, id, expectedVersion, userId, now),
       },
     );
     log.info({ invoiceId: id }, 'invoice_issued');
@@ -121,6 +132,7 @@ export class InvoiceIssueService {
   private async runIssueInsideTx(
     tx: MutatingDatabase,
     invoiceId: string,
+    expectedVersion: number,
     userId: string,
     now: Date,
   ): Promise<{
@@ -133,9 +145,14 @@ export class InvoiceIssueService {
     ancestorEntityId: string;
     ancestorEntityLabel: string;
   }> {
+    // 0. Lock the draft row, then state and version checks
+    //    (data-model.md §6.4, architecture.md §11.14): the issued invoice
+    //    is exactly the draft the issuer saw, and no concurrent draft
+    //    write commits between this check and step 8.
     const before = await getInvoiceRowForMutation(tx, invoiceId);
     if (!before) throw notFound(STRINGS.entities.invoice);
     if (before.status !== 'draft') throw invoiceFrozen();
+    if (before.version !== expectedVersion) throw versionConflict();
 
     // 1. Pre-condition rejections — each maps to its documented code
     // (AC-289 / AT-113). Order matters: the cheaper checks (no DB
@@ -253,6 +270,8 @@ export class InvoiceIssueService {
         : null,
       cancellationReason: null,
       renderedPdfBinaryDescriptorId: null,
+      // Step 8's UPDATE bumps the draft's version once, then it freezes.
+      version: before.version + 1,
       createdAt: before.createdAt.toISOString(),
       updatedAt: issueDate.toISOString(),
       createdBy: before.createdBy,
@@ -260,19 +279,7 @@ export class InvoiceIssueService {
     };
     const rendered: RenderedInvoice = await this.renderer.render({
       invoice: previewInvoice,
-      companyProfile: {
-        id: companyProfileRow.id,
-        companyName: companyProfileRow.companyName,
-        address: companyProfileRow.address,
-        taxId: companyProfileRow.taxId,
-        ustId: companyProfileRow.ustId,
-        iban: companyProfileRow.iban,
-        accentColor: companyProfileRow.accentColor,
-        footerText: companyProfileRow.footerText,
-        defaultTaxMode: companyProfileRow.defaultTaxMode as TaxMode,
-        updatedAt: companyProfileRow.updatedAt.toISOString(),
-        updatedBy: companyProfileRow.updatedBy,
-      },
+      companyProfile: toCompanyProfileResponse(companyProfileRow),
     });
 
     // 7. Persist the binary descriptor through the ADR-0022 / ADR-0024

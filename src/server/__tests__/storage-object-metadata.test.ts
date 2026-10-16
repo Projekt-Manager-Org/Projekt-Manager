@@ -248,7 +248,9 @@ describe('AC-372: every written object carries its own wrapped envelope', () => 
       performanceDate: `${year}-04-10`,
     });
     expect(draft.statusCode).toBe(201);
-    const issued = await authPost(ownerToken, `/api/invoices/${draft.json().id}/issue`);
+    const issued = await authPost(ownerToken, `/api/invoices/${draft.json().id}/issue`, {
+      expectedVersion: draft.json().version,
+    });
     expect(issued.statusCode).toBe(200);
     const invoice = issued.json() as {
       id: string;

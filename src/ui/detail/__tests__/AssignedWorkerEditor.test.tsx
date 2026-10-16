@@ -64,6 +64,7 @@ const { useProjectStore } = await import('@/state/projectStore');
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: 'p-42',
+    version: 1,
     number: 'P-042',
     title: 'Dachsanierung',
     status: 'geplant',
@@ -167,11 +168,14 @@ describe('AssignedWorkerEditor — add worker (AC-209)', () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    const [projectId, patch] = updateMock.mock.calls[0] as unknown as [
+    const [projectId, expectedVersion, patch] = updateMock.mock.calls[0] as unknown as [
       string,
+      number,
       { assignedWorkerIds: string[] },
     ];
     expect(projectId).toBe('p-42');
+    // The version the store showed when the change was made (behavior.md §9.5).
+    expect(expectedVersion).toBe(1);
     // The patch names the full new set — the Update project API takes a
     // replacement list, not a delta (api.md §14.2.2 + spec §8.15.3).
     expect(new Set(patch.assignedWorkerIds)).toEqual(new Set(['u-w1', 'u-w2', 'u-w3']));
@@ -197,8 +201,9 @@ describe('AssignedWorkerEditor — remove worker (AC-209)', () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledTimes(1);
     });
-    const [, patch] = updateMock.mock.calls[0] as unknown as [
+    const [, , patch] = updateMock.mock.calls[0] as unknown as [
       string,
+      number,
       { assignedWorkerIds: string[] },
     ];
     expect(patch.assignedWorkerIds).toEqual(['u-w2']);

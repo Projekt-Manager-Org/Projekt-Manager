@@ -15,6 +15,7 @@ import {
   updateCustomer as updateCustomerRepo,
   deleteCustomer as deleteCustomerRepo,
   getCustomerRow,
+  getCustomerRowForMutation,
   toCustomerResponse,
   CUSTOMER_SORT_KEYS,
   type CustomerSortKey,
@@ -29,7 +30,7 @@ import { attachments, projects } from '../db/schema.js';
 import { hardDeleteProjectUnchecked } from '../repositories/project.js';
 import { DB_CONSTRAINTS } from '../db/constraints.js';
 import { STRINGS } from '../../config/strings.js';
-import { notFound, notPermitted, conflict } from '../errors.js';
+import { notFound, notPermitted, conflict, versionConflict } from '../errors.js';
 import { customerMatches, createIdempotent } from './idempotency.js';
 import type { ServiceLogger } from './Logger.js';
 import type { AuthUser } from '../middleware/auth.js';
@@ -207,6 +208,7 @@ export class CustomerService {
 
   async updateCustomer(
     id: string,
+    expectedVersion: number,
     data: {
       name?: string;
       phone?: string | null;
@@ -226,8 +228,9 @@ export class CustomerService {
         entityType: 'customer',
         action: 'update',
         run: async (tx) => {
-          const priorRow = await getCustomerRow(tx, id);
+          const priorRow = await getCustomerRowForMutation(tx, id);
           if (!priorRow) throw notFound(STRINGS.entities.customer);
+          if (priorRow.version !== expectedVersion) throw versionConflict();
 
           const updated = await updateCustomerRepo(tx, id, userId, data);
           if (!updated) throw notFound(STRINGS.entities.customer);

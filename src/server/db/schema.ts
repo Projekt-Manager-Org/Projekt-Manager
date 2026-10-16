@@ -14,6 +14,7 @@ import {
   text,
   boolean,
   bigint,
+  integer,
   smallint,
   timestamp,
   date,
@@ -170,6 +171,9 @@ export const customers = pgTable('customers', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  // Optimistic-concurrency token (data-model.md §6.4) — bumped by the
+  // `*_version_bump` trigger (baseline/tail/50-row-version.sql).
+  version: integer('version').notNull().default(1),
 });
 
 // ---------------------------------------------------------------
@@ -204,6 +208,9 @@ export const projects = pgTable(
     estimatedValue: numeric('estimated_value', { precision: 12, scale: 2 }),
     notes: text('notes'),
     deleted: boolean('deleted').notNull().default(false),
+    // Optimistic-concurrency token (data-model.md §6.4) — bumped by the
+    // `*_version_bump` trigger (baseline/tail/50-row-version.sql).
+    version: integer('version').notNull().default(1),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -782,6 +789,9 @@ export const companyProfile = pgTable(
     accentColor: text('accent_color'),
     footerText: text('footer_text'),
     defaultTaxMode: text('default_tax_mode').notNull().default('standard'),
+    // Optimistic-concurrency token (data-model.md §6.4) — bumped by the
+    // `*_version_bump` trigger (baseline/tail/50-row-version.sql).
+    version: integer('version').notNull().default(1),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
   },
@@ -906,6 +916,9 @@ export const invoices = pgTable(
     // descriptor table extraction does not need a schema migration.
     // The application enforces existence at issuance.
     renderedPdfBinaryDescriptorId: uuid('rendered_pdf_binary_descriptor_id'),
+    // Optimistic-concurrency token (data-model.md §6.4) — bumped by the
+    // `*_version_bump` trigger (baseline/tail/50-row-version.sql).
+    version: integer('version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),

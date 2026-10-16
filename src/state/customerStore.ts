@@ -10,6 +10,7 @@ import type { Customer } from '@/domain/types';
 import { customerApi, type CustomerSortKey, type SortDir } from '@/api/client';
 import { handleSessionExpired } from './sessionExpired';
 import { useStorageUsageStore } from './storageUsageStore';
+import { isVersionConflict } from './versionedWrites';
 
 // Re-export the sort-key/direction types so UI components reach them
 // through the state layer (the API client is off-limits to UI per
@@ -43,6 +44,10 @@ export type CustomerDetail = Customer & {
   archivedProjectCount: number;
 };
 
+/** Outcome of `updateCustomer`. */
+export type CustomerUpdateOutcome =
+  { status: 'ok' } | { status: 'conflict'; customer: Customer } | { status: 'failed' };
+
 interface CustomerState {
   customers: Customer[];
   total: number;
@@ -72,8 +77,14 @@ interface CustomerState {
     address?: { street: string; zip: string; city: string } | null;
     notes?: string | null;
   }) => Promise<CreateCustomerOutcome>;
+  /**
+   * Update from an edit that started at `startVersion` (behavior.md
+   * §9.5). `'conflict'` carries the refetched customer the form resets
+   * to; `error` holds the stale-write message.
+   */
   updateCustomer: (
     id: string,
+    startVersion: number,
     data: {
       name?: string;
       phone?: string | null;
@@ -81,7 +92,7 @@ interface CustomerState {
       address?: { street: string; zip: string; city: string } | null;
       notes?: string | null;
     },
-  ) => Promise<boolean>;
+  ) => Promise<CustomerUpdateOutcome>;
   deleteCustomer: (id: string) => Promise<boolean>;
   clearError: () => void;
 }
@@ -173,24 +184,34 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
     return { status: 'ok' };
   },
 
-  updateCustomer: async (id, data) => {
+  updateCustomer: async (id, startVersion, data) => {
     set({ error: null });
-    const result = await customerApi.update(id, data);
+    const result = await customerApi.update(id, startVersion, data);
 
     if (!result.ok) {
       if (result.sessionExpired) {
         handleSessionExpired();
-        return false;
+        return { status: 'failed' };
+      }
+      if (isVersionConflict(result)) {
+        const fresh = await customerApi.get(id);
+        if (fresh.ok) {
+          set((s) => ({
+            customers: s.customers.map((c) => (c.id === id ? fresh.data : c)),
+            error: result.error.message,
+          }));
+          return { status: 'conflict', customer: fresh.data };
+        }
       }
       set({ error: result.error.message });
-      return false;
+      return { status: 'failed' };
     }
 
     // Update in-place
     set((s) => ({
       customers: s.customers.map((c) => (c.id === id ? result.data : c)),
     }));
-    return true;
+    return { status: 'ok' };
   },
 
   deleteCustomer: async (id) => {

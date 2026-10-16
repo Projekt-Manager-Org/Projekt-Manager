@@ -94,24 +94,6 @@ interface ProjectManagementState {
      */
     siteAddress?: Address | null;
   }) => Promise<CreateProjectOutcome>;
-  updateProject: (
-    id: string,
-    data: {
-      title?: string;
-      customerId?: string;
-      estimatedValue?: number | null;
-      notes?: string | null;
-      /**
-       * PATCH semantics: omit to leave unchanged, `null` to clear,
-       * triple to overwrite. See AC-279 / AC-280.
-       */
-      siteAddress?: Address | null;
-    },
-  ) => Promise<Project | null>;
-  updateDates: (
-    id: string,
-    dates: { plannedStart?: string | null; plannedEnd?: string | null },
-  ) => Promise<Project | null>;
   deleteProject: (id: string) => Promise<boolean>;
   /**
    * Hard-delete an archived project (AC-155..158). Returns:
@@ -254,46 +236,6 @@ export const useProjectManagementStore = create<ProjectManagementState>((set, ge
     await get().fetchProjects();
     useProjectStore.getState().fetchProjects();
     return { status: 'ok' };
-  },
-
-  updateProject: async (id, data) => {
-    set({ error: null });
-    const result = await projectApi.update(id, data);
-
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        return null;
-      }
-      set({ error: result.error.message });
-      return null;
-    }
-
-    set((s) => ({
-      projects: s.projects.map((p) => (p.id === id ? result.data : p)),
-    }));
-    useProjectStore.getState().fetchProjects();
-    return result.data;
-  },
-
-  updateDates: async (id, dates) => {
-    set({ error: null });
-    const result = await projectApi.updateDates(id, dates);
-
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        return null;
-      }
-      set({ error: result.error.message });
-      return null;
-    }
-
-    set((s) => ({
-      projects: s.projects.map((p) => (p.id === id ? result.data : p)),
-    }));
-    useProjectStore.getState().fetchProjects();
-    return result.data;
   },
 
   deleteProject: async (id) => {

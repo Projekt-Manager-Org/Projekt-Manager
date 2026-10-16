@@ -393,14 +393,14 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
       // mid-month rollover edge case).
       const detailResp = await ownerRequest.get(`/api/projects/${project.id}`);
       expect(detailResp.ok(), `project detail fetch failed: ${detailResp.status()}`).toBe(true);
-      const detail = (await detailResp.json()) as { plannedEnd: string | null };
+      const detail = (await detailResp.json()) as { plannedEnd: string | null; version: number };
       const currentEnd = detail.plannedEnd ? new Date(detail.plannedEnd) : new Date();
       const newEnd = new Date(currentEnd);
       newEnd.setDate(newEnd.getDate() + 5);
       const newEndIso = newEnd.toISOString().slice(0, 10);
 
       const resp = await ownerRequest.patch(`/api/projects/${project.id}/dates`, {
-        data: { plannedEnd: newEndIso },
+        data: { expectedVersion: detail.version, plannedEnd: newEndIso },
       });
       expect(resp.ok(), `dates patch failed: ${resp.status()} ${await resp.text()}`).toBe(true);
     } finally {
@@ -436,13 +436,16 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
       // arbeiter1. Read the current set off the detail endpoint so the
       // seed-vs-test-mutation history can't drift.
       const detailResp = await ownerRequest.get(`/api/projects/${project.id}`);
-      const detail = (await detailResp.json()) as { assignedWorkers: Array<{ userId: string }> };
+      const detail = (await detailResp.json()) as {
+        assignedWorkers: Array<{ userId: string }>;
+        version: number;
+      };
       const arbeiter1Id = await resolveUserIdByUsername(ownerRequest, 'arbeiter1');
       const currentIds = new Set(detail.assignedWorkers.map((w) => w.userId));
       currentIds.add(arbeiter1Id);
 
       const resp = await ownerRequest.patch(`/api/projects/${project.id}`, {
-        data: { assignedWorkerIds: Array.from(currentIds) },
+        data: { expectedVersion: detail.version, assignedWorkerIds: Array.from(currentIds) },
       });
       expect(resp.ok(), `assigned-worker patch failed: ${resp.status()} ${await resp.text()}`).toBe(
         true,

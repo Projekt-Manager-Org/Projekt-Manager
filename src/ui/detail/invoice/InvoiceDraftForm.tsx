@@ -189,6 +189,10 @@ export function InvoiceDraftForm({
   // update; a setState here would have to be flushed before the next
   // `handleSave` call could see it.
   const draftIdRef = useRef<string | null>(draft?.id ?? null);
+  // The draft version the form opened with — the edit's start version
+  // (behavior.md §9.5). A background refresh of the row never moves it;
+  // only the refetch after a stale write does.
+  const startVersionRef = useRef<number | null>(draft?.version ?? null);
 
   // Modal accessibility: focus trap, body scroll lock, Escape-to-close.
   // Same hook the cancel dialog uses so the two surfaces match. Escape
@@ -234,19 +238,21 @@ export function InvoiceDraftForm({
     setSubmitting(true);
 
     const currentDraftId = draftIdRef.current;
-    const outcome = currentDraftId
-      ? await updateDraft(currentDraftId, projectId, {
-          lines: wireLines,
-          recipient: wireRecipient,
-          taxMode,
-          performanceDate: wirePerformanceDate,
-        })
-      : await createDraft(projectId, {
-          lines: wireLines,
-          recipient: wireRecipient,
-          taxMode,
-          performanceDate: wirePerformanceDate,
-        });
+    const startVersion = startVersionRef.current;
+    const outcome =
+      currentDraftId && startVersion !== null
+        ? await updateDraft(currentDraftId, projectId, startVersion, {
+            lines: wireLines,
+            recipient: wireRecipient,
+            taxMode,
+            performanceDate: wirePerformanceDate,
+          })
+        : await createDraft(projectId, {
+            lines: wireLines,
+            recipient: wireRecipient,
+            taxMode,
+            performanceDate: wirePerformanceDate,
+          });
 
     setSubmitting(false);
 
@@ -255,11 +261,21 @@ export function InvoiceDraftForm({
       // the same form instance the next save PATCHes; in the current UI
       // the form closes immediately on success, but the ref hand-off
       // is correct either way.
-      if (outcome.invoice && !draftIdRef.current) {
+      if (outcome.invoice) {
         draftIdRef.current = outcome.invoice.id;
+        startVersionRef.current = outcome.invoice.version;
       }
       onClose();
       return;
+    }
+    if (outcome.status === 'conflict' && outcome.invoice) {
+      // Show the refetched draft; the user redoes the edit from there.
+      const fresh = outcome.invoice;
+      setRecipient(recipientFromInvoice(fresh));
+      setLines(linesFromInvoice(fresh));
+      setTaxMode(fresh.taxMode);
+      setPerformanceDate(dateInputValue(fresh.performanceDate ?? defaultPerformanceDate));
+      startVersionRef.current = fresh.version;
     }
     setErrorMessage(outcome.errorMessage);
   };

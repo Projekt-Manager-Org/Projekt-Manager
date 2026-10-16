@@ -38,6 +38,10 @@ export const STRINGS = {
     uploadLengthRequired: 'Der Header „Upload-Length" fehlt oder ist keine gültige Bytezahl.',
     uploadOffsetRequired: 'Der Header „Upload-Offset" fehlt oder ist keine gültige Bytezahl.',
     idempotencyConflict: 'Diese Anfrage-ID wurde bereits mit abweichenden Daten verwendet.',
+    // Stale-write recovery (ui/behavior.md §9.5): the client refetches
+    // before surfacing this, so "geladen" is true when the user reads it.
+    versionConflict:
+      'Inzwischen geändert. Die aktuelle Fassung wurde geladen – bitte erneut versuchen.',
     schemaVersionMismatch:
       'Die Datenformat-Version der Datei passt nicht zur aktuellen Version des Systems.',
     targetNotEmpty:

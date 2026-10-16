@@ -20,6 +20,7 @@ import {
 import { STATE_KEYS, type WorkflowState } from '../../config/stateConfig.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
 export function projectRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
@@ -290,7 +291,9 @@ export function projectRoutes(db: Database) {
           body: {
             type: 'object',
             additionalProperties: false,
+            required: ['expectedVersion'],
             properties: {
+              expectedVersion: EXPECTED_VERSION_SCHEMA,
               // `null` is allowed so the frontend "clear planned date" flow
               // (ProjectDetailPanel.tsx → updateDates(id, val || null, ...))
               // reaches the repository's falsy→null branch. JSON Schema's
@@ -305,7 +308,8 @@ export function projectRoutes(db: Database) {
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };
-        const body = request.body as {
+        const { expectedVersion, ...dates } = request.body as {
+          expectedVersion: number;
           plannedStart?: string | null;
           plannedEnd?: string | null;
         };
@@ -313,7 +317,8 @@ export function projectRoutes(db: Database) {
         const project = await datesService.updateDates(
           id,
           request.user!.id,
-          body,
+          expectedVersion,
+          dates,
           request.log,
           request.id ?? null,
         );
@@ -336,8 +341,11 @@ export function projectRoutes(db: Database) {
           body: {
             type: 'object',
             additionalProperties: false,
-            minProperties: 1,
+            required: ['expectedVersion'],
+            // `expectedVersion` plus at least one field to change.
+            minProperties: 2,
             properties: {
+              expectedVersion: EXPECTED_VERSION_SCHEMA,
               title: { type: 'string', minLength: 1 },
               customerId: { type: 'string', format: 'uuid' },
               // PATCH semantics: omitted leaves the stored value unchanged;
@@ -365,7 +373,8 @@ export function projectRoutes(db: Database) {
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };
-        const body = request.body as {
+        const { expectedVersion, ...fields } = request.body as {
+          expectedVersion: number;
           title?: string;
           customerId?: string;
           siteAddress?: { street: string; zip: string; city: string } | null;
@@ -375,7 +384,8 @@ export function projectRoutes(db: Database) {
         };
         const project = await crudService.updateProject(
           id,
-          body,
+          expectedVersion,
+          fields,
           request.user!.id,
           request.log,
           request.id ?? null,

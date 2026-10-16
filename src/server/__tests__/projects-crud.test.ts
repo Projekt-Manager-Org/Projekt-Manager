@@ -29,6 +29,7 @@ import {
   authPost,
   authPatch,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 
@@ -198,6 +199,7 @@ describe('Project CRUD Operations', () => {
       const before = beforeRes.json();
 
       const res = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        ...(await expectedVersion(ownerToken, `/api/projects/${createdProjectId}`)),
         title: 'Fassadenanstrich Test — Updated',
         notes: 'Nachtrag: Gerüst benötigt',
         estimatedValue: 8500.0,
@@ -229,6 +231,7 @@ describe('Project CRUD Operations', () => {
   describe('AT-21: Update rejects status/number', () => {
     it('does not accept status changes via update', async () => {
       await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        ...(await expectedVersion(ownerToken, `/api/projects/${createdProjectId}`)),
         status: 'erledigt',
       });
 
@@ -240,6 +243,7 @@ describe('Project CRUD Operations', () => {
 
     it('does not accept number changes via update', async () => {
       await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        ...(await expectedVersion(ownerToken, `/api/projects/${createdProjectId}`)),
         number: 'CHANGED-999',
       });
 

@@ -16,6 +16,7 @@ export {
   getProject,
   getProjectRowById,
   getProjectForMutation,
+  touchProject,
   insertProject,
   updateProjectFields,
   diffProjectWorkers,

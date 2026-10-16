@@ -97,7 +97,7 @@ export function ProjectDetailPage() {
   const updateDates = useProjectStore((s) => s.updateDates);
   const storeProject = useProjectStore((s) => s.projects.find((p) => p.id === projectId));
 
-  const updateProject = useProjectManagementStore((s) => s.updateProject);
+  const updateProject = useProjectStore((s) => s.updateProject);
   const deleteProject = useProjectManagementStore((s) => s.deleteProject);
   const purgeProject = useProjectManagementStore((s) => s.purgeProject);
   const restoreProject = useProjectManagementStore((s) => s.restoreProject);
@@ -277,8 +277,11 @@ export function ProjectDetailPage() {
             <div className={styles.projectNumber}>{project.number}</div>
             <InlineTitle
               value={project.title}
+              version={project.version}
               readOnly={!canUpdate || isArchived}
-              onCommit={(next) => void updateProject(project.id, { title: next })}
+              onCommit={async (next, startVersion) =>
+                (await updateProject(project.id, startVersion, { title: next })) === 'ok'
+              }
             />
             <span
               className={styles.statusBadge}
@@ -494,14 +497,15 @@ export function ProjectDetailPage() {
             {canUpdateDates && !isArchived ? (
               <DateField
                 initial={project.plannedStart}
+                version={project.version}
                 otherDate={project.plannedEnd}
                 role="start"
                 testId="project-detail-start"
-                onCommit={(start) => {
+                onCommit={(start, startVersion) => {
                   if (!start && project.plannedEnd) {
-                    updateDates(project.id, null, null);
+                    updateDates(project.id, startVersion, null, null);
                   } else {
-                    updateDates(project.id, start, undefined);
+                    updateDates(project.id, startVersion, start, undefined);
                   }
                 }}
               />
@@ -516,11 +520,12 @@ export function ProjectDetailPage() {
             {canUpdateDates && !isArchived ? (
               <DateField
                 initial={project.plannedEnd}
+                version={project.version}
                 otherDate={project.plannedStart}
                 role="end"
                 testId="project-detail-end"
-                onCommit={(end) => {
-                  updateDates(project.id, undefined, end);
+                onCommit={(end, startVersion) => {
+                  updateDates(project.id, startVersion, undefined, end);
                 }}
               />
             ) : (
@@ -533,18 +538,24 @@ export function ProjectDetailPage() {
             <span className={styles.coreLabel}>{STRINGS.ui.estimatedValue}</span>
             <InlineNumberField
               initial={project.estimatedValue}
+              version={project.version}
               readOnly={!canUpdate || isArchived}
               testId="project-value-edit"
-              onCommit={(value) => void updateProject(project.id, { estimatedValue: value })}
+              onCommit={async (value, startVersion) =>
+                (await updateProject(project.id, startVersion, { estimatedValue: value })) === 'ok'
+              }
             />
           </div>
           <div className={styles.coreFieldFull}>
             <span className={styles.coreLabel}>{STRINGS.ui.notes}</span>
             <InlineTextareaField
               initial={project.notes}
+              version={project.version}
               readOnly={!canUpdate || isArchived}
               testId="project-notes-input"
-              onCommit={(notes) => void updateProject(project.id, { notes })}
+              onCommit={async (notes, startVersion) =>
+                (await updateProject(project.id, startVersion, { notes })) === 'ok'
+              }
             />
           </div>
         </div>
@@ -565,6 +576,7 @@ export function ProjectDetailPage() {
       {siteAddressModalOpen && (
         <SiteAddressEditModal
           projectId={project.id}
+          version={project.version}
           initial={project.siteAddress}
           customerAddress={project.customer?.address ?? null}
           onClose={() => setSiteAddressModalOpen(false)}
@@ -655,6 +667,44 @@ export function ProjectDetailPage() {
 }
 
 /**
+ * Save handler of a save-on-blur field: gets the value and the entity
+ * version the edit started from; resolves false when the save failed.
+ */
+type SaveOnBlurCommit<T> = (next: T, startVersion: number) => Promise<boolean> | void;
+
+/**
+ * Draft state of a save-on-blur field (behavior.md §9.5).
+ *
+ *   - The draft follows the server value ("adjust state during render",
+ *     no useEffect cascade) and snaps back to it after a failed save —
+ *     after a stale write, the field shows the refetched value.
+ *   - The edit's start version is captured on focus, so a background
+ *     refresh during the edit cannot advance it.
+ */
+function useSaveOnBlur<T>(serverValue: string, version: number, onCommit: SaveOnBlurCommit<T>) {
+  const [draft, setDraft] = useState(serverValue);
+  const [resets, setResets] = useState(0);
+  const [seen, setSeen] = useState({ serverValue, resets });
+  if (seen.serverValue !== serverValue || seen.resets !== resets) {
+    setSeen({ serverValue, resets });
+    setDraft(serverValue);
+  }
+
+  const startVersion = useRef(version);
+  const onFocus = () => {
+    startVersion.current = version;
+  };
+
+  const commitWith = (next: T) => {
+    void Promise.resolve(onCommit(next, startVersion.current)).then((ok) => {
+      if (ok === false) setResets((n) => n + 1);
+    });
+  };
+
+  return { draft, setDraft, onFocus, commitWith };
+}
+
+/**
  * Inline editable title. Renders a borderless textarea that looks like
  * a heading until it gets focus. Commits on blur or Enter. Reads fresh
  * from props so a store-driven update (reflecting the server response)
@@ -670,22 +720,21 @@ export function ProjectDetailPage() {
  */
 function InlineTitle({
   value,
+  version,
   readOnly,
   onCommit,
 }: {
   value: string;
+  version: number;
   readOnly: boolean;
-  onCommit: (next: string) => void;
+  onCommit: SaveOnBlurCommit<string>;
 }) {
-  // "Adjust state during render" pattern — re-seed the draft when the
-  // underlying prop changes (server-commit, store refetch) without a
-  // useEffect cascade.
-  const [draft, setDraft] = useState(value);
-  const [lastSeen, setLastSeen] = useState(value);
-  if (value !== lastSeen) {
-    setLastSeen(value);
-    setDraft(value);
-  }
+  const {
+    draft,
+    setDraft,
+    onFocus: onFocusCapture,
+    commitWith,
+  } = useSaveOnBlur(value, version, onCommit);
 
   const ref = useRef<HTMLTextAreaElement | null>(null);
 
@@ -710,7 +759,7 @@ function InlineTitle({
       setDraft(value);
       return;
     }
-    onCommit(normalized);
+    commitWith(normalized);
   };
 
   return (
@@ -720,6 +769,7 @@ function InlineTitle({
       rows={1}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
+      onFocus={onFocusCapture}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -745,28 +795,25 @@ function InlineTitle({
  */
 function DateField({
   initial,
+  version,
   otherDate: _otherDate,
   role,
   testId,
   onCommit,
 }: {
   initial: string | null;
+  version: number;
   otherDate: string | null;
   role: 'start' | 'end';
   testId: string;
-  onCommit: (value: string | null) => void;
+  onCommit: SaveOnBlurCommit<string | null>;
 }) {
   const initialValue = dateInputValue(initial);
-  const [draft, setDraft] = useState(initialValue);
-  const [lastSeen, setLastSeen] = useState(initial);
-  if (initial !== lastSeen) {
-    setLastSeen(initial);
-    setDraft(dateInputValue(initial));
-  }
+  const { draft, setDraft, onFocus, commitWith } = useSaveOnBlur(initialValue, version, onCommit);
 
   const commit = () => {
-    if (draft === dateInputValue(initial)) return;
-    onCommit(draft || null);
+    if (draft === initialValue) return;
+    commitWith(draft || null);
   };
 
   return (
@@ -775,6 +822,7 @@ function DateField({
       className={styles.dateInput}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
+      onFocus={onFocus}
       onBlur={commit}
       data-testid={testId}
       aria-label={role === 'start' ? STRINGS.ui.dateStart : STRINGS.ui.dateEnd}
@@ -784,36 +832,33 @@ function DateField({
 
 function InlineNumberField({
   initial,
+  version,
   readOnly,
   testId,
   onCommit,
 }: {
   initial: number | null;
+  version: number;
   readOnly: boolean;
   testId: string;
-  onCommit: (next: number | null) => void;
+  onCommit: SaveOnBlurCommit<number | null>;
 }) {
   const initialText = initial != null ? String(initial) : '';
-  const [draft, setDraft] = useState(initialText);
-  const [lastSeen, setLastSeen] = useState(initialText);
-  if (initialText !== lastSeen) {
-    setLastSeen(initialText);
-    setDraft(initialText);
-  }
+  const { draft, setDraft, onFocus, commitWith } = useSaveOnBlur(initialText, version, onCommit);
 
   const commit = () => {
     const trimmed = draft.trim();
-    if (trimmed === lastSeen) return;
+    if (trimmed === initialText) return;
     if (!trimmed) {
-      onCommit(null);
+      commitWith(null);
       return;
     }
     const parsed = parseFloat(trimmed.replace(',', '.'));
     if (Number.isNaN(parsed)) {
-      setDraft(lastSeen);
+      setDraft(initialText);
       return;
     }
-    onCommit(parsed);
+    commitWith(parsed);
   };
 
   return (
@@ -821,6 +866,7 @@ function InlineNumberField({
       className={styles.valueInput}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
+      onFocus={onFocus}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -839,28 +885,25 @@ function InlineNumberField({
 
 function InlineTextareaField({
   initial,
+  version,
   readOnly,
   testId,
   onCommit,
 }: {
   initial: string | null;
+  version: number;
   readOnly: boolean;
   testId: string;
-  onCommit: (next: string | null) => void;
+  onCommit: SaveOnBlurCommit<string | null>;
 }) {
   const initialText = initial ?? '';
-  const [draft, setDraft] = useState(initialText);
-  const [lastSeen, setLastSeen] = useState(initialText);
-  if (initialText !== lastSeen) {
-    setLastSeen(initialText);
-    setDraft(initialText);
-  }
+  const { draft, setDraft, onFocus, commitWith } = useSaveOnBlur(initialText, version, onCommit);
 
   const commit = () => {
     const trimmed = draft.trim();
     const normalized = trimmed || null;
-    if ((normalized ?? '') === (initial ?? '')) return;
-    onCommit(normalized);
+    if ((normalized ?? '') === initialText) return;
+    commitWith(normalized);
   };
 
   return (
@@ -868,6 +911,7 @@ function InlineTextareaField({
       className={styles.notesInput}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
+      onFocus={onFocus}
       onBlur={commit}
       readOnly={readOnly}
       data-testid={testId}

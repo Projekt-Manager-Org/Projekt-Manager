@@ -28,6 +28,7 @@ export class ProjectDatesService {
   async updateDates(
     projectId: string,
     userId: string,
+    expectedVersion: number,
     dates: { plannedStart?: string | null; plannedEnd?: string | null },
     log: ServiceLogger,
     correlationId?: string | null,
@@ -41,7 +42,7 @@ export class ProjectDatesService {
           entityType: 'project',
           action: 'update',
           run: async (tx) => {
-            const r = await updateDatesRepo(tx, projectId, userId, dates);
+            const r = await updateDatesRepo(tx, projectId, userId, expectedVersion, dates);
             return {
               entityId: projectId,
               entityLabel: projectAuditLabel(r.project),

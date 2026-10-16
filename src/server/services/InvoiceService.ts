@@ -46,7 +46,13 @@ import {
   type ListInvoicesOpts,
 } from '../repositories/invoice-read.js';
 import { CompanyProfileService } from './CompanyProfileService.js';
-import { notFound, notPermitted, validationError, invoiceFrozen } from '../errors.js';
+import {
+  notFound,
+  notPermitted,
+  validationError,
+  invoiceFrozen,
+  versionConflict,
+} from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 import { isOutOfScope } from '../repositories/scope.js';
 import { emitInvoiceChanged } from '../sse/emitters.js';
@@ -368,6 +374,7 @@ export class InvoiceService {
    */
   async updateDraft(
     id: string,
+    expectedVersion: number,
     input: UpdateDraftInput,
     userId: string,
     log: ServiceLogger,
@@ -388,6 +395,7 @@ export class InvoiceService {
           const before = await getInvoiceRowForMutation(tx, id);
           if (!before) throw notFound(STRINGS.entities.invoice);
           if (before.status !== 'draft') throw invoiceFrozen();
+          if (before.version !== expectedVersion) throw versionConflict();
 
           const nextTaxMode: TaxMode = (input.taxMode ?? before.taxMode) as TaxMode;
           const nextLines: InvoiceLine[] = input.lines ?? (before.lines as InvoiceLine[]);
@@ -484,6 +492,7 @@ export class InvoiceService {
    */
   async deleteDraft(
     id: string,
+    expectedVersion: number,
     userId: string,
     log: ServiceLogger,
     correlationId?: string | null,
@@ -498,6 +507,7 @@ export class InvoiceService {
           const before = await getInvoiceRowForMutation(tx, id);
           if (!before) throw notFound(STRINGS.entities.invoice);
           if (before.status !== 'draft') throw invoiceFrozen();
+          if (before.version !== expectedVersion) throw versionConflict();
 
           // Resolve the ancestor label from the live project row INSIDE
           // the tx — the invoice FK guarantees existence at this point.
@@ -537,12 +547,13 @@ export class InvoiceService {
 
   async issueDraft(
     id: string,
+    expectedVersion: number,
     userId: string,
     log: ServiceLogger,
     correlationId?: string | null,
     now: Date = new Date(),
   ): Promise<Invoice> {
-    return this.issue.issueDraft(id, userId, log, correlationId, now);
+    return this.issue.issueDraft(id, expectedVersion, userId, log, correlationId, now);
   }
 
   async cancel(

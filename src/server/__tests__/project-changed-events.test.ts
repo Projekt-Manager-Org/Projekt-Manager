@@ -75,6 +75,7 @@ import {
   authPost,
   authPatch,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import {
   SEED_DEFAULT_PASSWORD,
@@ -479,6 +480,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
       const conn = subscribeFake(bus);
       try {
         const res = await authPatch(ownerToken, `/api/projects/${projectId}`, {
+          ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
           title: 'Updated title for AC-276',
           notes: 'Field-only branch — no worker mutation.',
         });
@@ -512,6 +514,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
       const conn = subscribeFake(bus);
       try {
         const res = await authPatch(ownerToken, `/api/projects/${projectId}`, {
+          ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
           // Only the join changes — no `title` / `notes` / etc. The
           // service's `hasFieldUpdate` branch evaluates to false; the
           // post-commit emit MUST still fire because the join is part
@@ -676,6 +679,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
       const conn = subscribeFake(bus);
       try {
         const res = await authPatch(ownerToken, `/api/projects/${projectId}/dates`, {
+          ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
           plannedStart: '2026-06-01',
           plannedEnd: '2026-06-30',
         });

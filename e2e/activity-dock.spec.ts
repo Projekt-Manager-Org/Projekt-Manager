@@ -195,12 +195,13 @@ test.describe('AC-317: activity dock reflects a cross-session audit commit withi
         },
       });
       expect(projRes.ok(), `project POST failed: ${projRes.status()}`).toBe(true);
-      const projectId = (await projRes.json()).id as string;
+      const project = (await projRes.json()) as { id: string; version: number };
+      const projectId = project.id;
 
       // The assignment is the audit-row-producing mutation: a
       // `project_worker.create` row whose recipient set includes office.
       const assignRes = await ownerContext.request.patch(`/api/projects/${projectId}`, {
-        data: { assignedWorkerIds: [officeId] },
+        data: { expectedVersion: project.version, assignedWorkerIds: [officeId] },
       });
       expect(
         assignRes.ok(),
@@ -371,7 +372,10 @@ test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', ()
         data: { number: `AC318-${Date.now()}`, title: 'AC-318 pager fixture', customerId },
       });
       expect(projRes.ok(), `pager project POST failed: ${projRes.status()}`).toBe(true);
-      const projectId = (await projRes.json()).id as string;
+      const project = (await projRes.json()) as { id: string; version: number };
+      const projectId = project.id;
+      // Each PATCH carries the version the previous one produced (data-model.md §6.4).
+      let version = project.version;
 
       // Each set-CHANGE of `assignedWorkerIds` writes one `project_worker`
       // create or delete row → one `assignment_changed` audit row. Starting
@@ -382,12 +386,13 @@ test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', ()
       for (let i = 0; i < AUDIT_ROWS_TO_GENERATE; i++) {
         const assignedWorkerIds = i % 2 === 0 ? [officeId] : [];
         const patchRes = await ownerContext.request.patch(`/api/projects/${projectId}`, {
-          data: { assignedWorkerIds },
+          data: { expectedVersion: version, assignedWorkerIds },
         });
         expect(
           patchRes.ok(),
           `pager assignment PATCH ${i} failed: ${patchRes.status()} ${await patchRes.text()}`,
         ).toBe(true);
+        version = ((await patchRes.json()) as { version: number }).version;
       }
     } finally {
       await ownerContext.close();

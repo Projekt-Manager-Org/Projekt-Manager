@@ -555,7 +555,7 @@ async function applyIssueSpec(
     null,
   );
 
-  await service.issueDraft(draft.id, ownerId, SEED_LOG, null, issueDate);
+  await service.issueDraft(draft.id, draft.version, ownerId, SEED_LOG, null, issueDate);
 
   if (spec.cancellation) {
     const cancellationDate = addDays(issueDate, spec.cancellation.daysAfterIssue);
@@ -590,7 +590,14 @@ async function applyIssueSpec(
         SEED_LOG,
         null,
       );
-      await service.issueDraft(reissueDraft.id, ownerId, SEED_LOG, null, reissueIssueDate);
+      await service.issueDraft(
+        reissueDraft.id,
+        reissueDraft.version,
+        ownerId,
+        SEED_LOG,
+        null,
+        reissueIssueDate,
+      );
     }
   }
 

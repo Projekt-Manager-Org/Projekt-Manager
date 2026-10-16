@@ -7,9 +7,10 @@
  *   - Loads the current `siteAddress` into the group; the toggle ON path
  *     submits `null`, the OFF path submits the trimmed triple. AC-281.
  *   - Surfaces the AC-284 partial-fill validation message inline.
- *   - Save dispatches PATCH via the project management store; on success
- *     the modal closes. The store has already written its own user-facing
- *     error on failure — the modal stays open so the user can retry.
+ *   - Save dispatches PATCH via the project store with the version the
+ *     modal opened at; on success the modal closes. On failure the
+ *     modal stays open with the store's message; after a stale write
+ *     (behavior.md §9.5) it reloads the refetched address and version.
  *   - Escape / overlay click cancels; both are no-ops while a save is
  *     in flight (mirrors CustomerEditForm).
  */
@@ -17,7 +18,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { STRINGS } from '@/config/strings';
 import type { Address } from '@/domain/types';
-import { useProjectManagementStore } from '@/state/projectManagementStore';
+import { useProjectStore } from '@/state/projectStore';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { SiteAddressGroup, type SiteAddressGroupHandle } from '@/ui/management/SiteAddressGroup';
 import managementStyles from '@/ui/management/Management.module.css';
@@ -25,6 +26,8 @@ import styles from './ProjectDetail.module.css';
 
 interface Props {
   projectId: string;
+  /** Project version when the modal opened — the edit's start version. */
+  version: number;
   initial: Address | null;
   /**
    * Customer's billing address — surfaced through the group so the
@@ -36,8 +39,17 @@ interface Props {
   onClose: () => void;
 }
 
-export function SiteAddressEditModal({ projectId, initial, customerAddress, onClose }: Props) {
-  const updateProject = useProjectManagementStore((s) => s.updateProject);
+export function SiteAddressEditModal({
+  projectId,
+  version,
+  initial,
+  customerAddress,
+  onClose,
+}: Props) {
+  const updateProject = useProjectStore((s) => s.updateProject);
+  // The edit's base: the version and address the modal opened with,
+  // replaced only by the refetch after a stale write.
+  const [base, setBase] = useState({ version, initial });
 
   const handleRef = useRef<SiteAddressGroupHandle | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,9 +64,18 @@ export function SiteAddressEditModal({ projectId, initial, customerAddress, onCl
     }
     setError(null);
     setSubmitting(true);
-    const ok = await updateProject(projectId, { siteAddress: result.value });
+    const outcome = await updateProject(projectId, base.version, { siteAddress: result.value });
     setSubmitting(false);
-    if (ok) onClose();
+    if (outcome === 'ok') {
+      onClose();
+      return;
+    }
+    const store = useProjectStore.getState();
+    setError(store.mutationError);
+    const fresh = store.projects.find((p) => p.id === projectId);
+    if (outcome === 'conflict' && fresh) {
+      setBase({ version: fresh.version, initial: fresh.siteAddress });
+    }
   };
 
   const close = useCallback(() => {
@@ -76,7 +97,9 @@ export function SiteAddressEditModal({ projectId, initial, customerAddress, onCl
         <h2 className={managementStyles.formTitle}>{STRINGS.projects.siteAddressLabel}</h2>
 
         <SiteAddressGroup
-          initial={initial}
+          // Re-seed the group's own field state from a refetched base.
+          key={base.version}
+          initial={base.initial}
           customerAddress={customerAddress}
           disabled={submitting}
           handleRef={handleRef}

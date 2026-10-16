@@ -43,6 +43,7 @@ import {
   authPost,
   authPatch,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
@@ -211,6 +212,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
       const before = await countAuditRows(db);
 
       const patchRes = await authPatch(ownerToken, `/api/customers/${seededCustomerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${seededCustomerId}`)),
         phone: '0221-8889990',
       });
       expect(patchRes.statusCode).toBe(200);
@@ -327,6 +329,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
       // implementation exposes it differently, this test fails with a
       // 404 — a recognizable implementation gap, not a silent pass.
       const patchRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
+        ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
         assignedWorkerIds: [],
       });
       expect(patchRes.statusCode).toBe(200);
@@ -962,6 +965,7 @@ describe('AT-96: entity_label is frozen at event time (AC-188)', () => {
       const projectId = createRes.json().id as string;
 
       const patchRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
+        ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
         title: renamedTitle,
       });
       expect(patchRes.statusCode).toBe(200);
@@ -1160,6 +1164,7 @@ describe('AT-124: ancestor-scoped filter unions project + nested entities', () =
       );
       const workerId = (workerLookup.rows[0] as { id: string }).id;
       const patchRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
+        ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
         assignedWorkerIds: [workerId],
       });
       expect(patchRes.statusCode).toBe(200);

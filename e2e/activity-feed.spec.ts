@@ -151,11 +151,18 @@ test.describe('AC-185: project activity feed (reverse-chrono, paginated, empty s
     // audit rows on PATCH /api/projects/:id; the dates endpoint lives
     // separately at PATCH /api/projects/:id/dates and is out of scope here.
     const mutationCount = 52;
+    // Each PATCH carries the version the previous one produced (data-model.md §6.4).
+    let version = (
+      (await (await page.request.get(`/api/projects/${projectId}`)).json()) as {
+        version: number;
+      }
+    ).version;
     for (let i = 0; i < mutationCount; i++) {
       const res = await page.request.patch(`/api/projects/${projectId}`, {
-        data: { notes: `AC-185 mutation ${i} ${Date.now()}` },
+        data: { expectedVersion: version, notes: `AC-185 mutation ${i} ${Date.now()}` },
       });
       expect(res.ok(), `PATCH ${i} failed with ${res.status()}`).toBe(true);
+      version = ((await res.json()) as { version: number }).version;
     }
 
     // Close + reopen the same card so the feed refetches.

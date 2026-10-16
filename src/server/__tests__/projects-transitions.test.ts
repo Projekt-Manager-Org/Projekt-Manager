@@ -10,7 +10,15 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { startApp, stopApp, login, authGet, authPatch, authPost } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPatch,
+  authPost,
+  expectedVersion,
+} from '../../test/api-helpers.js';
 import { WORKFLOW_ORDER } from '../../config/stateConfig.js';
 
 /** ISO 8601 date-time regex (loose — allows date-only or full timestamp) */
@@ -114,6 +122,7 @@ describe('Project Operations — Transitions', () => {
 
     it('updateDates response includes assignedWorkers', async () => {
       const res = await authPatch(token, `/api/projects/${projectId}/dates`, {
+        ...(await expectedVersion(token, `/api/projects/${projectId}`)),
         plannedStart: '2026-10-01',
         plannedEnd: '2026-10-15',
       });

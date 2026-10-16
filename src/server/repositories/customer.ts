@@ -74,6 +74,7 @@ export function toCustomerResponse(row: CustomerRow) {
     // 'reverse_charge'. Round-trips on POST/PATCH/GET.
     ustId: row.ustId ?? null,
     notes: row.notes ?? null,
+    version: row.version,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     createdBy: row.createdBy ?? null,
@@ -243,6 +244,19 @@ export async function getCustomerRow(
   id: string,
 ): Promise<CustomerRow | null> {
   const rows = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Fetch and row-lock the customer for a versioned edit (data-model.md
+ * §6.4): the lock holds until commit, so the version check and the
+ * write are atomic. Returns null when absent.
+ */
+export async function getCustomerRowForMutation(
+  db: MutatingDatabase,
+  id: string,
+): Promise<CustomerRow | null> {
+  const rows = await db.select().from(customers).where(eq(customers.id, id)).limit(1).for('update');
   return rows[0] ?? null;
 }
 

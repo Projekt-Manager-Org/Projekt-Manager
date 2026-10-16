@@ -74,6 +74,7 @@ const { useToastStore } = await import('@/state/toastStore');
 
 const CUSTOMER: Customer = {
   id: 'c-1',
+  version: 1,
   name: 'Kunde GmbH',
   phone: null,
   email: null,
@@ -88,6 +89,7 @@ const CUSTOMER: Customer = {
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: 'p-42',
+    version: 1,
     number: 'P-042',
     title: 'Dachsanierung',
     status: 'geplant',

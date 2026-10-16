@@ -22,6 +22,7 @@ export function ConfirmDialog() {
   const message = useConfirmStore((s) => s.message);
   const confirmLabel = useConfirmStore((s) => s.confirmLabel);
   const cancelLabel = useConfirmStore((s) => s.cancelLabel);
+  const details = useConfirmStore((s) => s.details);
   const resolve = useConfirmStore((s) => s.resolve);
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -51,6 +52,7 @@ export function ConfirmDialog() {
         <p id={MESSAGE_ID} className={styles.message}>
           {message}
         </p>
+        {details}
         <div className={styles.actions}>
           <button
             type="button"
