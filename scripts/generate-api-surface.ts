@@ -83,6 +83,7 @@ import {
   assertGatesAuthenticate,
   isSessionGated,
   methodsOf,
+  recordRoutes,
   withoutAutoHeadRoutes,
 } from './lib/route-introspection.js';
 
@@ -154,17 +155,8 @@ function renderRateLimit(route: RouteOptions): string {
 }
 
 /**
- * Build the app and collect every route it registers.
- *
- * The `onRoute` hook is attached AFTER `buildApp()` returns and BEFORE
- * `ready()`: `register()` defers plugin execution to `ready()`, so a root
- * hook added in between still sees every route, including those in child
- * encapsulation contexts.
- *
- * The collected `routeOptions` objects are read after `ready()`, not
- * inside the hook. Root hooks run before the plugin's own, and
- * `requireSession`'s marker is written by the latter — reading the held
- * reference afterwards is what sees the final value.
+ * Build the app and collect every route it registers — timing in
+ * `recordRoutes`.
  */
 async function collectRoutes(): Promise<RouteOptions[]> {
   let app: FastifyInstance | undefined;
@@ -174,10 +166,7 @@ async function collectRoutes(): Promise<RouteOptions[]> {
     pool = conn.pool;
 
     app = buildApp({ logger: false, db: conn.db });
-    const collected: RouteOptions[] = [];
-    app.addHook('onRoute', (routeOptions) => {
-      collected.push(routeOptions);
-    });
+    const collected = recordRoutes(app);
     await app.ready();
     return collected;
   } finally {
