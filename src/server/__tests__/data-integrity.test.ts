@@ -28,7 +28,6 @@ import {
   authPost,
   authPatch,
   authDelete,
-  expectedVersion,
 } from '../../test/api-helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -90,7 +89,6 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
 
   it('AT-43: date update on a soft-deleted project returns 404', async () => {
     const res = await authPatch(token, `/api/projects/${deletedProjectId}/dates`, {
-      ...(await expectedVersion(token, `/api/projects/${deletedProjectId}`)),
       plannedStart: '2026-09-01',
       plannedEnd: '2026-09-15',
     });
@@ -100,7 +98,6 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
 
   it('AT-44: PATCH update on a soft-deleted project returns 404', async () => {
     const res = await authPatch(token, `/api/projects/${deletedProjectId}`, {
-      ...(await expectedVersion(token, `/api/projects/${deletedProjectId}`)),
       title: 'Should Not Work',
     });
     expect(res.statusCode).toBe(404);

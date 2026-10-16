@@ -1,11 +1,11 @@
 -- ---------------------------------------------------------------
 -- Row version — optimistic-concurrency token (data-model.md §6.4).
 --
--- Every UPDATE of a project, customer, invoice or the company profile
--- advances `version`, whatever the write path: a field edit, a
--- transition, archive / restore, the issuance flip. Owning the bump
--- here means a new write path cannot forget it. The version check
--- itself lives in the services (lock the row, compare, write).
+-- Every UPDATE of a customer, an invoice or the company profile
+-- advances `version`, whatever the write path: a field edit, the
+-- issuance of a draft. Owning the bump here means a new write path
+-- cannot forget it. The version check itself lives in the services
+-- (lock the row, compare, write).
 --
 -- Exceptions (§6.4):
 --   - database cascades (FK `ON DELETE SET NULL` on `created_by` /
@@ -41,11 +41,6 @@ BEGIN
   RETURN NEW;
 END;
 $$;
---> statement-breakpoint
-CREATE TRIGGER projects_version_bump
-BEFORE UPDATE ON projects
-FOR EACH ROW
-EXECUTE FUNCTION row_version_bump_fn();
 --> statement-breakpoint
 CREATE TRIGGER customers_version_bump
 BEFORE UPDATE ON customers

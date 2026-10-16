@@ -15,21 +15,6 @@ import { computeSummary } from '@/domain/summary';
 import { projectApi, type ApiResult } from '@/api/client';
 import { handleSessionExpired } from './sessionExpired';
 import { useProjectManagementStore } from './projectManagementStore';
-import { isVersionConflict, versionedWrite } from './versionedWrites';
-
-/** Write lane for one project (see `versionedWrite`). */
-const laneKey = (projectId: string) => `project:${projectId}`;
-
-/** Outcome of a versioned project write; `'conflict'` = stale write, project refetched. */
-export type ProjectWriteOutcome = 'ok' | 'conflict' | 'failed';
-
-/** Fields the detail page edits through Update project (api.md §14.2.2). */
-export interface ProjectFieldsUpdate {
-  title?: string;
-  estimatedValue?: number | null;
-  notes?: string | null;
-  siteAddress?: Project['siteAddress'];
-}
 
 /**
  * Outcome of `fetchProject(id)`. Distinguishes the meaningful branches
@@ -58,17 +43,6 @@ interface ProjectState {
    */
   fetchProject: (id: string) => Promise<FetchProjectOutcome>;
   /**
-   * Update project fields (§8.15) from an edit that started at
-   * `startVersion` (behavior.md §9.5). On `VERSION_CONFLICT` the project
-   * is refetched before the stale-write message is set, so the caller
-   * can reset its field to the refetched value.
-   */
-  updateProject: (
-    id: string,
-    startVersion: number,
-    fields: ProjectFieldsUpdate,
-  ) => Promise<ProjectWriteOutcome>;
-  /**
    * Replace the project's assigned-worker set (§8.15.3). Applies
    * optimistically per behavior.md §9.5 and reverts on failure.
    * Returns true when the server-confirmed row has been written back.
@@ -80,12 +54,7 @@ interface ProjectState {
   ) => Promise<boolean>;
   transitionForward: (projectId: string) => void;
   transitionBackward: (projectId: string) => void;
-  updateDates: (
-    projectId: string,
-    startVersion: number,
-    start?: string | null,
-    end?: string | null,
-  ) => void;
+  updateDates: (projectId: string, start?: string | null, end?: string | null) => void;
   clearMutationError: () => void;
 
   getProjectsByState: (state: WorkflowState) => Project[];
@@ -95,6 +64,19 @@ interface ProjectState {
 
 /** Monotonic counter to discard stale fetch responses. */
 let fetchSeq = 0;
+
+/**
+ * Per-project serialization for `updateAssignedWorkers`. A second
+ * worker-assignment mutation that fires before the first has settled
+ * would otherwise capture the first's optimistic state as its own
+ * `before` snapshot — a failure would then roll back to the wrong
+ * baseline. Chaining the second call onto the first's promise makes
+ * the two operations strictly sequential: the second's `before` is
+ * whatever the server wrote back (or the revert), which is a true
+ * server-authoritative snapshot. The queue is empty once all chained
+ * calls settle; we drop the entry so the map does not grow unbounded.
+ */
+const ASSIGNED_WORKERS_QUEUE = new Map<string, Promise<unknown>>();
 
 export const useProjectStore = create<ProjectState>((set, get) => {
   /**
@@ -183,27 +165,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       });
   }
 
-  /** Clear the in-flight flag and surface `message` in the mutation banner. */
-  function settleFailure(projectId: string, message: string): void {
-    set((s) => {
-      const { [projectId]: _, ...rest } = s.mutationInFlight;
-      return { mutationError: message, mutationInFlight: rest };
-    });
-  }
-
-  /** Clear the in-flight flag and adopt the server's row. */
-  function settleSuccess(project: Project): void {
-    set((s) => {
-      const { [project.id]: _, ...rest } = s.mutationInFlight;
-      return {
-        projects: s.projects.map((p) => (p.id === project.id ? project : p)),
-        mutationInFlight: rest,
-      };
-    });
-    // Sync the management store so both views stay consistent.
-    useProjectManagementStore.getState().fetchProjects();
-  }
-
   return {
     projects: [],
     mutationError: null,
@@ -241,89 +202,83 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       return { kind: 'ok', project };
     },
 
-    updateProject: async (id, startVersion, fields) => {
-      set((s) => ({
-        mutationInFlight: { ...s.mutationInFlight, [id]: true },
-        mutationError: null,
-      }));
-      let result: ApiResult<Project>;
-      try {
-        result = await versionedWrite(laneKey(id), startVersion, (expectedVersion) =>
-          projectApi.update(id, expectedVersion, fields),
-        );
-      } catch {
-        settleFailure(id, STRINGS.errors.mutationFailed);
-        return 'failed';
-      }
-      if (!result.ok) {
-        if (result.sessionExpired) {
-          handleSessionExpired();
-          return 'failed';
-        }
-        const conflict = isVersionConflict(result);
-        if (conflict) await get().fetchProject(id);
-        settleFailure(id, result.error.message);
-        return conflict ? 'conflict' : 'failed';
-      }
-      settleSuccess(result.data);
-      return 'ok';
-    },
-
     updateAssignedWorkers: async (
       id: string,
       assignedWorkerIds: string[],
       optimisticAssigned: { userId: string; displayName: string }[],
     ): Promise<boolean> => {
-      const startVersion = get().projects.find((p) => p.id === id)?.version;
-      if (startVersion === undefined) return false;
-
-      // The lane serializes per-project writes, so `before` is captured
-      // when this write's turn comes: the previous write's committed
-      // result (server data or a revert), not its in-flight optimistic
-      // state. A chain of rapidly-dispatched remove-Anna + remove-Bernd
-      // thus rolls back to the right baseline on failure.
-      let sent = false;
-      let before: Project['assignedWorkers'] | undefined;
-      const revert = () =>
+      // Serialize per-project mutations so the second call's `before`
+      // snapshot is the first's committed result (server data or a
+      // revert), not the first's in-flight optimistic state. A chain of
+      // rapidly-dispatched remove-Anna + remove-Bernd thus rolls back
+      // to the right baseline on failure.
+      const prior = ASSIGNED_WORKERS_QUEUE.get(id) ?? Promise.resolve();
+      const task = prior.then(async () => {
+        const before = get().projects.find((p) => p.id === id)?.assignedWorkers;
         set((s) => ({
           projects: s.projects.map((p) =>
-            p.id === id ? { ...p, assignedWorkers: before ?? [] } : p,
+            p.id === id ? { ...p, assignedWorkers: optimisticAssigned } : p,
           ),
+          mutationInFlight: { ...s.mutationInFlight, [id]: true },
+          mutationError: null,
         }));
 
-      let result: ApiResult<Project>;
-      try {
-        result = await versionedWrite(laneKey(id), startVersion, (expectedVersion) => {
-          sent = true;
-          before = get().projects.find((p) => p.id === id)?.assignedWorkers;
-          set((s) => ({
-            projects: s.projects.map((p) =>
-              p.id === id ? { ...p, assignedWorkers: optimisticAssigned } : p,
-            ),
-            mutationInFlight: { ...s.mutationInFlight, [id]: true },
-            mutationError: null,
-          }));
-          return projectApi.update(id, expectedVersion, { assignedWorkerIds });
-        });
-      } catch {
-        if (sent) revert();
-        settleFailure(id, STRINGS.errors.mutationFailed);
-        return false;
-      }
-
-      if (!result.ok) {
-        if (result.sessionExpired) {
-          handleSessionExpired();
+        let result;
+        try {
+          result = await projectApi.update(id, { assignedWorkerIds });
+        } catch {
+          set((s) => {
+            const { [id]: _, ...rest } = s.mutationInFlight;
+            return {
+              projects: s.projects.map((p) =>
+                p.id === id ? { ...p, assignedWorkers: before ?? [] } : p,
+              ),
+              mutationError: STRINGS.errors.mutationFailed,
+              mutationInFlight: rest,
+            };
+          });
           return false;
         }
-        if (sent) revert();
-        if (isVersionConflict(result)) await get().fetchProject(id);
-        settleFailure(id, result.error.message || STRINGS.errors.mutationFailed);
-        return false;
-      }
 
-      settleSuccess(result.data);
-      return true;
+        if (!result.ok) {
+          if (result.sessionExpired) {
+            handleSessionExpired();
+            return false;
+          }
+          set((s) => {
+            const { [id]: _, ...rest } = s.mutationInFlight;
+            return {
+              projects: s.projects.map((p) =>
+                p.id === id ? { ...p, assignedWorkers: before ?? [] } : p,
+              ),
+              mutationError: result.error.message || STRINGS.errors.mutationFailed,
+              mutationInFlight: rest,
+            };
+          });
+          return false;
+        }
+
+        set((s) => {
+          const { [id]: _, ...rest } = s.mutationInFlight;
+          return {
+            projects: s.projects.map((p) => (p.id === id ? result.data : p)),
+            mutationInFlight: rest,
+          };
+        });
+        return true;
+      });
+
+      // Register the task so a rapid follow-up waits for it. The finally
+      // hook drops the queue entry only when no newer chain has already
+      // replaced it — otherwise we would orphan the tail of the chain.
+      ASSIGNED_WORKERS_QUEUE.set(id, task);
+      try {
+        return await task;
+      } finally {
+        if (ASSIGNED_WORKERS_QUEUE.get(id) === task) {
+          ASSIGNED_WORKERS_QUEUE.delete(id);
+        }
+      }
     },
 
     transitionForward: (projectId: string) => {
@@ -334,12 +289,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       runTransition(projectId, getPreviousState, projectApi.transitionBackward);
     },
 
-    updateDates: (
-      projectId: string,
-      startVersion: number,
-      start?: string | null,
-      end?: string | null,
-    ) => {
+    updateDates: (projectId: string, start?: string | null, end?: string | null) => {
       const project = get().projects.find((p) => p.id === projectId);
       if (!project) return;
 
@@ -360,25 +310,23 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         mutationError: null,
       }));
 
-      versionedWrite(laneKey(projectId), startVersion, (expectedVersion) =>
-        projectApi.updateDates(projectId, expectedVersion, {
-          plannedStart: start,
-          plannedEnd: end,
-        }),
-      )
-        .then(async (result) => {
+      projectApi
+        .updateDates(projectId, { plannedStart: start, plannedEnd: end })
+        .then((result) => {
           if (!result.ok) {
             if (result.sessionExpired) {
               handleSessionExpired();
               return;
             }
-            // Revert optimistic update; on a stale write, show the
-            // refetched dates (behavior.md §9.5).
-            set((s) => ({
-              projects: s.projects.map((p) => (p.id === projectId ? originalProject : p)),
-            }));
-            if (isVersionConflict(result)) await get().fetchProject(projectId);
-            settleFailure(projectId, result.error.message);
+            // Revert optimistic update
+            set((s) => {
+              const { [projectId]: _, ...rest } = s.mutationInFlight;
+              return {
+                projects: s.projects.map((p) => (p.id === projectId ? originalProject : p)),
+                mutationError: result.error.message,
+                mutationInFlight: rest,
+              };
+            });
             // NOT_FOUND on a date edit: the project disappeared from the
             // server. Refetch to drop the stale card from the local list
             // (see note in runTransition).
@@ -389,7 +337,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           }
 
           // Replace optimistic data with server response
-          settleSuccess(result.data);
+          set((s) => {
+            const { [projectId]: _, ...rest } = s.mutationInFlight;
+            return {
+              projects: s.projects.map((p) => (p.id === projectId ? result.data : p)),
+              mutationInFlight: rest,
+            };
+          });
+          // Sync the management store
+          useProjectManagementStore.getState().fetchProjects();
         })
         .catch(() => {
           set((s) => {

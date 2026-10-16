@@ -48,15 +48,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
-import {
-  startApp,
-  stopApp,
-  login,
-  authGet,
-  authPost,
-  authPatch,
-  expectedVersion,
-} from '../../test/api-helpers.js';
+import { startApp, stopApp, login, authGet, authPost, authPatch } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
@@ -341,7 +333,6 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
       const projectId = await createFixtureProject();
       // Assign worker1 to the project — the rule's only recipient source.
       const assignRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
-        ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
         assignedWorkerIds: [worker1Id],
       });
       expect(assignRes.statusCode).toBe(200);

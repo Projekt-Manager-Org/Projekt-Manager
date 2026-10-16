@@ -20,15 +20,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import {
-  startApp,
-  stopApp,
-  login,
-  authGet,
-  authPost,
-  authPatch,
-  expectedVersion,
-} from '../../test/api-helpers.js';
+import { startApp, stopApp, login, authGet, authPost, authPatch } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 
 let projectNumberCounter = 0;
@@ -191,7 +183,6 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
       const id = createRes.json().id;
 
       const patchRes = await authPatch(ownerToken, `/api/projects/${id}`, {
-        ...(await expectedVersion(ownerToken, `/api/projects/${id}`)),
         siteAddress: SITE_BERLIN,
       });
       expect(patchRes.statusCode).toBe(200);
@@ -229,7 +220,6 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
       const id = createRes.json().id;
 
       const patchRes = await authPatch(ownerToken, `/api/projects/${id}`, {
-        ...(await expectedVersion(ownerToken, `/api/projects/${id}`)),
         siteAddress: null,
       });
       expect(patchRes.statusCode).toBe(200);
@@ -267,7 +257,6 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
 
       // PATCH another field. siteAddress must not be touched.
       const patchRes = await authPatch(ownerToken, `/api/projects/${id}`, {
-        ...(await expectedVersion(ownerToken, `/api/projects/${id}`)),
         notes: 'Notiz ohne Adresseingriff',
       });
       expect(patchRes.statusCode).toBe(200);
@@ -334,7 +323,6 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
       const id = createRes.json().id;
 
       const patchRes = await authPatch(ownerToken, `/api/projects/${id}`, {
-        ...(await expectedVersion(ownerToken, `/api/projects/${id}`)),
         siteAddress: { street: 'X', zip: '', city: 'Köln' },
       });
       expect(patchRes.statusCode).toBe(422);

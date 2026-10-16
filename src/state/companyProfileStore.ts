@@ -14,7 +14,6 @@ import type { CompanyProfile } from '@/domain/invoice';
 import { companyProfileApi, type CompanyProfileInput } from '@/api/client';
 import { STRINGS } from '@/config/strings';
 import { handleSessionExpired } from './sessionExpired';
-import { isVersionConflict } from './versionedWrites';
 
 /**
  * Payload accepted by `save`. The full `CompanyProfileInput` shape per
@@ -101,7 +100,7 @@ export const useCompanyProfileStore = create<CompanyProfileState>((set, get) => 
         handleSessionExpired();
         return { status: 'error' };
       }
-      if (isVersionConflict(result)) {
+      if (result.error.code === 'VERSION_CONFLICT') {
         await get().fetch();
         // A failed refetch reloaded nothing — the stale-write message would say it did.
         if (get().fetchError) {

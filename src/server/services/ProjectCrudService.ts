@@ -16,7 +16,6 @@ import {
   getProject as getProjectRepo,
   getProjectRowById,
   getProjectForMutation,
-  touchProject,
   insertProject as insertProjectRepo,
   updateProjectFields,
   diffProjectWorkers,
@@ -58,7 +57,6 @@ import {
   conflict,
   extractSqlState,
   projectHasInvoices,
-  versionConflict,
 } from '../errors.js';
 import { countIssuedOrCancelledForProject } from '../repositories/invoice-read.js';
 import { projectMatches, createIdempotent } from './idempotency.js';
@@ -438,14 +436,9 @@ export class ProjectCrudService {
    * `update` audit row is emitted for the project itself; only the
    * `project_worker` audit rows land. This matches the grain pinned
    * in AT-89 (count(project_worker audit rows) == count of changes).
-   *
-   * `expectedVersion` is checked under the row lock before any write
-   * (data-model.md §6.4); a worker-only change still bumps the project's
-   * version via `touchProject`.
    */
   async updateProject(
     id: string,
-    expectedVersion: number,
     data: {
       title?: string;
       customerId?: string;
@@ -478,7 +471,6 @@ export class ProjectCrudService {
       const project = await this.db.transaction(async (tx) => {
         const priorRow = await getProjectForMutation(tx, id);
         if (!priorRow) throw new ProjectNotFoundError();
-        if (priorRow.version !== expectedVersion) throw versionConflict();
 
         let currentRow: ProjectRow = priorRow;
 
@@ -600,9 +592,6 @@ export class ProjectCrudService {
               },
             });
             collected.push(res.auditRow);
-          }
-          if (!hasFieldUpdate && toAdd.length + toRemove.length > 0) {
-            currentRow = await touchProject(tx, id, userId);
           }
         }
 

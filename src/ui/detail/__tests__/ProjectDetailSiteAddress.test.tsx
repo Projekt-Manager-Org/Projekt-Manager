@@ -98,7 +98,6 @@ function makeProject(siteAddress: Address | null, customerAddress: Address | nul
   const customer = customerWith(customerAddress);
   return {
     id: 'p-42',
-    version: 1,
     number: 'P-042',
     title: 'Dachsanierung',
     status: 'geplant',

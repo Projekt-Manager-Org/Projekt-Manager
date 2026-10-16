@@ -89,7 +89,6 @@ const CUSTOMER: Customer = {
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
     id: 'p-42',
-    version: 1,
     number: 'P-042',
     title: 'Dachsanierung',
     status: 'geplant',

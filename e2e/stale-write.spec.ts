@@ -11,11 +11,10 @@ import { STORAGE_STATES } from './storage-states';
 /**
  * E2E — stale-write recovery (ui/behavior.md §9.5, data-model.md §6.4).
  *
- *   - AC-379: an edit whose entity another session changes is rejected
- *     with the stale-write message, shows the refetched values and is not
- *     retried — whether or not a background refresh landed while the edit
- *     was open. Consecutive saves of one client never conflict with each
- *     other. Inline fields (project detail) and a form (invoice draft).
+ *   - AC-379: an invoice draft form whose draft another session changes
+ *     is rejected with the stale-write message and shows the refetched
+ *     draft — a background refresh while the form is open does not
+ *     advance the version it sends.
  *   - AC-382: the `Ausstellen` / `Verwerfen` dialogs preview the draft and
  *     send the previewed version — a background refresh while the dialog
  *     is open does not advance it.
@@ -60,7 +59,7 @@ async function officeRequest(browser: Browser): Promise<APIRequestContext> {
 
 async function mintProject(
   request: APIRequestContext,
-  status = 'angebot',
+  status: string,
 ): Promise<{ projectId: string; customerName: string }> {
   const customerName = `Stale-Kunde ${suffix()}`;
   // A billing address makes drafts on the project issuable (AC-289).
@@ -77,7 +76,6 @@ async function mintProject(
       title: `Stale-write ${suffix()}`,
       customerId: (await customer.json()).id,
       status,
-      notes: 'Ausgangsnotiz',
     },
   });
   expect(project.status(), await project.text()).toBe(201);
@@ -117,135 +115,7 @@ async function openProject(page: Page, projectId: string): Promise<void> {
   await expect(page.getByTestId('project-detail-page')).toBeVisible();
 }
 
-function projectPatches(page: Page, projectId: string): string[] {
-  const seen: string[] = [];
-  page.on('request', (req) => {
-    if (req.method() === 'PATCH' && req.url().endsWith(`/api/projects/${projectId}`)) {
-      seen.push(req.url());
-    }
-  });
-  return seen;
-}
-
-function nextProjectPatch(page: Page, projectId: string) {
-  return page.waitForResponse(
-    (res) => res.request().method() === 'PATCH' && res.url().endsWith(`/api/projects/${projectId}`),
-  );
-}
-
 test.describe('AC-379: edits recover from a stale write', () => {
-  test('a background refresh does not advance the version: rejected once, then a fresh edit saves', async ({
-    page,
-    browser,
-  }) => {
-    const office = await officeRequest(browser);
-    const { projectId } = await mintProject(office);
-    await openProject(page, projectId);
-    const patches = projectPatches(page, projectId);
-
-    const notes = page.getByTestId('project-notes-input');
-    await notes.click();
-    await notes.fill('Notiz, die nie ankommen darf');
-
-    // Office renames the project while the owner's edit is open.
-    const rename = await office.patch(`/api/projects/${projectId}`, {
-      data: {
-        title: 'Von Büro umbenannt',
-        expectedVersion: await version(office, `/api/projects/${projectId}`),
-      },
-    });
-    expect(rename.ok(), await rename.text()).toBe(true);
-    // The background refresh has landed once the new title renders.
-    await expect(page.getByTestId('project-title-edit')).toHaveValue('Von Büro umbenannt', {
-      timeout: SSE_PROPAGATION_TIMEOUT_MS,
-    });
-
-    const conflict = nextProjectPatch(page, projectId);
-    await notes.blur();
-    expect((await conflict).status()).toBe(409);
-    await expect(page.getByText(STALE_MESSAGE)).toBeVisible();
-    await expect(notes).toHaveValue('Ausgangsnotiz');
-    // No auto-retry: give a retry the time to fire, then count.
-    await page.waitForTimeout(500);
-    expect(patches).toHaveLength(1);
-
-    // An edit begun after the refetch carries the fresh version.
-    await notes.click();
-    await notes.fill('Zweiter Anlauf');
-    const retry = nextProjectPatch(page, projectId);
-    await notes.blur();
-    expect((await retry).status()).toBe(200);
-
-    const stored = await (await office.get(`/api/projects/${projectId}`)).json();
-    expect(stored.notes).toBe('Zweiter Anlauf');
-    expect(stored.title).toBe('Von Büro umbenannt');
-  });
-
-  test('a conflict with no refresh in between shows the server values after the 409', async ({
-    page,
-    browser,
-  }) => {
-    // Without the realtime channel the page cannot learn of the office
-    // edit before the save — so the refetched value can only come from
-    // the conflict recovery itself, not from a refresh or a revert.
-    await page.route('**/api/events', (route) => route.abort());
-    const office = await officeRequest(browser);
-    const { projectId } = await mintProject(office);
-    await openProject(page, projectId);
-
-    const edit = await office.patch(`/api/projects/${projectId}`, {
-      data: {
-        notes: 'Notiz vom Büro',
-        expectedVersion: await version(office, `/api/projects/${projectId}`),
-      },
-    });
-    expect(edit.ok(), await edit.text()).toBe(true);
-
-    const notes = page.getByTestId('project-notes-input');
-    await expect(notes).toHaveValue('Ausgangsnotiz');
-    await notes.click();
-    await notes.fill('Notiz vom Inhaber');
-    const conflict = nextProjectPatch(page, projectId);
-    await notes.blur();
-    expect((await conflict).status()).toBe(409);
-    await expect(page.getByText(STALE_MESSAGE)).toBeVisible();
-    await expect(notes).toHaveValue('Notiz vom Büro');
-  });
-
-  test('consecutive saves of one client never conflict with each other', async ({
-    page,
-    browser,
-  }) => {
-    const office = await officeRequest(browser);
-    const { projectId } = await mintProject(office);
-    // Hold the first save in flight so the second blur happens before it
-    // returns — an unserialized client would send the second with the old
-    // version.
-    let held = false;
-    await page.route(`**/api/projects/${projectId}`, async (route) => {
-      if (route.request().method() === 'PATCH' && !held) {
-        held = true;
-        await new Promise<void>((r) => setTimeout(r, 1_000));
-      }
-      await route.continue();
-    });
-    await openProject(page, projectId);
-
-    await page.getByTestId('project-notes-input').fill('Erste Änderung');
-    await page.getByTestId('project-value-edit').click();
-    await page.getByTestId('project-value-edit').fill('4200');
-    await page.getByTestId('project-title-edit').click();
-
-    // Both saves land — including the held one.
-    await expect
-      .poll(async () => {
-        const p = await (await office.get(`/api/projects/${projectId}`)).json();
-        return [p.notes, p.estimatedValue];
-      })
-      .toEqual(['Erste Änderung', 4200]);
-    await expect(page.getByText(STALE_MESSAGE)).toHaveCount(0);
-  });
-
   test('the draft form sends the version it opened with and resets to the refetched draft', async ({
     page,
     browser,

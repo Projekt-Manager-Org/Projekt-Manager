@@ -57,7 +57,6 @@ import {
   authPost,
   authPatch,
   authDelete,
-  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -437,7 +436,6 @@ describe('Attachment audit contract (AC-219)', () => {
     const renamedTitle = `${originalTitle} (renamed)`;
     try {
       const patchRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
-        ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
         title: renamedTitle,
       });
       expect(patchRes.statusCode).toBe(200);
@@ -455,10 +453,7 @@ describe('Attachment audit contract (AC-219)', () => {
       expect(rowAfterRename!.ancestor_entity_label).toBe(originalLabel);
       expect(rowAfterRename!.ancestor_entity_label).not.toBe(`${originalNumber} ${renamedTitle}`);
     } finally {
-      await authPatch(ownerToken, `/api/projects/${projectId}`, {
-        ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
-        title: originalTitle,
-      });
+      await authPatch(ownerToken, `/api/projects/${projectId}`, { title: originalTitle });
     }
   });
 });

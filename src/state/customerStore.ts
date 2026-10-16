@@ -11,7 +11,6 @@ import { customerApi, type CustomerSortKey, type SortDir } from '@/api/client';
 import { STRINGS } from '@/config/strings';
 import { handleSessionExpired } from './sessionExpired';
 import { useStorageUsageStore } from './storageUsageStore';
-import { isVersionConflict } from './versionedWrites';
 
 // Re-export the sort-key/direction types so UI components reach them
 // through the state layer (the API client is off-limits to UI per
@@ -194,7 +193,7 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
         handleSessionExpired();
         return { status: 'failed' };
       }
-      if (isVersionConflict(result)) {
+      if (result.error.code === 'VERSION_CONFLICT') {
         const fresh = await customerApi.get(id);
         if (fresh.ok) {
           set((s) => ({

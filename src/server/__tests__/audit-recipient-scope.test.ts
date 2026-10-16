@@ -210,7 +210,6 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
     const projectId = projectRes.json().id as string;
 
     const assignRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
-      ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
       assignedWorkerIds: [worker1Id],
     });
     expect(assignRes.statusCode).toBe(200);
@@ -271,7 +270,6 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
     // project_workers inserts under a `mutate()` transaction, producing
     // the audit row the recipient-scope filter should match.
     const assignARes = await authPatch(ownerToken, `/api/projects/${projectA}`, {
-      ...(await expectedVersion(ownerToken, `/api/projects/${projectA}`)),
       assignedWorkerIds: [officeId],
     });
     expect(assignARes.statusCode).toBe(200);
@@ -285,7 +283,6 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
     expect(projectBRes.statusCode).toBe(201);
     const projectB = projectBRes.json().id as string;
     const assignBRes = await authPatch(ownerToken, `/api/projects/${projectB}`, {
-      ...(await expectedVersion(ownerToken, `/api/projects/${projectB}`)),
       assignedWorkerIds: [worker1Id],
     });
     expect(assignBRes.statusCode).toBe(200);
@@ -325,7 +322,6 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
     const projectId = projectRes.json().id as string;
 
     const assignRes = await authPatch(ownerToken, `/api/projects/${projectId}`, {
-      ...(await expectedVersion(ownerToken, `/api/projects/${projectId}`)),
       assignedWorkerIds: [worker1Id],
     });
     expect(assignRes.statusCode).toBe(200);

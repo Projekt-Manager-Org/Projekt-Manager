@@ -208,9 +208,6 @@ export const projects = pgTable(
     estimatedValue: numeric('estimated_value', { precision: 12, scale: 2 }),
     notes: text('notes'),
     deleted: boolean('deleted').notNull().default(false),
-    // Optimistic-concurrency token (data-model.md §6.4) — bumped by the
-    // `*_version_bump` trigger (baseline/tail/50-row-version.sql).
-    version: integer('version').notNull().default(1),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

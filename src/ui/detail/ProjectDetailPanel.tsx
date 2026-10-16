@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { STATE_CONFIG_MAP } from '@/config/stateConfig';
 import { STRINGS } from '@/config/strings';
@@ -58,13 +58,6 @@ export function ProjectDetailPanel({ project, onClose }: ProjectDetailPanelProps
     setEndDraft(dateInputValue(currentProject.plannedEnd));
   }
 
-  // The version a date edit started from — captured on focus, so a
-  // background refresh during the edit cannot advance it (behavior.md §9.5).
-  const startVersion = useRef(currentProject.version);
-  const captureStartVersion = () => {
-    startVersion.current = currentProject.version;
-  };
-
   const commitStart = () => {
     const storeValue = dateInputValue(currentProject.plannedStart);
     if (startDraft === storeValue) return;
@@ -73,17 +66,17 @@ export function ProjectDetailPanel({ project, onClose }: ProjectDetailPanelProps
       // (spec §8.4, data-model §6.8). The intermediate-empty case is
       // excluded by the blur gate: by the time blur fires the user has
       // left the field, so an empty value reflects a deliberate clear.
-      updateDates(currentProject.id, startVersion.current, null, null);
+      updateDates(currentProject.id, null, null);
       setEndDraft('');
     } else {
-      updateDates(currentProject.id, startVersion.current, startDraft || null, undefined);
+      updateDates(currentProject.id, startDraft || null, undefined);
     }
   };
 
   const commitEnd = () => {
     const storeValue = dateInputValue(currentProject.plannedEnd);
     if (endDraft === storeValue) return;
-    updateDates(currentProject.id, startVersion.current, undefined, endDraft || null);
+    updateDates(currentProject.id, undefined, endDraft || null);
   };
 
   const handleOpenDetailPage = () => {
@@ -173,7 +166,6 @@ export function ProjectDetailPanel({ project, onClose }: ProjectDetailPanelProps
                     className={styles.dateInput}
                     value={startDraft}
                     onChange={(e) => setStartDraft(e.target.value)}
-                    onFocus={captureStartVersion}
                     onBlur={commitStart}
                     data-testid="detail-date-start"
                   />
@@ -185,7 +177,6 @@ export function ProjectDetailPanel({ project, onClose }: ProjectDetailPanelProps
                     className={styles.dateInput}
                     value={endDraft}
                     onChange={(e) => setEndDraft(e.target.value)}
-                    onFocus={captureStartVersion}
                     onBlur={commitEnd}
                     data-testid="detail-date-end"
                   />

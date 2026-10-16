@@ -122,7 +122,6 @@ describe('Role-based Permission Enforcement', () => {
       const project = await findProjectByStatus(ownerToken, 'geplant');
 
       const res = await authPatch(tokenFor(role), `/api/projects/${project.id}/dates`, {
-        expectedVersion: project.version,
         plannedStart: '2026-10-01',
         plannedEnd: '2026-10-15',
       });

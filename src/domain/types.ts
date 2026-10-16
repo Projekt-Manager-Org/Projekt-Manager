@@ -43,8 +43,6 @@ export interface Project {
   estimatedValue: number | null;
   notes: string | null;
   deleted: boolean;
-  /** Concurrency token (data-model.md §6.4). */
-  version: number;
 
   createdAt: string;
   updatedAt: string;

@@ -29,7 +29,6 @@ import {
   type InvoiceUpdateDraftInput,
 } from '@/api/client';
 import { handleSessionExpired } from './sessionExpired';
-import { isVersionConflict } from './versionedWrites';
 
 /**
  * Result of a write action. `'ok'` — server committed; the per-project
@@ -188,7 +187,9 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => {
           handleSessionExpired();
           return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
         }
-        if (isVersionConflict(result)) return refetchAfterConflict(invoiceId, projectId, result);
+        if (result.error.code === 'VERSION_CONFLICT') {
+          return refetchAfterConflict(invoiceId, projectId, result);
+        }
         const message = decodeErrorMessage(result.error.code, result.error.message);
         if (result.category === 'validation') {
           const missing = extractMissingFields(result.details);
@@ -211,7 +212,9 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => {
           handleSessionExpired();
           return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
         }
-        if (isVersionConflict(result)) return refetchAfterConflict(invoiceId, projectId, result);
+        if (result.error.code === 'VERSION_CONFLICT') {
+          return refetchAfterConflict(invoiceId, projectId, result);
+        }
         return {
           status: 'error',
           errorMessage: decodeErrorMessage(result.error.code, result.error.message),
@@ -228,7 +231,9 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => {
           handleSessionExpired();
           return { status: 'error', errorMessage: STRINGS.auth.sessionExpired };
         }
-        if (isVersionConflict(result)) return refetchAfterConflict(invoiceId, projectId, result);
+        if (result.error.code === 'VERSION_CONFLICT') {
+          return refetchAfterConflict(invoiceId, projectId, result);
+        }
         const message = decodeErrorMessage(result.error.code, result.error.message);
         // `COMPANY_PROFILE_REQUIRED` is a domain-level precondition gate, not
         // a request-validation error — the server tags it with its own code

@@ -371,7 +371,6 @@ export const projectApi = {
 
   update: (
     id: string,
-    expectedVersion: number,
     data: {
       title?: string;
       customerId?: string;
@@ -385,11 +384,7 @@ export const projectApi = {
        */
       siteAddress?: Address | null;
     },
-  ) =>
-    apiCall<Project>(`/api/projects/${id}`, {
-      method: 'PATCH',
-      body: { expectedVersion, ...data },
-    }),
+  ) => apiCall<Project>(`/api/projects/${id}`, { method: 'PATCH', body: data }),
 
   delete: (id: string) =>
     apiCall<{ success: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
@@ -423,14 +418,10 @@ export const projectApi = {
       body: { expectedStatus },
     }),
 
-  updateDates: (
-    id: string,
-    expectedVersion: number,
-    dates: { plannedStart?: string | null; plannedEnd?: string | null },
-  ) =>
+  updateDates: (id: string, dates: { plannedStart?: string | null; plannedEnd?: string | null }) =>
     apiCall<Project>(`/api/projects/${id}/dates`, {
       method: 'PATCH',
-      body: { expectedVersion, ...dates },
+      body: dates,
     }),
 };
 

@@ -15,7 +15,6 @@ function daysAgo(days: number): string {
 function makeProject(p: Partial<Project> & Pick<Project, 'status' | 'statusChangedAt'>): Project {
   return {
     id: 'id',
-    version: 1,
     number: '2026-001',
     title: 'Test',
     customerId: 'c',

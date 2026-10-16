@@ -11,9 +11,8 @@
  *     draft, the project, the sequence and the PDF prefix in storage untouched.
  *   - AT-151 / AC-377: a versioned operation without `expectedVersion` is
  *     a `422 VALIDATION_ERROR`.
- *   - AT-152 / AC-378: writes beyond a plain field edit (transition, a
- *     worker-assignment change, archive / restore, issuance flip) change the
- *     version; cancel does not.
+ *   - AT-152 / AC-378: issuing a draft changes its version; cancelling the
+ *     issued invoice does not.
  *   - AT-153 / AC-381: two writes carrying the same current version, queued
  *     in a fixed order behind a row lock held by a third connection, commit
  *     exactly once — the first in the queue.
@@ -36,7 +35,6 @@ import {
   authPost,
   authPatch,
   authPut,
-  authDelete,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -49,7 +47,6 @@ type Res = LightMyRequestResponse;
 
 let ownerToken: string;
 let customerId: string;
-let workerId: string;
 
 const LINE = {
   description: 'Anstrich Fassade',
@@ -77,7 +74,7 @@ const year = new Date().getFullYear();
 // Fixtures
 // ---------------------------------------------------------------------
 
-async function mintProject(status = 'angebot'): Promise<string> {
+async function mintProject(status: string): Promise<string> {
   const suffix = crypto.randomUUID().slice(0, 8);
   const res = await authPost(ownerToken, '/api/projects', {
     number: `SW-${suffix}`,
@@ -188,38 +185,6 @@ interface VersionedCase {
 
 const VERSIONED: VersionedCase[] = [
   {
-    name: 'Update project',
-    setup: async () => {
-      const id = await mintProject();
-      return {
-        readUrl: `/api/projects/${id}`,
-        row: { table: 'projects', id },
-        write: (v) =>
-          authPatch(ownerToken, `/api/projects/${id}`, {
-            notes: `edit ${crypto.randomUUID()}`,
-            ...(v === undefined ? {} : { expectedVersion: v }),
-          }),
-      };
-    },
-  },
-  {
-    name: 'Update dates',
-    setup: async () => {
-      const id = await mintProject();
-      let day = 10;
-      return {
-        readUrl: `/api/projects/${id}`,
-        row: { table: 'projects', id },
-        write: (v) =>
-          authPatch(ownerToken, `/api/projects/${id}/dates`, {
-            plannedStart: '2026-09-01',
-            plannedEnd: `2026-09-${day++}`,
-            ...(v === undefined ? {} : { expectedVersion: v }),
-          }),
-      };
-    },
-  },
-  {
     name: 'Update customer',
     setup: async () => {
       const id = await mintCustomer();
@@ -273,10 +238,6 @@ beforeAll(async () => {
   await startApp();
   ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
   customerId = await mintCustomer();
-  const userList = await authGet(ownerToken, '/api/users');
-  workerId = (userList.json().users as { id: string; username: string }[]).find(
-    (u) => u.username === SEED_USERS.worker1.username,
-  )!.id;
   // Issue arms need a complete profile (AC-289); write it with the current version.
   const profile = await authGet(ownerToken, '/api/company-profile');
   const put = await authPut(ownerToken, '/api/company-profile', {
@@ -376,7 +337,9 @@ describe('AT-150 / AC-376: a stale issue allocates no number and writes nothing'
       expect(await read(readUrl)).toEqual(current);
       // The rollback hides a late check from the DB, not from storage.
       expect(await storedInvoicePdfs(projectId)).toEqual([]);
-      expect((await read(`/api/projects/${projectId}`)).status).toBe('rechnung_faellig');
+      expect((await authGet(ownerToken, `/api/projects/${projectId}`)).json().status).toBe(
+        'rechnung_faellig',
+      );
       expect(await invoiceSequenceNextValue()).toBe(sequence);
       expect(await auditRowCount()).toBe(audit);
       expect(sse.frames()).toBe(0);
@@ -434,51 +397,14 @@ describe('AT-151 / AC-377: a missing expectedVersion is a validation error', () 
 // ---------------------------------------------------------------------
 
 describe('AT-152 / AC-378: every committed write changes the version', () => {
-  it('a state transition — and a stale edit afterwards is rejected', async () => {
-    const id = await mintProject('angebot');
-    const before = await versionOf(`/api/projects/${id}`);
-    const res = await authPost(ownerToken, `/api/projects/${id}/transition/forward`, {
-      expectedStatus: 'angebot',
-    });
-    expect(res.statusCode, res.body).toBe(200);
-    expect(await versionOf(`/api/projects/${id}`)).not.toBe(before);
-    expectVersionConflict(
-      await authPatch(ownerToken, `/api/projects/${id}`, {
-        notes: 'stale',
-        expectedVersion: before,
-      }),
-    );
-  });
-
-  it('a worker-assignment change', async () => {
-    const id = await mintProject();
-    const before = await versionOf(`/api/projects/${id}`);
-    const res = await authPatch(ownerToken, `/api/projects/${id}`, {
-      assignedWorkerIds: [workerId],
+  it('issuing a draft', async () => {
+    const { invoiceId } = await mintDraft();
+    const before = await versionOf(`/api/invoices/${invoiceId}`);
+    const res = await authPost(ownerToken, `/api/invoices/${invoiceId}/issue`, {
       expectedVersion: before,
     });
     expect(res.statusCode, res.body).toBe(200);
-    expect(await versionOf(`/api/projects/${id}`)).not.toBe(before);
-  });
-
-  it('archive, then restore', async () => {
-    const id = await mintProject();
-    const v0 = await versionOf(`/api/projects/${id}`);
-    expect((await authDelete(ownerToken, `/api/projects/${id}`)).statusCode).toBe(200);
-    const v1 = await versionOf(`/api/projects/${id}`);
-    expect(v1).not.toBe(v0);
-    expect((await authPost(ownerToken, `/api/projects/${id}/restore`)).statusCode).toBe(200);
-    expect(await versionOf(`/api/projects/${id}`)).not.toBe(v1);
-  });
-
-  it('the project flip to abgerechnet at issuance', async () => {
-    const { invoiceId, projectId } = await mintDraft();
-    const before = await versionOf(`/api/projects/${projectId}`);
-    const res = await authPost(ownerToken, `/api/invoices/${invoiceId}/issue`, {
-      expectedVersion: await versionOf(`/api/invoices/${invoiceId}`),
-    });
-    expect(res.statusCode, res.body).toBe(200);
-    expect(await versionOf(`/api/projects/${projectId}`)).not.toBe(before);
+    expect(await versionOf(`/api/invoices/${invoiceId}`)).not.toBe(before);
   });
 
   it('cancelling an issued invoice leaves its version unchanged', async () => {

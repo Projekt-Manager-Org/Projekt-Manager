@@ -334,13 +334,8 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["expectedVersion"],
-                "minProperties": 2,
+                "minProperties": 1,
                 "properties": {
-                  "expectedVersion": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
                   "title": {
                     "type": "string",
                     "minLength": 1
@@ -527,12 +522,7 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["expectedVersion"],
                 "properties": {
-                  "expectedVersion": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
                   "plannedStart": {
                     "type": ["string", "null"],
                     "format": "date"

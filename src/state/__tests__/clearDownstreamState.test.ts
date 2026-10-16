@@ -45,7 +45,6 @@ const { useProjectStore } = await import('@/state/projectStore');
 const { useUIStore } = await import('@/state/uiStore');
 const { useExportJobStore } = await import('@/state/exportJobStore');
 const { useImportJobStore } = await import('@/state/importJobStore');
-const { versionedWrite } = await import('@/state/versionedWrites');
 
 function seedDirtyState(): void {
   // Payload + filter state across every downstream surface.
@@ -139,22 +138,6 @@ describe('clearDownstreamState — interactive logout', () => {
     expect(mgmt.sortDir).toBe('asc');
 
     expectJobStoresCleared();
-  });
-});
-
-describe('clearDownstreamState — versioned write lanes', () => {
-  it('forgets own-write advances, so a re-login does not send a version from the old data', async () => {
-    // This session advanced project p-1 from 1 to 2. An override import
-    // (which ends the session) brings p-1 back at version 1.
-    await versionedWrite('project:p-1', 1, async () => ({ ok: true, data: { version: 2 } }));
-    await useAuthStore.getState().logout();
-
-    const sent: number[] = [];
-    await versionedWrite('project:p-1', 1, async (v) => {
-      sent.push(v);
-      return { ok: true, data: { version: 2 } };
-    });
-    expect(sent).toEqual([1]);
   });
 });
 
