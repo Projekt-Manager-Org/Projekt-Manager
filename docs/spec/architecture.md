@@ -293,7 +293,7 @@ Coverage rationale: `project_changed` fires on every consumer-observable mutatio
 
 The transaction shape and supporting topology for the invoice domain ([data-model.md §5.15](data-model.md#515-invoice-entity), [data-model.md §5.16](data-model.md#516-invoice-sequence-entity), [data-model.md §5.17](data-model.md#517-company-profile-entity)). Architectural rationale — immutable snapshot, gapless sequence, ZUGFeRD EN 16931 profile, env-driven Object Lock retention, Stornorechnung as a sibling row — is pinned by [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
 
-**Issuance transaction.** A single DB transaction wraps every step of the `draft → issued` transition:
+**Issuance transaction.** A single DB transaction wraps every step of the `draft → issued` transition. Before step 1 it locks the draft row and runs the state and version checks ([data-model.md §6.4](data-model.md#64-concurrency)), so no concurrent draft write commits between the check and step 6:
 
 1. Atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE … RETURNING next_value` on `invoice_sequence` `(year, 'invoice')` — single statement covers both first-of-year and steady-state; Postgres takes a row-exclusive lock for the duration of the transaction (equivalent to `SELECT FOR UPDATE`).
 2. Format the resulting `Invoice.number` as `RE-YYYY-NNNN`.
