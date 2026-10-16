@@ -36,7 +36,8 @@ import { handleSessionExpired } from './sessionExpired';
  * decoded German message on `errorMessage`; the caller keeps the form
  * open and surfaces the message inline. `'conflict'` — stale write
  * (behavior.md §9.5); the list has been refetched and `invoice` is the
- * fresh row (absent if it is gone). `'error'` — generic failure; same
+ * fresh row (absent if it is gone) — a failed refetch is an `'error'`
+ * instead. `'error'` — generic failure; same
  * surfacing rule but the message is the generic catch-all.
  */
 export type InvoiceWriteOutcome =
@@ -116,6 +117,10 @@ export const useInvoiceStore = create<InvoiceState>((set, get) => {
     result: ApiFailure,
   ): Promise<InvoiceWriteOutcome> {
     await get().fetchByProject(projectId);
+    // A failed refetch reloaded nothing — the stale-write message would say it did.
+    if (get().errorByProject[projectId]) {
+      return { status: 'error', errorMessage: STRINGS.errors.mutationFailed };
+    }
     const invoice = get().byProject[projectId]?.find((i) => i.id === invoiceId);
     return {
       status: 'conflict',
