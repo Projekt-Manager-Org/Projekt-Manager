@@ -30,7 +30,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { startApp, stopApp, login, authGet, authPost, authPut } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPost,
+  authPut,
+  expectedVersion,
+} from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 
@@ -110,6 +118,7 @@ async function rechnungFaelligProjectId(
 async function ensureCompanyProfileComplete(ownerToken: string): Promise<void> {
   // PUT is the spec verb per api.md §14.2.15.
   const res = await authPut(ownerToken, '/api/company-profile', {
+    ...(await expectedVersion(ownerToken, '/api/company-profile')),
     companyName: 'Test Maler GmbH',
     address: { street: 'Werkstr. 1', zip: '10115', city: 'Berlin' },
     taxId: '111/222/33333',
@@ -142,7 +151,11 @@ async function createDraft(ownerToken: string, projectId: string): Promise<strin
 
 /** Issue a draft via the route, returning the issued invoice id. */
 async function issueDraft(ownerToken: string, draftId: string): Promise<string> {
-  const res = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+  const res = await authPost(
+    ownerToken,
+    `/api/invoices/${draftId}/issue`,
+    await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+  );
   if (res.statusCode !== 200) {
     throw new Error(`issueDraft failed ${res.statusCode} ${res.body}`);
   }

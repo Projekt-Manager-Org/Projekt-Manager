@@ -21,7 +21,7 @@
  * so the two paths cannot drift.
  */
 
-import type { Database, TransactionalDatabase } from '../db/connection.js';
+import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
 import { companyProfile } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { mutate } from './mutate.js';
@@ -32,7 +32,12 @@ import {
   type CompanyProfile,
   type TaxMode,
 } from '../../domain/invoice.js';
-import { companyProfileRequired, notPermitted, validationError } from '../errors.js';
+import {
+  companyProfileRequired,
+  notPermitted,
+  validationError,
+  versionConflict,
+} from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 import type { ServiceLogger } from './Logger.js';
 import { updateCompanyProfileSingleton } from '../repositories/companyProfile.js';
@@ -55,6 +60,7 @@ export function toCompanyProfileResponse(row: CompanyProfileRow): CompanyProfile
     accentColor: row.accentColor,
     footerText: row.footerText,
     defaultTaxMode: row.defaultTaxMode as TaxMode,
+    version: row.version,
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy,
   };
@@ -123,7 +129,18 @@ export function validateCompanyProfileUpsert(input: CompanyProfileUpsertInput): 
  * service refuses to serve (project principle).
  */
 export async function readSingleton(tx: TransactionalDatabase): Promise<CompanyProfileRow> {
-  const rows = await tx.select().from(companyProfile).limit(1);
+  return singletonOrThrow(await tx.select().from(companyProfile).limit(1));
+}
+
+/**
+ * `readSingleton` plus a row lock held until commit, so the upsert's
+ * version check and write are atomic (data-model.md §6.4).
+ */
+async function readSingletonForUpdate(tx: MutatingDatabase): Promise<CompanyProfileRow> {
+  return singletonOrThrow(await tx.select().from(companyProfile).limit(1).for('update'));
+}
+
+function singletonOrThrow(rows: CompanyProfileRow[]): CompanyProfileRow {
   if (rows.length === 0) {
     throw new Error(
       'CompanyProfileService: company_profile singleton missing — baseline migration did not seed',
@@ -163,6 +180,7 @@ export class CompanyProfileService {
    */
   async upsert(
     caller: AuthUser,
+    expectedVersion: number,
     input: CompanyProfileUpsertInput,
     log: ServiceLogger,
     correlationId?: string | null,
@@ -185,7 +203,8 @@ export class CompanyProfileService {
         entityType: 'company_profile',
         action: 'update',
         run: async (tx) => {
-          const before = await readSingleton(tx);
+          const before = await readSingletonForUpdate(tx);
+          if (before.version !== expectedVersion) throw versionConflict();
           const after = await updateCompanyProfileSingleton(tx, {
             companyName: input.companyName,
             address: input.address,

@@ -44,6 +44,7 @@ import {
   authPut,
   authPatch,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -244,6 +245,7 @@ function assertPdfDownloadShape(res: any): void {
  */
 async function ensureCompanyProfileComplete(ownerToken: string): Promise<void> {
   const res = await authPut(ownerToken, '/api/company-profile', {
+    ...(await expectedVersion(ownerToken, '/api/company-profile')),
     companyName: 'Test Maler GmbH',
     address: { street: 'Werkstr. 1', zip: '10115', city: 'Berlin' },
     taxId: '111/222/33333',
@@ -291,7 +293,11 @@ async function issueViaApi(token: string, projectId: string): Promise<string> {
     throw new Error(`issueViaApi — draft create failed ${draft.statusCode} ${draft.body}`);
   }
   const draftId = draft.json().id as string;
-  const issued = await authPost(token, `/api/invoices/${draftId}/issue`);
+  const issued = await authPost(
+    token,
+    `/api/invoices/${draftId}/issue`,
+    await expectedVersion(token, `/api/invoices/${draftId}`),
+  );
   if (issued.statusCode !== 200) {
     throw new Error(`issueViaApi — issue failed ${issued.statusCode} ${issued.body}`);
   }
@@ -501,6 +507,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       const draftId = await seedDraftInvoice(projectId);
 
       const res = await authPatch(ownerToken, `/api/invoices/${draftId}`, {
+        ...(await expectedVersion(ownerToken, `/api/invoices/${draftId}`)),
         lines: [
           {
             description: 'Updated line',
@@ -532,6 +539,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       const issuedId = await seedIssuedInvoice(projectId, '9001');
 
       const res = await authPatch(ownerToken, `/api/invoices/${issuedId}`, {
+        ...(await expectedVersion(ownerToken, `/api/invoices/${issuedId}`)),
         lines: [
           {
             description: 'Should not land',
@@ -577,7 +585,8 @@ describe('Invoice routes — integration (issue #109)', () => {
         await pool.end();
       }
 
-      const del = await authDelete(ownerToken, `/api/invoices/${draftId}`);
+      const { expectedVersion: v } = await expectedVersion(ownerToken, `/api/invoices/${draftId}`);
+      const del = await authDelete(ownerToken, `/api/invoices/${draftId}?expectedVersion=${v}`);
       expect(del.statusCode).toBe(204);
 
       const get = await authGet(ownerToken, `/api/invoices/${draftId}`);
@@ -606,7 +615,8 @@ describe('Invoice routes — integration (issue #109)', () => {
     it('DELETE on an issued row returns 422 INVOICE_FROZEN; row unchanged', async () => {
       const issuedId = await seedIssuedInvoice(projectId, '9002');
 
-      const del = await authDelete(ownerToken, `/api/invoices/${issuedId}`);
+      const { expectedVersion: v } = await expectedVersion(ownerToken, `/api/invoices/${issuedId}`);
+      const del = await authDelete(ownerToken, `/api/invoices/${issuedId}?expectedVersion=${v}`);
       expect(del.statusCode).toBe(422);
       expect(del.json().code).toBe('INVOICE_FROZEN');
 
@@ -618,11 +628,18 @@ describe('Invoice routes — integration (issue #109)', () => {
     it('PATCH / DELETE by worker / bookkeeper are rejected at the permission gate', async () => {
       const draftId = await seedDraftInvoice(projectId);
 
-      const workerPatch = await authPatch(workerToken, `/api/invoices/${draftId}`, { lines: [] });
+      // A well-formed body — the permission gate is under test, not the version.
+      const workerPatch = await authPatch(workerToken, `/api/invoices/${draftId}`, {
+        expectedVersion: 1,
+        lines: [],
+      });
       expect(workerPatch.statusCode).toBe(403);
       expect(workerPatch.json().code).toBe('NOT_PERMITTED');
 
-      const bkDelete = await authDelete(bookkeeperToken, `/api/invoices/${draftId}`);
+      const bkDelete = await authDelete(
+        bookkeeperToken,
+        `/api/invoices/${draftId}?expectedVersion=1`,
+      );
       expect(bkDelete.statusCode).toBe(403);
       expect(bkDelete.json().code).toBe('NOT_PERMITTED');
     });

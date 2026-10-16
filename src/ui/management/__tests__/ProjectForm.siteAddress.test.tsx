@@ -95,6 +95,7 @@ const { useProjectStore } = await import('@/state/projectStore');
 
 const SEED_CUSTOMER: Customer = {
   id: 'c-1',
+  version: 1,
   name: 'Hausverwaltung Rheinblick',
   phone: null,
   email: null,
@@ -118,6 +119,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     customerId: SEED_CUSTOMER.id,
     customer: {
       id: SEED_CUSTOMER.id,
+      version: 1,
       name: SEED_CUSTOMER.name,
       phone: null,
       email: null,

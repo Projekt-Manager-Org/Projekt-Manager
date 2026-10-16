@@ -453,6 +453,7 @@ export const customerApi = {
 
   update: (
     id: string,
+    expectedVersion: number,
     data: {
       name?: string;
       phone?: string | null;
@@ -460,7 +461,11 @@ export const customerApi = {
       address?: { street: string; zip: string; city: string } | null;
       notes?: string | null;
     },
-  ) => apiCall<Customer>(`/api/customers/${id}`, { method: 'PATCH', body: data }),
+  ) =>
+    apiCall<Customer>(`/api/customers/${id}`, {
+      method: 'PATCH',
+      body: { expectedVersion, ...data },
+    }),
 
   delete: (id: string) =>
     apiCall<{ success: boolean }>(`/api/customers/${id}`, { method: 'DELETE' }),
@@ -778,8 +783,11 @@ export interface CompanyProfileInput {
 export const companyProfileApi = {
   get: () => apiCall<CompanyProfile>('/api/company-profile'),
 
-  put: (payload: CompanyProfileInput) =>
-    apiCall<CompanyProfile>('/api/company-profile', { method: 'PUT', body: payload }),
+  put: (expectedVersion: number, payload: CompanyProfileInput) =>
+    apiCall<CompanyProfile>('/api/company-profile', {
+      method: 'PUT',
+      body: { expectedVersion, ...payload },
+    }),
 };
 
 /**
@@ -938,12 +946,21 @@ export const invoicesApi = {
       body: { projectId, ...payload },
     }),
 
-  updateDraft: (id: string, payload: InvoiceUpdateDraftInput) =>
-    apiCall<Invoice>(`/api/invoices/${id}`, { method: 'PATCH', body: payload }),
+  updateDraft: (id: string, expectedVersion: number, payload: InvoiceUpdateDraftInput) =>
+    apiCall<Invoice>(`/api/invoices/${id}`, {
+      method: 'PATCH',
+      body: { expectedVersion, ...payload },
+    }),
 
-  deleteDraft: (id: string) => apiCall<null>(`/api/invoices/${id}`, { method: 'DELETE' }),
+  // A DELETE body has no defined semantics — the version rides the query.
+  deleteDraft: (id: string, expectedVersion: number) =>
+    apiCall<null>(`/api/invoices/${id}` + toQuery({ expectedVersion }), { method: 'DELETE' }),
 
-  issue: (id: string) => apiCall<Invoice>(`/api/invoices/${id}/issue`, { method: 'POST' }),
+  issue: (id: string, expectedVersion: number) =>
+    apiCall<Invoice>(`/api/invoices/${id}/issue`, {
+      method: 'POST',
+      body: { expectedVersion },
+    }),
 
   cancel: (id: string, reason: string) =>
     apiCall<InvoiceCancelResult>(`/api/invoices/${id}/cancel`, {

@@ -28,7 +28,15 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
-import { startApp, stopApp, login, authGet, authPost, authPatch } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPost,
+  authPatch,
+  expectedVersion,
+} from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 
 interface Project {
@@ -80,6 +88,7 @@ describe('AT-126 / AC-306: customer.ustId CRUD + idempotent-replay + invoice pre
       const id = createRes.json().id as string;
 
       const patchRes = await authPatch(ownerToken, `/api/customers/${id}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${id}`)),
         ustId: 'DE999888777',
       });
       expect(patchRes.statusCode).toBe(200);
@@ -97,6 +106,7 @@ describe('AT-126 / AC-306: customer.ustId CRUD + idempotent-replay + invoice pre
       const id = createRes.json().id as string;
 
       const patchRes = await authPatch(ownerToken, `/api/customers/${id}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${id}`)),
         ustId: null,
       });
       expect(patchRes.statusCode).toBe(200);
@@ -151,6 +161,7 @@ describe('AT-126 / AC-306: customer.ustId CRUD + idempotent-replay + invoice pre
 
       const customerUstId = `DE${crypto.randomInt(100_000_000, 999_999_999)}`;
       const patchCust = await authPatch(ownerToken, `/api/customers/${customerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${customerId}`)),
         ustId: customerUstId,
       });
       expect(patchCust.statusCode).toBe(200);
@@ -173,7 +184,10 @@ describe('AT-126 / AC-306: customer.ustId CRUD + idempotent-replay + invoice pre
       const customerId = projRes.json().customerId as string;
 
       const customerUstId = `DE${crypto.randomInt(100_000_000, 999_999_999)}`;
-      await authPatch(ownerToken, `/api/customers/${customerId}`, { ustId: customerUstId });
+      await authPatch(ownerToken, `/api/customers/${customerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${customerId}`)),
+        ustId: customerUstId,
+      });
 
       const overrideUstId = `DE${crypto.randomInt(100_000_000, 999_999_999)}`;
       const draftRes = await authPost(ownerToken, '/api/invoices', {
@@ -196,7 +210,11 @@ describe('AT-126 / AC-306: customer.ustId CRUD + idempotent-replay + invoice pre
       const projRes = await authGet(ownerToken, `/api/projects/${projectId}`);
       const customerId = projRes.json().customerId as string;
 
-      await authPatch(ownerToken, `/api/customers/${customerId}`, { ustId: null });
+      const clear = await authPatch(ownerToken, `/api/customers/${customerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${customerId}`)),
+        ustId: null,
+      });
+      expect(clear.statusCode).toBe(200);
 
       const draftRes = await authPost(ownerToken, '/api/invoices', {
         projectId,

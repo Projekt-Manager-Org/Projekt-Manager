@@ -51,6 +51,7 @@ const { useProjectStore } = await import('@/state/projectStore');
 
 const CUSTOMER: Customer = {
   id: 'c-1',
+  version: 1,
   name: 'Kunde GmbH',
   phone: null,
   email: null,
@@ -128,6 +129,7 @@ function makeDraft(overrides: Partial<Invoice> = {}): Invoice {
     performanceDate: '2026-04-10',
     cancellationReason: null,
     renderedPdfBinaryDescriptorId: null,
+    version: 1,
     createdAt: '2026-04-10T00:00:00Z',
     updatedAt: '2026-04-10T00:00:00Z',
     createdBy: null,

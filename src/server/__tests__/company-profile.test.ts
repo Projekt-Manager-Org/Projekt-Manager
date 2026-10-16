@@ -42,6 +42,7 @@ import {
   authPost,
   authPut,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -159,7 +160,10 @@ describe('AT-121 / AC-300, AC-301: company-profile role matrix + singleton invar
   });
 
   it('owner PUT /api/company-profile → 200 (or 204)', async () => {
-    const res = await authPut(ownerToken, '/api/company-profile', completeProfileBody);
+    const res = await authPut(ownerToken, '/api/company-profile', {
+      ...completeProfileBody,
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
+    });
     expect([200, 204]).toContain(res.statusCode);
   });
 
@@ -168,7 +172,10 @@ describe('AT-121 / AC-300, AC-301: company-profile role matrix + singleton invar
     ['worker', () => workerToken],
     ['bookkeeper', () => bookkeeperToken],
   ] as const)('%s PUT /api/company-profile → 403 NOT_PERMITTED', async (_label, getToken) => {
-    const res = await authPut(getToken(), '/api/company-profile', completeProfileBody);
+    const res = await authPut(getToken(), '/api/company-profile', {
+      ...completeProfileBody,
+      expectedVersion: 1,
+    });
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe('NOT_PERMITTED');
   });
@@ -179,7 +186,10 @@ describe('AT-121 / AC-300, AC-301: company-profile role matrix + singleton invar
   });
 
   it('unauthenticated PUT → 401', async () => {
-    const res = await authPut('', '/api/company-profile', completeProfileBody);
+    const res = await authPut('', '/api/company-profile', {
+      ...completeProfileBody,
+      expectedVersion: 1,
+    });
     expect(res.statusCode).toBe(401);
   });
 
@@ -288,7 +298,10 @@ describe('AT-122 / AC-302: PUT /api/company-profile writes one audit row with pa
       await pool.end();
     }
 
-    const put = await authPut(ownerToken, '/api/company-profile', after);
+    const put = await authPut(ownerToken, '/api/company-profile', {
+      ...after,
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
+    });
     expect([200, 204]).toContain(put.statusCode);
 
     const { db: db2, pool: pool2 } = createDatabase();
@@ -359,6 +372,7 @@ describe('AT-123 / AC-303: PUT validates required-when-mode invariants', () => {
 
   it('defaultTaxMode=standard with empty ustId → 422 VALIDATION_ERROR; details names the path', async () => {
     const res = await authPut(ownerToken, '/api/company-profile', {
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
       ...completeProfileBody,
       ustId: '',
     });
@@ -372,6 +386,7 @@ describe('AT-123 / AC-303: PUT validates required-when-mode invariants', () => {
 
   it('defaultTaxMode=reverse_charge with empty ustId → 422 VALIDATION_ERROR', async () => {
     const res = await authPut(ownerToken, '/api/company-profile', {
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
       ...completeProfileBody,
       defaultTaxMode: 'reverse_charge',
       ustId: '',
@@ -388,6 +403,7 @@ describe('AT-123 / AC-303: PUT validates required-when-mode invariants', () => {
     ['taxId empty', { taxId: '' }],
   ])('%s → 422 VALIDATION_ERROR (any mode)', async (_label, override) => {
     const res = await authPut(ownerToken, '/api/company-profile', {
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
       ...completeProfileBody,
       ...override,
     });
@@ -399,6 +415,7 @@ describe('AT-123 / AC-303: PUT validates required-when-mode invariants', () => {
     // Capture state, drive a rejected PUT, re-read, assert unchanged.
     const before = (await authGet(ownerToken, '/api/company-profile')).json();
     await authPut(ownerToken, '/api/company-profile', {
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
       ...completeProfileBody,
       companyName: '',
       footerText: 'SHOULD NOT LAND',
@@ -422,7 +439,10 @@ describe('AT-124 / AC-304: Invoice.issuer is frozen at issuance — profile muta
     await startApp();
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
     // Seed a complete profile so the issue path runs.
-    await authPut(ownerToken, '/api/company-profile', completeProfileBody);
+    await authPut(ownerToken, '/api/company-profile', {
+      ...completeProfileBody,
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
+    });
   });
 
   afterAll(async () => {
@@ -433,7 +453,11 @@ describe('AT-124 / AC-304: Invoice.issuer is frozen at issuance — profile muta
     const projectId = await rechnungFaelligProjectId(ownerToken);
     const draftId = await createDraft(ownerToken, projectId);
 
-    const issueRes = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+    const issueRes = await authPost(
+      ownerToken,
+      `/api/invoices/${draftId}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+    );
     expect(issueRes.statusCode).toBe(200);
     const invoiceId = issueRes.json().id as string;
     const snapshotIssuerStreet = issueRes.json().issuer.address.street as string;
@@ -442,6 +466,7 @@ describe('AT-124 / AC-304: Invoice.issuer is frozen at issuance — profile muta
 
     // Mutate the profile — change `address.street`.
     const mutated = await authPut(ownerToken, '/api/company-profile', {
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
       ...completeProfileBody,
       address: { ...completeProfileBody.address, street: 'Neue Werkstr. 99' },
     });
@@ -481,7 +506,10 @@ describe('AT-125 / AC-305: failed issue does not permanently advance the sequenc
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
     // Start with a complete profile so other arms keep working; this
     // arm wipes it then restores.
-    await authPut(ownerToken, '/api/company-profile', completeProfileBody);
+    await authPut(ownerToken, '/api/company-profile', {
+      ...completeProfileBody,
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
+    });
   });
 
   afterAll(async () => {
@@ -520,7 +548,11 @@ describe('AT-125 / AC-305: failed issue does not permanently advance the sequenc
       await pool1.end();
     }
 
-    const failed = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+    const failed = await authPost(
+      ownerToken,
+      `/api/invoices/${draftId}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+    );
     expect(failed.statusCode).toBe(422);
     expect(failed.json().code).toBe('COMPANY_PROFILE_REQUIRED');
     const details = failed.json().details as { missingFields?: string[] };
@@ -542,10 +574,17 @@ describe('AT-125 / AC-305: failed issue does not permanently advance the sequenc
     // Restore the profile, then issue successfully on a different
     // draft — the sequence claim must equal `expected` (the value
     // the failed issue rolled back).
-    await authPut(ownerToken, '/api/company-profile', completeProfileBody);
+    await authPut(ownerToken, '/api/company-profile', {
+      ...completeProfileBody,
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
+    });
     const projectId2 = await rechnungFaelligProjectId(ownerToken, new Set([projectId]));
     const draftOk = await createDraft(ownerToken, projectId2);
-    const ok = await authPost(ownerToken, `/api/invoices/${draftOk}/issue`);
+    const ok = await authPost(
+      ownerToken,
+      `/api/invoices/${draftOk}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draftOk}`),
+    );
     expect(ok.statusCode).toBe(200);
     const okNumber = ok.json().number as string;
     const okValue = Number(okNumber.split('-').pop());
@@ -600,6 +639,7 @@ describe('M3 / AC-297: CompanyProfileService.upsert defense-in-depth role check'
   interface UpsertWithCaller {
     upsert(
       caller: AuthUser,
+      expectedVersion: number,
       input: CompanyProfileUpsertInput,
       log: ServiceLogger,
       correlationId?: string | null,
@@ -641,7 +681,10 @@ describe('M3 / AC-297: CompanyProfileService.upsert defense-in-depth role check'
     // Seed a complete profile via the route so subsequent direct calls
     // don't trip the required-when-mode validation. The owner-arm
     // success assertion below also exercises the validation path.
-    const seedPut = await authPut(ownerToken, '/api/company-profile', completeProfileBody);
+    const seedPut = await authPut(ownerToken, '/api/company-profile', {
+      ...completeProfileBody,
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
+    });
     expect([200, 204]).toContain(seedPut.statusCode);
 
     const conn = createDatabase();
@@ -679,6 +722,8 @@ describe('M3 / AC-297: CompanyProfileService.upsert defense-in-depth role check'
       await expect(
         withCaller.upsert(
           caller,
+          // Any version — the role check runs first.
+          1,
           {
             ...completeProfileBody,
             footerText: `SHOULD-NOT-LAND-${role}`,
@@ -729,6 +774,7 @@ describe('M3 / AC-297: CompanyProfileService.upsert defense-in-depth role check'
     await expect(
       withCaller.upsert(
         caller,
+        (await expectedVersion(ownerToken, '/api/company-profile')).expectedVersion,
         {
           ...completeProfileBody,
           footerText: distinctFooter,

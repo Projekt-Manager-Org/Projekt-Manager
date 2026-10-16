@@ -43,6 +43,7 @@ import { useToastStore } from '@/state/toastStore';
 import { usePermission } from '@/hooks/usePermission';
 import { downloadAuthedFile } from '@/ui/utils/downloadFile';
 import { InvoiceDraftForm } from './InvoiceDraftForm';
+import { InvoiceDraftPreview } from './InvoiceDraftPreview';
 import { InvoiceCancelDialog } from './InvoiceCancelDialog';
 import styles from './InvoiceSection.module.css';
 
@@ -158,12 +159,16 @@ export function InvoiceSection({ projectId, projectStatus }: Props) {
   const handleIssue = async (invoice: Invoice) => {
     setActionError(null);
     setMissingProfileFields(null);
+    // `invoice` is the row as the dialog opens: the preview shows it and
+    // its version is what the issue sends (AC-382) — a refresh behind the
+    // dialog changes neither.
     const ok = await requestConfirm(STRINGS.invoices.issueConfirmBody, {
       title: STRINGS.invoices.issueConfirmTitle,
       confirmLabel: STRINGS.invoices.issueConfirmOk,
+      details: <InvoiceDraftPreview invoice={invoice} />,
     });
     if (!ok) return;
-    const outcome = await issueInvoice(invoice.id, projectId);
+    const outcome = await issueInvoice(invoice.id, projectId, invoice.version);
     if (
       outcome.status === 'validation' &&
       outcome.missingFields &&
@@ -195,9 +200,12 @@ export function InvoiceSection({ projectId, projectStatus }: Props) {
 
   const handleDeleteDraft = async (invoice: Invoice) => {
     setActionError(null);
-    const ok = await requestConfirm(STRINGS.invoices.deleteDraftConfirm);
+    // Same snapshot rule as `handleIssue`.
+    const ok = await requestConfirm(STRINGS.invoices.deleteDraftConfirm, {
+      details: <InvoiceDraftPreview invoice={invoice} />,
+    });
     if (!ok) return;
-    const outcome = await deleteDraft(invoice.id, projectId);
+    const outcome = await deleteDraft(invoice.id, projectId, invoice.version);
     if (outcome.status !== 'ok') {
       setActionError(outcome.errorMessage);
     }

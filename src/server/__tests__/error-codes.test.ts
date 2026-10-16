@@ -38,6 +38,7 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['validationError', () => errors.validationError('any')],
   ['conflict', () => errors.conflict('any')],
   ['idempotencyConflict', () => errors.idempotencyConflict()],
+  ['versionConflict', () => errors.versionConflict()],
   ['schemaVersionMismatch', () => errors.schemaVersionMismatch(1, 2)],
   ['targetNotEmpty', () => errors.targetNotEmpty()],
   ['restoreConfirmationMismatch', () => errors.restoreConfirmationMismatch()],

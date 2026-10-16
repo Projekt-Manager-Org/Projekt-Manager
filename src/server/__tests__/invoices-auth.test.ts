@@ -57,6 +57,7 @@ import {
   authPut,
   authPatch,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -153,7 +154,11 @@ async function issueViaApi(token: string, projectId: string): Promise<string> {
     throw new Error(`issueViaApi — draft create failed ${draft.statusCode} ${draft.body}`);
   }
   const draftId = draft.json().id as string;
-  const issued = await authPost(token, `/api/invoices/${draftId}/issue`);
+  const issued = await authPost(
+    token,
+    `/api/invoices/${draftId}/issue`,
+    await expectedVersion(token, `/api/invoices/${draftId}`),
+  );
   if (issued.statusCode !== 200) {
     throw new Error(`issueViaApi — issue failed ${issued.statusCode} ${issued.body}`);
   }
@@ -163,6 +168,7 @@ async function issueViaApi(token: string, projectId: string): Promise<string> {
 /** Fill the singleton so issue arms don't trip COMPANY_PROFILE_REQUIRED. */
 async function ensureCompanyProfileComplete(ownerToken: string): Promise<void> {
   const res = await authPut(ownerToken, '/api/company-profile', {
+    ...(await expectedVersion(ownerToken, '/api/company-profile')),
     companyName: 'Auth-matrix GmbH',
     address: { street: 'Werkstr. 1', zip: '10115', city: 'Berlin' },
     taxId: '111/222/33333',
@@ -181,6 +187,17 @@ async function ensureCompanyProfileComplete(ownerToken: string): Promise<void> {
  * Dispatch by method against the test helpers. Returns the raw
  * inject() result so individual arms can assert status / code.
  */
+/** The invoice's stored version; 1 for an id with no row. */
+async function currentVersion(invoiceId: string): Promise<number> {
+  const { db, pool } = createDatabase();
+  try {
+    const r = await db.execute(sql`SELECT version FROM invoices WHERE id = ${invoiceId}`);
+    return (r.rows[0] as { version: number } | undefined)?.version ?? 1;
+  } finally {
+    await pool.end();
+  }
+}
+
 async function call(
   ep: Endpoint,
   token: string,
@@ -189,23 +206,31 @@ async function call(
 ): Promise<{ statusCode: number; json: () => { code?: string } & Record<string, unknown> }> {
   const { method, path } = ep;
   const url = ep.needsId ? path.replace(':id', id!) : path;
+  // Versioned endpoints carry the row's current `expectedVersion`
+  // (data-model.md §6.4) — schema validation runs before the auth
+  // preHandler, so without it a 422 would mask the contract under test.
+  const versioned =
+    (method === 'PATCH' || method === 'DELETE' || path === '/api/invoices/:id/issue') && id
+      ? { expectedVersion: await currentVersion(id) }
+      : null;
   // POST /api/invoices (create) needs `{projectId}` to satisfy the
   // body schema (required field). PATCH defaults to `{}` so the
   // `type: 'object'` schema validates before the auth preHandler —
   // an undefined body can short-circuit to 400 ahead of 401, which
   // would mask the auth-matrix contract under test.
   const body =
-    bodyOverride ??
-    (method === 'POST' && path === '/api/invoices'
-      ? { projectId: id, lines: [] }
-      : method === 'PATCH'
-        ? {}
-        : undefined);
+    method === 'POST' && path === '/api/invoices'
+      ? (bodyOverride ?? { projectId: id, lines: [] })
+      : versioned && method !== 'DELETE'
+        ? { ...versioned, ...bodyOverride }
+        : bodyOverride;
 
   if (method === 'GET') return authGet(token, url);
   if (method === 'POST') return authPost(token, url, body);
   if (method === 'PATCH') return authPatch(token, url, body);
-  if (method === 'DELETE') return authDelete(token, url);
+  if (method === 'DELETE') {
+    return authDelete(token, `${url}?expectedVersion=${versioned!.expectedVersion}`);
+  }
   throw new Error(`unsupported method ${method as string}`);
 }
 

@@ -77,6 +77,7 @@ CREATE TABLE "company_profile" (
 	"accent_color" text,
 	"footer_text" text,
 	"default_tax_mode" text DEFAULT 'standard' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_by" uuid,
 	CONSTRAINT "company_profile_singleton_unique" UNIQUE("singleton"),
@@ -95,7 +96,8 @@ CREATE TABLE "customers" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_by" uuid,
-	"updated_by" uuid
+	"updated_by" uuid,
+	"version" integer DEFAULT 1 NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "data_exchange_job" (
@@ -144,6 +146,7 @@ CREATE TABLE "invoices" (
 	"cancellation_of" uuid,
 	"cancellation_reason" text,
 	"rendered_pdf_binary_descriptor_id" uuid,
+	"version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_by" uuid,
@@ -571,3 +574,62 @@ CREATE TRIGGER company_profile_block_delete
 BEFORE DELETE ON company_profile
 FOR EACH ROW
 EXECUTE FUNCTION company_profile_block_delete_fn();
+--> statement-breakpoint
+-- ---------------------------------------------------------------
+-- Row version — optimistic-concurrency token (data-model.md §6.4).
+--
+-- Every UPDATE of a customer, an invoice or the company profile
+-- advances `version`, whatever the write path: a field edit, the
+-- issuance of a draft. Owning the bump here means a new write path
+-- cannot forget it. The version check itself lives in the services
+-- (lock the row, compare, write).
+--
+-- Exceptions (§6.4):
+--   - database cascades (FK `ON DELETE SET NULL` on `created_by` /
+--     `updated_by`) keep the version — they run inside the RI
+--     trigger, so `pg_trigger_depth()` is above 1;
+--   - an issued or cancelled invoice is frozen — its version no
+--     longer changes (the cancel flip included).
+-- ---------------------------------------------------------------
+CREATE OR REPLACE FUNCTION row_version_bump_fn()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF pg_trigger_depth() > 1 THEN
+    NEW.version := OLD.version;
+  ELSE
+    NEW.version := OLD.version + 1;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION invoices_version_bump_fn()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF pg_trigger_depth() > 1 OR OLD.status <> 'draft' THEN
+    NEW.version := OLD.version;
+  ELSE
+    NEW.version := OLD.version + 1;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+CREATE TRIGGER customers_version_bump
+BEFORE UPDATE ON customers
+FOR EACH ROW
+EXECUTE FUNCTION row_version_bump_fn();
+--> statement-breakpoint
+CREATE TRIGGER company_profile_version_bump
+BEFORE UPDATE ON company_profile
+FOR EACH ROW
+EXECUTE FUNCTION row_version_bump_fn();
+--> statement-breakpoint
+CREATE TRIGGER invoices_version_bump
+BEFORE UPDATE ON invoices
+FOR EACH ROW
+EXECUTE FUNCTION invoices_version_bump_fn();

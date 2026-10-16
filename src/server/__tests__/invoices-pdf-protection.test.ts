@@ -34,6 +34,7 @@ import {
   authGet,
   authPost,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
@@ -134,7 +135,11 @@ describe('Rendered invoice PDF protection (#417)', () => {
     // Capture every S3 command the issuance sends, then let it through.
     const send = vi.spyOn(S3Client.prototype, 'send');
     issueStartedAt = Date.now();
-    const issued = await authPost(ownerToken, `/api/invoices/${invoiceId}/issue`);
+    const issued = await authPost(
+      ownerToken,
+      `/api/invoices/${invoiceId}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${invoiceId}`),
+    );
     putInputs = send.mock.calls
       .map(([command]) => command)
       .filter((command) => command instanceof PutObjectCommand)

@@ -163,6 +163,7 @@ export class InvoiceCancelService {
           : null,
         cancellationReason,
         renderedPdfBinaryDescriptorId: null,
+        version: 1,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
         createdBy: userId,

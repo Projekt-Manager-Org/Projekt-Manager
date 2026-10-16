@@ -49,7 +49,15 @@
 import crypto from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { startApp, stopApp, login, authGet, authPost, authPut } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPost,
+  authPut,
+  expectedVersion,
+} from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
 import { InvoiceRenderer, type RenderedInvoice } from '../services/InvoiceRenderer.js';
@@ -61,6 +69,9 @@ import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
 
 const year = new Date().getFullYear();
+
+/** A draft no write has touched since its create (data-model.md §6.4). */
+const FRESH_DRAFT_VERSION = 1;
 
 interface Project {
   id: string;
@@ -215,6 +226,7 @@ async function ensureCompanyProfileComplete(
   mode: 'standard' | 'kleinunternehmer' | 'reverse_charge' = 'standard',
 ): Promise<void> {
   const res = await authPut(ownerToken, '/api/company-profile', {
+    ...(await expectedVersion(ownerToken, '/api/company-profile')),
     companyName: 'Test Maler GmbH',
     address: { street: 'Werkstr. 1', zip: '10115', city: 'Berlin' },
     taxId: '111/222/33333',
@@ -394,7 +406,11 @@ describe('Invoice issuance — happy path (AT-111 / AC-287)', () => {
     const bus = await loadBus();
     const conn = subscribeFake(bus);
     try {
-      const res = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+      const res = await authPost(
+        ownerToken,
+        `/api/invoices/${draftId}/issue`,
+        await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+      );
       expect(res.statusCode).toBe(200);
 
       const body = res.json();
@@ -508,7 +524,11 @@ describe('Invoice issuance — gapless sequence (AT-112 / AC-288)', () => {
 
   it('two sequential issues produce sequential, gapless numbers (N, N+1)', async () => {
     const draft1 = await createDraft(ownerToken, projectId);
-    const issue1 = await authPost(ownerToken, `/api/invoices/${draft1}/issue`);
+    const issue1 = await authPost(
+      ownerToken,
+      `/api/invoices/${draft1}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draft1}`),
+    );
     expect(issue1.statusCode).toBe(200);
     const n1 = issue1.json().number as string;
     expect(n1).toMatch(new RegExp(`^RE-${year}-\\d{4,}$`));
@@ -516,7 +536,11 @@ describe('Invoice issuance — gapless sequence (AT-112 / AC-288)', () => {
     // Need a second project in rechnung_faellig — seed has multiple.
     const projectId2 = await rechnungFaelligProjectId(ownerToken, new Set([projectId]));
     const draft2 = await createDraft(ownerToken, projectId2);
-    const issue2 = await authPost(ownerToken, `/api/invoices/${draft2}/issue`);
+    const issue2 = await authPost(
+      ownerToken,
+      `/api/invoices/${draft2}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draft2}`),
+    );
     expect(issue2.statusCode).toBe(200);
     const n2 = issue2.json().number as string;
     expect(n2).toMatch(new RegExp(`^RE-${year}-\\d{4,}$`));
@@ -566,7 +590,11 @@ describe('Invoice issuance — gapless sequence (AT-112 / AC-288)', () => {
     try {
       const draftId = await createDraft(ownerToken, projectId3);
 
-      const failed = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+      const failed = await authPost(
+        ownerToken,
+        `/api/invoices/${draftId}/issue`,
+        await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+      );
       // Error must propagate to the response. The exact status code is
       // implementation-defined (500 for an unexpected render fault, 422
       // for a structured rejection); the production error handler collapses
@@ -590,7 +618,11 @@ describe('Invoice issuance — gapless sequence (AT-112 / AC-288)', () => {
     // issuance transaction). No 4th project needed; the seed's 3
     // rechnung_faellig rows are sufficient.
     const draftOk = await createDraft(ownerToken, projectId3);
-    const ok = await authPost(ownerToken, `/api/invoices/${draftOk}/issue`);
+    const ok = await authPost(
+      ownerToken,
+      `/api/invoices/${draftOk}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draftOk}`),
+    );
     expect(ok.statusCode).toBe(200);
     const okNumber = ok.json().number as string;
     const okValue = Number(okNumber.split('-').pop());
@@ -783,8 +815,8 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
     // event-loop turn; whichever query lands at Postgres first acquires
     // the row lock, the other blocks until the first commits.
     const [resultA, resultB] = await Promise.all([
-      serviceA.issueDraft(draftA, ownerId, noopLog, null),
-      serviceB.issueDraft(draftB, ownerId, noopLog, null),
+      serviceA.issueDraft(draftA, FRESH_DRAFT_VERSION, ownerId, noopLog, null),
+      serviceB.issueDraft(draftB, FRESH_DRAFT_VERSION, ownerId, noopLog, null),
     ]);
 
     // Both numbers conform to the wire shape (AC-295). `Invoice.number`
@@ -866,8 +898,8 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
     const expectedFirst = before ?? 1;
 
     const [resA, resB] = await Promise.allSettled([
-      serviceA.issueDraft(draftA, ownerId, noopLog, null),
-      serviceB.issueDraft(draftB, ownerId, noopLog, null),
+      serviceA.issueDraft(draftA, FRESH_DRAFT_VERSION, ownerId, noopLog, null),
+      serviceB.issueDraft(draftB, FRESH_DRAFT_VERSION, ownerId, noopLog, null),
     ]);
 
     // Exactly ONE fulfilled, ONE rejected. ServiceA's renderer is real;
@@ -896,7 +928,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
     const projectCId = await mintRechnungFaelligProject();
     const draftC = await createDraft(ownerToken, projectCId);
     const serviceC = buildIssueServiceFor(connA.db); // reuse connA's pool.
-    const resC = await serviceC.issueDraft(draftC, ownerId, noopLog, null);
+    const resC = await serviceC.issueDraft(draftC, FRESH_DRAFT_VERSION, ownerId, noopLog, null);
     expect(resC.number).not.toBeNull();
     const allocatedC = Number(resC.number!.split('-').pop());
     expect(allocatedC).toBe(expectedFirst + 1);
@@ -1083,8 +1115,8 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
       // racer's INSERT fails with PG 23505 (unique_violation) bubbling
       // up to the caller as a rejection.
       const [resA, resB] = await Promise.allSettled([
-        serviceA.issueDraft(draftA, ownerId, noopLog, null),
-        serviceB.issueDraft(draftB, ownerId, noopLog, null),
+        serviceA.issueDraft(draftA, FRESH_DRAFT_VERSION, ownerId, noopLog, null),
+        serviceB.issueDraft(draftB, FRESH_DRAFT_VERSION, ownerId, noopLog, null),
       ]);
 
       // Load-bearing assertion: BOTH succeed. The expected-post-fix
@@ -1198,7 +1230,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
     const draftId = await createDraft(ownerToken, target.id);
     await expectNoSideEffects(
       draftId,
-      () => authPost(ownerToken, `/api/invoices/${draftId}/issue`),
+      async () =>
+        authPost(
+          ownerToken,
+          `/api/invoices/${draftId}/issue`,
+          await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+        ),
       409,
       'INVOICE_PROJECT_STATE',
     );
@@ -1208,7 +1245,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
     const draftId = await createDraft(ownerToken, projectId, { performanceDate: null });
     await expectNoSideEffects(
       draftId,
-      () => authPost(ownerToken, `/api/invoices/${draftId}/issue`),
+      async () =>
+        authPost(
+          ownerToken,
+          `/api/invoices/${draftId}/issue`,
+          await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+        ),
       422,
       'VALIDATION_ERROR',
     );
@@ -1218,7 +1260,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
     const draftId = await createDraft(ownerToken, projectId, { lines: [] });
     await expectNoSideEffects(
       draftId,
-      () => authPost(ownerToken, `/api/invoices/${draftId}/issue`),
+      async () =>
+        authPost(
+          ownerToken,
+          `/api/invoices/${draftId}/issue`,
+          await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+        ),
       422,
       'VALIDATION_ERROR',
     );
@@ -1230,7 +1277,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
     });
     await expectNoSideEffects(
       draftId,
-      () => authPost(ownerToken, `/api/invoices/${draftId}/issue`),
+      async () =>
+        authPost(
+          ownerToken,
+          `/api/invoices/${draftId}/issue`,
+          await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+        ),
       422,
       'VALIDATION_ERROR',
     );
@@ -1242,7 +1294,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
     });
     await expectNoSideEffects(
       draftId,
-      () => authPost(ownerToken, `/api/invoices/${draftId}/issue`),
+      async () =>
+        authPost(
+          ownerToken,
+          `/api/invoices/${draftId}/issue`,
+          await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+        ),
       422,
       'VALIDATION_ERROR',
     );
@@ -1254,7 +1311,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
     });
     await expectNoSideEffects(
       draftId,
-      () => authPost(ownerToken, `/api/invoices/${draftId}/issue`),
+      async () =>
+        authPost(
+          ownerToken,
+          `/api/invoices/${draftId}/issue`,
+          await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+        ),
       422,
       'VALIDATION_ERROR',
     );
@@ -1266,7 +1328,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
     });
     await expectNoSideEffects(
       draftId,
-      () => authPost(ownerToken, `/api/invoices/${draftId}/issue`),
+      async () =>
+        authPost(
+          ownerToken,
+          `/api/invoices/${draftId}/issue`,
+          await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+        ),
       422,
       'VALIDATION_ERROR',
     );
@@ -1283,7 +1350,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
     });
     await expectNoSideEffects(
       draftId,
-      () => authPost(ownerToken, `/api/invoices/${draftId}/issue`),
+      async () =>
+        authPost(
+          ownerToken,
+          `/api/invoices/${draftId}/issue`,
+          await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+        ),
       422,
       'VALIDATION_ERROR',
     );
@@ -1348,7 +1420,11 @@ describe('Invoice issuance — pre-condition rejections (AT-113(i) / AC-289)', (
     try {
       const baseline = await readSequenceAndAuditBaseline(draftId);
 
-      const res = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+      const res = await authPost(
+        ownerToken,
+        `/api/invoices/${draftId}/issue`,
+        await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+      );
       expect(res.statusCode).toBe(422);
       const body = res.json();
       expect(body.code).toBe('COMPANY_PROFILE_REQUIRED');
@@ -1410,7 +1486,11 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
     //    going through the SSE-subscribed window: the first issue is
     //    the precondition, not the load-bearing assertion.
     const draftId = await createDraft(ownerToken, projectId);
-    const firstIssue = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+    const firstIssue = await authPost(
+      ownerToken,
+      `/api/invoices/${draftId}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+    );
     expect(firstIssue.statusCode).toBe(200);
     expect(firstIssue.json().status).toBe('issued');
 
@@ -1430,7 +1510,11 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
       // 3. Second POST /issue — the load-bearing call. AC-286 + the
       //    service guard at `InvoiceIssueService.ts:117` map this to
       //    `INVOICE_FROZEN` at status 422 (`errors.ts:263-265`).
-      const reissue = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+      const reissue = await authPost(
+        ownerToken,
+        `/api/invoices/${draftId}/issue`,
+        await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+      );
       expect(reissue.statusCode).toBe(422);
       expect(reissue.json().code).toBe('INVOICE_FROZEN');
 
@@ -1511,7 +1595,11 @@ describe('Invoice issuance — per-tax-mode boilerplate (AT-116 / AC-292)', () =
     }
     const draftId = await createDraft(ownerToken, pid, overrides);
 
-    const issue = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+    const issue = await authPost(
+      ownerToken,
+      `/api/invoices/${draftId}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+    );
     expect(issue.statusCode).toBe(200);
     const invoiceId = issue.json().id as string;
 
@@ -1584,7 +1672,11 @@ describe('Invoice issuance — ZUGFeRD EN 16931 conformance (AT-117 / AC-293)', 
 
   it('rendered PDF/A-3 embeds factur-x.xml; XML validates against EN 16931 XSD; profile pinned', async () => {
     const draftId = await createDraft(ownerToken, projectId);
-    const issue = await authPost(ownerToken, `/api/invoices/${draftId}/issue`);
+    const issue = await authPost(
+      ownerToken,
+      `/api/invoices/${draftId}/issue`,
+      await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+    );
     expect(issue.statusCode).toBe(200);
     const invoiceId = issue.json().id as string;
     expect(issue.json().profile).toBe('zugferd-en16931');

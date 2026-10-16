@@ -39,6 +39,7 @@ import {
 import type { InvoiceLine, InvoiceRecipientSnapshot, TaxMode } from '../../domain/invoice.js';
 import { TAX_MODES, INVOICE_STATUSES } from '../../domain/invoice.js';
 import { buildContentDisposition } from '../storage/client.js';
+import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
 /**
  * Shared JSON-schema fragment for an `InvoiceLine`. Routes accept the
@@ -260,7 +261,9 @@ export function invoiceRoutes(db: Database) {
           body: {
             type: 'object',
             additionalProperties: false,
+            required: ['expectedVersion'],
             properties: {
+              expectedVersion: EXPECTED_VERSION_SCHEMA,
               // See POST handler — same `maxItems` + ISO-8601 rationale.
               lines: { type: 'array', items: lineSchema, maxItems: 500 },
               recipient: recipientSchema,
@@ -277,6 +280,7 @@ export function invoiceRoutes(db: Database) {
       async (request, reply) => {
         const { id } = request.params as { id: string };
         const body = request.body as {
+          expectedVersion: number;
           lines?: InvoiceLine[];
           recipient?: InvoiceRecipientSnapshot;
           taxMode?: TaxMode;
@@ -284,6 +288,7 @@ export function invoiceRoutes(db: Database) {
         };
         const invoice = await service.updateDraft(
           id,
+          body.expectedVersion,
           {
             ...(body.lines !== undefined ? { lines: body.lines } : {}),
             ...(body.recipient !== undefined ? { recipient: body.recipient } : {}),
@@ -303,6 +308,9 @@ export function invoiceRoutes(db: Database) {
 
     // ---------------------------------------------------------------
     // DELETE /api/invoices/:id — hard-delete draft (INVOICE_FROZEN otherwise)
+    //
+    // `expectedVersion` rides the query string: a DELETE body has no
+    // defined semantics (RFC 9110 §9.3.5).
     // ---------------------------------------------------------------
     app.delete(
       '/api/invoices/:id',
@@ -313,12 +321,25 @@ export function invoiceRoutes(db: Database) {
             required: ['id'],
             properties: { id: { type: 'string', format: 'uuid' } },
           },
+          querystring: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['expectedVersion'],
+            properties: { expectedVersion: EXPECTED_VERSION_SCHEMA },
+          },
         },
         preHandler: requirePermission('invoice:write'),
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };
-        await service.deleteDraft(id, request.user!.id, request.log, request.id ?? null);
+        const { expectedVersion } = request.query as { expectedVersion: number };
+        await service.deleteDraft(
+          id,
+          expectedVersion,
+          request.user!.id,
+          request.log,
+          request.id ?? null,
+        );
         return reply.code(204).send();
       },
     );
@@ -335,13 +356,21 @@ export function invoiceRoutes(db: Database) {
             required: ['id'],
             properties: { id: { type: 'string', format: 'uuid' } },
           },
+          body: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['expectedVersion'],
+            properties: { expectedVersion: EXPECTED_VERSION_SCHEMA },
+          },
         },
         preHandler: requirePermission('invoice:write'),
       },
       async (request, reply) => {
         const { id } = request.params as { id: string };
+        const { expectedVersion } = request.body as { expectedVersion: number };
         const invoice = await service.issueDraft(
           id,
+          expectedVersion,
           request.user!.id,
           request.log,
           request.id ?? null,

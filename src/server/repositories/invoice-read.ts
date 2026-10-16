@@ -75,6 +75,7 @@ export function toInvoiceResponse(row: InvoiceRow): Invoice {
     performanceDate: dateToIso(row.performanceDate),
     cancellationReason: row.cancellationReason,
     renderedPdfBinaryDescriptorId: row.renderedPdfBinaryDescriptorId,
+    version: row.version,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     createdBy: row.createdBy,
@@ -232,15 +233,16 @@ export async function getInvoice(
 }
 
 /**
- * Fetch a raw invoice row inside a transaction. Used by the service
- * layer to read `payload.before` inside the same snapshot as the
- * mutation. Returns null on miss; callers map to `NOT_FOUND`.
+ * Fetch and row-lock a raw invoice row inside a transaction. Used by the
+ * service layer to read `payload.before` and check `version` (data-model.md
+ * §6.4); the lock holds until commit, so no concurrent write lands between
+ * the checks and the write. Returns null on miss; callers map to `NOT_FOUND`.
  */
 export async function getInvoiceRowForMutation(
-  tx: TransactionalDatabase,
+  tx: MutatingDatabase,
   id: string,
 ): Promise<InvoiceRow | null> {
-  const rows = await tx.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+  const rows = await tx.select().from(invoices).where(eq(invoices.id, id)).limit(1).for('update');
   return rows[0] ?? null;
 }
 

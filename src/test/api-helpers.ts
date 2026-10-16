@@ -152,6 +152,22 @@ export async function authGet(token: string, url: string) {
 }
 
 /**
+ * `{ expectedVersion }` for a versioned write (data-model.md §6.4), read
+ * from the entity's GET — for tests whose subject is not the version
+ * check itself. Spread it into the payload.
+ */
+export async function expectedVersion(
+  token: string,
+  readUrl: string,
+): Promise<{ expectedVersion: number }> {
+  const res = await authGet(token, readUrl);
+  if (res.statusCode !== 200) {
+    throw new Error(`expectedVersion: GET ${readUrl} → ${res.statusCode} ${res.body}`);
+  }
+  return { expectedVersion: (res.json() as { version: number }).version };
+}
+
+/**
  * Make an authenticated POST request.
  */
 export async function authPost(token: string, url: string, payload?: Record<string, unknown>) {

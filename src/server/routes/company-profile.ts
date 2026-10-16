@@ -20,6 +20,7 @@ import type { Database } from '../db/connection.js';
 import { requireRole, requireSession } from '../middleware/auth.js';
 import { CompanyProfileService } from '../services/CompanyProfileService.js';
 import { TAX_MODES, type TaxMode } from '../../domain/invoice.js';
+import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
 const addressSchema = {
   type: 'object',
@@ -45,9 +46,10 @@ const profileBodySchema = {
   // fields (`ustId`, `iban`, …) accept null explicitly. Required-when-
   // mode validation runs in the service layer (single source of truth
   // with the issue-time gate — AC-303 / AC-289(i)).
-  required: ['companyName', 'address', 'taxId', 'defaultTaxMode'],
+  required: ['expectedVersion', 'companyName', 'address', 'taxId', 'defaultTaxMode'],
   additionalProperties: false,
   properties: {
+    expectedVersion: EXPECTED_VERSION_SCHEMA,
     companyName: { type: 'string', maxLength: 200 },
     address: addressSchema,
     taxId: { type: 'string', maxLength: 50 },
@@ -92,7 +94,8 @@ export function companyProfileRoutes(db: Database) {
         preHandler: requireRole('owner'),
       },
       async (request, reply) => {
-        const body = request.body as {
+        const { expectedVersion, ...body } = request.body as {
+          expectedVersion: number;
           companyName: string;
           address: { street: string; zip: string; city: string };
           taxId: string;
@@ -103,7 +106,13 @@ export function companyProfileRoutes(db: Database) {
           defaultTaxMode: TaxMode;
         };
 
-        const updated = await service.upsert(request.user!, body, request.log, request.id ?? null);
+        const updated = await service.upsert(
+          request.user!,
+          expectedVersion,
+          body,
+          request.log,
+          request.id ?? null,
+        );
         return reply.code(200).send(updated);
       },
     );

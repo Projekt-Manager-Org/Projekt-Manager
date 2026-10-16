@@ -32,6 +32,7 @@ import {
   authPost,
   authPatch,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -228,6 +229,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
     // `customer.update`, so a customer mutation in the same session must
     // not appear under this recipient scope.
     const custPatch = await authPatch(ownerToken, `/api/customers/${seededCustomerId}`, {
+      ...(await expectedVersion(ownerToken, `/api/customers/${seededCustomerId}`)),
       phone: `0221-${Date.now().toString().slice(-7)}`,
     });
     expect(custPatch.statusCode).toBe(200);
@@ -430,6 +432,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
       // Interleave: customer update every two projects.
       if (i % 2 === 0) {
         const custPatch = await authPatch(ownerToken, `/api/customers/${seededCustomerId}`, {
+          ...(await expectedVersion(ownerToken, `/api/customers/${seededCustomerId}`)),
           phone: `0221-${Date.now().toString().slice(-7)}-${i}`,
         });
         expect(custPatch.statusCode).toBe(200);

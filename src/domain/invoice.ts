@@ -95,6 +95,9 @@ export interface Invoice {
   cancellationReason: string | null;
   renderedPdfBinaryDescriptorId: string | null;
 
+  /** Concurrency token (data-model.md §6.4); frozen once issued. */
+  version: number;
+
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;
@@ -118,6 +121,8 @@ export interface CompanyProfile {
   accentColor: string | null;
   footerText: string | null;
   defaultTaxMode: TaxMode;
+  /** Concurrency token (data-model.md §6.4). */
+  version: number;
   updatedAt: string;
   updatedBy: string | null;
 }

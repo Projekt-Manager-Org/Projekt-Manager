@@ -43,6 +43,7 @@ import {
   authPost,
   authPatch,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
@@ -211,6 +212,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
       const before = await countAuditRows(db);
 
       const patchRes = await authPatch(ownerToken, `/api/customers/${seededCustomerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${seededCustomerId}`)),
         phone: '0221-8889990',
       });
       expect(patchRes.statusCode).toBe(200);

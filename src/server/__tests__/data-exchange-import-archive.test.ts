@@ -77,7 +77,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 
-import { startApp, stopApp, getApp, login, authGet, authPost } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  getApp,
+  login,
+  authGet,
+  authPost,
+  expectedVersion,
+} from '../../test/api-helpers.js';
 import {
   SEED_DEFAULT_PASSWORD,
   SEED_USERS,
@@ -702,7 +710,11 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       });
       expect(draft.statusCode).toBe(201);
       const id = (draft.json() as { id: string }).id;
-      const issued = await authPost(token, `/api/invoices/${id}/issue`);
+      const issued = await authPost(
+        token,
+        `/api/invoices/${id}/issue`,
+        await expectedVersion(token, `/api/invoices/${id}`),
+      );
       expect(issued.statusCode).toBe(200);
       const { number, renderedPdfBinaryDescriptorId: descriptorId } = issued.json() as {
         number: string;

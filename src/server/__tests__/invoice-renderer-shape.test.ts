@@ -33,6 +33,7 @@ const profile: CompanyProfile = {
   accentColor: '#f60',
   footerText: 'Vielen Dank.',
   defaultTaxMode: 'standard',
+  version: 1,
   updatedAt: '2026-05-12T00:00:00Z',
   updatedBy: null,
 };
@@ -82,6 +83,7 @@ function makeInvoice(mode: TaxMode): Invoice {
     performanceDate: '2026-04-10',
     cancellationReason: null,
     renderedPdfBinaryDescriptorId: null,
+    version: 1,
     createdAt: '2026-05-12T00:00:00Z',
     updatedAt: '2026-05-12T00:00:00Z',
     createdBy: null,

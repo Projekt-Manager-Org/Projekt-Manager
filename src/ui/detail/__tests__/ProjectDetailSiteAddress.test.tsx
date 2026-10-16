@@ -81,6 +81,7 @@ const CUSTOMER_ADDRESS: Address = { street: 'Rheinuferstr. 44', zip: '50996', ci
 function customerWith(address: Address | null): Customer {
   return {
     id: 'c-1',
+    version: 1,
     name: 'Hausverwaltung Rheinblick',
     phone: null,
     email: null,
@@ -106,6 +107,7 @@ function makeProject(siteAddress: Address | null, customerAddress: Address | nul
     customerId: customer.id,
     customer: {
       id: customer.id,
+      version: 1,
       name: customer.name,
       phone: customer.phone,
       email: customer.email,

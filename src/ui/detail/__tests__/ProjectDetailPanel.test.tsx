@@ -50,6 +50,7 @@ const { useProjectStore } = await import('@/state/projectStore');
 
 const CUSTOMER: Customer = {
   id: 'c-1',
+  version: 1,
   name: 'Kunde GmbH',
   phone: null,
   email: null,

@@ -115,15 +115,24 @@ export function CompanyProfileSection() {
   const data = useCompanyProfileStore((s) => s.data);
   const fetchError = useCompanyProfileStore((s) => s.fetchError);
   const fetchProfile = useCompanyProfileStore((s) => s.fetch);
+  const clearSaveError = useCompanyProfileStore((s) => s.clearSaveError);
 
   useEffect(() => {
     void fetchProfile();
   }, [fetchProfile]);
 
+  // Drop the stale save-error on unmount so navigating away and
+  // returning to Firmendaten does not resurrect last attempt's red
+  // banner. The error lives in the Zustand store (cross-mount) so it is
+  // cleared explicitly — here, not in the form: the form re-mounts on
+  // every refetch, and a stale-write refetch must keep its message.
+  useEffect(() => () => clearSaveError(), [clearSaveError]);
+
   // Mount the form only once the server snapshot has arrived. The
-  // `key={profile.updatedAt}` re-mounts the form when the server
-  // returns a refreshed snapshot after a successful save — `useState`
-  // initializer re-runs against the new data without a setState-in-effect.
+  // `key={data.version}` re-mounts the form when the server returns a
+  // new snapshot — after a save or a stale-write refetch — so `useState`
+  // initializers re-run against the new data (and the edit's start
+  // version, behavior.md §9.5) without a setState-in-effect.
   //
   // Until then, surface the fetch error explicitly. The form is the only
   // place `saveError` is rendered, so a failed initial GET would
@@ -156,20 +165,13 @@ export function CompanyProfileSection() {
     );
   }
 
-  return <CompanyProfileForm key={data.updatedAt} profile={data} />;
+  return <CompanyProfileForm key={data.version} profile={data} />;
 }
 
 function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
   const authUser = useAuthStore((s) => s.authUser);
   const saveError = useCompanyProfileStore((s) => s.saveError);
   const saveProfile = useCompanyProfileStore((s) => s.save);
-  const clearSaveError = useCompanyProfileStore((s) => s.clearSaveError);
-
-  // Drop the stale save-error on unmount so navigating away and
-  // returning to Firmendaten does not resurrect last attempt's red
-  // banner. The error lives in the Zustand store (cross-mount) so the
-  // form has to clear it explicitly.
-  useEffect(() => () => clearSaveError(), [clearSaveError]);
 
   const isOwner = (authUser?.roles ?? []).includes('owner');
 
@@ -223,7 +225,7 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
       footerText: values.footerText.trim() || null,
       defaultTaxMode: values.defaultTaxMode,
     };
-    await saveProfile(payload);
+    await saveProfile(profile.version, payload);
     setSubmitting(false);
   };
 

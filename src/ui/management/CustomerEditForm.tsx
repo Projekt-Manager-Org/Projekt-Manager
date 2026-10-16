@@ -15,15 +15,17 @@ import styles from './Management.module.css';
 interface Props {
   // Accept the narrower CustomerSummary so the project detail page can
   // pass its embedded `project.customer` directly. The form only reads
-  // id/name/phone/email/address — exactly what CustomerSummary carries.
-  // A full Customer still satisfies this type (superset).
+  // id/name/phone/email/address/version — exactly what CustomerSummary
+  // carries. A full Customer still satisfies this type (superset).
   customer: Customer | CustomerSummary;
   onClose: () => void;
   /** Optional hook fired after a successful save, before close. */
   onSaved?: () => void;
+  /** Optional hook fired after a stale write reset the form to the refetched customer. */
+  onConflict?: () => void;
 }
 
-export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
+export function CustomerEditForm({ customer, onClose, onSaved, onConflict }: Props) {
   const updateCustomer = useCustomerStore((s) => s.updateCustomer);
   const error = useCustomerStore((s) => s.error);
   const canWrite = usePermission('customer:write');
@@ -35,6 +37,19 @@ export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
   const [zip, setZip] = useState(customer.address?.zip ?? '');
   const [city, setCity] = useState(customer.address?.city ?? '');
   const [submitting, setSubmitting] = useState(false);
+  // The version the form opened at — the edit's start version
+  // (behavior.md §9.5); replaced only by the refetch after a stale write.
+  const [startVersion, setStartVersion] = useState(customer.version);
+
+  const resetTo = (fresh: Customer) => {
+    setName(fresh.name);
+    setPhone(fresh.phone ?? '');
+    setEmail(fresh.email ?? '');
+    setStreet(fresh.address?.street ?? '');
+    setZip(fresh.address?.zip ?? '');
+    setCity(fresh.address?.city ?? '');
+    setStartVersion(fresh.version);
+  };
 
   const handleUpdate = async () => {
     if (submitting || !name.trim()) return;
@@ -45,7 +60,7 @@ export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
         ? { street: street.trim(), zip: zip.trim(), city: city.trim() }
         : null;
 
-    const ok = await updateCustomer(customer.id, {
+    const outcome = await updateCustomer(customer.id, startVersion, {
       name: name.trim(),
       phone: phone.trim() || null,
       email: email.trim() || null,
@@ -53,9 +68,12 @@ export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
     });
 
     setSubmitting(false);
-    if (ok) {
+    if (outcome.status === 'ok') {
       onSaved?.();
       onClose();
+    } else if (outcome.status === 'conflict') {
+      resetTo(outcome.customer);
+      onConflict?.();
     }
   };
 

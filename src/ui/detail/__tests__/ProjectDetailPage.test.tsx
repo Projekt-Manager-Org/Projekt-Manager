@@ -74,6 +74,7 @@ const { useToastStore } = await import('@/state/toastStore');
 
 const CUSTOMER: Customer = {
   id: 'c-1',
+  version: 1,
   name: 'Kunde GmbH',
   phone: null,
   email: null,

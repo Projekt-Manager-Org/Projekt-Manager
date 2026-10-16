@@ -39,6 +39,7 @@ import { useToastStore } from '@/state/toastStore';
 import { usePermission } from '@/hooks/usePermission';
 import { downloadAuthedFile } from '@/ui/utils/downloadFile';
 import styles from './InvoiceListView.module.css';
+import { InvoiceDraftPreview } from '@/ui/detail/invoice/InvoiceDraftPreview';
 
 interface RowAttrs {
   label: string;
@@ -122,10 +123,15 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
   };
 
   const handleDeleteDraft = async () => {
-    const ok = await requestConfirm(STRINGS.invoices.deleteDraftConfirm);
+    // The dialog previews the row as it opens and sends that version
+    // (ui/project-detail.md §8.15.11, behavior.md §9.5).
+    const ok = await requestConfirm(STRINGS.invoices.deleteDraftConfirm, {
+      details: <InvoiceDraftPreview invoice={invoice} />,
+    });
     if (!ok) return;
-    const outcome = await deleteDraft(invoice.id, invoice.projectId);
-    if (outcome.status === 'ok') void fetchList();
+    const outcome = await deleteDraft(invoice.id, invoice.projectId, invoice.version);
+    if (outcome.status === 'ok' || outcome.status === 'conflict') void fetchList();
+    if (outcome.status !== 'ok') showToast('error', outcome.errorMessage);
   };
 
   const selectedIds = useInvoiceListStore((s) => s.selectedIds);

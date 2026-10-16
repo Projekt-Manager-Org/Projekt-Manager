@@ -28,6 +28,7 @@ import {
   authPost,
   authPatch,
   authDelete,
+  expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 
@@ -140,6 +141,7 @@ describe('Customer CRUD Operations', () => {
       expect(beforeRes.statusCode).toBe(200);
 
       const res = await authPatch(ownerToken, `/api/customers/${createdCustomerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${createdCustomerId}`)),
         phone: '0170-9876543',
       });
 
@@ -158,11 +160,13 @@ describe('Customer CRUD Operations', () => {
     it('clears an optional field when set to null', async () => {
       // First set a phone number
       await authPatch(ownerToken, `/api/customers/${createdCustomerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${createdCustomerId}`)),
         email: 'test@example.de',
       });
 
       // Then clear it
       const res = await authPatch(ownerToken, `/api/customers/${createdCustomerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${createdCustomerId}`)),
         email: null,
       });
 
@@ -172,6 +176,7 @@ describe('Customer CRUD Operations', () => {
 
     it('requires customer:write permission — worker is rejected', async () => {
       const res = await authPatch(workerToken, `/api/customers/${createdCustomerId}`, {
+        ...(await expectedVersion(ownerToken, `/api/customers/${createdCustomerId}`)),
         phone: '0170-0000000',
       });
 

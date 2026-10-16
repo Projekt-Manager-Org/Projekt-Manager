@@ -174,8 +174,12 @@ export class ExportService {
       })),
       // `toCustomerResponse` already projects `ustId` (pre-existing
       // drift in the envelope shape pre-#230); the upgraded contract
-      // now consumes the field directly.
-      customers: customerRows.map(toCustomerResponse),
+      // now consumes the field directly. `version` is a concurrency
+      // token, not business data — never exported (data-model.md §6.4).
+      customers: customerRows.map((c) => {
+        const { version: _version, ...customer } = toCustomerResponse(c);
+        return customer;
+      }),
       projects: projectRows.map((p) => ({
         id: p.id,
         number: p.number,
