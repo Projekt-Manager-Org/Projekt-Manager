@@ -566,8 +566,12 @@ export function ProjectDetailPage() {
           customer={customer}
           onClose={() => setCustomerModalOpen(false)}
           // Refresh the project so the embedded customer snapshot —
-          // which is what the page renders — picks up the new values.
+          // which is what the page renders — picks up the new values,
+          // after a save and after a stale write alike.
           onSaved={() => {
+            void fetchProject(project.id);
+          }}
+          onConflict={() => {
             void fetchProject(project.id);
           }}
         />

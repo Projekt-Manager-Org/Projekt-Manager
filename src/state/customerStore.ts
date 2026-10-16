@@ -8,6 +8,7 @@
 import { create } from 'zustand';
 import type { Customer } from '@/domain/types';
 import { customerApi, type CustomerSortKey, type SortDir } from '@/api/client';
+import { STRINGS } from '@/config/strings';
 import { handleSessionExpired } from './sessionExpired';
 import { useStorageUsageStore } from './storageUsageStore';
 import { isVersionConflict } from './versionedWrites';
@@ -202,6 +203,9 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
           }));
           return { status: 'conflict', customer: fresh.data };
         }
+        // Nothing was reloaded — the stale-write message would say it was.
+        set({ error: STRINGS.errors.mutationFailed });
+        return { status: 'failed' };
       }
       set({ error: result.error.message });
       return { status: 'failed' };

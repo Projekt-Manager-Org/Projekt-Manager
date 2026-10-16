@@ -15,15 +15,17 @@ import styles from './Management.module.css';
 interface Props {
   // Accept the narrower CustomerSummary so the project detail page can
   // pass its embedded `project.customer` directly. The form only reads
-  // id/name/phone/email/address — exactly what CustomerSummary carries.
-  // A full Customer still satisfies this type (superset).
+  // id/name/phone/email/address/version — exactly what CustomerSummary
+  // carries. A full Customer still satisfies this type (superset).
   customer: Customer | CustomerSummary;
   onClose: () => void;
   /** Optional hook fired after a successful save, before close. */
   onSaved?: () => void;
+  /** Optional hook fired after a stale write reset the form to the refetched customer. */
+  onConflict?: () => void;
 }
 
-export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
+export function CustomerEditForm({ customer, onClose, onSaved, onConflict }: Props) {
   const updateCustomer = useCustomerStore((s) => s.updateCustomer);
   const error = useCustomerStore((s) => s.error);
   const canWrite = usePermission('customer:write');
@@ -71,6 +73,7 @@ export function CustomerEditForm({ customer, onClose, onSaved }: Props) {
       onClose();
     } else if (outcome.status === 'conflict') {
       resetTo(outcome.customer);
+      onConflict?.();
     }
   };
 

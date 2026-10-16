@@ -12,6 +12,7 @@
 import { create } from 'zustand';
 import type { CompanyProfile } from '@/domain/invoice';
 import { companyProfileApi, type CompanyProfileInput } from '@/api/client';
+import { STRINGS } from '@/config/strings';
 import { handleSessionExpired } from './sessionExpired';
 import { isVersionConflict } from './versionedWrites';
 
@@ -102,6 +103,11 @@ export const useCompanyProfileStore = create<CompanyProfileState>((set, get) => 
       }
       if (isVersionConflict(result)) {
         await get().fetch();
+        // A failed refetch reloaded nothing — the stale-write message would say it did.
+        if (get().fetchError) {
+          set({ saveError: STRINGS.errors.mutationFailed });
+          return { status: 'error' };
+        }
         set({ saveError: result.error.message });
         return { status: 'conflict' };
       }

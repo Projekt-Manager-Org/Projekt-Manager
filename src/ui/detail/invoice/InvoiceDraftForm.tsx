@@ -184,15 +184,16 @@ export function InvoiceDraftForm({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Track the server-assigned id so consecutive saves PATCH the same row
-  // rather than POSTing a fresh one. `useRef` (not `useState`) because the
+  // rather than POSTing a fresh one, together with the edit's start
+  // version — the draft version the form opened with (behavior.md §9.5).
+  // A background refresh never moves it; only this form's own save or the
+  // refetch after a stale write does. `useRef` (not `useState`) because the
   // value is read inside `handleSave` and we don't need a re-render on
   // update; a setState here would have to be flushed before the next
   // `handleSave` call could see it.
-  const draftIdRef = useRef<string | null>(draft?.id ?? null);
-  // The draft version the form opened with — the edit's start version
-  // (behavior.md §9.5). A background refresh of the row never moves it;
-  // only the refetch after a stale write does.
-  const startVersionRef = useRef<number | null>(draft?.version ?? null);
+  const savedDraftRef = useRef<{ id: string; version: number } | null>(
+    draft ? { id: draft.id, version: draft.version } : null,
+  );
 
   // Modal accessibility: focus trap, body scroll lock, Escape-to-close.
   // Same hook the cancel dialog uses so the two surfaces match. Escape
@@ -237,22 +238,20 @@ export function InvoiceDraftForm({
 
     setSubmitting(true);
 
-    const currentDraftId = draftIdRef.current;
-    const startVersion = startVersionRef.current;
-    const outcome =
-      currentDraftId && startVersion !== null
-        ? await updateDraft(currentDraftId, projectId, startVersion, {
-            lines: wireLines,
-            recipient: wireRecipient,
-            taxMode,
-            performanceDate: wirePerformanceDate,
-          })
-        : await createDraft(projectId, {
-            lines: wireLines,
-            recipient: wireRecipient,
-            taxMode,
-            performanceDate: wirePerformanceDate,
-          });
+    const saved = savedDraftRef.current;
+    const outcome = saved
+      ? await updateDraft(saved.id, projectId, saved.version, {
+          lines: wireLines,
+          recipient: wireRecipient,
+          taxMode,
+          performanceDate: wirePerformanceDate,
+        })
+      : await createDraft(projectId, {
+          lines: wireLines,
+          recipient: wireRecipient,
+          taxMode,
+          performanceDate: wirePerformanceDate,
+        });
 
     setSubmitting(false);
 
@@ -262,8 +261,7 @@ export function InvoiceDraftForm({
       // the form closes immediately on success, but the ref hand-off
       // is correct either way.
       if (outcome.invoice) {
-        draftIdRef.current = outcome.invoice.id;
-        startVersionRef.current = outcome.invoice.version;
+        savedDraftRef.current = { id: outcome.invoice.id, version: outcome.invoice.version };
       }
       onClose();
       return;
@@ -275,7 +273,7 @@ export function InvoiceDraftForm({
       setLines(linesFromInvoice(fresh));
       setTaxMode(fresh.taxMode);
       setPerformanceDate(dateInputValue(fresh.performanceDate ?? defaultPerformanceDate));
-      startVersionRef.current = fresh.version;
+      savedDraftRef.current = { id: fresh.id, version: fresh.version };
     }
     setErrorMessage(outcome.errorMessage);
   };

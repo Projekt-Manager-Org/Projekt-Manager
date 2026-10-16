@@ -781,4 +781,38 @@ describe('SiteAddressEditModal — Baustelle visual auto-fill (toggle ON)', () =
     ];
     expect(body.siteAddress).toBeNull();
   });
+
+  it('a stale write keeps the modal open on the refetched address and resends with the refetched version (AC-379)', async () => {
+    const opened = { street: 'Goethestr. 18', zip: '51103', city: 'Köln' };
+    const refetched = { street: 'Ringstr. 3', zip: '50667', city: 'Köln' };
+    renderDetailAt(makeProject({ version: 1, siteAddress: opened }));
+
+    await userEvent.click(await screen.findByTestId('project-detail-site-address-edit'));
+    await screen.findByTestId('site-address-modal');
+
+    // Another session changed the address meanwhile: the save is stale.
+    projectUpdateMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'VERSION_CONFLICT', message: STRINGS.errors.versionConflict },
+      category: 'server_error',
+      sessionExpired: false,
+    });
+    projectGetMock.mockResolvedValue(ok(makeProject({ version: 2, siteAddress: refetched })));
+
+    const street = () => screen.getByTestId('project-site-street-input') as HTMLInputElement;
+    await userEvent.clear(street());
+    await userEvent.type(street(), 'Lokale Änderung 1');
+    await userEvent.click(screen.getByTestId('project-site-save'));
+
+    expect(await screen.findByTestId('project-site-address-error')).toHaveTextContent(
+      STRINGS.errors.versionConflict,
+    );
+    expect(screen.getByTestId('site-address-modal')).toBeInTheDocument();
+    await waitFor(() => expect(street().value).toBe(refetched.street));
+
+    await userEvent.click(screen.getByTestId('project-site-save'));
+    await waitFor(() => expect(projectUpdateMock).toHaveBeenCalledTimes(2));
+    const [, expectedVersion] = projectUpdateMock.mock.calls[1] as unknown as [string, number];
+    expect(expectedVersion).toBe(2);
+  });
 });
