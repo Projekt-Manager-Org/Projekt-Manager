@@ -18,6 +18,7 @@ import { useUserStore } from './userStore';
 import { useProjectManagementStore } from './projectManagementStore';
 import { useExportJobStore } from './exportJobStore';
 import { useImportJobStore } from './importJobStore';
+import { clearVersionedWrites } from './versionedWrites';
 
 interface AuthState {
   authUser: AuthUser | null;
@@ -113,6 +114,7 @@ function readCachedPreference(): ThemePreference | null {
  * store.ts would add another leg to the cycle for no gain.
  */
 function clearDownstreamState(): void {
+  clearVersionedWrites();
   useProjectStore.setState({
     projects: [],
     mutationInFlight: {},

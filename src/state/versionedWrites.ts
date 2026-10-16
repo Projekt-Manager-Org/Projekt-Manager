@@ -92,7 +92,12 @@ export function versionedWrite<T extends { version: number } | null>(
   return task;
 }
 
-/** Test seam — drop every lane. */
-export function resetVersionedWrites(): void {
+/**
+ * Drop every lane — on logout and session expiry. The recorded advances
+ * describe the server as this session last wrote it; an override import
+ * (which ends every session) resets versions, and a re-login without a
+ * page reload must not carry the old advances into the new data.
+ */
+export function clearVersionedWrites(): void {
   lanes.clear();
 }

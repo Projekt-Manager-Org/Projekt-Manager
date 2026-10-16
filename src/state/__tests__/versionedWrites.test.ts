@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { ApiResult } from '@/api/client';
-import { resetVersionedWrites, versionedWrite } from '../versionedWrites';
+import { clearVersionedWrites, versionedWrite } from '../versionedWrites';
 
 type Row = { version: number };
 
@@ -32,7 +32,7 @@ function deferredSend() {
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
-beforeEach(() => resetVersionedWrites());
+beforeEach(() => clearVersionedWrites());
 
 describe('UT-18 / AC-379: versioned write lane', () => {
   it('sends one write per entity at a time, the second with the version the first produced', async () => {
