@@ -61,12 +61,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as prettier from 'prettier';
-import type { FastifyInstance, RouteOptions } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import { buildApp, type OpenApiDocOptions } from '../src/server/app.js';
 import { createDatabase } from '../src/server/db/connection.js';
 import { createAuthMiddleware, requirePermission } from '../src/server/middleware/auth.js';
-import { assertGatesAuthenticate, methodsOf } from './lib/route-introspection.js';
+import { assertGatesAuthenticate, methodsOf, recordRoutes } from './lib/route-introspection.js';
 import {
   applySecurity,
   assertEveryRoutePublished,
@@ -146,16 +146,7 @@ async function buildExpectedDoc(): Promise<string> {
 
     app = buildApp({ logger: false, db: conn.db, rateLimit: false, openapi: DOC_OPTIONS });
 
-    // Attached AFTER `buildApp()` returns and BEFORE `ready()`, and read
-    // only once `ready()` has resolved — the same two-part timing
-    // `collectRoutes` in generate-api-surface.ts documents: `register()`
-    // defers plugin execution to `ready()`, so this still sees routes in
-    // child encapsulation contexts, and `requireSession`'s marker is
-    // written by the plugin's own hook, after this root one has run.
-    const routes: RouteOptions[] = [];
-    app.addHook('onRoute', (routeOptions) => {
-      routes.push(routeOptions);
-    });
+    const routes = recordRoutes(app);
     await app.ready();
 
     const doc = app.swagger() as DocLike;

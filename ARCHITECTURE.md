@@ -261,7 +261,7 @@ Routes live in `src/server/routes/`, and `buildApp()` (`src/server/app.ts`) regi
 - **One matrix, two layers.** `src/config/permissions.ts` feeds server gates (`requirePermission`, 403) and UI affordances (`usePermission`). The server is authoritative. UI code asks for a permission, not a role — except owner-only surfaces (company profile, backup badge) ([api.md §14.3](docs/spec/api.md#143-authorization-rules)).
 - **One exception:** `requireRole('owner')` on `PUT /api/company-profile` — the spec mints no `company_profile:*` key for a singleton.
 - **Navigation:** `src/config/routes.ts` declares each view's access rule as data; nav, route guard and landing derive from it.
-- **Data scoping is orthogonal** ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)): permissions grant the capability, `src/server/repositories/scope.ts` narrows the rows.
+- **Data scoping is orthogonal** ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)): permissions grant the capability, `src/server/repositories/scope.ts` narrows the rows. Every route a worker reaches is probed for it, or exempt with a reason, in `src/test/workerScopeGate.ts` (AC-383).
 - Both matrices are mirrored in the spec and checked against the code (AC-343, AC-349).
 
 ---
@@ -308,7 +308,7 @@ Backend changes are usually not needed — the store exposes the full project li
 4. **Delegate to service**. Never call repos from a route ([spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries)).
 5. **Errors**: factories from `src/server/errors.ts`, never a raw `Error`. Map DB constraint violations in the service against `src/server/db/constraints.ts` (pattern: `ProjectCrudService.createProjectWithClientId`).
 6. **Register** in `src/server/app.ts`.
-7. **Tests**: integration in `src/server/__tests__/` using `api-helpers.ts` (`startApp()`, `login()`, `authPost()`/`authGet()`).
+7. **Tests**: integration in `src/server/__tests__/` using `api-helpers.ts` (`startApp()`, `login()`, `authPost()`/`authGet()`). A route a worker reaches needs a `WORKER_ROUTE_SCOPE` entry in `src/test/workerScopeGate.ts` — CI fails without one.
 8. **Spec**: add operation to `docs/spec/api.md §14.2`, AC in `docs/spec/verification.md`.
 
 ### Adding a new workflow state

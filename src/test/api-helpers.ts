@@ -41,8 +41,13 @@ const migrationsFolder = path.resolve(__dirname, '../server/db/migrations');
  * every file its own forked process, and integration-setup.ts turns
  * that PID into a private `projekt_manager_test_<pid>` database. The
  * `seed(force: true)` below therefore wipes only this file's data.
+ *
+ * `beforeReady` runs between `buildApp()` and `ready()` — the window in
+ * which a test can record the registered routes or plant its own.
  */
-export async function startApp(): Promise<FastifyInstance> {
+export async function startApp(
+  opts: { beforeReady?: (app: FastifyInstance) => void } = {},
+): Promise<FastifyInstance> {
   // Validate the env once at startup — consolidation review C-3 removed
   // the dual ALLOW_INSECURE_HTTP code paths, so getEnv() is now the single
   // source of truth. Integration tests need validateEnvRuntime() called
@@ -63,6 +68,7 @@ export async function startApp(): Promise<FastifyInstance> {
   await seed(db, { force: true });
 
   app = buildApp({ logger: false, db, rateLimit: false });
+  opts.beforeReady?.(app);
   await app.ready();
   return app;
 }

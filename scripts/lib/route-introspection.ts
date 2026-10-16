@@ -11,19 +11,65 @@
  * themselves. One copy here means the two artifacts cannot describe the
  * same route differently.
  *
- * Everything here reads `RouteOptions` as collected by an `onRoute` hook
+ * The route-scope gate (AC-383, `src/test/workerScopeGate.ts`) reads the
+ * same facts to decide which routes a worker reaches, and shares the
+ * route recording and deny-by-default classification with them.
+ *
+ * Everything here reads `RouteOptions` as collected by `recordRoutes`
  * after `ready()` has resolved; nothing boots an app or touches the
- * filesystem, so both generators keep owning their own env pinning and
- * their own output.
+ * filesystem, so every caller keeps owning its own env pinning and its
+ * own output.
  */
-import type { RouteOptions } from 'fastify';
+import type { FastifyInstance, RouteOptions } from 'fastify';
 // Bindings-free type import, purely to pull in the `FastifyContextConfig`
 // module augmentation `requireSession` declares. Without it `route.config.auth`
 // is not a known property here, and reading it through a cast would let the
 // marker be renamed on one side only.
 import type {} from '../../src/server/middleware/auth.js';
+import { hasPermission, type Permission } from '../../src/config/permissions.js';
 
 type Handler = RouteOptions['handler'];
+
+/**
+ * Every route `app` will register, filled in by `ready()`.
+ *
+ * Call after `buildApp()` returns and before `ready()`, and read the
+ * array only once `ready()` has resolved. `register()` defers plugin
+ * execution to `ready()`, so a root hook added in between still sees
+ * every route, including those in child encapsulation contexts. Reading
+ * afterwards, not inside the hook, is what sees `requireSession`'s
+ * marker: root hooks run before the plugin's own, which writes it.
+ */
+export function recordRoutes(app: FastifyInstance): RouteOptions[] {
+  const routes: RouteOptions[] = [];
+  app.addHook('onRoute', (routeOptions) => {
+    routes.push(routeOptions);
+  });
+  return routes;
+}
+
+/** `METHOD url`, one per method — the key a route classification table uses. */
+export function routeKeys(route: RouteOptions): string[] {
+  return methodsOf(route).map((method) => `${method} ${route.url}`);
+}
+
+/**
+ * Deny-by-default classification: every route must be keyed in
+ * `classified`, and every key must still name a route. A gate built on a
+ * hand-kept table fails both ways — an unclassified route is the gap the
+ * gate exists for, and a stale key is a reason nobody re-checked.
+ */
+export function classificationGaps(
+  routes: RouteOptions[],
+  classified: Iterable<string>,
+): { unclassified: string[]; stale: string[] } {
+  const registered = new Set(routes.flatMap(routeKeys));
+  const keys = new Set(classified);
+  return {
+    unclassified: [...registered].filter((key) => !keys.has(key)),
+    stale: [...keys].filter((key) => !registered.has(key)),
+  };
+}
 
 /** Fastify accepts `method` as a string or an array; always read an array. */
 export function methodsOf(route: RouteOptions): string[] {
@@ -82,6 +128,28 @@ function readAccessRule(fn: unknown): string | null {
     return `Role: ${roles.map(String).join(' or ')}`;
   }
   return null;
+}
+
+/**
+ * True when a caller holding `roles` passes every access gate at this
+ * route's boundary — the same gate data `accessRules` renders, resolved
+ * through the role-permission map instead of published as a rule.
+ */
+export function gatesAdmit(route: RouteOptions, roles: string[]): boolean {
+  return routeLevelPreHandlers(route).every((fn) => {
+    if (typeof fn !== 'function') return true;
+    const { requiredPermissions, requiredRoles } = fn as {
+      requiredPermissions?: unknown;
+      requiredRoles?: unknown;
+    };
+    if (Array.isArray(requiredPermissions)) {
+      return requiredPermissions.some((key) => hasPermission(roles, key as Permission));
+    }
+    if (Array.isArray(requiredRoles)) {
+      return requiredRoles.some((role) => roles.includes(String(role)));
+    }
+    return true;
+  });
 }
 
 /** Every access rule enforced at this route's boundary, in gate order. */
