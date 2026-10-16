@@ -89,15 +89,23 @@ export function installNotFoundHandler(app: FastifyInstance): void {
 }
 
 /**
+ * Synthetic-origin prefix the Service Worker intercepts (api.md
+ * §14.2.11). A request carrying it reaches the server only when the
+ * page is not SW-controlled; the app shell would pass `response.ok`
+ * and be saved as the attachment.
+ */
+const SW_SYNTHETIC_PREFIX = '/encrypted-storage/';
+
+/**
  * Production variant: non-/api URLs fall through to the SPA's
- * `index.html` so client-side routing handles deep links; /api/*
- * URLs return the structured ROUTE_NOT_FOUND error. The caller must
- * register `@fastify/static` before calling — the SPA branch uses
- * `reply.sendFile`.
+ * `index.html` so client-side routing handles deep links; /api/* and
+ * synthetic-origin URLs return the structured ROUTE_NOT_FOUND error.
+ * The caller must register `@fastify/static` before calling — the SPA
+ * branch uses `reply.sendFile`.
  */
 export function installSpaAwareNotFoundHandler(app: FastifyInstance): void {
   app.setNotFoundHandler((request, reply) => {
-    if (!request.url.startsWith('/api')) {
+    if (!request.url.startsWith('/api') && !request.url.startsWith(SW_SYNTHETIC_PREFIX)) {
       return reply.sendFile('index.html');
     }
     const err = routeNotFound();

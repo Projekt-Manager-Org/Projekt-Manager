@@ -933,6 +933,9 @@ export const STRINGS = {
     // Unwrappable-envelope placeholder (AC-244, ADR-0024)
     keyUnavailable: 'Schlüssel nicht verfügbar',
 
+    // Load failure carrying neither code — no verdict on the row (ui/project-detail.md §8.15.7)
+    loadFailed: 'Datei konnte nicht geladen werden',
+
     // Deletion (soft-hide → Papierkorb, ADR-0022)
     deleteConfirmTitle: 'Datei löschen?',
     deleteConfirmMessage:

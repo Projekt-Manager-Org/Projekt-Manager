@@ -7,8 +7,10 @@
  * the SW intercepts, calls `download-url`, fetches ciphertext, decrypts,
  * and returns plaintext bytes. On a non-2xx response the row flips to
  * one of the two divergence placeholders:
- *   - `data-sw-error-code: OBJECT_ABSENT` (or absent code) → `"Datei fehlt"` (AC-224)
+ *   - `data-sw-error-code: OBJECT_ABSENT` → `"Datei fehlt"` (AC-224)
  *   - `data-sw-error-code: DEK_UNWRAP_FAILED` → `"Schlüssel nicht verfügbar"` (AC-244)
+ * Any other failure (no code — e.g. the page is not SW-controlled) shows
+ * `"Datei konnte nicht geladen werden"` and leaves the row usable.
  *
  * Bulk-fetch caps live in `attachmentPipeline.ts` [C]; violation
  * produces a client-side message naming both caps before any request
@@ -54,7 +56,18 @@ const LABEL_BY_VALUE = new Map<AttachmentLabel, string>(
   ATTACHMENT_LABELS.map((l) => [l.value, l.label]),
 );
 
-type RowError = 'object-absent' | 'key-unavailable';
+type RowError = 'object-absent' | 'key-unavailable' | 'load-failed';
+
+/** §8.15.7: only the two pinned SW codes carry a verdict on the row. */
+const VERDICT_BY_SW_CODE: Record<string, RowError> = {
+  OBJECT_ABSENT: 'object-absent',
+  DEK_UNWRAP_FAILED: 'key-unavailable',
+};
+
+/** A verdict disables the row; `load-failed` asserts nothing about it. */
+function isVerdict(error: RowError | undefined): boolean {
+  return error === 'object-absent' || error === 'key-unavailable';
+}
 
 /**
  * Read the SW's `data-sw-error-code` signal off a non-2xx Response.
@@ -139,7 +152,7 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
   const effectiveSelected = useMemo(() => {
     const next = new Set<string>();
     for (const id of selected) {
-      if (binaries.some((b) => b.id === id) && !rowErrors[id]) next.add(id);
+      if (binaries.some((b) => b.id === id) && !isVerdict(rowErrors[id])) next.add(id);
     }
     return next;
   }, [selected, binaries, rowErrors]);
@@ -153,7 +166,7 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
     });
   };
 
-  const selectableIds = binaries.filter((b) => !rowErrors[b.id]).map((b) => b.id);
+  const selectableIds = binaries.filter((b) => !isVerdict(rowErrors[b.id])).map((b) => b.id);
   const allSelected =
     selectableIds.length > 0 && selectableIds.every((id) => effectiveSelected.has(id));
 
@@ -182,12 +195,11 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
     try {
       response = await fetch(url);
     } catch {
-      return { ok: false, verdict: 'object-absent' };
+      return { ok: false, verdict: 'load-failed' };
     }
     if (!response.ok) {
       const code = await readSwErrorCode(response);
-      const verdict: RowError = code === 'DEK_UNWRAP_FAILED' ? 'key-unavailable' : 'object-absent';
-      return { ok: false, verdict };
+      return { ok: false, verdict: VERDICT_BY_SW_CODE[code ?? ''] ?? 'load-failed' };
     }
     const blob = await response.blob();
     return { ok: true, blob };
@@ -201,6 +213,12 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
       setRowErrors((prev) => ({ ...prev, [attachmentId]: probe.verdict }));
       return;
     }
+    // A retry after `load-failed` succeeded — drop the stale badge.
+    setRowErrors((prev) => {
+      if (!(attachmentId in prev)) return prev;
+      const { [attachmentId]: _cleared, ...rest } = prev;
+      return rest;
+    });
     triggerBlobDownload(probe.blob, fileName);
   };
 
@@ -305,7 +323,7 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
               <tbody>
                 {binaries.map((bin) => {
                   const error = rowErrors[bin.id];
-                  const isErroring = Boolean(error);
+                  const isErroring = isVerdict(error);
                   const uploader = bin.createdBy?.displayName ?? null;
                   const canDelete =
                     authUser !== null &&
@@ -359,6 +377,14 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
                               data-testid={`binary-key-unavailable-${bin.id}`}
                             >
                               {STRINGS.attachments.keyUnavailable}
+                            </span>
+                          )}
+                          {error === 'load-failed' && (
+                            <span
+                              className={styles.missingBadge}
+                              data-testid={`binary-load-failed-${bin.id}`}
+                            >
+                              {STRINGS.attachments.loadFailed}
                             </span>
                           )}
                           {isPdf(bin) && (
