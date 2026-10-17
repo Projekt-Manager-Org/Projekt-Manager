@@ -25,10 +25,10 @@ The methodology is therefore to arrive at confidence in sequential steps. Each a
 
 - **Spec**: [docs/spec/](docs/spec/index.md).
 
-**AI-made, not reviewed** - a matter of pure luck to contain good data:
+**AI-made, not reviewed** - least trusted:
 
 - **Scratch space**: `docs/wip/` - just a place for temporary files.
-- **GitHub Issues, Comments**: main point stands, description and proposed solution might be BS, often wrong.
+- **GitHub Issues, Comments**: main point stands as this is confirmed by the user (agents not allowed to open issues on their own), description and proposed solution might be wrong.
 
 ## Question everything
 
@@ -42,16 +42,14 @@ Follow [CONTRIBUTING.md § Workflow](CONTRIBUTING.md#workflow).
 
 [plan.md](docs/project/plan.md): MVP, feature freeze. Every change needs a target to converge to, stated before work starts (in the issue):
 
-| Work                  | Converges to                                                        |
-| --------------------- | ------------------------------------------------------------------- |
-| Bug                   | The reproduced defect no longer occurs                              |
-| Polish / optimization | The observed friction is gone, or a measured value meets its budget |
+| Work                  | Converges to                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| Bug                   | The reproduced defect no longer occurs                                                    |
+| Polish / optimization | The observed friction (user or contributor) is gone, or a measured value meets its budget |
 
 No observable problem → no target → no work.
 
-Speculative improvements and rare corner cases are dropped, not filed - if they matter, they resurface by themselves. Correctness, data integrity, security and compounding debt are never dropped.
-
-This makes no convention obsolete (`review/conventions-*.md`) - it drops overengineering for corner cases with little real value and a lot of maintenance complexity.
+The general rules on dropping speculative improvements make no convention obsolete (`review/conventions-*.md`) - it drops overengineering for corner cases with little real value and a lot of maintenance complexity. See step 12 of [CONTRIBUTING.md § Workflow](CONTRIBUTING.md#workflow).
 
 ## Principles
 
