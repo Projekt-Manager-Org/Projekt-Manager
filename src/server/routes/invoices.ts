@@ -36,28 +36,26 @@ import {
   type ExportInput,
   type ExportFilterInput,
 } from '../services/InvoiceExportService.js';
-import type { InvoiceLine, InvoiceRecipientSnapshot, TaxMode } from '../../domain/invoice.js';
+import type { InvoiceLineInput, InvoiceRecipientSnapshot, TaxMode } from '../../domain/invoice.js';
 import { TAX_MODES, INVOICE_STATUSES } from '../../domain/invoice.js';
 import { buildContentDisposition } from '../storage/client.js';
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
 /**
- * Shared JSON-schema fragment for an `InvoiceLine`. Routes accept the
- * fully-derived shape (the client computes `lineTotal` on each line so
- * the wire shape is concrete); the service re-validates and the server
- * re-derives `totals` from `lines + taxMode` on every successful write
- * (AC-286).
+ * Shared JSON-schema fragment for an `InvoiceLineInput`. No `lineTotal`:
+ * the service derives it (AC-384), and the server re-derives `totals`
+ * from `lines + taxMode` on every successful write (AC-286). A
+ * client-sent `lineTotal` is stripped as an unknown property.
  */
 const lineSchema = {
   type: 'object',
-  required: ['description', 'quantity', 'unit', 'unitPrice', 'lineTotal', 'taxRate'],
+  required: ['description', 'quantity', 'unit', 'unitPrice', 'taxRate'],
   additionalProperties: false,
   properties: {
     description: { type: 'string', minLength: 1, maxLength: 1000 },
     quantity: { type: 'number', exclusiveMinimum: 0 },
     unit: { type: 'string', maxLength: 100 },
     unitPrice: { type: 'number', minimum: 0 },
-    lineTotal: { type: 'number', minimum: 0 },
     taxRate: { type: 'number', enum: [0, 7, 19] },
   },
 } as const;
@@ -223,7 +221,7 @@ export function invoiceRoutes(db: Database) {
       async (request, reply) => {
         const body = request.body as {
           projectId: string;
-          lines?: InvoiceLine[];
+          lines?: InvoiceLineInput[];
           recipient?: InvoiceRecipientSnapshot;
           taxMode?: TaxMode;
           performanceDate?: string | null;
@@ -281,7 +279,7 @@ export function invoiceRoutes(db: Database) {
         const { id } = request.params as { id: string };
         const body = request.body as {
           expectedVersion: number;
-          lines?: InvoiceLine[];
+          lines?: InvoiceLineInput[];
           recipient?: InvoiceRecipientSnapshot;
           taxMode?: TaxMode;
           performanceDate?: string | null;

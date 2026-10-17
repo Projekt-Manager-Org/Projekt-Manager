@@ -21,9 +21,10 @@
  * Editing an existing draft: the form mounts with that draft's id and
  * skips the create step.
  *
- * Line totals are computed client-side as a UX preview only; the server
- * re-derives `lineTotal` + the totals block on every PATCH and POST
- * /issue (AC-286).
+ * Line totals are computed client-side as a UX preview only, by the
+ * same domain function the server uses: the wire lines carry no
+ * `lineTotal` — the server derives it on every write (AC-384) and the
+ * totals block from it (AC-286).
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -31,10 +32,10 @@ import { STRINGS } from '@/config/strings';
 import {
   TAX_MODES,
   computeInvoiceTotals,
+  deriveInvoiceLine,
   labelForTaxMode,
-  round2,
   type Invoice,
-  type InvoiceLine,
+  type InvoiceLineInput,
   type InvoiceRecipientSnapshot,
   type TaxMode,
 } from '@/domain/invoice';
@@ -129,7 +130,7 @@ function parseNumber(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function toWireLines(lines: LineDraft[]): InvoiceLine[] {
+function toWireLines(lines: LineDraft[]): InvoiceLineInput[] {
   return lines
     .filter((l) => l.description.trim().length > 0 || parseNumber(l.unitPrice) !== 0)
     .map((l) => {
@@ -141,7 +142,6 @@ function toWireLines(lines: LineDraft[]): InvoiceLine[] {
         quantity,
         unit: l.unit.trim(),
         unitPrice,
-        lineTotal: round2(quantity * unitPrice),
         taxRate,
       };
     });
@@ -209,10 +209,10 @@ export function InvoiceDraftForm({
   useDialogA11y({ isOpen: true, dialogRef, onOpenedFocus, onEscape });
 
   // Read-only totals preview (ui/invoices.md §8.16.2 — "the visible
-  // totals are a UX preview"). The server re-derives over the wire-shape
-  // lines at issue time and remains authoritative.
+  // totals are a UX preview"). The server derives them on every write
+  // and remains authoritative.
   const previewTotals = useMemo(
-    () => computeInvoiceTotals(toWireLines(lines), taxMode),
+    () => computeInvoiceTotals(toWireLines(lines).map(deriveInvoiceLine), taxMode),
     [lines, taxMode],
   );
 

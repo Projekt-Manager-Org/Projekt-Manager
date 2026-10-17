@@ -222,7 +222,7 @@ import type { NotificationRule, NotificationRuleInput } from '@/domain/notificat
 import type {
   CompanyProfile,
   Invoice,
-  InvoiceLine,
+  InvoiceLineInput,
   InvoiceRecipientSnapshot,
   InvoiceStatus,
   TaxMode,
@@ -807,14 +807,14 @@ export interface InvoiceListResponse {
 }
 
 export interface InvoiceCreateDraftInput {
-  lines?: InvoiceLine[];
+  lines?: InvoiceLineInput[];
   recipient?: InvoiceRecipientSnapshot;
   taxMode?: TaxMode;
   performanceDate?: string | null;
 }
 
 export interface InvoiceUpdateDraftInput {
-  lines?: InvoiceLine[];
+  lines?: InvoiceLineInput[];
   recipient?: InvoiceRecipientSnapshot;
   taxMode?: TaxMode;
   performanceDate?: string | null;

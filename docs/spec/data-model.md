@@ -576,7 +576,7 @@ interface InvoiceLine {
   quantity: number; // positive decimal
   unit: string; // free text — "Stück", "h", "m²", "pauschal", …
   unitPrice: number; // EUR, net of VAT; precision 4 decimals
-  lineTotal: number; // EUR, computed `quantity * unitPrice`, rounded to 2 decimals; server re-derives at issuance
+  lineTotal: number; // EUR, `quantity * unitPrice` rounded to 2 decimals; server-derived on create / update, never accepted from the client
   taxRate: number; // percent — 0, 7, 19 in v1; ignored in totals when taxMode != 'standard'
 }
 

@@ -208,7 +208,6 @@ describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup 
                 quantity: 1,
                 unit: 'pauschal',
                 unitPrice: 100,
-                lineTotal: 100,
                 taxRate: 19,
               },
             ],

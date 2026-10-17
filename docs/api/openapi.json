@@ -2018,14 +2018,7 @@
                     "type": "array",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "description",
-                        "quantity",
-                        "unit",
-                        "unitPrice",
-                        "lineTotal",
-                        "taxRate"
-                      ],
+                      "required": ["description", "quantity", "unit", "unitPrice", "taxRate"],
                       "additionalProperties": false,
                       "properties": {
                         "description": {
@@ -2042,10 +2035,6 @@
                           "maxLength": 100
                         },
                         "unitPrice": {
-                          "type": "number",
-                          "minimum": 0
-                        },
-                        "lineTotal": {
                           "type": "number",
                           "minimum": 0
                         },
@@ -2151,14 +2140,7 @@
                     "type": "array",
                     "items": {
                       "type": "object",
-                      "required": [
-                        "description",
-                        "quantity",
-                        "unit",
-                        "unitPrice",
-                        "lineTotal",
-                        "taxRate"
-                      ],
+                      "required": ["description", "quantity", "unit", "unitPrice", "taxRate"],
                       "additionalProperties": false,
                       "properties": {
                         "description": {
@@ -2175,10 +2157,6 @@
                           "maxLength": 100
                         },
                         "unitPrice": {
-                          "type": "number",
-                          "minimum": 0
-                        },
-                        "lineTotal": {
                           "type": "number",
                           "minimum": 0
                         },
