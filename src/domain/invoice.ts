@@ -44,6 +44,9 @@ export interface InvoiceLine {
   taxRate: number;
 }
 
+/** A line as the client writes it — `lineTotal` is server-derived (AC-384). */
+export type InvoiceLineInput = Omit<InvoiceLine, 'lineTotal'>;
+
 /** §5.15 issuer snapshot — copied from `company_profile` at issuance. */
 export interface InvoiceIssuerSnapshot {
   companyName: string;
@@ -173,6 +176,11 @@ export function companyProfileMissingFieldsForMode(
 /** Round to two decimals using half-away-from-zero (German invoicing convention). */
 export function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/** Derive `lineTotal` from `quantity` and `unitPrice` (AC-384). */
+export function deriveInvoiceLine(line: InvoiceLineInput): InvoiceLine {
+  return { ...line, lineTotal: round2(line.quantity * line.unitPrice) };
 }
 
 /**

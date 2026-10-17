@@ -26,9 +26,11 @@ import { projectAuditLabel } from '../../domain/audit.js';
 import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
+  deriveInvoiceLine,
   TAX_MODES,
   type Invoice,
   type InvoiceLine,
+  type InvoiceLineInput,
   type InvoiceIssuerSnapshot,
   type InvoiceRecipientSnapshot,
   type TaxMode,
@@ -100,8 +102,8 @@ function parseCalendarDate(input: string): Date {
   return date;
 }
 
-/** Validate that every line's shape is the contract's. Server re-derives totals. */
-function validateInvoiceLines(lines: InvoiceLine[]): void {
+/** Validate every line's shape, then derive its `lineTotal` (AC-384). */
+function deriveInvoiceLines(lines: InvoiceLineInput[]): InvoiceLine[] {
   if (!Array.isArray(lines)) {
     throw validationError(STRINGS.errors.invalidInput);
   }
@@ -110,21 +112,26 @@ function validateInvoiceLines(lines: InvoiceLine[]): void {
     if (typeof line.quantity !== 'number') throw validationError(STRINGS.errors.invalidInput);
     if (typeof line.unit !== 'string') throw validationError(STRINGS.errors.invalidInput);
     if (typeof line.unitPrice !== 'number') throw validationError(STRINGS.errors.invalidInput);
-    if (typeof line.lineTotal !== 'number') throw validationError(STRINGS.errors.invalidInput);
     if (typeof line.taxRate !== 'number') throw validationError(STRINGS.errors.invalidInput);
   }
+  const derived = lines.map(deriveInvoiceLine);
+  // An overflowing product would persist as JSONB `null`.
+  if (derived.some((l) => !Number.isFinite(l.lineTotal))) {
+    throw validationError(STRINGS.errors.invalidInput);
+  }
+  return derived;
 }
 
 export interface CreateDraftInput {
   projectId: string;
-  lines?: InvoiceLine[];
+  lines?: InvoiceLineInput[];
   recipient?: InvoiceRecipientSnapshot;
   taxMode?: TaxMode;
   performanceDate?: string | null;
 }
 
 export interface UpdateDraftInput {
-  lines?: InvoiceLine[];
+  lines?: InvoiceLineInput[];
   recipient?: InvoiceRecipientSnapshot;
   taxMode?: TaxMode;
   performanceDate?: string | null;
@@ -239,8 +246,7 @@ export class InvoiceService {
     log: ServiceLogger,
     correlationId?: string | null,
   ): Promise<Invoice> {
-    const lines = input.lines ?? [];
-    validateInvoiceLines(lines);
+    const lines = deriveInvoiceLines(input.lines ?? []);
 
     if (input.taxMode !== undefined && !TAX_MODES.includes(input.taxMode)) {
       throw validationError(STRINGS.errors.invalidInput);
@@ -383,7 +389,7 @@ export class InvoiceService {
     if (input.taxMode !== undefined && !TAX_MODES.includes(input.taxMode)) {
       throw validationError(STRINGS.errors.invalidInput);
     }
-    if (input.lines !== undefined) validateInvoiceLines(input.lines);
+    const inputLines = input.lines !== undefined ? deriveInvoiceLines(input.lines) : undefined;
 
     const updated = await mutate(
       this.db,
@@ -398,7 +404,7 @@ export class InvoiceService {
           if (before.version !== expectedVersion) throw versionConflict();
 
           const nextTaxMode: TaxMode = (input.taxMode ?? before.taxMode) as TaxMode;
-          const nextLines: InvoiceLine[] = input.lines ?? (before.lines as InvoiceLine[]);
+          const nextLines: InvoiceLine[] = inputLines ?? (before.lines as InvoiceLine[]);
           const nextTotals = computeInvoiceTotals(nextLines, nextTaxMode);
           const nextPerformanceDate =
             'performanceDate' in input

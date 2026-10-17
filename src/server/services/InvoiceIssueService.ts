@@ -33,6 +33,7 @@ import { projectAuditLabel } from '../../domain/audit.js';
 import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
+  deriveInvoiceLine,
   type Invoice,
   type InvoiceLine,
   type InvoiceIssuerSnapshot,
@@ -161,6 +162,15 @@ export class InvoiceIssueService {
     const lines = before.lines as InvoiceLine[];
     if (lines.length === 0) {
       throw validationError(STRINGS.errors.invalidInput, { missingFields: ['lines'] });
+    }
+    // Writes derive `lineTotal`; a stored mismatch (a row written before
+    // derivation, a restored draft) is rejected, not silently re-derived —
+    // the issued invoice is exactly the draft the issuer saw (AC-384).
+    const brokenLine = lines.findIndex((l) => l.lineTotal !== deriveInvoiceLine(l).lineTotal);
+    if (brokenLine !== -1) {
+      throw validationError(STRINGS.errors.invalidInput, {
+        invalidFields: [`lines[${brokenLine}].lineTotal`],
+      });
     }
     if (!before.performanceDate) {
       throw validationError(STRINGS.errors.invalidInput, { missingFields: ['performanceDate'] });
