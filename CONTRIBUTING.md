@@ -18,18 +18,23 @@ See [ARCHITECTURE.md § Tech Stack](ARCHITECTURE.md#tech-stack).
 ## Workflow
 
 Steps happen in this order. Skipping or reordering must be flagged.
+Reviews can be reduced after user confirmation: for a simple task, to one independent review of spec, tests, code and docs together, after step 9; for a trivial task, to the user’s review only. A security audit, if confirmed, always runs separately.
 
+0. **Plan** — target defined (e.g. in an issue), workflow scope defined and confirmed by user.
 1. **Specification** — see review/conventions-spec.md
-2. **Specification review** — independent reviewer verifies for adherence to review/conventions-spec.md. Violations are blocking, back to step 1.
+2. **Specification review** — independent reviewer verifies for adherence to review/conventions-spec.md. Violations are triaged, blocking ones resolved.
 3. **Tests (failing)** — see review/conventions-tests.md
-4. **Tests review** — independent reviewer verifies for adherence to review/conventions-tests.md. Violations are blocking, back to step 3.
+4. **Tests review** — independent reviewer verifies for adherence to review/conventions-tests.md. Violations are triaged, blocking ones resolved.
 5. **Implementation** — see review/conventions-code.md
 6. **Tests passing**
-7. **Code quality review** — independent reviewer verifies for adherence to review/conventions-code.md. Violations are blocking, back to step 5.
-8. **Security audit** (conditional) — needs to be confirmed by user. Propose it when trust boundaries change
-9. **Documentation update** — see review/conventions-docs-general.md
-10. **Commit** — group changes, including multiple files, in logical groups
-11. **Open Issues** — list all open issues, including findings discovered during the workflow, even if unrelated. Each finding carries a triage call: **act** (in scope now), **track** (correctness, data integrity, security, compounding debt), or **drop** (everything else).
+7. **Code quality review** — independent reviewer verifies for adherence to review/conventions-code.md. Violations are triaged, blocking ones resolved.
+8. **Security audit** (conditional) — needs to be confirmed by user. See [§ Security audit](#security-audit).
+9. **Documentation update** — see review/conventions-docs-general.md, review/conventions-architecture.md
+10. **Documentation review** — independent reviewer verifies for adherence to the conventions. Violations are triaged, blocking ones resolved.
+11. **Commit** — group changes, including multiple files, in logical groups
+12. **Open Findings** — list all open findings, including findings discovered during the workflow, even if unrelated. Each finding carries a triage call: **act** (in scope now), **track** (correctness, data integrity, security, compounding debt - with a realistic probability of affecting the project), or **drop** (everything else). Dropping a finding from a track category needs user confirmation that the threat is not realistic.
+
+A block of work finishes in a pushed branch, PR open, CI green. Merging is done by the user.
 
 ### Security audit
 
@@ -45,7 +50,7 @@ The trigger question: **"Does this change affect how the system authenticates, a
 | E2E interactive      | `npx playwright test --ui --project=<name>` |
 | Trace review         | `npx playwright show-trace <zip>`           |
 
-**Design ACs** The functional E2E specs (`management-flows`, `kanban-flows`, `permission-visibility`, …) remain the automated behavioral gate.
+**Design ACs**: an E2E spec drives every scenario and asserts its observable behavior. E2E runs nightly on main and on demand, not on PRs (e2e.yml). For changes to covered flows, run it on the branch before requesting merge. What only a human can judge (layout, visual distinction) is checked in UI mode during PR review.
 
 **UI Mode gotcha**: pass `--project=<name>` explicitly — `chromium` for read-only specs (including `permission-visibility`), `chromium-mutating` for serial tests that mutate DB state, `smoke` for the unauthenticated boot check. Without an explicit project, the filter defaults hide everything but the `setup` login and the test tree appears empty.
 
@@ -82,9 +87,9 @@ main                     always deployable
   └── <type>/<slug>      topic branch (e.g. fix/dev-static-fallback)
 ```
 
-Short-lived topic branches off `main`, merged back via PR. No integration/iteration branches — that was the model early in the project; current practice is direct-to-`main`.
+Short-lived topic branches off `main`, merged back via PR.
 
-- **main**: Always deployable. Never commit directly — every change lands via PR.
+- **main**: Always deployable. Protected — every change lands via PR.
 - **Topic branch**: `<type>/<short-slug>`, matching the commit type below. Branch off `main`, PR into `main`.
 
 ## Commit Conventions

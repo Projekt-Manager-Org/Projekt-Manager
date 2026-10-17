@@ -15,7 +15,7 @@ Rules for the code (non-negotiable):
 
 Guidelines for the code (judgement is required):
 
-- **C-COMM** — The comments correspond to the reality of the code.
+- **C-COMM** — The comments correspond to the reality of the code. Comments focus on the "why", not the "what".
 - **C-HARD** — No magic strings/numbers — named constants or enums.
 - **C-SRES** — Single responsibility.
 - **C-DRYY** — DRY.
