@@ -215,10 +215,11 @@ docker run -d --name "$DB_CONTAINER" --network "$NETWORK" \
   -e POSTGRES_INITDB_ARGS=--data-checksums \
   "$PG_IMAGE" >/dev/null
 
+# `--console-address` pinned — see docker-compose.minio.yml `storage.command`.
 docker run -d --name "$MINIO_CONTAINER" --network "$NETWORK" \
   --network-alias storage \
   -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
-  "$MINIO_IMAGE" server /data >/dev/null
+  "$MINIO_IMAGE" server /data --console-address ":9001" >/dev/null
 
 READY_TIMEOUT=60
 started=$SECONDS

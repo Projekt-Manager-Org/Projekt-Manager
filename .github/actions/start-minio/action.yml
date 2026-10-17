@@ -7,7 +7,7 @@ description: >
 
   MinIO runs as a container started from the runner rather than a service
   container because service containers cannot override `command`, and
-  minio/minio needs `server /data` as its argv. The container is named
+  minio/minio needs `server /data …` as its argv. The container is named
   `storage` and joined to a user-defined bridge network alongside the mc
   one-shot so the script's hardcoded `mc alias set minio
   http://storage:9000` resolves via Docker's container-name DNS. Port

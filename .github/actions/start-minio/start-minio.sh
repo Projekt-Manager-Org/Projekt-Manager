@@ -72,13 +72,16 @@ start_minio() {
   # hardcoded in the public workflows are actually in use, so it needs the bind
   # at least as much as the dev box does. Every consumer here is either the
   # runner itself over localhost or a container on "$NETWORK".
+  #
+  # `--console-address` pinned, unpublished — see docker-compose.minio.yml
+  # `storage.command`.
   docker run -d --name "$CONTAINER" \
     --network "$NETWORK" \
     -p 127.0.0.1:9000:9000 \
     -e MINIO_ROOT_USER \
     -e MINIO_ROOT_PASSWORD \
     "$MINIO_IMAGE" \
-    server /data
+    server /data --console-address ":9001"
 }
 
 # Poll the health endpoint, but bail out the moment the container is known
