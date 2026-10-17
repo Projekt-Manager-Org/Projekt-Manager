@@ -28,7 +28,7 @@ The methodology is therefore to arrive at confidence in sequential steps. Each a
 **AI-made, not reviewed** - least trusted:
 
 - **Scratch space**: `docs/wip/` - just a place for temporary files.
-- **GitHub Issues, Comments**: main point stands as this is confirmed by the user (agents not allowed to open issues on their own), description and proposed solution might be wrong.
+- **GitHub Issues, Comments**: main point stands as this is confirmed by the user (opening issues, PRs, pushing - all need user confirmation), description and proposed solution might be wrong.
 
 ## Question everything
 
