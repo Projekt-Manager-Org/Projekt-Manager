@@ -40,6 +40,10 @@ services:
   storage:
     image: ghcr.io/projekt-manager-org/minio:RELEASE.2025-09-07T16-13-09Z@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2
     mem_limit: 512m
+    # Every MinIO launcher pins `--console-address` (#524). Unset, MinIO picks a
+    # random free port and binds it later without holding it — anything taking
+    # that port in between makes startup fatal ("port is already in use"). A
+    # fixed port below the kernel's ephemeral range is never handed out that way.
     command: server /data --console-address ":9001"
     volumes:
       - miniodata:/data
