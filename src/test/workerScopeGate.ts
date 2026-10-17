@@ -173,7 +173,10 @@ export async function probeWorkerScope(
   const table = opts.table ?? WORKER_ROUTE_SCOPE;
   const { inScope, foreign } = opts.fixtures;
   const reachable = workerReachableRoutes(routes);
-  const { unclassified, stale } = classificationGaps(reachable, Object.keys(table));
+  const { unclassified, stale } = classificationGaps(
+    reachable.flatMap(routeKeys),
+    Object.keys(table),
+  );
   const violations = [
     ...unclassified.map((key) => `${key}: not classified — add a probe or an exemption`),
     ...stale.map((key) => `${key}: classified, but no worker-reachable route has this key`),

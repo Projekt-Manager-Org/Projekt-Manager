@@ -11,9 +11,10 @@
  * themselves. One copy here means the two artifacts cannot describe the
  * same route differently.
  *
- * The route-scope gate (AC-383, `src/test/workerScopeGate.ts`) reads the
- * same facts to decide which routes a worker reaches, and shares the
- * route recording and deny-by-default classification with them.
+ * Two route gates read the same facts and share the route recording and
+ * deny-by-default classification: worker scope (AC-383,
+ * `src/test/workerScopeGate.ts`) and write-route versioning (AC-380,
+ * `src/test/versionClassificationGate.ts`).
  *
  * Everything here reads `RouteOptions` as collected by `recordRoutes`
  * after `ready()` has resolved; nothing boots an app or touches the
@@ -54,16 +55,18 @@ export function routeKeys(route: RouteOptions): string[] {
 }
 
 /**
- * Deny-by-default classification: every route must be keyed in
- * `classified`, and every key must still name a route. A gate built on a
- * hand-kept table fails both ways — an unclassified route is the gap the
- * gate exists for, and a stale key is a reason nobody re-checked.
+ * Deny-by-default classification: every route key must be in
+ * `classified`, and every classified key must still name a route. A gate
+ * built on a hand-kept table fails both ways — an unclassified route is
+ * the gap the gate exists for, and a stale key is a reason nobody
+ * re-checked. Keys, not routes, so a caller can classify some methods of
+ * a route and not others.
  */
 export function classificationGaps(
-  routes: RouteOptions[],
+  registeredKeys: Iterable<string>,
   classified: Iterable<string>,
 ): { unclassified: string[]; stale: string[] } {
-  const registered = new Set(routes.flatMap(routeKeys));
+  const registered = new Set(registeredKeys);
   const keys = new Set(classified);
   return {
     unclassified: [...registered].filter((key) => !keys.has(key)),
