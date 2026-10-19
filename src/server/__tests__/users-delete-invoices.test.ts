@@ -8,7 +8,8 @@
  * invoice rows stay unchanged. A user referenced only by a draft is
  * deleted, and the draft's references are nulled. A delete queued
  * behind an in-flight issuance of a draft referencing the user is
- * rejected the same way once the issuance commits.
+ * rejected the same way once the issuance commits — whether the draft
+ * already referenced the user or the user is its issuer.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -161,41 +162,55 @@ describe('AT-155 / AC-385: DELETE /api/users/:id against invoice references', ()
     expect(draft.updated_by).toBeNull();
   });
 
-  it('rejects a delete queued behind an in-flight issuance of a draft referencing the user', async () => {
-    const userId = await createUser();
-    const draftId = await seedInvoice('draft', userId, userId);
-    const { pool } = createDatabase();
-    const holder = await pool.connect();
-    try {
-      // Issue the draft from a third connection and hold the transaction open.
-      await holder.query('BEGIN');
-      await holder.query(
-        `UPDATE invoices SET status = 'issued', number = $2, issue_date = CURRENT_DATE,
-           performance_date = CURRENT_DATE WHERE id = $1`,
-        [draftId, `RE-${year}-${crypto.randomInt(100_000, 1_000_000)}`],
-      );
-      const pending = authDelete(ownerToken, `/api/users/${userId}`);
-      const deadline = Date.now() + 3_000;
-      let queued = 0;
-      while (queued === 0 && Date.now() < deadline) {
-        const { rows } = await pool.query(
-          `SELECT COUNT(*)::int AS c FROM pg_stat_activity
-            WHERE datname = current_database() AND cardinality(pg_blocking_pids(pid)) > 0`,
+  // Two paths into the race: the draft already references the user (the
+  // delete waits on the invoice row lock), or the user is the issuer and
+  // the issuance newly references them (the delete waits on the FK
+  // key-share lock on the user row).
+  it.each([
+    ['a draft referencing the user', 'author', 'invoice row'],
+    ['a draft authored by someone else, issued by the user', 'issuer', 'user row'],
+  ] as const)(
+    'rejects a delete queued behind an in-flight issuance of %s',
+    async (_, role, lock) => {
+      const userId = await createUser();
+      const author = role === 'author' ? userId : ownerId;
+      const draftId = await seedInvoice('draft', author, author);
+      const { pool } = createDatabase();
+      const holder = await pool.connect();
+      try {
+        // Issue the draft from a third connection and hold the transaction open.
+        await holder.query('BEGIN');
+        await holder.query(
+          `UPDATE invoices SET status = 'issued', number = $2, issue_date = CURRENT_DATE,
+             performance_date = CURRENT_DATE, updated_by = $3 WHERE id = $1`,
+          [draftId, `RE-${year}-${crypto.randomInt(100_000, 1_000_000)}`, userId],
         );
-        queued = (rows[0] as { c: number }).c;
-        if (queued === 0) await new Promise<void>((r) => setTimeout(r, 20));
+        const pending = authDelete(ownerToken, `/api/users/${userId}`);
+        const deadline = Date.now() + 3_000;
+        let queued = 0;
+        while (queued === 0 && Date.now() < deadline) {
+          const { rows } = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM pg_stat_activity
+              WHERE datname = current_database() AND cardinality(pg_blocking_pids(pid)) > 0`,
+          );
+          queued = (rows[0] as { c: number }).c;
+          if (queued === 0) await new Promise<void>((r) => setTimeout(r, 20));
+        }
+        expect(queued, `expected the delete queued on the ${lock} lock`).toBe(1);
+        await holder.query('COMMIT');
+
+        const res = await pending;
+
+        expect(res.statusCode, res.body).toBe(409);
+        expect(res.json().code).toBe('USER_HAS_INVOICES');
+        expect(await userRow(userId)).toBeDefined();
+        const invoice = await invoiceRow(draftId);
+        expect(invoice.created_by).toBe(author);
+        expect(invoice.updated_by).toBe(userId);
+      } finally {
+        holder.release();
+        await pool.end();
       }
-      expect(queued, 'expected the delete queued on the invoice row lock').toBe(1);
-      await holder.query('COMMIT');
-
-      const res = await pending;
-
-      expect(res.statusCode, res.body).toBe(409);
-      expect(res.json().code).toBe('USER_HAS_INVOICES');
-      expect(await userRow(userId)).toBeDefined();
-    } finally {
-      holder.release();
-      await pool.end();
-    }
-  });
+    },
+  );
 });
