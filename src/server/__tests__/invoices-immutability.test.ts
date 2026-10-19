@@ -19,15 +19,9 @@
  *
  * Pattern mirrors `data-integrity.test.ts` (AT-45 / AT-46): raw SQL
  * inserts/updates via `pool.query`, with SQLSTATE assertion on the
- * thrown error. Test isolation is per-arm via a per-arm fixture row;
- * the file does not share state.
- *
- * Pre-impl red state: the `invoices` table itself does not exist
- * yet — every `pool.query` against it fails with "relation does not
- * exist" / SQLSTATE 42P01. That is the intended red surface; the
- * implementer adds the table (and the immutability mechanism) in
- * step 5, at which point the table-exists half flips green and the
- * constraint assertions become the contract.
+ * thrown error. The AC-294 rejection arms share one issued fixture
+ * row (rejected UPDATEs leave it unchanged); the arm that mutates
+ * inserts its own row.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -118,8 +112,9 @@ describe('AC-294: issued invoice rows are write-once at the persistence layer', 
   });
 
   // The invariant: issued rows are write-once except for the
-  // issued→cancelled flip. Two representative UPDATE rejections pin
-  // the invariant — one snapshot field and one status reverse-flip.
+  // issued→cancelled flip. Representative UPDATE rejections pin the
+  // invariant — one snapshot field, one status reverse-flip, and the
+  // audit metadata outside the flip.
   // Pinning every snapshot column individually is T-BLOA; the
   // mechanism (impl-defined per ADR-0026) treats them uniformly.
   it('rejects a direct UPDATE on lines (representative snapshot-field arm)', async () => {
@@ -167,6 +162,23 @@ describe('AC-294: issued invoice rows are write-once at the persistence layer', 
     expect(pgError).not.toBeNull();
   });
 
+  // Audit metadata rides only on the cancellation flip. Without it, an
+  // FK `ON DELETE SET NULL` on `updated_by` would silently rewrite a
+  // frozen row (#540). Pin P0001 so a malformed statement cannot pass
+  // as a rejection.
+  it.each([
+    ['updated_at', `updated_at = NOW() - INTERVAL '1 year'`],
+    ['updated_by', `updated_by = (SELECT id FROM users LIMIT 1)`],
+  ])('rejects a direct UPDATE of %s that keeps status issued', async (_label, assignment) => {
+    let pgError: PgErrorShape | null = null;
+    try {
+      await pool.query(`UPDATE invoices SET ${assignment} WHERE id = $1`, [issuedInvoiceId]);
+    } catch (err) {
+      pgError = err as PgErrorShape;
+    }
+    expect(pgError?.code).toBe('P0001');
+  });
+
   it('ALLOWS the only legal status transition: issued → cancelled (cancellation flip)', async () => {
     // Use a separate row so this test does not interfere with the
     // prior arms — those rely on the seed row staying `issued`.
@@ -205,7 +217,14 @@ describe('AC-294: issued invoice rows are write-once at the persistence layer', 
     // The legal flip — issued → cancelled — must succeed. A persistence-
     // layer mechanism that blocks every UPDATE would also block this
     // and break the cancel pipeline.
-    await pool.query(`UPDATE invoices SET status = 'cancelled' WHERE id = $1`, [id]);
+    // Same column set as `applyCancellationFlip`.
+    await pool.query(
+      `UPDATE invoices
+          SET status = 'cancelled', updated_at = NOW(),
+              updated_by = (SELECT id FROM users LIMIT 1)
+        WHERE id = $1`,
+      [id],
+    );
 
     const after = await pool.query(`SELECT status FROM invoices WHERE id = $1`, [id]);
     expect((after.rows[0] as { status: string }).status).toBe('cancelled');

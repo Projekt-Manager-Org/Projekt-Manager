@@ -6,9 +6,10 @@
 -- layer rejects with INVOICE_FROZEN; this trigger is the
 -- defense-in-depth layer ADR-0026 names as impl-defined.
 --
--- Permitted mutations on an issued row:
---   - status: 'issued' → 'cancelled'  (the cancellation flip)
---   - updated_at, updated_by          (audit metadata bump)
+-- Permitted mutation on an issued row: the cancellation flip —
+-- status 'issued' → 'cancelled', with updated_at / updated_by riding
+-- along. Without the flip, both stay frozen too, so an FK
+-- `ON DELETE SET NULL` on updated_by fails instead of rewriting.
 --
 -- `cancellation_reason` is NOT in the allow-list. Per
 -- data-model.md §5.15 ("null on non-Storno rows; frozen on the
@@ -80,8 +81,10 @@ BEGIN
     IF NEW.created_at      <> OLD.created_at      THEN RAISE EXCEPTION 'invoices: created_at frozen on issued rows'      USING ERRCODE = 'P0001'; END IF;
     IF NEW.created_by      IS DISTINCT FROM OLD.created_by
        THEN RAISE EXCEPTION 'invoices: created_by frozen on issued rows' USING ERRCODE = 'P0001'; END IF;
-    -- updated_at, updated_by are the only mutable columns on the
-    -- issued→cancelled path; status is checked above.
+    -- Audit metadata changes only with the issued→cancelled flip.
+    IF NEW.status = 'issued' AND (NEW.updated_at IS DISTINCT FROM OLD.updated_at
+                                  OR NEW.updated_by IS DISTINCT FROM OLD.updated_by)
+       THEN RAISE EXCEPTION 'invoices: updated_at / updated_by change only with the cancellation flip' USING ERRCODE = 'P0001'; END IF;
   END IF;
 
   RETURN NEW;
