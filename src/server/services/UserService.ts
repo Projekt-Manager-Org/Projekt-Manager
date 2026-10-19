@@ -22,13 +22,24 @@ import {
   deactivateUser as deactivateUserRepo,
   reactivateUser as reactivateUserRepo,
   changePassword as changePasswordRepo,
+  getUserRowForDelete,
   toUserResponse,
 } from '../repositories/user.js';
+import {
+  countIssuedOrCancelledForUser,
+  lockInvoicesReferencingUser,
+} from '../repositories/invoice-read.js';
 import { deleteSessionsByUserId } from '../repositories/session.js';
 import { hashPassword } from '../password.js';
 import { checkPasswordPolicy } from '../config/password-policy.js';
 import { STRINGS } from '../../config/strings.js';
-import { notFound, validationError, conflict, extractSqlState } from '../errors.js';
+import {
+  notFound,
+  validationError,
+  conflict,
+  extractSqlState,
+  userHasInvoices,
+} from '../errors.js';
 import type { ServiceLogger } from './Logger.js';
 import { mutate } from './mutate.js';
 
@@ -269,8 +280,15 @@ export class UserService {
         entityType: 'user',
         action: 'delete',
         run: async (tx) => {
-          const prior = await findById(tx, id);
+          // AC-385: issued / cancelled invoices are frozen (§6.14), so
+          // the FK's SET NULL on their author columns must not run.
+          // Invoices first, then the user: see the lock helpers.
+          await lockInvoicesReferencingUser(tx, id);
+          const prior = await getUserRowForDelete(tx, id);
           if (!prior) throw notFound(STRINGS.entities.user);
+
+          const invoiceCount = await countIssuedOrCancelledForUser(tx, id);
+          if (invoiceCount > 0) throw userHasInvoices({ invoiceCount });
 
           // sessions FK has ON DELETE CASCADE, but explicit cleanup is
           // kept for order-independence and to make intent clear.

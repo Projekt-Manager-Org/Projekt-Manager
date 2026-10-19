@@ -150,6 +150,7 @@ Every criterion carries exactly one tier marker:
 - **AC-67** `[crit]`: An owner can reset another user's password. The new password must meet the password policy. The operation invalidates all sessions for the target user.
 - **AC-68** `[crit]`: A user cannot deactivate themselves. The API rejects self-deactivation with an error.
 - **AC-69** `[crit]`: Only users with `user:manage` permission (owner role) can create, update, deactivate, reactivate, or reset passwords. Other roles receive an authorization error.
+- **AC-385** `[crit]`: `DELETE /api/users/:id` is rejected with `409` and `code = USER_HAS_INVOICES` when an issued or cancelled `Invoice` row references the user as `createdBy` or `updatedBy` ([data-model.md §6.9](data-model.md#69-soft-deletes)). `details.invoiceCount` carries the count of those rows. The user and invoice rows are unchanged on rejection. A user referenced only by draft invoices is deleted, and the drafts' references are set to null.
 
 ### 15.14 Data Exchange
 
@@ -670,6 +671,7 @@ These tests run against a real (test) database, not mocks.
 - **AT-152**: Issuing a draft changes the invoice's `version`; cancelling the issued invoice leaves it unchanged. Pins [AC-378](#1517-data-integrity).
 - **AT-153**: A third connection holds `FOR UPDATE` on the row; a first write is fired and queued on the lock, then a second carrying the same current version, and the test asserts both are queued before releasing. For every versioned edit paired with itself, and for Update draft before Delete draft: the first commits, the second returns `409 VERSION_CONFLICT`, and the stored version is the first's. Update draft before Issue invoice: the issue returns `VERSION_CONFLICT` and allocates no number. Issue invoice before Update draft: the edit returns `422 INVOICE_FROZEN` and the issued lines are the original ones. Pins [AC-381](#1517-data-integrity).
 - **AT-154**: `POST /api/invoices` and `PATCH /api/invoices/:id` with a line `quantity: 10, unitPrice: 100, lineTotal: 1` succeed; the stored line carries `lineTotal: 1000` and `totals` are net 1000.00 / gross 1190.00 under `standard` @ 19 %. `POST /api/invoices` with `quantity: 1e200, unitPrice: 1e200` returns `422 VALIDATION_ERROR`. A draft whose stored line carries `lineTotal: 1` against the same `quantity` / `unitPrice` (written by direct SQL) is rejected on issue with `422 VALIDATION_ERROR`; `invoice_sequence` is unchanged, the row stays `draft`, no `audit_log` row is written. Pins [AC-384](#1530-invoices).
+- **AT-155**: `DELETE /api/users/:id` returns `409 USER_HAS_INVOICES` with the matching `details.invoiceCount` for a user who is `createdBy` of an issued invoice, for a user who is only `updatedBy` of an issued invoice, and for a user referenced by a cancelled invoice; the user row and every invoice row are unchanged. The same call for a user referenced only by a draft invoice succeeds and nulls the draft's references. A delete queued behind a concurrent transaction that issues a draft referencing the user returns `409 USER_HAS_INVOICES` once that transaction commits. Pins [AC-385](#1513-user-management).
 
 ### 16.3 E2E Tests
 

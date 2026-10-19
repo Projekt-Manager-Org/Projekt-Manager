@@ -15,7 +15,7 @@
  * — defense in depth against the route-layer permission gate (AC-298).
  */
 
-import { eq, and, desc, asc, inArray, count, sql, type SQL } from 'drizzle-orm';
+import { eq, and, or, desc, asc, inArray, count, sql, type SQL } from 'drizzle-orm';
 import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
 import { invoices, projects } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
@@ -279,6 +279,45 @@ export async function countIssuedOrCancelledForCustomer(
     .innerJoin(projects, eq(invoices.projectId, projects.id))
     .where(
       and(eq(projects.customerId, customerId), inArray(invoices.status, ['issued', 'cancelled'])),
+    );
+  return rows[0]?.value ?? 0;
+}
+
+/**
+ * Row-lock every invoice referencing a user as `created_by` or
+ * `updated_by`. A user delete takes these before the user row: an
+ * in-flight issuance of such a draft holds the invoice row without
+ * touching the user row, so the delete must wait on the invoice to count
+ * it as issued rather than cascade into it once frozen.
+ */
+export async function lockInvoicesReferencingUser(
+  tx: MutatingDatabase,
+  userId: string,
+): Promise<void> {
+  await tx
+    .select({ id: invoices.id })
+    .from(invoices)
+    .where(or(eq(invoices.createdBy, userId), eq(invoices.updatedBy, userId)))
+    .for('update');
+}
+
+/**
+ * Count issued + cancelled invoice rows that reference a user as
+ * `created_by` or `updated_by`. AC-385: such rows are frozen, so the
+ * user's hard-delete (`ON DELETE SET NULL`) is rejected. Drafts excluded.
+ */
+export async function countIssuedOrCancelledForUser(
+  db: TransactionalDatabase,
+  userId: string,
+): Promise<number> {
+  const rows = await db
+    .select({ value: count() })
+    .from(invoices)
+    .where(
+      and(
+        or(eq(invoices.createdBy, userId), eq(invoices.updatedBy, userId)),
+        inArray(invoices.status, ['issued', 'cancelled']),
+      ),
     );
   return rows[0]?.value ?? 0;
 }

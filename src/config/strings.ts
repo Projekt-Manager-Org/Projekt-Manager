@@ -68,6 +68,8 @@ export const STRINGS = {
       'Der Kunde kann nicht gelöscht werden, da ausgestellte oder stornierte Rechnungen existieren.',
     projectHasInvoices:
       'Das Projekt kann nicht endgültig gelöscht werden, da ausgestellte oder stornierte Rechnungen existieren.',
+    userHasInvoices:
+      'Der Benutzer ist an ausgestellten oder stornierten Rechnungen beteiligt und kann nicht gelöscht werden. Bitte stattdessen deaktivieren.',
     importDropsIssuedInvoices:
       'Das Archiv enthält nicht alle ausgestellten oder stornierten Rechnungen dieser Datenbank. Bitte ein Archiv verwenden, das nach der letzten Rechnungsstellung exportiert wurde.',
     draftNotExportable: 'Rechnungs-Entwürfe können nicht exportiert werden.',

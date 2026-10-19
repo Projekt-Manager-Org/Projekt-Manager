@@ -194,6 +194,8 @@ Requires `user:manage` permission.
 
 Available within the user detail view. Confirmation dialog. Self-deletion is prevented (button hidden for the authenticated user's own record; API rejects if attempted). Hard-deletes the user and cascades related data (sessions, worker assignments).
 
+Deletion of a user referenced by an issued or cancelled invoice is rejected with `USER_HAS_INVOICES` ([api.md §14.4](../api.md#144-error-handling)); the user list surfaces the German message, which points to deactivation, via the mutation error banner ([§8.10.4](#8104-deactivate--reactivate)).
+
 Requires `user:delete` permission (owner only).
 
 ---
