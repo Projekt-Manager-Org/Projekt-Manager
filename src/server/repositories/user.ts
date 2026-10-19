@@ -185,6 +185,19 @@ export async function deleteUser(db: MutatingDatabase, id: string): Promise<bool
   return rows.length > 0;
 }
 
+/**
+ * Fetch and row-lock the user inside a delete. The lock waits for every
+ * in-flight write that newly references the user (FK key-share lock) and
+ * blocks later ones until the delete is done. Returns null when absent.
+ */
+export async function getUserRowForDelete(
+  db: MutatingDatabase,
+  id: string,
+): Promise<UserRow | null> {
+  const rows = await db.select().from(users).where(eq(users.id, id)).limit(1).for('update');
+  return rows[0] ?? null;
+}
+
 export async function findByUsername(
   db: TransactionalDatabase,
   username: string,

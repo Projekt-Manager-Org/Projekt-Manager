@@ -56,6 +56,7 @@ export const ERROR_CODES = [
   'COMPANY_PROFILE_REQUIRED',
   'CUSTOMER_HAS_INVOICES',
   'PROJECT_HAS_INVOICES',
+  'USER_HAS_INVOICES',
   'IMPORT_DROPS_ISSUED_INVOICES',
   'SERVER_ERROR',
 ] as const;
@@ -437,6 +438,15 @@ export function customerHasInvoices(details: InvoiceRetentionDetails): AppError 
  */
 export function projectHasInvoices(details: InvoiceRetentionDetails): AppError {
   return new AppError('PROJECT_HAS_INVOICES', STRINGS.errors.projectHasInvoices, 409, details);
+}
+
+/**
+ * User hard-delete rejected — an issued or cancelled invoice references
+ * the user as `created_by` / `updated_by`, and the frozen row cannot
+ * take the FK's SET NULL. AC-385.
+ */
+export function userHasInvoices(details: InvoiceRetentionDetails): AppError {
+  return new AppError('USER_HAS_INVOICES', STRINGS.errors.userHasInvoices, 409, details);
 }
 
 /**
