@@ -27,15 +27,19 @@ import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
   deriveInvoiceLine,
+  invoiceTotalsAreFinite,
   TAX_MODES,
+  UNIT_PRICE_MAX_DECIMALS,
   type Invoice,
   type InvoiceLine,
   type InvoiceLineInput,
+  type InvoiceTotals,
   type InvoiceIssuerSnapshot,
   type InvoiceRecipientSnapshot,
   type TaxMode,
   type InvoiceProfile,
 } from '../../domain/invoice.js';
+import { hasAtMostDecimals } from '../../domain/money.js';
 import {
   toInvoiceResponse,
   listInvoices as listInvoicesRepo,
@@ -113,6 +117,9 @@ function deriveInvoiceLines(lines: InvoiceLineInput[]): InvoiceLine[] {
     if (typeof line.unit !== 'string') throw validationError(STRINGS.errors.invalidInput);
     if (typeof line.unitPrice !== 'number') throw validationError(STRINGS.errors.invalidInput);
     if (typeof line.taxRate !== 'number') throw validationError(STRINGS.errors.invalidInput);
+    if (!hasAtMostDecimals(line.unitPrice, UNIT_PRICE_MAX_DECIMALS)) {
+      throw validationError(STRINGS.errors.invalidInput);
+    }
   }
   const derived = lines.map(deriveInvoiceLine);
   // An overflowing product would persist as JSONB `null`.
@@ -120,6 +127,13 @@ function deriveInvoiceLines(lines: InvoiceLineInput[]): InvoiceLine[] {
     throw validationError(STRINGS.errors.invalidInput);
   }
   return derived;
+}
+
+/** Re-derive `totals` (AC-286); an amount that overflows a double is rejected (AC-384). */
+function deriveTotals(lines: InvoiceLine[], mode: TaxMode): InvoiceTotals {
+  const totals = computeInvoiceTotals(lines, mode);
+  if (!invoiceTotalsAreFinite(totals)) throw validationError(STRINGS.errors.invalidInput);
+  return totals;
 }
 
 export interface CreateDraftInput {
@@ -330,7 +344,7 @@ export class InvoiceService {
               }
             : customerRecipient;
 
-          const totals = computeInvoiceTotals(lines, taxMode);
+          const totals = deriveTotals(lines, taxMode);
 
           const row = await insertInvoiceDraft(tx, {
             id,
@@ -405,7 +419,7 @@ export class InvoiceService {
 
           const nextTaxMode: TaxMode = (input.taxMode ?? before.taxMode) as TaxMode;
           const nextLines: InvoiceLine[] = inputLines ?? (before.lines as InvoiceLine[]);
-          const nextTotals = computeInvoiceTotals(nextLines, nextTaxMode);
+          const nextTotals = deriveTotals(nextLines, nextTaxMode);
           const nextPerformanceDate =
             'performanceDate' in input
               ? input.performanceDate

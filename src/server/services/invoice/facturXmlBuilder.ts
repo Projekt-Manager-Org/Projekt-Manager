@@ -45,6 +45,7 @@ import {
   type InvoiceRecipientSnapshot,
   type TaxMode,
 } from '../../../domain/invoice.js';
+import { formatDecimal } from '../../../domain/money.js';
 import { taxModeCategoryCode, taxModeExemptionReason } from './boilerplate.js';
 
 /**
@@ -66,21 +67,11 @@ function escapeXmlAttr(value: string): string {
 }
 
 /**
- * Format a money value as a fixed-decimal string with two decimals
- * (German invoicing convention — same rounding as the totals computer
- * in `domain/invoice.ts`). EN 16931 ChargeAmount, LineTotalAmount etc.
- * are `xs:decimal` — fixed-precision is wire-stable and what receiver-
- * side parsers expect.
- *
- * `toFixed(2)` rounds with banker's rounding in V8; for invoice totals
- * we want half-away-from-zero (same as the `round2()` in the domain),
- * but the difference only manifests at exact half-cents which the
- * server-side totals computer has already resolved. Re-applying the
- * domain rounding here would be belt-and-braces against a future
- * regression.
+ * Amount or percentage as an `xs:decimal` with two decimals. Prices and
+ * quantities are rendered unrounded instead (data-model.md §5.15).
  */
 function fmt2(n: number): string {
-  return (Math.round(n * 100) / 100).toFixed(2);
+  return formatDecimal(n, 2, 2);
 }
 
 /** Format a JS Date as `YYYYMMDD` (format=102 in CII). */
@@ -214,13 +205,13 @@ function renderLineItem(line: InvoiceLine, index: number, mode: TaxMode): string
 
   parts.push('<ram:SpecifiedLineTradeAgreement>');
   parts.push('<ram:NetPriceProductTradePrice>');
-  parts.push(`<ram:ChargeAmount>${fmt2(line.unitPrice)}</ram:ChargeAmount>`);
+  parts.push(`<ram:ChargeAmount>${formatDecimal(line.unitPrice, 2)}</ram:ChargeAmount>`);
   parts.push('</ram:NetPriceProductTradePrice>');
   parts.push('</ram:SpecifiedLineTradeAgreement>');
 
   parts.push('<ram:SpecifiedLineTradeDelivery>');
   parts.push(
-    `<ram:BilledQuantity unitCode="${escapeXmlAttr(mapUnitCode(line.unit))}">${fmt2(line.quantity)}</ram:BilledQuantity>`,
+    `<ram:BilledQuantity unitCode="${escapeXmlAttr(mapUnitCode(line.unit))}">${formatDecimal(line.quantity, 0)}</ram:BilledQuantity>`,
   );
   parts.push('</ram:SpecifiedLineTradeDelivery>');
 

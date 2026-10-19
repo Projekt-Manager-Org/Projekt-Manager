@@ -97,10 +97,14 @@ export function formatDateRange(start?: string, end?: string): string {
  * (belt-and-braces), but the return value here guarantees no zero
  * leaks through the format path even if the gate is missed.
  */
-export function formatCurrencyDE(value: number | null | undefined): string {
+export function formatCurrencyDE(
+  value: number | null | undefined,
+  maximumFractionDigits = 2,
+): string {
   if (value == null) return '\u2014';
   return new Intl.NumberFormat(LOCALE.intlLocale, {
     style: 'currency',
     currency: LOCALE.currency,
+    maximumFractionDigits,
   }).format(value);
 }

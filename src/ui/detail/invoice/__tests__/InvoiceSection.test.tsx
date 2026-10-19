@@ -7,6 +7,8 @@
  * honors that state and returns the user to the filtered list —
  * otherwise (in-page CTAs, fresh load) the close stays on the project
  * page and just strips the `editDraft` URL param.
+ *
+ * Also: the totals preview survives a typed value that overflows a double.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -267,5 +269,21 @@ describe('InvoiceSection — draft editor onClose navigation', () => {
       expect(screen.queryByTestId('invoice-form')).toBeNull();
     });
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/projects/proj-abc');
+  });
+});
+
+describe('InvoiceSection — draft editor totals preview', () => {
+  it('shows a placeholder instead of crashing when a typed line overflows', async () => {
+    renderSection();
+    await screen.findByTestId('invoice-form');
+
+    const quantity = screen.getAllByTestId(/^invoice-line-quantity-input/)[0]!;
+    const unitPrice = screen.getAllByTestId(/^invoice-line-unit-price-input/)[0]!;
+    await userEvent.clear(quantity);
+    await userEvent.type(quantity, '1e200');
+    await userEvent.clear(unitPrice);
+    await userEvent.type(unitPrice, '1e200');
+
+    expect(screen.getByTestId('invoice-totals-net')).toHaveTextContent('—');
   });
 });

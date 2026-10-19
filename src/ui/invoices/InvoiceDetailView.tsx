@@ -33,7 +33,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import type { Invoice } from '@/domain/invoice';
-import { buildInvoiceDownloadFilename, labelForTaxMode } from '@/domain/invoice';
+import {
+  buildInvoiceDownloadFilename,
+  labelForTaxMode,
+  UNIT_PRICE_MAX_DECIMALS,
+} from '@/domain/invoice';
 import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
 import { usePermission } from '@/hooks/usePermission';
 import { useInvoiceDetailStore } from '@/state/invoiceDetailStore';
@@ -357,7 +361,9 @@ export function InvoiceDetailView() {
                   <td>{line.description}</td>
                   <td className={styles.numeric}>{line.quantity}</td>
                   <td>{line.unit}</td>
-                  <td className={styles.numeric}>{formatCurrencyDE(line.unitPrice)}</td>
+                  <td className={styles.numeric}>
+                    {formatCurrencyDE(line.unitPrice, UNIT_PRICE_MAX_DECIMALS)}
+                  </td>
                   <td className={styles.numeric}>{line.taxRate}%</td>
                   <td className={styles.numeric}>{formatCurrencyDE(line.lineTotal)}</td>
                 </tr>

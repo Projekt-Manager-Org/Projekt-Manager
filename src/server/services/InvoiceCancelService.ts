@@ -19,10 +19,11 @@ import { projectAuditLabel } from '../../domain/audit.js';
 import { getProjectRowById } from '../repositories/project.js';
 import type { AuditLogRow } from './audit-publisher.js';
 import {
-  computeInvoiceTotals,
   negateInvoiceLines,
+  negateInvoiceTotals,
   type Invoice,
   type InvoiceLine,
+  type InvoiceTotals,
   type InvoiceIssuerSnapshot,
   type InvoiceRecipientSnapshot,
   type TaxMode,
@@ -133,7 +134,7 @@ export class InvoiceCancelService {
       //    performanceDate.
       const stornoId = crypto.randomUUID();
       const stornoLines = negateInvoiceLines(before.lines as InvoiceLine[]);
-      const stornoTotals = computeInvoiceTotals(stornoLines, before.taxMode as TaxMode);
+      const stornoTotals = negateInvoiceTotals(before.totals as InvoiceTotals);
       const cancellationReason =
         input.reason && input.reason.trim().length > 0 ? input.reason : null;
 

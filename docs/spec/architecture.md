@@ -312,7 +312,7 @@ A failure at any step rolls back the entire transaction: the sequence increment 
 
 1. Atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE … RETURNING next_value` on `invoice_sequence` `(year, 'storno')`.
 2. Format `ST-YYYY-NNNN`.
-3. Insert a new `Invoice` row carrying `cancellationOf = <original.id>`, `issuer` / `recipient` / `taxMode` / `profile` / `performanceDate` snapshotted from the original, `lines` with sign-flipped `unitPrice` and `lineTotal`, totals re-derived from the negated lines, `cancellationReason` from the cancel call body, `status = 'issued'` (Storno rows are born issued).
+3. Insert a new `Invoice` row carrying `cancellationOf = <original.id>`, `issuer` / `recipient` / `taxMode` / `profile` / `performanceDate` snapshotted from the original, `lines` with sign-flipped `unitPrice` and `lineTotal`, `totals` the exact negation of the original's, `cancellationReason` from the cancel call body, `status = 'issued'` (Storno rows are born issued).
 4. Render the PDF/A-3 with embedded `factur-x.xml` for the Storno using the same toolchain; write bytes through the binary pipeline.
 5. Flip the original row's `status` to `'cancelled'`; the original row's other fields are unchanged (it stays frozen per [§6.14](data-model.md#614-immutability-of-issued-invoices)).
 6. Write two `audit_log` rows through `mutate()` — one `invoice:cancel` on the original, one `invoice:issue` on the Storno — both inside the same transaction. Project status is **not** auto-modified (the operator decides what to do with the now-orphan `abgerechnet` state via the UI — [ui/invoices.md §8.16](ui/invoices.md#816-invoices-view)).

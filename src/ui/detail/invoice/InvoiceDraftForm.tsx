@@ -33,6 +33,7 @@ import {
   TAX_MODES,
   computeInvoiceTotals,
   deriveInvoiceLine,
+  invoiceTotalsAreFinite,
   labelForTaxMode,
   type Invoice,
   type InvoiceLineInput,
@@ -211,10 +212,13 @@ export function InvoiceDraftForm({
   // Read-only totals preview (ui/invoices.md §8.16.2 — "the visible
   // totals are a UX preview"). The server derives them on every write
   // and remains authoritative.
-  const previewTotals = useMemo(
-    () => computeInvoiceTotals(toWireLines(lines).map(deriveInvoiceLine), taxMode),
-    [lines, taxMode],
-  );
+  // `null` while a typed value overflows a double; the server rejects it.
+  const previewTotals = useMemo(() => {
+    const derived = toWireLines(lines).map(deriveInvoiceLine);
+    if (!derived.every((l) => Number.isFinite(l.lineTotal))) return null;
+    const totals = computeInvoiceTotals(derived, taxMode);
+    return invoiceTotalsAreFinite(totals) ? totals : null;
+  }, [lines, taxMode]);
 
   const handleSave = async () => {
     if (submitting) return;
@@ -511,10 +515,10 @@ export function InvoiceDraftForm({
               <div className={styles.totalsRow}>
                 <dt>{STRINGS.invoices.totalsNet}</dt>
                 <dd data-testid="invoice-totals-net">
-                  {formatCurrencyDE(previewTotals.netGrandTotal)}
+                  {formatCurrencyDE(previewTotals?.netGrandTotal)}
                 </dd>
               </div>
-              {previewTotals.perRate.map((band) => (
+              {(previewTotals?.perRate ?? []).map((band) => (
                 <div className={styles.totalsRow} key={band.taxRate}>
                   <dt>{STRINGS.invoices.totalsTaxAt(band.taxRate)}</dt>
                   <dd data-testid={`invoice-totals-tax-${band.taxRate}`}>
@@ -525,7 +529,7 @@ export function InvoiceDraftForm({
               <div className={`${styles.totalsRow} ${styles.totalsGrossRow}`}>
                 <dt>{STRINGS.invoices.totalsGross}</dt>
                 <dd data-testid="invoice-totals-gross">
-                  {formatCurrencyDE(previewTotals.grossGrandTotal)}
+                  {formatCurrencyDE(previewTotals?.grossGrandTotal)}
                 </dd>
               </div>
             </dl>

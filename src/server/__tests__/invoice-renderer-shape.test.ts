@@ -17,6 +17,7 @@
  *     (AT-117 first assertion).
  *   - The embedded XML validates against the EN 16931 Comfort XSD
  *     (AT-117 load-bearing assertion).
+ *   - Line `quantity` / `unitPrice` render unrounded (AT-154).
  */
 import { describe, it, expect } from 'vitest';
 import { InvoiceRenderer } from '../services/InvoiceRenderer.js';
@@ -132,6 +133,26 @@ describe('InvoiceRenderer — boilerplate (AT-116 shape, route-free)', () => {
     const text = await pdfText(out.pdfBytes);
     expect(text).toContain('§ 13b UStG');
     expect(text).not.toContain('§ 19 UStG');
+  });
+});
+
+describe('InvoiceRenderer — line precision (AT-154 / AC-384)', () => {
+  it('renders quantity and a 4-dp unitPrice without rounding in the PDF and the XML', async () => {
+    const invoice = makeInvoice('standard');
+    invoice.lines = [{ ...invoice.lines[0]!, quantity: 1.5, unitPrice: 12.3456, lineTotal: 18.52 }];
+    invoice.totals = {
+      perRate: [{ taxRate: 19, netSubtotal: 18.52, taxAmount: 3.52 }],
+      netGrandTotal: 18.52,
+      taxGrandTotal: 3.52,
+      grossGrandTotal: 22.04,
+    };
+    const out = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
+
+    expect(out.facturXml).toContain('<ram:ChargeAmount>12.3456</ram:ChargeAmount>');
+    expect(out.facturXml).toMatch(/<ram:BilledQuantity [^>]*>1\.5<\/ram:BilledQuantity>/);
+    const text = await pdfText(out.pdfBytes);
+    expect(text).toContain('12,3456');
+    expect(text).toMatch(/(^|\s)1,5(\s|$)/);
   });
 });
 

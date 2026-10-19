@@ -5,7 +5,10 @@
  *   - AT-154 / AC-384: create and PATCH ignore a client-supplied
  *     `lineTotal`; issue rejects a stored line that breaks
  *     `lineTotal = round2(quantity × unitPrice)` before a number is
- *     allocated; create rejects a non-finite derived `lineTotal`.
+ *     allocated; create rejects a non-finite derived `lineTotal` and a
+ *     `unitPrice` above 4 decimals and overflowing totals; `lineTotal`
+ *     is the decimal product; issue also rejects a stored 5-dp `unitPrice`
+ *     and stored lines whose totals overflow.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -112,6 +115,84 @@ describe('AT-154 / AC-384: lineTotal is server-derived', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST derives lineTotal from the decimal product', async () => {
+    const res = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      lines: [{ ...TAMPERED_LINE, quantity: 0.5, unitPrice: 2.01 }],
+    });
+    expect(res.statusCode).toBe(201);
+    expect((await readStoredLines(res.json().id))[0]!.lineTotal).toBe(1.01);
+  });
+
+  it('POST rejects a unitPrice with more than 4 decimals', async () => {
+    const res = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      lines: [{ ...TAMPERED_LINE, unitPrice: 1.00001 }],
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST rejects a line whose gross total overflows', async () => {
+    // Net 1.7e308 is still a double; net × 1.19 is not.
+    const res = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'standard',
+      lines: [{ ...TAMPERED_LINE, quantity: 1.7e154, unitPrice: 1e154 }],
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('issue rejects a stored unitPrice with more than 4 decimals', async () => {
+    const created = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'standard',
+      lines: [TAMPERED_LINE],
+      performanceDate: '2026-04-10',
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+
+    // A restored draft: 10 × 1.00005 still derives lineTotal 10.00.
+    await withDb((db) =>
+      db.execute(
+        sql`UPDATE invoices SET lines = jsonb_set(jsonb_set(lines, '{0,unitPrice}', '1.00005'), '{0,lineTotal}', '10') WHERE id = ${id}`,
+      ),
+    );
+
+    const res = await authPost(ownerToken, `/api/invoices/${id}/issue`, {
+      ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().details.invalidFields).toEqual(['lines[0].unitPrice']);
+  });
+
+  it('issue rejects stored lines whose totals overflow', async () => {
+    const created = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'standard',
+      lines: [TAMPERED_LINE, TAMPERED_LINE],
+      performanceDate: '2026-04-10',
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+
+    // A restored draft: each line is consistent, their sum is not a double.
+    const huge = { ...TAMPERED_LINE, quantity: 1e154, unitPrice: 1e154, lineTotal: 1e308 };
+    await withDb((db) =>
+      db.execute(
+        sql`UPDATE invoices SET lines = ${JSON.stringify([huge, huge])}::jsonb WHERE id = ${id}`,
+      ),
+    );
+
+    const res = await authPost(ownerToken, `/api/invoices/${id}/issue`, {
+      ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().details.invalidFields).toEqual(['totals']);
   });
 
   it('PATCH ignores a client-supplied lineTotal', async () => {
