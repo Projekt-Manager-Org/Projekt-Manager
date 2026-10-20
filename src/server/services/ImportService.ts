@@ -66,11 +66,13 @@ import { bestEffortHideStorageKeys } from './AttachmentService.js';
 import type { ServiceLogger } from './Logger.js';
 import { emitProjectChanged } from '../sse/emitters.js';
 import type { AuthUser } from '../middleware/auth.js';
+import { invalidStoredLineFields, invoiceTotalsAreFinite } from '../../domain/invoice.js';
 
 /**
  * Within-envelope structural checks — uniqueness of keys that become DB
  * constraints on insert, plus referential integrity between tables. Row-level
- * column validation is left to the DB. This pre-check exists so dry-run
+ * column validation is left to the DB, except invoice `lines` / `totals`:
+ * JSONB the DB does not check. This pre-check exists so dry-run
  * reports issues without writes, and so non-dry-run fails cleanly (422)
  * before TRUNCATE rather than bubbling a 23505 through as a generic 500.
  */
@@ -281,6 +283,31 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
           message: `cancellationOf ${inv.cancellationOf} is itself a Storno (chains not permitted)`,
         });
       }
+    }
+  }
+
+  // AC-386: invoice lines and totals pass the write rules (data-model.md
+  // §5.15). An issued row is frozen as imported, so a violation is
+  // rejected, never re-derived.
+  for (let i = 0; i < envelope.invoices.length; i++) {
+    const inv = envelope.invoices[i]!;
+    if (!Array.isArray(inv.lines)) {
+      issues.push({ path: `invoices[${i}].lines`, message: 'lines is not an array' });
+    } else {
+      for (let j = 0; j < inv.lines.length; j++) {
+        for (const field of invalidStoredLineFields(inv.lines[j])) {
+          issues.push({
+            path: `invoices[${i}].lines[${j}].${field}`,
+            message: `${field} breaks the invoice line rules`,
+          });
+        }
+      }
+    }
+    if (!invoiceTotalsAreFinite(inv.totals)) {
+      issues.push({
+        path: `invoices[${i}].totals`,
+        message: 'totals carry a missing or non-finite amount',
+      });
     }
   }
 

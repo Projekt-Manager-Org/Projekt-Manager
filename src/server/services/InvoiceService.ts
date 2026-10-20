@@ -27,9 +27,9 @@ import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
   deriveInvoiceLine,
+  invalidInputLineFields,
   invoiceTotalsAreFinite,
   TAX_MODES,
-  UNIT_PRICE_MAX_DECIMALS,
   type Invoice,
   type InvoiceLine,
   type InvoiceLineInput,
@@ -39,7 +39,6 @@ import {
   type TaxMode,
   type InvoiceProfile,
 } from '../../domain/invoice.js';
-import { hasAtMostDecimals } from '../../domain/money.js';
 import {
   toInvoiceResponse,
   listInvoices as listInvoicesRepo,
@@ -111,15 +110,8 @@ function deriveInvoiceLines(lines: InvoiceLineInput[]): InvoiceLine[] {
   if (!Array.isArray(lines)) {
     throw validationError(STRINGS.errors.invalidInput);
   }
-  for (const line of lines) {
-    if (typeof line.description !== 'string') throw validationError(STRINGS.errors.invalidInput);
-    if (typeof line.quantity !== 'number') throw validationError(STRINGS.errors.invalidInput);
-    if (typeof line.unit !== 'string') throw validationError(STRINGS.errors.invalidInput);
-    if (typeof line.unitPrice !== 'number') throw validationError(STRINGS.errors.invalidInput);
-    if (typeof line.taxRate !== 'number') throw validationError(STRINGS.errors.invalidInput);
-    if (!hasAtMostDecimals(line.unitPrice, UNIT_PRICE_MAX_DECIMALS)) {
-      throw validationError(STRINGS.errors.invalidInput);
-    }
+  if (lines.some((line) => invalidInputLineFields(line).length > 0)) {
+    throw validationError(STRINGS.errors.invalidInput);
   }
   const derived = lines.map(deriveInvoiceLine);
   // An overflowing product would persist as JSONB `null`.
