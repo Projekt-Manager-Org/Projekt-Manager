@@ -309,24 +309,38 @@ function sum(values: Big.BigSource[]): Big {
 }
 
 /**
- * False when an amount is missing or overflows a double. JSONB would
- * store an overflow as `null`, so a write, an issue or an import with
- * such totals is rejected (AC-384, AC-386).
+ * False when an amount overflows a double. JSONB would store it as
+ * `null`, so a write or an issue with such totals is rejected.
  */
-export function invoiceTotalsAreFinite(totals: unknown): boolean {
+export function invoiceTotalsAreFinite(totals: InvoiceTotals): boolean {
+  return [
+    totals.netGrandTotal,
+    totals.taxGrandTotal,
+    totals.grossGrandTotal,
+    ...totals.perRate.flatMap((p) => [p.netSubtotal, p.taxAmount]),
+  ].every(Number.isFinite);
+}
+
+/**
+ * True when stored `totals` equal the `derived` ones (§5.15 "Totals are
+ * server-computed"; AC-386). An overflowing derived amount never matches.
+ * `===` treats a negated zero on a Storno as zero.
+ */
+export function invoiceTotalsMatch(totals: unknown, derived: InvoiceTotals): boolean {
   if (typeof totals !== 'object' || totals === null) return false;
   const t = totals as Partial<InvoiceTotals>;
-  if (!Array.isArray(t.perRate)) return false;
-  return [
-    t.netGrandTotal,
-    t.taxGrandTotal,
-    t.grossGrandTotal,
-    ...t.perRate.flatMap((p: Partial<InvoiceTotals['perRate'][number]> | null) => [
-      p?.taxRate,
-      p?.netSubtotal,
-      p?.taxAmount,
-    ]),
-  ].every(Number.isFinite);
+  if (!Array.isArray(t.perRate) || t.perRate.length !== derived.perRate.length) return false;
+  return (
+    t.netGrandTotal === derived.netGrandTotal &&
+    t.taxGrandTotal === derived.taxGrandTotal &&
+    t.grossGrandTotal === derived.grossGrandTotal &&
+    derived.perRate.every((d, k) => {
+      const p = t.perRate![k];
+      return (
+        p?.taxRate === d.taxRate && p.netSubtotal === d.netSubtotal && p.taxAmount === d.taxAmount
+      );
+    })
+  );
 }
 
 /**

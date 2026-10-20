@@ -807,9 +807,20 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         (inv) => Object.assign(inv.lines[0]!, { unitPrice: 100, lineTotal: 1 }),
         'invoices[0].lines[0].lineTotal',
       ],
+      ['lines: null', (inv) => Object.assign(inv, { lines: null }), 'invoices[0].lines'],
       [
         'totals.grossGrandTotal: null',
         (inv) => Object.assign(inv.totals, { grossGrandTotal: null }),
+        'invoices[0].totals',
+      ],
+      [
+        'totals.grossGrandTotal off by 0.01',
+        (inv) => Object.assign(inv.totals, { grossGrandTotal: 297.51 }),
+        'invoices[0].totals',
+      ],
+      [
+        'totals.perRate[0].taxAmount off by 0.01',
+        (inv) => Object.assign(inv.totals.perRate[0]!, { taxAmount: 47.51 }),
         'invoices[0].totals',
       ],
     ];

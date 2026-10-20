@@ -66,7 +66,11 @@ import { bestEffortHideStorageKeys } from './AttachmentService.js';
 import type { ServiceLogger } from './Logger.js';
 import { emitProjectChanged } from '../sse/emitters.js';
 import type { AuthUser } from '../middleware/auth.js';
-import { invalidStoredLineFields, invoiceTotalsAreFinite } from '../../domain/invoice.js';
+import {
+  computeInvoiceTotals,
+  invalidStoredLineFields,
+  invoiceTotalsMatch,
+} from '../../domain/invoice.js';
 
 /**
  * Within-envelope structural checks — uniqueness of keys that become DB
@@ -293,20 +297,24 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     const inv = envelope.invoices[i]!;
     if (!Array.isArray(inv.lines)) {
       issues.push({ path: `invoices[${i}].lines`, message: 'lines is not an array' });
-    } else {
-      for (let j = 0; j < inv.lines.length; j++) {
-        for (const field of invalidStoredLineFields(inv.lines[j])) {
-          issues.push({
-            path: `invoices[${i}].lines[${j}].${field}`,
-            message: `${field} breaks the invoice line rules`,
-          });
-        }
-      }
+      continue;
     }
-    if (!invoiceTotalsAreFinite(inv.totals)) {
+    const lineIssues = inv.lines.flatMap((line, j) =>
+      invalidStoredLineFields(line).map((field) => ({
+        path: `invoices[${i}].lines[${j}].${field}`,
+        message: `${field} breaks the invoice line rules`,
+      })),
+    );
+    issues.push(...lineIssues);
+    // Totals derive only from valid lines; a broken line rejects the
+    // invoice already.
+    if (
+      lineIssues.length === 0 &&
+      !invoiceTotalsMatch(inv.totals, computeInvoiceTotals(inv.lines, inv.taxMode))
+    ) {
       issues.push({
         path: `invoices[${i}].totals`,
-        message: 'totals carry a missing or non-finite amount',
+        message: 'totals differ from the ones derived from lines and taxMode',
       });
     }
   }
