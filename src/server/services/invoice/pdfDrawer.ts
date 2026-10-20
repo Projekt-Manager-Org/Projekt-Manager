@@ -34,6 +34,7 @@ import type { PDFDocument, PDFFont, PDFImage, PDFPage, RGB } from '@cantoo/pdf-l
 const pdfLibImport: Promise<typeof import('@cantoo/pdf-lib')> = import('@cantoo/pdf-lib');
 
 import type { CompanyProfile, Invoice } from '../../../domain/invoice.js';
+import { formatDecimal } from '../../../domain/money.js';
 import { BRANDING } from '../../../config/brandingConfig.js';
 import { taxModeBoilerplate } from './boilerplate.js';
 import { loadBrandLogo, type LogoAsset } from './logoAsset.js';
@@ -118,18 +119,23 @@ const TABLE_TAX_RATE_RIGHT_X = COL_LEFT + 415;
 const TABLE_LINE_TOTAL_RIGHT_X = COL_RIGHT;
 const TABLE_DESC_MAX_WIDTH = TABLE_QTY_RIGHT_X - TABLE_DESC_X - 50;
 
-/**
- * Money formatter — euro symbol + DE-format thousands and decimals
- * (1.500,00 €). The PDF body shows this; the XML carries the canonical
- * `0123.45` form independently.
- */
-function fmtEur(n: number): string {
-  const fixed = (Math.round(n * 100) / 100).toFixed(2);
-  const [whole, decimal] = fixed.split('.');
+/** Plain decimal (`-1234.5`) → DE thousands and decimal separators (`-1.234,5`). */
+function toGermanNumber(plain: string): string {
+  const [whole, decimal] = plain.split('.');
   const negativeSign = whole!.startsWith('-') ? '-' : '';
   const wholeAbs = negativeSign ? whole!.slice(1) : whole!;
   const withSep = wholeAbs.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${negativeSign}${withSep},${decimal} €`;
+  return `${negativeSign}${withSep}${decimal === undefined ? '' : `,${decimal}`}`;
+}
+
+/** Money amount — euro symbol + DE-format, two decimals (1.500,00 €). */
+function fmtEur(n: number): string {
+  return `${toGermanNumber(formatDecimal(n, 2, 2))} €`;
+}
+
+/** Unit price — as `fmtEur`, but unrounded beyond two decimals (§5.15). */
+function fmtUnitPrice(n: number): string {
+  return `${toGermanNumber(formatDecimal(n, 2))} €`;
 }
 
 function fmtDate(value: string | Date | null): string {
@@ -559,7 +565,7 @@ export async function drawInvoicePdf(
     });
     drawRight(
       cursor.page,
-      (Math.round(line.quantity * 100) / 100).toFixed(2),
+      toGermanNumber(formatDecimal(line.quantity, 0)),
       TABLE_QTY_RIGHT_X,
       cursor.y,
       FONT_SIZE_BODY,
@@ -573,7 +579,7 @@ export async function drawInvoicePdf(
     });
     drawRight(
       cursor.page,
-      fmtEur(line.unitPrice),
+      fmtUnitPrice(line.unitPrice),
       TABLE_UNIT_PRICE_RIGHT_X,
       cursor.y,
       FONT_SIZE_BODY,

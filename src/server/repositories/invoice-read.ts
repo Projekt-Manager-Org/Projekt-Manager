@@ -600,7 +600,7 @@ export async function flipParentProjectStatusToAbgerechnet(
 /**
  * Fields for inserting a Storno (cancellation) sibling row. The service
  * snapshots issuer/recipient/taxMode/profile/performanceDate from the
- * original byte-for-byte (AC-290), negates the lines, re-derives totals,
+ * original byte-for-byte (AC-290), negates the lines and the totals,
  * and pre-allocates a number from the `(year, 'storno')` sequence. The
  * descriptor id comes from a separate render+persist that ran earlier
  * in the cancel atom (same immutability-trigger reason as issuance:

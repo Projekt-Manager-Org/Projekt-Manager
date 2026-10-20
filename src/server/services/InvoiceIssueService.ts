@@ -34,12 +34,15 @@ import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
   deriveInvoiceLine,
+  invoiceTotalsAreFinite,
+  UNIT_PRICE_MAX_DECIMALS,
   type Invoice,
   type InvoiceLine,
   type InvoiceIssuerSnapshot,
   type InvoiceRecipientSnapshot,
   type TaxMode,
 } from '../../domain/invoice.js';
+import { hasAtMostDecimals } from '../../domain/money.js';
 import {
   toInvoiceResponse,
   getInvoiceRowForMutation,
@@ -163,6 +166,15 @@ export class InvoiceIssueService {
     if (lines.length === 0) {
       throw validationError(STRINGS.errors.invalidInput, { missingFields: ['lines'] });
     }
+    // Writes validate line shape; a restored draft bypasses them.
+    const malformedLine = lines.findIndex(
+      (l) => !Number.isFinite(l.quantity) || !Number.isFinite(l.unitPrice),
+    );
+    if (malformedLine !== -1) {
+      throw validationError(STRINGS.errors.invalidInput, {
+        invalidFields: [`lines[${malformedLine}]`],
+      });
+    }
     // Writes derive `lineTotal`; a stored mismatch (a row written before
     // derivation, a restored draft) is rejected, not silently re-derived —
     // the issued invoice is exactly the draft the issuer saw (AC-384).
@@ -171,6 +183,21 @@ export class InvoiceIssueService {
       throw validationError(STRINGS.errors.invalidInput, {
         invalidFields: [`lines[${brokenLine}].lineTotal`],
       });
+    }
+    // Same write-time limits: a frozen price is rendered without rounding,
+    // and totals beyond a double would freeze as JSONB `null`.
+    const impreciseLine = lines.findIndex(
+      (l) => !hasAtMostDecimals(l.unitPrice, UNIT_PRICE_MAX_DECIMALS),
+    );
+    if (impreciseLine !== -1) {
+      throw validationError(STRINGS.errors.invalidInput, {
+        invalidFields: [`lines[${impreciseLine}].unitPrice`],
+      });
+    }
+    const taxMode = before.taxMode as TaxMode;
+    const totals = computeInvoiceTotals(lines, taxMode);
+    if (!invoiceTotalsAreFinite(totals)) {
+      throw validationError(STRINGS.errors.invalidInput, { invalidFields: ['totals'] });
     }
     if (!before.performanceDate) {
       throw validationError(STRINGS.errors.invalidInput, { missingFields: ['performanceDate'] });
@@ -194,7 +221,6 @@ export class InvoiceIssueService {
         missingFields: ['recipient.address.city'],
       });
     }
-    const taxMode = before.taxMode as TaxMode;
     if (taxMode === 'reverse_charge' && (!recipient.ustId || recipient.ustId.length === 0)) {
       throw validationError(STRINGS.errors.invalidInput, { missingFields: ['recipient.ustId'] });
     }
@@ -241,7 +267,6 @@ export class InvoiceIssueService {
       footerText: companyProfileRow.footerText,
     };
 
-    const totals = computeInvoiceTotals(lines, taxMode);
     const issueDate = now;
 
     // 6. Render BEFORE the UPDATE — the persistence-layer immutability

@@ -6,7 +6,7 @@
  *   POST /api/invoices/:id/cancel
  *
  *   - On an `issued` row: creates the Stornorechnung sibling with its
- *     own `ST-YYYY-NNNN` number, sign-flipped lines, re-derived totals,
+ *     own `ST-YYYY-NNNN` number, sign-flipped lines, negated totals,
  *     snapshots of issuer / recipient / taxMode / profile / performanceDate
  *     copied from the original, optional `cancellationReason` from the
  *     request body. Original `status` flips to `'cancelled'`; all other
@@ -282,7 +282,7 @@ describe('Invoice cancellation — happy path (AT-114 / AC-290)', () => {
       expect(stornoLines).toHaveLength(originalLines.length);
       expect(stornoLines[0].unitPrice).toBe(-originalLines[0].unitPrice);
       expect(stornoLines[0].lineTotal).toBe(-originalLines[0].lineTotal);
-      // Totals re-derived from negated lines.
+      // Totals negated (pinned exactly by the Storno-totals suite below).
       const stornoTotals = storno.totals as { netGrandTotal: number; grossGrandTotal: number };
       expect(stornoTotals.netGrandTotal).toBeLessThan(0);
       expect(stornoTotals.grossGrandTotal).toBeLessThan(0);
@@ -375,6 +375,117 @@ describe('Invoice cancellation — happy path (AT-114 / AC-290)', () => {
     } finally {
       bus.unsubscribe(conn);
     }
+  });
+});
+
+// ---------------------------------------------------------------------
+// AT-114 / AC-290 — Storno totals are the exact negation of the
+// original's stored totals.
+// ---------------------------------------------------------------------
+
+type Totals = {
+  perRate: { taxRate: number; netSubtotal: number; taxAmount: number }[];
+  netGrandTotal: number;
+  taxGrandTotal: number;
+  grossGrandTotal: number;
+};
+
+function negated(t: Totals): Totals {
+  return {
+    perRate: t.perRate.map((p) => ({
+      taxRate: p.taxRate,
+      netSubtotal: -p.netSubtotal,
+      taxAmount: -p.taxAmount,
+    })),
+    netGrandTotal: -t.netGrandTotal,
+    taxGrandTotal: -t.taxGrandTotal,
+    grossGrandTotal: -t.grossGrandTotal,
+  };
+}
+
+/** Direct-insert an issued row whose `totals` are given verbatim. */
+async function seedIssuedInvoice(projectId: string, unitPrice: number, totals: Totals) {
+  const { db, pool } = createDatabase();
+  try {
+    const id = crypto.randomUUID();
+    const number = `RE-${year}-${String(90_000_000 + crypto.randomInt(9_999_999))}`;
+    const issuer = {
+      companyName: 'Test Maler GmbH',
+      address: { street: 'Werkstr. 1', zip: '10115', city: 'Berlin' },
+      taxId: '111/222/33333',
+      ustId: 'DE123456789',
+    };
+    const recipient = { name: 'R', address: { street: 'S', zip: '12345', city: 'C' } };
+    const lines = [
+      { description: 'T', quantity: 1, unit: 'p', unitPrice, lineTotal: unitPrice, taxRate: 19 },
+    ];
+    await db.execute(sql`
+      INSERT INTO invoices (id, number, project_id, status, tax_mode, profile,
+        issuer, recipient, lines, totals, issue_date, performance_date)
+      VALUES (${id}, ${number}, ${projectId}, 'issued', 'standard', 'zugferd-en16931',
+              ${JSON.stringify(issuer)}::jsonb,
+              ${JSON.stringify(recipient)}::jsonb,
+              ${JSON.stringify(lines)}::jsonb,
+              ${JSON.stringify(totals)}::jsonb,
+              '2026-04-10', '2026-04-10')
+    `);
+    return id;
+  } finally {
+    await pool.end();
+  }
+}
+
+describe('Invoice cancellation — Storno totals (AT-114 / AC-290)', () => {
+  let ownerToken: string;
+  let projectId: string;
+
+  beforeAll(async () => {
+    await startApp();
+    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+    await ensureCompanyProfileComplete(ownerToken);
+    projectId = await rechnungFaelligProjectId(ownerToken);
+  });
+
+  afterAll(async () => {
+    await stopApp();
+  });
+
+  async function cancel(
+    id: string,
+  ): Promise<{ original: { totals: Totals }; storno: { totals: Totals } }> {
+    const res = await authPost(ownerToken, `/api/invoices/${id}/cancel`, {});
+    expect(res.statusCode).toBe(200);
+    return res.json();
+  }
+
+  it('negates a half-cent VAT exactly: 2.50 net @ 19 % → 0.48 / −0.48', async () => {
+    const res = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      lines: [{ description: 'T', quantity: 1, unit: 'p', unitPrice: 2.5, taxRate: 19 }],
+      performanceDate: '2026-04-10',
+    });
+    expect(res.statusCode).toBe(201);
+    const originalId = await issueDraft(ownerToken, res.json().id as string);
+
+    const { original, storno } = await cancel(originalId);
+    expect(original.totals.taxGrandTotal).toBe(0.48);
+    expect(storno.totals.taxGrandTotal).toBe(-0.48);
+    expect(storno.totals).toEqual(negated(original.totals));
+  });
+
+  it('negates the stored totals, not a re-derivation of them', async () => {
+    // 1.50 net @ 19 % = 0.285 VAT; a row issued under float rounding
+    // froze 0.28. Re-deriving would give the Storno −0.29.
+    const frozen: Totals = {
+      perRate: [{ taxRate: 19, netSubtotal: 1.5, taxAmount: 0.28 }],
+      netGrandTotal: 1.5,
+      taxGrandTotal: 0.28,
+      grossGrandTotal: 1.78,
+    };
+    const originalId = await seedIssuedInvoice(projectId, 1.5, frozen);
+
+    const { storno } = await cancel(originalId);
+    expect(storno.totals).toEqual(negated(frozen));
   });
 });
 

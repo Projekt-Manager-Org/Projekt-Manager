@@ -9,7 +9,9 @@
  * (Date instances, raw `bigint`) that the wire contract does not.
  */
 
+import Big from 'big.js';
 import { sanitiseFilenameSegment } from './filename.js';
+import { round2, round2Decimal } from './money.js';
 
 /** §5.15 — three-state machine: draft (editable) → issued (frozen) → cancelled (flag). */
 export const INVOICE_STATUSES = ['draft', 'issued', 'cancelled'] as const;
@@ -173,14 +175,12 @@ export function companyProfileMissingFieldsForMode(
   return missing;
 }
 
-/** Round to two decimals using half-away-from-zero (German invoicing convention). */
-export function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
+/** §5.15 — `unitPrice` carries at most this many decimals. */
+export const UNIT_PRICE_MAX_DECIMALS = 4;
 
 /** Derive `lineTotal` from `quantity` and `unitPrice` (AC-384). */
 export function deriveInvoiceLine(line: InvoiceLineInput): InvoiceLine {
-  return { ...line, lineTotal: round2(line.quantity * line.unitPrice) };
+  return { ...line, lineTotal: round2(new Big(line.quantity).times(line.unitPrice)) };
 }
 
 /**
@@ -211,19 +211,18 @@ export function labelForTaxMode(
  * on every draft PATCH and on the issue transaction so totals are never
  * client-trusted (AC-286).
  *
- * `standard`: per-line VAT, aggregated to per-rate bands.
+ * `standard`: lines summed per rate; each band's VAT is its rounded net
+ *   × rate (EN 16931 BR-CO-17).
  * `kleinunternehmer` / `reverse_charge`: no VAT on lines — taxGrandTotal=0,
  *   perRate=[], grossGrandTotal=netGrandTotal.
- *
- * Lines are negative on a Storno (AC-290 sign-flip) — the same formula
- * works for both signs.
  */
 export function computeInvoiceTotals(lines: InvoiceLine[], mode: TaxMode): InvoiceTotals {
   if (lines.length === 0) {
     return { perRate: [], netGrandTotal: 0, taxGrandTotal: 0, grossGrandTotal: 0 };
   }
 
-  const netGrandTotal = round2(lines.reduce((sum, l) => sum + l.lineTotal, 0));
+  const net = round2Decimal(sum(lines.map((l) => l.lineTotal)));
+  const netGrandTotal = net.toNumber();
 
   if (mode === 'kleinunternehmer' || mode === 'reverse_charge') {
     return {
@@ -235,35 +234,57 @@ export function computeInvoiceTotals(lines: InvoiceLine[], mode: TaxMode): Invoi
   }
 
   // standard — aggregate by tax rate.
-  const byRate = new Map<number, { netSubtotal: number; taxAmount: number }>();
+  const byRate = new Map<number, number[]>();
   for (const line of lines) {
-    const rate = line.taxRate;
-    const existing = byRate.get(rate) ?? { netSubtotal: 0, taxAmount: 0 };
-    existing.netSubtotal += line.lineTotal;
-    existing.taxAmount += (line.lineTotal * rate) / 100;
-    byRate.set(rate, existing);
+    const lineTotals = byRate.get(line.taxRate) ?? [];
+    lineTotals.push(line.lineTotal);
+    byRate.set(line.taxRate, lineTotals);
   }
   const perRate = [...byRate.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([taxRate, { netSubtotal, taxAmount }]) => ({
-      taxRate,
-      netSubtotal: round2(netSubtotal),
-      taxAmount: round2(taxAmount),
-    }));
-  const taxGrandTotal = round2(perRate.reduce((sum, p) => sum + p.taxAmount, 0));
+    .map(([taxRate, lineTotals]) => {
+      const netSubtotal = round2Decimal(sum(lineTotals));
+      return {
+        taxRate,
+        netSubtotal,
+        taxAmount: round2Decimal(netSubtotal.times(taxRate).div(100)),
+      };
+    });
+  const tax = round2Decimal(sum(perRate.map((p) => p.taxAmount)));
   return {
-    perRate,
+    perRate: perRate.map((p) => ({
+      taxRate: p.taxRate,
+      netSubtotal: p.netSubtotal.toNumber(),
+      taxAmount: p.taxAmount.toNumber(),
+    })),
     netGrandTotal,
-    taxGrandTotal,
-    grossGrandTotal: round2(netGrandTotal + taxGrandTotal),
+    taxGrandTotal: tax.toNumber(),
+    grossGrandTotal: round2(net.plus(tax)),
   };
+}
+
+/** Exact decimal sum. Every value must be finite: `Big` rejects `±Infinity`. */
+function sum(values: Big.BigSource[]): Big {
+  return values.reduce<Big>((acc, v) => acc.plus(v), new Big(0));
+}
+
+/**
+ * False when an amount overflows a double. JSONB would store it as
+ * `null`, so a write or an issue with such totals is rejected.
+ */
+export function invoiceTotalsAreFinite(totals: InvoiceTotals): boolean {
+  return [
+    totals.netGrandTotal,
+    totals.taxGrandTotal,
+    totals.grossGrandTotal,
+    ...totals.perRate.flatMap((p) => [p.netSubtotal, p.taxAmount]),
+  ].every(Number.isFinite);
 }
 
 /**
  * Sign-flip a line list for a Storno row (AC-290). Both `unitPrice` and
  * `lineTotal` are negated; `quantity` / `description` / `unit` / `taxRate`
- * are copied unchanged so the rendered output reads as "-1 × 1500.00 EUR"
- * rather than "1 × -1500.00 EUR".
+ * are copied unchanged, as `quantity` stays positive (§5.15).
  */
 export function negateInvoiceLines(lines: InvoiceLine[]): InvoiceLine[] {
   return lines.map((line) => ({
@@ -271,6 +292,23 @@ export function negateInvoiceLines(lines: InvoiceLine[]): InvoiceLine[] {
     unitPrice: -line.unitPrice,
     lineTotal: -line.lineTotal,
   }));
+}
+
+/**
+ * Negate an issued invoice's stored totals for its Storno (AC-290).
+ * Never re-derived: the Storno cancels the document as issued.
+ */
+export function negateInvoiceTotals(totals: InvoiceTotals): InvoiceTotals {
+  return {
+    perRate: totals.perRate.map((p) => ({
+      taxRate: p.taxRate,
+      netSubtotal: -p.netSubtotal,
+      taxAmount: -p.taxAmount,
+    })),
+    netGrandTotal: -totals.netGrandTotal,
+    taxGrandTotal: -totals.taxGrandTotal,
+    grossGrandTotal: -totals.grossGrandTotal,
+  };
 }
 
 /** Format an invoice number from a sequence kind, year, and integer value. */
