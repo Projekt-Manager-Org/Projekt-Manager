@@ -823,6 +823,19 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         (inv) => Object.assign(inv.totals.perRate[0]!, { taxAmount: 47.51 }),
         'invoices[0].totals',
       ],
+      [
+        'issued, totals consistent but derived from other lines',
+        (inv) => {
+          Object.assign(inv, { status: 'issued' });
+          Object.assign(inv.lines[0]!, { quantity: 11, lineTotal: 275 });
+        },
+        'invoices[0].totals',
+      ],
+      [
+        'standard totals under taxMode kleinunternehmer',
+        (inv) => Object.assign(inv, { taxMode: 'kleinunternehmer' }),
+        'invoices[0].totals',
+      ],
     ];
 
     beforeAll(wipeBusinessDataExceptUsers);
