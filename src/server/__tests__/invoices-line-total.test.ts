@@ -7,8 +7,9 @@
  *     `lineTotal = round2(quantity × unitPrice)` before a number is
  *     allocated; create rejects a non-finite derived `lineTotal` and a
  *     `unitPrice` above 4 decimals and overflowing totals; `lineTotal`
- *     is the decimal product; issue also rejects a stored 5-dp `unitPrice`
- *     and stored lines whose totals overflow.
+ *     is the decimal product; issue also rejects a stored 5-dp `unitPrice`,
+ *     stored lines whose totals overflow, and a stored non-numeric
+ *     `quantity`.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -193,6 +194,30 @@ describe('AT-154 / AC-384: lineTotal is server-derived', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().details.invalidFields).toEqual(['totals']);
+  });
+
+  it('issue rejects a stored line without a numeric quantity', async () => {
+    const created = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'standard',
+      lines: [TAMPERED_LINE],
+      performanceDate: '2026-04-10',
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+
+    // A restored draft: no derived amount exists for a null quantity.
+    await withDb((db) =>
+      db.execute(
+        sql`UPDATE invoices SET lines = jsonb_set(lines, '{0,quantity}', 'null') WHERE id = ${id}`,
+      ),
+    );
+
+    const res = await authPost(ownerToken, `/api/invoices/${id}/issue`, {
+      ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().details.invalidFields).toEqual(['lines[0]']);
   });
 
   it('PATCH ignores a client-supplied lineTotal', async () => {
