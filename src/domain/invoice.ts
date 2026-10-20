@@ -11,7 +11,7 @@
 
 import Big from 'big.js';
 import { sanitiseFilenameSegment } from './filename.js';
-import { round2, round2Decimal } from './money.js';
+import { hasAtMostDecimals, round2, round2Decimal } from './money.js';
 
 /** §5.15 — three-state machine: draft (editable) → issued (frozen) → cancelled (flag). */
 export const INVOICE_STATUSES = ['draft', 'issued', 'cancelled'] as const;
@@ -175,12 +175,52 @@ export function companyProfileMissingFieldsForMode(
   return missing;
 }
 
+/** §5.15 — the VAT rates a line may carry, in percent. */
+export const INVOICE_TAX_RATES = [0, 7, 19] as const;
+
 /** §5.15 — `unitPrice` carries at most this many decimals. */
 export const UNIT_PRICE_MAX_DECIMALS = 4;
 
 /** Derive `lineTotal` from `quantity` and `unitPrice` (AC-384). */
 export function deriveInvoiceLine(line: InvoiceLineInput): InvoiceLine {
   return { ...line, lineTotal: round2(new Big(line.quantity).times(line.unitPrice)) };
+}
+
+const INPUT_LINE_FIELDS = ['description', 'quantity', 'unit', 'unitPrice', 'taxRate'] as const;
+
+/**
+ * Fields of a client-written line that break the §5.15 write rules
+ * (AC-384); empty when the line is valid, every field when it is not an
+ * object. `unitPrice` carries no sign rule: a Storno line negates it.
+ */
+export function invalidInputLineFields(line: unknown): (keyof InvoiceLine)[] {
+  if (typeof line !== 'object' || line === null) return [...INPUT_LINE_FIELDS];
+  const l = line as Record<string, unknown>;
+  const invalid: (keyof InvoiceLine)[] = [];
+  if (typeof l.description !== 'string') invalid.push('description');
+  if (!Number.isFinite(l.quantity) || (l.quantity as number) <= 0) invalid.push('quantity');
+  if (typeof l.unit !== 'string') invalid.push('unit');
+  if (
+    !Number.isFinite(l.unitPrice) ||
+    !hasAtMostDecimals(l.unitPrice as number, UNIT_PRICE_MAX_DECIMALS)
+  ) {
+    invalid.push('unitPrice');
+  }
+  if (!(INVOICE_TAX_RATES as readonly unknown[]).includes(l.taxRate)) invalid.push('taxRate');
+  return invalid;
+}
+
+/**
+ * `invalidInputLineFields` for a stored line, which must also carry the
+ * derived `lineTotal` (AC-384). Shared by the issue preconditions and the
+ * import (AC-386): a stored mismatch is rejected, never re-derived.
+ */
+export function invalidStoredLineFields(line: unknown): (keyof InvoiceLine)[] {
+  const invalid = invalidInputLineFields(line);
+  if (invalid.includes('quantity') || invalid.includes('unitPrice')) return invalid;
+  const l = line as InvoiceLine;
+  if (l.lineTotal !== deriveInvoiceLine(l).lineTotal) invalid.push('lineTotal');
+  return invalid;
 }
 
 /**
@@ -279,6 +319,28 @@ export function invoiceTotalsAreFinite(totals: InvoiceTotals): boolean {
     totals.grossGrandTotal,
     ...totals.perRate.flatMap((p) => [p.netSubtotal, p.taxAmount]),
   ].every(Number.isFinite);
+}
+
+/**
+ * True when stored `totals` equal the `derived` ones (§5.15 "Totals are
+ * server-computed"; AC-386). An overflowing derived amount never matches.
+ * `===` treats a negated zero on a Storno as zero.
+ */
+export function invoiceTotalsMatch(totals: unknown, derived: InvoiceTotals): boolean {
+  if (typeof totals !== 'object' || totals === null) return false;
+  const t = totals as Partial<InvoiceTotals>;
+  if (!Array.isArray(t.perRate) || t.perRate.length !== derived.perRate.length) return false;
+  return (
+    t.netGrandTotal === derived.netGrandTotal &&
+    t.taxGrandTotal === derived.taxGrandTotal &&
+    t.grossGrandTotal === derived.grossGrandTotal &&
+    derived.perRate.every((d, k) => {
+      const p = t.perRate![k];
+      return (
+        p?.taxRate === d.taxRate && p.netSubtotal === d.netSubtotal && p.taxAmount === d.taxAmount
+      );
+    })
+  );
 }
 
 /**

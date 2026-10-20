@@ -52,7 +52,12 @@ import {
 import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
 import { allocateInvoiceNumber } from '../repositories/invoice-read.js';
 import type { Database } from '../db/connection.js';
-import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
+import type {
+  DryRunPreview,
+  Envelope,
+  ImportOptions,
+  ValidationIssue,
+} from '../../domain/dataExchange.js';
 import { AppError } from '../errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -108,7 +113,8 @@ async function expectImportRejection(env: Envelope, opts: ImportOptions): Promis
  *   reframe is exercised on the happy path.
  * - `company_profile` is exactly one row (singleton).
  * - `customers` / `projects` reference each other.
- * - `invoices` carries one issued original + one Storno referencing it.
+ * - `invoices` carries one cancelled original + the Storno cancelling it,
+ *   shaped as the cancel flow writes it (AC-290).
  * - `invoice_sequence` carries the matching counter for the issued
  *   year.
  */
@@ -219,7 +225,7 @@ function buildExpandedEnvelope(): Envelope {
       {
         id: originalInvoiceId,
         projectId,
-        status: 'issued',
+        status: 'cancelled',
         number: 'RE-2026-0001',
         issueDate: '2026-01-15',
         performanceDate: '2026-01-14',
@@ -265,7 +271,7 @@ function buildExpandedEnvelope(): Envelope {
       {
         id: stornoInvoiceId,
         projectId,
-        status: 'cancelled',
+        status: 'issued',
         number: 'ST-2026-0001',
         issueDate: '2026-01-20',
         performanceDate: '2026-01-14',
@@ -287,9 +293,9 @@ function buildExpandedEnvelope(): Envelope {
         lines: [
           {
             description: 'Wandfläche',
-            quantity: -10,
+            quantity: 10,
             unit: 'm2',
-            unitPrice: 25,
+            unitPrice: -25,
             lineTotal: -250,
             taxRate: 19,
           },
@@ -759,6 +765,113 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         expect(dbInvoices.length).toBe(0);
       } finally {
         await reseed();
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // AC-386 / AT-156: invoice lines and totals pass the §5.15 write rules
+  // at envelope validation. Rejections run against an empty target, so a
+  // single wipe and reseed covers every case.
+  // -------------------------------------------------------------------
+  describe('AC-386: invoice lines and totals are validated', () => {
+    type Mutate = (inv: Envelope['invoices'][number]) => void;
+    const lineCases: Array<[string, Mutate, string]> = [
+      [
+        'unitPrice: null',
+        (inv) => Object.assign(inv.lines[0]!, { unitPrice: null }),
+        'invoices[0].lines[0].unitPrice',
+      ],
+      [
+        'taxRate: null',
+        (inv) => Object.assign(inv.lines[0]!, { taxRate: null }),
+        'invoices[0].lines[0].taxRate',
+      ],
+      [
+        'taxRate: 42',
+        (inv) => Object.assign(inv.lines[0]!, { taxRate: 42 }),
+        'invoices[0].lines[0].taxRate',
+      ],
+      [
+        'quantity: -10',
+        (inv) => Object.assign(inv.lines[0]!, { quantity: -10, lineTotal: -250 }),
+        'invoices[0].lines[0].quantity',
+      ],
+      [
+        'unitPrice: 1.00001',
+        (inv) => Object.assign(inv.lines[0]!, { unitPrice: 1.00001, lineTotal: 10 }),
+        'invoices[0].lines[0].unitPrice',
+      ],
+      [
+        'lineTotal: 1 for 10 × 100',
+        (inv) => Object.assign(inv.lines[0]!, { unitPrice: 100, lineTotal: 1 }),
+        'invoices[0].lines[0].lineTotal',
+      ],
+      ['lines: null', (inv) => Object.assign(inv, { lines: null }), 'invoices[0].lines'],
+      [
+        'totals.grossGrandTotal: null',
+        (inv) => Object.assign(inv.totals, { grossGrandTotal: null }),
+        'invoices[0].totals',
+      ],
+      [
+        'totals.grossGrandTotal off by 0.01',
+        (inv) => Object.assign(inv.totals, { grossGrandTotal: 297.51 }),
+        'invoices[0].totals',
+      ],
+      [
+        'totals.perRate[0].taxAmount off by 0.01',
+        (inv) => Object.assign(inv.totals.perRate[0]!, { taxAmount: 47.51 }),
+        'invoices[0].totals',
+      ],
+      [
+        'issued, totals consistent but derived from other lines',
+        (inv) => {
+          Object.assign(inv, { status: 'issued' });
+          Object.assign(inv.lines[0]!, { quantity: 11, lineTotal: 275 });
+        },
+        'invoices[0].totals',
+      ],
+      [
+        'standard totals under taxMode kleinunternehmer',
+        (inv) => Object.assign(inv, { taxMode: 'kleinunternehmer' }),
+        'invoices[0].totals',
+      ],
+    ];
+
+    beforeAll(wipeBusinessDataExceptUsers);
+    afterAll(reseed);
+
+    it.each(lineCases)('rejects an invoice with %s', async (_label, mutate, path) => {
+      const env = buildExpandedEnvelope();
+      mutate(env.invoices[0]!);
+
+      const preview = (await importEnvelope(env, {
+        dryRun: true,
+        override: false,
+        confirmationPhrase: null,
+      })) as DryRunPreview;
+      expect(preview.validation_errors.map((i) => i.path)).toEqual([path]);
+
+      const err = await expectImportRejection(env, {
+        dryRun: false,
+        override: false,
+        confirmationPhrase: null,
+      });
+      expect(err.statusCode).toBe(422);
+      expect(err.code).toBe('VALIDATION_ERROR');
+      expect((err.details as ValidationIssue[]).map((i) => i.path)).toEqual([path]);
+      expect(await db.select().from(invoices)).toEqual([]);
+    });
+
+    it('imports a cancelled invoice and its Storno with lines and totals unchanged', async () => {
+      const env = buildExpandedEnvelope();
+      await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+
+      const stored = await db.select().from(invoices);
+      for (const inv of env.invoices) {
+        const row = stored.find((r) => r.id === inv.id)!;
+        expect(row.lines).toEqual(inv.lines);
+        expect(row.totals).toEqual(inv.totals);
       }
     });
   });

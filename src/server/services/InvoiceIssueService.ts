@@ -33,16 +33,14 @@ import { projectAuditLabel } from '../../domain/audit.js';
 import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
-  deriveInvoiceLine,
+  invalidStoredLineFields,
   invoiceTotalsAreFinite,
-  UNIT_PRICE_MAX_DECIMALS,
   type Invoice,
   type InvoiceLine,
   type InvoiceIssuerSnapshot,
   type InvoiceRecipientSnapshot,
   type TaxMode,
 } from '../../domain/invoice.js';
-import { hasAtMostDecimals } from '../../domain/money.js';
 import {
   toInvoiceResponse,
   getInvoiceRowForMutation,
@@ -166,33 +164,17 @@ export class InvoiceIssueService {
     if (lines.length === 0) {
       throw validationError(STRINGS.errors.invalidInput, { missingFields: ['lines'] });
     }
-    // Writes validate line shape; a restored draft bypasses them.
-    const malformedLine = lines.findIndex(
-      (l) => !Number.isFinite(l.quantity) || !Number.isFinite(l.unitPrice),
-    );
-    if (malformedLine !== -1) {
-      throw validationError(STRINGS.errors.invalidInput, {
-        invalidFields: [`lines[${malformedLine}]`],
-      });
-    }
-    // Writes derive `lineTotal`; a stored mismatch (a row written before
-    // derivation, a restored draft) is rejected, not silently re-derived —
-    // the issued invoice is exactly the draft the issuer saw (AC-384).
-    const brokenLine = lines.findIndex((l) => l.lineTotal !== deriveInvoiceLine(l).lineTotal);
-    if (brokenLine !== -1) {
-      throw validationError(STRINGS.errors.invalidInput, {
-        invalidFields: [`lines[${brokenLine}].lineTotal`],
-      });
-    }
-    // Same write-time limits: a frozen price is rendered without rounding,
-    // and totals beyond a double would freeze as JSONB `null`.
-    const impreciseLine = lines.findIndex(
-      (l) => !hasAtMostDecimals(l.unitPrice, UNIT_PRICE_MAX_DECIMALS),
-    );
-    if (impreciseLine !== -1) {
-      throw validationError(STRINGS.errors.invalidInput, {
-        invalidFields: [`lines[${impreciseLine}].unitPrice`],
-      });
+    // Writes validate lines; a restored draft or a row written before
+    // derivation bypasses them. A stored `lineTotal` mismatch is rejected,
+    // not re-derived — the issued invoice is exactly the draft the issuer
+    // saw (AC-384).
+    for (const [i, line] of lines.entries()) {
+      const [field] = invalidStoredLineFields(line);
+      if (field !== undefined) {
+        throw validationError(STRINGS.errors.invalidInput, {
+          invalidFields: [`lines[${i}].${field}`],
+        });
+      }
     }
     const taxMode = before.taxMode as TaxMode;
     const totals = computeInvoiceTotals(lines, taxMode);

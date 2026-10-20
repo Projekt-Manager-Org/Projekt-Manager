@@ -37,7 +37,7 @@ import {
   type ExportFilterInput,
 } from '../services/InvoiceExportService.js';
 import type { InvoiceLineInput, InvoiceRecipientSnapshot, TaxMode } from '../../domain/invoice.js';
-import { TAX_MODES, INVOICE_STATUSES } from '../../domain/invoice.js';
+import { TAX_MODES, INVOICE_STATUSES, INVOICE_TAX_RATES } from '../../domain/invoice.js';
 import { buildContentDisposition } from '../storage/client.js';
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
@@ -56,7 +56,7 @@ const lineSchema = {
     quantity: { type: 'number', exclusiveMinimum: 0 },
     unit: { type: 'string', maxLength: 100 },
     unitPrice: { type: 'number', minimum: 0 },
-    taxRate: { type: 'number', enum: [0, 7, 19] },
+    taxRate: { type: 'number', enum: INVOICE_TAX_RATES },
   },
 } as const;
 
