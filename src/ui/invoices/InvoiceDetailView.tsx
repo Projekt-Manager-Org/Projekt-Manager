@@ -284,7 +284,6 @@ export function InvoiceDetailView() {
             <span className={styles.metaValue}>
               {labelForTaxMode(invoice.taxMode, {
                 standard: STRINGS.companyProfile.taxModeStandard,
-                kleinunternehmer: STRINGS.companyProfile.taxModeKleinunternehmer,
                 reverseCharge: STRINGS.companyProfile.taxModeReverseCharge,
               })}
             </span>

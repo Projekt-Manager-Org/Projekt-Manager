@@ -8,7 +8,7 @@
  *   PUT /api/company-profile — owner only; PUT semantics.
  *
  * Plus the persistence-layer singleton invariant (CHECK on a constant
- * primary key), the audit row shape, the required-when-mode validation,
+ * primary key), the audit row shape, the required-field validation,
  * the snapshot-then-mutate roundtrip, and the issue-time
  * COMPANY_PROFILE_REQUIRED rejection with sequence-lock release.
  *
@@ -17,7 +17,7 @@
  *     INSERT-second-row and DELETE-singleton rejections).
  *   - AT-122 / AC-302: audit row shape on PUT — entityType,
  *     action, ancestor pair null, payload.before / payload.after.
- *   - AT-123 / AC-303: required-when-mode validation, details lists
+ *   - AT-123 / AC-303: required-field validation, details lists
  *     offending field paths, no partial mutation.
  *   - AT-124 / AC-304: snapshot-then-mutate roundtrip — Invoice.issuer
  *     reflects the snapshot-time values after a subsequent profile
@@ -355,10 +355,10 @@ describe('AT-122 / AC-302: PUT /api/company-profile writes one audit row with pa
 });
 
 // ---------------------------------------------------------------------
-// AT-123 / AC-303 — Required-when-mode validation.
+// AT-123 / AC-303 — required fields (data-model.md §5.17), any mode.
 // ---------------------------------------------------------------------
 
-describe('AT-123 / AC-303: PUT validates required-when-mode invariants', () => {
+describe('AT-123 / AC-303: PUT validates required fields', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -370,7 +370,7 @@ describe('AT-123 / AC-303: PUT validates required-when-mode invariants', () => {
     await stopApp();
   });
 
-  it('defaultTaxMode=standard with empty ustId → 422 VALIDATION_ERROR; details names the path', async () => {
+  it('empty ustId → 422 VALIDATION_ERROR; details names the path (standard)', async () => {
     const res = await authPut(ownerToken, '/api/company-profile', {
       ...(await expectedVersion(ownerToken, '/api/company-profile')),
       ...completeProfileBody,
@@ -384,7 +384,7 @@ describe('AT-123 / AC-303: PUT validates required-when-mode invariants', () => {
     expect(fieldPaths).toContain('ustId');
   });
 
-  it('defaultTaxMode=reverse_charge with empty ustId → 422 VALIDATION_ERROR', async () => {
+  it('empty ustId → 422 VALIDATION_ERROR (reverse_charge)', async () => {
     const res = await authPut(ownerToken, '/api/company-profile', {
       ...(await expectedVersion(ownerToken, '/api/company-profile')),
       ...completeProfileBody,
@@ -393,6 +393,17 @@ describe('AT-123 / AC-303: PUT validates required-when-mode invariants', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('defaultTaxMode=kleinunternehmer → 422 VALIDATION_ERROR (not a TaxMode, ADR-0026)', async () => {
+    const res = await authPut(ownerToken, '/api/company-profile', {
+      ...(await expectedVersion(ownerToken, '/api/company-profile')),
+      ...completeProfileBody,
+      defaultTaxMode: 'kleinunternehmer',
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+    expect(JSON.stringify(res.json().details)).toContain('defaultTaxMode');
   });
 
   it.each([
@@ -557,7 +568,7 @@ describe('AT-125 / AC-305: failed issue does not permanently advance the sequenc
     expect(failed.json().code).toBe('COMPANY_PROFILE_REQUIRED');
     const details = failed.json().details as { missingFields?: string[] };
     expect(Array.isArray(details.missingFields)).toBe(true);
-    expect(details.missingFields!.length).toBeGreaterThan(0);
+    expect([...details.missingFields!].sort()).toEqual(['companyName', 'taxId', 'ustId']);
 
     // No audit row on the failed issue per AC-305 trailing clause.
     const { db: db2, pool: pool2 } = createDatabase();
@@ -679,7 +690,7 @@ describe('M3 / AC-297: CompanyProfileService.upsert defense-in-depth role check'
     await startApp();
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
     // Seed a complete profile via the route so subsequent direct calls
-    // don't trip the required-when-mode validation. The owner-arm
+    // don't trip the required-field validation. The owner-arm
     // success assertion below also exercises the validation path.
     const seedPut = await authPut(ownerToken, '/api/company-profile', {
       ...completeProfileBody,

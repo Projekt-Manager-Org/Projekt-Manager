@@ -50,9 +50,9 @@ const TITLE_ID = 'invoice-draft-form-title';
 
 /**
  * Default VAT percentage pre-filled on every new line. 19 % is the
- * German standard rate (UStG §12 (1)); 7 % (reduced) and 0 %
- * (e.g. Kleinunternehmer §19) are also accepted by the input — the
- * server validates the actual rate against the tax mode at issue time.
+ * German standard rate (UStG §12 (1)); 7 % (reduced) and 0 % are also
+ * accepted by the input — the server checks the rate against the §5.15
+ * rates; the tax mode decides whether it applies.
  */
 const DEFAULT_TAX_RATE_PERCENT = '19';
 
@@ -480,7 +480,6 @@ export function InvoiceDraftForm({
                   <option key={mode} value={mode}>
                     {labelForTaxMode(mode, {
                       standard: STRINGS.companyProfile.taxModeStandard,
-                      kleinunternehmer: STRINGS.companyProfile.taxModeKleinunternehmer,
                       reverseCharge: STRINGS.companyProfile.taxModeReverseCharge,
                     })}
                   </option>

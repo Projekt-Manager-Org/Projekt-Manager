@@ -49,10 +49,7 @@ import {
   flipParentProjectStatusToAbgerechnet,
   type InvoiceRow,
 } from '../repositories/invoice-read.js';
-import {
-  assertCompanyProfileCompleteForMode,
-  toCompanyProfileResponse,
-} from './CompanyProfileService.js';
+import { assertCompanyProfileComplete, toCompanyProfileResponse } from './CompanyProfileService.js';
 import { InvoiceRenderer, type RenderedInvoice } from './InvoiceRenderer.js';
 import {
   notFound,
@@ -228,7 +225,7 @@ export class InvoiceIssueService {
     //    sequence allocation has been claimed yet, so AC-305's
     //    "release the lock without advancement" invariant is met by
     //    ordering: validate THEN allocate.
-    const companyProfileRow = await assertCompanyProfileCompleteForMode(tx, taxMode);
+    const companyProfileRow = await assertCompanyProfileComplete(tx);
 
     // 4. Allocate `number` from the gapless `(year, 'invoice')`
     //    sequence. The row lock survives until commit. The year MUST

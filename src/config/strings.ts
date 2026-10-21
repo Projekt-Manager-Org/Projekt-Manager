@@ -437,11 +437,9 @@ export const STRINGS = {
       'Erscheint am Ende jeder Rechnung. Geeignet z. B. für Bankverbindung oder Zahlungsziel.',
     defaultTaxMode: 'Standard-Steuermodus',
     taxModeStandard: 'Regulär',
-    taxModeKleinunternehmer: 'Kleinunternehmer §19',
     taxModeReverseCharge: 'Reverse-Charge §13b',
     save: 'Speichern',
-    ustIdRequiredForMode:
-      'USt-IdNr. ist für den gewählten Steuermodus erforderlich. Bitte ausfüllen.',
+    ustIdRequired: 'USt-IdNr. ist erforderlich. Bitte ausfüllen.',
     /**
      * Fetch-error fallback in the `!data` branch of the section. Surfaces
      * when `GET /api/company-profile` fails so the user sees a diagnostic

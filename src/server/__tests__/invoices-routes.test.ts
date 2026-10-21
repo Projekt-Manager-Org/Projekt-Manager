@@ -447,6 +447,18 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(res.json().code).toBe('NOT_FOUND');
     });
 
+    it('taxMode outside TaxMode (kleinunternehmer) is rejected with 422 VALIDATION_ERROR', async () => {
+      // ADR-0026 § Tax modes: only `standard` and `reverse_charge` (#552).
+      const res = await authPost(ownerToken, '/api/invoices', {
+        projectId,
+        lines: [],
+        taxMode: 'kleinunternehmer',
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect(JSON.stringify(res.json().details)).toContain('taxMode');
+    });
+
     it('calendar-invalid performanceDate is rejected with 422 VALIDATION_ERROR (AC-289 — no silent normalization)', async () => {
       // The route-layer regex (M9 hardening) only enforces structural
       // YYYY-(01-12)-(01-31) shape; calendar-invalid dates like
@@ -533,6 +545,22 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(r19).toBeDefined();
       expect(r19!.taxAmount).toBeCloseTo(76, 2);
       expect(body.totals.grossGrandTotal).toBeCloseTo(476, 2);
+    });
+
+    it('PATCH with a taxMode outside TaxMode (kleinunternehmer) → 422 VALIDATION_ERROR; draft unchanged', async () => {
+      const draftId = await seedDraftInvoice(projectId);
+      const before = (await authGet(ownerToken, `/api/invoices/${draftId}`)).json();
+
+      const res = await authPatch(ownerToken, `/api/invoices/${draftId}`, {
+        ...(await expectedVersion(ownerToken, `/api/invoices/${draftId}`)),
+        taxMode: 'kleinunternehmer',
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect(JSON.stringify(res.json().details)).toContain('taxMode');
+      const after = (await authGet(ownerToken, `/api/invoices/${draftId}`)).json();
+      expect(after.taxMode).toBe(before.taxMode);
+      expect(after.version).toBe(before.version);
     });
 
     it('PATCH on an issued row returns 422 VALIDATION_ERROR with code INVOICE_FROZEN; no field changes', async () => {

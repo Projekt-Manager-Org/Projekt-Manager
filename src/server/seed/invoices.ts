@@ -108,7 +108,6 @@ interface IssueSpec {
 interface DraftSpec {
   projectNumberSuffix: string;
   performanceDateDaysFromNow: number;
-  taxMode?: TaxMode;
   lines: InvoiceLine[];
 }
 
@@ -374,11 +373,10 @@ const DRAFT_SPECS: readonly DraftSpec[] = [
     ],
   },
 
-  // D3 — Herr Peters (015, rechnung_faellig). Kleinunternehmer mode.
+  // D3 — Herr Peters (015, rechnung_faellig). Standard mode.
   {
     projectNumberSuffix: '015',
     performanceDateDaysFromNow: -9,
-    taxMode: 'kleinunternehmer',
     lines: [
       {
         description: 'Anstrich Gartenlaube außen',
@@ -386,7 +384,7 @@ const DRAFT_SPECS: readonly DraftSpec[] = [
         unit: 'Pauschal',
         unitPrice: 1180,
         lineTotal: 1180,
-        taxRate: 0,
+        taxRate: 19,
       },
     ],
   },
@@ -409,12 +407,11 @@ const DRAFT_SPECS: readonly DraftSpec[] = [
     ],
   },
 
-  // D5 — Familie Hoffmann (010, in_arbeit). Kleinunternehmer
+  // D5 — Familie Hoffmann (010, in_arbeit). Standard mode,
   // multi-line.
   {
     projectNumberSuffix: '010',
     performanceDateDaysFromNow: 0,
-    taxMode: 'kleinunternehmer',
     lines: [
       {
         description: 'Tapezieren Wohnzimmer',
@@ -422,7 +419,7 @@ const DRAFT_SPECS: readonly DraftSpec[] = [
         unit: 'Pauschal',
         unitPrice: 980,
         lineTotal: 980,
-        taxRate: 0,
+        taxRate: 19,
       },
       {
         description: 'Anstrich Decke und Wände Schlafzimmer',
@@ -430,7 +427,7 @@ const DRAFT_SPECS: readonly DraftSpec[] = [
         unit: 'Pauschal',
         unitPrice: 720,
         lineTotal: 720,
-        taxRate: 0,
+        taxRate: 19,
       },
     ],
   },
@@ -628,7 +625,6 @@ async function applyDraftSpec(
     {
       projectId,
       lines: spec.lines,
-      taxMode: spec.taxMode,
       performanceDate: dateFromNow(now, spec.performanceDateDaysFromNow),
     },
     ownerId,

@@ -74,7 +74,7 @@ Two modes — the target company's ([kickoff § Not Doing](../project/kickoff.md
 - **`standard`** — per-line VAT (19% / 7%), full tax breakdown in the totals block.
 - **`reverse_charge`** — §13b UStG: no VAT on lines, mandatory recipient-pays note ("Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG"). For Handwerker Bauleistungen this is §13b Abs. 2 Nr. 4.
 
-Kleinunternehmer (§19 UStG) is not supported: a Handwerker company with employees typically exceeds the §19 turnover limits (removal: #552).
+Kleinunternehmer (§19 UStG) is not supported ([§ Kleinunternehmer tax mode](#kleinunternehmer-tax-mode-19-ustg); removed in #552).
 
 `company_profile.defaultTaxMode` pre-fills new drafts. The draft's `taxMode` is editable until issuance. **At issuance the value is snapshotted onto the invoice row and frozen** — the issued row carries its own copy and is not re-derived from `company_profile` on render.
 

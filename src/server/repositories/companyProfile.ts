@@ -21,7 +21,7 @@ export type CompanyProfileRow = typeof companyProfile.$inferSelect;
 
 /**
  * Fields written by the singleton PUT. Mirrors the upsert input shape;
- * the service does mode-validity + required-when-mode validation, then
+ * the service does tax-mode validity + required-field validation, then
  * passes the validated body verbatim. `updatedBy` carries the actor
  * id from the auth context.
  */

@@ -28,9 +28,8 @@
  *                      code mapping. No state change, no sequence
  *                      advancement, no audit row, no SSE event.
  *   - AT-116 / AC-292: per-tax-mode boilerplate text extracted from the
- *                      rendered PDF — `standard` / `kleinunternehmer` /
- *                      `reverse_charge` each include their legally
- *                      required string and NOT the other modes' strings.
+ *                      rendered PDF — `reverse_charge` includes the §13b
+ *                      string, `standard` does not.
  *   - AT-117 / AC-293: PDF/A-3 + embedded `factur-x.xml` validation
  *                      against the EN 16931 XSD; `Invoice.profile`
  *                      pinned to `'zugferd-en16931'`.
@@ -216,21 +215,21 @@ async function createDraft(
 }
 
 /**
- * Ensure the company_profile singleton carries the fields required for
- * an issue under the given mode. The seeded row ships empty per
+ * Ensure the company_profile singleton carries every required field
+ * (§5.17); `mode` only sets `defaultTaxMode`. The seeded row ships empty per
  * data-model.md §5.17 — fill it deterministically via the spec verb
  * (PUT — api.md §14.2.15) so issue arms run against a complete profile.
  */
 async function ensureCompanyProfileComplete(
   ownerToken: string,
-  mode: 'standard' | 'kleinunternehmer' | 'reverse_charge' = 'standard',
+  mode: 'standard' | 'reverse_charge' = 'standard',
 ): Promise<void> {
   const res = await authPut(ownerToken, '/api/company-profile', {
     ...(await expectedVersion(ownerToken, '/api/company-profile')),
     companyName: 'Test Maler GmbH',
     address: { street: 'Werkstr. 1', zip: '10115', city: 'Berlin' },
     taxId: '111/222/33333',
-    ustId: mode === 'kleinunternehmer' ? null : 'DE123456789',
+    ustId: 'DE123456789',
     iban: 'DE89370400440532013000',
     accentColor: '#f60',
     footerText: 'Vielen Dank für Ihren Auftrag.',
@@ -1431,8 +1430,8 @@ describe('Invoice issuance — pre-condition rejections (AT-113(i) / AC-289)', (
       const details = body.details as { missingFields?: string[] } | undefined;
       expect(details).toBeDefined();
       expect(Array.isArray(details!.missingFields)).toBe(true);
-      expect(details!.missingFields!.length).toBeGreaterThan(0);
-      expect(details!.missingFields).toEqual(expect.arrayContaining(['companyName', 'taxId']));
+      // Exact set: the wipe clears these three; ustId is required in every mode (§5.17).
+      expect([...details!.missingFields!].sort()).toEqual(['companyName', 'taxId', 'ustId']);
 
       const after = await readSequenceAndAuditBaseline(draftId);
       expect(after.seq).toBe(baseline.seq);
@@ -1550,17 +1549,14 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
 // ---------------------------------------------------------------------
 // AT-116 / AC-292 — Per-tax-mode boilerplate text.
 //
-// Issue the same fixture draft under each of the three modes; extract
-// text from the rendered PDF/A-3 and assert each mode's legally-
-// required string is present and the OTHER modes' strings are absent.
-// `standard` additionally must render VAT (per-line + totals breakdown);
-// `kleinunternehmer` / `reverse_charge` must NOT.
+// Issue the same fixture draft under each mode; extract text from the
+// rendered PDF/A-3. `reverse_charge` carries the §13b string, `standard`
+// does not; `standard` additionally renders VAT (per-line + totals
+// breakdown), `reverse_charge` does not.
 // ---------------------------------------------------------------------
 
-// AC-292 statutory references — pinned literally. The German UI copy
-// around them is `[C]`, but the §-references themselves are fixed by
-// statute and must appear verbatim on the rendered invoice.
-const KLEINUNTERNEHMER_BOILERPLATE = '§ 19 UStG';
+// AC-292 statutory reference — pinned literally. The German UI copy
+// around it is `[C]`; the §-reference itself appears verbatim.
 const REVERSE_CHARGE_BOILERPLATE = '§ 13b UStG';
 
 describe('Invoice issuance — per-tax-mode boilerplate (AT-116 / AC-292)', () => {
@@ -1579,9 +1575,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AT-116 / AC-292)', () =
     await stopApp();
   });
 
-  async function issueAndExtract(
-    mode: 'standard' | 'kleinunternehmer' | 'reverse_charge',
-  ): Promise<string> {
+  async function issueAndExtract(mode: 'standard' | 'reverse_charge'): Promise<string> {
     // Pick a fresh rechnung_faellig project per mode so we don't
     // re-flip the same project (issuance moves it to abgerechnet).
     const pid = await rechnungFaelligProjectId(ownerToken);
@@ -1607,7 +1601,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AT-116 / AC-292)', () =
     return await extractPdfText(bytes);
   }
 
-  it('standard mode — renders per-rate VAT breakdown and omits §19 / §13b boilerplate', async () => {
+  it('standard mode — renders per-rate VAT breakdown and omits the §13b boilerplate', async () => {
     const text = await issueAndExtract('standard');
     // Standard mode renders the per-rate breakdown (per AC-292 +
     // ADR-0026 §Tax modes). The fixture line is qty=1, unitPrice=1500,
@@ -1620,28 +1614,14 @@ describe('Invoice issuance — per-tax-mode boilerplate (AT-116 / AC-292)', () =
     //     bearing structural fact).
     expect(text).toContain('19%');
     expect(text).toMatch(/285[.,]?\s*(00|–|-)?/);
-    // Statutory boilerplate of the OTHER two modes must NOT appear —
-    // standard mode does not carry §19 / §13b notices.
-    expect(text).not.toContain(KLEINUNTERNEHMER_BOILERPLATE);
+    // Standard mode carries no §13b notice.
     expect(text).not.toContain(REVERSE_CHARGE_BOILERPLATE);
   });
 
-  it('kleinunternehmer mode — includes §19 UStG and omits §13b / per-rate VAT', async () => {
-    await ensureCompanyProfileComplete(ownerToken, 'kleinunternehmer');
-    const text = await issueAndExtract('kleinunternehmer');
-    expect(text).toContain(KLEINUNTERNEHMER_BOILERPLATE);
-    expect(text).not.toContain(REVERSE_CHARGE_BOILERPLATE);
-    // A regression that still rendered per-rate VAT would surface as a
-    // "Gesamtsteuer" / similar line. The spec leaves the German string
-    // soft `[C]`, so we pin the absence of the OTHER modes' fixed
-    // statutory references — which is the load-bearing invariant.
-  });
-
-  it('reverse_charge mode — includes §13b UStG and omits §19 / per-rate VAT', async () => {
-    await ensureCompanyProfileComplete(ownerToken, 'reverse_charge');
+  it('reverse_charge mode — includes §13b UStG and omits VAT', async () => {
     const text = await issueAndExtract('reverse_charge');
     expect(text).toContain(REVERSE_CHARGE_BOILERPLATE);
-    expect(text).not.toContain(KLEINUNTERNEHMER_BOILERPLATE);
+    expect(text).not.toContain('19%');
   });
 });
 

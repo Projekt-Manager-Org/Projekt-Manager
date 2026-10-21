@@ -2076,7 +2076,7 @@
                   },
                   "taxMode": {
                     "type": "string",
-                    "enum": ["standard", "kleinunternehmer", "reverse_charge"]
+                    "enum": ["standard", "reverse_charge"]
                   },
                   "performanceDate": {
                     "type": ["string", "null"],
@@ -2198,7 +2198,7 @@
                   },
                   "taxMode": {
                     "type": "string",
-                    "enum": ["standard", "kleinunternehmer", "reverse_charge"]
+                    "enum": ["standard", "reverse_charge"]
                   },
                   "performanceDate": {
                     "type": ["string", "null"],
@@ -2429,6 +2429,7 @@
                   "companyName",
                   "address",
                   "taxId",
+                  "ustId",
                   "defaultTaxMode"
                 ],
                 "additionalProperties": false,
@@ -2483,7 +2484,7 @@
                   },
                   "defaultTaxMode": {
                     "type": "string",
-                    "enum": ["standard", "kleinunternehmer", "reverse_charge"]
+                    "enum": ["standard", "reverse_charge"]
                   }
                 }
               }

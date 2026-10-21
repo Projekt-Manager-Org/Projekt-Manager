@@ -4,8 +4,8 @@
  *
  * The §-references are statutory and must appear verbatim on the
  * rendered output; the surrounding German UI copy is `[C]` per
- * `architecture.md §11.14` and can drift, but the §-anchor strings
- * (`§ 19 UStG`, `§ 13b UStG`) are pinned by AT-116's assertions.
+ * `architecture.md §11.14` and can drift, but the §-anchor string
+ * (`§ 13b UStG`) is pinned by AT-116's assertions.
  *
  * `standard` mode carries no statutory boilerplate; per-line VAT and the
  * per-rate breakdown in the totals block are the legal anchors for that
@@ -28,8 +28,6 @@ export function taxModeBoilerplate(mode: TaxMode): string | null {
   switch (mode) {
     case 'standard':
       return null;
-    case 'kleinunternehmer':
-      return 'Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.';
     case 'reverse_charge':
       return 'Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG.';
     default: {
@@ -46,15 +44,12 @@ export function taxModeBoilerplate(mode: TaxMode): string | null {
  * the receiver's processor even when the XSD passes.
  *
  * - `S` — Standard rate (the regular 19% / 7% VAT).
- * - `E` — Exempt (Kleinunternehmer / §19 UStG).
  * - `AE` — VAT Reverse Charge (recipient liable, §13b UStG).
  */
-export function taxModeCategoryCode(mode: TaxMode): 'S' | 'E' | 'AE' {
+export function taxModeCategoryCode(mode: TaxMode): 'S' | 'AE' {
   switch (mode) {
     case 'standard':
       return 'S';
-    case 'kleinunternehmer':
-      return 'E';
     case 'reverse_charge':
       return 'AE';
     default: {
@@ -65,8 +60,8 @@ export function taxModeCategoryCode(mode: TaxMode): 'S' | 'E' | 'AE' {
 }
 
 /**
- * Statutory anchor for the BT-120 ExemptionReason element. For exempt
- * (`E`) and reverse-charge (`AE`) supplies, EN 16931 expects a free-text
+ * Statutory anchor for the BT-120 ExemptionReason element. For
+ * reverse-charge (`AE`) supplies, EN 16931 expects a free-text
  * justification on the header-level ApplicableTradeTax. We mirror the
  * PDF body copy here for receiver-readability.
  *
