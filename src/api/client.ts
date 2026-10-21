@@ -699,15 +699,6 @@ export const attachmentApi = {
       thumbDekMaterial?: string;
       ciphertextThumbSizeBytes?: number;
       ciphertextThumbContentMd5?: string;
-      /**
-       * Optional import-mode block (issue #163, api.md §14.2.11). When
-       * present, the takeout-zip restore orchestrator pins the new
-       * row's identity to the source envelope's values; gated on the
-       * caller holding BOTH `data:restore` AND `attachment:write`.
-       * Standard upload paths omit this field; the server treats
-       * absence as the default server-minted identity branch.
-       */
-      restore?: { id: string; createdBy: string; createdAt: string };
     },
     signal?: AbortSignal,
   ) =>

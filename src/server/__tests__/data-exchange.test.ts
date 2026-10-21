@@ -1031,7 +1031,7 @@ describe('Unified Data Exchange', () => {
   // AC-141: roundtrip byte-equivalence (modulo exported_at) for the
   // text-row slice. ImportService never restores attachment rows (it
   // ignores the envelope's `attachments` slot); per-attachment
-  // restoration runs through the takeout-zip path covered by AC-259.
+  // restoration runs through the import job (AC-328).
   // Re-exporting the seeded dataset after a re-import therefore returns
   // an empty `attachments` array — matched against the source by
   // construction.
@@ -1585,8 +1585,8 @@ describe('Unified Data Exchange', () => {
   // `attachments` table alongside the customer / project / project-
   // worker wipe. After a successful override-import, the table is
   // empty regardless of envelope content (the import ignores the
-  // envelope's `attachments` slot per AC-253; the takeout-zip restore
-  // mechanics re-upload through `init` after this call returns).
+  // envelope's `attachments` slot per AC-253; the import job restores
+  // attachments, AC-328).
   // ---------------------------------------------------------------
   describe('AC-254: an override business-data import truncates the attachments table', () => {
     /**

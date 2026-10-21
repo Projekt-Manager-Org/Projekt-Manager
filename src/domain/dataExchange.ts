@@ -83,17 +83,14 @@ export interface EnvelopeAssignment {
  * data-model.md §5.8. Bytes remain storage-owned (ADR-0018); this
  * envelope carries only the metadata row.
  *
- * Under the takeout-zip restore design (issue #163) crypto fields
- * (`wrappedDek`, `wrappedThumbDek`, `wrappedDekVersion`), opaque
- * storage keys (`originalKey`, `thumbKey`), and ciphertext sizes
+ * Crypto fields (`wrappedDek`, `wrappedThumbDek`, `wrappedDekVersion`),
+ * opaque storage keys (`originalKey`, `thumbKey`), and ciphertext sizes
  * (`ciphertextSizeBytes`, `ciphertextThumbSizeBytes`) are NOT carried
  * on the envelope: they are not consumable on the importing instance,
  * and the wrapped envelopes additionally remain inside the exporting
- * instance's confidentiality boundary (ADR-0024). The client
- * orchestrator re-uploads each attachment via the standard `init`
- * (with `restore` block) + presigned PUT + `complete` pipeline — fresh
- * DEKs are minted in the browser and wrapped under the importing
- * instance's `BINARY_AGE_RECIPIENT`.
+ * instance's confidentiality boundary (ADR-0024). The import job
+ * re-encrypts each attachment server-side under the importing
+ * instance's recipient (AC-328).
  */
 export interface EnvelopeAttachment {
   id: string;

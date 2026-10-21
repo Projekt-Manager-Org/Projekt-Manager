@@ -38,10 +38,6 @@ const ROLE_CLASSIFICATION: Record<Role, 'scoped' | 'unscoped'> = {
   office: 'unscoped',
   worker: 'scoped',
   bookkeeper: 'unscoped',
-  // Test-only fixture role (see `Role` comment in
-  // `src/config/permissions.ts`). Holds only `data:restore` — no
-  // project-scope concern, so `unscoped` mirrors office / owner.
-  __test_data_restore_only: 'unscoped',
 };
 
 /** Roles whose reads ARE constrained by scope. Derived from the map above. */

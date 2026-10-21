@@ -65,7 +65,6 @@
  */
 
 import crypto from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
 import type { AuthUser } from '../middleware/auth.js';
 import type { ServiceLogger } from './Logger.js';
@@ -78,8 +77,6 @@ import {
   isSafeFileName,
   WRAPPED_DEK_CURRENT_VERSION,
 } from '../../domain/attachments.js';
-import { callerHasPermission } from '../../config/permissions.js';
-import { users } from '../db/schema.js';
 import {
   type AttachmentStorageClient,
   type PresignedPutDescriptor,
@@ -107,8 +104,6 @@ import {
   bulkLimitExceeded,
   conflict,
   dekUnwrapFailed,
-  extractPgConstraint,
-  extractSqlState,
   gone,
   notFound,
   notPermitted,
@@ -143,27 +138,6 @@ const MIME_WHITELIST = new Set<string>(ATTACHMENT_MIME_WHITELIST);
  */
 export type PresignedUpload = PresignedPutDescriptor;
 
-/**
- * Optional import-mode block on `init` (issue #163, api.md §14.2.11,
- * AC-255 / AC-256). When present, the takeout-zip restore orchestrator
- * is asking the server to pin the new row's identity to values from the
- * source envelope rather than minting them server-side. The block is
- * gated on the caller holding BOTH `data:restore` AND `attachment:write`
- * — the standard `attachment:write` route gate admits the upload at all,
- * the service-layer `data:restore` check admits the override on
- * server-managed identity fields. Validation rules (AC-257):
- *   - `id` must parse as a UUID.
- *   - `createdBy` must reference an existing `users` row.
- *   - `createdAt` must parse as ISO 8601.
- * A bad-input branch returns 422 VALIDATION_ERROR; an `id` collision
- * against an existing row returns 409 CONFLICT.
- */
-export interface RestoreBlockInput {
-  id: string;
-  createdBy: string;
-  createdAt: string;
-}
-
 export interface InitUploadInput {
   fileName: string;
   mimeType: string;
@@ -183,8 +157,6 @@ export interface InitUploadInput {
   ciphertextThumbSizeBytes?: number;
   /** RFC 1864 base64 MD5 of the thumbnail ciphertext — required when `hasThumbnail = true`. */
   ciphertextThumbContentMd5?: string;
-  /** Import-mode block (issue #163). See `RestoreBlockInput`. */
-  restore?: RestoreBlockInput;
 }
 
 export interface InitUploadResult {
@@ -421,17 +393,6 @@ export class AttachmentService {
    * against the operator-loaded recipient, write a `pending` row (no
    * audit row — AC-219; the `attachment:add` row is written at
    * `complete`), issue presigned PUT descriptors (one per blob).
-   *
-   * Issue #163 / api.md §14.2.11: when the body carries an optional
-   * `restore: { id, createdBy, createdAt }` block, the takeout-zip
-   * orchestrator is asking the server to pin the new row's identity to
-   * the source envelope's values. The block is gated on the caller
-   * holding BOTH `data:restore` AND `attachment:write` (the latter is
-   * the route-level preHandler; the former is the service-level check
-   * below — placed here because the AND-gate semantics depend on the
-   * block being present, AC-255). Validation runs before the row
-   * insert; an `id` collision against an existing row surfaces as 409
-   * CONFLICT (AC-257).
    */
   async initUpload(
     caller: AuthUser,
@@ -449,16 +410,6 @@ export class AttachmentService {
     // not assigned to the project. Route-level permission gate has
     // already accepted them.
     if (!(await isProjectInScope(this.db, caller, projectId))) {
-      throw notPermitted();
-    }
-
-    // AC-255: AND-gate on the optional `restore` block. The route-level
-    // `attachment:write` preHandler has already accepted the caller; this
-    // is the second leg — when `restore` is supplied, `data:restore` is
-    // additionally required. A caller missing it gets 403 NOT_PERMITTED
-    // and no row is persisted (the rejection happens before the wrap +
-    // insert pipeline runs).
-    if (input.restore !== undefined && !callerHasPermission(caller, 'data:restore')) {
       throw notPermitted();
     }
 
@@ -534,35 +485,6 @@ export class AttachmentService {
       ciphertextThumbContentMd5 = input.ciphertextThumbContentMd5;
     }
 
-    // AC-257: validate the restore-block runtime invariants. Schema
-    // already rejected malformed UUID / non-ISO timestamps at the route
-    // layer (`format: 'uuid'` / `format: 'date-time'`); the
-    // user-existence and date-parseable defenses are runtime-only.
-    // The `format: 'date-time'` test alone allows shapes Date.parse
-    // accepts but our schema considers OK — re-asserting `Date.parse`
-    // here avoids a downstream NaN landing on the row.
-    let restoreCreatedAt: Date | undefined;
-    if (input.restore !== undefined) {
-      const parsedAt = Date.parse(input.restore.createdAt);
-      if (Number.isNaN(parsedAt)) {
-        throw validationError(STRINGS.errors.invalidInput, {
-          restore: { createdAt: 'must be a parseable ISO 8601 timestamp' },
-        });
-      }
-      restoreCreatedAt = new Date(parsedAt);
-
-      const userRows = await this.db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.id, input.restore.createdBy))
-        .limit(1);
-      if (userRows.length === 0) {
-        throw validationError(STRINGS.errors.invalidInput, {
-          restore: { createdBy: 'references an unknown user' },
-        });
-      }
-    }
-
     // Wrap each DEK against the operator-loaded recipient. The wrapping
     // uses only the public recipient; no identity file is consulted, so
     // construction with `identityPath` (borrowed file) is the right
@@ -579,21 +501,10 @@ export class AttachmentService {
       wrappedThumbDekBase64 = Buffer.from(wrappedThumbBytes).toString('base64');
     }
 
-    // AC-256 vs standard path: id is supplied verbatim under restore,
-    // server-minted otherwise. Storage keys are derived from
-    // `(projectId, attachmentId)` either way — restore preserves the
-    // logical row identity, NOT the prior instance's storage keys
-    // (the orchestrator re-uploads bytes; B2 paths are local to the
-    // importing instance).
-    const attachmentId = input.restore?.id ?? crypto.randomUUID();
+    const attachmentId = crypto.randomUUID();
     const originalKey = storageKey(projectId, attachmentId, 'orig');
     const thumbKey = hasThumbnail ? storageKey(projectId, attachmentId, 'thumb') : null;
 
-    // AC-256: under the `restore` block the row is persisted with the
-    // supplied id / createdBy / createdAt; the standard path keeps
-    // server-minted identity (id randomized above, createdBy from
-    // session, createdAt from schema default `now()`).
-    const persistedCreatedBy = input.restore?.createdBy ?? caller.id;
     // Init writes the `pending` row WITHOUT an audit row (AC-219). The
     // authoritative `attachment:add` row is written at `complete` (the
     // `pending → ready` finalize) — an upload abandoned before complete
@@ -603,55 +514,38 @@ export class AttachmentService {
     // `scripts/check-audit-mutations.sh` (parity with the orphan
     // reaper's pending-row carve-out). A plain `db.transaction` is the
     // right shape here — no `mutate()`, no audit co-commit.
-    let row: AttachmentRow;
-    try {
-      row = await this.db.transaction(async (tx) =>
-        createPending(tx, {
-          id: attachmentId,
-          projectId,
-          kind,
-          label: input.label,
-          filename: input.fileName,
-          mimeType: input.mimeType,
-          sizeBytes: input.sizeBytes,
-          originalKey,
-          thumbKey,
-          // Plaintext-thumb-size column kept for legacy tests that
-          // still seed it; the real defence in depth at complete-time
-          // is the ciphertext-side `ciphertextThumbSizeBytes`. Set
-          // null here so a non-thumb row stays clean and a photo
-          // row's thumb column reflects the ciphertext figure
-          // through `ciphertextThumbSizeBytes`.
-          thumbSizeBytes: null,
-          hasThumbnail,
-          ciphertextSizeBytes: input.ciphertextSizeBytes,
-          ciphertextThumbSizeBytes: ciphertextThumbSizeBytes ?? null,
-          wrappedDek: wrappedDekBase64,
-          wrappedThumbDek: wrappedThumbDekBase64,
-          // ADR-0024 envelope-format discriminator. Both wrapped
-          // envelopes on this row are produced by `envelope.wrap()`
-          // above (the same `age` X25519 KEM + ChaCha20-Poly1305
-          // shape) — the version pin is shared. A future v2 change
-          // updates the constant + this site simultaneously.
-          wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,
-          createdBy: persistedCreatedBy,
-          ...(restoreCreatedAt !== undefined ? { createdAt: restoreCreatedAt } : {}),
-        }),
-      );
-    } catch (err) {
-      // AC-257: an `id` collision under the restore block surfaces as
-      // 409 CONFLICT (not 422). Postgres reports the PK collision via
-      // SQLSTATE 23505 / `attachments_pkey`. The standard path uses
-      // `crypto.randomUUID()` so a collision here is effectively
-      // impossible — but the catch is harmless on that path and
-      // load-bearing on the restore path.
-      const constraint = extractPgConstraint(err);
-      const sqlState = extractSqlState(err);
-      if (sqlState === '23505' && constraint === 'attachments_pkey') {
-        throw conflict(STRINGS.errors.invalidInput);
-      }
-      throw err;
-    }
+    const row: AttachmentRow = await this.db.transaction(async (tx) =>
+      createPending(tx, {
+        id: attachmentId,
+        projectId,
+        kind,
+        label: input.label,
+        filename: input.fileName,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        originalKey,
+        thumbKey,
+        // Plaintext-thumb-size column kept for legacy tests that
+        // still seed it; the real defence in depth at complete-time
+        // is the ciphertext-side `ciphertextThumbSizeBytes`. Set
+        // null here so a non-thumb row stays clean and a photo
+        // row's thumb column reflects the ciphertext figure
+        // through `ciphertextThumbSizeBytes`.
+        thumbSizeBytes: null,
+        hasThumbnail,
+        ciphertextSizeBytes: input.ciphertextSizeBytes,
+        ciphertextThumbSizeBytes: ciphertextThumbSizeBytes ?? null,
+        wrappedDek: wrappedDekBase64,
+        wrappedThumbDek: wrappedThumbDekBase64,
+        // ADR-0024 envelope-format discriminator. Both wrapped
+        // envelopes on this row are produced by `envelope.wrap()`
+        // above (the same `age` X25519 KEM + ChaCha20-Poly1305
+        // shape) — the version pin is shared. A future v2 change
+        // updates the constant + this site simultaneously.
+        wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,
+        createdBy: caller.id,
+      }),
+    );
 
     log.info({ attachmentId: row.id, projectId }, 'attachment_init');
 
