@@ -4,7 +4,7 @@
 
 ## 15. Acceptance Criteria
 
-The system is accepted when all of the following are true. Which test discharges which criterion is mapped in [docs/testing/traceability.md](../testing/traceability.md).
+The system is accepted when all of the following are true. Each test cites the IDs of the criteria it verifies.
 
 Every criterion carries exactly one tier marker:
 

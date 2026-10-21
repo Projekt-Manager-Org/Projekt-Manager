@@ -45,7 +45,7 @@ export function applyBranding(): void {
   // composes normally — later <style> tags injected by tests, themes,
   // or build-time substitution can override the brand without fighting
   // inline-style specificity. Property names --brand-accent-light /
-  // --brand-accent-dark are pinned by AC-114 / e2e/theming.spec.ts.
+  // --brand-accent-dark are specified by AC-114.
   const css = `:root {
   --brand-accent-light: ${BRANDING.accent.light};
   --brand-accent-dark: ${BRANDING.accent.dark};

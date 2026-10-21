@@ -1,142 +1,145 @@
 #!/usr/bin/env bash
-# Lint step: cross-reference ACs across spec, traceability matrix, and test files.
-# Run from repo root: ./scripts/check-traceability.sh
-# Exit 0 = clean, exit 1 = gaps found.
+#
+# Traceability check — spec ACs ↔ tests ↔ exceptions (S-ACTR, S-TRAC).
+#
+# Tests are the test spec: an AC is covered when a test file cites its ID.
+# There is no hand-kept matrix; `grep -rn AC-245 src e2e` is the map.
+#
+# Inputs:
+#   docs/spec/verification.md                AC definitions:
+#                                            - **AC-<n>** `[crit|vis|infra]`: …
+#   docs/testing/verification-exceptions.md  | AC-<n> | infra | gap | retired | … |
+#   every tracked file                       AC references
+#
+# Fails when:
+#   - a definition is malformed (suffix ID, missing tier) or duplicated;
+#   - any tracked file cites an AC that is unknown or retired — an ID's
+#     meaning never changes and IDs are never reused (#486 B), so a stale
+#     reference cannot quietly resolve to a different requirement — or
+#     cites a range of ACs instead of listing each;
+#   - a defined AC is cited by no test and has no `infra`/`gap` row;
+#   - an exception row is stale or inconsistent: `gap`/`infra` for an AC a
+#     test now cites, `infra` for a non-[infra] AC, `retired` for a defined
+#     one, a duplicate row, an unknown status.
+#
+# Test file: `*.test.*`, `*.spec.*`, or under `scripts/__tests__/`. A code
+# comment citing an AC must resolve but is not coverage.
+#
+# Exit 0 = clean, 1 = findings. $TRACEABILITY_ROOT overrides the repo root
+# (used by the self-test).
+#
+# Usage:
+#   bash scripts/check-traceability.sh
 
 set -euo pipefail
+export LC_ALL=C
+
+ROOT="${TRACEABILITY_ROOT:-$(git rev-parse --show-toplevel)}"
+cd "$ROOT"
 
 SPEC="docs/spec/verification.md"
-MATRIX="docs/testing/traceability.md"
-TEST_DIRS="src e2e"
+EXC="docs/testing/verification-exceptions.md"
+# Carry AC IDs as fixtures or as the retirement record, not as references.
+NOT_REFERENCES=("$EXC" scripts/check-traceability.sh scripts/__tests__/check-traceability.test.sh)
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-NC='\033[0m'
+errors=()
+declare -A tier_of=() status_of=() covered=()
 
-errors=0
-warnings=0
-
-# --- 1. Extract ACs defined in the spec ---
-spec_acs=$(grep -oP 'AC-\d+' "$SPEC" | sort -t- -k2 -n | uniq)
-spec_count=$(echo "$spec_acs" | wc -l)
-
-# --- 2. Extract ACs listed in the traceability matrix ---
-matrix_acs=$(grep -oP '^\| AC-\d+' "$MATRIX" | grep -oP 'AC-\d+' | sort -t- -k2 -n | uniq)
-matrix_count=$(echo "$matrix_acs" | wc -l)
-
-# --- 3. Extract ACs referenced in test files ---
-test_acs=$(grep -rhoP 'AC-\d+' $TEST_DIRS --include='*.test.*' --include='*.spec.ts' | sort -t- -k2 -n | uniq)
-
-# --- 4. Extract tier from matrix ---
-declare -A matrix_tier
-while IFS='|' read -r _ ac tier _rest; do
-  ac=$(echo "$ac" | xargs)
-  tier=$(echo "$tier" | xargs)
-  if [[ "$ac" =~ ^AC-[0-9]+$ ]]; then
-    matrix_tier["$ac"]="$tier"
+# --- Definitions ---------------------------------------------------------
+def_re='^- \*\*(AC-[0-9]+)\*\* `\[(crit|vis|infra)\]`'
+while IFS= read -r line; do
+  if [[ "$line" =~ $def_re ]]; then
+    id="${BASH_REMATCH[1]}"
+    [[ -n "${tier_of[$id]:-}" ]] && errors+=("$SPEC: $id defined twice")
+    tier_of[$id]="${BASH_REMATCH[2]}"
+  else
+    errors+=("$SPEC: malformed definition (suffix ID or missing tier): ${line:0:80}")
   fi
-done < "$MATRIX"
+done < <(grep -E '^- \*\*AC-' "$SPEC" || true)
 
-# --- Check: ACs in spec but missing from matrix ---
-echo -e "\n${GREEN}=== Traceability lint ===${NC}"
-echo "Spec ACs: $spec_count | Matrix ACs: $matrix_count"
-echo ""
-
-missing_from_matrix=()
-for ac in $spec_acs; do
-  if ! echo "$matrix_acs" | grep -qx "$ac"; then
-    missing_from_matrix+=("$ac")
-  fi
-done
-
-if [ ${#missing_from_matrix[@]} -gt 0 ]; then
-  echo -e "${RED}ERROR: ACs in spec but missing from traceability matrix:${NC}"
-  for ac in "${missing_from_matrix[@]}"; do
-    echo "  - $ac"
-  done
-  errors=$((errors + ${#missing_from_matrix[@]}))
+# --- Exceptions ----------------------------------------------------------
+if [[ ! -f "$EXC" ]]; then
+  errors+=("$EXC: missing")
 else
-  echo -e "${GREEN}✓ All spec ACs present in traceability matrix${NC}"
-fi
-
-# --- Check: ACs in matrix but not in spec (stale rows) ---
-stale_in_matrix=()
-for ac in $matrix_acs; do
-  if ! echo "$spec_acs" | grep -qx "$ac"; then
-    stale_in_matrix+=("$ac")
-  fi
-done
-
-if [ ${#stale_in_matrix[@]} -gt 0 ]; then
-  echo -e "${YELLOW}WARNING: ACs in matrix but not in spec (stale?):${NC}"
-  for ac in "${stale_in_matrix[@]}"; do
-    echo "  - $ac"
-  done
-  warnings=$((warnings + ${#stale_in_matrix[@]}))
-else
-  echo -e "${GREEN}✓ No stale ACs in traceability matrix${NC}"
-fi
-
-# --- Check: [crit] ACs must have UT or AT columns filled ---
-crit_no_test=()
-while IFS='|' read -r _ ac tier _ _ ut at e2e _notes; do
-  ac=$(echo "$ac" | xargs)
-  tier=$(echo "$tier" | xargs)
-  ut=$(echo "$ut" | xargs)
-  at=$(echo "$at" | xargs)
-  if [[ "$tier" == "[crit]" && -z "$ut" && -z "$at" ]]; then
-    # Check if it has at least E2E coverage
-    e2e=$(echo "$e2e" | xargs)
-    if [ -z "$e2e" ]; then
-      crit_no_test+=("$ac (no UT, AT, or E2E)")
-    else
-      crit_no_test+=("$ac (E2E only — needs UT or AT)")
+  while IFS='|' read -r _ id status _; do
+    id="${id// /}"
+    status="${status// /}"
+    if [[ ! "$id" =~ ^AC-[0-9]+$ ]]; then
+      errors+=("$EXC: malformed ID '$id'")
+      continue
     fi
-  fi
-done < "$MATRIX"
-
-if [ ${#crit_no_test[@]} -gt 0 ]; then
-  echo -e "${YELLOW}WARNING: [crit] ACs without unit/integration test reference:${NC}"
-  for item in "${crit_no_test[@]}"; do
-    echo "  - $item"
-  done
-  warnings=$((warnings + ${#crit_no_test[@]}))
-else
-  echo -e "${GREEN}✓ All [crit] ACs have UT or AT references${NC}"
+    [[ -n "${status_of[$id]:-}" ]] && errors+=("$EXC: $id listed twice")
+    status_of[$id]="$status"
+    case "$status" in
+      infra)
+        [[ "${tier_of[$id]:-}" == infra ]] ||
+          errors+=("$EXC: $id is 'infra' but not a defined [infra] AC")
+        ;;
+      gap)
+        [[ -n "${tier_of[$id]:-}" ]] || errors+=("$EXC: $id is 'gap' but not defined")
+        ;;
+      retired)
+        [[ -z "${tier_of[$id]:-}" ]] || errors+=("$EXC: $id is 'retired' but still defined")
+        ;;
+      *)
+        errors+=("$EXC: $id has unknown status '$status'")
+        ;;
+    esac
+  done < <(grep -E '^\| *AC-' "$EXC" || true)
 fi
 
-# --- Check: [crit] ACs referenced in at least one test file ---
-crit_not_in_code=()
-for ac in $spec_acs; do
-  tier="${matrix_tier[$ac]:-}"
-  if [[ "$tier" == "[crit]" ]]; then
-    if ! echo "$test_acs" | grep -qx "$ac"; then
-      crit_not_in_code+=("$ac")
+# --- References ----------------------------------------------------------
+exclude=()
+for f in "${NOT_REFERENCES[@]}"; do exclude+=(-e "$f"); done
+
+while IFS=: read -r file id; do
+  if [[ -n "${tier_of[$id]:-}" ]]; then
+    if [[ "$file" == *.test.* || "$file" == *.spec.* || "$file" == scripts/__tests__/* ]]; then
+      covered[$id]=1
     fi
+  elif [[ "${status_of[$id]:-}" == retired ]]; then
+    errors+=("$file: cites retired $id")
+  else
+    errors+=("$file: cites unknown $id")
+  fi
+done < <(git ls-files -z | grep -zvxF "${exclude[@]}" |
+  xargs -0 grep -oHIP '\bAC-\d+[a-z]?\b' 2>/dev/null | sort -u || true)
+
+# A range (`AC-189..AC-193`, `AC-155–158`) hides every ID but the first
+# from the checks above — including a retired one inside it.
+while IFS= read -r hit; do
+  errors+=("${hit%%:*}: AC range '${hit#*:}' — list each ID")
+done < <(git ls-files -z | grep -zvxF "${exclude[@]}" |
+  xargs -0 grep -oHIP '\bAC-\d+\s*(\.\.|–|—|-)\s*(AC-)?\d+\b' 2>/dev/null | sort -u || true)
+
+# --- Coverage ------------------------------------------------------------
+for id in "${!tier_of[@]}"; do
+  status="${status_of[$id]:-}"
+  if [[ -n "${covered[$id]:-}" ]]; then
+    [[ "$status" == infra || "$status" == gap ]] &&
+      errors+=("$EXC: $id is '$status' but a test cites it — drop the row")
+  elif [[ "$status" != infra && "$status" != gap ]]; then
+    errors+=("$id: cited by no test and has no exception row")
   fi
 done
 
-if [ ${#crit_not_in_code[@]} -gt 0 ]; then
-  echo -e "${YELLOW}WARNING: [crit] ACs not referenced in any test file comment:${NC}"
-  for ac in "${crit_not_in_code[@]}"; do
-    echo "  - $ac"
-  done
-  warnings=$((warnings + ${#crit_not_in_code[@]}))
-else
-  echo -e "${GREEN}✓ All [crit] ACs referenced in test code${NC}"
-fi
+# --- Numbering -----------------------------------------------------------
+# Every number up to the highest ID is defined or retired, so a free
+# number can never be handed out again: new IDs are max + 1.
+max=0
+for id in "${!tier_of[@]}" "${!status_of[@]}"; do
+  n="${id#AC-}"
+  ((n > max)) && max="$n"
+done
+for ((n = 1; n <= max; n++)); do
+  [[ -z "${tier_of[AC-$n]:-}" && "${status_of[AC-$n]:-}" != retired ]] &&
+    errors+=("AC-$n: neither defined nor retired — IDs are never reused")
+done
 
-# --- Summary ---
-echo ""
-echo "---"
-if [ $errors -gt 0 ]; then
-  echo -e "${RED}$errors error(s), $warnings warning(s) — traceability check FAILED${NC}"
+# --- Report --------------------------------------------------------------
+if ((${#errors[@]} > 0)); then
+  echo "Traceability check FAILED — ${#errors[@]} finding(s):" >&2
+  printf '%s\n' "${errors[@]}" | sort | sed 's/^/  - /' >&2
   exit 1
-elif [ $warnings -gt 0 ]; then
-  echo -e "${YELLOW}0 errors, $warnings warning(s) — traceability check PASSED with warnings${NC}"
-  exit 0
-else
-  echo -e "${GREEN}0 errors, 0 warnings — traceability check clean${NC}"
-  exit 0
 fi
+echo "✓ Traceability clean — ${#tier_of[@]} ACs, ${#covered[@]} cited by tests."
