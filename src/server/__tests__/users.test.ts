@@ -52,9 +52,9 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-27: List users — all (including deactivated), no passwordHash
+  // AC-394: List users — all (including deactivated), no passwordHash
   // ---------------------------------------------------------------
-  describe('AT-27: List users', () => {
+  describe('AC-394: List users', () => {
     it('returns all users including deactivated ones', async () => {
       const res = await authGet(ownerToken, '/api/users');
 

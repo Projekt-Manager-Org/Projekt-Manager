@@ -166,6 +166,7 @@ What an AC carries and where the rest goes: [index.md § Placement](index.md#pla
 - **AC-68** `[crit]`: A user cannot deactivate themselves. The API rejects self-deactivation with an error.
 - **AC-69** `[crit]`: Only users with `user:manage` permission (owner role) can create, update, deactivate, reactivate, or reset passwords. Other roles receive an authorization error.
 - **AC-385** `[crit]`: `DELETE /api/users/:id` is rejected with `409` and `code = USER_HAS_INVOICES` when an issued or cancelled `Invoice` row references the user as `createdBy` or `updatedBy` ([data-model.md §6.9](data-model.md#69-soft-deletes)). `details.invoiceCount` carries the count of those rows. The user and invoice rows are unchanged on rejection. A user referenced only by draft invoices is deleted, and the drafts' references are set to null.
+- **AC-394** `[crit]`: The system never sends a password hash to a client, except inside a data export ([AC-135](#1514-data-exchange)).
 
 ### 15.14 Data Exchange
 
