@@ -1,8 +1,7 @@
 /**
  * API integration tests — attachment export envelope (AC-220, post-#163).
  *
- * Pins the export-envelope extension from data-model.md §5.8 under the
- * takeout-zip restore design:
+ * Pins the export-envelope extension from data-model.md §5.8:
  *
  *   interface ExportEnvelope {
  *     schema_version: number;
@@ -31,10 +30,8 @@
  *     (ADR-0024).
  *
  * Bytes stay in storage per ADR-0018 and are NOT part of the envelope.
- * Per-attachment restoration runs through the `init` (with `restore`
- * block) + presigned PUT + `complete` pipeline driven by the client
- * orchestrator on the importing instance; the byte-equality round-trip
- * lands at the takeout E2E (AC-259).
+ * The import job restores them server-side; the byte-equality round-trip
+ * is AC-328.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -216,10 +213,8 @@ describe('Attachment export envelope (AC-220)', () => {
   // ciphertext sizes MUST NOT appear on envelope entries. They are not
   // consumable on the importing instance and the wrapped envelopes
   // additionally remain inside the exporting instance's confidentiality
-  // boundary. The takeout-zip restore re-uploads attachments via the
-  // standard `init` + presigned PUT + `complete` pipeline (AC-256), so
-  // these fields would be dead weight on the wire and a confidentiality
-  // leak.
+  // boundary. The import job re-encrypts server-side (AC-328), so these
+  // fields would be dead weight on the wire and a confidentiality leak.
   // -------------------------------------------------------------------
   it('drops crypto fields, storage keys, and ciphertext sizes from envelope entries', async () => {
     const env = (await exportEnvelope()) as unknown as { attachments: Record<string, unknown>[] };

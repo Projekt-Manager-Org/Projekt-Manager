@@ -334,12 +334,10 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     }
   }
 
-  // Issue #163: the business-data import is metadata-only post-fix. It
-  // never inserts attachment rows and ignores any `attachments` key on
-  // the envelope (see api.md §14.2.4 and AC-253). Per-attachment
-  // restoration runs through the standard `init` (with `restore` block)
-  // + per-blob PUT + `complete` pipeline against the importing instance
-  // (AC-256), driven by the client orchestrator.
+  // The business-data import is metadata-only. It never inserts
+  // attachment rows and ignores any `attachments` key on the envelope
+  // (see api.md §14.2.4 and AC-253). The import job restores
+  // attachments (AC-328).
 
   return issues;
 }

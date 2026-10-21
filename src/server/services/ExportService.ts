@@ -237,13 +237,10 @@ export class ExportService {
         nextValue: s.nextValue,
         updatedAt: s.updatedAt.toISOString(),
       })),
-      // Issue #163: metadata-only descriptor. Crypto fields, opaque
-      // storage keys, and ciphertext sizes are NOT consumable on the
-      // importing instance and are therefore omitted; the client
-      // orchestrator re-uploads each attachment via the standard
-      // `init` (with `restore` block) + presigned PUT + `complete`
-      // pipeline against the importing instance (api.md §14.2.4 /
-      // §14.2.11, AC-220, AC-256).
+      // Metadata-only descriptor. Crypto fields, opaque storage keys,
+      // and ciphertext sizes are NOT consumable on the importing
+      // instance and are therefore omitted; the import job re-encrypts
+      // server-side (api.md §14.2.4, AC-220, AC-328).
       attachments: attachmentRows.map((a) => ({
         id: a.id,
         projectId: a.projectId,

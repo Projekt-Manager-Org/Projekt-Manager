@@ -24,19 +24,7 @@ export type Permission =
   | 'invoice:write'
   | 'auth:change-password';
 
-export type Role =
-  | 'owner'
-  | 'office'
-  | 'worker'
-  | 'bookkeeper'
-  // Test-only fixture role. Real users never hold this — the seed
-  // never mints it, the auth UI never offers it. It exists so the
-  // integration suite can isolate gate semantics no production role
-  // exercises: AC-255 needs a `data:restore`-only caller, but no
-  // production role holds `data:restore` without `attachment:write`.
-  // Listed here (not in a separate registry) so the role-permission
-  // map stays the single source of truth.
-  | '__test_data_restore_only';
+export type Role = 'owner' | 'office' | 'worker' | 'bookkeeper';
 
 /**
  * Single-source classification of every `Role` (AC-343). A new `Role`
@@ -52,7 +40,6 @@ export const IS_TEST_ONLY_ROLE: Record<Role, boolean> = {
   office: false,
   worker: false,
   bookkeeper: false,
-  __test_data_restore_only: true,
 };
 
 // data:export gates the unified business-data export (api.md §14.2.4).
@@ -140,53 +127,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'invoice:read',
     'auth:change-password',
   ],
-  // Test-only — see the `Role` union comment above. Empty in
-  // production builds (so a stray DB-direct-write of the role string
-  // grants nothing); the one production-relevant permission is added
-  // by the `TEST_ROLE_PERMISSIONS` overlay below when running under
-  // `NODE_ENV=test`. Splitting prod and test maps this way keeps the
-  // single-`Role`-union, single-source-of-truth shape while ensuring
-  // the role can never accidentally grant `data:restore` outside the
-  // test harness.
-  __test_data_restore_only: [],
 };
-
-/**
- * Test-only overlay applied when the process is running under Vitest
- * (`NODE_ENV=test`). The pattern mirrors the existing build-mode
- * branches at `src/server/start.ts:79` and `src/server/seed.ts:14`,
- * which key off `process.env.NODE_ENV === 'production'` for safety
- * checks. Read once at module-load — the integration test harness
- * sets `NODE_ENV=test` before any module that imports this file is
- * evaluated.
- */
-const TEST_ROLE_PERMISSIONS: Partial<Record<Role, readonly Permission[]>> = {
-  __test_data_restore_only: ['data:restore'],
-};
-
-const IS_TEST_BUILD = process.env.NODE_ENV === 'test';
 
 export function hasPermission(roles: string[], permission: Permission): boolean {
-  return roles.some((role) => {
-    const role_ = role as Role;
-    const baseline = ROLE_PERMISSIONS[role_];
-    if (baseline?.includes(permission)) return true;
-    if (IS_TEST_BUILD) {
-      const overlay = TEST_ROLE_PERMISSIONS[role_];
-      if (overlay?.includes(permission)) return true;
-    }
-    return false;
-  });
-}
-
-/**
- * Effective permission check for service-layer gates. Resolves through the
- * caller's role set, identical to a direct `hasPermission(caller.roles, p)`
- * call.
- *
- * Structural input type avoids importing `AuthUser` (which lives in the
- * server-side `middleware/auth.ts`) into this client-shared config module.
- */
-export function callerHasPermission(caller: { roles: string[] }, permission: Permission): boolean {
-  return hasPermission(caller.roles, permission);
+  return roles.some((role) => ROLE_PERMISSIONS[role as Role]?.includes(permission) ?? false);
 }

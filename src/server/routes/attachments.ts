@@ -118,24 +118,6 @@ export function attachmentRoutes(db: Database) {
                 type: 'string',
                 pattern: '^[A-Za-z0-9+/]{21}[AQgw]==$',
               },
-              // Issue #163 / api.md §14.2.11 / AC-255-257 — optional
-              // import-mode block for the takeout-zip restore
-              // orchestrator. When present, service layer additionally
-              // gates on `data:restore` (the AND-gate semantics depend
-              // on the block being present, which is why this is NOT a
-              // route-level preHandler). Field-shape validation here;
-              // user-existence and id-collision checks run in the
-              // service.
-              restore: {
-                type: 'object',
-                required: ['id', 'createdBy', 'createdAt'],
-                additionalProperties: false,
-                properties: {
-                  id: { type: 'string', format: 'uuid' },
-                  createdBy: { type: 'string', format: 'uuid' },
-                  createdAt: { type: 'string', format: 'date-time' },
-                },
-              },
             },
           },
         },
@@ -155,10 +137,6 @@ export function attachmentRoutes(db: Database) {
           thumbDekMaterial?: string;
           ciphertextThumbSizeBytes?: number;
           ciphertextThumbContentMd5?: string;
-          // Issue #163 / api.md §14.2.11: optional import-mode block.
-          // Service-layer enforces the `data:restore` AND-gate when
-          // present (AC-255).
-          restore?: { id: string; createdBy: string; createdAt: string };
         };
         const result = await service.initUpload(
           request.user!,
@@ -178,7 +156,6 @@ export function attachmentRoutes(db: Database) {
             thumbDekMaterial: body.thumbDekMaterial,
             ciphertextThumbSizeBytes: body.ciphertextThumbSizeBytes,
             ciphertextThumbContentMd5: body.ciphertextThumbContentMd5,
-            ...(body.restore !== undefined ? { restore: body.restore } : {}),
           },
           request.log,
         );
