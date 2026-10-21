@@ -19,9 +19,10 @@ See [ARCHITECTURE.md § Tech Stack](ARCHITECTURE.md#tech-stack).
 
 Steps happen in this order. Skipping or reordering must be flagged.
 Reviews can be reduced after user confirmation: for a simple task, to one independent review of spec, tests, code and docs together, after step 9; for a trivial task, to the user’s review only. A security audit, if confirmed, always runs separately.
+Steps can be skipped, after user confirmation, depending on the type of task. E.g. implementation defect starts at step 3 with a failing regression test; docs adjustments start at step 9. The decision on skipping and the confirmation required belong to step 1.
 
-0. **Plan** — target defined (e.g. in an issue), workflow scope defined and confirmed by user.
-1. **Specification** — see review/conventions-spec.md
+0. **Plan** (_mandatory_) — target defined (e.g. in an issue), workflow scope defined and confirmed by user.
+1. **Specification** — see review/conventions-spec.md. Only for requirements defects or approved scope.
 2. **Specification review** — independent reviewer verifies for adherence to review/conventions-spec.md. Violations are triaged, blocking ones resolved.
 3. **Tests (failing)** — see review/conventions-tests.md
 4. **Tests review** — independent reviewer verifies for adherence to review/conventions-tests.md. Violations are triaged, blocking ones resolved.
@@ -32,7 +33,7 @@ Reviews can be reduced after user confirmation: for a simple task, to one indepe
 9. **Documentation update** — see review/conventions-docs-general.md, review/conventions-architecture.md
 10. **Documentation review** — independent reviewer verifies for adherence to the conventions. Violations are triaged, blocking ones resolved.
 11. **Commit** — group changes, including multiple files, in logical groups
-12. **Open Findings** — list all open findings, including findings discovered during the workflow, even if unrelated. Each finding carries a triage call: **act** (in scope now), **track** (correctness, data integrity, security, compounding debt - with a realistic probability of affecting the project), or **drop** (everything else). Dropping a finding from a track category needs user confirmation that the threat is not realistic.
+12. **Open Findings** (_mandatory_) — list all open findings, including findings discovered during the workflow, even if unrelated. Each finding carries a triage call: **act** (in scope now), **track** (correctness, data integrity, security, compounding debt - with a realistic probability of affecting the project), or **drop** (everything else). Dropping a finding from a track category needs user confirmation that the threat is not realistic.
 
 A block of work finishes in a pushed branch, PR open, CI green. Merging is done by the user.
 

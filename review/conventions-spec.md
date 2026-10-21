@@ -2,13 +2,13 @@
 
 # Spec Conventions
 
-[conventions-docs-general.md](conventions-docs-general.md) applies here as well.
+**IMPORTANT:** All of [conventions-docs-general.md](conventions-docs-general.md) apply here as well.
 
 Rules for the [product specification](../docs/spec/index.md) (non-negotiable):
 
 - **S-KICK** — The spec fully follows and extends the [kickoff](../docs/project/kickoff.md). No discrepancy with the stated baseline (scope, "Not Doing", assumptions).
 - **S-CONS** — The spec is consistent with itself; no contradictions between files or sections.
-- **S-COMP** — The spec is logically complete. Every observable behavior has a defined trigger, outcome, and boundary condition.
+- **S-COMP** — The spec is logically complete. Every observable behavior has a defined trigger, outcome, and boundary condition. Adherence to _D-SSOT_ is still required!
 - **S-ERRP** — Error paths are defined. For every mutation, the spec states what happens when it fails, conflicts, or is unauthorized.
 - **S-NDET** — The spec leaves minute implementation details to the implementers.
 - **S-NLOG** — The spec is a contract for the code. It contains no historical references, iteration mentions, roadmap notes, or plans.
