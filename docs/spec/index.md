@@ -144,15 +144,30 @@ For development, initial users come from seed data (see [data-model.md §7.2](da
 
 ## Spec Structure
 
-This specification is split across multiple files:
+### Equivalence Boundary
 
-| File                                   | Sections | Contents                                                                                                      |
-| -------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
-| **[index.md](index.md)** (this file)   | 1–4      | Goal, scope, workflow states, assumptions                                                                     |
-| **[data-model.md](data-model.md)**     | 5–7      | Project, Customer, User, Session, Audit Log entities; state metadata; persistence principles; seed data       |
-| **[ui/](ui/index.md)**                 | 8–10     | UI: shell, navigation, workflow views, management, Daten, email intake, project detail, behavior + responsive |
-| **[architecture.md](architecture.md)** | 11–13    | Responsibility layers, dependencies, extensibility, configuration, NFRs, security                             |
-| **[api.md](api.md)**                   | 14       | API design principles, operations, authorization, error handling                                              |
-| **[verification.md](verification.md)** | 15–17    | Acceptance criteria, test specifications, risks                                                               |
+Two conforming implementations are functionally equivalent, not byte-identical. The boundary is the deployed product:
 
-`[C]` catalogue: [architecture.md §12.2](architecture.md#122-company-configurable-settings).
+- **Contract** — what users, operators and attackers observe, and data leaving the system (export archive, invoice output, push, backups). The spec defines it.
+- **Internal** — everything behind it, including the HTTP API between front end and back end. The spec leaves it to the implementation.
+
+### Placement
+
+Each statement has one home; everywhere else, a link.
+
+| Statement                                                                         | Home                                                                                       |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Goal, scope, role set, workflow-state set                                         | [index.md](index.md) (this file)                                                           |
+| Entity, field with its observable constraints (limit, enum, whitelist), invariant | [data-model.md](data-model.md)                                                             |
+| Format of data leaving the system                                                 | [data-model.md](data-model.md)                                                             |
+| Screen inventory — what each screen shows and offers                              | [ui/](ui/index.md)                                                                         |
+| Role ↔ permission matrix, error classes                                           | [api.md](api.md)                                                                           |
+| Constraint imposed from outside (kickoff, environment)                            | [architecture.md §11](architecture.md#11-architectural-constraints)                        |
+| `[C]` value without a home above                                                  | [`[C]` catalogue](architecture.md#122-company-configurable-settings), which links the rest |
+| Cross-cutting quality property — performance, accessibility, security baseline    | [architecture.md §13](architecture.md#13-non-functional-requirements)                      |
+| Feature behavior or property observable by a user, operator or attacker           | AC ([verification.md §15](verification.md#15-acceptance-criteria))                         |
+| Property that exists because of an ADR                                            | AC citing the ADR                                                                          |
+| Choice among alternatives, and why                                                | [ADR](../adr/index.md)                                                                     |
+| Cross-module flow                                                                 | [ARCHITECTURE.md](../../ARCHITECTURE.md)                                                   |
+| Internal detail — HTTP API, single-module mechanism, unobservable parameter       | Code: generated OpenAPI document, module comment, config, schema                           |
+| Precise executable behavior                                                       | Tests                                                                                      |

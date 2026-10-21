@@ -12,6 +12,21 @@ Every criterion carries exactly one tier marker:
 - **`[vis]`** — **Visual / Design**: specifies expected behavior that does not guard a critical path. Verified by structural E2E as well as regular human review.
 - **`[infra]`** — **Infrastructure / Structural**: a constraint on the deployed environment, the build pipeline, or the source-tree organization. Verified by deployment procedures, CI gates, lint, or code review — not by tests against the running system.
 
+**IDs.** An ID's meaning never changes, and an ID is never reused.
+
+- Split → the old ID retires; every part gets a new ID. A narrowed ID would keep stale citations resolving.
+- Merge of duplicates → the survivor keeps its ID; the other retires.
+- Delete → the ID retires.
+
+**Shape.** One AC states one behavior, in one of these forms (EARS):
+
+- `When <trigger>, the system <response>.`
+- `If <unwanted condition>, the system <response>.`
+- `While <state>, the system <response>.`
+- `The system <property>.`
+
+What an AC carries and where the rest goes: [index.md § Placement](index.md#placement).
+
 ### 15.1 Core
 
 - **AC-1** `[vis]`: The full stack (frontend, backend, database) starts locally with a documented command or minimal command sequence.
