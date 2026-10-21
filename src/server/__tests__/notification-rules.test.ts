@@ -2,7 +2,7 @@
  * Notification rules CRUD integration tests — Iteration 8, issue #112.
  *
  * Pins AT-97 / AT-98 / AT-99 from `docs/spec/verification.md §16.2` which
- * in turn pin AC-189 / AC-190 / AC-191 / AC-193 / AC-203 in §15.24.
+ * in turn pin AC-189 / AC-190 / AC-193 / AC-203 / AC-393 in §15.24.
  *
  * Failing-state expectations (step 3 of the workflow — tests land ahead
  * of implementation):
@@ -333,7 +333,7 @@ describe('AT-98: notification-rule validation branches (AC-190)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-99 / AC-191 revised — Rule CRUD does NOT write audit_log rows
+// AT-99 / AC-393 — Rule CRUD does NOT write audit_log rows
 // ---------------------------------------------------------------------
 //
 // ADR-0023 removed the audit coupling: rule mutations are administrative
@@ -342,7 +342,7 @@ describe('AT-98: notification-rule validation branches (AC-190)', () => {
 //   2. No row with entity_type = 'notification_rule' exists (that value
 //      is no longer valid in the CHECK constraint, so any attempt to
 //      insert one would fail the DB constraint outright).
-describe('AT-99: notification-rule CRUD produces no audit_log rows (AC-191 revised)', () => {
+describe('AT-99: notification-rule CRUD produces no audit_log rows (AC-393)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {

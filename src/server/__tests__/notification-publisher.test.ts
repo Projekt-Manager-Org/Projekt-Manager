@@ -2,7 +2,7 @@
  * Notification publisher integration tests — Iteration 8, issue #112.
  *
  * Pins AT-100 / AT-102 / AT-103 from `docs/spec/verification.md §16.2`
- * which in turn pin AC-192 / AC-194 / AC-195 in §15.24.
+ * which in turn pin AC-192 / AC-195 in §15.24.
  *
  * Failing-state expectations (step 3):
  *   - `src/server/services/notification-publisher.ts` does not exist
@@ -410,13 +410,13 @@ describe('AT-100: publisher resolves recipients as deduplicated union (AC-192)',
 });
 
 // ---------------------------------------------------------------------
-// AT-102 / AC-194 — Dispatch-latency budget
+// AT-102 — Dispatch-latency budget
 // ---------------------------------------------------------------------
 //
 // Read the configured latency budget rather than hardcoding a number —
-// AC-194 calls out a `[C]`-configurable budget, and testing against a
+// The budget is `[C]`-configurable, and testing against a
 // literal would defeat the configurability contract.
-describe('AT-102: push dispatch within configured latency budget (AC-194)', () => {
+describe('AT-102: push dispatch within configured latency budget', () => {
   let ownerToken: string;
 
   beforeAll(async () => {

@@ -74,9 +74,9 @@ A preHandler derives a `scopePredicate` and attaches it to `request`; handlers p
 
 ## References
 
-- Spec commit `fccb905` — `docs/spec/api.md §14.3` (permission matrix), `docs/spec/verification.md §15.21` (AC-145..AC-150)
+- Spec commit `fccb905` — `docs/spec/api.md §14.3` (permission matrix), `docs/spec/verification.md §15.21` (AC-145, AC-146, AC-147, AC-148, AC-149, AC-150)
 - [Kickoff](../project/kickoff.md) — line 60 (worker-visible projects)
-- [ADR-0014](0014-ac-tier-system-critical-vs-design.md) — AC tiers; AC-145..AC-148 are `[crit]` and require unit/integration coverage of the predicate
+- [ADR-0014](0014-ac-tier-system-critical-vs-design.md) — AC tiers; AC-145, AC-146, AC-147 and AC-148 are `[crit]` and require unit/integration coverage of the predicate
 - [ADR-0018](0018-data-persistence-and-recovery-layered-strategy.md) — test-seed path that bypasses the API (reason RLS is ruled out)
 - [ADR-0004](0004-backend-stack-fastify-drizzle-node-postgres.md) — `node-postgres` pool shape (reason per-connection RLS is expensive)
 - `docs/spec/api.md §14.4.1` — NOT_PERMITTED vs NOT_FOUND taxonomy underlying the 403-over-404 choice

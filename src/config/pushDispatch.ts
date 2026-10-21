@@ -1,5 +1,5 @@
 /**
- * Push-dispatch configuration — AC-194 / ADR-0023.
+ * Push-dispatch configuration — ADR-0023.
  *
  * The kickoff commits to "delivered instantaneously under standard
  * circumstances" (kickoff §Done when #64). ADR-0023 pins the enforceable
@@ -26,7 +26,7 @@ function readBudget(): number {
 
 /**
  * Budget in milliseconds between the triggering domain commit and the
- * moment the push transport is invoked. AC-194 and AT-102 observe this
+ * moment the push transport is invoked. AT-102 observes this
  * value.
  */
 export const PUSH_DISPATCH_LATENCY_BUDGET_MS: number = readBudget();

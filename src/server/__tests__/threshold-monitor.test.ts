@@ -180,7 +180,7 @@ describe('threshold monitor — backup condition', () => {
   });
 });
 
-describe('threshold monitor — re-notify policy', () => {
+describe('AC-357: threshold monitor — re-notify policy', () => {
   beforeEach(() => {
     __resetThresholdMonitorState();
     readBackupStatus.mockReset().mockResolvedValue({ ...greenStatus(), lastBackupOk: false });
@@ -235,7 +235,7 @@ describe('threshold monitor — re-notify policy', () => {
   });
 });
 
-describe('threshold monitor — storage condition', () => {
+describe('AC-356: threshold monitor — storage condition', () => {
   beforeEach(() => {
     __resetThresholdMonitorState();
     readBackupStatus.mockReset().mockResolvedValue(greenStatus());
@@ -358,7 +358,7 @@ describe('threshold monitor — production publisher path', () => {
   });
 });
 
-describe('threshold monitor — failure isolation', () => {
+describe('AC-359: threshold monitor — failure isolation', () => {
   beforeEach(() => {
     __resetThresholdMonitorState();
     readBackupStatus.mockReset().mockResolvedValue(greenStatus());

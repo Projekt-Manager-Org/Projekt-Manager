@@ -1,5 +1,5 @@
 /**
- * Push dispatcher — ADR-0023 / AC-194.
+ * Push dispatcher — ADR-0023.
  *
  * Interface + no-op fallback. The real `web-push` transport lives in
  * the sibling `WebPushDispatcher.ts` and is selected by `buildApp`

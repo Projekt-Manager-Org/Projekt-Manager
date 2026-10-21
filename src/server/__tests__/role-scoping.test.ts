@@ -1,5 +1,5 @@
 /**
- * API integration tests: worker read scoping (AC-145..AC-148).
+ * API integration tests: worker read scoping (AC-145, AC-146, AC-147, AC-148).
  *
  * Covers the behavior pinned by verification.md §15.21 and realized per
  * ADR-0019:
@@ -64,7 +64,7 @@ async function customerIdByName(ownerToken: string, name: string): Promise<strin
   return match.id;
 }
 
-describe('Worker Read Scoping (AC-145..AC-148)', () => {
+describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
   let ownerToken: string;
   let officeToken: string;
   let bookkeeperToken: string;

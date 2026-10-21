@@ -58,7 +58,7 @@ export interface AttachmentConfig {
    * Vollständiger Export pre-flight mobile-warning breakpoint (CSS px).
    * Below this viewport width the dialog renders a non-blocking
    * "intended for desktop" copy. UI-only [C]; no server companion.
-   * (architecture.md §12.2 / verification.md AC-249.)
+   * (architecture.md §12.2.)
    */
   exportAllMobileWarningBreakpointPx: number;
 }

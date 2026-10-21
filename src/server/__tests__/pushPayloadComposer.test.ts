@@ -167,7 +167,7 @@ describe('composePushPayload — AC-211', () => {
     expect(out.url).toBe('/kanban');
   });
 
-  it('renders the badge reason into the backup.failed body when the monitor supplies one', () => {
+  it('AC-358: renders the badge reason into the backup.failed body when the monitor supplies one', () => {
     // Each reason maps to the badge's own German label so the push and
     // the badge the owner lands on cannot disagree (#122).
     const cases: ReadonlyArray<[string, string]> = [
@@ -185,7 +185,7 @@ describe('composePushPayload — AC-211', () => {
     }
   });
 
-  it('falls back to the generic backup body on an unknown reason', () => {
+  it('AC-358: falls back to the generic backup body on an unknown reason', () => {
     const out = composePushPayload('backup.failed', null, { reason: 'not-a-real-reason' });
     expect(out.body).toBe('Backup konnte nicht abgeschlossen werden.');
   });
