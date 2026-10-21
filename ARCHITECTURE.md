@@ -449,7 +449,7 @@ Contract: [data-model.md §6.4](docs/spec/data-model.md#64-concurrency), [ui/beh
 
 ## Invoices Module
 
-Contract: [data-model.md §5.15–§5.17](docs/spec/data-model.md#515-invoice-entity), [api.md §14.2.14–§14.2.15](docs/spec/api.md#14214-invoice-operations). Design: [ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md) (immutability, ZUGFeRD, libraries). GoBD system description: [Verfahrensdokumentation](docs/compliance/verfahrensdokumentation.md).
+Contract: [data-model.md §5.15–§5.17](docs/spec/data-model.md#515-invoice-entity), [api.md §14.2.14–§14.2.15](docs/spec/api.md#14214-invoice-operations). Design: [ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md) (immutability, ZUGFeRD, libraries). Responsibility boundary: [Betriebsverantwortung](docs/compliance/betriebsverantwortung.md).
 
 ```mermaid
 flowchart LR

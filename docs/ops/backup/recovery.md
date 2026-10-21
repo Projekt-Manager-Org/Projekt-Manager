@@ -187,7 +187,7 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
      | .[] | select($k[.key] | not) | "\(.outcome)\t\(.key)\t\(.file // .error)"' ~/restore/objects/index.json
    ```
 
-   For each listed line: an `invoices/…` plaintext is the §14b copy of that invoice — file it per the [Verfahrensdokumentation § 4.2](../../compliance/verfahrensdokumentation.md#42-wiederherstellung-und-akzeptiertes-verlustfenster); an `attachments/….orig` plaintext is re-uploaded by hand (`.thumb` files are previews — skip them). A non-zero exit lists `failed` entries: record them in the incident record and continue — the numbering step covers their numbers.
+   For each listed line: an `invoices/…` plaintext is the only remaining copy of an invoice issued after the backup — hand it to the operating company for its invoice records ([Betriebsverantwortung §2.8](../../compliance/betriebsverantwortung.md#2-grenzen-des-systems)); an `attachments/….orig` plaintext is re-uploaded by hand (`.thumb` files are previews — skip them). A non-zero exit lists `failed` entries: record them in the incident record and continue — the numbering step covers their numbers.
 
    **b. Advance the numbering.** Per `(year, kind)`, the highest invoice number in the index — recovered and failed versions alike:
 
@@ -210,7 +210,7 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
    SQL
    ```
 
-   `FALLBACK <N>` means an invoice PDF without a readable number: instead advance every `(year, kind)` from the cutoff's year to the current year by `N` — an upper bound, any surplus becomes a legal gap:
+   `FALLBACK <N>` means an invoice PDF without a readable number: instead advance every `(year, kind)` from the cutoff's year to the current year by `N` — an upper bound, any surplus becomes unused numbers (a gap):
 
    ```bash
    N=<N>; Y0=${CUTOFF:0:4}
