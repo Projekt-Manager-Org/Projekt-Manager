@@ -113,7 +113,7 @@ export const users = pgTable(
     updatedBy: uuid('updated_by'),
     // data-model.md §5.7: 'light' | 'dark' | 'system'. DB default matches
     // the documented new-user default; the CHECK constraint below is the
-    // defense-in-depth backstop pinned by AT-57 / AC-115.
+    // defense-in-depth backstop pinned by AC-115.
     themePreference: text('theme_preference').notNull().default('system'),
     // data-model.md §5.3 / §5.12: single self-settable boolean controlling
     // push delivery. Mute is a delivery-time filter — activity-feed

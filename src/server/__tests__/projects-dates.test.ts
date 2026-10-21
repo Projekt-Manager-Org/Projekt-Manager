@@ -1,7 +1,6 @@
 /**
  * API integration tests: Project date updates.
  *
- * Tests AT-12 and AT-13 from the test specification (verification.md §16.3).
  * Runs against a real test database via Fastify inject (no network).
  *
  * All project operations require authentication. Tests use the `login` helper
@@ -27,11 +26,11 @@ describe('Project Operations — Dates', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-12: Update dates changes plannedStart/plannedEnd and updatedAt
+  // AC-7: Update dates changes plannedStart/plannedEnd and updatedAt
   //        but not statusChangedAt
   // ---------------------------------------------------------------
-  describe('AT-12: Update dates', () => {
-    // A single PATCH pins every AT-12 invariant in one shot:
+  describe('AC-7: Update dates', () => {
+    // A single PATCH pins every date-update invariant in one shot:
     //   - plannedStart / plannedEnd are persisted on the row
     //   - updatedAt changes (mutation stamps audit-row time)
     //   - statusChangedAt does NOT change (date edit is not a transition)
@@ -76,9 +75,10 @@ describe('Project Operations — Dates', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-13: Update dates with plannedEnd before plannedStart is rejected
+  // Update dates with plannedEnd before plannedStart is rejected
+  // (data-model.md §6.8)
   // ---------------------------------------------------------------
-  describe('AT-13: Update dates with invalid range', () => {
+  describe('Update dates with invalid range', () => {
     it('rejects when plannedEnd is before plannedStart', async () => {
       const listRes = await authGet(token, '/api/projects');
       const projects = listRes.json().data;
@@ -178,7 +178,7 @@ describe('Project Operations — Dates', () => {
     });
 
     it('clears plannedStart and plannedEnd when null values are sent explicitly', async () => {
-      // AT-13 edge: frontend "clear planned dates" flow sends explicit nulls
+      // AC-97 edge: frontend "clear planned dates" flow sends explicit nulls
       // (ProjectDetailPanel.tsx → `updateDates(id, val || null, ...)`).
       // Previously this returned 500 SERVER_ERROR because:
       //   1. the schema rejected `null` at ajv validation time (string only)

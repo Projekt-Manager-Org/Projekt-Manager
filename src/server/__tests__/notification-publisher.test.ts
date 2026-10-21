@@ -1,14 +1,13 @@
 /**
  * Notification publisher integration tests — Iteration 8, issue #112.
  *
- * Pins AT-100 / AT-102 / AT-103 from `docs/spec/verification.md §16.2`
- * which in turn pin AC-192 / AC-195 in §15.24.
+ * Pins AC-192 / AC-195 in §15.24.
  *
  * Failing-state expectations (step 3):
  *   - `src/server/services/notification-publisher.ts` does not exist
  *     yet, so the dynamic import fails with MODULE_NOT_FOUND — the
  *     recognizable "implementation missing" failure mode (mirrors the
- *     AT-94 pattern in `audit-log.test.ts`).
+ *     AC-183 pattern in `audit-log.test.ts`).
  *   - Once the module ships, the subscribe surface must expose
  *     `onEventDispatched(handler)` so tests can observe recipient
  *     resolution without touching the push transport.
@@ -93,14 +92,14 @@ async function resolveTransitionAuditId(projectId: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------
-// AT-100 / AC-192 — Recipient union resolution with dedupe
+// AC-192 — Recipient union resolution with dedupe
 // ---------------------------------------------------------------------
 //
 // Each `it()` in this describe creates its OWN project fixture
 // (ad-hoc, per-test) rather than consuming the seed's `beauftragt`
 // rows. This keeps the seed distribution authoritative per
 // data-model.md §7.1 and avoids test order dependencies.
-describe('AT-100: publisher resolves recipients as deduplicated union (AC-192)', () => {
+describe('Publisher resolves recipients as deduplicated union (AC-192)', () => {
   let ownerToken: string;
   let seededCustomerId: string;
   let ownerId: string;
@@ -117,7 +116,7 @@ describe('AT-100: publisher resolves recipients as deduplicated union (AC-192)',
     const number = `AT100-${Date.now().toString(36)}-${fixtureCounter}`;
     const res = await authPost(ownerToken, '/api/projects', {
       number,
-      title: `AT-100 fixture (${status})`,
+      title: `AC-192 fixture (${status})`,
       customerId: seededCustomerId,
       status,
     });
@@ -276,13 +275,13 @@ describe('AT-100: publisher resolves recipients as deduplicated union (AC-192)',
     // rule-create time, so we create a real active user, bake them
     // into the rule, then hard-delete them. The publisher must
     // complete dispatch without the deleted user in `recipients`.
-    // AT-106 pins the same clause from the rule-row side; this arm
+    // AC-203 pins the same clause from the rule-row side; this arm
     // pins the publisher's resolution-step resilience.
     const pub = await loadPublisher();
 
     const createUser = await authPost(ownerToken, '/api/users', {
       username: `at100hdel_${Date.now().toString(36)}`,
-      displayName: 'AT-100 hard-delete target',
+      displayName: 'AC-192 hard-delete target',
       password: 'SecurePass2026!',
       roles: ['worker'],
     });
@@ -410,13 +409,13 @@ describe('AT-100: publisher resolves recipients as deduplicated union (AC-192)',
 });
 
 // ---------------------------------------------------------------------
-// AT-102 — Dispatch-latency budget
+// Dispatch-latency budget
 // ---------------------------------------------------------------------
 //
 // Read the configured latency budget rather than hardcoding a number —
 // The budget is `[C]`-configurable, and testing against a
 // literal would defeat the configurability contract.
-describe('AT-102: push dispatch within configured latency budget', () => {
+describe('Push dispatch within configured latency budget', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -487,9 +486,9 @@ describe('AT-102: push dispatch within configured latency budget', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-103 / AC-195 — pushMuted suppresses dispatch but retains subs
+// AC-195 — pushMuted suppresses dispatch but retains subs
 // ---------------------------------------------------------------------
-describe('AT-103: pushMuted suppresses push but retains subscriptions (AC-195)', () => {
+describe('pushMuted suppresses push but retains subscriptions (AC-195)', () => {
   let ownerToken: string;
   // Office drives the transition (the actor) while owner is the muted
   // recipient. Separating actor from recipient keeps mute the SOLE reason
@@ -666,7 +665,7 @@ describe('AT-103: pushMuted suppresses push but retains subscriptions (AC-195)',
 });
 
 // ---------------------------------------------------------------------
-// AT-135 / AC-321 — the acting user is excluded from their own push
+// AC-321 — the acting user is excluded from their own push
 // ---------------------------------------------------------------------
 //
 // Notifying a user about an action they just performed is noise. The
@@ -674,7 +673,7 @@ describe('AT-103: pushMuted suppresses push but retains subscriptions (AC-195)',
 // a delivery-time filter parallel to mute (AC-195) — while staying in
 // `recipients` so activity-feed inclusion is unaffected. A non-actor
 // recipient on the same event is still pushed.
-describe('AT-135: actor excluded from own-action push (AC-321)', () => {
+describe('Actor excluded from own-action push (AC-321)', () => {
   let ownerToken: string;
   let ownerId: string;
   let officeId: string;
@@ -707,7 +706,7 @@ describe('AT-135: actor excluded from own-action push (AC-321)', () => {
 
     // Guarantee owner is un-muted so the assertion below proves
     // actor-exclusion (AC-321), not mute (AC-195), is what drops the
-    // actor from the push attempt — isolation from the AT-103 block.
+    // actor from the push attempt — isolation from the AC-195 block.
     await authPatch(ownerToken, '/api/auth/me', { pushMuted: false });
   });
 
@@ -745,7 +744,7 @@ describe('AT-135: actor excluded from own-action push (AC-321)', () => {
       // consume the seed's beauftragt distribution.
       const projRes = await authPost(ownerToken, '/api/projects', {
         number: `AT135-${Date.now().toString(36)}`,
-        title: 'AT-135 actor-exclusion fixture',
+        title: 'AC-321 actor-exclusion fixture',
         customerId: seededCustomerId,
         status: 'beauftragt',
       });

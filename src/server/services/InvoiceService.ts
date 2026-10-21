@@ -7,7 +7,7 @@
  * Architectural rationale: ADR-0026.
  * Entity: data-model.md §5.15 (Invoice), §5.16 (Sequence), §5.17 (Profile).
  * Wire contract: api.md §14.2.14.
- * Verification: verification.md §15.30, AT-109..AT-128.
+ * Verification: verification.md §15.30.
  *
  * Every mutation rides the single-write `mutate()` / `mutateInTx()`
  * path (ADR-0021). The issuance / cancellation atoms live in their

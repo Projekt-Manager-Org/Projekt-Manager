@@ -13,16 +13,16 @@
  * COMPANY_PROFILE_REQUIRED rejection with sequence-lock release.
  *
  * AC coverage in this file:
- *   - AT-121 / AC-300, AC-301: role matrix + singleton CHECK (DB-level
+ *   - AC-300, AC-301: role matrix + singleton CHECK (DB-level
  *     INSERT-second-row and DELETE-singleton rejections).
- *   - AT-122 / AC-302: audit row shape on PUT — entityType,
+ *   - AC-302: audit row shape on PUT — entityType,
  *     action, ancestor pair null, payload.before / payload.after.
- *   - AT-123 / AC-303: required-field validation, details lists
+ *   - AC-303: required-field validation, details lists
  *     offending field paths, no partial mutation.
- *   - AT-124 / AC-304: snapshot-then-mutate roundtrip — Invoice.issuer
+ *   - AC-304: snapshot-then-mutate roundtrip — Invoice.issuer
  *     reflects the snapshot-time values after a subsequent profile
  *     mutation.
- *   - AT-125 / AC-305: issue rejected when profile incomplete; sequence
+ *   - AC-305: issue rejected when profile incomplete; sequence
  *     lock released; subsequent successful issue claims the value.
  */
 
@@ -120,10 +120,10 @@ async function createDraft(ownerToken: string, projectId: string): Promise<strin
 }
 
 // ---------------------------------------------------------------------
-// AT-121 / AC-300, AC-301 — Role matrix + DB singleton CHECKs.
+// AC-300, AC-301 — Role matrix + DB singleton CHECKs.
 // ---------------------------------------------------------------------
 
-describe('AT-121 / AC-300, AC-301: company-profile role matrix + singleton invariant', () => {
+describe('AC-300, AC-301: company-profile role matrix + singleton invariant', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -260,10 +260,10 @@ describe('AT-121 / AC-300, AC-301: company-profile role matrix + singleton invar
 });
 
 // ---------------------------------------------------------------------
-// AT-122 / AC-302 — Audit row shape on PUT.
+// AC-302 — Audit row shape on PUT.
 // ---------------------------------------------------------------------
 
-describe('AT-122 / AC-302: PUT /api/company-profile writes one audit row with payload before/after', () => {
+describe('AC-302: PUT /api/company-profile writes one audit row with payload before/after', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -355,10 +355,10 @@ describe('AT-122 / AC-302: PUT /api/company-profile writes one audit row with pa
 });
 
 // ---------------------------------------------------------------------
-// AT-123 / AC-303 — required fields (data-model.md §5.17), any mode.
+// AC-303 — required fields (data-model.md §5.17), any mode.
 // ---------------------------------------------------------------------
 
-describe('AT-123 / AC-303: PUT validates required fields', () => {
+describe('AC-303: PUT validates required fields', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -440,10 +440,10 @@ describe('AT-123 / AC-303: PUT validates required fields', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-124 / AC-304 — Snapshot-then-mutate roundtrip.
+// AC-304 — Snapshot-then-mutate roundtrip.
 // ---------------------------------------------------------------------
 
-describe('AT-124 / AC-304: Invoice.issuer is frozen at issuance — profile mutation does not retroactively change it', () => {
+describe('AC-304: Invoice.issuer is frozen at issuance — profile mutation does not retroactively change it', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -498,10 +498,10 @@ describe('AT-124 / AC-304: Invoice.issuer is frozen at issuance — profile muta
 });
 
 // ---------------------------------------------------------------------
-// AT-125 / AC-305 — Issue rejection with sequence-lock release.
+// AC-305 — Issue rejection with sequence-lock release.
 // ---------------------------------------------------------------------
 
-describe('AT-125 / AC-305: failed issue does not permanently advance the sequence', () => {
+describe('AC-305: failed issue does not permanently advance the sequence', () => {
   // AC-305 normative language pins "the lock is acquired and released"
   // — that detail is implementation-internal and observably
   // indistinguishable from "validation runs before allocation" under
@@ -629,7 +629,7 @@ describe('AT-125 / AC-305: failed issue does not permanently advance the sequenc
 // service-layer call site receives the authenticated principal, not a
 // flat userId.
 //
-// Why this is appended here, not a sibling file: AT-121 / AC-301 in
+// Why this is appended here, not a sibling file: AC-300 / AC-301 in
 // this file already pins the route-layer permission matrix; this block
 // pins the service-layer backstop for the same invariant. Keeping
 // both pins in one file makes the "two layers, one rule" easy to read.

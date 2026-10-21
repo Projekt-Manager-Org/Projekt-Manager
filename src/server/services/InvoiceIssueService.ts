@@ -21,7 +21,7 @@
  *   9.   Flip the parent project to `abgerechnet`.
  *   Then `mutate()` writes the `invoice:issue` audit row and commits.
  *   Post-commit: `emitInvoiceChanged()` and `emitProjectChanged()`
- *   (AC-287, AT-111).
+ *   (AC-287).
  */
 
 import { eq, and } from 'drizzle-orm';
@@ -81,10 +81,10 @@ export class InvoiceIssueService {
    * The issuance transaction (AC-287). See module docstring for the
    * step list. Throws structured errors at each pre-condition failure
    * so the route maps to the documented status / code combinations
-   * (AC-289 + AT-113).
+   * (AC-289).
    *
    * Post-commit emits ONE `invoice_changed` SSE event AND ONE
-   * `project_changed` SSE event (AC-287, AT-111): a new issued row is
+   * `project_changed` SSE event (AC-287): a new issued row is
    * visible, and the parent project's `status` flipped to
    * `abgerechnet` inside the same transaction — both consumer surfaces
    * (invoice list / per-invoice viewer, Kanban / project list /
@@ -114,7 +114,7 @@ export class InvoiceIssueService {
     );
     log.info({ invoiceId: id }, 'invoice_issued');
     emitInvoiceChanged();
-    // AC-287 / AT-111: the issuance flipped `projects.status` to
+    // AC-287: the issuance flipped `projects.status` to
     // `abgerechnet` as part of the same transaction, so the project
     // surfaces must invalidate too. Cancellation deliberately does NOT
     // emit this (AC-290 — the cancel atom does not modify project
@@ -155,7 +155,7 @@ export class InvoiceIssueService {
     if (before.version !== expectedVersion) throw versionConflict();
 
     // 1. Pre-condition rejections — each maps to its documented code
-    // (AC-289 / AT-113). Order matters: the cheaper checks (no DB
+    // (AC-289). Order matters: the cheaper checks (no DB
     // round-trip) run first so they don't waste a sequence lock.
 
     const lines = before.lines as InvoiceLine[];
@@ -222,7 +222,7 @@ export class InvoiceIssueService {
     //    issuance tx so a concurrent profile mutation cannot
     //    invalidate the snapshot mid-issue. Throws
     //    `companyProfileRequired()` on incomplete state (AC-289(i),
-    //    AT-113(i), AT-125). The throw rolls back the tx — no
+    //    AC-289, AC-305). The throw rolls back the tx — no
     //    sequence allocation has been claimed yet, so AC-305's
     //    "release the lock without advancement" invariant is met by
     //    ordering: validate THEN allocate.

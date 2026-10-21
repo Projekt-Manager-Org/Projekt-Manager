@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 import { STORAGE_STATES } from './storage-states';
 
 /**
- * E2E — Invoice lifecycle (verification.md §16.3 "Invoice lifecycle",
- * pins AC-287 and AC-290 at the UI integration level).
+ * E2E — Invoice lifecycle (pins AC-287 and AC-290 at the UI integration
+ * level).
  *
  * Drives the owner-facing happy path end-to-end:
  *   1. Owner navigates to a project in `rechnung_faellig` (the only

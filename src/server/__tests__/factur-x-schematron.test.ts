@@ -1,8 +1,8 @@
 /**
- * AT-117 / AC-293 — `factur-x.xml` against the EN 16931 CII business
+ * AC-293 — `factur-x.xml` against the EN 16931 CII business
  * rules (CEN Schematron, `src/test/en16931/`), plus the XML sign
  * convention (data-model.md §5.15 *Signed amounts*) and the Storno's
- * preceding-invoice reference (AT-114, BT-25 / BT-26).
+ * preceding-invoice reference (#548, BT-25 / BT-26).
  *
  * Route-free: `buildFacturXml` is the XML the renderer embeds. Fixture
  * matrix: `standard` (7 % + 19 % lines) / `reverse_charge` × with /
@@ -144,7 +144,7 @@ const MATRIX = (['standard', 'reverse_charge'] as const).flatMap((mode) =>
   ),
 );
 
-describe('AT-117 / AC-293: factur-x.xml passes the EN 16931 CII business rules', () => {
+describe('AC-293: factur-x.xml passes the EN 16931 CII business rules', () => {
   let sef: string;
 
   beforeAll(() => {
@@ -220,7 +220,7 @@ describe('data-model.md §5.15 Signed amounts — factur-x.xml', () => {
   );
 });
 
-describe('AT-114 / #548: a Storno references its original by number', () => {
+describe('#548: a Storno references its original by number', () => {
   it('carries the original number in BT-25 and its issue date in BT-26, not its id', () => {
     const original = invoice('standard', false);
     const xml = buildFacturXml(storno(original), PRECEDING);

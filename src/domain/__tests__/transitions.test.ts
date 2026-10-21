@@ -6,24 +6,24 @@ import {
   canTransitionBackward,
 } from '../transitions';
 
-// AC-16 [crit]: Only +1/-1 transitions (UT-4 to UT-7)
-// AC-17 [crit]: Erledigt is terminal (UT-5, UT-7)
-// AC-18 [crit]: Anfrage hides backward (UT-6)
+// AC-16 [crit]: Only +1/-1 transitions
+// AC-17 [crit]: Erledigt is terminal
+// AC-18 [crit]: Anfrage hides backward
 describe('state transitions', () => {
   it('getNextState follows the full workflow order', () => {
     expect(getNextState('anfrage')).toBe('angebot');
     expect(getNextState('angebot')).toBe('beauftragt');
     expect(getNextState('beauftragt')).toBe('geplant');
-    expect(getNextState('geplant')).toBe('in_arbeit'); // UT-4
+    expect(getNextState('geplant')).toBe('in_arbeit'); // AC-16
     expect(getNextState('in_arbeit')).toBe('abnahme');
     expect(getNextState('abnahme')).toBe('rechnung_faellig');
     expect(getNextState('rechnung_faellig')).toBe('abgerechnet');
     expect(getNextState('abgerechnet')).toBe('erledigt');
-    expect(getNextState('erledigt')).toBeNull(); // UT-5
+    expect(getNextState('erledigt')).toBeNull(); // AC-17
   });
 
   it('getPreviousState follows the full workflow order', () => {
-    expect(getPreviousState('anfrage')).toBeNull(); // UT-6
+    expect(getPreviousState('anfrage')).toBeNull(); // AC-18
     expect(getPreviousState('angebot')).toBe('anfrage');
     expect(getPreviousState('beauftragt')).toBe('angebot');
     expect(getPreviousState('geplant')).toBe('beauftragt');
@@ -31,7 +31,7 @@ describe('state transitions', () => {
     expect(getPreviousState('abnahme')).toBe('in_arbeit');
     expect(getPreviousState('rechnung_faellig')).toBe('abnahme');
     expect(getPreviousState('abgerechnet')).toBe('rechnung_faellig');
-    expect(getPreviousState('erledigt')).toBeNull(); // UT-7
+    expect(getPreviousState('erledigt')).toBeNull(); // AC-17
   });
 
   it('canTransitionForward is false for erledigt', () => {

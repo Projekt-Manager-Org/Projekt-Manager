@@ -1,11 +1,11 @@
 /**
  * Per-tax-mode legal boilerplate strings rendered on the human-readable
- * PDF body (ADR-0026 §Tax modes, AC-292, AT-116).
+ * PDF body (ADR-0026 §Tax modes, AC-292).
  *
  * The §-references are statutory and must appear verbatim on the
  * rendered output; the surrounding German UI copy is `[C]` per
  * `architecture.md §11.14` and can drift, but the §-anchor string
- * (`§ 13b UStG`) is pinned by AT-116's assertions.
+ * (`§ 13b UStG`) is pinned by AC-292's assertions.
  *
  * `standard` mode carries no statutory boilerplate; per-line VAT and the
  * per-rate breakdown in the totals block are the legal anchors for that
@@ -19,7 +19,7 @@ import type { TaxMode } from '../../../domain/invoice.js';
  * boilerplate line; the VAT breakdown table carries the statutory
  * shape instead).
  *
- * The strings include the German UI copy AND the §-reference; AT-116
+ * The strings include the German UI copy AND the §-reference; AC-292
  * asserts on the §-reference substring only, so a future translation
  * change does not break the test. The full sentence is what an actual
  * recipient expects on the invoice.

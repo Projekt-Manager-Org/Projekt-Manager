@@ -4,7 +4,7 @@ import { clickView } from './nav-helpers';
 /**
  * E2E Management flows
  *
- * Covers §16.4 steps 18–24: customer CRUD, project CRUD, user management.
+ * Covers customer CRUD, project CRUD, user management.
  *
  * These tests are written ahead of the implementation (TDD). They define
  * the expected end-to-end behavior for management views introduced in

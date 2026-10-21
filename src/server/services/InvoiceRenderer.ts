@@ -39,7 +39,7 @@ import { validateFacturXml } from './invoice/xsdValidator.js';
  * What the renderer hands back to the issuance transaction. The bytes
  * ride the existing binary descriptor pipeline (ADR-0022 / ADR-0024)
  * via `InvoiceService.persistRenderedBinary`; the XML payload is
- * exposed separately so the test harness can re-assert AT-117 without
+ * exposed separately so the test harness can re-assert AC-293 without
  * re-extracting from the PDF/A-3 envelope. `render()` already runs the
  * EN 16931 XSD check against the XML before this struct is returned —
  * a non-conformant payload throws and the caller's transaction rolls

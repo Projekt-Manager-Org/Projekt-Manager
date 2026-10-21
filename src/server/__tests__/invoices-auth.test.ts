@@ -1,6 +1,6 @@
 /**
  * API integration test — auth + permission matrix for the eight
- * invoice endpoints (AC-297 / AT-119 coverage backfill).
+ * invoice endpoints (AC-297 / AC-298 coverage backfill).
  *
  * AC-297 (verification.md:409) names exactly eight endpoints:
  *

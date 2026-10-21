@@ -38,7 +38,7 @@ export class ExportService {
 
   /**
    * Export every row of the business-data layer as a single envelope.
-   * Deterministic ordering across all tables so AT-77 can byte-compare
+   * Deterministic ordering across all tables so AC-141 can byte-compare
    * successive exports after a roundtrip.
    *
    * Issue #230: `users`, `company_profile`, `invoices`, and

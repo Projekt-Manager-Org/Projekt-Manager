@@ -1,7 +1,7 @@
 /**
  * Build the EN 16931 (Comfort profile) `factur-x.xml` payload that
  * rides embedded in the PDF/A-3 produced by `InvoiceRenderer`
- * (ADR-0026 §E-invoice format, AC-293, AT-117).
+ * (ADR-0026 §E-invoice format, AC-293).
  *
  * Scope:
  *   - CrossIndustryInvoice schema (UN/CEFACT CII-100), four namespaces:
@@ -272,7 +272,7 @@ export function buildFacturXml(invoice: Invoice, preceding?: PrecedingInvoice): 
   }
   const issueDateBasic = dateBasic(invoice.issueDate ?? new Date());
   // performanceDate must be present at issuance per the service's
-  // pre-condition check (AT-113(b)); a null here mirrors that
+  // pre-condition check (AC-289); a null here mirrors that
   // invariant break.
   if (invoice.performanceDate === null) {
     throw new Error('buildFacturXml: performanceDate is null — renderer invoked pre-validation');

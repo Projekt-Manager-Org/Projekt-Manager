@@ -1,11 +1,10 @@
 /**
  * API integration tests: Password change operations.
  *
- * Tests AT-14 and AT-15 from the test specification (verification.md §16.3).
  * Runs against a real test database via Fastify inject (no network).
  *
- * Separated from auth.test.ts because AT-7 deactivates the office user,
- * and AT-14 needs that same user active. Each test file gets a fresh seed
+ * Separated from auth.test.ts because AC-28 deactivates the office user,
+ * and AC-52 needs that same user active. Each test file gets a fresh seed
  * via startApp(), so isolation requires a separate file.
  */
 
@@ -17,7 +16,7 @@ import { validateEnvRuntime } from '../config/env.js';
 
 /**
  * Read a single users row directly from the database via a one-shot
- * pg.Client. Used by AT-14 to pin the audit columns written by
+ * pg.Client. Used by AC-52 to pin the audit columns written by
  * changePassword — see `docs/spec/data-model.md §5.5`.
  *
  * A one-shot Client (not a long-lived Pool) is deliberate: holding a
@@ -102,10 +101,10 @@ describe('Password Change Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-14: Change own password with correct current password succeeds
+  // AC-52: Change own password with correct current password succeeds
   // AC-52 [crit]
   // ---------------------------------------------------------------
-  describe('AT-14: Change own password (success)', () => {
+  describe('AC-52: Change own password (success)', () => {
     it('changes password and allows login with the new one', async () => {
       // Self-contained: login, change, verify new password — all in one test.
       // Uses the office user to avoid affecting other tests that log in as owner.
@@ -168,12 +167,12 @@ describe('Password Change Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-15: Change own password with incorrect current password is rejected
+  // AC-52: Change own password with incorrect current password is rejected
   // AC-52 [crit]
   // ---------------------------------------------------------------
-  describe('AT-15: Change own password (wrong current password)', () => {
+  describe('AC-52: Change own password (wrong current password)', () => {
     it('rejects when current password is incorrect', async () => {
-      // Uses owner — completely independent of AT-14's office-user flow.
+      // Uses owner — completely independent of AC-52's office-user flow.
       const ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
 
       const res = await authPost(ownerToken, '/api/auth/change-password', {

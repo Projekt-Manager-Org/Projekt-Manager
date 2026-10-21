@@ -935,7 +935,7 @@ Design notes:
 
 ### 7.4 Edge Cases
 
-The seed dataset should include varied data (missing dates, minimal fields, aged entries) to exercise edge cases. Specific edge case coverage is verified through the test specifications (see [verification.md §16](verification.md#16-test-specification)).
+The seed dataset should include varied data (missing dates, minimal fields, aged entries) to exercise edge cases.
 
 ### 7.5 Date Range
 

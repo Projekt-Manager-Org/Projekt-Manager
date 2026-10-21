@@ -11,8 +11,6 @@ import { test, expect } from '@playwright/test';
  *
  * Seed data assumptions:
  *   - User: inhaber / changeme (Thomas Berger, admin/owner)
- *
- * Covers spec §16.4 steps 1–3 and 16.
  */
 test('app boots, seeded user can log in and log out', async ({ page }) => {
   // ── Step 1: App loads — login screen is displayed ──

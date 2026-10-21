@@ -88,7 +88,7 @@ export function invoiceRoutes(db: Database) {
     // ---------------------------------------------------------------
     // GET /api/invoices — list.
     //
-    // No `invoice:read` permission gate (AC-298, AT-119): worker holds
+    // No `invoice:read` permission gate (AC-298): worker holds
     // no invoice permission but the repository-predicate scope
     // (ADR-0019) returns the empty set for worker callers — structural
     // exclusion rather than 403. A permission gate here would surface
@@ -164,7 +164,7 @@ export function invoiceRoutes(db: Database) {
     // raised from the OUT_OF_SCOPE branch; a worker hitting an unknown
     // id gets 404 from the null branch. A permission gate here would
     // collapse both worker arms to 403 — including the unknown-id
-    // arm — and contradict AT-119's 404 expectation.
+    // arm — and contradict AC-298's 404 expectation.
     // ---------------------------------------------------------------
     app.get(
       '/api/invoices/:id',

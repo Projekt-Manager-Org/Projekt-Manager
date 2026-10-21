@@ -18,9 +18,9 @@
  *   - On an already-`cancelled` row: 409 INVOICE_ALREADY_CANCELLED.
  *
  * AC coverage in this file:
- *   - AT-114 / AC-290: cancel-on-issued happy path with all the above
+ *   - AC-290: cancel-on-issued happy path with all the above
  *                      shape + audit + SSE assertions.
- *   - AT-115 / AC-291: cancel-on-draft and cancel-on-cancelled rejection
+ *   - AC-291: cancel-on-draft and cancel-on-cancelled rejection
  *                      paths with no state change.
  *
  * Pre-impl red state: no route, no service. The cancel endpoint returns
@@ -193,7 +193,7 @@ async function countAuditRowsForInvoice(invoiceId: string): Promise<number> {
 }
 
 /**
- * Direct-insert a draft row. Used by AT-115's first arm; the
+ * Direct-insert a draft row. Used by AC-291's first arm; the
  * cancel-on-draft path is a route-level rejection, no service work
  * runs, so seeding directly is fine.
  */
@@ -226,7 +226,7 @@ async function seedDraftInvoice(projectId: string): Promise<string> {
 // Tests.
 // ---------------------------------------------------------------------
 
-describe('Invoice cancellation — happy path (AT-114 / AC-290)', () => {
+describe('Invoice cancellation — happy path (AC-290)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -379,7 +379,7 @@ describe('Invoice cancellation — happy path (AT-114 / AC-290)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-114 / AC-290 — Storno totals are the exact negation of the
+// AC-290 — Storno totals are the exact negation of the
 // original's stored totals.
 // ---------------------------------------------------------------------
 
@@ -435,7 +435,7 @@ async function seedIssuedInvoice(projectId: string, unitPrice: number, totals: T
   }
 }
 
-describe('Invoice cancellation — Storno names its original (AT-114 / #548)', () => {
+describe('Invoice cancellation — Storno names its original (#548)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -475,7 +475,7 @@ describe('Invoice cancellation — Storno names its original (AT-114 / #548)', (
   });
 });
 
-describe('Invoice cancellation — Storno totals (AT-114 / AC-290)', () => {
+describe('Invoice cancellation — Storno totals (AC-290)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -530,14 +530,14 @@ describe('Invoice cancellation — Storno totals (AT-114 / AC-290)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-115 / AC-291 — Cancel rejection paths.
+// AC-291 — Cancel rejection paths.
 //
 // Each arm asserts the documented error code AND no state change. The
 // "no state change" half is checked by reading the row before/after
 // and asserting the status field is unchanged.
 // ---------------------------------------------------------------------
 
-describe('Invoice cancellation — rejection paths (AT-115 / AC-291)', () => {
+describe('Invoice cancellation — rejection paths (AC-291)', () => {
   let ownerToken: string;
   let projectId: string;
 

@@ -1,5 +1,5 @@
 /**
- * pushPayloadComposer unit tests — AC-211, UT-13.
+ * pushPayloadComposer unit tests — AC-211.
  *
  * Pin the wire format the service worker reads back. The composer is
  * pure (no I/O), so each event class gets a dedicated case plus a

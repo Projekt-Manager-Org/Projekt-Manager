@@ -1,7 +1,7 @@
 /**
- * Seed loader tests — AT-87 (AC-390 / AC-391 / AC-392) and AT-88 (AC-164).
+ * Seed loader tests — AC-390 / AC-391 / AC-392 and AC-164.
  *
- * See verification.md §15.17 and §16.2.
+ * See verification.md §15.17.
  *
  * -------------------------------------------------------------------
  * Unusual TDD shape — read before editing
@@ -9,16 +9,16 @@
  *
  * These two tests fall into different classes:
  *
- * 1. AT-87 is a **regression pin**, not a new-behavior contract. The
+ * 1. AC-390 is a **regression pin**, not a new-behavior contract. The
  *    post-seed state it asserts (6 users, 21 customers, 19 projects,
  *    7 project_workers; usernames and active flags per SEED_USERS;
  *    SEED_DEFAULT_PASSWORD verifies; project numbers carry the seed-time
  *    calendar-year prefix) is already true today against the monolithic
  *    `src/server/seed.ts`. The test documents that contract so the
  *    upcoming fixture-loader extraction cannot drift without the suite
- *    noticing. AT-87 is expected to PASS against current main.
+ *    noticing. AC-390 is expected to PASS against current main.
  *
- * 2. AT-88 is a **forward-looking feature contract**. The "malformed users
+ * 2. AC-164 is a **forward-looking feature contract**. The "malformed users
  *    fixture → typed throw, users table empty" behavior only makes sense
  *    once a separable fixture loader exists. The current monolithic seed
  *    embeds the user records inline; it cannot read a fixture, let alone
@@ -118,12 +118,12 @@ describe('Seed', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-87 → AC-390 + AC-391 + AC-392
+  // AC-390 + AC-391 + AC-392
   //
   // Regression pin: after seed(db, { force: true }) on an empty DB the
   // observable state matches the seed contract. Expected to pass today.
   // ---------------------------------------------------------------
-  describe('AT-87: seed force-run populates the contracted dataset', () => {
+  describe('AC-390: seed force-run populates the contracted dataset', () => {
     // AC-392 wants the year prefix captured at the moment seed ran.
     // Capture before the call, not after, so a Dec-31 → Jan-1 rollover
     // during seed would fail loudly instead of silently agreeing with
@@ -212,7 +212,7 @@ describe('Seed', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-88 → AC-164
+  // AC-164
   //
   // Forward-looking: a malformed users fixture throws a typed validation
   // error and leaves `users` empty. Targets the future fixture-loader
@@ -223,7 +223,7 @@ describe('Seed', () => {
   // When Step 5 lands the extraction, this test runs its real
   // assertions without modification.
   // ---------------------------------------------------------------
-  describe('AT-88: malformed users fixture is rejected atomically', () => {
+  describe('AC-164: malformed users fixture is rejected atomically', () => {
     it('throws a typed validation error and leaves users empty', async () => {
       // Dynamic import so the test file itself type-checks and loads
       // even before `../seed/users.js` exists. A bare static import

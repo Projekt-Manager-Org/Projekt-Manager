@@ -74,7 +74,7 @@ export class InvoiceCancelService {
   /**
    * Cancel an issued invoice — create the Stornorechnung sibling, flip
    * the original to `'cancelled'`, write TWO audit rows in one tx,
-   * emit ONE SSE event post-commit (AC-290 / AT-114).
+   * emit ONE SSE event post-commit (AC-290).
    *
    * Invariant: the cancel atom commits EXACTLY two audit rows AND
    * dispatches EXACTLY one SSE event. Because this path uses a bespoke

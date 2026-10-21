@@ -26,7 +26,7 @@
  *
  * The seed hashes this string via `hashPassword('changeme')` and assigns
  * the result to every userRecord. Tests that mutate a user's password
- * (e.g. AT-14 rotates `buero`'s password) must NOT reference this
+ * (e.g. AC-52 rotates `buero`'s password) must NOT reference this
  * constant after the mutation — the constant describes the seeded state,
  * not the live state.
  */

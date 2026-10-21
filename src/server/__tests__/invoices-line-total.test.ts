@@ -2,7 +2,7 @@
  * API integration tests — server-derived invoice `lineTotal` (issue #525).
  *
  * AC coverage in this file:
- *   - AT-154 / AC-384: create and PATCH ignore a client-supplied
+ *   - AC-384: create and PATCH ignore a client-supplied
  *     `lineTotal`; issue rejects a stored line that breaks
  *     `lineTotal = round2(quantity × unitPrice)` before a number is
  *     allocated; create rejects a non-finite derived `lineTotal` and a
@@ -79,7 +79,7 @@ async function rechnungFaelligProjectId(ownerToken: string): Promise<string> {
   return rows[0]!.id;
 }
 
-describe('AT-154 / AC-384: lineTotal is server-derived', () => {
+describe('AC-384: lineTotal is server-derived', () => {
   let ownerToken: string;
   let projectId: string;
 

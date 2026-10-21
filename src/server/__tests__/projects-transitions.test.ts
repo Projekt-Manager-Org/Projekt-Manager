@@ -1,8 +1,6 @@
 /**
  * API integration tests: Project state transitions.
  *
- * Tests AT-9 through AT-11 (and backward success) from the test specification
- * (verification.md §16.3).
  * Runs against a real test database via Fastify inject (no network).
  *
  * All project operations require authentication. Tests use the `login` helper
@@ -28,7 +26,7 @@ describe('Project Operations — Transitions', () => {
     await stopApp();
   });
 
-  // AT-9 forward-edge spot-checks (single-edge advance + updatedBy) are
+  // AC-16 forward-edge spot-checks (single-edge advance + updatedBy) are
   // subsumed by the full-chain test below (every forward edge) and by
   // the backward-direction updatedBy arm — both pin the same mutate()
   // stamping path. Removed under T-REDU.
@@ -125,10 +123,10 @@ describe('Project Operations — Transitions', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-10: Transition forward from erledigt is rejected
+  // AC-17: Transition forward from erledigt is rejected
   // AC-16 [crit], AC-17 [crit]
   // ---------------------------------------------------------------
-  describe('AT-10: Transition forward from erledigt', () => {
+  describe('AC-17: Transition forward from erledigt', () => {
     it('returns a validation error (erledigt is terminal)', async () => {
       const listRes = await authGet(token, '/api/projects');
       const projects = listRes.json().data;
@@ -151,10 +149,10 @@ describe('Project Operations — Transitions', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-11: Transition backward from anfrage is rejected
+  // AC-18: Transition backward from anfrage is rejected
   // AC-16 [crit], AC-18 [crit]
   // ---------------------------------------------------------------
-  describe('AT-11: Transition backward from anfrage', () => {
+  describe('AC-18: Transition backward from anfrage', () => {
     it('returns a validation error (anfrage is the first state)', async () => {
       const listRes = await authGet(token, '/api/projects');
       const projects = listRes.json().data;
@@ -193,7 +191,7 @@ describe('Project Operations — Transitions', () => {
 
   // ---------------------------------------------------------------
   // Transition backward (success case)
-  // Backward counterpart of AT-9.
+  // Backward counterpart of AC-16.
   // Covers api.md §14.2.2: Transition backward moves status back by
   // one step and sets status, statusChangedAt, updatedAt, updatedBy.
   // ---------------------------------------------------------------
@@ -201,7 +199,7 @@ describe('Project Operations — Transitions', () => {
     it('moves a project from in_arbeit back to geplant', async () => {
       // Explicit setup: transition a `geplant` project forward to `in_arbeit`
       // before testing the backward path. This keeps the test independent of
-      // prior test execution — AT-9 and this test no longer share state, so
+      // prior test execution — AC-16 and this test no longer share state, so
       // reordering or `--grep` filtering cannot break this case.
       const listRes = await authGet(token, '/api/projects');
       const geplantProject = listRes
@@ -279,7 +277,7 @@ describe('Project Operations — Transitions', () => {
   // asserting each intermediate state. This covers every forward edge
   // in the 9-state workflow (8 transitions) at the HTTP layer.
   //
-  // The AT-9 block above only spot-checks a couple of transitions; this
+  // The AC-16 block above only spot-checks a couple of transitions; this
   // block closes the gap without relying on the seed having a project
   // in every possible state.
   // ---------------------------------------------------------------

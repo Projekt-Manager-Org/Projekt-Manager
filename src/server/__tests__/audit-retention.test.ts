@@ -1,5 +1,5 @@
 /**
- * Audit retention cleanup — integration test for AT-95 (AC-184).
+ * Audit retention cleanup — integration test for AC-184.
  *
  * Pins the cleanup contract against a real Postgres instance:
  *   - removes `audit_log` rows older than the configured window (90 d [C]);
@@ -45,7 +45,7 @@ async function countAuditRows(db: Database): Promise<number> {
   return (res.rows[0] as { c: number }).c;
 }
 
-describe('AT-95: Audit retention cleanup (AC-184)', () => {
+describe('Audit retention cleanup (AC-184)', () => {
   let db: Database;
   let pool: pg.Pool;
 
