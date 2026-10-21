@@ -435,6 +435,46 @@ async function seedIssuedInvoice(projectId: string, unitPrice: number, totals: T
   }
 }
 
+describe('Invoice cancellation — Storno names its original (AT-114 / #548)', () => {
+  let ownerToken: string;
+
+  beforeAll(async () => {
+    await startApp();
+    ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+    await ensureCompanyProfileComplete(ownerToken);
+  });
+
+  afterAll(async () => {
+    await stopApp();
+  });
+
+  it("the Storno PDF prints the original's number and issue date, not its id", async () => {
+    // Seeded with issue_date 2026-04-10, so the original's date differs
+    // from the Storno's own (today) and a wrong date source shows.
+    const pid = await rechnungFaelligProjectId(ownerToken);
+    const originalId = await seedIssuedInvoice(pid, 100, {
+      perRate: [{ taxRate: 19, netSubtotal: 100, taxAmount: 19 }],
+      netGrandTotal: 100,
+      taxGrandTotal: 19,
+      grossGrandTotal: 119,
+    });
+    const originalNumber = (await authGet(ownerToken, `/api/invoices/${originalId}`)).json()
+      .number as string;
+    const cancelRes = await authPost(ownerToken, `/api/invoices/${originalId}/cancel`, {});
+    expect(cancelRes.statusCode).toBe(200);
+    const stornoId = cancelRes.json().storno.id as string;
+
+    const pdf = await authGet(ownerToken, `/api/invoices/${stornoId}/pdf`);
+    expect(pdf.statusCode).toBe(200);
+    const { extractText, getDocumentProxy } = await import('unpdf');
+    const { text } = await extractText(await getDocumentProxy(new Uint8Array(pdf.rawPayload)), {
+      mergePages: true,
+    });
+    expect(text).toContain(`Stornierung von: ${originalNumber} vom 10.04.2026`);
+    expect(text).not.toContain(originalId);
+  });
+});
+
 describe('Invoice cancellation — Storno totals (AT-114 / AC-290)', () => {
   let ownerToken: string;
   let projectId: string;

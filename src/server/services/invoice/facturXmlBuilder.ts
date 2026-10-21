@@ -241,12 +241,23 @@ function renderLineItem(line: InvoiceLine, index: number, mode: TaxMode, sign: 1
   return parts.join('');
 }
 
+/** The invoice a Storno cancels, as the customer knows it (BT-25, BT-26). */
+export interface PrecedingInvoice {
+  number: string;
+  /** `YYYY-MM-DD`. */
+  issueDate: string;
+}
+
 /**
- * The complete EN 16931 XML payload for the invoice.
+ * The complete EN 16931 XML payload for the invoice. A Storno needs its
+ * `preceding` invoice: the cancel flow has it loaded.
  */
-export function buildFacturXml(invoice: Invoice): string {
+export function buildFacturXml(invoice: Invoice, preceding?: PrecedingInvoice): string {
   const taxMode = invoice.taxMode;
   const storno = isStorno(invoice);
+  if (storno && !preceding) {
+    throw new Error('buildFacturXml: a Storno needs its preceding invoice (BT-25)');
+  }
   const typeCode = storno ? '381' : '380';
   // A credit note's type code carries the sign; its amounts render
   // negated (data-model.md §5.15 *Signed amounts*).
@@ -379,15 +390,16 @@ export function buildFacturXml(invoice: Invoice): string {
   parts.push(`<ram:DuePayableAmount>${fmt2(totals.grossGrandTotal)}</ram:DuePayableAmount>`);
   parts.push('</ram:SpecifiedTradeSettlementHeaderMonetarySummation>');
 
-  // Storno cross-reference. EN 16931 places this in the settlement
-  // block, AFTER the totals summation. `IssuerAssignedID` carries the
-  // original invoice's UUID; the human-readable number lives on the
-  // PDF body and the audit chain.
-  if (storno && invoice.cancellationOf) {
+  // Storno cross-reference (BT-25 number, BT-26 issue date). EN 16931
+  // places it in the settlement block, AFTER the totals summation.
+  if (storno) {
     parts.push('<ram:InvoiceReferencedDocument>');
+    parts.push(`<ram:IssuerAssignedID>${escapeXmlText(preceding!.number)}</ram:IssuerAssignedID>`);
+    parts.push('<ram:FormattedIssueDateTime>');
     parts.push(
-      `<ram:IssuerAssignedID>${escapeXmlText(invoice.cancellationOf)}</ram:IssuerAssignedID>`,
+      `<qdt:DateTimeString format="102">${dateBasic(preceding!.issueDate)}</qdt:DateTimeString>`,
     );
+    parts.push('</ram:FormattedIssueDateTime>');
     parts.push('</ram:InvoiceReferencedDocument>');
   }
 

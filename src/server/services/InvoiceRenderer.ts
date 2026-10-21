@@ -31,7 +31,7 @@
  */
 
 import type { CompanyProfile, Invoice } from '../../domain/invoice.js';
-import { buildFacturXml } from './invoice/facturXmlBuilder.js';
+import { buildFacturXml, type PrecedingInvoice } from './invoice/facturXmlBuilder.js';
 import { drawInvoicePdf } from './invoice/pdfDrawer.js';
 import { validateFacturXml } from './invoice/xsdValidator.js';
 
@@ -66,6 +66,8 @@ export interface RenderedInvoice {
 export interface InvoiceRenderInput {
   invoice: Invoice;
   companyProfile: CompanyProfile;
+  /** The original a Storno cancels; required for a Storno (#548). */
+  precedingInvoice?: PrecedingInvoice;
 }
 
 export class InvoiceRenderer {
@@ -81,9 +83,14 @@ export class InvoiceRenderer {
    * a deploy-time asset the drawer reads from the build root (#189).
    */
   async render(input: InvoiceRenderInput): Promise<RenderedInvoice> {
-    const facturXml = buildFacturXml(input.invoice);
+    const facturXml = buildFacturXml(input.invoice, input.precedingInvoice);
     await validateFacturXml(facturXml);
-    const pdfBytes = await drawInvoicePdf(input.invoice, facturXml, input.companyProfile);
+    const pdfBytes = await drawInvoicePdf(
+      input.invoice,
+      facturXml,
+      input.companyProfile,
+      input.precedingInvoice,
+    );
     return { pdfBytes, facturXml };
   }
 }

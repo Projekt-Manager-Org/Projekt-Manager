@@ -38,6 +38,7 @@ import { formatDecimal } from '../../../domain/money.js';
 import { BRANDING } from '../../../config/brandingConfig.js';
 import { taxModeBoilerplate } from './boilerplate.js';
 import { loadBrandLogo, type LogoAsset } from './logoAsset.js';
+import type { PrecedingInvoice } from './facturXmlBuilder.js';
 
 /** WinAnsi-only sanitiser — drop anything @cantoo/pdf-lib's standard fonts cannot encode. */
 function sanitizeForWinAnsi(input: string): string {
@@ -318,6 +319,7 @@ export async function drawInvoicePdf(
   invoice: Invoice,
   facturXml: string,
   companyProfile: CompanyProfile,
+  preceding?: PrecedingInvoice,
 ): Promise<Uint8Array> {
   const { PDFDocument, StandardFonts, rgb, AFRelationship } = (await pdfLibImport) as PdfDrawDeps;
 
@@ -473,8 +475,9 @@ export async function drawInvoicePdf(
     font,
   });
   cursor.y -= LINE_HEIGHT;
-  if (isStorno && invoice.cancellationOf) {
-    cursor.page.drawText(sanitizeForWinAnsi(`Stornierung von: ${invoice.cancellationOf}`), {
+  if (isStorno && preceding) {
+    const ref = `Stornierung von: ${preceding.number} vom ${fmtDate(preceding.issueDate)}`;
+    cursor.page.drawText(sanitizeForWinAnsi(ref), {
       x: COL_LEFT,
       y: cursor.y,
       size: FONT_SIZE_BODY,

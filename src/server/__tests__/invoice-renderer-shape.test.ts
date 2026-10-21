@@ -184,3 +184,23 @@ describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AT-117 shape, route-f
     await expect(validateFacturXml(out.facturXml)).resolves.toBeUndefined();
   });
 });
+
+describe('InvoiceRenderer — Storno reference (AT-114 / #548)', () => {
+  it("prints the original's number and issue date, not its id", async () => {
+    const original = makeInvoice('standard');
+    const out = await new InvoiceRenderer().render({
+      invoice: {
+        ...original,
+        id: '00000000-0000-0000-0000-000000000002',
+        number: 'ST-2026-0001',
+        cancellationOf: original.id,
+      },
+      companyProfile: profile,
+      precedingInvoice: { number: 'RE-2026-0001', issueDate: '2026-10-01' },
+    });
+    const text = await pdfText(out.pdfBytes);
+    // The fixture's own issueDate is 2026-05-12: the date must be the original's.
+    expect(text).toContain('Stornierung von: RE-2026-0001 vom 01.10.2026');
+    expect(text).not.toContain(original.id);
+  });
+});
