@@ -71,6 +71,8 @@ What an AC carries and where the rest goes: [index.md § Placement](index.md#pla
 - **AC-27** `[crit]`: A session that expires while the app is open redirects to login with an expiry message.
 - **AC-28** `[crit]`: A request with a valid session token for a deactivated user is rejected with an authentication error.
 - **AC-52** `[crit]`: An authenticated user can change their own password. A change attempt with an incorrect current password is rejected.
+- **AC-395** `[vis]`: While a session is valid, reloading the app keeps the user signed in.
+- **AC-396** `[crit]`: If a login attempt fails — unknown username, wrong password, or deactivated account — the system returns the same error.
 
 ### 15.5 Multi-User
 

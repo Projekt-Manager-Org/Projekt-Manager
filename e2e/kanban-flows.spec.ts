@@ -410,7 +410,7 @@ test.describe('Kanban board flows', () => {
       // AC-5/AC-6/AC-7: Changes persist across page reloads
       await page.reload();
 
-      // User is still authenticated — Kanban loads, not login screen
+      // AC-395: user is still authenticated — Kanban loads, not login screen
       await expect(page.getByTestId('kanban-board')).toBeVisible();
       await expect(page.getByTestId('login-form')).not.toBeVisible();
 

@@ -229,7 +229,7 @@ describe('Authentication & Session Management', () => {
       expect(body.message.length).toBeGreaterThan(0);
     });
 
-    it('returns identical error shape for wrong user and wrong password (no information leakage)', async () => {
+    it('AC-396: returns identical error shape for wrong user and wrong password (no information leakage)', async () => {
       const wrongPassword = await getApp().inject({
         method: 'POST',
         url: '/api/auth/login',
@@ -256,11 +256,11 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-65: Login with an inactive user account returns a generic error
+  // AC-65 / AC-396: Login with an inactive user account returns the same error
   // AC-28 [crit]
   // ---------------------------------------------------------------
   describe('AC-65: Login with inactive user', () => {
-    it('returns 401 with INVALID_CREDENTIALS (same as wrong password)', async () => {
+    it('AC-396: returns 401 with INVALID_CREDENTIALS (same as wrong password)', async () => {
       // Seed includes an inactive user for this test — see SEED_USERS.inactive.
       const res = await getApp().inject({
         method: 'POST',
