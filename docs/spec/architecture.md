@@ -319,7 +319,7 @@ A failure at any step rolls back the entire transaction: the sequence increment 
 7. Commit.
 8. Post-commit, emit `invoice_changed`.
 
-**Render shape (ZUGFeRD EN 16931 Comfort).** A single PDF/A-3 file with the EN 16931 XML payload embedded as `factur-x.xml`. The PDF is human-readable; the XML is machine-readable. The Comfort profile is the EN 16931-conformant tier of ZUGFeRD — sufficient for §14a UStG and what B2B receivers expect. v1 `Invoice.profile` always evaluates to `'zugferd-en16931'`; the field exists so a future XRECHNUNG profile lands without schema churn (renderer dispatch by `profile`, [ADR-0026 §E-invoice format](../adr/0026-invoices-immutability-and-zugferd.md#e-invoice-format)). The render is server-side; the toolchain choice is implementation-defined (`ARCHITECTURE.md § Invoices Module`).
+**Render shape (ZUGFeRD EN 16931 Comfort).** A single PDF/A-3 file with the EN 16931 XML payload embedded as `factur-x.xml`. The PDF is human-readable; the XML is machine-readable. The Comfort profile is the EN 16931-conformant tier of ZUGFeRD — sufficient for §14a UStG and what B2B receivers expect. v1 `Invoice.profile` always evaluates to `'zugferd-en16931'`; the field exists so a future XRECHNUNG profile lands without schema churn (renderer dispatch by `profile`, [ADR-0026 §E-invoice format](../adr/0026-invoices-immutability-and-zugferd.md#e-invoice-format)). Amount signs: [data-model.md §5.15](data-model.md#515-invoice-entity) _Signed amounts_. The render is server-side; the toolchain choice is implementation-defined (`ARCHITECTURE.md § Invoices Module`).
 
 **Tax-mode boilerplate.** Each `taxMode` value renders with its boilerplate in German:
 

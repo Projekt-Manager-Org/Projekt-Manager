@@ -466,6 +466,7 @@ Issuing is one transaction; any failure, an XSD rejection included, rolls back t
 | Line and totals math — decimal (big.js)              | `src/domain/invoice.ts`, `src/domain/money.ts`                                                                                       |
 | Gapless number per `(year, kind)`                    | `invoice_sequence` in `src/server/db/schema.ts`                                                                                      |
 | PDF/A-3 + Factur-X (drawer, XML, XSD, tax-mode text) | `src/server/services/InvoiceRenderer.ts`, `src/server/services/invoice/`                                                             |
+| EN 16931 business rules — tests only                 | `src/test/en16931Schematron.ts`, `src/test/en16931/`                                                                                 |
 | PDF storage — off the attachment API, locked         | `src/server/services/InvoiceBinaryService.ts`, `INVOICE_PDF_KEY_PREFIX` in `src/server/repositories/attachment.ts`                   |
 | Bookkeeper bulk export                               | `src/server/services/InvoiceExportService.ts`                                                                                        |
 | Client stores                                        | `src/state/invoiceStore.ts` (per project), `src/state/invoiceListStore.ts` (`/rechnungen`)                                           |
