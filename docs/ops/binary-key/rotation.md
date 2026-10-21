@@ -19,6 +19,8 @@ The cost is **proportional to the attachment count**. Every existing attachment 
 
 The supported path is **option 1**. Plan the rotation around an attachment-count budget the operator can re-upload.
 
+**Invoice PDFs cannot be re-uploaded.** After rotation the app returns `DEK_UNWRAP_FAILED` for every existing invoice; each PDF stays readable offline with the retired identity (self-describing objects, [ADR-0024](../../adr/0024-binary-attachment-e2e-encryption.md)). Never destroy the retired identity.
+
 ## Procedure
 
 You are about to mint a new keypair, deploy it, and accept that every existing attachment renders as the [AC-244](../../spec/verification.md#1526-attachments) "Schlüssel nicht verfügbar" placeholder (the wrapped envelope on each historical row was made for the old recipient; the new app cannot unwrap it) until re-uploaded. The placeholder is distinct from [AC-224](../../spec/verification.md#1526-attachments) "Datei fehlt" (which fires when the storage object is absent). Communicate this to users before starting.
@@ -61,7 +63,7 @@ Immediately run the workstation-side drill ([drills.md](drills.md)) against a fr
 
 After all attachments are re-uploaded (or after the operator accepts that the un-re-uploaded ones are abandoned):
 
-1. Move the old custody copies to a "retired, read-only" vault. Keep them — historical compliance audits, late discoveries that an old attachment was actually needed, etc. Do not destroy.
+1. Move the old custody copies to a "retired, read-only" vault. Keep them — historical audits, late discoveries that an old attachment was actually needed, etc. Do not destroy.
 2. Remove the old workstation working copy: `shred -u ~/secrets/binary-identity.txt` then `mv ~/secrets/binary-identity.new.txt ~/secrets/binary-identity.txt` so the canonical filename keeps pointing at the active identity.
 3. Record the rotation per [Operations record](../index.md#operations-record) — date, reason, attachment count re-uploaded, attachment count abandoned.
 
