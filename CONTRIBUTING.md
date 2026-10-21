@@ -22,7 +22,7 @@ Reviews can be reduced after user confirmation: for a simple task, to one indepe
 Steps can be skipped, after user confirmation, depending on the type of task. E.g. implementation defect starts at step 3 with a failing regression test; docs adjustments start at step 9. The decision on skipping and the confirmation required belong to step 1.
 
 0. **Plan** (_mandatory_) — target defined (e.g. in an issue), workflow scope defined and confirmed by user.
-1. **Specification** — see review/conventions-spec.md. Only for requirements defects or approved scope.
+1. **Specification** — see review/conventions-spec.md. Only for requirements defects or approved scope. The PR body declares Spec change: wrong | silent | scope — `<reason>`; CI enforces it.
 2. **Specification review** — independent reviewer verifies for adherence to review/conventions-spec.md. Violations are triaged, blocking ones resolved.
 3. **Tests (failing)** — see review/conventions-tests.md
 4. **Tests review** — independent reviewer verifies for adherence to review/conventions-tests.md. Violations are triaged, blocking ones resolved.
