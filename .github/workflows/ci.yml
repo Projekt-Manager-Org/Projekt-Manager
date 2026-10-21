@@ -589,6 +589,10 @@ jobs:
       - name: Doc citation drift check — self-test
         run: bash scripts/__tests__/check-doc-paths.test.sh
 
+      # The gate itself runs in spec-change.yml, on PR body edits too.
+      - name: Spec-change declaration — self-test
+        run: bash scripts/__tests__/check-spec-change.test.sh
+
       # Static check: every relative file link and `#anchor` fragment
       # across tracked *.md must resolve (AC-348). 25 broken internal
       # links accumulated undetected before #289 — neither `lint` nor

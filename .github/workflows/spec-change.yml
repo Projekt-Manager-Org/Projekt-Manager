@@ -1,0 +1,51 @@
+name: Spec change
+
+# A PR touching docs/spec/** must declare why in its body (#486 F); the
+# rule and the labels live in scripts/check-spec-change.sh.
+#
+# Its own workflow, not a ci.yml job: `edited` fires on every body edit,
+# and fixing a missing declaration must re-run this check, not the whole
+# pipeline. Not path-filtered: a required check that never starts blocks
+# the merge box (see ci.yml `check`). The merge queue has no PR body; the
+# job is skipped there, which a required check counts as passing (see
+# ci.yml `merge_group` for why the listener must exist).
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+  merge_group:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: spec-change-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  declaration:
+    name: Spec-change declaration
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      # The body is untrusted input: it reaches the script through env,
+      # never through `${{ }}` interpolation into the shell. A rename out
+      # of docs/spec/ is a spec change too, hence `previous_filename`.
+      - name: Check spec-change declaration
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GH_REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' \
+            | bash scripts/check-spec-change.sh
