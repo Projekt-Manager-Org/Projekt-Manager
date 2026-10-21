@@ -1,7 +1,8 @@
 /**
  * AT-117 / AC-293 — `factur-x.xml` against the EN 16931 CII business
  * rules (CEN Schematron, `src/test/en16931/`), plus the XML sign
- * convention (data-model.md §5.15 *Signed amounts*).
+ * convention (data-model.md §5.15 *Signed amounts*) and the Storno's
+ * preceding-invoice reference (AT-114, BT-25 / BT-26).
  *
  * Route-free: `buildFacturXml` is the XML the renderer embeds. Fixture
  * matrix: `standard` (7 % + 19 % lines) / `reverse_charge` × with /
@@ -107,6 +108,9 @@ function storno(original: Invoice): Invoice {
   };
 }
 
+/** What the cancel flow passes for the original (#548). */
+const PRECEDING = { number: 'RE-2026-0001', issueDate: '2026-10-01' };
+
 const AMOUNT_TAGS = [
   'ChargeAmount',
   'BilledQuantity',
@@ -151,7 +155,8 @@ describe('AT-117 / AC-293: factur-x.xml passes the EN 16931 CII business rules',
     '$mode, negative line: $withNegative, $kind — no fatal failed assert',
     ({ mode, withNegative, kind }) => {
       const original = invoice(mode, withNegative);
-      const xml = buildFacturXml(kind === 'invoice' ? original : storno(original));
+      const xml =
+        kind === 'invoice' ? buildFacturXml(original) : buildFacturXml(storno(original), PRECEDING);
       const fatal = validateEn16931(sef, xml).filter((f) => f.flag === 'fatal');
       expect(fatal).toEqual([]);
     },
@@ -208,9 +213,26 @@ describe('data-model.md §5.15 Signed amounts — factur-x.xml', () => {
     (mode) => {
       const original = invoice(mode, true);
       const originalXml = buildFacturXml(original);
-      const stornoXml = buildFacturXml(storno(original));
+      const stornoXml = buildFacturXml(storno(original), PRECEDING);
       expect(typeCode(stornoXml)).toBe('381');
       expect(amounts(stornoXml)).toEqual(amounts(originalXml));
     },
   );
+});
+
+describe('AT-114 / #548: a Storno references its original by number', () => {
+  it('carries the original number in BT-25 and its issue date in BT-26, not its id', () => {
+    const original = invoice('standard', false);
+    const xml = buildFacturXml(storno(original), PRECEDING);
+    const ref = /<ram:InvoiceReferencedDocument>([\s\S]*?)<\/ram:InvoiceReferencedDocument>/.exec(
+      xml,
+    )?.[1];
+    expect(ref).toContain('<ram:IssuerAssignedID>RE-2026-0001</ram:IssuerAssignedID>');
+    expect(ref).toContain('<qdt:DateTimeString format="102">20261001</qdt:DateTimeString>');
+    expect(xml).not.toContain(original.id);
+  });
+
+  it('refuses to render a Storno without its original', () => {
+    expect(() => buildFacturXml(storno(invoice('standard', false)))).toThrow(/preceding invoice/);
+  });
 });

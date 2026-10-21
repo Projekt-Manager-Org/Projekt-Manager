@@ -173,6 +173,11 @@ export class InvoiceCancelService {
       const rendered = await this.renderer.render({
         invoice: stornoPreview,
         companyProfile: profile,
+        // The customer knows the original by number and date (#548).
+        precedingInvoice: {
+          number: before.number!,
+          issueDate: before.issueDate!.toISOString().slice(0, 10),
+        },
       });
       const stornoDescriptor = await this.binary.persistRendered(
         tx,
