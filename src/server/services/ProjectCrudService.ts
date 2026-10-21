@@ -753,8 +753,8 @@ export class ProjectCrudService {
             const priorRows = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
             const priorRow = priorRows[0];
             // AC-308: a project carrying any issued or cancelled invoice
-            // is legally retained — purge is rejected with a dedicated
-            // code so the UI can target the "retention" message rather
+            // is frozen (ADR-0026) — purge is rejected with a dedicated
+            // code so the UI can target the invoice message rather
             // than the generic CONFLICT. Drafts cascade-delete with the
             // project and DO NOT count. The check runs INSIDE the tx so
             // a concurrent issue cannot slip through.

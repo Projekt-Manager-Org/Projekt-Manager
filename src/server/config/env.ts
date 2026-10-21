@@ -365,8 +365,8 @@ export const envSchema = z.object({
   // Invoice retention (ADR-0026, architecture.md §12.2 / §11.14).
   // Per-object Compliance lock (days from write) on every rendered
   // invoice PDF/A-3; 0 writes no lock. .env.example ships 0 (dev —
-  // binaries are cleanable); .env.production.example ships 3650, which
-  // covers §147 AO (8 years from the end of the issue year).
+  // binaries are cleanable); .env.production.example ships 3650 —
+  // defense in depth, not a retention promise (ADR-0026).
   // Integer ≥ 0 — bounds match architecture.md §12.2.
   // Independent of the bucket-default retention R (attachments).
   // ---------------------------------------------------------------

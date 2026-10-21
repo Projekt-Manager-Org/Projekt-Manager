@@ -321,7 +321,7 @@ A failure at any step rolls back the entire transaction: the sequence increment 
 
 **Render shape (ZUGFeRD EN 16931 Comfort).** A single PDF/A-3 file with the EN 16931 XML payload embedded as `factur-x.xml`. The PDF is human-readable; the XML is machine-readable. The Comfort profile is the EN 16931-conformant tier of ZUGFeRD — sufficient for §14a UStG and what B2B receivers expect. v1 `Invoice.profile` always evaluates to `'zugferd-en16931'`; the field exists so a future XRECHNUNG profile lands without schema churn (renderer dispatch by `profile`, [ADR-0026 §E-invoice format](../adr/0026-invoices-immutability-and-zugferd.md#e-invoice-format)). The render is server-side; the toolchain choice is implementation-defined (`ARCHITECTURE.md § Invoices Module`).
 
-**Tax-mode boilerplate.** Each `taxMode` value renders with the legally-mandated boilerplate in German:
+**Tax-mode boilerplate.** Each `taxMode` value renders with its boilerplate in German:
 
 - `standard` — per-line VAT columns (19% / 7%), full tax breakdown in the totals block.
 - `kleinunternehmer` — no VAT columns; mandatory boilerplate `"Gemäß § 19 UStG wird keine Umsatzsteuer berechnet"` (or the configured equivalent).
@@ -431,7 +431,7 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 
 A variable's absence here is a claim that no company would need to change it. If one does, the fix is to add the entry — not to treat the catalogue as advisory.
 
-- Invoice Object Lock retention — `INVOICE_OBJECT_LOCK_DAYS`, the per-object Compliance lock (days from write) on every rendered invoice PDF/A-3. Default `3650` in `.env.production.example`, which covers §147 AO (invoices are kept 8 years from the end of the issue year); `0` in `.env.example` writes no lock, so dev binaries stay disposable. Bounds: integer ≥ 0. Independent of the bucket-default retention `R` and the trash window `L` ([§11.4](#114-object-storage-module)). See [§11.14](#1114-invoice-domain), [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
+- Invoice Object Lock retention — `INVOICE_OBJECT_LOCK_DAYS`, the per-object Compliance lock (days from write) on every rendered invoice PDF/A-3. Default `3650` in `.env.production.example`: defense in depth against the application's own unreliability, not a retention promise — retention stays with the operating company ([ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)); `0` in `.env.example` writes no lock, so dev binaries stay disposable. Bounds: integer ≥ 0. Independent of the bucket-default retention `R` and the trash window `L` ([§11.4](#114-object-storage-module)). See [§11.14](#1114-invoice-domain), [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
 - Company default tax mode — `company_profile.defaultTaxMode` ∈ `'standard' | 'kleinunternehmer' | 'reverse_charge'`; pre-fills new invoice drafts with the tenant's most common mode ([data-model.md §5.17](data-model.md#517-company-profile-entity)). Owner-editable at runtime through the Daten view's company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); not an env var. Listed here because it is a per-tenant default that the deployment owner sets, not a per-user preference. Default `'standard'` on the pre-seeded singleton.
 
 ### 12.3 Configuration Requirements

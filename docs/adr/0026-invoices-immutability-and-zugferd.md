@@ -1,7 +1,7 @@
 # ADR-0026: Invoices — immutable snapshot, gapless sequence, ZUGFeRD EN 16931
 
 - **Status:** Accepted
-- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417; restore gap amended 2026-09-28, #429)
+- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417; restore gap amended 2026-09-28, #429; compliance boundary amended 2026-10-21, #551)
 - **Confidence:** High
 
 ## Context
@@ -10,21 +10,30 @@ Invoicing is the closing transition of the project workflow ([kickoff.md](../pro
 
 Forces:
 
-- **Legal anchors are non-negotiable.** German statute pins the shape directly:
-  - **§14 UStG** mandates issuer block, recipient block, sequential invoice number, issue date, performance date, line items, tax breakdown.
-  - **§14a UStG** mandates B2B e-invoicing capability: receive EN 16931 from 2025-01-01; send from 2027-01-01 (with phase-in for low-turnover issuers through 2028).
-  - **§147 AO** requires invoices (Buchungsbelege) be retained 8 years from the end of the issue year.
-  - **§19 UStG** Kleinunternehmer issuers must omit VAT and carry the mandatory boilerplate.
-  - **§13b UStG** reverse-charge inverts VAT liability — for Handwerker, Abs. 2 Nr. 4 covers Bauleistungen.
-  - **GoBD** requires immutability, traceability, and retention — enforced at the storage layer, not by application convention.
+- **Compliance stays with the company** ([kickoff § Not Doing](../project/kickoff.md#not-doing)). Law binds the company, not its tools. Statute shapes the artifact; it does not make the system answerable for the company's obligations:
+  - **§14 UStG** — mandatory content: issuer, recipient, unique sequential number, issue and performance dates, line items, tax breakdown.
+  - **§14a UStG** — B2B e-invoicing: receive from 2025-01-01; paper or other formats only until 2026-12-31, or 2027-12-31 for issuers with prior-year turnover ≤ €800,000 ([§27 Abs. 38 UStG](https://www.gesetze-im-internet.de/ustg_1980/__27.html)). Handwerker have business customers (Hausverwaltungen, Bauträger, general contractors), so a plain PDF is not an option.
+  - **§13b UStG** — reverse charge; for Handwerker, Abs. 2 Nr. 4 covers Bauleistungen, common when a Handwerker works as a subcontractor.
+- **Only machine-checkable rules have a competent reviewer.** EN 16931 conformance has one: the official CEN Schematron. Tax semantics (which mode applies, which notices) have none on this project — findings there cannot converge.
 - **Snapshot or drift.** Customer addresses, USt-IdNr., line wording, tax rates, and the issuer's own company profile evolve over years. An issued invoice must render identically forever; lookup-by-FK against live rows is incompatible with that requirement.
-- **Gapless sequences are an audit-trail expectation.** German tax auditors flag gaps in invoice numbering as an open question by default. Postgres `SERIAL`/`IDENTITY` advance on rollback and silently leak gaps — incompatible with the requirement.
+- **Gapless sequences are an audit-trail expectation.** §14 Abs. 4 Nr. 4 UStG requires a unique, sequential number — not a gapless one — but auditors ask about every gap by default; a gapless mechanism avoids that question. Postgres `SERIAL`/`IDENTITY` advance on rollback and silently leak gaps.
 - **No backwards compatibility burden.** No issued invoices exist; the schema can be shaped for the right model directly (project convention).
 - **Project primitives already exist.** Audit log + single-write path ([ADR-0021](0021-audit-log-and-notifications-single-write-path.md)), B2 binary descriptor flow with Compliance Object Lock ([ADR-0022](0022-binary-storage-b2-compliance-object-lock.md)), e2e encryption of binaries ([ADR-0024](0024-binary-attachment-e2e-encryption.md)), SSE invalidation ([ADR-0025](0025-realtime-ui-invalidation-via-sse.md)), repository-predicate worker scoping ([ADR-0019](0019-worker-data-scoping-repository-layer-predicate.md)) — the invoice domain composes on these rather than introducing parallel infrastructure.
 
 ## Decision
 
 We will model invoices as **immutable issued snapshots with a gapless year-scoped sequence, rendered as ZUGFeRD EN 16931 (Comfort) PDF/A-3**, anchored in the existing audit, storage, and notification primitives. The closest production analogue is the **Stripe Invoices** model (issued invoices are content-frozen; corrections are sibling credit notes rather than edits) combined with the **DATEV** convention for German numbering (year-scoped `RE-YYYY-NNNN`, distinct prefix for Stornorechnung).
+
+### Compliance boundary
+
+| The system guarantees                                                                                | The company owns                                                                                                    |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Its own outputs agree: an issued invoice is read-only, its PDF is Object-Locked                      | Legal correctness of content: tax mode, wording, notices — the shipped boilerplate is a default the company reviews |
+| The XML conforms to EN 16931 for the supported cases ([§ E-invoice format](#e-invoice-format), #544) | Correct use: no second invoice for the same supply (§14c UStG), corrections, customer communication                 |
+| Invoice numbers are unique within the system                                                         | Retention, archiving, GoBD, Verfahrensdokumentation. The Object Lock is defense in depth, not a promise             |
+
+- **Supported cases** are the [tax modes](#tax-modes) × invoice / Storno. Rule violations the test matrix finds are fixed in the renderer or refused at issuance by input validation (e.g. an empty company USt-IdNr., BR-CO-26; #544). The system does not judge whether the chosen tax mode applies.
+- Responsibilities and limits for the operating company: [Betriebsverantwortung](../compliance/betriebsverantwortung.md).
 
 ### Data model
 
@@ -47,23 +56,25 @@ We will model invoices as **immutable issued snapshots with a gapless year-scope
 
 ### E-invoice format
 
-- **ZUGFeRD profile EN 16931 (Comfort), PDF/A-3 wrapper with embedded `factur-x.xml`.** Both human-readable (PDF) and machine-readable (XML) in one file; the industry default for B2B DE under §14a. The Comfort profile is the EN 16931-conformant tier — sufficient for the §14a mandate and what most ERP receivers expect.
+- **ZUGFeRD profile EN 16931 (Comfort), PDF/A-3 wrapper with embedded `factur-x.xml`.** Both human-readable (PDF) and machine-readable (XML) in one file; the industry default for B2B DE under §14a. The Comfort profile is the EN 16931-conformant tier — the format the §14a mandate targets and what most ERP receivers expect.
+- **Validation.** XSD per render: a non-conformant XML aborts issuance. EN 16931 business rules (CEN validation artefacts, CII binding, EUPL-1.2) run in tests over a fixture matrix of the supported cases (#544). Not per render: the only in-process XSLT 3 processor, SaxonJS, is proprietary and cannot ship in the AGPL-3.0 runtime; Saxon-HE needs a JVM. Residual risk, accepted: an input combination outside the fixtures fails a rule at the receiver, and the company corrects it with a Storno and a new invoice.
 - **XRECHNUNG is a future-work seam, not v1 scope.** Required only for public-sector clients; the schema accommodates it via the snapshotted `profile` column on the invoice row (current values: `'zugferd-en16931'`; future: `'xrechnung'`, `'zugferd-xrechnung'`). The renderer is selected by `profile` at issuance; pure-XML XRECHNUNG produces an XML file rather than PDF/A-3 — the storage shape and audit shape are unchanged.
 - **Per-customer toggle is a future-work seam.** v1 issues with the company-default profile; a `customers.defaultInvoiceProfile` column is a non-breaking later addition.
 
 ### Storage and retention
 
 - PDF/A-3 (ZUGFeRD-wrapped) stored as an `attachments` descriptor row under the E2E envelope ([ADR-0024](0024-binary-attachment-e2e-encryption.md)), so B2 sees only ciphertext plus the invoice number as object metadata ([ADR-0024](0024-binary-attachment-e2e-encryption.md) § Self-describing objects) — but in its own key namespace, which keeps it off the attachment surface: no attachment operation lists, hides, restores, or serves it, and the full-account import restores it into the same namespace.
-- **Object Lock retention is per object.** Each rendered PDF is PUT with its own Compliance lock until write time + `INVOICE_OBJECT_LOCK_DAYS`: `3650` in production, which covers §147 AO; `.env.example` ships `0` (no lock) so dev binaries stay disposable. Not the bucket default: [ADR-0022](0022-binary-storage-b2-compliance-object-lock.md) requires `R ≤ L`, so a multi-year `R` would stretch every attachment's trash window to years. The original design asserted bucket default ≥ env at boot, which no bucket could satisfy together with `R ≤ L` (#417).
+- **Object Lock retention is per object.** Each rendered PDF is PUT with its own Compliance lock until write time + `INVOICE_OBJECT_LOCK_DAYS`: `3650` in production — defense in depth against the application's own unreliability, not a retention promise ([§ Compliance boundary](#compliance-boundary)); `.env.example` ships `0` (no lock) so dev binaries stay disposable. Not the bucket default: [ADR-0022](0022-binary-storage-b2-compliance-object-lock.md) requires `R ≤ L`, so a multi-year `R` would stretch every attachment's trash window to years. The original design asserted bucket default ≥ env at boot, which no bucket could satisfy together with `R ≤ L` (#417).
 - Lifecycle and capability split from ADR-0022 are reused unchanged — the bucket primitives operate on opaque bytes, so the Object Lock window defends ciphertext exactly as it defends attachment ciphertext.
 
 ### Tax modes
 
-Three modes in v1, each rendered with the correct legal boilerplate:
+Two modes — the target company's ([kickoff § Not Doing](../project/kickoff.md#not-doing): no generalization beyond it). Each renders its boilerplate:
 
 - **`standard`** — per-line VAT (19% / 7%), full tax breakdown in the totals block.
-- **`kleinunternehmer`** — §19 UStG: no VAT columns, mandatory boilerplate ("Gemäß § 19 UStG wird keine Umsatzsteuer berechnet").
 - **`reverse_charge`** — §13b UStG: no VAT on lines, mandatory recipient-pays note ("Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG"). For Handwerker Bauleistungen this is §13b Abs. 2 Nr. 4.
+
+Kleinunternehmer (§19 UStG) is not supported: a Handwerker company with employees typically exceeds the §19 turnover limits (removal: #552).
 
 `company_profile.defaultTaxMode` pre-fills new drafts. The draft's `taxMode` is editable until issuance. **At issuance the value is snapshotted onto the invoice row and frozen** — the issued row carries its own copy and is not re-derived from `company_profile` on render.
 
@@ -100,15 +111,27 @@ Standard third-normal-form modeling: query-able historical line items, FK integr
 
 ### Postgres `SERIAL` / `IDENTITY` for the invoice number
 
-Trivially gapless-looking, well-supported. Ruled out: both leak gaps on rollback — the sequence advances even when the inserting transaction aborts, and the gap is permanent. Gapless numbering is anchored in §14 UStG audit practice (the auditor's default question is "why is RE-2026-0014 missing"), so a sequence model that produces gaps is a category error here. The row-exclusive lock on `invoice_sequence` (via a single `INSERT … ON CONFLICT … DO UPDATE … RETURNING next_value`) is the canonical Postgres pattern when gaplessness is required and writes are low-rate.
+Trivially gapless-looking, well-supported. Ruled out: both leak gaps on rollback — the sequence advances even when the inserting transaction aborts, and the gap is permanent. Gapless is the chosen mechanism ([Context](#context)); the legal requirement is uniqueness, not gaplessness (see Negative). The row-exclusive lock on `invoice_sequence` (via a single `INSERT … ON CONFLICT … DO UPDATE … RETURNING next_value`) is the canonical Postgres pattern when gaplessness is required and writes are low-rate.
 
 ### Soft-delete instead of immutability + Stornorechnung
 
-A `deleted` flag on `invoices` analogous to `projects.deleted`. Ruled out: GoBD forbids destruction of issued business records; the application layer cannot grant itself permission to hide them. Stornorechnung is the legally-conforming corrective primitive — a fresh sibling document, not a flip on the original.
+A `deleted` flag on `invoices` analogous to `projects.deleted`. Ruled out: a hidden row would contradict its Object-Locked PDF, and hiding is no correction toward the customer. Stornorechnung is the corrective primitive — a fresh sibling document, not a flip on the original.
 
 ### Per-customer or per-project template variants in v1
 
 Per-customer branding/footer/accent overrides. Out of scope: one code template + one `company_profile` row is sufficient under [ADR-0001](0001-generalized-system-with-configurable-customer-specifics.md)'s single-tenant deployment, and the per-customer seam is non-breaking when it lands. Building it now spends design surface on a need that has not surfaced.
+
+### The system guarantees legal compliance
+
+This ADR's original framing: "legal anchors are non-negotiable", with §147 AO and GoBD as system requirements. Ruled out (#551): law binds the company, not its tools, and no one on the project can review tax semantics, so findings could not converge. The system guarantees what is machine-checkable; the company owns the rest ([§ Compliance boundary](#compliance-boundary)).
+
+### Kleinunternehmer tax mode (§19 UStG)
+
+Ruled out (#552): a Handwerker company with employees typically exceeds the §19 turnover limits, and generalization beyond the target company is out of scope. The mode doubled every fixture matrix.
+
+### Schematron validation per render
+
+Ruled out: licensing ([§ E-invoice format](#e-invoice-format)). Validation in tests over the supported cases is the fallback.
 
 ### Default-mode on profile + per-invoice override boolean for tax
 
@@ -118,7 +141,7 @@ Keep `company_profile.defaultTaxMode` plus a `taxModeOverride boolean` on the in
 
 ### Positive
 
-- **Legal compliance from day 1.** §14, §14a, §147, §19, §13b, GoBD all anchored — receive-EN-16931 capability is met for 2025-01-01 and send-EN-16931 capability is met for 2027-01-01 without a follow-up program.
+- **E-invoice capable for the supported cases.** The XML is checked against the official EN 16931 rules in tests (#544), so the 2027/2028 send mandate needs no follow-up program. Content correctness stays with the company.
 - **Historical readability is structural.** Issued invoices render identically forever because the snapshot is on the row, not chased through joins against mutable parents.
 - **Gapless numbering survives rollback** by construction (single atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE … RETURNING next_value` inside the issuing transaction takes a row-exclusive lock equivalent to `SELECT FOR UPDATE`). No reconciliation pass, no "missing number" auditor question — outside a DR restore (Negative below).
 - **Immutability is storage-enforced**, not policy-enforced. Compliance Object Lock on the rendered PDF/A-3 means even a compromised app credential cannot destroy issued artifacts within the retention window.
@@ -127,10 +150,12 @@ Keep `company_profile.defaultTaxMode` plus a `taxModeOverride boolean` on the in
 
 ### Negative
 
+- **Business rules are checked in tests, not per render.** A real input combination outside the fixtures can fail at the receiver; the correction is a Storno and a new invoice.
+- **Two tax modes only.** A similar company adopting the system adds its own modes.
 - **Manual line-item entry only in v1.** No import path; bookkeeper-facing pain on long line lists. The JSONB shape accommodates an importer without migration when the need is concrete.
 - **Single `company_profile` row constrains multi-entity tenants.** Acceptable under [ADR-0001](0001-generalized-system-with-configurable-customer-specifics.md); if a customer ever operates two issuing entities under one deployment, the singleton lifts to a row-per-entity with a `companyProfileId` FK on `invoices`.
 - **ZUGFeRD adds a toolchain surface.** PDF/A-3 generation, the `factur-x.xml` builder against the EN 16931 schema, and per-render XSD validation against the canonical EN 16931 schemas before embed. A non-conformant XML aborts the issuance transaction at the validator step before any binary lands on B2. The Node-native rendering pipeline is located in [`ARCHITECTURE.md` § Invoices Module](../../ARCHITECTURE.md#invoices-module); its libraries in [§ Dep lifecycle health](#dep-lifecycle-health-as-of-2026-05-15).
-- **Stornorechnung surfaces as a distinct row in invoice lists.** UI must group it visually under the original; bookkeeper exports include both. Acceptable — it is the artifact a tax auditor expects to see.
+- **Stornorechnung surfaces as a distinct row in invoice lists.** UI must group it visually under the original; bookkeeper exports include both. Acceptable — it is the expected correction document.
 - **Object Lock + Compliance retention is unforgiving.** A Storno-then-correct cycle is the only correction path; there is no "fix a typo on the issued invoice" door, by design.
 - **A DR restore to an earlier DB state leaves a gap.** Invoices issued after the backup vanish from the DB, but their numbers reached customers. The DR procedure advances the counter past them ([data-model.md §6.13](../spec/data-model.md#613-gapless-sequence-allocation)) — §14 Abs. 4 Nr. 4 UStG requires a number issued once; gaplessness is this ADR's stricter choice and yields. The gap is recorded in the incident record.
 
@@ -167,9 +192,10 @@ The named npm dependencies that implement this ADR's shape (PDF/A-3 + factur-x.x
 - [Issue #109](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/109) — implementation tracking; the prior comment is superseded by this ADR.
 - §14 UStG — [Pflichtangaben einer Rechnung](https://www.gesetze-im-internet.de/ustg_1980/__14.html).
 - §14a UStG — [Elektronische Rechnung / E-Rechnungspflicht](https://www.gesetze-im-internet.de/ustg_1980/__14a.html).
+- §14c UStG — [Unrichtiger oder unberechtigter Steuerausweis](https://www.gesetze-im-internet.de/ustg_1980/__14c.html).
+- §27 Abs. 38 UStG — [E-Rechnung: Übergangsregelung](https://www.gesetze-im-internet.de/ustg_1980/__27.html).
 - §19 UStG — [Kleinunternehmer](https://www.gesetze-im-internet.de/ustg_1980/__19.html).
 - §13b UStG — [Leistungsempfänger als Steuerschuldner / Reverse-Charge](https://www.gesetze-im-internet.de/ustg_1980/__13b.html).
-- §147 AO — [Aufbewahrungspflichten, 8 Jahre für Buchungsbelege](https://www.gesetze-im-internet.de/ao_1977/__147.html).
 - [GoBD](https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Weitere_Steuerthemen/Abgabenordnung/2019-11-28-GoBD.html) — Grundsätze zur ordnungsmäßigen Führung und Aufbewahrung von Büchern, Aufzeichnungen und Unterlagen in elektronischer Form.
 - [EN 16931](https://standards.cen.eu/dyn/www/f?p=204:110:0::::FSP_PROJECT,FSP_LANG_ID:60602,25) — Electronic invoicing: semantic data model of the core elements of an electronic invoice.
 - [ZUGFeRD / Factur-X specification](https://www.ferd-net.de/standards/zugferd/) — hybrid PDF/A-3 + embedded EN 16931 XML.
