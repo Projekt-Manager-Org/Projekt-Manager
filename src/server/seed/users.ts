@@ -8,7 +8,7 @@
  * fixture parsing and seeded-id resolution; envelope assembly is in
  * `business.ts`.
  *
- * Parsing (`parseUsersFixture`) is pure and filesystem-free so the AT-88
+ * Parsing (`parseUsersFixture`) is pure and filesystem-free so the AC-164
  * unit path can feed it literals to assert malformed-input rejection.
  */
 import { z } from 'zod';
@@ -55,7 +55,7 @@ export type SeedUserFixture = z.infer<typeof userFixtureSchema>;
  * Validate a raw fixture payload. Throws a `ZodError` on any shape
  * violation (missing required field, wrong type, unknown key, bad UUID,
  * empty roles array, malformed email). No filesystem, no DB — pure, so
- * the AT-88 unit path can exercise it with a literal value.
+ * the AC-164 unit path can exercise it with a literal value.
  *
  * ZodError is Zod's own typed error class (`instanceof ZodError`), which
  * satisfies AC-164's "typed validation error" without us minting a

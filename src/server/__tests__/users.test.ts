@@ -1,7 +1,6 @@
 /**
  * API integration tests: User management operations.
  *
- * Tests AT-27 to AT-34, AT-38, AT-56 from the test specification (verification.md §16.2).
  * Covers user CRUD, deactivate/reactivate, password reset, permission enforcement,
  * and the themePreference default for newly-created users (AC-115).
  * Runs against a real test database via Fastify inject (no network).
@@ -33,7 +32,7 @@ describe('User Management Operations', () => {
   let workerToken: string;
   let ownerId: string;
 
-  /** ID of the user created in AT-28, used by subsequent tests. */
+  /** ID of the user created in the AC-63 test, used by subsequent tests. */
   let createdUserId: string;
 
   beforeAll(async () => {
@@ -52,9 +51,9 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-394: List users — all (including deactivated), no passwordHash
+  // List users — all (including deactivated), no passwordHash
   // ---------------------------------------------------------------
-  describe('AC-394: List users', () => {
+  describe('List users', () => {
     it('returns all users including deactivated ones', async () => {
       const res = await authGet(ownerToken, '/api/users');
 
@@ -73,7 +72,7 @@ describe('User Management Operations', () => {
       expect(inactive.active).toBe(false);
     });
 
-    it('never includes passwordHash in response', async () => {
+    it('AC-394: never includes passwordHash in response', async () => {
       const res = await authGet(ownerToken, '/api/users');
       const body = res.json();
 
@@ -91,9 +90,9 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-28: Create user → can log in
+  // AC-63: Create user → can log in
   // ---------------------------------------------------------------
-  describe('AT-28: Create user', () => {
+  describe('AC-63: Create user', () => {
     it('creates a user that can immediately log in', async () => {
       const res = await authPost(ownerToken, '/api/users', {
         username: 'testuser_at28',
@@ -136,7 +135,7 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-56: Newly created user defaults themePreference to 'system'
+  // AC-115: Newly created user defaults themePreference to 'system'
   // AC-115 [crit] (data-model.md §5.7, verification.md §15.21)
   //
   // The admin create-user payload does not expose themePreference —
@@ -147,7 +146,7 @@ describe('User Management Operations', () => {
   // (which pins that the default was actually persisted, not just
   // filled in by the response serializer).
   // ---------------------------------------------------------------
-  describe('AT-56: New user defaults themePreference to system', () => {
+  describe('AC-115: New user defaults themePreference to system', () => {
     it("returns themePreference='system' on create and on GET", async () => {
       const createRes = await authPost(ownerToken, '/api/users', {
         username: 'testuser_at56',
@@ -177,12 +176,12 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-29: Duplicate username → validation error
+  // Duplicate username → validation error
   // ---------------------------------------------------------------
-  describe('AT-29: Duplicate username', () => {
+  describe('Duplicate username', () => {
     it('rejects creation with an already-used username', async () => {
       const res = await authPost(ownerToken, '/api/users', {
-        username: 'testuser_at28', // Created in AT-28
+        username: 'testuser_at28', // Created in AC-63
         displayName: 'Duplicate Name',
         password: 'AnotherPass789!',
         roles: ['worker'],
@@ -197,10 +196,10 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-30: Update user — displayName, roles; username immutable
+  // AC-64: Update user — displayName, roles; username immutable
   // AC-64 [crit]
   // ---------------------------------------------------------------
-  describe('AT-30: Update user', () => {
+  describe('AC-64: Update user', () => {
     it('changes display name and roles', async () => {
       const res = await authPatch(ownerToken, `/api/users/${createdUserId}`, {
         displayName: 'Aktualisierter Name',
@@ -241,9 +240,9 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-31: Deactivate user → active=false, sessions invalidated
+  // AC-65: Deactivate user → active=false, sessions invalidated
   // ---------------------------------------------------------------
-  describe('AT-31: Deactivate user', () => {
+  describe('AC-65: Deactivate user', () => {
     /** A user created specifically for deactivation testing. */
     let deactivateTargetId: string;
     let deactivateTargetToken: string;
@@ -290,9 +289,9 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-32: Reactivate user → active=true, can log in
+  // AC-66: Reactivate user → active=true, can log in
   // ---------------------------------------------------------------
-  describe('AT-32: Reactivate user', () => {
+  describe('AC-66: Reactivate user', () => {
     /** A user created, deactivated, then reactivated in this block. */
     let reactivateTargetId: string;
 
@@ -326,10 +325,10 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-33: Reset password → sessions invalidated
+  // AC-67: Reset password → sessions invalidated
   // AC-67 [crit]
   // ---------------------------------------------------------------
-  describe('AT-33: Reset password', () => {
+  describe('AC-67: Reset password', () => {
     let resetTargetId: string;
     let resetTargetToken: string;
 
@@ -386,10 +385,10 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-34: Self-deactivation rejected
+  // AC-68: Self-deactivation rejected
   // AC-68 [crit]
   // ---------------------------------------------------------------
-  describe('AT-34: Self-deactivation', () => {
+  describe('AC-68: Self-deactivation', () => {
     it('rejects when owner tries to deactivate themselves', async () => {
       const res = await authPost(ownerToken, `/api/users/${ownerId}/deactivate`);
 
@@ -410,10 +409,10 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-38: Permission enforcement — only user:manage can manage
+  // AC-69: Permission enforcement — only user:manage can manage
   // AC-69 [crit]
   // ---------------------------------------------------------------
-  describe('AT-38: Permission enforcement', () => {
+  describe('AC-69: Permission enforcement', () => {
     it('office cannot create users (has user:read, lacks user:manage)', async () => {
       const res = await authPost(officeToken, '/api/users', {
         username: 'office_cannot_create',

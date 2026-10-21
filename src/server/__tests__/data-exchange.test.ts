@@ -1045,7 +1045,7 @@ describe('Unified Data Exchange', () => {
     // collides on users.id. Override is the right semantic for a
     // self-roundtrip (wipe + replace with the snapshot). A fuller
     // roundtrip pinning every v3 slot lives in
-    // `data-exchange-import-expanded.test.ts` (AT-77 analog).
+    // `data-exchange-import-expanded.test.ts` (AC-141 analog).
     it('exports → imports → re-exports without drift (exported_at + lastLoginAt excluded)', async () => {
       const e1 = (await exportEnvelope()) as unknown as ExportEnvelope;
 
@@ -1081,11 +1081,11 @@ describe('Unified Data Exchange', () => {
   // ---------------------------------------------------------------
   // AC-160: restore confirmation phrase gate
   // Server-authoritative check on override into a non-empty DB.
-  // AT-82 pins enforcement (missing, case-wrong, trim, happy path).
-  // AT-83 pins the two exempt paths (dry-run, empty target).
+  // AC-160 pins enforcement (missing, case-wrong, trim, happy path).
+  // AC-160 pins the two exempt paths (dry-run, empty target).
   // ---------------------------------------------------------------
   describe('AC-160: restore confirmation phrase gate', () => {
-    // AT-82 — missing phrase: override into non-empty DB without a
+    // AC-160 — missing phrase: override into non-empty DB without a
     // `confirmation_phrase` rejects with 422 RESTORE_CONFIRMATION_MISMATCH
     // and leaves the seed untouched.
     it('rejects override into non-empty DB when confirmation_phrase is missing', async () => {
@@ -1106,7 +1106,7 @@ describe('Unified Data Exchange', () => {
       expect(post.projects.length).toBe(baseline.projects.length);
     });
 
-    // AT-82 — case sensitivity: a phrase that differs only in case is
+    // AC-160 — case sensitivity: a phrase that differs only in case is
     // rejected. The value is wrapped in whitespace so a permissive
     // implementation that trimmed but ignored case would still fail this
     // test — the assertion isolates "case" from "trim".
@@ -1127,7 +1127,7 @@ describe('Unified Data Exchange', () => {
       expect(post.customers.length).toBe(baseline.customers.length);
     });
 
-    // AT-82 — happy path: matching phrase commits the atomic wipe+restore.
+    // AC-160 — happy path: matching phrase commits the atomic wipe+restore.
     // Issue #230: the override wipes users — use a direct-DB assertion.
     it('accepts override with a matching confirmation_phrase', async () => {
       const env = buildOverrideEnvelope();
@@ -1148,7 +1148,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AT-82 — trim: leading/trailing whitespace around the phrase is tolerated.
+    // AC-160 — trim: leading/trailing whitespace around the phrase is tolerated.
     it('accepts override when confirmation_phrase has surrounding whitespace', async () => {
       const env = buildOverrideEnvelope();
       try {
@@ -1163,7 +1163,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AT-83 — dry-run exempt: dry-run against a non-empty DB without a
+    // AC-160 — dry-run exempt: dry-run against a non-empty DB without a
     // phrase returns the preview (no writes, no enforcement).
     it('accepts dry_run without confirmation_phrase on non-empty DB', async () => {
       const env = buildOverrideEnvelope();
@@ -1175,7 +1175,7 @@ describe('Unified Data Exchange', () => {
       expect(preview.target_non_empty).toBe(true);
     });
 
-    // AT-83 — empty-target exempt: override into an empty DB succeeds
+    // AC-160 — empty-target exempt: override into an empty DB succeeds
     // without a phrase (there is nothing to wipe). Issue #230: even
     // an empty-target override wipes users (TRUNCATE users CASCADE
     // sweeps every session), so the post-call assertion uses a direct
@@ -1210,9 +1210,9 @@ describe('Unified Data Exchange', () => {
   // the commit path rejects with 422 `MISSING_USER_REFS`; the dry-run
   // surfaces it alongside intra-envelope issues.
   //
-  // AT-84 pins AC-387 (commit-path rejection + `details` shape).
-  // AT-85 pins AC-388 (dry-run surfaces both classes together).
-  // AT-86 pins AC-389 (commit-path ordering + single-code guarantee).
+  // AC-387: commit-path rejection + `details` shape.
+  // AC-388: dry-run surfaces both classes together.
+  // AC-389: commit-path ordering + single-code guarantee.
   //
   // Two ghost UUIDs (`GHOST_USER_A`, `GHOST_USER_B`) are valid UUIDs
   // absent from the seed — any reference to them is, by construction,
@@ -1267,7 +1267,7 @@ describe('Unified Data Exchange', () => {
       };
     }
 
-    // AT-84 — commit path. Envelope is intra-consistent (projects point
+    // AC-387 — commit path. Envelope is intra-consistent (projects point
     // at envelope customers, assignments point at envelope projects) but
     // the user-id fields reference GHOST_USER_A and GHOST_USER_B — ids
     // that do NOT exist in `users`. Must return 422 MISSING_USER_REFS.
@@ -1298,7 +1298,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AT-84 — `details.missingUserIds` is deduplicated. Envelope references
+    // AC-387 — `details.missingUserIds` is deduplicated. Envelope references
     // GHOST_USER_A at four distinct sites and GHOST_USER_B at one; the
     // deduplicated list must have exactly two entries, regardless of order.
     it('deduplicates missingUserIds across repeat references', async () => {
@@ -1328,7 +1328,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AT-84 — `details.references` carries one entry per offending site
+    // AC-387 — `details.references` carries one entry per offending site
     // and duplicate user-ids across distinct paths produce separate
     // entries. Four references to GHOST_USER_A mapped to four distinct
     // paths must yield four entries whose paths are all distinct.
@@ -1372,7 +1372,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AT-84 — null / missing audit-field values MUST NOT trigger the
+    // AC-387 — null / missing audit-field values MUST NOT trigger the
     // check. An envelope that mixes a ghost-user reference with a row
     // whose audit fields are null must produce MISSING_USER_REFS (the
     // ghost case) while leaving no `references[]` entry for the null-
@@ -1436,7 +1436,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AT-84 — no writes on rejection. Full before/after row-count diff.
+    // AC-387 — no writes on rejection. Full before/after row-count diff.
     it('performs no writes when rejecting MISSING_USER_REFS', async () => {
       await wipeBusinessData();
       try {
@@ -1462,7 +1462,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AT-85 — dry-run surfaces BOTH classes of issue.
+    // AC-388 — dry-run surfaces BOTH classes of issue.
     // The envelope is intra-inconsistent (`projects[0].customerId` points
     // at a UUID not present in envelope.customers) AND carries a
     // missing-user reference. On `?dry_run=true`, the preview returns 200
@@ -1510,7 +1510,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AT-86 — commit-path ordering and single-code guarantee. Folded
+    // AC-389 — commit-path ordering and single-code guarantee. Folded
     // into a single test so the follow-up assertion (intra-consistent
     // envelope with a ghost reference returns MISSING_USER_REFS) fails
     // today — otherwise the "dual-class returns VALIDATION_ERROR only"
@@ -1577,7 +1577,7 @@ describe('Unified Data Exchange', () => {
   // describe (including the dry_run × override `it.each` matrix and the
   // "proceeds normally without the key" arm) was removed. The "no
   // attachment rows are restored" invariant is covered by AC-254 below
-  // (post-override truncate count is 0) and the AT-77 roundtrip.
+  // (post-override truncate count is 0) and the AC-141 roundtrip.
   // ---------------------------------------------------------------
 
   // ---------------------------------------------------------------

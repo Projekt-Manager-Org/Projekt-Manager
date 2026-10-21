@@ -12,19 +12,19 @@
  *   GET    /api/invoices/:id/pdf               — download rendered PDF
  *
  * AC coverage in this file:
- *   - AC-285 / AT-109: POST creates a draft with documented defaults;
+ *   - AC-285: POST creates a draft with documented defaults;
  *                      permission matrix on POST; archived-project 404.
- *   - AC-286 / AT-110: PATCH on draft updates and re-derives totals;
+ *   - AC-286: PATCH on draft updates and re-derives totals;
  *                      PATCH on issued/cancelled → INVOICE_FROZEN;
  *                      DELETE on draft removes; DELETE on non-draft frozen.
- *   - AC-297 / AT-119 partial: permission matrix concentrated here —
+ *   - AC-297 / AC-298 partial: permission matrix concentrated here —
  *                      walks every role × write/read endpoint. Per the
  *                      task brief, the matrix is centralised here +
  *                      `company-profile.test.ts`, not duplicated in the
  *                      issue / cancel / cascade files.
- *   - AC-298 / AT-119: worker exclusion via repository-predicate scope —
+ *   - AC-298: worker exclusion via repository-predicate scope —
  *                      empty list, 403 on existing get, 404 on unknown.
- *   - AC-299 / AT-120: download PDF — issued / cancelled / draft / worker
+ *   - AC-299: download PDF — issued / cancelled / draft / worker
  *                      arms.
  *
  * Pre-impl red state: routes do not exist. Fastify returns 404
@@ -63,7 +63,7 @@ interface Project {
  * permits a successful invoice issue per AC-289. The seed places three
  * such projects per `src/server/seed/business.ts`, so picking the first
  * non-`deleted` row is robust to ordering changes. `skipIds` lets the
- * AT-120 PDF arms claim three distinct projects in turn — each issuance
+ * AC-299 PDF arms claim three distinct projects in turn — each issuance
  * flips its project to `abgerechnet`, so consecutive calls need fresh
  * slots.
  */
@@ -267,7 +267,7 @@ async function ensureCompanyProfileComplete(ownerToken: string): Promise<void> {
  * WHY this exists: `seedIssuedInvoice` writes the row directly via SQL
  * and pre-dates the issuance service, so it leaves
  * `rendered_pdf_binary_descriptor_id` NULL — `InvoiceService.downloadPdf`
- * then correctly returns 404 for that row. The AT-120 PDF-download arms
+ * then correctly returns 404 for that row. The AC-299 PDF-download arms
  * need a row whose descriptor is wired, which only the full issue
  * pipeline produces.
  *
@@ -319,7 +319,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD),
       login(SEED_USERS.bookkeeper.username, SEED_DEFAULT_PASSWORD),
     ]);
-    // The AT-120 PDF arms drive real issuances via the production route,
+    // The AC-299 PDF arms drive real issuances via the production route,
     // which requires a complete company_profile (AC-289). The seed ships
     // the singleton empty; fill it here so the issue gate passes.
     await ensureCompanyProfileComplete(ownerToken);
@@ -331,11 +331,11 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AT-109 / AC-285 — POST /api/invoices creates a draft with documented
+  // AC-285 — POST /api/invoices creates a draft with documented
   // defaults. Permission matrix: owner / office succeed; worker /
   // bookkeeper rejected with 403; draft on archived project → 404.
   // -------------------------------------------------------------------
-  describe('AT-109 / AC-285: POST /api/invoices', () => {
+  describe('AC-285: POST /api/invoices', () => {
     it('owner creates a draft with documented defaults', async () => {
       const res = await authPost(ownerToken, '/api/invoices', {
         projectId,
@@ -375,7 +375,7 @@ describe('Invoice routes — integration (issue #109)', () => {
 
       // AC-285: "produces one `audit_log` row via `mutate()` with
       // `entityType = 'invoice'`, `action = 'create'`, ancestor
-      // `('project', projectId)`". Mirrors the AT-110 DELETE audit
+      // `('project', projectId)`". Mirrors the AC-286 DELETE audit
       // pattern below — without this assertion an impl that skips
       // audit on POST would pass green.
       const { db, pool } = createDatabase();
@@ -510,11 +510,11 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AT-110 / AC-286 — PATCH + DELETE freeze rules.
+  // AC-286 — PATCH + DELETE freeze rules.
   // PATCH on draft re-derives totals; PATCH on issued → 422 INVOICE_FROZEN.
   // DELETE on draft hard-deletes; DELETE on non-draft → 422 INVOICE_FROZEN.
   // -------------------------------------------------------------------
-  describe('AT-110 / AC-286: PATCH and DELETE freeze rules', () => {
+  describe('AC-286: PATCH and DELETE freeze rules', () => {
     it('PATCH on a draft updates fields and re-derives totals from lines + taxMode', async () => {
       const draftId = await seedDraftInvoice(projectId);
 
@@ -674,13 +674,13 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AT-119 / AC-298 — Worker scope: empty list, 403 on existing get,
+  // AC-298 — Worker scope: empty list, 403 on existing get,
   // 404 on unknown id. The worker scope predicate (ADR-0019) returns
   // the empty set for the worker role on the invoice repository, so
   // GET /api/invoices returns 0 rows regardless of `project_workers`
   // assignments.
   // -------------------------------------------------------------------
-  describe('AT-119 / AC-298: worker exclusion via repository-predicate scope', () => {
+  describe('AC-298: worker exclusion via repository-predicate scope', () => {
     it('worker GET /api/invoices returns an empty list regardless of project assignments', async () => {
       // Seed a draft so the list is non-empty for owner/office; the
       // worker filter must still produce zero results.
@@ -712,12 +712,12 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AT-120 / AC-299 — GET /api/invoices/:id/pdf
+  // AC-299 — GET /api/invoices/:id/pdf
   // Status: issued | cancelled → bytes (or presigned-GET + DEK wrapper).
   //        draft → 409 INVOICE_NOT_ISSUED.
   //        worker → 403 NOT_PERMITTED (covered by AC-298).
   // -------------------------------------------------------------------
-  describe('AT-120 / AC-299: GET /api/invoices/:id/pdf', () => {
+  describe('AC-299: GET /api/invoices/:id/pdf', () => {
     // Each PDF-download arm that needs real rendered bytes drives a
     // full issuance via `issueViaApi`, which flips its project to
     // `abgerechnet`. The seed ships 3 `rechnung_faellig` projects
@@ -779,11 +779,11 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AT-119 / AC-297 — Authenticated/unauthenticated arm of the
+  // AC-298 / AC-297 — Authenticated/unauthenticated arm of the
   // permission matrix. Concentrated here per the task brief; sibling
   // files reference this coverage conceptually rather than duplicate.
   // -------------------------------------------------------------------
-  describe('AT-119 / AC-297: authentication + permission matrix', () => {
+  describe('AC-298 / AC-297: authentication + permission matrix', () => {
     it('unauthenticated GET /api/invoices → 401', async () => {
       const res = await authGet('', '/api/invoices');
       expect(res.statusCode).toBe(401);

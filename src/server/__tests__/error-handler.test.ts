@@ -1,5 +1,5 @@
 /**
- * AC-247 / AT-108 — Global error handler 4xx pass-through.
+ * AC-247 — Global error handler 4xx pass-through.
  *
  * Verifies that the API server's `setErrorHandler` and `setNotFoundHandler`
  * honor the HTTP statusCode native to a 4xx-class failure rather than
@@ -46,7 +46,7 @@ const SCHEMA_X_INTEGER = {
 let app: FastifyInstance;
 let errorSpy: ReturnType<typeof vi.spyOn>;
 
-describe('AC-247 / AT-108 — Global error handler 4xx pass-through', () => {
+describe('AC-247 — Global error handler 4xx pass-through', () => {
   beforeAll(async () => {
     app = buildApp({ logger: false, rateLimit: false });
     // buildApp leaves the not-found handler to the composer (start.ts
@@ -197,7 +197,7 @@ describe('AC-247 / AT-108 — Global error handler 4xx pass-through', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-108, `AppError` branch. Its own app because the assertion is on
+// AC-247, `AppError` branch. Its own app because the assertion is on
 // `request.log` — a pino child of `app.log`, whose bound methods a
 // `vi.spyOn(app.log, 'error')` never sees. Capturing the stream reads
 // what actually reaches a log sink, which is the property under test.
@@ -205,7 +205,7 @@ describe('AC-247 / AT-108 — Global error handler 4xx pass-through', () => {
 // The branch returns before the 5xx fallback, so it carries its own
 // logging decision — the gap a 500 with its own code fell through.
 // ---------------------------------------------------------------------
-describe('AT-108 — an AppError carrying a 5xx logs at the operational error level', () => {
+describe('AC-247 — an AppError carrying a 5xx logs at the operational error level', () => {
   async function inject(url: string, handler: () => Promise<never>) {
     const lines: string[] = [];
     const probe = Fastify({

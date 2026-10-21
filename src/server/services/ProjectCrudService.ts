@@ -435,7 +435,7 @@ export class ProjectCrudService {
    * only `assignedWorkerIds` without touching other fields, NO
    * `update` audit row is emitted for the project itself; only the
    * `project_worker` audit rows land. This matches the grain pinned
-   * in AT-89 (count(project_worker audit rows) == count of changes).
+   * in AC-177 (count(project_worker audit rows) == count of changes).
    */
   async updateProject(
     id: string,

@@ -2,7 +2,7 @@
  * API integration tests — user hard-delete against invoice references
  * (issue #531).
  *
- * AT-155 / AC-385: `DELETE /api/users/:id` is rejected with
+ * AC-385: `DELETE /api/users/:id` is rejected with
  * `409 USER_HAS_INVOICES` when an issued or cancelled invoice
  * references the user as `created_by` or `updated_by`; the user and
  * invoice rows stay unchanged. A user referenced only by a draft is
@@ -88,7 +88,7 @@ async function userRow(id: string): Promise<Record<string, unknown> | undefined>
   return (res.rows[0] as { row: Record<string, unknown> } | undefined)?.row;
 }
 
-describe('AT-155 / AC-385: DELETE /api/users/:id against invoice references', () => {
+describe('AC-385: DELETE /api/users/:id against invoice references', () => {
   beforeAll(async () => {
     await startApp();
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);

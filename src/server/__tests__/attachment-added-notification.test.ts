@@ -27,20 +27,20 @@
  * Each arm therefore fails — that is the intended TDD signal.
  *
  * Observation surface: the publisher's `onEventDispatched(handler)` —
- * the same surface AT-100 / AT-103 use in `notification-publisher.test.ts`.
+ * the same surface AC-192 / AC-195 use in `notification-publisher.test.ts`.
  * Observations are partitioned by the triggering `attachment:add` audit
  * id (resolved via SQL); array membership alone is not a safe shortcut
  * because sibling arms in this run also produce dispatch entries.
  *
  * NOT re-pinned here (would be T-REDU):
- *   - Mute behaviour (AC-195) is covered generically by AT-103 in
+ *   - Mute behaviour (AC-195) is covered generically by the AC-195 block in
  *     `notification-publisher.test.ts`. Mute routes through the same
  *     event-class-agnostic `filterUnmutedUserIds` step regardless of
  *     event class, so re-asserting it for `project.attachment_added`
- *     would duplicate AT-103's coverage.
+ *     would duplicate AC-195's coverage.
  *   - Assigned-worker recipient RESOLUTION (union / dedupe /
  *     `includeAssignedWorkers` expansion) is covered generically by
- *     AT-100. Arm 2 below pins only that the new class is ADMITTED into
+ *     AC-192. Arm 2 below pins only that the new class is ADMITTED into
  *     `PROJECT_SCOPED_EVENT_CLASSES` at rule-create validation — not the
  *     resolution mechanics.
  */
@@ -155,7 +155,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
   /**
    * Resolve the `audit_log.id` of the latest `attachment:add` row for an
    * attachment. Used to partition publisher observations by the specific
-   * event the test drove (per AC-316 / AT-100 the row is the dispatch
+   * event the test drove (per AC-316 / AC-192 the row is the dispatch
    * trigger). Returns null when no such row exists (the abandoned-upload
    * arm relies on this).
    */
@@ -291,7 +291,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
   // validator (AC-190 clause (c) rejects the flag ONLY for the system
   // classes). At step-3 the class is unknown → clause (a) fires first →
   // 422, so the 201 expectation fails. Resolution mechanics are NOT
-  // re-tested here (AT-100 covers them generically — T-REDU).
+  // re-tested here (AC-192 covers them generically — T-REDU).
   // -------------------------------------------------------------------
   it('project.attachment_added is project-scoped: a rule may set includeAssignedWorkers', async () => {
     const ruleRes = await authPost(ownerToken, '/api/notification-rules', {

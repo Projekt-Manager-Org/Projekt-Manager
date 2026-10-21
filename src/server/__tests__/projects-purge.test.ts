@@ -1,7 +1,6 @@
 /**
  * API integration tests: Project hard-delete (purge) operation.
  *
- * Tests AT-79, AT-80, AT-81 from the test specification (verification.md §16.2).
  * Pins AC-155, AC-156, AC-157, AC-158 from §15.12.
  *
  * The purge endpoint is a narrower, strictly more destructive counterpart to
@@ -100,10 +99,10 @@ describe('Project Purge (hard-delete)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-79: Purge an archived project → 204
+  // AC-155: Purge an archived project → 204
   // AC-155 [crit]
   // ---------------------------------------------------------------
-  describe('AT-79: Hard-delete an archived project', () => {
+  describe('AC-155: Hard-delete an archived project', () => {
     it('removes the row; subsequent get returns 404 and list (includeArchived) omits it', async () => {
       // Pick two workers to exercise the project_workers cascade.
       const ownerMe = await authGet(ownerToken, '/api/auth/me');
@@ -128,10 +127,10 @@ describe('Project Purge (hard-delete)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-80: Purge on a non-archived project → 409 Conflict
+  // AC-156: Purge on a non-archived project → 409 Conflict
   // AC-156 [crit]
   // ---------------------------------------------------------------
-  describe('AT-80: Reject purge on non-archived project', () => {
+  describe('AC-156: Reject purge on non-archived project', () => {
     it('returns 409 CONFLICT with a German message directing to archive first', async () => {
       const projectId = await createActiveProject();
 
@@ -154,9 +153,9 @@ describe('Project Purge (hard-delete)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-81: Permission (AC-157) + not-found (AC-158)
+  // Permission (AC-157) + not-found (AC-158)
   // ---------------------------------------------------------------
-  describe('AT-81: Permission and not-found contracts', () => {
+  describe('AC-157, AC-158: Permission and not-found contracts', () => {
     describe('permission gate (AC-157)', () => {
       it('rejects callers without project:purge — worker, bookkeeper, office; only owner succeeds', async () => {
         const projectId = await createArchivedProject();

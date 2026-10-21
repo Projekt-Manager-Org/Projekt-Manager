@@ -26,7 +26,7 @@ function readBudget(): number {
 
 /**
  * Budget in milliseconds between the triggering domain commit and the
- * moment the push transport is invoked. AT-102 observes this
- * value.
+ * moment the push transport is invoked. `notification-publisher.test.ts`
+ * observes this value.
  */
 export const PUSH_DISPATCH_LATENCY_BUDGET_MS: number = readBudget();

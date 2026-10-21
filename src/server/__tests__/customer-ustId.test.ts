@@ -1,6 +1,6 @@
 /**
  * API integration tests — customer ustId field + invoice-draft pre-fill
- * (issue #109, AT-126 / AC-306).
+ * (issue #109 / AC-306).
  *
  * Two cross-cutting concerns:
  *
@@ -15,7 +15,7 @@
  *      explicit `recipient.ustId` in the body.
  *
  * AC coverage:
- *   - AT-126 / AC-306: full field surface — POST accepts, PATCH updates,
+ *   - AC-306: full field surface — POST accepts, PATCH updates,
  *     null clears, GET round-trips; idempotent-replay rejects on divergence
  *     with IDEMPOTENCY_CONFLICT; new draft pre-fills from customer.
  *
@@ -51,7 +51,7 @@ async function rechnungFaelligProjectId(ownerToken: string): Promise<string> {
   return rows[0]!.id;
 }
 
-describe('AT-126 / AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', () => {
+describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', () => {
   let ownerToken: string;
 
   beforeAll(async () => {

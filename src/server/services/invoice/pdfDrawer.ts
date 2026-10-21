@@ -1,6 +1,6 @@
 /**
  * Human-readable PDF body for ZUGFeRD EN 16931 invoices (ADR-0026
- * §E-invoice format, AC-292, AT-116).
+ * §E-invoice format, AC-292).
  *
  * Layout: a single A4 page with header (issuer), recipient block,
  * line-item table, totals block, and a footer carrying the statutory
@@ -25,7 +25,7 @@
  *
  * The two `extractFacturXml` and `extractPdfText` paths in
  * `invoices-issue.test.ts` operate on the bytes returned here without
- * touching veraPDF, so AT-116 / AT-117 are satisfied by the
+ * touching veraPDF, so AC-292 / AC-293 are satisfied by the
  * structural shape; the certified-PDF/A-3 gate is future work.
  */
 
@@ -692,7 +692,7 @@ export async function drawInvoicePdf(
   );
   cursor.y -= 24;
 
-  // ----- Tax-mode boilerplate (the AT-116 anchor) -----
+  // ----- Tax-mode boilerplate (the AC-292 anchor) -----
   const boilerplate = taxModeBoilerplate(invoice.taxMode);
   if (boilerplate) {
     ensureSpace(doc, cursor, font, pageNumberCount, 30);

@@ -6,8 +6,6 @@
  * DB-level CHECK constraints, FK integrity on audit columns, and atomic
  * project creation. Also pins the users.theme_preference CHECK constraint
  * (AC-115 defense in depth — see data-model.md §5.3, §5.7).
- *
- * AT-42 to AT-49, AT-57 (verification.md §16.2).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -35,7 +33,7 @@ const migrationsFolder = path.resolve(__dirname, '../db/migrations');
 
 // ---------------------------------------------------------------
 // §15.18 AC-95: Soft-deleted projects are immutable via API
-// AT-42, AT-43, AT-44
+// AC-95
 // ---------------------------------------------------------------
 describe('AC-95: Mutations on soft-deleted projects', () => {
   let token: string;
@@ -61,7 +59,7 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     // row as a regular 200 with `deleted: true` so the UI can render a
     // read-only preview. AC-95 still holds — subsequent mutation attempts
     // continue to return 404 via the mutation-path repository (verified
-    // by AT-42..AT-44 below).
+    // by the transition / date / PATCH tests below).
     const after = await authGet(token, `/api/projects/${deletedProjectId}`);
     expect(after.statusCode).toBe(200);
     expect(after.json().deleted).toBe(true);
@@ -71,7 +69,7 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     await stopApp();
   });
 
-  it('AT-42: transition on a soft-deleted project returns 404', async () => {
+  it('AC-95: transition on a soft-deleted project returns 404', async () => {
     const res = await authPost(token, `/api/projects/${deletedProjectId}/transition/forward`, {
       expectedStatus: 'angebot',
     });
@@ -79,7 +77,7 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
-  it('AT-42: backward transition on a soft-deleted project returns 404', async () => {
+  it('AC-95: backward transition on a soft-deleted project returns 404', async () => {
     const res = await authPost(token, `/api/projects/${deletedProjectId}/transition/backward`, {
       expectedStatus: 'angebot',
     });
@@ -87,7 +85,7 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
-  it('AT-43: date update on a soft-deleted project returns 404', async () => {
+  it('AC-95: date update on a soft-deleted project returns 404', async () => {
     const res = await authPatch(token, `/api/projects/${deletedProjectId}/dates`, {
       plannedStart: '2026-09-01',
       plannedEnd: '2026-09-15',
@@ -96,7 +94,7 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
-  it('AT-44: PATCH update on a soft-deleted project returns 404', async () => {
+  it('AC-95: PATCH update on a soft-deleted project returns 404', async () => {
     const res = await authPatch(token, `/api/projects/${deletedProjectId}`, {
       title: 'Should Not Work',
     });
@@ -107,7 +105,7 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
 
 // ---------------------------------------------------------------
 // §15.18 AC-94: Concurrent state transitions are rejected as conflict
-// AT-49
+// AC-94
 // ---------------------------------------------------------------
 describe('AC-94: Concurrent state transitions', () => {
   let token: string;
@@ -121,7 +119,7 @@ describe('AC-94: Concurrent state transitions', () => {
     await stopApp();
   });
 
-  it('AT-49: two concurrent forward transitions — one succeeds, one is rejected as conflict', async () => {
+  it('AC-94: two concurrent forward transitions — one succeeds, one is rejected as conflict', async () => {
     // Pick a project in a non-terminal, non-boundary state.
     // Seed (data-model.md §7.1) provides 2 projects in 'beauftragt'.
     const listRes = await authGet(token, '/api/projects');
@@ -164,7 +162,7 @@ describe('AC-94: Concurrent state transitions', () => {
 
 // ---------------------------------------------------------------
 // §15.18 AC-96, AC-97: DB-level CHECK constraints
-// AT-45, AT-46
+// AC-96, AC-97
 // ---------------------------------------------------------------
 describe('AC-96/AC-97: DB CHECK constraints', () => {
   let db: Database;
@@ -192,7 +190,7 @@ describe('AC-96/AC-97: DB CHECK constraints', () => {
     await pool.end();
   });
 
-  it('AT-45: rejects INSERT with invalid status value', async () => {
+  it('AC-96: rejects INSERT with invalid status value', async () => {
     let pgError: { code?: string; constraint?: string } | null = null;
     try {
       await pool.query(
@@ -209,7 +207,7 @@ describe('AC-96/AC-97: DB CHECK constraints', () => {
     expect(pgError!.constraint).toBe('projects_valid_status');
   });
 
-  it('AT-45: accepts all valid status values', async () => {
+  it('AC-96: accepts all valid status values', async () => {
     const validStates = [
       'anfrage',
       'angebot',
@@ -231,7 +229,7 @@ describe('AC-96/AC-97: DB CHECK constraints', () => {
     }
   });
 
-  it('AT-46: rejects INSERT where plannedEnd < plannedStart', async () => {
+  it('AC-97: rejects INSERT where plannedEnd < plannedStart', async () => {
     let pgError: { code?: string; constraint?: string } | null = null;
     try {
       await pool.query(
@@ -254,7 +252,7 @@ describe('AC-96/AC-97: DB CHECK constraints', () => {
     expect(pgError!.constraint).toBe('projects_end_not_before_start');
   });
 
-  it('AT-46: accepts equal start and end dates', async () => {
+  it('AC-97: accepts equal start and end dates', async () => {
     await db.insert(projects).values({
       number: 'CHK-DATE-EQ',
       title: 'same day project',
@@ -267,7 +265,7 @@ describe('AC-96/AC-97: DB CHECK constraints', () => {
 
 // ---------------------------------------------------------------
 // §15.18 AC-98: Customer audit FK SET NULL on user delete
-// AT-47
+// AC-98
 // ---------------------------------------------------------------
 describe('AC-98: Customer audit FK cascade', () => {
   let token: string;
@@ -281,7 +279,7 @@ describe('AC-98: Customer audit FK cascade', () => {
     await stopApp();
   });
 
-  it('AT-47: deleting a user nullifies createdBy/updatedBy on customers', async () => {
+  it('AC-98: deleting a user nullifies createdBy/updatedBy on customers', async () => {
     // Create a temporary user
     const createUserRes = await authPost(token, '/api/users', {
       username: 'audit_fk_test_user',
@@ -396,7 +394,7 @@ describe('AC-98 parity: audit_log.actor_id FK cascade on user delete', () => {
 
 // ---------------------------------------------------------------
 // §15.18 AC-99: Atomic project creation
-// AT-48
+// AC-99
 // ---------------------------------------------------------------
 describe('AC-99: Atomic project creation', () => {
   let token: string;
@@ -410,7 +408,7 @@ describe('AC-99: Atomic project creation', () => {
     await stopApp();
   });
 
-  it('AT-48: invalid worker ID rolls back entire project creation', async () => {
+  it('AC-99: invalid worker ID rolls back entire project creation', async () => {
     const customerRes = await authGet(token, '/api/customers');
     const custId = customerRes.json().customers[0].id;
     const fakeWorkerId = '00000000-0000-0000-0000-000000000099';
@@ -436,14 +434,14 @@ describe('AC-99: Atomic project creation', () => {
 
 // ---------------------------------------------------------------
 // §15.21 AC-115: users.theme_preference CHECK constraint
-// AT-57
+// AC-115
 //
 // Defense in depth — the API validator already rejects an invalid
-// themePreference (covered by AT-60). But the DB is the last line:
+// themePreference (covered by AC-118). But the DB is the last line:
 // migrations, seeds, `psql` sessions, or any future service that
 // bypasses the route layer must not be able to persist a value
 // outside the allowed set. This test pins the CHECK constraint
-// presence the same way AT-45 pins projects_valid_status.
+// presence the same way AC-96 pins projects_valid_status.
 // ---------------------------------------------------------------
 describe('AC-115: users.theme_preference CHECK constraint', () => {
   let db: Database;
@@ -467,10 +465,10 @@ describe('AC-115: users.theme_preference CHECK constraint', () => {
     await pool.end();
   });
 
-  it("AT-57: rejects direct INSERT of a user with themePreference='ultraviolet'", async () => {
+  it("AC-115: rejects direct INSERT of a user with themePreference='ultraviolet'", async () => {
     // Raw SQL so we observe the actual PG error object (the drizzle
     // `insert()` helper would still hit the constraint, but going
-    // through pool.query keeps the test symmetrical with AT-45/AT-46
+    // through pool.query keeps the test symmetrical with AC-96/AC-97
     // and makes the SQLSTATE + constraint name assertions load-bearing.
     let pgError: { code?: string; constraint?: string } | null = null;
     try {
@@ -498,7 +496,7 @@ describe('AC-115: users.theme_preference CHECK constraint', () => {
     expect(pgError!.constraint).toBe('users_valid_theme_preference');
   });
 
-  it('AT-57: accepts all three allowed theme_preference values', async () => {
+  it('AC-115: accepts all three allowed theme_preference values', async () => {
     const validValues = ['light', 'dark', 'system'];
     for (let i = 0; i < validValues.length; i++) {
       await pool.query(

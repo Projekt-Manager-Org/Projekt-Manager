@@ -1,8 +1,7 @@
 /**
  * API integration tests: Project list filters.
  *
- * Tests AT-39 to AT-41 and AT-78 from the test specification (verification.md §16.2).
- * Extends the list endpoint (AT-8 in projects-list.test.ts) with filter coverage.
+ * Extends the list endpoint (projects-list.test.ts) with filter coverage.
  * Runs against a real test database via Fastify inject (no network).
  *
  * These tests are written ahead of the implementation (TDD). They define
@@ -35,9 +34,9 @@ describe('Project List Filters', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-39: Status filter
+  // AC-76: Status filter
   // ---------------------------------------------------------------
-  describe('AT-39: Filter by status', () => {
+  describe('AC-76: Filter by status', () => {
     it('returns only projects matching a single status', async () => {
       const res = await authGet(token, '/api/projects?status=rechnung_faellig');
 
@@ -100,9 +99,9 @@ describe('Project List Filters', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-40: Search parameter
+  // AC-76: Search parameter
   // ---------------------------------------------------------------
-  describe('AT-40: Search across number, title, customer name', () => {
+  describe('AC-76: Search across number, title, customer name', () => {
     it('finds projects by number substring', async () => {
       // Get a known project number from seed
       const allRes = await authGet(token, '/api/projects?limit=1');
@@ -151,9 +150,9 @@ describe('Project List Filters', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-41: hasNoDates filter
+  // AC-76: hasNoDates filter
   // ---------------------------------------------------------------
-  describe('AT-41: Filter by hasNoDates', () => {
+  describe('AC-76: Filter by hasNoDates', () => {
     it('returns only projects without planned dates', async () => {
       const res = await authGet(token, '/api/projects?hasNoDates=true');
 
@@ -404,13 +403,13 @@ describe('Project List Filters', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-78: includeArchived filter (AC-151)
+  // includeArchived filter (AC-151)
   // ---------------------------------------------------------------
   // Setup creates an archived project in `beforeAll` by creating a fresh
   // project, then soft-deleting it via DELETE /api/projects/:id (same
-  // pattern as AT-22). The leaked row is tolerated — tests only assert
+  // pattern as AC-61). The leaked row is tolerated — tests only assert
   // on rows they created or seed rows that cannot be archived.
-  describe('AT-78: Filter by includeArchived', () => {
+  describe('AC-151: Filter by includeArchived', () => {
     /** ID of the archived project used across the cases below. */
     let archivedId: string;
     /** The status the archived project carried at the time of archive. */
@@ -421,7 +420,7 @@ describe('Project List Filters', () => {
 
     beforeAll(async () => {
       // Reuse a customer from seed for the archive fixture. The list
-      // endpoint already works for active projects (covered by AT-8) so
+      // endpoint already works for active projects (covered by projects-list.test.ts) so
       // this lookup is a precondition, not a test step.
       const customerRes = await authGet(token, '/api/customers');
       const customers = customerRes.json().customers ?? customerRes.json().data;
@@ -439,7 +438,7 @@ describe('Project List Filters', () => {
     });
 
     it('excludes archived rows by default (includeArchived omitted)', async () => {
-      // Default-exclude behaviour is already covered by AT-22 for the
+      // Default-exclude behaviour is already covered by AC-61 for the
       // generic soft-delete plumbing. This case re-asserts specifically
       // for the includeArchived contract's neutral default — the archived
       // fixture must not appear without the explicit opt-in.

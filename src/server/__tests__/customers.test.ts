@@ -1,7 +1,6 @@
 /**
  * API integration tests: Customer CRUD operations.
  *
- * Tests AT-23 to AT-26 from the test specification (verification.md §16.3).
  * Runs against a real test database via Fastify inject (no network).
  *
  * These tests are written ahead of the implementation (TDD). They define
@@ -36,7 +35,7 @@ describe('Customer CRUD Operations', () => {
   let ownerToken: string;
   let workerToken: string;
 
-  /** ID of a customer created in AT-23, used by subsequent tests. */
+  /** ID of a customer created in the AC-54 test, used by subsequent tests. */
   let createdCustomerId: string;
 
   beforeAll(async () => {
@@ -50,9 +49,9 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-23: Create customer with a name → generated ID
+  // AC-54: Create customer with a name → generated ID
   // ---------------------------------------------------------------
-  describe('AT-23: Create customer', () => {
+  describe('AC-54: Create customer', () => {
     it('returns 201 with a customer object containing a generated ID', async () => {
       const res = await authPost(ownerToken, '/api/customers', {
         name: 'Familie Testmann',
@@ -131,10 +130,10 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-24: Update customer — PATCH semantics
+  // AC-55: Update customer — PATCH semantics
   // AC-55 [crit]
   // ---------------------------------------------------------------
-  describe('AT-24: Update customer (PATCH semantics)', () => {
+  describe('AC-55: Update customer (PATCH semantics)', () => {
     it('changes only the specified fields, preserves others', async () => {
       // Read before state
       const beforeRes = await authGet(ownerToken, `/api/customers/${createdCustomerId}`);
@@ -186,10 +185,10 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-25: List customers with search parameter
+  // AC-56: List customers with search parameter
   // AC-56 [crit]
   // ---------------------------------------------------------------
-  describe('AT-25: List customers', () => {
+  describe('AC-56: List customers', () => {
     it('returns all customers with pagination', async () => {
       const res = await authGet(ownerToken, '/api/customers');
 
@@ -242,10 +241,10 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-26: Get customer includes project count
+  // AC-57: Get customer includes project count
   // AC-57 [crit]
   // ---------------------------------------------------------------
-  describe('AT-26: Get single customer with project count', () => {
+  describe('AC-57: Get single customer with project count', () => {
     it('returns the full customer object and associated project count', async () => {
       const res = await authGet(ownerToken, `/api/customers/${createdCustomerId}`);
 
@@ -272,19 +271,19 @@ describe('Customer CRUD Operations', () => {
     // a customer with a mix of active + archived projects.
     it('returns archivedProjectCount reflecting soft-deleted projects', async () => {
       const createRes = await authPost(ownerToken, '/api/customers', {
-        name: 'AT-26 Counts Fixture',
+        name: 'AC-57 Counts Fixture',
       });
       const countsCustomerId = createRes.json().id as string;
 
       const activeRes = await authPost(ownerToken, '/api/projects', {
-        number: 'AT-26-ACTIVE',
+        number: 'AC-57-ACTIVE',
         title: 'Active project',
         customerId: countsCustomerId,
       });
       expect(activeRes.statusCode).toBe(201);
 
       const archivedRes = await authPost(ownerToken, '/api/projects', {
-        number: 'AT-26-ARCHIVED',
+        number: 'AC-57-ARCHIVED',
         title: 'Archived project',
         customerId: countsCustomerId,
       });

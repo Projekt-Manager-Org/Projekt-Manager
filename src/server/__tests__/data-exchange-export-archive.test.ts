@@ -6,7 +6,7 @@
  * job — archive layout + manifest" / "build and lifecycle") to `ready`,
  * downloads the staged zip, unzips it, and pins:
  *
- *   - AC-323 / AT-137 — the archive is a zip carrying `data.json` (the
+ *   - AC-323 — the archive is a zip carrying `data.json` (the
  *     AC-135 envelope; first manifest entry; no attachmentId) and
  *     `manifest.json` at root, plus every `status='ready'` attachment as
  *     PLAINTEXT under `attachments/<projektnummer>-<projekt-titel>/
@@ -17,7 +17,7 @@
  *     totalBytes === sum(sizeBytes), every files[i].sha256 === SHA-256 of
  *     the bytes at its zipPath, and the attachment plaintext byte-equals
  *     what was uploaded.
- *   - AC-325 / AT-139 — export completeness, two arms:
+ *   - AC-325 — export completeness, two arms:
  *     (a) an attachment whose wrapped DEK is corrupt (unwrap fails) FAILS
  *         the job: `error_detail` names the row, the download 409s, and no
  *         archive is served. Removing the bad row and re-running yields a
@@ -288,7 +288,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-323 / AT-137 — archive layout + server-computed manifest.
+  // AC-323 — archive layout + server-computed manifest.
   // -------------------------------------------------------------------
   describe('AC-323: archive layout + manifest', () => {
     it('carries data.json + manifest.json at root, with data.json the first manifest entry', async () => {
@@ -392,7 +392,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-325 / AT-139 — one bad row FAILS the job; no partial archive.
+  // AC-325 — one bad row FAILS the job; no partial archive.
   //
   // This arm crosses the diagonal the old coverage matrix left empty:
   // "≥1 unreadable row" × "the archive is importable". Under the previous

@@ -1,15 +1,13 @@
 /**
  * API integration tests: Authentication & session management.
  *
- * Tests AT-1 through AT-7, AT-58, AT-59, AT-60 from the test specification
- * (verification.md §16.2). Runs against a real test database via Fastify
- * inject (no network).
+ * Runs against a real test database via Fastify inject (no network).
  *
  * Seed users (from data-model.md §7.2) — referenced via SEED_USERS to
  * keep the coupling to `src/server/seed.ts` single-sourced:
  *   - owner (SEED_USERS.owner) — active, owner (admin)
  *   - office (SEED_USERS.office) — active, office
- *   - inactive (SEED_USERS.inactive) — active=false, for AT-3 / AT-7
+ *   - inactive (SEED_USERS.inactive) — active=false, for AC-65 / AC-28
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -30,7 +28,7 @@ import { validateEnvRuntime } from '../config/env.js';
 
 /**
  * Read a single users row directly from the database via a one-shot
- * pg.Client. Used by AT-7 (and only AT-7) to pin the audit columns
+ * pg.Client. Used by the AC-28 tests (and only those) to pin the audit columns
  * written by deactivateUser() — see `docs/spec/data-model.md §5.5`.
  *
  * A one-shot Client (not a long-lived Pool) is deliberate: holding a
@@ -79,9 +77,9 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-1: Login with valid credentials returns a session and user profile
+  // AC-22: Login with valid credentials returns a session and user profile
   // ---------------------------------------------------------------
-  describe('AT-1: Login with valid credentials', () => {
+  describe('AC-22: Login with valid credentials', () => {
     it('returns 200 with session cookie and user profile', async () => {
       const res = await getApp().inject({
         method: 'POST',
@@ -196,9 +194,9 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-2: Login with invalid credentials returns a generic error
+  // AC-23: Login with invalid credentials returns a generic error
   // ---------------------------------------------------------------
-  describe('AT-2: Login with invalid credentials', () => {
+  describe('AC-23: Login with invalid credentials', () => {
     it('returns 401 with INVALID_CREDENTIALS for wrong password', async () => {
       const res = await getApp().inject({
         method: 'POST',
@@ -258,10 +256,10 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-3: Login with an inactive user account returns a generic error
+  // AC-65: Login with an inactive user account returns a generic error
   // AC-28 [crit]
   // ---------------------------------------------------------------
-  describe('AT-3: Login with inactive user', () => {
+  describe('AC-65: Login with inactive user', () => {
     it('returns 401 with INVALID_CREDENTIALS (same as wrong password)', async () => {
       // Seed includes an inactive user for this test — see SEED_USERS.inactive.
       const res = await getApp().inject({
@@ -302,9 +300,9 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-4: An authenticated request with a valid session succeeds
+  // An authenticated request with a valid session succeeds
   // ---------------------------------------------------------------
-  describe('AT-4: Authenticated request with valid session', () => {
+  describe('Authenticated request with valid session', () => {
     it('GET /api/auth/me returns 200 with user profile', async () => {
       const token = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
 
@@ -347,9 +345,9 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-5: A request with an expired session returns an authentication error
+  // AC-27: A request with an expired session returns an authentication error
   // ---------------------------------------------------------------
-  describe('AT-5: Expired session', () => {
+  describe('AC-27: Expired session', () => {
     it('returns 401 with SESSION_EXPIRED', async () => {
       // 1. Log in to get a real user ID
       const setupToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
@@ -371,9 +369,9 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-6: A request with no session returns an authentication error
+  // AC-21: A request with no session returns an authentication error
   // ---------------------------------------------------------------
-  describe('AT-6: Request with no session', () => {
+  describe('AC-21: Request with no session', () => {
     it('GET /api/auth/me without session cookie returns 401', async () => {
       const res = await getApp().inject({
         method: 'GET',
@@ -406,11 +404,11 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-7: A request with a valid session token for a deactivated user
+  // AC-28: A request with a valid session token for a deactivated user
   //        returns an authentication error
   // AC-28 [crit]
   // ---------------------------------------------------------------
-  describe('AT-7: Valid session for deactivated user', () => {
+  describe('AC-28: Valid session for deactivated user', () => {
     it('returns 401 when the user has been deactivated after login', async () => {
       // 1. Log in as an active user — get a valid session token
       const validToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
@@ -519,7 +517,7 @@ describe('Authentication & Session Management', () => {
       // Observer is a worker — has project:read but not project:transition,
       // which fits the "second user just observing" shape of AC-29. Mutator
       // is the owner. Office (buero) is deliberately not used here because
-      // AT-7 in this same file deactivates it, and AC-29 runs after AT-7 —
+      // the AC-28 tests in this same file deactivate it, and AC-29 runs after them —
       // a leftover assumption that held because tests in auth.test.ts run
       // sequentially within the same Fastify app instance.
       const observerToken = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
@@ -565,7 +563,7 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-58: Self-update with a valid themePreference round-trips
+  // AC-116: Self-update with a valid themePreference round-trips
   // AC-116 [crit]
   //
   // Contract pinned here (api.md §14.2.1 + design notes):
@@ -580,10 +578,10 @@ describe('Authentication & Session Management', () => {
   // the read-back, a broken endpoint that returns the input unchanged
   // would pass the first assertion silently.
   // ---------------------------------------------------------------
-  describe('AT-58: Self-update with a valid themePreference', () => {
+  describe('AC-116: Self-update with a valid themePreference', () => {
     it("PATCH /api/auth/me with themePreference='dark' updates the user row", async () => {
       // Use worker1 — the owner is deactivated / mutated by other
-      // tests in this file (AT-7 deactivates office, AC-29 advances
+      // tests in this file (AC-28 deactivates office, AC-29 advances
       // a project via owner). worker1 is left alone by the preceding
       // blocks and has no special permissions required for self-update
       // (self-scope only, per api.md §14.2.1 design notes).
@@ -619,7 +617,7 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-59: Self-update without a valid session is rejected
+  // AC-117: Self-update without a valid session is rejected
   // AC-117 [crit]
   //
   // api.md §14.2.1 design note: "missing or invalid session →
@@ -629,7 +627,7 @@ describe('Authentication & Session Management', () => {
   // that presented a cookie which no longer validates. The distinction
   // drives different client UX (login screen vs. expiry message).
   // ---------------------------------------------------------------
-  describe('AT-59: Self-update without a valid session', () => {
+  describe('AC-117: Self-update without a valid session', () => {
     it('PATCH /api/auth/me without session cookie returns 401 UNAUTHENTICATED', async () => {
       const res = await getApp().inject({
         method: 'PATCH',
@@ -648,7 +646,7 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-60: Self-update with an invalid themePreference is rejected
+  // AC-118: Self-update with an invalid themePreference is rejected
   // AC-118 [crit]
   //
   // api.md §14.2.1 design note: "request body violating the allowed
@@ -659,10 +657,10 @@ describe('Authentication & Session Management', () => {
   //
   // HTTP status: the codebase returns 422 from validationError()
   // (errors.ts), but some paths return 400 via the fastify schema
-  // layer. Match the pattern from projects-crud.test.ts AT-19 and
+  // layer. Match the pattern from projects-crud.test.ts (non-existent customerId) and
   // pin on the range (4xx client error) + the machine-readable code.
   // ---------------------------------------------------------------
-  describe('AT-60: Self-update with an invalid themePreference', () => {
+  describe('AC-118: Self-update with an invalid themePreference', () => {
     it("PATCH /api/auth/me with themePreference='ultraviolet' returns VALIDATION_ERROR", async () => {
       const token = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
 

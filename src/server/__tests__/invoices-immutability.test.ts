@@ -1,5 +1,5 @@
 /**
- * Persistence-layer immutability for issued invoices (AT-118 / AC-294,
+ * Persistence-layer immutability for issued invoices (AC-294,
  * AC-295) and the DB-level CHECK on `invoices.number`.
  *
  * Two invariants pinned here — defense-in-depth backstops on direct DB
@@ -17,7 +17,7 @@
  *     A handful of variants probe the anchors: short suffix, lowercase
  *     prefix, two-digit year, unknown prefix.
  *
- * Pattern mirrors `data-integrity.test.ts` (AT-45 / AT-46): raw SQL
+ * Pattern mirrors `data-integrity.test.ts` (AC-96 / AC-97): raw SQL
  * inserts/updates via `pool.query`, with SQLSTATE assertion on the
  * thrown error. The AC-294 rejection arms share one issued fixture
  * row (rejected UPDATEs leave it unchanged); the arm that mutates

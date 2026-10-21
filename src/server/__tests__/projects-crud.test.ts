@@ -1,7 +1,6 @@
 /**
  * API integration tests: Project CRUD operations.
  *
- * Tests AT-17 to AT-22 from the test specification (verification.md §16.3).
  * Covers single-project create, update, and soft-delete.
  * Runs against a real test database via Fastify inject (no network).
  *
@@ -62,10 +61,10 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-17: Create project with valid fields → first workflow state
+  // AC-59: Create project with valid fields → first workflow state
   // AC-58 [crit], AC-59 [crit]
   // ---------------------------------------------------------------
-  describe('AT-17: Create project', () => {
+  describe('AC-59: Create project', () => {
     it('returns 201 with a project in the first workflow state', async () => {
       const res = await authPost(ownerToken, '/api/projects', {
         number: 'CRUD-001',
@@ -145,12 +144,12 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-18: Duplicate project number → validation error
+  // AC-62: Duplicate project number → validation error
   // AC-62 [crit]
   // ---------------------------------------------------------------
-  describe('AT-18: Duplicate project number', () => {
+  describe('AC-62: Duplicate project number', () => {
     it('rejects creation with an already-used number', async () => {
-      // CRUD-001 was created in AT-17
+      // CRUD-001 was created in the AC-59 test
       const res = await authPost(ownerToken, '/api/projects', {
         number: 'CRUD-001',
         title: 'Duplicate Number Attempt',
@@ -167,9 +166,9 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-19: Non-existent customerId → validation error
+  // Non-existent customerId → validation error
   // ---------------------------------------------------------------
-  describe('AT-19: Non-existent customerId', () => {
+  describe('Non-existent customerId', () => {
     it('rejects creation with a customerId that does not exist', async () => {
       const res = await authPost(ownerToken, '/api/projects', {
         number: 'CRUD-NOCUST',
@@ -187,12 +186,12 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-20: Update project changes specified fields, preserves others
+  // AC-60: Update project changes specified fields, preserves others
   // AC-60 [crit]
   // ---------------------------------------------------------------
-  describe('AT-20: Update project', () => {
+  describe('AC-60: Update project', () => {
     it('changes the specified fields and preserves untouched ones', async () => {
-      // Read the project created in AT-17
+      // Read the project created in the AC-59 test
       const beforeRes = await authGet(ownerToken, `/api/projects/${createdProjectId}`);
       expect(beforeRes.statusCode).toBe(200);
       const before = beforeRes.json();
@@ -223,10 +222,10 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-21: Update rejects status and number changes
+  // AC-60: Update rejects status and number changes
   // AC-60 [crit]
   // ---------------------------------------------------------------
-  describe('AT-21: Update rejects status/number', () => {
+  describe('AC-60: Update rejects status/number', () => {
     it('does not accept status changes via update', async () => {
       await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
         status: 'erledigt',
@@ -250,10 +249,10 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-22: Soft-delete project
+  // AC-61: Soft-delete project
   // AC-61 [crit]
   // ---------------------------------------------------------------
-  describe('AT-22: Delete project (soft-delete)', () => {
+  describe('AC-61: Delete project (soft-delete)', () => {
     /** A project created specifically for deletion testing. */
     let deleteTargetId: string;
 

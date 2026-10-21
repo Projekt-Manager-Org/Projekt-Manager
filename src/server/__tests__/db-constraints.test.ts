@@ -2,7 +2,7 @@
  * DB-level CHECK constraint tests.
  *
  * Belt and braces — the API layer already rejects invalid planned-date
- * combinations (see projects-dates.test.ts for the AT-12/AT-13 coverage).
+ * combinations (see projects-dates.test.ts).
  * But direct DB writes from migrations, seed scripts, or manual SQL bypass
  * the route layer entirely. These tests verify that the
  * `projects_end_requires_start` CHECK constraint is actually enforced by the

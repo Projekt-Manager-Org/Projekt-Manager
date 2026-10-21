@@ -1,8 +1,7 @@
 /**
  * Push subscription integration tests — Iteration 8, issue #112.
  *
- * Pins AT-104 / AT-105 from `docs/spec/verification.md §16.2` which
- * in turn pin AC-196 / AC-197 in §15.24.
+ * Pins AC-196 / AC-197 in §15.24.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -13,9 +12,9 @@ import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js
 import { createDatabase } from '../db/connection.js';
 
 // ---------------------------------------------------------------------
-// AT-104 / AC-196 — Subscribe / unsubscribe semantics
+// AC-196 — Subscribe / unsubscribe semantics
 // ---------------------------------------------------------------------
-describe('AT-104: push subscription subscribe + unsubscribe (AC-196)', () => {
+describe('Push subscription subscribe + unsubscribe (AC-196)', () => {
   let ownerToken: string;
   let ownerUserId: string;
 
@@ -127,9 +126,9 @@ describe('AT-104: push subscription subscribe + unsubscribe (AC-196)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-105 / AC-197 — Cascade on user hard-delete / deactivate retention
+// AC-197 — Cascade on user hard-delete / deactivate retention
 // ---------------------------------------------------------------------
-describe('AT-105: user lifecycle interacts with push_subscriptions (AC-197)', () => {
+describe('User lifecycle interacts with push_subscriptions (AC-197)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -158,7 +157,7 @@ describe('AT-105: user lifecycle interacts with push_subscriptions (AC-197)', ()
     // without touching seeded accounts.
     const createUser = await authPost(ownerToken, '/api/users', {
       username: `at105_casc_${Date.now().toString(36)}`,
-      displayName: 'AT-105 cascade target',
+      displayName: 'AC-197 cascade target',
       password: 'SecurePass2026!',
       roles: ['worker'],
     });
@@ -190,7 +189,7 @@ describe('AT-105: user lifecycle interacts with push_subscriptions (AC-197)', ()
     // Create a dedicated user and register a subscription.
     const createUser = await authPost(ownerToken, '/api/users', {
       username: `at105_deact_${Date.now().toString(36)}`,
-      displayName: 'AT-105 deactivate target',
+      displayName: 'AC-197 deactivate target',
       password: 'SecurePass2026!',
       roles: ['worker'],
     });

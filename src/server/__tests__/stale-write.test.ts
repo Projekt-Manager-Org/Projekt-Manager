@@ -3,17 +3,17 @@
  * (data-model.md §6.4, api.md §14.2.2 / §14.2.5 / §14.2.14 / §14.2.15).
  *
  * AC coverage in this file:
- *   - AT-149 / AC-375: every versioned edit rejects a stale `expectedVersion`
+ *   - AC-375: every versioned edit rejects a stale `expectedVersion`
  *     with `409 VERSION_CONFLICT`; row, audit log and SSE stay untouched.
  *     A positive control with the current version succeeds, so a route
  *     that rejects everything cannot pass.
- *   - AT-150 / AC-376: a stale issue allocates no number and leaves the
+ *   - AC-376: a stale issue allocates no number and leaves the
  *     draft, the project, the sequence and the PDF prefix in storage untouched.
- *   - AT-151 / AC-377: a versioned operation without `expectedVersion` is
+ *   - AC-377: a versioned operation without `expectedVersion` is
  *     a `422 VALIDATION_ERROR`.
- *   - AT-152 / AC-378: issuing a draft changes its version; cancelling the
+ *   - AC-378: issuing a draft changes its version; cancelling the
  *     issued invoice does not.
- *   - AT-153 / AC-381: two writes carrying the same current version, queued
+ *   - AC-381: two writes carrying the same current version, queued
  *     in a fixed order behind a row lock held by a third connection, commit
  *     exactly once — the first in the queue.
  *
@@ -177,7 +177,7 @@ interface VersionedCase {
   name: string;
   setup: () => Promise<{
     readUrl: string;
-    /** Row the operation writes — AT-153 locks it. */
+    /** Row the operation writes — AC-381 locks it. */
     row: { table: string; id: string };
     write: (expectedVersion?: number) => Promise<Res>;
   }>;
@@ -255,7 +255,7 @@ afterAll(async () => {
 // AC-375
 // ---------------------------------------------------------------------
 
-describe('AT-149 / AC-375: a stale expectedVersion is rejected and writes nothing', () => {
+describe('AC-375: a stale expectedVersion is rejected and writes nothing', () => {
   it.each(VERSIONED)('$name', async ({ setup }) => {
     const { readUrl, write } = await setup();
     const stale = await versionOf(readUrl);
@@ -314,7 +314,7 @@ describe('AT-149 / AC-375: a stale expectedVersion is rejected and writes nothin
 // AC-376
 // ---------------------------------------------------------------------
 
-describe('AT-150 / AC-376: a stale issue allocates no number and writes nothing', () => {
+describe('AC-376: a stale issue allocates no number and writes nothing', () => {
   it('rejects, then the current version issues with the number the rejected call would have taken', async () => {
     const { invoiceId, projectId } = await mintDraft();
     const readUrl = `/api/invoices/${invoiceId}`;
@@ -363,7 +363,7 @@ describe('AT-150 / AC-376: a stale issue allocates no number and writes nothing'
 // AC-377
 // ---------------------------------------------------------------------
 
-describe('AT-151 / AC-377: a missing expectedVersion is a validation error', () => {
+describe('AC-377: a missing expectedVersion is a validation error', () => {
   it.each(VERSIONED)('$name', async ({ setup }) => {
     const { readUrl, write } = await setup();
     const before = await read(readUrl);
@@ -396,7 +396,7 @@ describe('AT-151 / AC-377: a missing expectedVersion is a validation error', () 
 // AC-378
 // ---------------------------------------------------------------------
 
-describe('AT-152 / AC-378: every committed write changes the version', () => {
+describe('AC-378: every committed write changes the version', () => {
   it('issuing a draft', async () => {
     const { invoiceId } = await mintDraft();
     const before = await versionOf(`/api/invoices/${invoiceId}`);
@@ -473,7 +473,7 @@ async function raceInOrder(
   }
 }
 
-describe('AT-153 / AC-381: concurrent writes with the same version commit exactly once', () => {
+describe('AC-381: concurrent writes with the same version commit exactly once', () => {
   it.each(VERSIONED)('$name ∥ $name', async ({ setup }) => {
     const { readUrl, row, write } = await setup();
     const v = await versionOf(readUrl);

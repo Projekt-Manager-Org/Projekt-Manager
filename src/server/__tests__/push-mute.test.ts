@@ -1,7 +1,7 @@
 /**
  * Push-mute integration tests — Iteration 8, issue #112.
  *
- * Pins AC-195 (push-mute) via AT-103.
+ * Pins AC-195 (push-mute).
  * `notification-publisher.test.ts` covers mute from the publisher's
  * angle; this file covers mute from the self-update API + subscription
  * persistence angle — the two sides of the contract, split for

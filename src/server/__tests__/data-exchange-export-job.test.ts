@@ -4,19 +4,19 @@
  * Drives the operator-facing full-account takeout EXPORT job defined in
  * api.md §14.2.4 ("Export job") + data-model.md §5.18, pinning:
  *
- *   - AC-322 / AT-136 — create + status + latest endpoints, perm gate,
+ *   - AC-322 — create + status + latest endpoints, perm gate,
  *     async pending → running → ready advance.
- *   - AC-324 / AT-138 — Range-capable download, 409 EXPORT_JOB_NOT_READY
+ *   - AC-324 — Range-capable download, 409 EXPORT_JOB_NOT_READY
  *     before ready, 404 after the staging reaper sweeps the artifact.
- *   - AC-331 / AT-145 — one active export job per kind (409
+ *   - AC-331 — one active export job per kind (409
  *     EXPORT_JOB_ACTIVE carrying the active id); a prior ready/failed
  *     job does not block (export half only — import endpoints unbuilt).
- *   - AC-332 / AT-146 — exactly one audit_log row at the terminal
+ *   - AC-332 — exactly one audit_log row at the terminal
  *     transition, entity_type='data_import'; progress writes none.
- *   - AC-333 / AT-147 — every lifecycle transition emits a
+ *   - AC-333 — every lifecycle transition emits a
  *     data_exchange_job_changed SSE frame; progress is throttled; the
  *     frame is invalidation-only (no job payload in the body).
- *   - AC-334 / AT-148 — a ready artifact aged past the takeout staging
+ *   - AC-334 — a ready artifact aged past the takeout staging
  *     TTL is swept by the scheduled reaper; the download then 404s.
  *
  * TIMING — `POST /api/export-jobs` fire-and-forgets the build, which on a
@@ -239,7 +239,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-322 / AT-136 — create, status, latest; permission gate.
+  // AC-322 — create, status, latest; permission gate.
   // -------------------------------------------------------------------
   describe('AC-322: create + status + latest (data:export gated)', () => {
     it('POST /api/export-jobs unauthenticated → 401', async () => {
@@ -311,7 +311,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-324 / AT-138 — download: not-ready 409, ready stream, Range 206,
+  // AC-324 — download: not-ready 409, ready stream, Range 206,
   // perm gate. (The post-reap 404 arm lives under AC-334 below.)
   // -------------------------------------------------------------------
   describe('AC-324: Range-capable download', () => {
@@ -402,7 +402,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-331 / AT-145 — one active export job per kind (export half only).
+  // AC-331 — one active export job per kind (export half only).
   // -------------------------------------------------------------------
   describe('AC-331: one active export job per kind', () => {
     it('a second create while one is pending/running → 409 EXPORT_JOB_ACTIVE carrying the active id', async () => {
@@ -441,7 +441,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-332 / AT-146 — exactly one audit_log row at the terminal
+  // AC-332 — exactly one audit_log row at the terminal
   // transition; progress updates write none.
   // -------------------------------------------------------------------
   describe('AC-332: single audit row at the terminal transition', () => {
@@ -474,7 +474,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-333 / AT-147 — realtime: lifecycle transitions emit a frame,
+  // AC-333 — realtime: lifecycle transitions emit a frame,
   // progress is throttled, the frame is invalidation-only.
   // -------------------------------------------------------------------
   describe('AC-333: realtime invalidation', () => {
@@ -540,7 +540,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-334 / AT-148 — staging reaper sweeps an aged ready artifact; the
+  // AC-334 — staging reaper sweeps an aged ready artifact; the
   // download then 404s.
   //
   // TTL injection: §12.2 specifies the takeout staging TTL as a [C] value

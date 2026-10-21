@@ -20,17 +20,17 @@
  *   - Emits one `invoice_changed` SSE event post-commit.
  *
  * AC coverage in this file:
- *   - AT-111 / AC-287: happy path with all the above shape assertions.
- *   - AT-112 / AC-288: gapless sequence under rollback — fault injected
+ *   - AC-287: happy path with all the above shape assertions.
+ *   - AC-288: gapless sequence under rollback — fault injected
  *                      between allocation and commit; the rolled-back
  *                      value is returned to the sequence.
- *   - AT-113 / AC-289: every pre-condition rejection path with exact
+ *   - AC-289: every pre-condition rejection path with exact
  *                      code mapping. No state change, no sequence
  *                      advancement, no audit row, no SSE event.
- *   - AT-116 / AC-292: per-tax-mode boilerplate text extracted from the
+ *   - AC-292: per-tax-mode boilerplate text extracted from the
  *                      rendered PDF — `reverse_charge` includes the §13b
  *                      string, `standard` does not.
- *   - AT-117 / AC-293: PDF/A-3 + embedded `factur-x.xml` validation
+ *   - AC-293: PDF/A-3 + embedded `factur-x.xml` validation
  *                      against the EN 16931 XSD; `Invoice.profile`
  *                      pinned to `'zugferd-en16931'`.
  *
@@ -271,7 +271,7 @@ async function fetchRenderedPdfBytes(token: string, invoiceId: string): Promise<
   }
   if (!body.url) {
     // The wire shape is unrecognised — surface as a failure rather
-    // than silently returning garbage; the AT-117 / AT-116 arms need
+    // than silently returning garbage; the AC-293 / AC-292 arms need
     // real PDF bytes to validate.
     throw new Error(`fetchRenderedPdfBytes — unknown response shape ${JSON.stringify(body)}`);
   }
@@ -281,17 +281,17 @@ async function fetchRenderedPdfBytes(token: string, invoiceId: string): Promise<
   // pipeline per ADR-0024). If a `dekMaterial` is present and the bytes
   // do not begin with `%PDF-`, the test cannot decrypt without
   // KeyEnvelopeService machinery — surface as a deliberate failure so
-  // the impl team wires plaintext access for AT-116 / AT-117.
+  // the impl team wires plaintext access for AC-292 / AC-293.
   if (arr[0] !== 0x25 || arr[1] !== 0x50) {
     throw new Error(
-      'fetchRenderedPdfBytes — bytes are not plaintext PDF (no %PDF- magic). The renderer/transport needs a plaintext path for AT-116 / AT-117.',
+      'fetchRenderedPdfBytes — bytes are not plaintext PDF (no %PDF- magic). The renderer/transport needs a plaintext path for AC-292 / AC-293.',
     );
   }
   return Buffer.from(arr);
 }
 
 /**
- * Extract plain text from a PDF buffer. AT-116 uses this to grep for
+ * Extract plain text from a PDF buffer. AC-292 uses this to grep for
  * the per-tax-mode boilerplate strings.
  */
 async function extractPdfText(buf: Buffer): Promise<string> {
@@ -378,7 +378,7 @@ async function extractFacturXml(buf: Buffer): Promise<string> {
 // Tests.
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — happy path (AT-111 / AC-287)', () => {
+describe('Invoice issuance — happy path (AC-287)', () => {
   let ownerToken: string;
   let projectId: string;
   const issuedProjectIds = new Set<string>();
@@ -477,8 +477,8 @@ describe('Invoice issuance — happy path (AT-111 / AC-287)', () => {
       //     `abgerechnet` as part of the same transaction, so every
       //     consumer surface on the project (Kanban, project list, the
       //     project detail page) must invalidate.
-      // The two events MUST land exactly once each per the AT-111 pin
-      // (verification.md AT-111). A regression that emitted only one
+      // The two events MUST land exactly once each per the AC-287 pin
+      // (verification.md AC-287). A regression that emitted only one
       // event would leave one of the two consumer surfaces stale until
       // the next manual refresh / poll.
       await waitFor(() => countInvoiceChanged(conn) === 1 && countProjectChanged(conn) === 1);
@@ -491,7 +491,7 @@ describe('Invoice issuance — happy path (AT-111 / AC-287)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-112 / AC-288 — Gapless sequence under rollback.
+// AC-288 — Gapless sequence under rollback.
 //
 // Two arms:
 //   (a) Two sequential successful issues produce N and N+1.
@@ -506,7 +506,7 @@ describe('Invoice issuance — happy path (AT-111 / AC-287)', () => {
 // rolls back the increment".
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — gapless sequence (AT-112 / AC-288)', () => {
+describe('Invoice issuance — gapless sequence (AC-288)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -1153,7 +1153,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
 });
 
 // ---------------------------------------------------------------------
-// AT-113 / AC-289 — Pre-condition rejection paths.
+// AC-289 — Pre-condition rejection paths.
 //
 // Each (a) through (i) arm asserts:
 //   - the documented error code,
@@ -1166,7 +1166,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
 // connection for the duration of the call and counting frames.
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () => {
+describe('Invoice issuance — pre-condition rejections (AC-289)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -1361,12 +1361,12 @@ describe('Invoice issuance — pre-condition rejections (AT-113 / AC-289)', () =
   });
 });
 
-// AT-113(i) lives in its own describe block so its wipe-and-restore
+// Arm (i) lives in its own describe block so its wipe-and-restore
 // of `company_profile` cannot pollute the sibling (a)-(h) arms above.
 // Each describe block owns its `startApp` lifecycle; suites and tests
 // within one file run sequentially because `sequence.concurrent`
 // defaults to false, so the blocks cannot interleave.
-describe('Invoice issuance — pre-condition rejections (AT-113(i) / AC-289)', () => {
+describe('Invoice issuance — pre-condition rejection (i) (AC-289)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -1459,7 +1459,7 @@ describe('Invoice issuance — pre-condition rejections (AT-113(i) / AC-289)', (
 //
 // Pin the contract end-to-end at the route surface: no second number
 // allocation, no second audit row, no second SSE event. (The
-// happy-path AT-111 test already pins the first issue's audit + SSE
+// happy-path AC-287 test already pins the first issue's audit + SSE
 // shape; this test pins that calling /issue a SECOND time is a
 // rejection-only path.)
 // ---------------------------------------------------------------------
@@ -1536,7 +1536,7 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
       //    `mutate()` returns successfully (`InvoiceIssueService.ts:94`),
       //    so a throw inside the tx body never reaches the emit. Wait
       //    the full poll window so a fast errant emit cannot race the
-      //    assertion (negative-assertion pattern from the AT-113 block).
+      //    assertion (negative-assertion pattern from the AC-289 block).
       await waitFor(() => countInvoiceChanged(conn) > 0 || countProjectChanged(conn) > 0);
       expect(countInvoiceChanged(conn)).toBe(0);
       expect(countProjectChanged(conn)).toBe(0);
@@ -1547,7 +1547,7 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
 });
 
 // ---------------------------------------------------------------------
-// AT-116 / AC-292 — Per-tax-mode boilerplate text.
+// AC-292 — Per-tax-mode boilerplate text.
 //
 // Issue the same fixture draft under each mode; extract text from the
 // rendered PDF/A-3. `reverse_charge` carries the §13b string, `standard`
@@ -1559,7 +1559,7 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
 // around it is `[C]`; the §-reference itself appears verbatim.
 const REVERSE_CHARGE_BOILERPLATE = '§ 13b UStG';
 
-describe('Invoice issuance — per-tax-mode boilerplate (AT-116 / AC-292)', () => {
+describe('Invoice issuance — per-tax-mode boilerplate (AC-292)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -1626,7 +1626,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AT-116 / AC-292)', () =
 });
 
 // ---------------------------------------------------------------------
-// AT-117 / AC-293 — PDF/A-3 + embedded factur-x.xml conformance.
+// AC-293 — PDF/A-3 + embedded factur-x.xml conformance.
 //
 // Extract the embedded XML and validate against the EN 16931 XSD.
 // The renderer/XSD machinery does not exist at step-3 time — the
@@ -1635,7 +1635,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AT-116 / AC-292)', () =
 // test passes.
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — ZUGFeRD EN 16931 conformance (AT-117 / AC-293)', () => {
+describe('Invoice issuance — ZUGFeRD EN 16931 conformance (AC-293)', () => {
   let ownerToken: string;
   let projectId: string;
 

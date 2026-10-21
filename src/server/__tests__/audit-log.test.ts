@@ -1,8 +1,7 @@
 /**
  * Audit log integration tests — Iteration 8, issue #116.
  *
- * Pins AT-89..AT-94 from `docs/spec/verification.md §16.2` which in turn
- * pin the §15.23 ACs each block names.
+ * Pins the §15.23 ACs each block names.
  *
  * Every `it(...)` block carries an explicit `// AT-XX` marker. Each block
  * exercises exactly one acceptance criterion — per the workflow's one-AC-
@@ -16,7 +15,7 @@
  *     routes return 404 (Fastify's not-found handler).
  *   - The service-layer `mutate()` helper does not exist, so mutations
  *     do not produce audit rows.
- *   - No post-commit subscribe/dispatch surface exists, so AT-94 fails
+ *   - No post-commit subscribe/dispatch surface exists, so AC-183 fails
  *     at the import of the expected publisher interface.
  *
  * These are the recognizable failure modes the tests intentionally
@@ -131,7 +130,7 @@ async function countAuditRows(db: Database): Promise<number> {
 }
 
 // ---------------------------------------------------------------------
-// AT-89 — Mutation and audit row are committed atomically (AC-177)
+// Mutation and audit row are committed atomically (AC-177)
 // ---------------------------------------------------------------------
 //
 // Covers the core invariant of ADR-0021: every domain-entity mutation
@@ -143,7 +142,7 @@ async function countAuditRows(db: Database): Promise<number> {
 // regression in only `customer` is not masked by a passing `project`
 // arm (see T-ACBS). The forced-failure branch is separate again so
 // the atomic-rollback assertion does not pile onto a happy-path test.
-describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
+describe('Mutation + audit row atomicity (AC-177)', () => {
   let ownerToken: string;
   let seededCustomerId: string;
 
@@ -154,7 +153,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
     const custList = await authGet(ownerToken, '/api/customers?limit=1');
     const customers = custList.json().customers as { id: string }[];
     if (!customers || customers.length === 0) {
-      throw new Error('Seed produced no customers — cannot run AT-89 fixtures');
+      throw new Error('Seed produced no customers — cannot run AC-177 fixtures');
     }
     seededCustomerId = customers[0]!.id;
   });
@@ -163,7 +162,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
     await stopApp();
   });
 
-  // AT-89 — create on `project`
+  // AC-177 — create on `project`
   it('create on project produces exactly one audit_log row (actorKind=user, action=create)', async () => {
     const { db, pool } = createDatabase();
     try {
@@ -173,7 +172,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
         // number is varchar(20) — keep the generated string short so a
         // unique suffix still fits the schema. Uses base36 for density.
         number: `AT89C-${Date.now().toString(36)}`,
-        title: 'AT-89 create project',
+        title: 'AC-177 create project',
         customerId: seededCustomerId,
       });
       expect(createRes.statusCode).toBe(201);
@@ -199,13 +198,13 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
       // entity_label snapshot — captured at write time from the
       // service-returned project row. Must include the title the
       // caller supplied so the feed stays readable after a rename.
-      expect(row.entity_label).toContain('AT-89 create project');
+      expect(row.entity_label).toContain('AC-177 create project');
     } finally {
       await pool.end();
     }
   });
 
-  // AT-89 — update on `customer`
+  // AC-177 — update on `customer`
   it('update on customer produces exactly one audit_log row (action=update)', async () => {
     const { db, pool } = createDatabase();
     try {
@@ -240,7 +239,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
     }
   });
 
-  // AT-89 — transition on `project`
+  // AC-177 — transition on `project`
   it('state transition on project produces a transition-action audit row', async () => {
     const { db, pool } = createDatabase();
     try {
@@ -293,7 +292,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
     }
   });
 
-  // AT-89 — delete on `project_worker`
+  // AC-177 — delete on `project_worker`
   it('delete on project_worker produces one audit_log row per dropped assignment (action=delete)', async () => {
     // Snapshot taken before the mutation so the lookup below can filter
     // by `created_at >= before`. Without this filter a sibling test (or
@@ -358,23 +357,23 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
     }
   });
 
-  // AT-89 — forced failure path: rollback leaves neither artifact
+  // AC-177 — forced failure path: rollback leaves neither artifact
   it('a failed mutation rolls back BOTH the state change and the audit row', async () => {
     const { db, pool } = createDatabase();
     try {
       const projectsBefore = await db.execute(
-        sql`SELECT COUNT(*)::int AS c FROM projects WHERE number = 'AT-89-ROLLBACK'`,
+        sql`SELECT COUNT(*)::int AS c FROM projects WHERE number = 'AC-177-ROLLBACK'`,
       );
       expect((projectsBefore.rows[0] as { c: number }).c).toBe(0);
 
       const auditBefore = await countAuditRows(db);
 
       // Force an FK violation on the audited transaction: referenced
-      // worker id does not exist. `data-integrity.test.ts:AT-48` pins
+      // worker id does not exist. `data-integrity.test.ts:AC-99` pins
       // this same failure path for atomic project creation.
       const fakeWorkerId = '00000000-0000-0000-0000-000000000099';
       const res = await authPost(ownerToken, '/api/projects', {
-        number: 'AT-89-ROLLBACK',
+        number: 'AC-177-ROLLBACK',
         title: 'should never persist',
         customerId: seededCustomerId,
         assignedWorkerIds: [fakeWorkerId],
@@ -383,7 +382,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
 
       // Neither the project nor its audit row persisted.
       const projectsAfter = await db.execute(
-        sql`SELECT COUNT(*)::int AS c FROM projects WHERE number = 'AT-89-ROLLBACK'`,
+        sql`SELECT COUNT(*)::int AS c FROM projects WHERE number = 'AC-177-ROLLBACK'`,
       );
       expect((projectsAfter.rows[0] as { c: number }).c).toBe(0);
 
@@ -396,7 +395,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-90 — First-run bootstrap writes a system-actor audit row (AC-178)
+// First-run bootstrap writes a system-actor audit row (AC-178)
 // ---------------------------------------------------------------------
 //
 // Drives `bootstrapAdminIfEmpty` directly (same pattern as
@@ -405,7 +404,7 @@ describe('AT-89: Mutation + audit row atomicity (AC-177)', () => {
 // the DB CHECK constraint rejects a `system` row with empty
 // `actorReason` — defense-in-depth for the "invisible bootstrap"
 // failure mode AC-178 explicitly calls out.
-describe('AT-90: Bootstrap emits system-actor audit row + CHECK constraint (AC-178)', () => {
+describe('Bootstrap emits system-actor audit row + CHECK constraint (AC-178)', () => {
   let db: Database;
   let pool: pg.Pool;
 
@@ -439,7 +438,7 @@ describe('AT-90: Bootstrap emits system-actor audit row + CHECK constraint (AC-1
       {
         username: 'admin-at-90',
         password: 'SecurePass2026!',
-        displayName: 'Admin AT-90',
+        displayName: 'Admin AC-178',
       },
       makeLogger(),
     );
@@ -501,13 +500,13 @@ describe('AT-90: Bootstrap emits system-actor audit row + CHECK constraint (AC-1
 });
 
 // ---------------------------------------------------------------------
-// AT-91 — Audit-list access matrix
+// AC-180 — Audit-list access matrix
 // ---------------------------------------------------------------------
 //
 // Owner + office hold `audit:read`; both are unscoped for reachability.
 // Worker + bookkeeper lack the permission and are denied at the
 // permission middleware before reaching the repository.
-describe('AT-91: Audit-list access matrix', () => {
+describe('AC-180: Audit-list access matrix', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -535,7 +534,7 @@ describe('AT-91: Audit-list access matrix', () => {
       );
       const ownerRow = ownerLookup.rows[0] as { id: string } | undefined;
       if (!ownerRow) {
-        throw new Error('AT-91 fixture: owner user missing from seed');
+        throw new Error('AC-180 fixture: owner user missing from seed');
       }
 
       // Drive a user-entity audit row authored by owner: owner updates
@@ -547,10 +546,10 @@ describe('AT-91: Audit-list access matrix', () => {
       );
       const officeRow = officeLookup.rows[0] as { id: string } | undefined;
       if (!officeRow) {
-        throw new Error('AT-91 fixture: office user missing from seed');
+        throw new Error('AC-180 fixture: office user missing from seed');
       }
       const adminPatch = await authPatch(ownerToken, `/api/users/${officeRow.id}`, {
-        displayName: `${SEED_USERS.office.displayName} (AT-91 fixture)`,
+        displayName: `${SEED_USERS.office.displayName} (AC-180 fixture)`,
       });
       expect(adminPatch.statusCode).toBe(200);
 
@@ -562,7 +561,7 @@ describe('AT-91: Audit-list access matrix', () => {
       const ownerAuditRow = ownerAuditLookup.rows[0] as { id: string } | undefined;
       if (!ownerAuditRow) {
         throw new Error(
-          'AT-91 fixture: no owner-authored user audit row — admin PATCH did not emit one',
+          'AC-180 fixture: no owner-authored user audit row — admin PATCH did not emit one',
         );
       }
       ownerAuthoredUserRowId = ownerAuditRow.id;
@@ -615,7 +614,7 @@ describe('AT-91: Audit-list access matrix', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-93 — Destructive-action predicate gates visibility (AC-182, AC-187)
+// Destructive-action predicate gates visibility (AC-182, AC-187)
 // ---------------------------------------------------------------------
 //
 // `auditDestructiveScopeForCaller` narrows the list + get-by-id result
@@ -638,12 +637,12 @@ describe('AT-91: Audit-list access matrix', () => {
 // exist, making the whole describe crash in `beforeAll` with an
 // unrecognizable failure shape ("500 from failed audit write") instead
 // of the intended "endpoint missing on /api/audit". The raw-SQL
-// fixture keeps AT-93 **independent of the mutation pipeline** — the
+// fixture keeps AC-182 **independent of the mutation pipeline** — the
 // test proves the read-side destructive-scope predicate without
 // depending on the not-yet-implemented write-side helper. Mutation-
 // pipeline coverage (atomic-commit, rollback) is pinned separately by
-// AT-89; AT-93's scope is the visibility predicate.
-describe('AT-93: Destructive-action visibility (AC-182, AC-187)', () => {
+// AC-177; AC-182's scope is the visibility predicate.
+describe('Destructive-action visibility (AC-182, AC-187)', () => {
   let ownerToken: string;
   let officeToken: string;
   /** An audit row matching `action='purge'` — owner-visible, office hidden. */
@@ -681,7 +680,7 @@ describe('AT-93: Destructive-action visibility (AC-182, AC-187)', () => {
       );
       const ownerRow = ownerLookup.rows[0] as { id: string } | undefined;
       if (!ownerRow) {
-        throw new Error('AT-93 fixture: owner user missing from seed');
+        throw new Error('AC-182 fixture: owner user missing from seed');
       }
       const ownerId = ownerRow.id;
 
@@ -696,7 +695,7 @@ describe('AT-93: Destructive-action visibility (AC-182, AC-187)', () => {
           (actor_id, actor_kind, actor_reason, entity_type, entity_id,
            action, payload, correlation_id)
         VALUES (${ownerId}, 'user', NULL, 'project', ${purgeEntityId},
-                'purge', '{"before":{"number":"AT-93-PURGE"},"after":{}}'::jsonb, NULL)
+                'purge', '{"before":{"number":"AC-182-PURGE"},"after":{}}'::jsonb, NULL)
         RETURNING id
       `);
       purgeAuditId = (purgeInsert.rows[0] as { id: string }).id;
@@ -717,7 +716,7 @@ describe('AT-93: Destructive-action visibility (AC-182, AC-187)', () => {
 
       // ---- User-roles-update row ----
       // Payload carries `{ before: { roles: [...] }, after: { roles: [...] } }`
-      // as per the AT-93 fixture spec — the predicate keys off the
+      // as per the AC-182 fixture spec — the predicate keys off the
       // `roles` diff presence.
       const rolesUpdateEntityId = '00000000-0000-0000-0000-0000000a7933';
       const rolesUpdateInsert = await fixtureDb.execute(sql`
@@ -799,7 +798,7 @@ describe('AT-93: Destructive-action visibility (AC-182, AC-187)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-94 — Throwing post-commit subscriber does not roll back (AC-183)
+// Throwing post-commit subscriber does not roll back (AC-183)
 // ---------------------------------------------------------------------
 //
 // ADR-0021 fixes the publisher as post-commit: subscribers run after
@@ -810,7 +809,7 @@ describe('AT-93: Destructive-action visibility (AC-182, AC-187)', () => {
 // imports the expected module path and will fail at import time until
 // the implementation lands — that's the recognizable failing state
 // for step 3.
-describe('AT-94: Throwing post-commit subscriber does not roll back (AC-183)', () => {
+describe('Throwing post-commit subscriber does not roll back (AC-183)', () => {
   let ownerToken: string;
   let seededCustomerId: string;
 
@@ -830,7 +829,7 @@ describe('AT-94: Throwing post-commit subscriber does not roll back (AC-183)', (
     // (`Post-commit publisher contract`). Until the module exists this
     // throws MODULE_NOT_FOUND at runtime — the recognizable failing
     // state step 3 wants. The `/* @vite-ignore */` comment and the
-    // string-literal path mirror the pattern in `seed.test.ts` (AT-87)
+    // string-literal path mirror the pattern in `seed.test.ts` (AC-390)
     // so the dynamic import does not compile-fail `tsc --noEmit` in
     // CI's type-check step — failure surface stays a runtime error,
     // not a type error.
@@ -853,7 +852,7 @@ describe('AT-94: Throwing post-commit subscriber does not roll back (AC-183)', (
         onAuditCommitted: (h: (row: unknown) => void | Promise<void>) => () => void;
       }
     ).onAuditCommitted(() => {
-      throw new Error('AT-94 intentional subscriber failure');
+      throw new Error('AC-183 intentional subscriber failure');
     });
 
     try {
@@ -864,7 +863,7 @@ describe('AT-94: Throwing post-commit subscriber does not roll back (AC-183)', (
         const createRes = await authPost(ownerToken, '/api/projects', {
           // number is varchar(20); base36 keeps the generated suffix short.
           number: `AT94-${Date.now().toString(36)}`,
-          title: 'AT-94 subscriber crash test',
+          title: 'AC-183 subscriber crash test',
           customerId: seededCustomerId,
         });
         // Domain mutation must succeed despite the subscriber crash
@@ -907,7 +906,7 @@ describe('AT-94: Throwing post-commit subscriber does not roll back (AC-183)', (
         }
         if (!payload) {
           throw new Error(
-            `AT-94: no logger.error call with event='audit-publisher-handler-error' found — got calls ${JSON.stringify(errorSpy.mock.calls)}`,
+            `AC-183: no logger.error call with event='audit-publisher-handler-error' found — got calls ${JSON.stringify(errorSpy.mock.calls)}`,
           );
         }
         expect(payload.event).toBe('audit-publisher-handler-error');
@@ -925,7 +924,7 @@ describe('AT-94: Throwing post-commit subscriber does not roll back (AC-183)', (
 });
 
 // ---------------------------------------------------------------------
-// AT-96 — entity_label is a point-in-time snapshot (AC-188)
+// entity_label is a point-in-time snapshot (AC-188)
 // ---------------------------------------------------------------------
 //
 // data-model.md §5.10 "Entity label snapshot": `entityLabel` is frozen
@@ -933,7 +932,7 @@ describe('AT-94: Throwing post-commit subscriber does not roll back (AC-183)', (
 // is renamed or purged. AC-188 pins the invariant; the tests here drive
 // it end-to-end through `mutate()` — rename does not rewrite prior
 // rows, and delete does not null them.
-describe('AT-96: entity_label is frozen at event time (AC-188)', () => {
+describe('entity_label is frozen at event time (AC-188)', () => {
   let ownerToken: string;
   let seededCustomerId: string;
 
@@ -951,8 +950,8 @@ describe('AT-96: entity_label is frozen at event time (AC-188)', () => {
   it('renaming a project leaves the pre-rename audit row entity_label untouched', async () => {
     const { db, pool } = createDatabase();
     try {
-      const initialTitle = 'AT-96 initial title';
-      const renamedTitle = 'AT-96 renamed title';
+      const initialTitle = 'AC-188 initial title';
+      const renamedTitle = 'AC-188 renamed title';
       const projectNumber = `AT96R-${Date.now().toString(36)}`;
 
       const createRes = await authPost(ownerToken, '/api/projects', {
@@ -997,7 +996,7 @@ describe('AT-96: entity_label is frozen at event time (AC-188)', () => {
   it('deleting a customer leaves the pre-delete audit row entity_label intact', async () => {
     const { db, pool } = createDatabase();
     try {
-      const customerName = `AT-96 purgeable customer ${Date.now().toString(36)}`;
+      const customerName = `AC-188 purgeable customer ${Date.now().toString(36)}`;
 
       const createRes = await authPost(ownerToken, '/api/customers', {
         name: customerName,
@@ -1030,7 +1029,7 @@ describe('AT-96: entity_label is frozen at event time (AC-188)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-107 — Self-preference carve-out produces zero audit rows (AC-204)
+// Self-preference carve-out produces zero audit rows (AC-204)
 // ---------------------------------------------------------------------
 //
 // data-model.md §5.10 "Non-audited self-preference paths": PATCH
@@ -1040,7 +1039,7 @@ describe('AT-96: entity_label is frozen at event time (AC-188)', () => {
 // changing another user's `displayName` via admin management MUST still
 // emit exactly one audit row (AC-204 confirms the carve-out is scoped
 // to self-preference fields only, not to the whole user-update surface).
-describe('AT-107: self-preference carve-out (AC-204)', () => {
+describe('Self-preference carve-out (AC-204)', () => {
   let ownerToken: string;
   let officeUserId: string;
 
@@ -1054,7 +1053,7 @@ describe('AT-107: self-preference carve-out (AC-204)', () => {
         sql`SELECT id FROM users WHERE username = ${SEED_USERS.office.username} LIMIT 1`,
       );
       const officeRow = row.rows[0] as { id: string } | undefined;
-      if (!officeRow) throw new Error('AT-107 fixture: office user missing from seed');
+      if (!officeRow) throw new Error('AC-204 fixture: office user missing from seed');
       officeUserId = officeRow.id;
     } finally {
       await fixturePool.end();
@@ -1096,12 +1095,12 @@ describe('AT-107: self-preference carve-out (AC-204)', () => {
     const { db, pool } = createDatabase();
     try {
       const res = await authPatch(ownerToken, `/api/users/${officeUserId}`, {
-        displayName: `${SEED_USERS.office.displayName} (AT-107)`,
+        displayName: `${SEED_USERS.office.displayName} (AC-204)`,
       });
       expect(res.statusCode).toBe(200);
 
       // Narrow to rows written AFTER this test started so sibling
-      // describe blocks (AT-91 also patches the office user) do not
+      // describe blocks (AC-180 also patches the office user) do not
       // inflate the count.
       const rows = await db.execute(
         sql`SELECT entity_type, action FROM audit_log
@@ -1120,7 +1119,7 @@ describe('AT-107: self-preference carve-out (AC-204)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-124 — Ancestor-scoped filter on GET /api/audit
+// Ancestor-scoped filter on GET /api/audit
 // (architecture.md §11.12; pins #124)
 // ---------------------------------------------------------------------
 //
@@ -1129,7 +1128,7 @@ describe('AT-107: self-preference carve-out (AC-204)', () => {
 // nested entities (project_worker, attachment) set their ancestor to
 // the owning project's id. The feed therefore unions every entity
 // type scoped to the project in one indexed predicate.
-describe('AT-124: ancestor-scoped filter unions project + nested entities', () => {
+describe('Ancestor-scoped filter unions project + nested entities', () => {
   let ownerToken: string;
   let seededCustomerId: string;
   let projectId: string;
@@ -1148,7 +1147,7 @@ describe('AT-124: ancestor-scoped filter unions project + nested entities', () =
     // ancestor-link the read filter asserts against.
     const createRes = await authPost(ownerToken, '/api/projects', {
       number: `AT124-${Date.now().toString(36)}`,
-      title: 'AT-124 ancestor-scoped feed',
+      title: 'Ancestor-scoped feed',
       customerId: seededCustomerId,
     });
     expect(createRes.statusCode).toBe(201);
@@ -1268,7 +1267,7 @@ describe('AT-124: ancestor-scoped filter unions project + nested entities', () =
     // a project id by coincidence (the filter keys off the ancestor
     // pair, not the entity id).
     const custRes = await authPost(ownerToken, '/api/customers', {
-      name: `AT-124 cross-scope ${Date.now().toString(36)}`,
+      name: `Ancestor cross-scope ${Date.now().toString(36)}`,
     });
     expect(custRes.statusCode).toBe(201);
     const otherCustomerId = custRes.json().id as string;

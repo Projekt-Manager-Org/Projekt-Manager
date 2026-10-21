@@ -4,7 +4,7 @@
  *
  * Pins the §6.9 / §6.14 retention invariants:
  *
- *   - AC-307 / AT-127: `DELETE /api/customers/:id` against a customer
+ *   - AC-307: `DELETE /api/customers/:id` against a customer
  *     whose project graph (active + archived) carries any issued or
  *     cancelled invoice is rejected with `409 CUSTOMER_HAS_INVOICES`;
  *     `details.invoiceCount` matches issued + cancelled count (drafts
@@ -15,7 +15,7 @@
  *     `GET /api/customers/:id` returns `invoiceCount` on every
  *     customer (zero when no issued/cancelled rows; drafts don't count).
  *
- *   - AC-308 / AT-128: `DELETE /api/projects/:id/purge` against an
+ *   - AC-308: `DELETE /api/projects/:id/purge` against an
  *     archived project carrying any issued or cancelled invoice is
  *     rejected with `409 PROJECT_HAS_INVOICES`; `details.invoiceCount`
  *     matches the issued+cancelled count. Archived project with only
@@ -205,10 +205,10 @@ async function selectInvoicesByCustomer(
 }
 
 // ---------------------------------------------------------------------
-// AT-127 / AC-307 — Customer delete cascade with invoices.
+// AC-307 — Customer delete cascade with invoices.
 // ---------------------------------------------------------------------
 
-describe('AT-127 / AC-307: DELETE /api/customers/:id retention/cascade behaviour', () => {
+describe('AC-307: DELETE /api/customers/:id retention/cascade behaviour', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -325,10 +325,10 @@ describe('AT-127 / AC-307: DELETE /api/customers/:id retention/cascade behaviour
 });
 
 // ---------------------------------------------------------------------
-// AT-128 / AC-308 — Project purge cascade with invoices.
+// AC-308 — Project purge cascade with invoices.
 // ---------------------------------------------------------------------
 
-describe('AT-128 / AC-308: DELETE /api/projects/:id/purge retention/cascade behaviour', () => {
+describe('AC-308: DELETE /api/projects/:id/purge retention/cascade behaviour', () => {
   let ownerToken: string;
   let customerId: string;
 

@@ -97,7 +97,7 @@ export interface ListInvoicesOpts {
 
 /**
  * List invoices visible to the caller. Worker callers always see the
- * empty set (AC-298, AT-119) — the scope predicate has no
+ * empty set (AC-298) — the scope predicate has no
  * `project_worker` path on the invoice row, so the worker branch
  * short-circuits before issuing the SELECT.
  *

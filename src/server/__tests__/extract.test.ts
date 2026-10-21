@@ -1,8 +1,6 @@
 /**
  * Route integration tests: POST /api/extract — LLM email extraction.
  *
- * AT-50 through AT-55 (verification.md §16.2).
- *
  * Covers the route-level contract: auth gate, permission gate, schema
  * validation, happy path (with mocked upstream) and upstream failure.
  * The ExtractionService's unit-level logic is tested in extraction.test.ts;
@@ -38,9 +36,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-100 / AT-50: Unauthenticated requests are rejected
+  // AC-100: Unauthenticated requests are rejected
   // ---------------------------------------------------------------
-  it('AT-50: unauthenticated request is rejected with auth error', async () => {
+  it('AC-100: unauthenticated request is rejected with auth error', async () => {
     const res = await getApp().inject({
       method: 'POST',
       url: '/api/extract',
@@ -52,9 +50,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-101 / AT-51: customer:write permission required
+  // AC-101: customer:write permission required
   // ---------------------------------------------------------------
-  it('AT-51: worker role (no customer:write) is rejected with authorization error', async () => {
+  it('AC-101: worker role (no customer:write) is rejected with authorization error', async () => {
     const res = await authPost(workerToken, '/api/extract', { text: 'any email text' });
 
     expect(res.statusCode).toBe(403);
@@ -62,9 +60,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-102 / AT-52, AT-53: Input validation
+  // AC-102: Input validation
   // ---------------------------------------------------------------
-  it('AT-52: empty text is rejected as a validation error', async () => {
+  it('AC-102: empty text is rejected as a validation error', async () => {
     const res = await authPost(ownerToken, '/api/extract', { text: '' });
 
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
@@ -72,7 +70,7 @@ describe('POST /api/extract', () => {
     expect(res.json().code).toBe('VALIDATION_ERROR');
   });
 
-  it('AT-53: text exceeding 50,000 characters is rejected as a validation error', async () => {
+  it('AC-102: text exceeding 50,000 characters is rejected as a validation error', async () => {
     const res = await authPost(ownerToken, '/api/extract', { text: 'x'.repeat(50_001) });
 
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
@@ -81,9 +79,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-103 / AT-54: Successful extraction returns structured fields
+  // AC-103: Successful extraction returns structured fields
   // ---------------------------------------------------------------
-  it('AT-54: successful extraction returns customer + project sections with nulls for missing data', async () => {
+  it('AC-103: successful extraction returns customer + project sections with nulls for missing data', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -178,9 +176,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-104 / AT-55: Upstream failure mapped to server error, no leak
+  // AC-104: Upstream failure mapped to server error, no leak
   // ---------------------------------------------------------------
-  it('AT-55: upstream service failure is mapped to a server error with no internal details leaked', async () => {
+  it('AC-104: upstream service failure is mapped to a server error with no internal details leaked', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,

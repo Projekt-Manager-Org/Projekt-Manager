@@ -20,7 +20,7 @@
  *   - The envelope version is a hard cut — a stale-stamped envelope rejects.
  *
  * Test fixtures are built in-test rather than via the seed or a full
- * `ExportService` export so the cases can vary independently. The roundtrip AT-77
+ * `ExportService` export so the cases can vary independently. The roundtrip AC-141
  * analog uses the seed + export but skips fields that legitimately change
  * between two snapshots (`exported_at`).
  */
@@ -770,7 +770,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-386 / AT-156: invoice tax mode, lines and totals pass the §5.15 write rules
+  // AC-386: invoice tax mode, lines and totals pass the §5.15 write rules
   // at envelope validation. Rejections run against an empty target, so a
   // single wipe and reseed covers every case.
   // -------------------------------------------------------------------
@@ -1197,12 +1197,12 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   // covered by the service-level cases above.
 
   // -------------------------------------------------------------------
-  // AT-77 analog roundtrip. Export the seeded dataset, wipe, override-
+  // AC-141 analog roundtrip. Export the seeded dataset, wipe, override-
   // import the snapshot, re-export, compare. `exported_at` and
   // `users[*].lastLoginAt` legitimately drift between two snapshots; we
   // exclude them from the strict equality check.
   // -------------------------------------------------------------------
-  describe('AT-77 analog — seed → export → wipe → import (override) → export', () => {
+  describe('AC-141 analog — seed → export → wipe → import (override) → export', () => {
     it('preserves every slot byte-for-byte (modulo exported_at and lastLoginAt)', async () => {
       // First export — the seeded baseline.
       const e1 = await exportEnvelope();

@@ -1,6 +1,6 @@
 /**
  * Isolated renderer contract test — exercises `InvoiceRenderer`
- * without the HTTP / DB / storage plumbing so AT-116 / AT-117
+ * without the HTTP / DB / storage plumbing so AC-292 / AC-293
  * assertions (boilerplate text, embedded `factur-x.xml`, EN 16931 XSD
  * validation) are pinned independently of Phase D's routing layer.
  *
@@ -12,12 +12,12 @@
  *
  * Pins:
  *   - PDF magic = `%PDF-`.
- *   - PDF text content carries the per-mode boilerplate (AT-116).
+ *   - PDF text content carries the per-mode boilerplate (AC-292).
  *   - The catalog Names tree has `factur-x.xml` as an embedded file
- *     (AT-117 first assertion).
+ *     (AC-293 first assertion).
  *   - The embedded XML validates against the EN 16931 Comfort XSD
- *     (AT-117 load-bearing assertion).
- *   - Line `quantity` / `unitPrice` render unrounded (AT-154).
+ *     (AC-293 load-bearing assertion).
+ *   - Line `quantity` / `unitPrice` render unrounded (AC-384).
  */
 import { describe, it, expect } from 'vitest';
 import { InvoiceRenderer } from '../services/InvoiceRenderer.js';
@@ -99,7 +99,7 @@ async function pdfText(bytes: Uint8Array): Promise<string> {
   return text;
 }
 
-describe('InvoiceRenderer — boilerplate (AT-116 shape, route-free)', () => {
+describe('InvoiceRenderer — boilerplate (AC-292 shape, route-free)', () => {
   const renderer = new InvoiceRenderer();
 
   it('standard mode: 19% + 285 visible, no §13b anchor', async () => {
@@ -125,7 +125,7 @@ describe('InvoiceRenderer — boilerplate (AT-116 shape, route-free)', () => {
   });
 });
 
-describe('InvoiceRenderer — line precision (AT-154 / AC-384)', () => {
+describe('InvoiceRenderer — line precision (AC-384)', () => {
   it('renders quantity and a 4-dp unitPrice without rounding in the PDF and the XML', async () => {
     const invoice = makeInvoice('standard');
     invoice.lines = [{ ...invoice.lines[0]!, quantity: 1.5, unitPrice: 12.3456, lineTotal: 18.52 }];
@@ -145,7 +145,7 @@ describe('InvoiceRenderer — line precision (AT-154 / AC-384)', () => {
   });
 });
 
-describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AT-117 shape, route-free)', () => {
+describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AC-293 shape, route-free)', () => {
   const renderer = new InvoiceRenderer();
 
   it('embeds factur-x.xml in the catalog Names tree and the XML validates against the EN 16931 XSD', async () => {
@@ -155,7 +155,7 @@ describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AT-117 shape, route-f
     });
 
     // Walk the catalog Names tree to confirm the embedded file lands
-    // under the exact `factur-x.xml` name. This mirrors what AT-117's
+    // under the exact `factur-x.xml` name. This mirrors what AC-293's
     // `extractFacturXml` helper does inside `invoices-issue.test.ts`.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pdfLib = (await import('@cantoo/pdf-lib')) as any;
@@ -176,7 +176,7 @@ describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AT-117 shape, route-f
     }
     expect(found).toBe(true);
 
-    // Explicit AT-117 anchor: assert the embedded XML validates
+    // Explicit AC-293 anchor: assert the embedded XML validates
     // against the EN 16931 Comfort XSD. The renderer also validates
     // internally and would throw before returning — this re-check
     // pins the assertion even if the internal step is ever
@@ -185,7 +185,7 @@ describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AT-117 shape, route-f
   });
 });
 
-describe('InvoiceRenderer — Storno reference (AT-114 / #548)', () => {
+describe('InvoiceRenderer — Storno reference (#548)', () => {
   it("prints the original's number and issue date, not its id", async () => {
     const original = makeInvoice('standard');
     const out = await new InvoiceRenderer().render({

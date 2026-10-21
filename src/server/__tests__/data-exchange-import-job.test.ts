@@ -7,23 +7,23 @@
  * design notes) + data-model.md §5.18, pinning the create / upload /
  * status / one-active / audit surface:
  *
- *   - AC-326 / AT-140 — create + resumable (tus-style) upload:
+ *   - AC-326 — create + resumable (tus-style) upload:
  *     `POST /api/import-jobs` (`Upload-Length` header) → `pending`;
  *     `HEAD :id/archive` → `Upload-Offset` + `Upload-Length`;
  *     `PATCH :id/archive` at the server offset appends + returns the new
  *     offset; a stale-offset PATCH → `409 UPLOAD_OFFSET_CONFLICT`
  *     (offset unchanged — retry-safe); bytes past `Upload-Length` →
  *     `413`; reaching `Upload-Length` transitions `pending → running`.
- *   - AC-329 / AT-143 — override + confirmation phrase UP FRONT: a
+ *   - AC-329 — override + confirmation phrase UP FRONT: a
  *     non-empty target without `override: true` → `409 TARGET_NOT_EMPTY`;
  *     with `override: true` but a wrong/missing `confirmation_phrase` →
  *     `422 RESTORE_CONFIRMATION_MISMATCH`; both reject at CREATE, before
  *     any upload slot exists; an empty-target create needs neither.
- *   - AC-331 / AT-145 — one active import job per kind: a second
+ *   - AC-331 — one active import job per kind: a second
  *     `POST /api/import-jobs` while one is `pending`/`running` →
  *     `409 IMPORT_JOB_ACTIVE` carrying the active id; a prior
  *     `ready`/`failed` import does not block.
- *   - AC-332 / AT-146 — exactly one `data_import` audit row at the
+ *   - AC-332 — exactly one `data_import` audit row at the
  *     terminal transition; progress writes none.
  *
  * The restore-fidelity / validate-before-wipe / session-invalidation /
@@ -240,7 +240,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   });
 
   // -------------------------------------------------------------------
-  // AC-329 / AT-143 — override + confirmation phrase UP FRONT.
+  // AC-329 — override + confirmation phrase UP FRONT.
   //
   // The seed leaves a NON-EMPTY target (customers / projects / invoices).
   // api.md §14.2.4 "Import job — override + confirmation up front": the
@@ -256,7 +256,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       expect(res.json().code).toBe('TARGET_NOT_EMPTY');
 
       // No job row was minted — the latest probe is still null. (If a
-      // slot HAD been allocated, AT-143's "no upload slot is usable"
+      // slot HAD been allocated, AC-329's "no upload slot is usable"
       // assertion would fail; a null latest is the cleanest proof.)
       const latest = await authGet(ownerToken, '/api/import-jobs');
       expect(latest.statusCode).toBe(200);
@@ -386,7 +386,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   });
 
   // -------------------------------------------------------------------
-  // AC-326 / AT-140 — create + resumable (tus-style) upload protocol.
+  // AC-326 — create + resumable (tus-style) upload protocol.
   //
   // The protocol arms operate on a NON-EMPTY target (the seed), so every
   // create carries override + the matching phrase to clear the AC-329
@@ -622,7 +622,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   });
 
   // -------------------------------------------------------------------
-  // AC-331 / AT-145 — one active import job per kind.
+  // AC-331 — one active import job per kind.
   // -------------------------------------------------------------------
   describe('AC-331: one active import job per kind', () => {
     it('a second create while one is pending → 409 IMPORT_JOB_ACTIVE carrying the active id', async () => {
@@ -673,7 +673,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   });
 
   // -------------------------------------------------------------------
-  // AC-332 / AT-146 — exactly one data_import audit row at the terminal
+  // AC-332 — exactly one data_import audit row at the terminal
   // transition; progress updates write none.
   //
   // Uploading invalid bytes drives the job to a terminal (`failed`)

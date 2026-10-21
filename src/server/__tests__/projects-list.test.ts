@@ -1,7 +1,6 @@
 /**
  * API integration tests: List projects.
  *
- * Test AT-8 from the test specification (verification.md §16.3).
  * Runs against a real test database via Fastify inject (no network).
  *
  * All project operations require authentication. Tests use the `login` helper
@@ -25,9 +24,9 @@ describe('Project Operations — List', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-8: List projects returns all seeded projects with correct fields
+  // List projects returns all seeded projects with correct fields
   // ---------------------------------------------------------------
-  describe('AT-8: List projects', () => {
+  describe('List projects', () => {
     it('returns 200 with an array of projects', async () => {
       const res = await authGet(token, '/api/projects');
 

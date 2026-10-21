@@ -226,7 +226,7 @@ export async function authDelete(token: string, url: string) {
  * Create an expired session for the given user and return its token.
  *
  * The session must be a real database row whose expiresAt is in the past.
- * This lets AT-5 verify that the auth middleware rejects expired sessions
+ * This lets AC-27 verify that the auth middleware rejects expired sessions
  * with the correct error code — something a fabricated string can never do.
  *
  * Test-only helper — intentionally NOT in production code.
@@ -248,7 +248,7 @@ export async function createExpiredSession(userId: string): Promise<string> {
 /**
  * Deactivate a user account by setting active=false in the database.
  *
- * Used by AT-7 to simulate the "logged-in user gets deactivated" flow:
+ * Used by AC-28 to simulate the "logged-in user gets deactivated" flow:
  * login normally, deactivate the account, then assert the existing token
  * is rejected on the next request. Tests pass actorId=null because no
  * human admin exists in this iteration — the audit pattern allows

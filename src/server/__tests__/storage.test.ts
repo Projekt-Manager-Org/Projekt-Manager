@@ -1,8 +1,6 @@
 /**
  * API integration test: Object storage module.
  *
- * Test AT-16 from the test specification (verification.md §16.3).
- *
  * This tests the object storage module boundary directly (not through
  * HTTP routes). The module encapsulates upload/download/hide operations
  * against an S3-compatible object storage backend.
@@ -53,7 +51,7 @@ describe('Object Storage Module', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-16: Object storage module can upload a file, retrieve it,
+  // AC-40: Object storage module can upload a file, retrieve it,
   //        and verify the retrieved contents match the original
   // ---------------------------------------------------------------
   //
@@ -72,9 +70,9 @@ describe('Object Storage Module', () => {
   // integration-level and not performance-critical — isolation wins.
   // Do not "optimize" this back into a shared key.
   // AC-40 [crit]
-  describe('AT-16: Upload, retrieve, and verify', () => {
+  describe('AC-40: Upload, retrieve, and verify', () => {
     const testContent = Buffer.from(
-      'AT-16 Testdatei: Projekt-Manager Objekt-Speicher Integrationstest.',
+      'AC-40 Testdatei: Projekt-Manager Objekt-Speicher Integrationstest.',
       'utf-8',
     );
     const testContentType = 'text/plain';

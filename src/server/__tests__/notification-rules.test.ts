@@ -1,8 +1,7 @@
 /**
  * Notification rules CRUD integration tests — Iteration 8, issue #112.
  *
- * Pins AT-97 / AT-98 / AT-99 from `docs/spec/verification.md §16.2` which
- * in turn pin AC-189 / AC-190 / AC-193 / AC-203 / AC-393 in §15.24.
+ * Pins AC-189 / AC-190 / AC-193 / AC-203 / AC-393 in §15.24.
  *
  * Failing-state expectations (step 3 of the workflow — tests land ahead
  * of implementation):
@@ -58,7 +57,7 @@ interface NotificationRuleApi {
 }
 
 // ---------------------------------------------------------------------
-// AT-97 / AC-189 — Permission matrix on rule CRUD
+// AC-189 — Permission matrix on rule CRUD
 // ---------------------------------------------------------------------
 //
 // `notifications:manage` (owner-only under the default matrix). Office,
@@ -66,7 +65,7 @@ interface NotificationRuleApi {
 // failures are asserted per-HTTP-method because middleware is often
 // wired per-route — a regression that forgets the gate on DELETE but
 // keeps it on POST would otherwise slip through.
-describe('AT-97: notification-rule CRUD permission matrix (AC-189)', () => {
+describe('Notification-rule CRUD permission matrix (AC-189)', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -180,13 +179,13 @@ describe('AT-97: notification-rule CRUD permission matrix (AC-189)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-98 / AC-190 — Create/update validation branches
+// AC-190 — Create/update validation branches
 // ---------------------------------------------------------------------
 //
 // Every rejected branch in AC-190 (a)–(f) lands in its own `it()` block
 // so a regression in one predicate does not hide behind a passing peer.
 // Every branch must return 422 VALIDATION_ERROR and persist nothing.
-describe('AT-98: notification-rule validation branches (AC-190)', () => {
+describe('Notification-rule validation branches (AC-190)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -333,7 +332,7 @@ describe('AT-98: notification-rule validation branches (AC-190)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AT-99 / AC-393 — Rule CRUD does NOT write audit_log rows
+// AC-393 — Rule CRUD does NOT write audit_log rows
 // ---------------------------------------------------------------------
 //
 // ADR-0023 removed the audit coupling: rule mutations are administrative
@@ -342,7 +341,7 @@ describe('AT-98: notification-rule validation branches (AC-190)', () => {
 //   2. No row with entity_type = 'notification_rule' exists (that value
 //      is no longer valid in the CHECK constraint, so any attempt to
 //      insert one would fail the DB constraint outright).
-describe('AT-99: notification-rule CRUD produces no audit_log rows (AC-393)', () => {
+describe('Notification-rule CRUD produces no audit_log rows (AC-393)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -437,7 +436,7 @@ describe('AT-99: notification-rule CRUD produces no audit_log rows (AC-393)', ()
 });
 
 // ---------------------------------------------------------------------
-// AT-101 / AC-193 — Rule take-effect: events in-flight use prior rule set
+// AC-193 — Rule take-effect: events in-flight use prior rule set
 // ---------------------------------------------------------------------
 //
 // A rule enable/disable or recipient-spec change affects only events
@@ -448,7 +447,7 @@ describe('AT-99: notification-rule CRUD produces no audit_log rows (AC-393)', ()
 // Note: the notification publisher routing `audit_log` rows to
 // subscribers does not exist yet. This test captures subscriber calls
 // and asserts the recipient set reflects the rule state at commit time.
-describe('AT-101: rule changes apply to events committed after the change (AC-193)', () => {
+describe('Rule changes apply to events committed after the change (AC-193)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -464,7 +463,7 @@ describe('AT-101: rule changes apply to events committed after the change (AC-19
     // The publisher module and its subscribe surface do not exist yet;
     // the import below fails with MODULE_NOT_FOUND at runtime — the
     // recognizable step-3 failing state. String-literal path + vite
-    // ignore mirrors the audit-log.test.ts AT-94 pattern so tsc does
+    // ignore mirrors the audit-log.test.ts AC-183 pattern so tsc does
     // not block the file at --noEmit time.
     const pubPath = '../services/notification-publisher.js';
     const pub = (await import(/* @vite-ignore */ pubPath)) as {
@@ -582,7 +581,7 @@ describe('AT-101: rule changes apply to events committed after the change (AC-19
 });
 
 // ---------------------------------------------------------------------
-// AT-106 / AC-203 — Rule referencing deactivated / deleted user
+// AC-203 — Rule referencing deactivated / deleted user
 // ---------------------------------------------------------------------
 //
 // A rule naming a user later deactivated (active=false) or hard-deleted
@@ -592,7 +591,7 @@ describe('AT-101: rule changes apply to events committed after the change (AC-19
 // Two sub-tests — deactivate path is the common one (user data stays);
 // hard-delete path is the sharper test because the userId no longer
 // identifies any row.
-describe('AT-106: rule referencing deactivated/deleted user does not crash dispatch (AC-203)', () => {
+describe('Rule referencing deactivated/deleted user does not crash dispatch (AC-203)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {

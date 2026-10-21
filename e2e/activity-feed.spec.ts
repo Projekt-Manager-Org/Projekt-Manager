@@ -13,7 +13,7 @@ import { clickView, expectViewReachable } from './nav-helpers';
  *     non-null payload. Owner and office both receive full payloads.
  *   - AC-187 [crit] — destructive-action entries (purge, user-delete,
  *     roles-update): owner sees them in the global Aktivität view,
- *     office does not. The API boundary is pinned by AT-93
+ *     office does not. The API boundary is pinned by AC-182
  *     (src/server/__tests__/audit-log.test.ts); this spec walks the
  *     UI so a reviewer can watch the visibility split in UI mode
  *     (ADR-0014 [vis] contract).
@@ -24,7 +24,7 @@ import { clickView, expectViewReachable } from './nav-helpers';
  *     pinned by AC-186 / AC-187 below).
  *   - AC-186: owner and office walks (drawer visibility per role).
  *   - AC-187: owner positive arm; the office negative arm is pinned
- *     at the API by `src/server/__tests__/audit-log.test.ts` (AT-93).
+ *     at the API by `src/server/__tests__/audit-log.test.ts` (AC-182).
  *   - Worker and bookkeeper lack `audit:read` (api.md §14.3) — both
  *     the nav tab and the deep-link path are denied, asserted as
  *     separate cases above the AC blocks.
@@ -147,7 +147,7 @@ test.describe('AC-185: project activity feed (reverse-chrono, paginated, empty s
     // short-circuit would collapse repeated .fill() calls). Drive above
     // the server's default page size (50 per api.md §14.1) so the
     // "Ältere anzeigen" pager has a real page boundary to cross.
-    // `notes` is the field `audit-log.test.ts` AT-93 uses to drive
+    // `notes` is the field `audit-log.test.ts` AC-182 uses to drive
     // audit rows on PATCH /api/projects/:id; the dates endpoint lives
     // separately at PATCH /api/projects/:id/dates and is out of scope here.
     const mutationCount = 52;
@@ -451,7 +451,7 @@ test.describe('AC-187: destructive entries — owner sees them, others do not', 
       // defined; we filter by a structural `data-action` attribute.
       //
       // Office-side negative is pinned at the API by
-      // `src/server/__tests__/audit-log.test.ts` (AT-93) — the UI
+      // `src/server/__tests__/audit-log.test.ts` (AC-182) — the UI
       // honors what the server returns is the integration claim.
       const purgeRows = page.locator('[data-testid^="activity-feed-row-"][data-action="purge"]');
       await expect(purgeRows).not.toHaveCount(0);

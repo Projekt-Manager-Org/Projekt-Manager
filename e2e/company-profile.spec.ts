@@ -2,8 +2,7 @@ import { test, expect } from '@playwright/test';
 import { STORAGE_STATES } from './storage-states';
 
 /**
- * E2E — Company profile management (verification.md §16.3 "Company
- * profile management", pins AC-301, AC-303 at the UI layer).
+ * E2E — Company profile management (pins AC-301, AC-303 at the UI layer).
  *
  * Lives on the Rechnungen tab (`/rechnungen`) inside a collapsible
  * `<details>` — the values are referenced by every invoice snapshot

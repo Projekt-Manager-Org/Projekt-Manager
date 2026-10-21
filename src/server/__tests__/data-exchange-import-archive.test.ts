@@ -11,14 +11,14 @@
  * avoids hand-building a manifest + envelope + per-attachment SHA-256s
  * (which would re-encode, and risk diverging from, the export builder).
  *
- *   - AC-327 / AT-141 — validate before wipe. An archive whose
+ *   - AC-327 — validate before wipe. An archive whose
  *     `data.json` carries a wrong `schema_version` (sibling arms: a broken
  *     `manifest.json` per-entry sha256, an out-of-enum mimeType, an unsafe
  *     fileName, two attachment ids sharing one `zipPath`) terminates the
  *     job `failed` with `error_detail` and performs ZERO writes — the
  *     pre-existing target rows are UNTOUCHED. The destructive wipe never
  *     runs on a corrupt / tampered / wrong-version archive.
- *   - AC-328 / AT-142 — restore + server re-encrypt + byte-equal
+ *   - AC-328 — restore + server re-encrypt + byte-equal
  *     roundtrip + idempotency. seed (with a ready attachment) → export job
  *     → import job (override + phrase) restores the business rows with IDs
  *     preserved AND each attachment row at byte-equal plaintext: the row
@@ -26,13 +26,13 @@
  *     `originalKey` AES-256-GCM-decrypts (via the row's freshly-wrapped
  *     DEK) to the SOURCE plaintext, and re-running the job is idempotent
  *     on attachment `id` (no duplicate rows).
- *   - AC-330 / AT-144 — session invalidation + re-auth. The restore wipes
+ *   - AC-330 — session invalidation + re-auth. The restore wipes
  *     `users`, CASCADE-dropping the operator's session mid-job; a status
  *     poll on the OLD cookie returns `401`; the `data_exchange_job` row
  *     survives with `created_by = NULL` (FK `ON DELETE SET NULL`); after
  *     re-auth, `GET /api/import-jobs` (latest) re-attaches to the same
  *     job. No bearer token anywhere in the flow.
- *   - AC-334 / AT-148 — the staging reaper sweeps an ABANDONED/terminal
+ *   - AC-334 — the staging reaper sweeps an ABANDONED/terminal
  *     IMPORT upload (not just `ready` export artifacts), deleting the
  *     staged file and nulling `archiveRef`.
  *   - AC-372 — every object the job writes (original, regenerated
@@ -398,7 +398,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-328 / AT-142 — restore + server re-encrypt + byte-equal roundtrip
+  // AC-328 — restore + server re-encrypt + byte-equal roundtrip
   // + idempotency. The richest arm: a true seed → export → import → verify
   // loop. Encodes the FINAL fidelity contract; in the red state it fails
   // at `POST /api/import-jobs` (the export half + archive build succeed).
@@ -908,7 +908,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-327 / AT-141 — validate before wipe. Corrupt a REAL roundtrip
+  // AC-327 — validate before wipe. Corrupt a REAL roundtrip
   // archive (break data.json's schema_version; sibling arm: break a
   // manifest sha256), import into the NON-EMPTY seeded target with
   // override + phrase, and assert the job → `failed` with `error_detail`
@@ -1136,7 +1136,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-330 / AT-144 — session invalidation + re-auth.
+  // AC-330 — session invalidation + re-auth.
   // -------------------------------------------------------------------
   describe('AC-330: users wipe drops the session mid-job; the job row survives', () => {
     it('old cookie polls 401, job row gets created_by=NULL, re-auth re-attaches via latest', async () => {
@@ -1186,7 +1186,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-334 / AT-148 — the staging reaper sweeps an abandoned/terminal
+  // AC-334 — the staging reaper sweeps an abandoned/terminal
   // IMPORT upload too (not just ready export artifacts). data-model §6.15:
   // it sweeps an import job's uploaded archive once the job is terminal
   // (ready/failed) or its upload was abandoned, deletes the staged FILE,

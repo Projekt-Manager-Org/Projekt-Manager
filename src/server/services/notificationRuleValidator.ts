@@ -129,7 +129,7 @@ export async function validateRuleInput(
   // missing id OR a row with active=false fails the payload; the
   // validator rejects with 422 VALIDATION_ERROR and does not persist.
   // Dispatch-time resilience (user deactivated/deleted AFTER rule
-  // creation — AC-203 / AT-106) is handled at the publisher's
+  // creation — AC-203) is handled at the publisher's
   // resolution step, not here.
   if (userIds.length > 0) {
     const rows = await db
