@@ -5,7 +5,7 @@
 Rules for tests (non-negotiable):
 
 - **T-TAUT** — Tautology: test tests nothing.
-- **T-ACBS** — Miss: test does not really test what it claims to test
+- **T-ACBS** — Miss: test does not really test what it claims to test, including the AC it cites.
 
 Guidelines for tests (judgement is required):
 
