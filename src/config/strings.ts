@@ -514,7 +514,7 @@ export const STRINGS = {
       'Der Papierkorb ist nicht Teil des Archivs: gelöschte Anhänge, die dort noch wiederherstellbar sind, gehen dabei endgültig verloren.',
     restorePhrasePrompt: (phrase: string) => `Zur Bestätigung bitte „${phrase}" eingeben:`,
 
-    // --- Server-side job flow (ui/daten.md §8.11, AC-322–335) ---------------
+    // --- Server-side job flow (ui/daten.md §8.11) ---------------
     // The job model builds/restores on the VPS; the browser triggers, polls,
     // and downloads/uploads. Reuses the export/import Progress* + Summary* keys
     // above for the shared readouts; the keys below are job-specific.

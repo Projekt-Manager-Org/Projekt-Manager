@@ -2,7 +2,7 @@
  * Audit log integration tests — Iteration 8, issue #116.
  *
  * Pins AT-89..AT-94 from `docs/spec/verification.md §16.2` which in turn
- * pin AC-177..AC-183 / AC-187 in §15.23.
+ * pin the §15.23 ACs each block names.
  *
  * Every `it(...)` block carries an explicit `// AT-XX` marker. Each block
  * exercises exactly one acceptance criterion — per the workflow's one-AC-

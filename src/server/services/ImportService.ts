@@ -345,7 +345,7 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
 /**
  * Collect every envelope reference site whose user-id field must resolve
  * against `envelope.users`. Null / missing audit-field values are skipped
- * — they carry no reference, per api.md §14.2.4 and AC-162a.
+ * — they carry no reference, per api.md §14.2.4 and AC-387.
  * `project_workers[].userId` is non-nullable by schema so it is always a
  * reference. Pure; unit-testable without a DB.
  *
@@ -733,7 +733,7 @@ export class ImportService {
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
       );
 
-      // AC-162b: on the dry-run path both classes are evaluated regardless
+      // AC-388: on the dry-run path both classes are evaluated regardless
       // of intra-envelope state. `validation_errors` continues to carry
       // intra-envelope issues only; missing-user issues surface under the
       // sibling `missing_user_refs` field. api.md §14.2.4 deliberately
@@ -757,7 +757,7 @@ export class ImportService {
       };
     }
 
-    // AC-162c: commit-path ordering. Intra-envelope integrity is reported
+    // AC-389: commit-path ordering. Intra-envelope integrity is reported
     // first; the missing-user check runs only on an intra-consistent
     // envelope. Never both codes in one response.
     if (validationIssues.length > 0) {

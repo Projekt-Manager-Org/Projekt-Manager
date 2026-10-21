@@ -32,7 +32,7 @@ describe('buildPwaManifest — AC-363 app shell identity', () => {
     // ignored its argument and read the module-level constant.
     //
     // The two colors are the shipped pair swapped, not invented hex:
-    // raw palette literals are barred outside the token source (AC-108),
+    // raw palette literals are barred outside the token source (`scripts/check-theme-tokens.sh`),
     // and a swap discriminates exactly as well.
     const m = buildPwaManifest({
       ...BRANDING,

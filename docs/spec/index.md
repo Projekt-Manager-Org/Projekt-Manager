@@ -155,6 +155,4 @@ This specification is split across multiple files:
 | **[api.md](api.md)**                   | 14       | API design principles, operations, authorization, error handling                                              |
 | **[verification.md](verification.md)** | 15–17    | Acceptance criteria, test specifications, risks                                                               |
 
-The test-spec traceability matrix (AC ↔ tests) lives in [docs/testing/traceability.md](../testing/traceability.md) — not in the spec itself, because it is a verification artifact maintained alongside the test suite (see [CONTRIBUTING.md §Workflow](../../CONTRIBUTING.md#workflow) step 3).
-
 `[C]` catalogue: [architecture.md §12.2](architecture.md#122-company-configurable-settings).

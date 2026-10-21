@@ -24,7 +24,7 @@ Classify every AC into one of three tiers by defect impact, and verify each with
 >
 > Orthogonal: constraints on the deployed environment, the build pipeline, or the source tree (CI gates, deploy procedures, lint-enforced layering, repo-scan checks) carry `[infra]` and are verified by their respective automation — not by tests against the running system.
 
-**Applied:** every AC in [verification.md §15](../spec/verification.md#15-acceptance-criteria) carries exactly one of `[crit]`, `[vis]`, `[infra]`. Mapping lives in [traceability.md](../testing/traceability.md); an empty cell is a gap, not a default.
+**Applied:** every AC in [verification.md §15](../spec/verification.md#15-acceptance-criteria) carries exactly one of `[crit]`, `[vis]`, `[infra]`. Coverage: a test cites the AC; an uncovered AC is a gap, not a default (see [Updates](#updates)).
 
 **Concrete changes:**
 
@@ -75,8 +75,12 @@ The functional E2E specs remain the automated gate and are exactly what the revi
 
 The original ADR treated infrastructure/structural ACs as "untiered". Every AC in [verification.md §15](../spec/verification.md#15-acceptance-criteria) now carries exactly one of `[crit]`, `[vis]`, `[infra]`. Closes the "what tier is this?" ambiguity flagged by `S-ACS1` and makes the "no tests against the running system" expectation explicit for deployment, lint, and repo-scan constraints.
 
+### 2026-10-21 — matrix replaced by test citations
+
+The hand-kept traceability matrix drifted: tests cited ACs the spec had dropped, and rows claimed coverage no test gave. It is gone. A test cites the AC it verifies; [verification-exceptions.md](../testing/verification-exceptions.md) lists only `[infra]` ACs verified outside the suite, gaps, and retired IDs. `scripts/check-traceability.sh` now fails the build — no longer advisory. See [#486](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/486).
+
 ## References
 
 - [docs/spec/verification.md §15](../spec/verification.md#15-acceptance-criteria): the tier legend (definitions and classification test) and the tiered AC list
 - [CONTRIBUTING.md § Testing](../../CONTRIBUTING.md#testing): UI-mode workflow for `[vis]` review
-- [docs/testing/traceability.md](../testing/traceability.md): the traceability matrix
+- [docs/testing/verification-exceptions.md](../testing/verification-exceptions.md): ACs verified outside the test suite, gaps, retired IDs

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Scenario tests for scripts/check-doc-paths.sh.
+# Scenario tests for scripts/check-doc-paths.sh (AC-347).
 #
 # A drift check that cannot fail is worse than no check: it reports green
 # forever and everyone stops reading it. Each case below builds a throwaway

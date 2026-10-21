@@ -270,7 +270,7 @@ test.describe('AC-121: permission-based UI visibility', () => {
         }
 
         // -- Daten (unified data-exchange) view ----------------------------
-        // AC-142: the Daten tab itself is gated on `data:export`. Roles
+        // AC-142 / AC-150: the Daten tab itself is gated on `data:export`. Roles
         // without it must not see the nav toggle at all. Inside the view,
         // the import sub-form is gated on `data:restore` (owner only).
         await expectViewReachable(page, 'daten', c.canExportData);

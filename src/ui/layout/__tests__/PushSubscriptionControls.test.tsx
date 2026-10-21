@@ -7,8 +7,7 @@
  * Exception from the [vis] → E2E-only rule
  * ---------------------------------------------------------------------
  *
- * `review/conventions-tests.md` and `docs/testing/traceability.md`
- * define `[vis]` ACs as verified by an E2E spec driving the scenario
+ * ADR-0014 defines `[vis]` ACs as verified by an E2E spec driving the scenario
  * (human review via `npx playwright test --ui`). The E2E spec must
  * exist — without it there is nothing to watch.
  *

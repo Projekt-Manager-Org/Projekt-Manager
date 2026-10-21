@@ -487,13 +487,13 @@ Workers: list, years and single-row reads are narrowed by the repository scope p
 - **Menu close on outside click**: `src/ui/common/MenuBackdrop.tsx`, an invisible overlay, so one click closes the menu without activating what lies beneath (#130).
 - **Errors**: `src/server/error-handler.ts` passes Fastify 4xx through as stable codes; an `AppError` keeps its own; any other 5xx or status-less error becomes `SERVER_ERROR` ([api.md §14.4.2](docs/spec/api.md#1442-error-principles)). Every `pg.Pool` gets an error listener; uncaught errors log once and exit.
 - **Configuration boundary** ([architecture.md §12.6](docs/spec/architecture.md#126-feature-manifest-and-operator-confidence)): env schema vs examples in CI (`scripts/check-env-drift.sh`), aggregated validation in deploy pre-flight (`src/server/deploy-preflight-cli.ts`), and a boot-time feature manifest (`src/server/config/features.ts`).
-- **Documentation drift guards** — each fails the build (traceability only warns on a `[crit]` coverage gap). The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway (the endpoint table: `buildApp()` route collection); check the rest.
+- **Documentation drift guards** — each fails the build. The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway (the endpoint table: `buildApp()` route collection); check the rest.
 
-| Kind                      | Guards                                                                                                                                                      |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generated from code       | `docs/api/openapi.json` (AC-351), the endpoint table (AC-352) — see [docs/api/](docs/api/README.md)                                                         |
-| `CHECKED:` blocks vs code | permission matrix (AC-343), nav matrix (AC-349), error codes (AC-354) — read via `src/test/checkedBlock.ts`                                                 |
-| Verified without a source | cited files and functions (AC-347, `scripts/check-doc-paths.sh`), links and anchors (AC-348, `lychee.toml`), traceability (`scripts/check-traceability.sh`) |
+| Kind                      | Guards                                                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generated from code       | `docs/api/openapi.json` (AC-351), the endpoint table (AC-352) — see [docs/api/](docs/api/README.md)                                                            |
+| `CHECKED:` blocks vs code | permission matrix (AC-343), nav matrix (AC-349), error codes (AC-354) — read via `src/test/checkedBlock.ts`                                                    |
+| Verified without a source | cited files and functions (AC-347, `scripts/check-doc-paths.sh`), links and anchors (AC-348, `lychee.toml`), AC traceability (`scripts/check-traceability.sh`) |
 
 Prettier formats the whole repository (#361); its exceptions are in `.prettierignore`.
 

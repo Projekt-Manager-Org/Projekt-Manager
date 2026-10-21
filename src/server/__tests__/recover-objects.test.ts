@@ -5,7 +5,7 @@
  * The tool decrypts object versions written since a cutoff using only the
  * binary identity and each object's own metadata — no database. It is the
  * Layer 2 disaster-recovery path for objects whose rows a restore dropped
- * (AC-368) and the monthly binary-key drill.
+ * and the monthly binary-key drill.
  *
  * Fixtures are written with raw S3 calls, not the app's storage client,
  * so the bucket state is fully controlled: valid objects with no row, an
@@ -224,7 +224,7 @@ describe('AC-373: binary recovery tool', () => {
     expect(only(keys.invoice).invoiceNumber).toBe('RE-2026-0042');
 
     // Failed: listed with an error, no plaintext; the invoice number of a
-    // failed version still reaches the index (AC-368 bumps from it).
+    // failed version still reaches the index (the DR numbering bump reads it).
     for (const key of [
       keys.noMetadata,
       keys.unknownVersion,

@@ -1,7 +1,7 @@
 /**
  * Layer 2 backup service — Tier 1 verify-on-create + upload.
  *
- * Implements verification.md §15.22 AC-165..AC-167, AC-169, AC-174,
+ * Implements verification.md §15.22 AC-165, AC-166, AC-167, AC-169, AC-174,
  * AC-344, AC-345, AC-366
  * and ADR-0020. This service:
  *

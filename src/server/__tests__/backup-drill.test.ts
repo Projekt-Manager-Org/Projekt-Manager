@@ -288,7 +288,7 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () 
     ],
     [
       'the manifest does not decrypt',
-      // The reason survives; the identity path does not (AC-175).
+      // The reason survives; the identity path does not.
       'drill-decrypt: no identity matched any of the recipients in <identity>',
       'drill-decrypt',
       {

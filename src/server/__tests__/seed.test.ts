@@ -1,5 +1,5 @@
 /**
- * Seed loader tests — AT-87 (AC-163a/b/c) and AT-88 (AC-164).
+ * Seed loader tests — AT-87 (AC-390 / AC-391 / AC-392) and AT-88 (AC-164).
  *
  * See verification.md §15.17 and §16.2.
  *
@@ -34,7 +34,7 @@
  * reviewer will check for this split.
  *
  * -------------------------------------------------------------------
- * Year-rollover note on AC-163c
+ * Year-rollover note on AC-392
  * -------------------------------------------------------------------
  *
  * The project-number year prefix assertion captures `new Date().getFullYear()`
@@ -118,13 +118,13 @@ describe('Seed', () => {
   });
 
   // ---------------------------------------------------------------
-  // AT-87 → AC-163a + AC-163b + AC-163c
+  // AT-87 → AC-390 + AC-391 + AC-392
   //
   // Regression pin: after seed(db, { force: true }) on an empty DB the
   // observable state matches the seed contract. Expected to pass today.
   // ---------------------------------------------------------------
   describe('AT-87: seed force-run populates the contracted dataset', () => {
-    // AC-163c wants the year prefix captured at the moment seed ran.
+    // AC-392 wants the year prefix captured at the moment seed ran.
     // Capture before the call, not after, so a Dec-31 → Jan-1 rollover
     // during seed would fail loudly instead of silently agreeing with
     // the post-seed clock (see top-of-file year-rollover note).
@@ -135,8 +135,8 @@ describe('Seed', () => {
       await seed(db, { force: true });
     });
 
-    // AC-163a: row counts match the seed contract.
-    it('AC-163a: row counts match the seed contract', async () => {
+    // AC-390: row counts match the seed contract.
+    it('AC-390: row counts match the seed contract', async () => {
       const [userRows, customerRows, projectRows, projectWorkerRows, invoiceRows] =
         await Promise.all([
           db.select({ id: users.id }).from(users),
@@ -159,8 +159,8 @@ describe('Seed', () => {
       expect(byStatus.get('cancelled') ?? 0).toBe(EXPECTED_INVOICE_CANCELLED_COUNT);
     });
 
-    // AC-163b part 1: usernames and `active` flags match SEED_USERS.
-    it('AC-163b: usernames and active flags match SEED_USERS', async () => {
+    // AC-391 part 1: usernames and `active` flags match SEED_USERS.
+    it('AC-391: usernames and active flags match SEED_USERS', async () => {
       const rows = await db.select({ username: users.username, active: users.active }).from(users);
 
       const actual = new Map(rows.map((r) => [r.username, r.active]));
@@ -173,11 +173,11 @@ describe('Seed', () => {
       }
     });
 
-    // AC-163b part 2: SEED_DEFAULT_PASSWORD verifies against every stored
+    // AC-391 part 2: SEED_DEFAULT_PASSWORD verifies against every stored
     // passwordHash. Uses verifyPassword — the same helper bootstrap.test.ts
     // and AuthService use, so any drift from the bcrypt round-trip surfaces
     // here alongside the other consumers.
-    it('AC-163b: SEED_DEFAULT_PASSWORD verifies against every user passwordHash', async () => {
+    it('AC-391: SEED_DEFAULT_PASSWORD verifies against every user passwordHash', async () => {
       const rows = await db
         .select({ username: users.username, passwordHash: users.passwordHash })
         .from(users);
@@ -196,8 +196,8 @@ describe('Seed', () => {
       }
     });
 
-    // AC-163c: every project `number` carries the seed-time year prefix.
-    it('AC-163c: every project number carries the seed-time year prefix', async () => {
+    // AC-392: every project `number` carries the seed-time year prefix.
+    it('AC-392: every project number carries the seed-time year prefix', async () => {
       const rows = await db.select({ number: projects.number }).from(projects);
 
       expect(rows).toHaveLength(EXPECTED_PROJECT_COUNT);

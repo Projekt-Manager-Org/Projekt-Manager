@@ -79,7 +79,7 @@ test.describe('AC-199: rule-editor form renders conditional fields per eventClas
 // ---------------------------------------------------------------
 //
 // Not a standalone AC; this is the end-to-end sanity on the CRUD UI
-// that AC-189..AC-193 collectively describe. Runs in order; each
+// that §15.24 describes. Runs in order; each
 // step depends on the previous.
 test.describe('Notification Rules CRUD flow (owner)', () => {
   test.use({ storageState: STORAGE_STATES.owner });

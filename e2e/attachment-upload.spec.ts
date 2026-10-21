@@ -80,8 +80,8 @@ test.describe('Attachment happy-path upload (worker on assigned project)', () =>
     // the SPA intercepts `/encrypted-storage/<projectId>/<attachmentId>.<variant>`,
     // calls `download-url` for the wrapped DEK material, fetches the
     // ciphertext from object storage, AES-256-GCM-decrypts, and returns
-    // plaintext through the Fetch response. The traceability row points
-    // at this E2E for the visible-render outcome: a successful `<img>`
+    // plaintext through the Fetch response. This E2E covers the
+    // visible-render outcome: a successful `<img>`
     // decode is the only browser-observable signal that the SW returned
     // correctly-decrypted plaintext bytes (a decrypt failure would
     // surface as a broken-image fallback — `naturalWidth === 0`).
@@ -89,7 +89,7 @@ test.describe('Attachment happy-path upload (worker on assigned project)', () =>
     // The SW intercept itself cannot be asserted from the test page —
     // Playwright's page-side `route` API runs in the page's network
     // stack, not the SW's. The SW unit test (`src/sw/__tests__/sw-decrypt.test.ts`,
-    // per traceability.md AC-243 row) carries the
+    // AC-243) carries the
     // intercept-and-decrypt contract; this test pins the user-visible
     // outcome that proves the path worked end-to-end.
     await openProjectDetailViaPanel(page);
@@ -304,8 +304,7 @@ test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
     // task spec asks for the stable variant: assert the network sequence
     // (bulk-fetch issued, response per-file with ≥ 2 entries) and the
     // browser-level download event. Zip-payload assembly is pinned by
-    // the component-level test (`BinaryList.test.tsx` per
-    // traceability.md AC-223 row).
+    // the component-level test (`BinaryList.test.tsx`, AC-223).
     await openProjectDetailViaPanel(page);
 
     // Upload two PDFs so bulk-selection is meaningful. Re-uses the
@@ -404,7 +403,7 @@ test.describe('Attachment placeholder for unwrappable wrapped envelope', () => {
     // 422 and the row flips to the placeholder.
     //
     // Mirrors AC-244's component-level coverage in `PhotoGallery.test.tsx`
-    // and `BinaryList.test.tsx` (traceability.md AC-244 row); pinned
+    // and `BinaryList.test.tsx`; pinned
     // here end-to-end so the German string + disabled-button contract
     // survives across the wire path, not just inside the component
     // unit boundary.

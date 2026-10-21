@@ -12,10 +12,10 @@ import { test, expect } from '@playwright/test';
  * system color-scheme changes propagate to the UI without a reload.
  *
  * Scope notes:
- *   - Other [vis] ACs in §15.20 (AC-109 token override, AC-110 dark
- *     palette + WCAG contrast, AC-114 configured-accent propagation)
- *     are NOT covered here. They are tracked as gaps in
- *     docs/testing/traceability.md and need E2E specs that drive the
+ *   - The other [vis] ACs in §15.19 (token override, dark palette +
+ *     WCAG contrast, configured-accent propagation) are NOT covered
+ *     here. They are listed as gaps in
+ *     docs/testing/verification-exceptions.md and need E2E specs that drive the
  *     scenario so a reviewer can judge the result in Playwright UI
  *     mode (per ADR-0014). Earlier attempts to verify them via
  *     getComputedStyle + addStyleTag produced the brittle

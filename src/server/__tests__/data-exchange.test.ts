@@ -1201,7 +1201,7 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-162a / AC-162b / AC-162c: missing-user-reference check
+  // AC-387 / AC-388 / AC-389: missing-user-reference check
   //
   // The envelope carries user-id fields — `customers.createdBy`,
   // `customers.updatedBy`, `projects.createdBy`, `projects.updatedBy`,
@@ -1210,9 +1210,9 @@ describe('Unified Data Exchange', () => {
   // the commit path rejects with 422 `MISSING_USER_REFS`; the dry-run
   // surfaces it alongside intra-envelope issues.
   //
-  // AT-84 pins AC-162a (commit-path rejection + `details` shape).
-  // AT-85 pins AC-162b (dry-run surfaces both classes together).
-  // AT-86 pins AC-162c (commit-path ordering + single-code guarantee).
+  // AT-84 pins AC-387 (commit-path rejection + `details` shape).
+  // AT-85 pins AC-388 (dry-run surfaces both classes together).
+  // AT-86 pins AC-389 (commit-path ordering + single-code guarantee).
   //
   // Two ghost UUIDs (`GHOST_USER_A`, `GHOST_USER_B`) are valid UUIDs
   // absent from the seed — any reference to them is, by construction,
@@ -1220,7 +1220,7 @@ describe('Unified Data Exchange', () => {
   // the same idea; distinct ids let "same user at two sites" and
   // "multiple distinct missing users" tests isolate their assertions.
   // ---------------------------------------------------------------
-  describe('AC-162a/b/c: missing-user references', () => {
+  describe('AC-387 / AC-388 / AC-389: missing-user references', () => {
     // NB: `uuid()` hex-encodes then slices to 8 chars, so `ghosta`/`ghostb`
     // collide on the prefix — we rely on the `i` counter to differentiate.
     const GHOST_USER_A = uuid('ghosta', 1);
@@ -1277,7 +1277,7 @@ describe('Unified Data Exchange', () => {
         const envelope = buildFreshEnvelope();
         // Two distinct missing users, distributed across the allowed
         // reference sites so the `details.references` array has one
-        // entry per offending site (AC-162a — "one entry per offending
+        // entry per offending site (AC-387 — "one entry per offending
         // envelope reference site").
         envelope.customers[0]!.createdBy = GHOST_USER_A;
         envelope.customers[0]!.updatedBy = GHOST_USER_B;
@@ -1474,7 +1474,7 @@ describe('Unified Data Exchange', () => {
 
         const envelope = buildFreshEnvelope();
         // Intra-envelope inconsistency: project references a customerId
-        // that doesn't exist in envelope.customers (AC-162c example).
+        // that doesn't exist in envelope.customers (AC-389 example).
         envelope.projects[0]!.customerId = UUID_ZERO;
         // Missing-user reference: createdBy points at a user absent in
         // the target `users` table.

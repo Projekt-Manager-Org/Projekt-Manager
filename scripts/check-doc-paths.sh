@@ -220,14 +220,6 @@ ALLOWLIST=(
   # where the file goes. Drop this entry if the repo ever tracks one.
   "docs/spec/architecture.md|public/brand/"
 
-  # (3) Named coverage gaps in the traceability ledger — each sits
-  # inside a "**GAP** — … follow-up to add `X`" note. Drop the entry
-  # when the spec lands.
-  "docs/testing/traceability.md|e2e/project-detail-page.spec.ts"
-  "docs/testing/traceability.md|e2e/project-detail-attachments.spec.ts"
-  "docs/testing/traceability.md|src/server/__tests__/project-detail-workers.test.ts"
-  "docs/testing/traceability.md|project-site-address.spec.ts"
-
   # (4) GitHub Actions published by the `docker` org, named in ADR-0011's
   # comparison of build approaches. Collides with this repo's `docker/`
   # directory only because the org shares its name.
@@ -260,15 +252,12 @@ ALLOWLIST=(
   "docs/spec/ui/daten.md|manifest.json"
   "docs/spec/verification.md|data.json"
   "docs/spec/verification.md|manifest.json"
-  "docs/testing/traceability.md|data.json"
-  "docs/testing/traceability.md|manifest.json"
 
   # (6) The backup status object in the R2 bucket.
   "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|status/latest.json"
   "docs/ops/backup/overview.md|status/latest.json"
   "docs/ops/backup/recovery.md|status/latest.json"
   "docs/ops/backup/setup.md|status/latest.json"
-  "docs/testing/traceability.md|status/latest.json"
 
   # (6) A file inside a dependency, and one in the deploy user's home on
   # the VPS.

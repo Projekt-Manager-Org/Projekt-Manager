@@ -1,5 +1,5 @@
 /**
- * WebPushDispatcher unit tests — ADR-0023 / AC-194.
+ * WebPushDispatcher unit tests — ADR-0023.
  *
  * Pins the status-code → PushDispatchStatus mapping on the two
  * critical axes:

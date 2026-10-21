@@ -308,7 +308,7 @@ export interface DryRunPreview {
   };
   validation_errors: ValidationIssue[];
   /**
-   * Missing-user references surfaced by the dry-run path (AC-162b). The
+   * Missing-user references surfaced by the dry-run path (AC-388). The
    * commit-path error code `MISSING_USER_REFS` uses the same payload shape
    * under `details`. The spec (api.md §14.2.4) deliberately does not mint
    * a wire-field name for the preview, so this sibling field carries the

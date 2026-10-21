@@ -1,5 +1,5 @@
 /**
- * Web Push dispatcher — real `web-push` transport. ADR-0023 / AC-194.
+ * Web Push dispatcher — real `web-push` transport. ADR-0023.
  *
  * Instantiated once at app composition when all three `VAPID_*` env
  * vars are present (see `buildApp` in `app.ts`). When any of them is
@@ -36,7 +36,7 @@ const PUSH_TTL_SECONDS = 60;
 
 /**
  * Socket timeout for the outgoing POST to the push service. The
- * per-push budget (5 s, AC-194) is the ceiling for the entire dispatch
+ * per-push budget (5 s) is the ceiling for the entire dispatch
  * pipeline (recipient resolution + transport). A 4 s transport cap
  * leaves room for the surrounding rule + recipient lookup without
  * punching through the budget.

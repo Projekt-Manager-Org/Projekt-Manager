@@ -114,7 +114,7 @@ interface ProjectManagementState {
   ) => Promise<Project | null>;
   deleteProject: (id: string) => Promise<boolean>;
   /**
-   * Hard-delete an archived project (AC-155..158). Returns:
+   * Hard-delete an archived project (AC-155, AC-156, AC-157, AC-158). Returns:
    *   - true on 204 success (row removed from local state)
    *   - true on 404 — treat as "already gone", remove locally, no error
    *   - false on 409 (not archived) / 403 — surfaces server message

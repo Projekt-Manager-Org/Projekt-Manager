@@ -2,8 +2,6 @@
  * API integration test — auth + permission matrix for the eight
  * invoice endpoints (AC-297 / AT-119 coverage backfill).
  *
- * Closes the `**GAP**` row in `docs/testing/traceability.md:298`.
- *
  * AC-297 (verification.md:409) names exactly eight endpoints:
  *
  *   GET    /api/invoices                — list
@@ -38,8 +36,8 @@
  *
  * Why a dedicated file: AC-297 is the auth-matrix anchor; consolidating
  * it here keeps `invoices-routes.test.ts` focused on the wire/contract
- * surfaces (defaults, freeze rules, scope) and gives the traceability
- * row a single home to reference.
+ * surfaces (defaults, freeze rules, scope) and gives AC-297 a single
+ * home.
  *
  * The five existing invoice route tests cover individual cells of this
  * matrix incidentally; this file is the systematic walk.
