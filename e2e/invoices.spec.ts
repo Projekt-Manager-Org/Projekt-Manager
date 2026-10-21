@@ -102,7 +102,7 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
     await page.getByTestId('invoice-line-quantity-input').fill('1');
     await page.getByTestId('invoice-line-unit-input').fill('pauschal');
     await page.getByTestId('invoice-line-unit-price-input').fill('1500');
-    await page.getByTestId('invoice-line-tax-rate-input').fill('19');
+    await page.getByTestId('invoice-line-tax-rate-select').selectOption('19');
 
     // Save draft, then issue. The two-step UX (save draft first, then
     // issue) mirrors the §14.2.14 split.

@@ -15,6 +15,9 @@
  *     detection: `invoice.cancellationOf !== null` is the load-bearing
  *     signal; `number.startsWith('ST-')` is a fallback in case the test
  *     fixture builds a Storno-shaped row without populating the FK.
+ *   - Amounts are signed per data-model.md §5.15 *Signed amounts*: a
+ *     Storno renders its stored values negated; a negative signed price
+ *     moves its sign onto `BilledQuantity` (EN 16931 BR-27).
  *   - Tax-mode dispatch on the row's snapshotted `taxMode`:
  *       standard:        CategoryCode='S',  per-rate breakdown, statutory
  *                        line-level + header-level ApplicableTradeTax.
@@ -37,6 +40,7 @@
  */
 
 import {
+  negateInvoiceTotals,
   type Invoice,
   type InvoiceIssuerSnapshot,
   type InvoiceLine,
@@ -187,7 +191,15 @@ function renderRecipientBlock(recipient: InvoiceRecipientSnapshot): string {
   return parts.join('');
 }
 
-function renderLineItem(line: InvoiceLine, index: number, mode: TaxMode): string {
+/**
+ * `sign` is +1 for an invoice, −1 for a Storno (data-model.md §5.15
+ * *Signed amounts*): the stored values times `sign`. A negative signed
+ * `unitPrice` moves its sign onto the quantity — EN 16931 BR-27 forbids
+ * a negative item net price.
+ */
+function renderLineItem(line: InvoiceLine, index: number, mode: TaxMode, sign: 1 | -1): string {
+  const unitPrice = sign * line.unitPrice;
+  const quantity = unitPrice < 0 ? -line.quantity : line.quantity;
   const parts: string[] = [];
   parts.push('<ram:IncludedSupplyChainTradeLineItem>');
   parts.push('<ram:AssociatedDocumentLineDocument>');
@@ -200,13 +212,13 @@ function renderLineItem(line: InvoiceLine, index: number, mode: TaxMode): string
 
   parts.push('<ram:SpecifiedLineTradeAgreement>');
   parts.push('<ram:NetPriceProductTradePrice>');
-  parts.push(`<ram:ChargeAmount>${formatDecimal(line.unitPrice, 2)}</ram:ChargeAmount>`);
+  parts.push(`<ram:ChargeAmount>${formatDecimal(Math.abs(unitPrice), 2)}</ram:ChargeAmount>`);
   parts.push('</ram:NetPriceProductTradePrice>');
   parts.push('</ram:SpecifiedLineTradeAgreement>');
 
   parts.push('<ram:SpecifiedLineTradeDelivery>');
   parts.push(
-    `<ram:BilledQuantity unitCode="${escapeXmlAttr(mapUnitCode(line.unit))}">${formatDecimal(line.quantity, 0)}</ram:BilledQuantity>`,
+    `<ram:BilledQuantity unitCode="${escapeXmlAttr(mapUnitCode(line.unit))}">${formatDecimal(quantity, 0)}</ram:BilledQuantity>`,
   );
   parts.push('</ram:SpecifiedLineTradeDelivery>');
 
@@ -221,7 +233,7 @@ function renderLineItem(line: InvoiceLine, index: number, mode: TaxMode): string
   parts.push(`<ram:RateApplicablePercent>${fmt2(linePercent)}</ram:RateApplicablePercent>`);
   parts.push('</ram:ApplicableTradeTax>');
   parts.push('<ram:SpecifiedTradeSettlementLineMonetarySummation>');
-  parts.push(`<ram:LineTotalAmount>${fmt2(line.lineTotal)}</ram:LineTotalAmount>`);
+  parts.push(`<ram:LineTotalAmount>${fmt2(sign * line.lineTotal)}</ram:LineTotalAmount>`);
   parts.push('</ram:SpecifiedTradeSettlementLineMonetarySummation>');
   parts.push('</ram:SpecifiedLineTradeSettlement>');
 
@@ -236,6 +248,10 @@ export function buildFacturXml(invoice: Invoice): string {
   const taxMode = invoice.taxMode;
   const storno = isStorno(invoice);
   const typeCode = storno ? '381' : '380';
+  // A credit note's type code carries the sign; its amounts render
+  // negated (data-model.md §5.15 *Signed amounts*).
+  const sign = storno ? -1 : 1;
+  const totals = storno ? negateInvoiceTotals(invoice.totals) : invoice.totals;
 
   if (invoice.number === null) {
     // The renderer is only invoked at issuance time — the row's `number`
@@ -292,7 +308,7 @@ export function buildFacturXml(invoice: Invoice): string {
 
   // Lines (one IncludedSupplyChainTradeLineItem per row).
   invoice.lines.forEach((line, idx) => {
-    parts.push(renderLineItem(line, idx, taxMode));
+    parts.push(renderLineItem(line, idx, taxMode, sign));
   });
 
   // ApplicableHeaderTradeAgreement — issuer / recipient.
@@ -321,7 +337,7 @@ export function buildFacturXml(invoice: Invoice): string {
   // `totals.perRate` for standard mode; one neutral block for reverse
   // charge (where perRate is empty by domain semantics).
   if (taxMode === 'standard') {
-    for (const band of invoice.totals.perRate) {
+    for (const band of totals.perRate) {
       parts.push('<ram:ApplicableTradeTax>');
       parts.push(`<ram:CalculatedAmount>${fmt2(band.taxAmount)}</ram:CalculatedAmount>`);
       parts.push('<ram:TypeCode>VAT</ram:TypeCode>');
@@ -346,7 +362,7 @@ export function buildFacturXml(invoice: Invoice): string {
     if (exemptionReason) {
       parts.push(`<ram:ExemptionReason>${escapeXmlText(exemptionReason)}</ram:ExemptionReason>`);
     }
-    parts.push(`<ram:BasisAmount>${fmt2(invoice.totals.netGrandTotal)}</ram:BasisAmount>`);
+    parts.push(`<ram:BasisAmount>${fmt2(totals.netGrandTotal)}</ram:BasisAmount>`);
     parts.push(`<ram:CategoryCode>${taxModeCategoryCode(taxMode)}</ram:CategoryCode>`);
     parts.push('<ram:RateApplicablePercent>0.00</ram:RateApplicablePercent>');
     parts.push('</ram:ApplicableTradeTax>');
@@ -354,19 +370,13 @@ export function buildFacturXml(invoice: Invoice): string {
 
   // SpecifiedTradeSettlementHeaderMonetarySummation — totals block.
   parts.push('<ram:SpecifiedTradeSettlementHeaderMonetarySummation>');
-  parts.push(`<ram:LineTotalAmount>${fmt2(invoice.totals.netGrandTotal)}</ram:LineTotalAmount>`);
+  parts.push(`<ram:LineTotalAmount>${fmt2(totals.netGrandTotal)}</ram:LineTotalAmount>`);
+  parts.push(`<ram:TaxBasisTotalAmount>${fmt2(totals.netGrandTotal)}</ram:TaxBasisTotalAmount>`);
   parts.push(
-    `<ram:TaxBasisTotalAmount>${fmt2(invoice.totals.netGrandTotal)}</ram:TaxBasisTotalAmount>`,
+    `<ram:TaxTotalAmount currencyID="EUR">${fmt2(totals.taxGrandTotal)}</ram:TaxTotalAmount>`,
   );
-  parts.push(
-    `<ram:TaxTotalAmount currencyID="EUR">${fmt2(invoice.totals.taxGrandTotal)}</ram:TaxTotalAmount>`,
-  );
-  parts.push(
-    `<ram:GrandTotalAmount>${fmt2(invoice.totals.grossGrandTotal)}</ram:GrandTotalAmount>`,
-  );
-  parts.push(
-    `<ram:DuePayableAmount>${fmt2(invoice.totals.grossGrandTotal)}</ram:DuePayableAmount>`,
-  );
+  parts.push(`<ram:GrandTotalAmount>${fmt2(totals.grossGrandTotal)}</ram:GrandTotalAmount>`);
+  parts.push(`<ram:DuePayableAmount>${fmt2(totals.grossGrandTotal)}</ram:DuePayableAmount>`);
   parts.push('</ram:SpecifiedTradeSettlementHeaderMonetarySummation>');
 
   // Storno cross-reference. EN 16931 places this in the settlement

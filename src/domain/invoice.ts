@@ -159,6 +159,14 @@ export function companyProfileMissingFields(
 /** §5.15 — the VAT rates a line may carry, in percent. */
 export const INVOICE_TAX_RATES = [0, 7, 19] as const;
 
+/** `standard` excludes 0: an S-category line at 0 % breaks EN 16931 BR-S-05. */
+const STANDARD_TAX_RATES: readonly number[] = INVOICE_TAX_RATES.filter((r) => r !== 0);
+
+/** §5.15 — the rates a line may carry under `mode`. */
+export function taxRatesFor(mode: TaxMode): readonly number[] {
+  return mode === 'standard' ? STANDARD_TAX_RATES : INVOICE_TAX_RATES;
+}
+
 /** §5.15 — `unitPrice` carries at most this many decimals. */
 export const UNIT_PRICE_MAX_DECIMALS = 4;
 
@@ -174,7 +182,10 @@ const INPUT_LINE_FIELDS = ['description', 'quantity', 'unit', 'unitPrice', 'taxR
  * (AC-384); empty when the line is valid, every field when it is not an
  * object. `unitPrice` carries no sign rule: a Storno line negates it.
  */
-export function invalidInputLineFields(line: unknown): (keyof InvoiceLine)[] {
+export function invalidInputLineFields(
+  line: unknown,
+  rates: readonly number[] = INVOICE_TAX_RATES,
+): (keyof InvoiceLine)[] {
   if (typeof line !== 'object' || line === null) return [...INPUT_LINE_FIELDS];
   const l = line as Record<string, unknown>;
   const invalid: (keyof InvoiceLine)[] = [];
@@ -187,7 +198,7 @@ export function invalidInputLineFields(line: unknown): (keyof InvoiceLine)[] {
   ) {
     invalid.push('unitPrice');
   }
-  if (!(INVOICE_TAX_RATES as readonly unknown[]).includes(l.taxRate)) invalid.push('taxRate');
+  if (!(rates as readonly unknown[]).includes(l.taxRate)) invalid.push('taxRate');
   return invalid;
 }
 
@@ -196,8 +207,11 @@ export function invalidInputLineFields(line: unknown): (keyof InvoiceLine)[] {
  * derived `lineTotal` (AC-384). Shared by the issue preconditions and the
  * import (AC-386): a stored mismatch is rejected, never re-derived.
  */
-export function invalidStoredLineFields(line: unknown): (keyof InvoiceLine)[] {
-  const invalid = invalidInputLineFields(line);
+export function invalidStoredLineFields(
+  line: unknown,
+  rates: readonly number[] = INVOICE_TAX_RATES,
+): (keyof InvoiceLine)[] {
+  const invalid = invalidInputLineFields(line, rates);
   if (invalid.includes('quantity') || invalid.includes('unitPrice')) return invalid;
   const l = line as InvoiceLine;
   if (l.lineTotal !== deriveInvoiceLine(l).lineTotal) invalid.push('lineTotal');

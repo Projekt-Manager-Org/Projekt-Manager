@@ -34,6 +34,7 @@ import { getProjectRowById } from '../repositories/project.js';
 import {
   computeInvoiceTotals,
   invalidStoredLineFields,
+  taxRatesFor,
   invoiceTotalsAreFinite,
   type Invoice,
   type InvoiceLine,
@@ -165,15 +166,15 @@ export class InvoiceIssueService {
     // derivation bypasses them. A stored `lineTotal` mismatch is rejected,
     // not re-derived — the issued invoice is exactly the draft the issuer
     // saw (AC-384).
+    const taxMode = before.taxMode as TaxMode;
     for (const [i, line] of lines.entries()) {
-      const [field] = invalidStoredLineFields(line);
+      const [field] = invalidStoredLineFields(line, taxRatesFor(taxMode));
       if (field !== undefined) {
         throw validationError(STRINGS.errors.invalidInput, {
           invalidFields: [`lines[${i}].${field}`],
         });
       }
     }
-    const taxMode = before.taxMode as TaxMode;
     const totals = computeInvoiceTotals(lines, taxMode);
     if (!invoiceTotalsAreFinite(totals)) {
       throw validationError(STRINGS.errors.invalidInput, { invalidFields: ['totals'] });

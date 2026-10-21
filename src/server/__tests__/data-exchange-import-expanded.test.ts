@@ -793,6 +793,11 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         'invoices[0].lines[0].taxRate',
       ],
       [
+        'taxRate: 0 under standard (EN 16931 BR-S-05)',
+        (inv) => Object.assign(inv.lines[0]!, { taxRate: 0 }),
+        'invoices[0].lines[0].taxRate',
+      ],
+      [
         'quantity: -10',
         (inv) => Object.assign(inv.lines[0]!, { quantity: -10, lineTotal: -250 }),
         'invoices[0].lines[0].quantity',
