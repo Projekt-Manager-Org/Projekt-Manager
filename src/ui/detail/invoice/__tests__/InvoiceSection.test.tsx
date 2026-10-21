@@ -8,7 +8,8 @@
  * otherwise (in-page CTAs, fresh load) the close stays on the project
  * page and just strips the `editDraft` URL param.
  *
- * Also: the totals preview survives a typed value that overflows a double.
+ * Also: the totals preview survives a typed value that overflows a double,
+ * and the tax-rate select follows the tax mode (ui/invoices.md §8.16.2).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -47,6 +48,7 @@ vi.mock('@/api/client', async (importActual) => {
 });
 
 const { InvoiceSection } = await import('@/ui/detail/invoice/InvoiceSection');
+const { invoicesApi } = await import('@/api/client');
 const { useAuthStore } = await import('@/state/authStore');
 const { useInvoiceStore } = await import('@/state/invoiceStore');
 const { useProjectStore } = await import('@/state/projectStore');
@@ -285,5 +287,67 @@ describe('InvoiceSection — draft editor totals preview', () => {
     await userEvent.type(unitPrice, '1e200');
 
     expect(screen.getByTestId('invoice-totals-net')).toHaveTextContent('—');
+  });
+});
+
+describe('InvoiceSection — draft editor tax-rate select', () => {
+  const rateOptions = () =>
+    Array.from(
+      (screen.getByTestId('invoice-line-tax-rate-select') as HTMLSelectElement).options,
+    ).map((o) => o.value);
+
+  function reverseChargeDraftWithZeroLine(): Invoice {
+    return makeDraft({
+      taxMode: 'reverse_charge',
+      lines: [{ ...makeDraft().lines[0]!, taxRate: 0 }],
+      totals: { perRate: [], netGrandTotal: 1500, taxGrandTotal: 0, grossGrandTotal: 1500 },
+    });
+  }
+
+  it('offers 7 and 19 under Regulär', async () => {
+    renderSection();
+    await screen.findByTestId('invoice-form');
+    expect(rateOptions()).toEqual(['7', '19']);
+  });
+
+  it('offers 0, 7 and 19 under Reverse-Charge', async () => {
+    listByProjectMock.mockResolvedValue({
+      ok: true,
+      data: { data: [reverseChargeDraftWithZeroLine()], total: 1 },
+    });
+    renderSection();
+    await screen.findByTestId('invoice-form');
+    expect(rateOptions()).toEqual(['0', '7', '19']);
+  });
+
+  it('switching to Regulär keeps a 0 % line, flags it and blocks Speichern', async () => {
+    listByProjectMock.mockResolvedValue({
+      ok: true,
+      data: { data: [reverseChargeDraftWithZeroLine()], total: 1 },
+    });
+    vi.mocked(invoicesApi.updateDraft).mockReset();
+    vi.mocked(invoicesApi.updateDraft).mockResolvedValue({
+      ok: true,
+      data: makeDraft({ version: 2 }),
+    });
+    renderSection();
+    await screen.findByTestId('invoice-form');
+
+    await userEvent.selectOptions(screen.getByTestId('invoice-tax-mode-select'), 'standard');
+
+    expect(screen.getByTestId('invoice-line-tax-rate-select')).toHaveValue('0');
+    expect(screen.getByTestId('invoice-line-tax-rate-error')).toBeVisible();
+    await userEvent.click(screen.getByTestId('invoice-form-save'));
+    expect(invoicesApi.updateDraft).not.toHaveBeenCalled();
+
+    // A valid rate clears the error and unblocks Speichern.
+    await userEvent.selectOptions(screen.getByTestId('invoice-line-tax-rate-select'), '19');
+    expect(screen.queryByTestId('invoice-line-tax-rate-error')).toBeNull();
+    await userEvent.click(screen.getByTestId('invoice-form-save'));
+    await waitFor(() => expect(invoicesApi.updateDraft).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(invoicesApi.updateDraft).mock.calls[0]!.at(-1) as {
+      lines: Array<{ taxRate: number }>;
+    };
+    expect(payload.lines[0]!.taxRate).toBe(19);
   });
 });

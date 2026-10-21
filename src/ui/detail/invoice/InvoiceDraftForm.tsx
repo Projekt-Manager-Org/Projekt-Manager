@@ -35,6 +35,7 @@ import {
   deriveInvoiceLine,
   invoiceTotalsAreFinite,
   labelForTaxMode,
+  taxRatesFor,
   type Invoice,
   type InvoiceLineInput,
   type InvoiceRecipientSnapshot,
@@ -50,9 +51,8 @@ const TITLE_ID = 'invoice-draft-form-title';
 
 /**
  * Default VAT percentage pre-filled on every new line. 19 % is the
- * German standard rate (UStG §12 (1)); 7 % (reduced) and 0 % are also
- * accepted by the input — the server checks the rate against the §5.15
- * rates; the tax mode decides whether it applies.
+ * German standard rate (UStG §12 (1)); valid under every tax mode. The
+ * select offers `taxRatesFor(taxMode)` (§5.15).
  */
 const DEFAULT_TAX_RATE_PERCENT = '19';
 
@@ -220,9 +220,27 @@ export function InvoiceDraftForm({
     return invoiceTotalsAreFinite(totals) ? totals : null;
   }, [lines, taxMode]);
 
+  const allowedRates = taxRatesFor(taxMode);
+  const rateInvalid = (line: { taxRate: string }) =>
+    !allowedRates.includes(parseNumber(line.taxRate));
+  // A line keeps a rate the mode does not allow until the user picks one.
+  const rateOptions = (line: { taxRate: string }) => [
+    ...(rateInvalid(line) ? [line.taxRate] : []),
+    ...allowedRates.map(String),
+  ];
+
   const handleSave = async () => {
     if (submitting) return;
     setErrorMessage(null);
+
+    // A rate the mode does not allow (a 0 % line switched to Regulär)
+    // carries its inline error; the server would reject it (AC-384).
+    // Focus the first one so the error is in view.
+    const invalidIdx = lines.findIndex(rateInvalid);
+    if (invalidIdx !== -1) {
+      document.getElementById(`invoice-line-tax-rate-${invalidIdx}`)?.focus();
+      return;
+    }
 
     const wireLines = toWireLines(lines);
     const wireRecipient = toWireRecipient(recipient);
@@ -426,14 +444,34 @@ export function InvoiceDraftForm({
                           />
                         </td>
                         <td>
-                          <input
-                            className={styles.formInput}
+                          <select
+                            className={styles.formSelect}
                             value={line.taxRate}
                             onChange={(e) => updateLine(idx, { taxRate: e.target.value })}
                             disabled={submitting}
-                            inputMode="decimal"
-                            data-testid={`invoice-line-tax-rate-input${suffix}`}
-                          />
+                            id={`invoice-line-tax-rate-${idx}`}
+                            aria-label={STRINGS.invoices.formLineTaxRate}
+                            aria-invalid={rateInvalid(line) || undefined}
+                            aria-describedby={
+                              rateInvalid(line) ? `invoice-line-tax-rate-error-${idx}` : undefined
+                            }
+                            data-testid={`invoice-line-tax-rate-select${suffix}`}
+                          >
+                            {rateOptions(line).map((rate) => (
+                              <option key={rate} value={rate}>
+                                {rate}
+                              </option>
+                            ))}
+                          </select>
+                          {rateInvalid(line) && (
+                            <div
+                              id={`invoice-line-tax-rate-error-${idx}`}
+                              className={styles.fieldError}
+                              data-testid={`invoice-line-tax-rate-error${suffix}`}
+                            >
+                              {STRINGS.invoices.formTaxRateInvalid}
+                            </div>
+                          )}
                         </td>
                         <td className={styles.lineActions}>
                           <button

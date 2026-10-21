@@ -596,6 +596,7 @@ export const STRINGS = {
      * load-bearing "no usable line" case.
      */
     formEmptyLinesError: 'Bitte mindestens eine Position mit Beschreibung und Preis eingeben.',
+    formTaxRateInvalid: 'Dieser MwSt-Satz ist im gewählten Steuermodus nicht zulässig.',
 
     // Confirmation copies
     issueConfirmTitle: 'Rechnung jetzt ausstellen?',

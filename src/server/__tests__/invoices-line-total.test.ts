@@ -9,7 +9,8 @@
  *     `unitPrice` above 4 decimals and overflowing totals; `lineTotal`
  *     is the decimal product; issue also rejects a stored 5-dp `unitPrice`,
  *     stored lines whose totals overflow, and a stored non-numeric
- *     `quantity` or `taxRate`.
+ *     `quantity` or `taxRate`; create, PATCH and issue reject a
+ *     `standard` line at `taxRate` 0, `reverse_charge` accepts it (#544).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -145,6 +146,107 @@ describe('AT-154 / AC-384: lineTotal is server-derived', () => {
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  // §5.15: `standard` excludes a 0 % rate (EN 16931 BR-S-05) — #544.
+  it('POST rejects a standard line at taxRate 0', async () => {
+    const res = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'standard',
+      lines: [{ ...TAMPERED_LINE, taxRate: 0 }],
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST accepts a reverse_charge line at taxRate 0', async () => {
+    const res = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'reverse_charge',
+      lines: [{ ...TAMPERED_LINE, taxRate: 0 }],
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it('PATCH switching a draft with a 0 % line to standard is rejected; the draft is unchanged', async () => {
+    const created = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'reverse_charge',
+      lines: [{ ...TAMPERED_LINE, taxRate: 0 }],
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+    const before = (await authGet(ownerToken, `/api/invoices/${id}`)).json();
+
+    const res = await authPatch(ownerToken, `/api/invoices/${id}`, {
+      ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
+      taxMode: 'standard',
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+    const after = (await authGet(ownerToken, `/api/invoices/${id}`)).json();
+    expect(after.taxMode).toBe('reverse_charge');
+    expect(after.version).toBe(before.version);
+  });
+
+  it('PATCH setting a 0 % line on a standard draft is rejected', async () => {
+    const created = await authPost(ownerToken, '/api/invoices', { projectId, taxMode: 'standard' });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+
+    const res = await authPatch(ownerToken, `/api/invoices/${id}`, {
+      ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
+      lines: [{ ...TAMPERED_LINE, taxRate: 0 }],
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('PATCH touching only performanceDate on a standard draft with a stored 0 % line is rejected', async () => {
+    const created = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'standard',
+      lines: [TAMPERED_LINE],
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+    await withDb((db) =>
+      db.execute(
+        sql`UPDATE invoices SET lines = jsonb_set(lines, '{0,taxRate}', '0') WHERE id = ${id}`,
+      ),
+    );
+
+    const res = await authPatch(ownerToken, `/api/invoices/${id}`, {
+      ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
+      performanceDate: '2026-04-11',
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('issue rejects a stored standard line at taxRate 0', async () => {
+    const created = await authPost(ownerToken, '/api/invoices', {
+      projectId,
+      taxMode: 'standard',
+      lines: [TAMPERED_LINE],
+      performanceDate: '2026-04-10',
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json().id as string;
+
+    await withDb((db) =>
+      db.execute(
+        sql`UPDATE invoices SET lines = jsonb_set(lines, '{0,taxRate}', '0') WHERE id = ${id}`,
+      ),
+    );
+
+    const sequenceBefore = await readSequenceNextValue();
+    const res = await authPost(ownerToken, `/api/invoices/${id}/issue`, {
+      ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().details.invalidFields).toEqual(['lines[0].taxRate']);
+    expect(await readSequenceNextValue()).toBe(sequenceBefore);
   });
 
   it('issue rejects a stored unitPrice with more than 4 decimals', async () => {

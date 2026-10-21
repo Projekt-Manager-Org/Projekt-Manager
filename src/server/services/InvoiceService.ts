@@ -28,6 +28,7 @@ import {
   computeInvoiceTotals,
   deriveInvoiceLine,
   invalidInputLineFields,
+  taxRatesFor,
   invoiceTotalsAreFinite,
   TAX_MODES,
   type Invoice,
@@ -119,6 +120,14 @@ function deriveInvoiceLines(lines: InvoiceLineInput[]): InvoiceLine[] {
     throw validationError(STRINGS.errors.invalidInput);
   }
   return derived;
+}
+
+/** Reject a line rate the draft's tax mode does not allow (AC-384). */
+function assertLineRatesFor(lines: InvoiceLine[], mode: TaxMode): void {
+  const rates = taxRatesFor(mode);
+  if (lines.some((line) => !rates.includes(line.taxRate))) {
+    throw validationError(STRINGS.errors.invalidInput);
+  }
 }
 
 /** Re-derive `totals` (AC-286); an amount that overflows a double is rejected (AC-384). */
@@ -336,6 +345,7 @@ export class InvoiceService {
               }
             : customerRecipient;
 
+          assertLineRatesFor(lines, taxMode);
           const totals = deriveTotals(lines, taxMode);
 
           const row = await insertInvoiceDraft(tx, {
@@ -411,6 +421,7 @@ export class InvoiceService {
 
           const nextTaxMode: TaxMode = (input.taxMode ?? before.taxMode) as TaxMode;
           const nextLines: InvoiceLine[] = inputLines ?? (before.lines as InvoiceLine[]);
+          assertLineRatesFor(nextLines, nextTaxMode);
           const nextTotals = deriveTotals(nextLines, nextTaxMode);
           const nextPerformanceDate =
             'performanceDate' in input

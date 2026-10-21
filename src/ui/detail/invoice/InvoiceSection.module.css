@@ -262,6 +262,12 @@
   font: inherit;
 }
 
+.fieldError {
+  margin-top: 2px;
+  font-size: 0.8rem;
+  color: var(--color-danger-text);
+}
+
 .formHint {
   font-size: 0.78rem;
   color: var(--color-text-muted);

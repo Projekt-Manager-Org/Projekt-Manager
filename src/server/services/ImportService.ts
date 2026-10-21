@@ -71,6 +71,7 @@ import {
   invalidStoredLineFields,
   invoiceTotalsMatch,
   TAX_MODES,
+  taxRatesFor,
 } from '../../domain/invoice.js';
 
 /**
@@ -297,7 +298,8 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
   for (let i = 0; i < envelope.invoices.length; i++) {
     const inv = envelope.invoices[i]!;
     // Totals derive from the mode; an unknown one would be read as
-    // `standard`, so it skips the totals check. Lines are mode-free.
+    // `standard`, so it skips the totals check, and its lines check
+    // against the full §5.15 rate set.
     const modeValid = TAX_MODES.includes(inv.taxMode);
     if (!modeValid) {
       issues.push({
@@ -310,10 +312,12 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
       continue;
     }
     const lineIssues = inv.lines.flatMap((line, j) =>
-      invalidStoredLineFields(line).map((field) => ({
-        path: `invoices[${i}].lines[${j}].${field}`,
-        message: `${field} breaks the invoice line rules`,
-      })),
+      invalidStoredLineFields(line, modeValid ? taxRatesFor(inv.taxMode) : undefined).map(
+        (field) => ({
+          path: `invoices[${i}].lines[${j}].${field}`,
+          message: `${field} breaks the invoice line rules`,
+        }),
+      ),
     );
     issues.push(...lineIssues);
     // Totals derive only from valid lines; a broken line rejects the
