@@ -32,7 +32,6 @@ export function InvoiceDraftPreview({ invoice }: { invoice: Invoice }) {
         <dd>
           {labelForTaxMode(invoice.taxMode, {
             standard: STRINGS.companyProfile.taxModeStandard,
-            kleinunternehmer: STRINGS.companyProfile.taxModeKleinunternehmer,
             reverseCharge: STRINGS.companyProfile.taxModeReverseCharge,
           })}
         </dd>

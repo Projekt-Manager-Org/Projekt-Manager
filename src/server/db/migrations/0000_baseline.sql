@@ -82,7 +82,7 @@ CREATE TABLE "company_profile" (
 	"updated_by" uuid,
 	CONSTRAINT "company_profile_singleton_unique" UNIQUE("singleton"),
 	CONSTRAINT "company_profile_singleton" CHECK ("company_profile"."singleton" = true),
-	CONSTRAINT "company_profile_default_tax_mode_valid" CHECK ("company_profile"."default_tax_mode" IN ('standard', 'kleinunternehmer', 'reverse_charge'))
+	CONSTRAINT "company_profile_default_tax_mode_valid" CHECK ("company_profile"."default_tax_mode" IN ('standard', 'reverse_charge'))
 );
 --> statement-breakpoint
 CREATE TABLE "customers" (
@@ -152,7 +152,7 @@ CREATE TABLE "invoices" (
 	"created_by" uuid,
 	"updated_by" uuid,
 	CONSTRAINT "invoices_status_valid" CHECK ("invoices"."status" IN ('draft', 'issued', 'cancelled')),
-	CONSTRAINT "invoices_tax_mode_valid" CHECK ("invoices"."tax_mode" IN ('standard', 'kleinunternehmer', 'reverse_charge')),
+	CONSTRAINT "invoices_tax_mode_valid" CHECK ("invoices"."tax_mode" IN ('standard', 'reverse_charge')),
 	CONSTRAINT "invoices_profile_valid" CHECK ("invoices"."profile" IN ('zugferd-en16931')),
 	CONSTRAINT "invoices_number_format" CHECK ("invoices"."number" IS NULL
           OR "invoices"."number" ~ '^(RE|ST)-[0-9]{4}-[0-9]{4,}$'),

@@ -770,11 +770,11 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-386 / AT-156: invoice lines and totals pass the §5.15 write rules
+  // AC-386 / AT-156: invoice tax mode, lines and totals pass the §5.15 write rules
   // at envelope validation. Rejections run against an empty target, so a
   // single wipe and reseed covers every case.
   // -------------------------------------------------------------------
-  describe('AC-386: invoice lines and totals are validated', () => {
+  describe('AC-386: invoice tax mode, lines and totals are validated', () => {
     type Mutate = (inv: Envelope['invoices'][number]) => void;
     const lineCases: Array<[string, Mutate, string]> = [
       [
@@ -832,9 +832,14 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         'invoices[0].totals',
       ],
       [
-        'standard totals under taxMode kleinunternehmer',
-        (inv) => Object.assign(inv, { taxMode: 'kleinunternehmer' }),
+        'standard totals under taxMode reverse_charge',
+        (inv) => Object.assign(inv, { taxMode: 'reverse_charge' }),
         'invoices[0].totals',
+      ],
+      [
+        'taxMode outside TaxMode (kleinunternehmer, removed in #552)',
+        (inv) => Object.assign(inv, { taxMode: 'kleinunternehmer' }),
+        'invoices[0].taxMode',
       ],
     ];
 
@@ -861,6 +866,22 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       expect(err.code).toBe('VALIDATION_ERROR');
       expect((err.details as ValidationIssue[]).map((i) => i.path)).toEqual([path]);
       expect(await db.select().from(invoices)).toEqual([]);
+    });
+
+    it('reports a bad taxMode and a broken line on the same invoice', async () => {
+      const env = buildExpandedEnvelope();
+      Object.assign(env.invoices[0]!, { taxMode: 'kleinunternehmer' });
+      Object.assign(env.invoices[0]!.lines[0]!, { unitPrice: null });
+
+      const preview = (await importEnvelope(env, {
+        dryRun: true,
+        override: false,
+        confirmationPhrase: null,
+      })) as DryRunPreview;
+      expect(preview.validation_errors.map((i) => i.path)).toEqual([
+        'invoices[0].taxMode',
+        'invoices[0].lines[0].unitPrice',
+      ]);
     });
 
     it('imports a cancelled invoice and its Storno with lines and totals unchanged', async () => {

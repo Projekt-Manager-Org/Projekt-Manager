@@ -70,6 +70,7 @@ import {
   computeInvoiceTotals,
   invalidStoredLineFields,
   invoiceTotalsMatch,
+  TAX_MODES,
 } from '../../domain/invoice.js';
 
 /**
@@ -290,11 +291,20 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     }
   }
 
-  // AC-386: invoice lines and totals pass the write rules (data-model.md
-  // §5.15). An issued row is frozen as imported, so a violation is
-  // rejected, never re-derived.
+  // AC-386: invoice tax mode, lines and totals pass the write rules
+  // (data-model.md §5.15). An issued row is frozen as imported, so a
+  // violation is rejected, never re-derived.
   for (let i = 0; i < envelope.invoices.length; i++) {
     const inv = envelope.invoices[i]!;
+    // Totals derive from the mode; an unknown one would be read as
+    // `standard`, so it skips the totals check. Lines are mode-free.
+    const modeValid = TAX_MODES.includes(inv.taxMode);
+    if (!modeValid) {
+      issues.push({
+        path: `invoices[${i}].taxMode`,
+        message: 'taxMode is not a supported tax mode',
+      });
+    }
     if (!Array.isArray(inv.lines)) {
       issues.push({ path: `invoices[${i}].lines`, message: 'lines is not an array' });
       continue;
@@ -309,6 +319,7 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     // Totals derive only from valid lines; a broken line rejects the
     // invoice already.
     if (
+      modeValid &&
       lineIssues.length === 0 &&
       !invoiceTotalsMatch(inv.totals, computeInvoiceTotals(inv.lines, inv.taxMode))
     ) {

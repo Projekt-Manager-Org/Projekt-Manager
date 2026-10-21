@@ -72,7 +72,7 @@ interface ExportEnvelopeShape {
     iban: string | null;
     accentColor: string | null;
     footerText: string | null;
-    defaultTaxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge';
+    defaultTaxMode: 'standard' | 'reverse_charge';
     updatedAt: string;
     updatedBy: string | null;
   }>;

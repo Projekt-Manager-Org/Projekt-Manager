@@ -18,14 +18,13 @@ export const INVOICE_STATUSES = ['draft', 'issued', 'cancelled'] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
 /**
- * §5.15 / §5.17 — three tax modes in v1, each rendered with the
- * statute-mandated boilerplate (AC-292).
+ * §5.15 / §5.17 — the supported tax modes (ADR-0026 § Tax modes), each
+ * rendered with its boilerplate (AC-292).
  *
  * - `standard`: per-line VAT (19% / 7% / 0%); per-rate totals.
- * - `kleinunternehmer`: §19 UStG; no VAT on lines, totals=net.
  * - `reverse_charge`: §13b UStG; no VAT on lines, totals=net.
  */
-export const TAX_MODES = ['standard', 'kleinunternehmer', 'reverse_charge'] as const;
+export const TAX_MODES = ['standard', 'reverse_charge'] as const;
 export type TaxMode = (typeof TAX_MODES)[number];
 
 /** Profile discriminator on the invoice row (ADR-0026 §E-invoice format). */
@@ -133,24 +132,9 @@ export interface CompanyProfile {
 }
 
 /**
- * The set of fields the issue-time / upsert-time validation gate checks
- * against the singleton. The order is the order in which `details.missingFields`
- * is reported, so the UI can focus the first offending input deterministically.
- *
- * `ustId` is only required when `defaultTaxMode ∈ {standard, reverse_charge}`;
- * see `companyProfileMissingFieldsForMode()` below.
- */
-export const COMPANY_PROFILE_ALWAYS_REQUIRED = [
-  'companyName',
-  'address.street',
-  'address.zip',
-  'address.city',
-  'taxId',
-] as const;
-
-/**
  * Compute the missing-field list for a candidate company-profile snapshot
- * under the given tax mode. Shared between the upsert validator
+ * (data-model.md §5.17 — required in every tax mode). The order is the
+ * order of `details.missingFields`. Shared between the upsert validator
  * (AC-303) and the issue-time gate (AC-289(i) / AC-305) so the two paths
  * cannot drift.
  *
@@ -158,9 +142,8 @@ export const COMPANY_PROFILE_ALWAYS_REQUIRED = [
  * (data-model.md §5.17 design notes) and the spec normative language is
  * "non-empty", not "non-null".
  */
-export function companyProfileMissingFieldsForMode(
+export function companyProfileMissingFields(
   profile: Pick<CompanyProfile, 'companyName' | 'address' | 'taxId' | 'ustId'>,
-  mode: TaxMode,
 ): string[] {
   const missing: string[] = [];
   if (!profile.companyName || profile.companyName.length === 0) missing.push('companyName');
@@ -169,9 +152,7 @@ export function companyProfileMissingFieldsForMode(
   if (!profile.address?.zip || profile.address.zip.length === 0) missing.push('address.zip');
   if (!profile.address?.city || profile.address.city.length === 0) missing.push('address.city');
   if (!profile.taxId || profile.taxId.length === 0) missing.push('taxId');
-  if (mode !== 'kleinunternehmer') {
-    if (!profile.ustId || profile.ustId.length === 0) missing.push('ustId');
-  }
+  if (!profile.ustId || profile.ustId.length === 0) missing.push('ustId');
   return missing;
 }
 
@@ -230,17 +211,15 @@ export function invalidStoredLineFields(line: unknown): (keyof InvoiceLine)[] {
  *
  * Lives next to the `TaxMode` definition rather than in `strings.ts` so
  * the discriminator and its display copy stay structurally paired —
- * adding a fourth `TaxMode` triggers a TS exhaustiveness error here.
+ * adding a `TaxMode` triggers a TS exhaustiveness error here.
  */
 export function labelForTaxMode(
   mode: TaxMode,
-  copy: { standard: string; kleinunternehmer: string; reverseCharge: string },
+  copy: { standard: string; reverseCharge: string },
 ): string {
   switch (mode) {
     case 'standard':
       return copy.standard;
-    case 'kleinunternehmer':
-      return copy.kleinunternehmer;
     case 'reverse_charge':
       return copy.reverseCharge;
   }
@@ -253,7 +232,7 @@ export function labelForTaxMode(
  *
  * `standard`: lines summed per rate; each band's VAT is its rounded net
  *   × rate (EN 16931 BR-CO-17).
- * `kleinunternehmer` / `reverse_charge`: no VAT on lines — taxGrandTotal=0,
+ * `reverse_charge`: no VAT on lines — taxGrandTotal=0,
  *   perRate=[], grossGrandTotal=netGrandTotal.
  */
 export function computeInvoiceTotals(lines: InvoiceLine[], mode: TaxMode): InvoiceTotals {
@@ -264,7 +243,7 @@ export function computeInvoiceTotals(lines: InvoiceLine[], mode: TaxMode): Invoi
   const net = round2Decimal(sum(lines.map((l) => l.lineTotal)));
   const netGrandTotal = net.toNumber();
 
-  if (mode === 'kleinunternehmer' || mode === 'reverse_charge') {
+  if (mode === 'reverse_charge') {
     return {
       perRate: [],
       netGrandTotal,

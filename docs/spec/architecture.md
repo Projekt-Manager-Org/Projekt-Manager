@@ -324,7 +324,6 @@ A failure at any step rolls back the entire transaction: the sequence increment 
 **Tax-mode boilerplate.** Each `taxMode` value renders with its boilerplate in German:
 
 - `standard` — per-line VAT columns (19% / 7%), full tax breakdown in the totals block.
-- `kleinunternehmer` — no VAT columns; mandatory boilerplate `"Gemäß § 19 UStG wird keine Umsatzsteuer berechnet"` (or the configured equivalent).
 - `reverse_charge` — no VAT on lines; mandatory boilerplate `"Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG"`.
 
 Exact German strings live in the German UI and error strings catalogue (`[C]` — [§12.2](#122-company-configurable-settings)).
@@ -432,7 +431,7 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 A variable's absence here is a claim that no company would need to change it. If one does, the fix is to add the entry — not to treat the catalogue as advisory.
 
 - Invoice Object Lock retention — `INVOICE_OBJECT_LOCK_DAYS`, the per-object Compliance lock (days from write) on every rendered invoice PDF/A-3. Default `3650` in `.env.production.example`: defense in depth against the application's own unreliability, not a retention promise — retention stays with the operating company ([ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)); `0` in `.env.example` writes no lock, so dev binaries stay disposable. Bounds: integer ≥ 0. Independent of the bucket-default retention `R` and the trash window `L` ([§11.4](#114-object-storage-module)). See [§11.14](#1114-invoice-domain), [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
-- Company default tax mode — `company_profile.defaultTaxMode` ∈ `'standard' | 'kleinunternehmer' | 'reverse_charge'`; pre-fills new invoice drafts with the tenant's most common mode ([data-model.md §5.17](data-model.md#517-company-profile-entity)). Owner-editable at runtime through the Daten view's company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); not an env var. Listed here because it is a per-tenant default that the deployment owner sets, not a per-user preference. Default `'standard'` on the pre-seeded singleton.
+- Company default tax mode — `company_profile.defaultTaxMode` ∈ `'standard' | 'reverse_charge'`; pre-fills new invoice drafts with the tenant's most common mode ([data-model.md §5.17](data-model.md#517-company-profile-entity)). Owner-editable at runtime through the Daten view's company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); not an env var. Listed here because it is a per-tenant default that the deployment owner sets, not a per-user preference. Default `'standard'` on the pre-seeded singleton.
 
 ### 12.3 Configuration Requirements
 

@@ -42,11 +42,11 @@ const addressSchema = {
 // form `#RRGGBB`).
 const profileBodySchema = {
   type: 'object',
-  // PUT semantics — the always-required block must be present. Optional
-  // fields (`ustId`, `iban`, …) accept null explicitly. Required-when-
-  // mode validation runs in the service layer (single source of truth
-  // with the issue-time gate — AC-303 / AC-289(i)).
-  required: ['expectedVersion', 'companyName', 'address', 'taxId', 'defaultTaxMode'],
+  // PUT semantics — required fields must be present. Optional fields
+  // (`iban`, …) accept null explicitly. Non-empty validation runs in the
+  // service layer (single source of truth with the issue-time gate —
+  // AC-303 / AC-289(i)).
+  required: ['expectedVersion', 'companyName', 'address', 'taxId', 'ustId', 'defaultTaxMode'],
   additionalProperties: false,
   properties: {
     expectedVersion: EXPECTED_VERSION_SCHEMA,

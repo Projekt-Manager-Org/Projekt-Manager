@@ -264,7 +264,7 @@ interface EnvelopeCompanyProfile {
   iban: string | null;
   accentColor: string | null;
   footerText: string | null;
-  defaultTaxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge'; // §5.15 TaxMode
+  defaultTaxMode: 'standard' | 'reverse_charge'; // §5.15 TaxMode
   updatedAt: string; // ISO 8601 — preserved on restore
   updatedBy: string | null; // UserAccount.id reference
 }
@@ -276,7 +276,7 @@ interface EnvelopeInvoice {
   number: string | null; // null while draft; matches ^(RE|ST)-\d{4}-\d{4,}$ once issued
   issueDate: string | null; // ISO 8601 date — set at issuance
   performanceDate: string | null; // ISO 8601 date — Leistungsdatum per §14 UStG
-  taxMode: 'standard' | 'kleinunternehmer' | 'reverse_charge'; // §5.15
+  taxMode: 'standard' | 'reverse_charge'; // §5.15
   profile: 'zugferd-en16931'; // §5.15 InvoiceProfile (v1)
   issuer: InvoiceIssuerSnapshot; // §5.15 — frozen at issuance
   recipient: InvoiceRecipientSnapshot; // §5.15 — frozen at issuance
@@ -567,7 +567,7 @@ The artifact produced by the `Rechnung fällig → Abgerechnet` transition of th
 ```typescript
 type InvoiceStatus = 'draft' | 'issued' | 'cancelled';
 
-type TaxMode = 'standard' | 'kleinunternehmer' | 'reverse_charge';
+type TaxMode = 'standard' | 'reverse_charge';
 
 type InvoiceProfile = 'zugferd-en16931';
 
@@ -585,7 +585,7 @@ interface InvoiceIssuerSnapshot {
   companyName: string;
   address: { street: string; zip: string; city: string };
   taxId: string; // Steuernummer
-  ustId?: string; // USt-IdNr. — required when taxMode != 'kleinunternehmer'
+  ustId?: string; // USt-IdNr. — required at issuance (§5.17)
   iban?: string;
   footerText?: string;
   // No logo field — it is deploy-time branding, drawn at render time and never snapshotted (§5.17).
@@ -601,8 +601,8 @@ interface InvoiceRecipientSnapshot {
 interface InvoiceTotals {
   // Aggregations across `lines`. Per-rate subtotals populated only for taxMode = 'standard'.
   perRate: { taxRate: number; netSubtotal: number; taxAmount: number }[];
-  netGrandTotal: number; // sum of perRate.netSubtotal, or sum of lineTotal for non-standard modes
-  taxGrandTotal: number; // sum of perRate.taxAmount; zero for kleinunternehmer / reverse_charge
+  netGrandTotal: number; // sum of perRate.netSubtotal, or sum of lineTotal for reverse_charge
+  taxGrandTotal: number; // sum of perRate.taxAmount; zero for reverse_charge
   grossGrandTotal: number; // netGrandTotal + taxGrandTotal
 }
 
@@ -645,7 +645,7 @@ Design notes:
 - **Why JSONB lines.** Lines are part of the snapshot — they freeze at issuance and are read as a unit when the invoice renders. There is no analytic query workload across `lines` (no "sum every invoice line containing 'Anstrich' across all years"). The JSONB shape matches the lifecycle exactly (`Stripe Invoices` analogue, [ADR-0026 Alternatives Considered](../adr/0026-invoices-immutability-and-zugferd.md#alternatives-considered)). Adding a typed columns table would impose FK / ordering / per-row audit churn on data that is read once at render time.
 - **Project linkage.** `projectId` is required and FK-enforced. An invoice belongs to exactly one project. The project's status flips to `abgerechnet` as part of the issuance transaction (see [api.md §14.2.14](api.md#14214-invoice-operations)). Multiple invoices may reference one project (e.g., a Storno + a fresh re-issued invoice).
 - **Performance date is editable in draft, frozen at issuance.** `performanceDate` is the Leistungsdatum required by §14 UStG. It is required to issue (the API rejects an issue call when `performanceDate` is null). In the absence of an explicit user entry, drafts default `performanceDate` to the project's `plannedEnd` if available — the UI is the SSOT for this default. The field is frozen once `status = 'issued'`.
-- **Totals are server-computed.** On every PATCH on a draft and on the issue call, the server re-computes `totals` from `lines` + `taxMode`. Client-supplied totals are ignored. Per-rate subtotals are produced only for `taxMode = 'standard'`; `kleinunternehmer` and `reverse_charge` produce a `perRate: []` and `taxGrandTotal: 0`.
+- **Totals are server-computed.** On every PATCH on a draft and on the issue call, the server re-computes `totals` from `lines` + `taxMode`. Client-supplied totals are ignored. Per-rate subtotals are produced only for `taxMode = 'standard'`; `reverse_charge` produces `perRate: []` and `taxGrandTotal: 0`.
 - **Money arithmetic is decimal.** Amounts are computed on their decimal values, not on binary floating point. Rounding to 2 decimals is half away from zero, so a negated input rounds to the negated result. A per-rate `taxAmount` is its `netSubtotal × taxRate / 100`, rounded. The rendered PDF and `factur-x.xml` show each line's `quantity` and `unitPrice` without rounding.
 - **Rendered artifact reference.** `renderedPdfBinaryDescriptorId` references the `attachment` row ([§5.13](#513-attachment)) the ZUGFeRD renderer writes at issuance ([ADR-0026 §Storage](../adr/0026-invoices-immutability-and-zugferd.md#storage-and-retention)); the invoice row holds only that reference. The row lives in the invoice namespace, apart from uploaded attachments:
   - **Off the attachment surface.** No attachment operation lists or addresses it ([api.md §14.2.11](api.md#14211-attachments)), so it cannot be hidden, purged, or read without `invoice:read`. Its only read path is `GET /api/invoices/:id/pdf`.
@@ -688,7 +688,7 @@ interface CompanyProfile {
   companyName: string; // required, non-empty
   address: { street: string; zip: string; city: string }; // all three components required
   taxId: string; // Steuernummer — required, non-empty
-  ustId?: string; // USt-IdNr. — required to issue `standard` or `reverse_charge` invoices; optional structurally
+  ustId?: string; // USt-IdNr. — required, non-empty; empty only on an incomplete stored row (see Required fields)
   iban?: string; // always structurally optional; the renderer emits a payment block iff `iban` is present
   accentColor?: string; // hex; nullable — document styling for the rendered invoice only, never an app-theme override; the renderer falls back to the brand accent's light variant (AC-362)
   footerText?: string; // free German text printed at the foot of every rendered invoice
@@ -704,9 +704,9 @@ Design notes:
 
 - **Singleton invariant.** Exactly one row exists. The row is pre-seeded by the baseline migration with empty mandatory fields so write paths are always upserts rather than first-writes. The DB enforces the singleton via a CHECK constraint on a constant primary key (parity with [§5.9](#59-backup-status-entity)).
 - **Owner-only mutation surface.** Every authenticated role may read; writes are owner-only, enforced by the route-layer role check (no dedicated `company_profile:read` / `company_profile:write` keys are introduced — see [api.md §14.3](api.md#143-authorization-rules)). The CRUD shape is `GET` + `PUT` (upsert), no `POST` / `DELETE`. The mutation goes through the single-write-path helper ([architecture.md §11.3](architecture.md#113-state-layer-behavioral-contract)); the audit entity type is `'company_profile'` (added to `AuditEntityType` alongside `'invoice'` — [§5.10](#510-audit-log-entity)).
-- **Required-fields gate at invoice issuance.** Issuing an invoice requires `companyName`, `address` (all three components), and `taxId` to be non-empty on the singleton; `standard` and `reverse_charge` modes additionally require `ustId`. The API rejects the issue call with a specific error code when any required field is empty (see [api.md §14.4](api.md#144-error-handling) `COMPANY_PROFILE_REQUIRED`). The singleton's mere existence is not sufficient — its contents must be complete for the requested mode.
+- **Required fields.** `companyName`, `address.{street,zip,city}`, `taxId` and `ustId`, all non-empty. Enforced at upsert ([AC-303](verification.md#1531-company-profile)) and at issuance ([AC-305](verification.md#1531-company-profile), [api.md §14.4](api.md#144-error-handling) `COMPANY_PROFILE_REQUIRED`). The stored row can still be incomplete: pre-seeded empty, or restored by import. Rationale for `ustId`: [ADR-0026 § Compliance boundary](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary).
 - **Snapshot at issuance, not at draft creation.** Drafts read the live row for pre-fill (default tax mode, recipient hints if needed), but the actual `Invoice.issuer` block is snapshotted at the issue call — never earlier. A draft created today and issued next month carries next month's company profile, not today's. This matches the standard ERP "as of the issue date" expectation.
-- **`defaultTaxMode` is a tenant default, not a per-user preference.** Stored on the singleton row, edited by the owner via the company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); it does not live on the user record. New invoice drafts pre-fill `taxMode` from this value; the draft author edits per-invoice as needed (some customers are kleinunternehmer-issued, others reverse-charge for Bauleistungen). Listed in [architecture.md §12.2](architecture.md#122-company-configurable-settings) as a `[C]` value — the default is set per deployment by the owner, not at deploy time.
+- **`defaultTaxMode` is a tenant default, not a per-user preference.** Stored on the singleton row, edited by the owner via the company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); it does not live on the user record. New invoice drafts pre-fill `taxMode` from this value; the draft author edits per-invoice as needed (e.g. reverse charge for Bauleistungen performed as a subcontractor). Listed in [architecture.md §12.2](architecture.md#122-company-configurable-settings) as a `[C]` value — the default is set per deployment by the owner, not at deploy time.
 - **Logo is not on this row.** The company logo is a deploy-time branding asset (`BRANDING.mark.logo`, [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)), served from the static build and read by the invoice renderer at issuance. It is not per-installation business data, so it neither lives on this table nor rides the export envelope. See [architecture.md §12.2](architecture.md#122-company-configurable-settings).
 
 ### 5.18 Data Exchange Job Entity

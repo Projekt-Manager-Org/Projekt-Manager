@@ -14,10 +14,10 @@
  * `entityType = 'company_profile'`, `action = 'update'`, ancestor pair
  * null (top-level entity — parity with `customer` / `user`).
  *
- * Required-when-mode validation runs at upsert time (AC-303) AND at
+ * Required-field validation runs at upsert time (AC-303) AND at
  * issue time (defense in depth — AC-289(i) / AC-305 in
- * `InvoiceService.issueDraft`). The single source of truth is
- * `companyProfileMissingFieldsForMode()` in `src/domain/invoice.ts`,
+ * `InvoiceIssueService.issueDraft`). The single source of truth is
+ * `companyProfileMissingFields()` in `src/domain/invoice.ts`,
  * so the two paths cannot drift.
  */
 
@@ -26,8 +26,7 @@ import { companyProfile } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { mutate } from './mutate.js';
 import {
-  companyProfileMissingFieldsForMode,
-  COMPANY_PROFILE_ALWAYS_REQUIRED,
+  companyProfileMissingFields,
   TAX_MODES,
   type CompanyProfile,
   type TaxMode,
@@ -84,7 +83,7 @@ export interface CompanyProfileUpsertInput {
 }
 
 /**
- * Validate required-when-mode + structural invariants on an incoming
+ * Validate required fields + structural invariants on an incoming
  * PUT body. Throws `validationError` (mode-shaped, with `details`
  * naming every offending field path) on any rejection — AC-303.
  *
@@ -93,14 +92,13 @@ export interface CompanyProfileUpsertInput {
  *   1. Tax-mode validity (the JSON schema usually catches this, but we
  *      re-check defensively so a service-only caller bypassing the
  *      route still gets a clean error).
- *   2. The required-when-mode shape via the shared invoice-domain
- *      helper — single source of truth with the issue-time gate.
+ *   2. The required fields via the shared invoice-domain helper —
+ *      single source of truth with the issue-time gate.
  *
  * `details` exposes `missingFields` so the UI can target the offending
  * input(s); this matches the contract for `COMPANY_PROFILE_REQUIRED`
- * but uses the generic `VALIDATION_ERROR` code at upsert time per the
- * api.md §14.2.15 wording ("validates that `ustId` is non-empty when …
- * Body violating the required-when-mode invariants … → 422
+ * but uses the generic `VALIDATION_ERROR` code at upsert time per
+ * api.md §14.2.15 ("Body with an empty required field … → 422
  * VALIDATION_ERROR with details naming the offending field path").
  */
 export function validateCompanyProfileUpsert(input: CompanyProfileUpsertInput): void {
@@ -109,15 +107,12 @@ export function validateCompanyProfileUpsert(input: CompanyProfileUpsertInput): 
       missingFields: ['defaultTaxMode'],
     });
   }
-  const missing = companyProfileMissingFieldsForMode(
-    {
-      companyName: input.companyName,
-      address: input.address,
-      taxId: input.taxId,
-      ustId: input.ustId ?? null,
-    },
-    input.defaultTaxMode,
-  );
+  const missing = companyProfileMissingFields({
+    companyName: input.companyName,
+    address: input.address,
+    taxId: input.taxId,
+    ustId: input.ustId ?? null,
+  });
   if (missing.length > 0) {
     throw validationError(STRINGS.errors.companyProfileRequired, { missingFields: missing });
   }
@@ -266,7 +261,7 @@ export class CompanyProfileService {
 
 /**
  * Issue-time gate — run inside the issuance transaction to verify the
- * singleton is complete for the resolved `taxMode`. Re-uses the same
+ * singleton is complete (§5.17). Re-uses the same
  * domain helper as the upsert validator so the two paths cannot drift
  * (AC-289(i), AC-305).
  *
@@ -279,27 +274,18 @@ export class CompanyProfileService {
  * any allocation that ran before this check (AC-305 trailing clause
  * about the sequence lock release).
  */
-export async function assertCompanyProfileCompleteForMode(
+export async function assertCompanyProfileComplete(
   tx: TransactionalDatabase,
-  mode: TaxMode,
 ): Promise<CompanyProfileRow> {
   const row = await readSingleton(tx);
-  const missing = companyProfileMissingFieldsForMode(
-    {
-      companyName: row.companyName,
-      address: row.address,
-      taxId: row.taxId,
-      ustId: row.ustId ?? null,
-    },
-    mode,
-  );
+  const missing = companyProfileMissingFields({
+    companyName: row.companyName,
+    address: row.address,
+    taxId: row.taxId,
+    ustId: row.ustId ?? null,
+  });
   if (missing.length > 0) {
     throw companyProfileRequired({ missingFields: missing });
   }
   return row;
 }
-
-// Re-export the always-required list so consumers (e.g. route schemas)
-// can read the canonical anchor without crossing into the domain
-// module directly.
-export { COMPANY_PROFILE_ALWAYS_REQUIRED };

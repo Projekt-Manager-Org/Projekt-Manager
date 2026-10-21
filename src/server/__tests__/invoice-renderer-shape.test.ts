@@ -50,7 +50,7 @@ function makeInvoice(mode: TaxMode): Invoice {
       companyName: 'Test Maler GmbH',
       address: { street: 'Werkstr. 1', zip: '10115', city: 'Berlin' },
       taxId: '111/222/33333',
-      ustId: mode === 'kleinunternehmer' ? null : 'DE123456789',
+      ustId: 'DE123456789',
       iban: 'DE89370400440532013000',
       footerText: 'Vielen Dank.',
     },
@@ -102,7 +102,7 @@ async function pdfText(bytes: Uint8Array): Promise<string> {
 describe('InvoiceRenderer — boilerplate (AT-116 shape, route-free)', () => {
   const renderer = new InvoiceRenderer();
 
-  it('standard mode: 19% + 285 visible, no §19 / §13b anchors', async () => {
+  it('standard mode: 19% + 285 visible, no §13b anchor', async () => {
     const out = await renderer.render({
       invoice: makeInvoice('standard'),
       companyProfile: profile,
@@ -111,28 +111,17 @@ describe('InvoiceRenderer — boilerplate (AT-116 shape, route-free)', () => {
     const text = await pdfText(out.pdfBytes);
     expect(text).toContain('19%');
     expect(text).toMatch(/285[.,]?\s*(00|–|-)?/);
-    expect(text).not.toContain('§ 19 UStG');
     expect(text).not.toContain('§ 13b UStG');
   });
 
-  it('kleinunternehmer mode: contains §19 UStG, omits §13b', async () => {
-    const out = await renderer.render({
-      invoice: makeInvoice('kleinunternehmer'),
-      companyProfile: profile,
-    });
-    const text = await pdfText(out.pdfBytes);
-    expect(text).toContain('§ 19 UStG');
-    expect(text).not.toContain('§ 13b UStG');
-  });
-
-  it('reverse_charge mode: contains §13b UStG, omits §19', async () => {
+  it('reverse_charge mode: contains §13b UStG, omits VAT', async () => {
     const out = await renderer.render({
       invoice: makeInvoice('reverse_charge'),
       companyProfile: profile,
     });
     const text = await pdfText(out.pdfBytes);
     expect(text).toContain('§ 13b UStG');
-    expect(text).not.toContain('§ 19 UStG');
+    expect(text).not.toContain('19%');
   });
 });
 

@@ -796,7 +796,7 @@ export const companyProfile = pgTable(
     check('company_profile_singleton', sql`${table.singleton} = true`),
     check(
       'company_profile_default_tax_mode_valid',
-      sql`${table.defaultTaxMode} IN ('standard', 'kleinunternehmer', 'reverse_charge')`,
+      sql`${table.defaultTaxMode} IN ('standard', 'reverse_charge')`,
     ),
   ],
 );
@@ -932,10 +932,7 @@ export const invoices = pgTable(
       .on(table.number)
       .where(sql`${table.number} IS NOT NULL`),
     check('invoices_status_valid', sql`${table.status} IN ('draft', 'issued', 'cancelled')`),
-    check(
-      'invoices_tax_mode_valid',
-      sql`${table.taxMode} IN ('standard', 'kleinunternehmer', 'reverse_charge')`,
-    ),
+    check('invoices_tax_mode_valid', sql`${table.taxMode} IN ('standard', 'reverse_charge')`),
     check('invoices_profile_valid', sql`${table.profile} IN ('zugferd-en16931')`),
     // Defense-in-depth backstop on direct DB writes (seed scripts,
     // migrations, manual SQL). The route layer formats from

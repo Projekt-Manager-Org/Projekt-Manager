@@ -11,13 +11,11 @@ import { STORAGE_STATES } from './storage-states';
  * is collapsed by default; each test opens it.
  *
  * Three flows:
- *   1. Owner opens Firmendaten, fills every required field plus
- *      `defaultTaxMode = 'standard'` with a `ustId`, saves. A
+ *   1. Owner opens Firmendaten, fills every required field, saves. A
  *      subsequent `GET /api/company-profile` returns the persisted
  *      values.
- *   2. Owner attempts to save with `defaultTaxMode = 'reverse_charge'`
- *      and an empty `ustId`; the form blocks submit with a German
- *      validation message naming the missing field.
+ *   2. Owner attempts to save with an empty `ustId`; the form blocks
+ *      submit with a German validation message naming the missing field.
  *   3. Office user opens the section; it is read-only (no save button
  *      rendered) per AC-301.
  */
@@ -68,7 +66,7 @@ test.describe('Company profile management (AC-301, AC-303)', () => {
       await expect(formAfter.getByTestId('company-profile-ustId-input')).toHaveValue(ustId);
     });
 
-    test('reverse_charge with empty ustId blocks submit with a German validation message naming the field', async ({
+    test('empty ustId blocks submit with a German validation message naming the field', async ({
       page,
     }) => {
       await page.goto('/rechnungen');
@@ -76,10 +74,7 @@ test.describe('Company profile management (AC-301, AC-303)', () => {
       const form = page.getByTestId('company-profile-form');
       await expect(form).toBeVisible();
 
-      // Set reverse_charge and clear ustId.
-      await form
-        .getByTestId('company-profile-defaultTaxMode-select')
-        .selectOption('reverse_charge');
+      // Clear ustId.
       const ustIdInput = form.getByTestId('company-profile-ustId-input');
       await ustIdInput.fill('');
 

@@ -18,8 +18,6 @@
  *   - Tax-mode dispatch on the row's snapshotted `taxMode`:
  *       standard:        CategoryCode='S',  per-rate breakdown, statutory
  *                        line-level + header-level ApplicableTradeTax.
- *       kleinunternehmer: CategoryCode='E', RateApplicablePercent=0,
- *                        ExemptionReason carries the §19 UStG anchor.
  *       reverse_charge:  CategoryCode='AE', RateApplicablePercent=0,
  *                        ExemptionReason carries the §13b UStG anchor.
  *
@@ -152,11 +150,8 @@ function renderIssuerBlock(issuer: InvoiceIssuerSnapshot): string {
   parts.push('<ram:CountryID>DE</ram:CountryID>');
   parts.push('</ram:PostalTradeAddress>');
   // Tax registration — VAT id (USt-IdNr.) under schemeID="VA", and the
-  // statutory tax number under schemeID="FC". Both are optional on
-  // SellerTradeParty per the EN 16931 reusable types, but at least one
-  // is universally expected by receivers and the issuer block in the
-  // Kleinunternehmer mode legitimately omits USt-IdNr. — the `taxId`
-  // column (Steuernummer per §14 UStG) is the always-present anchor.
+  // statutory tax number under schemeID="FC". Issuance requires both
+  // (data-model.md §5.17); BR-CO-26 is met by the VA id (BT-31).
   if (issuer.taxId && issuer.taxId.length > 0) {
     parts.push('<ram:SpecifiedTaxRegistration>');
     parts.push(`<ram:ID schemeID="FC">${escapeXmlText(issuer.taxId)}</ram:ID>`);
@@ -219,8 +214,8 @@ function renderLineItem(line: InvoiceLine, index: number, mode: TaxMode): string
   parts.push('<ram:ApplicableTradeTax>');
   parts.push('<ram:TypeCode>VAT</ram:TypeCode>');
   parts.push(`<ram:CategoryCode>${taxModeCategoryCode(mode)}</ram:CategoryCode>`);
-  // For `standard` we use the line's own taxRate; for the exempt /
-  // reverse-charge cases the rate must be 0 per EN 16931, regardless
+  // For `standard` we use the line's own taxRate; for reverse charge
+  // the rate must be 0 per EN 16931, regardless
   // of what the line carries in the JSONB.
   const linePercent = mode === 'standard' ? line.taxRate : 0;
   parts.push(`<ram:RateApplicablePercent>${fmt2(linePercent)}</ram:RateApplicablePercent>`);
@@ -323,9 +318,8 @@ export function buildFacturXml(invoice: Invoice): string {
   parts.push('<ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>');
 
   // Header-level ApplicableTradeTax — one block per rate in
-  // `totals.perRate` for standard mode; one neutral block for the
-  // exempt / reverse-charge modes (where perRate is empty by domain
-  // semantics).
+  // `totals.perRate` for standard mode; one neutral block for reverse
+  // charge (where perRate is empty by domain semantics).
   if (taxMode === 'standard') {
     for (const band of invoice.totals.perRate) {
       parts.push('<ram:ApplicableTradeTax>');
@@ -337,7 +331,7 @@ export function buildFacturXml(invoice: Invoice): string {
       parts.push('</ram:ApplicableTradeTax>');
     }
   } else {
-    // Exempt / reverse-charge — single header block with 0% rate +
+    // Reverse charge — single header block with 0% rate +
     // ExemptionReason carrying the §-anchor.
     //
     // Element order is pinned by the EN 16931 reusable types XSD:

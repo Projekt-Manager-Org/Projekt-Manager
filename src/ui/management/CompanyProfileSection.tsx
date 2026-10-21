@@ -18,10 +18,7 @@
  * api.md §14.2.15 design note).
  *
  * Client-side required-field validation is a UX affordance only; the
- * server re-validates and remains authoritative (AC-303). The
- * USt-IdNr. requiredness re-renders when `defaultTaxMode` changes
- * (`standard` / `reverse_charge` require it; `kleinunternehmer` does
- * not).
+ * server re-validates and remains authoritative (AC-303).
  *
  * The company logo is NOT part of this form: it is a deploy-time
  * branding asset (`BRANDING.mark.logo`, ADR-0001), not per-installation
@@ -49,11 +46,6 @@ interface FormValues {
   accentColor: string;
   footerText: string;
   defaultTaxMode: TaxMode;
-}
-
-/** USt-IdNr. is mandatory for two of the three tax modes (AC-303). */
-function ustIdRequiredFor(mode: TaxMode): boolean {
-  return mode === 'standard' || mode === 'reverse_charge';
 }
 
 /**
@@ -84,7 +76,7 @@ function firstInvalidFieldKey(values: FormValues): keyof FormValues | null {
   if (!values.zip.trim()) return 'zip';
   if (!values.city.trim()) return 'city';
   if (!values.taxId.trim()) return 'taxId';
-  if (ustIdRequiredFor(values.defaultTaxMode) && !values.ustId.trim()) return 'ustId';
+  if (!values.ustId.trim()) return 'ustId';
   if (!isValidAccentColor(values.accentColor)) return 'accentColor';
   return null;
 }
@@ -192,7 +184,7 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
   };
 
   const firstInvalid = firstInvalidFieldKey(values);
-  const ustIdMissing = ustIdRequiredFor(values.defaultTaxMode) && !values.ustId.trim();
+  const ustIdMissing = !values.ustId.trim();
   const accentColorInvalid = !isValidAccentColor(values.accentColor);
 
   const handleSubmit = async () => {
@@ -241,11 +233,7 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
     { key: 'zip', label: STRINGS.companyProfile.zip, required: true },
     { key: 'city', label: STRINGS.companyProfile.city, required: true, full: true },
     { key: 'taxId', label: STRINGS.companyProfile.taxId, required: true },
-    {
-      key: 'ustId',
-      label: STRINGS.companyProfile.ustId,
-      required: ustIdRequiredFor(values.defaultTaxMode),
-    },
+    { key: 'ustId', label: STRINGS.companyProfile.ustId, required: true },
     { key: 'iban', label: STRINGS.companyProfile.iban, required: false },
     { key: 'accentColor', label: STRINGS.companyProfile.accentColor, required: false },
   ];
@@ -275,7 +263,7 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
             helperText={f.key === 'accentColor' ? STRINGS.companyProfile.accentColorHelper : null}
             inlineError={
               showErrors && f.key === 'ustId' && ustIdMissing
-                ? STRINGS.companyProfile.ustIdRequiredForMode
+                ? STRINGS.companyProfile.ustIdRequired
                 : showErrors && f.key === 'accentColor' && accentColorInvalid
                   ? STRINGS.companyProfile.accentColorInvalid
                   : null
@@ -299,7 +287,6 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
               <option key={mode} value={mode}>
                 {labelForTaxMode(mode, {
                   standard: STRINGS.companyProfile.taxModeStandard,
-                  kleinunternehmer: STRINGS.companyProfile.taxModeKleinunternehmer,
                   reverseCharge: STRINGS.companyProfile.taxModeReverseCharge,
                 })}
               </option>
