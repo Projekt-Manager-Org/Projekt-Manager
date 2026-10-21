@@ -76,3 +76,9 @@ Many details are deliberately left open until their iteration. What to do when w
 3. When decided — suggest recording it in its proper place.
 
 **Implementation-level** — the minute details the spec deliberately leaves to implementers (S-NDET): take the smallest option that satisfies the contract, state the assumption in the report, keep going. Do not stop for these.
+
+## Legal obligations, responsibilities
+
+Legal or tax compliance of how the company uses the system remains their responsibility. The system keeps its own data consistent and its output valid for the cases it supports. Content and obligations stay with the company.
+
+No matter how "great" the system is and how much the users are excited, this doesn't resolve them from their own responsibilities - we don't and we can't do everything for them and we clearly state the limits of the system.
