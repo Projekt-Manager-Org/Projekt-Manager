@@ -8,7 +8,7 @@ The core motivation: **making inaction visible**. The system exists to ensure th
 
 ## Target
 
-Even if the spark for this project came from a particular company, the observed anti-patterns are unfortunately widely spread and the approach in this project could definitely benefit much broader target than the single company where the pilot project would be run. Thus, the project will be developed in a generalized way, while all customer specific details would be integrated in a separate, closed codebase.
+Even if the spark for this project came from a particular company, the observed anti-patterns are unfortunately widely spread and the approach in this project could definitely benefit much broader target than the single company where the pilot project would be run. Thus, the project will be developed in a generalized way (covering the target one or similar companies), while all customer specific details would be integrated in a separate, closed codebase.
 
 ## Background
 
@@ -90,6 +90,8 @@ Reasonable assumptions will be made in regards of all company-specific details. 
 - GPS tracking of crews
 - Integration with anything not mentioned here (Google Calendar, email automation, etc.)
 - Continuous Delivery (CD) is out of scope for reasons of security and operational burden
+- Generalization of the project beyond the needs of the target company (possible use in _similar_ companies after adjustment)
+- Responsibility for content, law and tax obligations stay with the company
 
 ## First demo checkpoint (Iteration 1)
 
