@@ -1,35 +1,27 @@
 /**
  * API integration tests — attachment route surface (issue #108, #148).
  *
- * Pins the HTTP contract for every endpoint on
- * `/api/projects/:id/attachments/...` against the spec in api.md §14.2.11
- * and the error paths in §14.4.1.
+ * Pins the HTTP surface of every endpoint on
+ * `/api/projects/:id/attachments/...` and the error paths in api.md
+ * §14.4.1.
  *
  * AC coverage in this file:
- *   - AC-245: init — presigned-PUT signed-header pins (ciphertext shape
- *             under ADR-0024) + validation rejects on MIME / label /
- *             size / fileName / dekMaterial / ciphertextSizeBytes /
- *             ciphertextContentMd5.
- *   - AC-212: complete — HEAD-verify state machine against ciphertext
- *             metadata (size against `ciphertextSizeBytes`, sentinel
- *             content-type), 409 on mismatch / double ack, 404 when
- *             the reaper has already removed the row.
- *   - AC-216: bulk-fetch — per-file payloads (presigned GETs + DEK
- *             material), 20-file / 20 MB plaintext caps,
- *             BULK_LIMIT_EXCEEDED, cross-project id rejection, pending-
- *             or-hidden in batch rejection. Replaces the retired
- *             bulk-download zip path (ADR-0024).
- *   - AC-225: upload-failure error envelope categories (maps to the
- *             client banner's "Erneut versuchen" surface).
- *   - AC-241: download-url — `{ url, expiresAt, dekMaterial }` shape,
- *             dekMaterial is the unwrapped DEK (32 bytes after
- *             base64-decode), thumbnail-on-non-photo rejection,
- *             unknown-variant rejection, hidden-row 404. Server never
- *             persists the unwrapped DEK.
- *   - AC-244 (server side): per-row unwrap-failure surfaces as 422
- *             with code `DEK_UNWRAP_FAILED`. The SW translates the
- *             code to the placeholder render path; the route-level
- *             surface is what this file pins.
+ *   - init: AC-397 (row recorded), AC-398 (field-constraint rejects on
+ *     MIME / label / size caps / fileName), AC-399 (key, size and MD5
+ *     pinned into the presigned PUT), AC-400 (only the wrapped key is
+ *     persisted).
+ *   - complete: AC-402 (missing object / size mismatch → 409, row stays
+ *     pending), AC-403 (double ack → 409), AC-412 (archived project).
+ *   - bulk-fetch: AC-414 (cross-project / pending / hidden id rejects the
+ *     whole batch), AC-415 (20-file / 20 MB plaintext caps).
+ *   - download-url: AC-400 (unwrapped key never persisted), AC-413
+ *     (hidden or pending row → 404).
+ *   - Papierkorb: AC-419, AC-420, AC-421, AC-422, AC-425, AC-412.
+ *
+ * Wire-shape arms (response shapes, the content-type sentinel,
+ * `BULK_LIMIT_EXCEEDED`, `DEK_UNWRAP_FAILED`, integrity 422s, 404 on a
+ * reaped upload, dekMaterial / MD5 shape rejects, `wrappedDekVersion`)
+ * pin the internal HTTP API and stay as regression tests without an AC.
  *
  * Storage: the test harness points at the real MinIO endpoint
  * (`startApp()` → `validateEnvRuntime()`). Direct-storage seeding uses the
@@ -73,7 +65,7 @@ const STUB_MD5_BASE64 = '1B2M2Y8AsgTpgAmY7PhCfg=='; // MD5("") — shape-valid p
  * Generate a fresh 32-byte DEK encoded as base64. Mirrors what the
  * browser produces via `crypto.getRandomValues(new Uint8Array(32))`
  * before calling init. The server validates the length-after-decode
- * at the route layer per AC-245.
+ * at the route layer.
  */
 function freshDekMaterial(): string {
   return crypto.randomBytes(32).toString('base64');
@@ -94,7 +86,7 @@ function ciphertextBuffer(length: number): Buffer {
  * (see `src/test/integration-setup.ts` — `BINARY_AGE_RECIPIENT` /
  * `BINARY_AGE_IDENTITY_PATH` are exported there). Returns `{ dek,
  * wrappedBase64 }` so tests that need to compare unwrapped output
- * against the input DEK (AC-241 "different DEKs") have both halves.
+ * against the input DEK ("different DEKs") have both halves.
  *
  * Direct DB seeds use the base64 envelope on `wrapped_dek` so the
  * route's per-request unwrap succeeds. Synthetic Buffer.alloc envelopes
@@ -206,11 +198,12 @@ describe('Attachment routes — integration (issue #108)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-245 — Init validates inputs and returns a signed presigned PUT
+  // Init validates inputs (AC-398) and returns a signed presigned PUT
   // bound to the *ciphertext* triplet (sentinel content-type, ciphertext
-  // size, ciphertext MD5) per ADR-0024.
+  // size, ciphertext MD5) per ADR-0024 (AC-399).
   // -------------------------------------------------------------------
-  describe('AC-245: init validation + presigned-PUT signature', () => {
+  describe('init validation + presigned-PUT signature', () => {
+    // AC-397
     it('returns 201 with a pending row and two presigned PUT descriptors for a photo', async () => {
       const init = photoInit(projectId);
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, init);
@@ -230,11 +223,9 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(typeof body.attachment.originalKey).toBe('string');
       expect(body.attachment.originalKey.length).toBeGreaterThan(0);
       expect(typeof body.attachment.thumbKey).toBe('string');
-      // Wrapped envelopes are NEVER returned in any response surface
-      // (data-model.md §5.13 "Wrapped envelope is server-handed-back",
-      // api.md §14.2.11 design notes). The wrapping happened server-
-      // side; the column is on the row but is stripped from every
-      // response.
+      // Wrapped envelopes are never returned in a response surface.
+      // The wrapping happened server-side; the column is on the row
+      // but is stripped from every response.
       expect(body.attachment.wrappedDek).toBeUndefined();
       expect(body.attachment.wrappedThumbDek).toBeUndefined();
       // Uploader expansion: createdBy is `{ id, displayName }` so the
@@ -315,7 +306,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     });
 
     it('persists wrappedDek (and wrappedThumbDek) on the row but NEVER returns it', async () => {
-      // Bridges AC-245 and AC-240: init wraps the supplied DEK
+      // Bridges AC-400 and AC-240: init wraps the supplied DEK
       // material against the operator's binary recipient and
       // persists the envelope on the row, but the response strips
       // it. A regression that surfaced the wrapped envelope on the
@@ -353,13 +344,13 @@ describe('Attachment routes — integration (issue #108)', () => {
     });
 
     it('persists wrappedDekVersion = 1 alongside the wrapped envelopes (ADR-0024 envelope-format discriminator)', async () => {
-      // AC-245 — current iteration writes envelope-format version 1 on
+      // The current iteration writes envelope-format version 1 on
       // every init. The column is NOT NULL with no DB default; the
       // service layer is the single writer. A regression that omitted
       // the version, defaulted it at the DB level, or wrote a
       // different value would either fail the insert outright (NOT NULL
       // breach) or land a row that later trips the unwrap-time
-      // validation (AC-244 envelope-format unknown branch).
+      // validation (envelope-format unknown branch).
       const res = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -425,7 +416,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     });
 
     it('rejects ciphertextThumbSizeBytes exceeding the per-thumb cap with 422 VALIDATION_ERROR (no row)', async () => {
-      // AC-245: per-thumb cap. Default cap is 200 KiB
+      // AC-398: per-thumb cap. Default cap is 200 KiB
       // (architecture.md §12.2 / ATTACHMENT_CONFIG.perThumbCapBytes).
       // 1 MiB is comfortably above any deployment-tuned value.
       // Mirrors the per-file cap arm above — the rejection source is
@@ -611,13 +602,13 @@ describe('Attachment routes — integration (issue #108)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-212 — complete() state machine — pending → ready with HEAD
-  //          verify against ciphertext metadata (ADR-0024 / api.md
-  //          §14.2.11). The pre-e2e `startsWith('image/')` thumbnail
+  // AC-402, AC-403 — complete() state machine — pending → ready with
+  //          HEAD verify against ciphertext metadata (ADR-0024). The
+  //          content-type sentinel arms are mechanism. The pre-e2e `startsWith('image/')` thumbnail
   //          carve-out is gone: every blob is opaque ciphertext under
   //          the sentinel `application/octet-stream` content-type.
   // -------------------------------------------------------------------
-  describe('AC-212: complete state machine — pending → ready with HEAD verify against ciphertext metadata', () => {
+  describe('complete state machine — pending → ready with HEAD verify against ciphertext metadata', () => {
     /**
      * Seed a pending row and put matching ciphertext bytes under its
      * storage keys so a complete() call's HEAD verification succeeds.
@@ -709,7 +700,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     });
 
     it('returns 409 CONFLICT when the stored size differs from the declared ciphertextSizeBytes', async () => {
-      // AC-212 / spec §14.2.11 error paths: complete verifies the
+      // AC-402: complete verifies the
       // HEAD-reported size against the row's DECLARED `ciphertextSizeBytes`,
       // NOT plaintext sizeBytes. A ciphertext-size-substitution upload
       // — bytes under a key whose row claims 1KB but the actual stored
@@ -879,6 +870,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(res.json().code).toBe('CONFLICT');
     });
 
+    // AC-403
     it('returns 409 CONFLICT on double-ack (complete called twice on same id)', async () => {
       const attId = await seedPendingWithBackingBytes();
       const first = await authPost(
@@ -923,6 +915,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(res.json().code).toBe('NOT_FOUND');
     });
 
+    // AC-412
     it('returns 404 NOT_FOUND when the project is archived between init and complete', async () => {
       // Race window: init lands on an active project, the project is
       // archived while the bytes upload, then complete tries to flip
@@ -990,12 +983,13 @@ describe('Attachment routes — integration (issue #108)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-216 — bulk-fetch — per-file payload + caps. Replaces the retired
+  // Bulk-fetch — per-file payload + caps. Replaces the retired
   // bulk-download zip path (ADR-0024). The browser receives per-file
   // presigned-GETs + DEK material and assembles the streaming zip
   // locally; the server never archives ciphertext.
   // -------------------------------------------------------------------
-  describe('AC-216: bulk-fetch per-file payload + caps', () => {
+  describe('bulk-fetch per-file payload + caps', () => {
+    // AC-415
     it('rejects a batch of 21 ids with 422 BULK_LIMIT_EXCEEDED (limits field present)', async () => {
       // The server must validate the COUNT before resolving ids, so
       // 21 arbitrary uuids is sufficient — the count check fires
@@ -1013,6 +1007,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(typeof limits.maxBytes).toBe('number');
     });
 
+    // AC-415
     it('rejects a batch whose summed plaintext sizeBytes exceeds 20 MB with BULK_LIMIT_EXCEEDED', async () => {
       // Seed three ready rows each 8 MB plaintext = 24 MB total,
       // under the 20-file cap but over the 20-MB plaintext bytes cap.
@@ -1031,6 +1026,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(res.json().code).toBe('BULK_LIMIT_EXCEEDED');
     });
 
+    // AC-414
     it('rejects with 422 VALIDATION_ERROR when any id belongs to a different project', async () => {
       // One id from the primary project, one from an unrelated one.
       const otherProjectId = await (async () => {
@@ -1049,6 +1045,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(res.json().code).toBe('VALIDATION_ERROR');
     });
 
+    // AC-414
     it('rejects with 422 VALIDATION_ERROR when any id references a pending row (whole batch rejected)', async () => {
       const initRes = await authPost(
         ownerToken,
@@ -1070,6 +1067,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(res.json().code).toBe('VALIDATION_ERROR');
     });
 
+    // AC-414
     it('rejects with 422 VALIDATION_ERROR when any id references a hidden row', async () => {
       // Symmetric to the pending-in-batch arm — hidden rows carry
       // a delete marker on the current version, so a fetched
@@ -1090,7 +1088,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     it('returns 200 with a per-file payload list — order preserved, DEK material is 32 bytes', async () => {
       // Three rows: one binary (no thumb), two photos (with thumbs).
       // The response must carry one entry per id, in the order of
-      // the request (api.md §14.2.11 "in the order requested").
+      // the request.
       const [binId] = await seedReadyAttachments(projectId, [
         { sizeBytes: 1000, kind: 'binary', mimeType: 'application/pdf', label: 'rechnung' },
       ]);
@@ -1104,7 +1102,7 @@ describe('Attachment routes — integration (issue #108)', () => {
         attachmentIds: requested,
       });
       expect(res.statusCode).toBe(200);
-      // api.md §14.2.11 pins the response as `{ data: BulkFetchEntry[] }` —
+      // The response is `{ data: BulkFetchEntry[] }` —
       // assert the wrapper shape directly, no fallback paths.
       const body = res.json() as { data: Array<Record<string, unknown>> };
       const entries = body.data;
@@ -1168,8 +1166,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     });
 
     it('does NOT return wrappedDek / wrappedThumbDek in the bulk-fetch response (wrapped envelope confidentiality boundary)', async () => {
-      // api.md §14.2.11 design note "Wrapped-envelope confidentiality
-      // boundary" — only the *unwrapped* DEK leaves the server, never
+      // Wrapped-envelope confidentiality boundary — only the *unwrapped* DEK leaves the server, never
       // the wrapped envelope. A regression that surfaced the wrapped
       // bytes alongside the URL would let any caller bypass the
       // server-side unwrap path.
@@ -1202,7 +1199,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     });
 
     it('returns 500 SERVER_ERROR when an envelope in the batch cannot be unwrapped (defense-in-depth)', async () => {
-      // api.md §14.2.11 error paths: any unwrap failure in a bulk-fetch
+      // Any unwrap failure in a bulk-fetch
       // batch surfaces as 500 SERVER_ERROR (defense-in-depth — the
       // boot probe blocks startup without the binary identity, so this
       // should never be reachable). The single documented per-row 422
@@ -1238,9 +1235,9 @@ describe('Attachment routes — integration (issue #108)', () => {
 
     it('returns 500 SERVER_ERROR on a row whose wrappedDekVersion is unknown (envelope-format guard)', async () => {
       // Bulk-fetch counterpart to the download-url v=2 test below.
-      // The unwrap-time format-discriminator gate (ADR-0024 / AC-244)
+      // The unwrap-time format-discriminator gate (ADR-0024)
       // must fire BEFORE `age` is invoked so a future format never
-      // silently decodes under the v1 parser. api.md §14.2.11 surfaces
+      // silently decodes under the v1 parser. The route surfaces
       // any bulk-fetch unwrap failure as 500 SERVER_ERROR; the per-row
       // 422 surface is `download-url` only. Direct DB seed so the
       // synthetic version travels exactly as a corrupted import row would.
@@ -1282,13 +1279,13 @@ describe('Attachment routes — integration (issue #108)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-225 — Error envelopes for upload-failure categories.
+  // Error envelopes for upload-failure categories.
   //
   // Client behavior pivots on these codes (ui/behavior.md §9.5 +
   // ui/index.md §8.1.2 banner). Pinning them here ensures the banner
   // contract stays stable as the server evolves.
   // -------------------------------------------------------------------
-  describe('AC-225: upload-failure error envelope categories', () => {
+  describe('upload-failure error envelope categories', () => {
     it('unauthenticated init returns 401 UNAUTHENTICATED', async () => {
       // authPost with empty token omits the cookie; Fastify rejects at
       // the auth middleware before the route-level permission check.
@@ -1337,11 +1334,11 @@ describe('Attachment routes — integration (issue #108)', () => {
   // -------------------------------------------------------------------
   // Papierkorb — soft-hide round-trip (ADR-0022).
   //
-  // Covers AC-232 (delete is a soft-hide: status flips ready→hidden with
-  // hiddenAt stamped), AC-233 (restore flips hidden→ready and re-issues
-  // version-ids via copyFromVersion, and is allowed on archived projects
-  // where hide is not), and AC-235 (the trash listing surfaces hidden
-  // rows, gated on `attachment:trash`).
+  // Covers AC-419 (delete is a soft-hide: status flips ready→hidden with
+  // hiddenAt stamped), AC-422 (restore flips hidden→ready and re-issues
+  // version-ids via copyFromVersion), AC-425 (allowed on archived
+  // projects), AC-412 (hide is not), and AC-421 (the trash listing
+  // surfaces hidden rows, gated on `attachment:trash`).
   //
   // Verifies the full hide→trash→restore cycle exercises the new wire:
   // delete writes status='hidden' + hiddenAt; the trash listing surfaces
@@ -1361,7 +1358,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const body = initRes.json();
       const s = storage();
       // Ciphertext-shaped uploads under the sentinel content-type
-      // so HEAD verification at complete-time passes (AC-212).
+      // so HEAD verification at complete-time passes (AC-402).
       await s.upload(
         body.attachment.originalKey,
         ciphertextBuffer(init.ciphertextSizeBytes),
@@ -1451,8 +1448,8 @@ describe('Attachment routes — integration (issue #108)', () => {
     });
 
     // -----------------------------------------------------------------
-    // Missing-row restore — pins AC-234's `404 NOT_FOUND` clause for the
-    // post-purge case (e.g. the hidden reaper from §6.12 already removed
+    // Missing-row restore — pins the `404 NOT_FOUND` for the
+    // post-purge case (e.g. the hidden reaper, AC-426, already removed
     // the row by the time the user clicks Restore on a stale Papierkorb
     // listing). 404 over 409: the row is gone forever, retry is futile,
     // and 409 is reserved for transient conflicts the caller can resolve.
@@ -1471,7 +1468,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     // Bytes-gone race — covered as a service-level unit test in
     // `attachments-restore-bytes-gone.test.ts`. The integration shape
     // requires destroying a specific object version, which the app
-    // (and test) credentials cannot do by design (AC-237 capability
+    // (and test) credentials cannot do by design (ADR-0022 capability
     // profile). The unit test stubs `copyFromVersion` to throw
     // `StorageObjectNotFoundError` and asserts the resulting `AppError`
     // is `410 GONE` — the same mapping the global setErrorHandler turns
@@ -1793,6 +1790,7 @@ describe('Attachment routes — integration (issue #108)', () => {
   // This block bypasses the route layer and constructs `AttachmentService`
   // directly so a flaky storage proxy can inject the failure.
   // -------------------------------------------------------------------
+  // AC-420
   describe('Hide — storage-first atomicity', () => {
     it('storage.hide failure leaves the row in ready, writes no audit row, and surfaces the error', async () => {
       // Seed one ready row directly. The seeded row has no real
@@ -1871,13 +1869,13 @@ describe('Attachment routes — integration (issue #108)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-241 — Download-URL endpoint shape: `{ url, expiresAt, dekMaterial }`.
+  // Download-URL endpoint shape: `{ url, expiresAt, dekMaterial }`.
   // The server unwraps `wrappedDek` (or `wrappedThumbDek` for
   // `variant=thumbnail`) per request using the operator's binary `age`
   // identity; the unwrapped DEK is never persisted server-side. Auth
   // happens at the scope layer (attachments-scope.test.ts).
   // -------------------------------------------------------------------
-  describe('AC-241: download-url returns presigned URL + unwrapped DEK', () => {
+  describe('download-url returns presigned URL + unwrapped DEK', () => {
     it('returns { url, expiresAt, dekMaterial, mimeType } for variant=original', async () => {
       const [id] = await seedReadyAttachments(projectId, [
         { sizeBytes: 100, kind: 'photo', mimeType: 'image/jpeg', label: 'foto' },
@@ -1900,7 +1898,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // stored mimeType (image/jpeg here).
       expect(body.mimeType).toBe('image/jpeg');
       // Wrapped envelope is NEVER on the response — confidentiality
-      // boundary per api.md §14.2.11. A regression that surfaced the
+      // boundary. A regression that surfaced the
       // wrapped form alongside the unwrapped one would be a valid
       // 200 by status but wrong by shape.
     });
@@ -1996,12 +1994,13 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(thumbReturned.equals(thumbDek)).toBe(true);
 
       // And consequently the two variants surface different DEKs —
-      // api.md §14.2.11 "thumbnails are independent ciphertext objects
-      // with their own DEKs". This is now provable from the explicit
+      // Thumbnails are independent ciphertext objects with their own
+      // DEKs. This is now provable from the explicit
       // input DEKs, not just the seed shape.
       expect(originalReturned.equals(thumbReturned)).toBe(false);
     });
 
+    // AC-400
     it('does NOT persist the unwrapped DEK server-side (no caller-visible state change after the call)', async () => {
       // The unwrapped DEK is computed per-request from the row's
       // wrappedDek and the in-memory binary identity; the row's
@@ -2025,6 +2024,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(after.unwrappedDek).toBeUndefined();
     });
 
+    // AC-413
     it('returns 404 NOT_FOUND for a hidden row (status not addressable through download-url)', async () => {
       // Hidden rows have a delete marker on the bucket's current
       // version — issuing a presigned GET would resolve to 404 from
@@ -2072,6 +2072,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     // HEAD-verify gate ran. 404 matches the reaper-removed branch
     // from the caller's point of view.
     // -----------------------------------------------------------------
+    // AC-413
     it('returns 404 NOT_FOUND when variant=original and the row is pending', async () => {
       const initRes = await authPost(
         ownerToken,
@@ -2088,6 +2089,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(res.json().code).toBe('NOT_FOUND');
     });
 
+    // AC-413
     it('returns 404 NOT_FOUND when variant=thumbnail and the row is pending', async () => {
       const initRes = await authPost(
         ownerToken,
@@ -2106,14 +2108,15 @@ describe('Attachment routes — integration (issue #108)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-244 (server side) — per-row DEK_UNWRAP_FAILED on download-url.
+  // Server side — per-row DEK_UNWRAP_FAILED on download-url (wire shape;
+  // the user-facing render is pinned by the component tests).
   //
-  // Per api.md §14.2.11 download-url error paths: a per-row envelope
+  // A per-row envelope
   // unwrap failure (corrupt envelope, recipient-mismatch from a
   // partial key rotation, or any other unwrap-side failure) returns
   // `422 VALIDATION_ERROR` with `code = DEK_UNWRAP_FAILED`. The SW
   // translates the code into the "Schlüssel nicht verfügbar"
-  // placeholder render path (AC-244 component-tier coverage in
+  // placeholder render path (component-tier coverage in
   // `BinaryList.test.tsx` / `PhotoGallery.test.tsx`).
   //
   // Driving this server-side requires a row whose `wrappedDek` cannot
@@ -2123,7 +2126,7 @@ describe('Attachment routes — integration (issue #108)', () => {
   // loaded. (Recipient-mismatch via a different keypair is the other
   // test path; this byte-corruption arm is provider-agnostic.)
   // -------------------------------------------------------------------
-  describe('AC-244 server side: DEK_UNWRAP_FAILED on download-url for an unwrappable row', () => {
+  describe('server side: DEK_UNWRAP_FAILED on download-url for an unwrappable row', () => {
     it('returns 422 with code DEK_UNWRAP_FAILED when wrappedDek is byte-corrupt', async () => {
       // Seed a ready row directly with a `wrappedDek` that is NOT a
       // valid `age` envelope. The unwrap pipeline rejects, the route
@@ -2204,7 +2207,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     });
 
     it('returns 422 with code DEK_UNWRAP_FAILED on a row whose wrappedDekVersion is unknown (envelope-format guard)', async () => {
-      // Pin the unwrap-time format-discriminator gate (ADR-0024 / AC-244).
+      // Pin the unwrap-time format-discriminator gate (ADR-0024).
       // A row with a real-shaped envelope but a wrapped_dek_version other
       // than 1 must NOT silently unwrap with the current parser — the
       // service must refuse before invoking `age` so the operator can
@@ -2315,6 +2318,7 @@ describe('Attachment routes — integration (issue #108)', () => {
   // the ASCII-fallback sanitize and the UTF-8 extended form keeps
   // non-ASCII filenames (German umlauts, the common case) legible.
   // -------------------------------------------------------------------
+  // AC-398 (fileName rules); AC-417 (download under the file name)
   describe('Filename validation + Content-Disposition encoding', () => {
     it.each([
       ['CR', 'evil\r.pdf'],
@@ -2469,7 +2473,7 @@ async function fetchAttachmentVersions(
 /**
  * Read the wrapped envelopes (and any unwrapped-DEK column the
  * implementation might have introduced) for a single attachment row.
- * Used by the AC-241 "no server-side persistence of the unwrapped
+ * Used by the AC-400 "no server-side persistence of the unwrapped
  * DEK" arm to compare the row before-and-after a download-url call.
  *
  * The `unwrappedDek` field is keyed off a hypothetical column that
@@ -2579,9 +2583,9 @@ interface SeedReadySpec {
  * actually unwrap. Synthetic Buffer.alloc envelopes fail at AEAD
  * verification under any real implementation, which would surface as
  * `DEK_UNWRAP_FAILED` on every happy-path test (and tautologically
- * pass the AC-241 "different DEKs" arm regardless of route logic).
+ * pass the "different DEKs" arm regardless of route logic).
  *
- * The byte-corruption AC-244 arms keep their own explicit synthetic
+ * The byte-corruption unwrap arms keep their own explicit synthetic
  * envelopes — those tests intentionally exercise the unwrap-failure
  * branch.
  */

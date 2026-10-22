@@ -23,7 +23,8 @@ export const EXEMPTION_REASONS = {
   transition: 'guarded by expectedStatus (AC-94)',
   lifecycle: 'acts on existence, not content; state-checked (data-model.md §6.4)',
   frozenTarget: 'its target is frozen (data-model.md §6.14)',
-  ownStateCheck: 'own state check (attachments: api.md §14.2.11; import upload: api.md §14.2.4)',
+  ownStateCheck:
+    'own state check (attachments: verification.md §15.26; import upload: api.md §14.2.4)',
   lowStakes: 'low-stakes row; a stale overwrite freezes nothing (data-model.md §6.4)',
   noSharedRow: 'no shared editable row',
   readOnly: 'writes nothing',

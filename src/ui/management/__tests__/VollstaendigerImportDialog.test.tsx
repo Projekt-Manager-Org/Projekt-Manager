@@ -75,7 +75,7 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     expect(screen.getByTestId('import-job-start')).toBeDisabled();
   });
 
-  it('warns that the restore purges the Papierkorb (AC-220)', () => {
+  it('warns that the restore purges the Papierkorb (AC-432)', () => {
     // Distinct from the generic destructive notice: "the existing data is
     // deleted" does not tell an operator that the archive holds no `hidden`
     // rows, so the trash cannot come back. No surprises at the gate.

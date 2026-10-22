@@ -109,7 +109,7 @@ export class ExportService {
           .select()
           .from(invoiceSequence)
           .orderBy(asc(invoiceSequence.year), asc(invoiceSequence.kind));
-        // AC-220: only ready rows travel in the envelope. Pending rows
+        // AC-431: only ready rows travel in the envelope. Pending rows
         // represent uncommitted uploads and are excluded by design.
         const attachmentRows = await tx
           .select()
@@ -240,7 +240,7 @@ export class ExportService {
       // Metadata-only descriptor. Crypto fields, opaque storage keys,
       // and ciphertext sizes are NOT consumable on the importing
       // instance and are therefore omitted; the import job re-encrypts
-      // server-side (api.md §14.2.4, AC-220, AC-328).
+      // server-side (api.md §14.2.4, AC-431, AC-328).
       attachments: attachmentRows.map((a) => ({
         id: a.id,
         projectId: a.projectId,

@@ -1707,7 +1707,7 @@ describe('Unified Data Exchange', () => {
   // bucket lifecycle (per ADR-0022) reaps noncurrent versions only —
   // so a truncate-without-hide leaves the prior bytes as the current
   // version of an unreferenced key, never reaped. The fix mirrors the
-  // project-purge cascade (AC-218): collect the keys before the wipe
+  // project-purge cascade (AC-428): collect the keys before the wipe
   // and hide them after commit so the prior version is demoted to
   // noncurrent, and lifecycle takes it from there. (See #169 for the
   // generic orphan sweeper that catches every other path.)

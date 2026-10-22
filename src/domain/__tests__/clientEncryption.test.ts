@@ -12,8 +12,8 @@
  *   - `decryptBlob(ciphertext, dek)` round-trips and verifies the auth
  *     tag; any tampering throws.
  *   - `encodeDekMaterial(dek)` / `decodeDekMaterial(b64)` are the
- *     base64 wire-format helpers used by `init` and `download-url`
- *     (api.md §14.2.11). Lossless and length-validated.
+ *     base64 wire-format helpers used by `init` and `download-url`.
+ *     Lossless and length-validated.
  *
  * NOTE — failing-test step (CONTRIBUTING.md § Workflow step 3): the
  * import `@/domain/clientEncryption` does not exist yet. This file
@@ -97,7 +97,7 @@ describe('clientEncryption — round-trip', () => {
   });
 });
 
-describe('clientEncryption — tampering rejection (AES-GCM auth tag)', () => {
+describe('clientEncryption — tampering rejection (AES-GCM auth tag, AC-418)', () => {
   it('throws when the nonce prefix has been flipped', async () => {
     const dek = generateDek();
     const plaintext = new TextEncoder().encode('intact');
@@ -135,7 +135,7 @@ describe('clientEncryption — tampering rejection (AES-GCM auth tag)', () => {
   });
 });
 
-describe('clientEncryption — DEK base64 round-trip (api.md §14.2.11 wire format)', () => {
+describe('clientEncryption — DEK base64 round-trip (wire format)', () => {
   it('encodeDekMaterial then decodeDekMaterial is the identity', () => {
     const dek = generateDek();
     const b64 = encodeDekMaterial(dek);

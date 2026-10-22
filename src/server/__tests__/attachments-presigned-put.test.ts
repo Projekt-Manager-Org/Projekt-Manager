@@ -151,7 +151,7 @@ describe('Attachment presigned PUT — real upload against MinIO', () => {
     await thumbPut.arrayBuffer();
 
     // Flip pending → ready. complete() HEADs the ciphertext and
-    // verifies size + sentinel content-type per AC-212.
+    // verifies size (AC-402) + sentinel content-type.
     const completeRes = await authPost(
       ownerToken,
       `/api/projects/${projectId}/attachments/${body.attachment.id}/complete`,
@@ -164,8 +164,7 @@ describe('Attachment presigned PUT — real upload against MinIO', () => {
   // Negative — the signed Content-MD5 binds the URL to specific bytes.
   // PUT a body whose MD5 differs and the storage provider rejects with
   // `BadDigest`. This is the load-bearing guarantee that backs the
-  // entire "URL is reusable only for those bytes" claim in api.md
-  // §14.2.11.
+  // entire "URL is reusable only for those bytes" claim (AC-399).
   //
   // Verified against MinIO RELEASE.2025-09-07: returns
   //   <Code>BadDigest</Code><Message>The Content-Md5 you specified

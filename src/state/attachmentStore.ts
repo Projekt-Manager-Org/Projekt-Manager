@@ -15,8 +15,8 @@
  * happy-path: pipeline → MD5 → init → PUT original → PUT thumbnail →
  * complete → refetch. Any failure marks the pending row `failed` with
  * a German message — the UI reads that state to render the banner.
- * Retries are always deliberate user actions (spec §8.15.8: "No
- * silent retry").
+ * Retries are always deliberate user actions (AC-225: no silent
+ * retry).
  */
 
 import { downloadZip } from 'client-zip';
@@ -133,7 +133,7 @@ interface AttachmentState {
   hideAttachment: (projectId: string, attachmentId: string) => Promise<void>;
   /**
    * Resolve a presigned-GET URL plus the unwrapped DEK for one attachment
-   * variant (ADR-0024 / api.md §14.2.11). Returns the raw `{ url,
+   * variant (ADR-0024). Returns the raw `{ url,
    * dekMaterial }` so callers can fetch + decrypt — typically the SW
    * decrypt handler. Returns `null` on any failure (NOT_FOUND, missing
    * permission, network) so the caller renders the "Datei fehlt" placeholder.
@@ -170,8 +170,8 @@ interface AttachmentState {
  * the already-encoded blobs instead of re-running the canvas work.
  * Cleared entirely on successful complete or `dismissUpload`. A page
  * reload drops the map, so `retryUpload` without a backing file cannot
- * resume — that's the spec's expected behaviour ("A page reload cancels
- * an in-flight upload cleanly" — ui/project-detail.md §8.15.4).
+ * resume — the reload cancels the upload, and the orphan reaper removes
+ * the incomplete row (AC-408).
  */
 interface PendingFileSlot {
   file: File;
@@ -361,8 +361,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => {
       // Step 2 — per-file size cap. Enforced server-side at init by
       // the same cap (the route/service rejects with 422) and at the
       // signed `Content-Length` header on the PUT itself; mismatch
-      // here is a client bug, not a security gap
-      // (ui/project-detail.md §8.15.4).
+      // here is a client bug, not a security gap (AC-405).
       if (processed.sizeBytes > ATTACHMENT_PIPELINE.perFileSizeCapBytes) {
         markFailed(clientId, STRINGS.attachments.uploadFileTooLarge, {
           stage: 'post-pipeline-size-cap',
@@ -744,8 +743,8 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => {
       const pending = get().pendingUploads[clientId];
       if (!pending) return;
       // Clear the failed state synchronously so the UI's banner
-      // disappears during the retry (spec §8.15.8 — retry restarts
-      // from init).
+      // disappears during the retry (AC-225 — retry restarts the
+      // upload from the beginning).
       updatePending(clientId, { status: 'initializing', errorMessage: null });
       await runUpload(clientId, pending.projectId);
     },
@@ -878,9 +877,8 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => {
           handleSessionExpired();
           return null;
         }
-        // NOT_FOUND is the "Datei fehlt" signal (ui/project-detail.md
-        // §8.15.7). Every other failure is also a "can't render this
-        // row" for the caller, so the single null return covers both.
+        // NOT_FOUND is the "Datei fehlt" signal (AC-436). Every other
+        // failure is also a "can't render this row" for the caller, so the single null return covers both.
         return null;
       }
       // Forward `url` + `dekMaterial` verbatim. The state layer never
@@ -917,8 +915,8 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => {
 
       // 2. Decrypt each ciphertext, wrap as a one-chunk ReadableStream,
       //    and feed `client-zip` an async-iter of `{ name, input }`.
-      //    Walking `entries` in order preserves the request-order
-      //    contract (AC-216). `client-zip` consumes the iterator one
+      //    Walking `entries` in order preserves the request order.
+      //    `client-zip` consumes the iterator one
       //    file at a time, so peak memory scales with the largest
       //    in-flight file rather than the whole batch — see ADR-0024
       //    §"Bulk download". Wrapping the decrypted `Uint8Array` as a
@@ -943,9 +941,9 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => {
           const plaintext = await decryptBlob(ciphertext, dek);
           // Fall back to the attachment id when the live list cache
           // doesn't contain a name for this entry (e.g. the user
-          // dispatched bulk-fetch on a stale cache). Filename-collision
-          // dedup is the caller's responsibility per api.md §14.2.11
-          // design notes — `client-zip` happily writes duplicate names.
+          // dispatched bulk-fetch on a stale cache). No filename-collision
+          // dedup happens here (AC-434 asks for distinct names) —
+          // `client-zip` happily writes duplicate names.
           const name = fileNameById.get(entry.attachmentId) ?? entry.attachmentId;
           yield {
             name,

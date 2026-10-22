@@ -1,7 +1,6 @@
 /**
  * SPA-side listener for the Service Worker decrypt handler's
- * failure-mode signals (ui/project-detail.md §8.15.7 "DOM-attribute
- * mirror"; AC-244).
+ * failure-mode signals (AC-436, AC-244).
  *
  * The Service Worker cannot touch the DOM — only a window-side script
  * can. The decrypt handler (`src/sw/decryptHandler.ts`) posts
@@ -11,7 +10,7 @@
  * locates the requesting `<img>` / `<iframe>` element by `src`, and
  * writes the `data-sw-error-code` attribute. The element's `onError`
  * handler (PhotoGallery, BinaryList) reads the attribute to choose
- * between the AC-224 `"Datei fehlt"` and AC-244
+ * between the AC-436 `"Datei fehlt"` and AC-244
  * `"Schlüssel nicht verfügbar"` placeholders; without the attribute
  * it renders the generic `"Datei konnte nicht geladen werden"`.
  *

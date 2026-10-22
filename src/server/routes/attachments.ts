@@ -1,16 +1,16 @@
 /**
  * Attachment routes — control plane only. No byte traffic through the
  * app; uploads and downloads go directly to object storage via
- * presigned URLs (AC-221, AC-242, api.md §14.2.11).
+ * presigned URLs (ADR-0024).
  *
  * Under ADR-0024 the wire shape carries ciphertext sizes + DEK material
  * and the bulk path returns per-file presigned-GETs + DEK material for
  * browser-side streaming-zip assembly (the legacy server-zip
  * `bulk-download` route retires).
  *
- * The route shape is pinned by AC-221's structural check — do not add
- * a 9th route on `/api/projects/:id/attachments/**` without updating
- * the spec + AC first.
+ * The route shape is pinned by the structural check in
+ * `attachments-architecture.test.ts` — do not add a 9th route on
+ * `/api/projects/:id/attachments/**` without updating that check first.
  *
  * Every route requires a valid session cookie and the listed permission.
  * Auth is wired per-route (not via a plugin-wide
@@ -105,7 +105,7 @@ export function attachmentRoutes(db: Database) {
               // ADR-0024 ciphertext fields. The server signs
               // `ciphertextSizeBytes` into Content-Length and
               // `ciphertextContentMd5` into Content-MD5 of the presigned
-              // PUT — see api.md §14.2.11 design notes.
+              // PUT (AC-399).
               dekMaterial: { type: 'string', minLength: 1 },
               ciphertextSizeBytes: { type: 'integer', minimum: 1 },
               ciphertextContentMd5: { type: 'string', pattern: '^[A-Za-z0-9+/]{21}[AQgw]==$' },
@@ -147,7 +147,7 @@ export function attachmentRoutes(db: Database) {
             sizeBytes: body.sizeBytes,
             // The service re-validates `label` against the closed enum;
             // the typing here is intentionally wide so invalid payloads
-            // reach the validator path (AC-245 422 VALIDATION_ERROR).
+            // reach the validator path (AC-398 422 VALIDATION_ERROR).
             label: body.label as never,
             hasThumbnail: Boolean(body.hasThumbnail),
             dekMaterial: body.dekMaterial,
@@ -281,7 +281,7 @@ export function attachmentRoutes(db: Database) {
 
     // ---------------------------------------------------------------
     // GET /api/projects/:id/attachments/:attId/download-url — presigned
-    // GET + unwrapped DEK material (ADR-0024 / api.md §14.2.11). The
+    // GET + unwrapped DEK material (ADR-0024). The
     // server unwraps `wrappedDek` (or `wrappedThumbDek` for
     // variant=thumbnail) per request; the unwrapped DEK is never
     // persisted server-side. Per-row unwrap failure surfaces as 422

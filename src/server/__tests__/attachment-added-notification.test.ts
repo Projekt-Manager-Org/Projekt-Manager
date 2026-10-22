@@ -2,9 +2,9 @@
  * Notification publisher integration test — `project.attachment_added`
  * dispatch on completed upload. Pins AC-316 (verification.md §15.24).
  *
- * Coupling (AC-316 + revised AC-219, data-model.md §5.11 / §5.13):
+ * Coupling (AC-316 + AC-427 / AC-407, data-model.md §5.11):
  *   - The event fires off the `attachment:add` audit row, which the
- *     revised AC-219 writes at COMPLETE (pending → ready), not at init.
+ *     system writes at COMPLETE (pending → ready), not at init (AC-427).
  *   - `audit-publisher` maps that row to an event class via
  *     `eventClassForAudit({ entityType: 'attachment', action:
  *     'attachment:add' })` → `'project.attachment_added'`. The class is
@@ -12,7 +12,7 @@
  *     rejects that flag only for the non-project-scoped system classes
  *     `backup.failed` / `disk.threshold_reached`).
  *   - An upload abandoned before complete writes NO `attachment:add`
- *     row (AC-219), hence publishes NO event.
+ *     row (AC-407), hence publishes NO event.
  *
  * Step-3 red state: at the time this test is written NONE of the
  * coupling exists yet —
@@ -22,8 +22,8 @@
  *   - `eventClassForAudit` has no `attachment::attachment:add` entry, so
  *     even a completed upload produces no dispatch observation.
  *   - The `attachment:add` audit row is still written at INIT, not at
- *     complete, so the abandoned-upload arm sees a row that AC-219 (as
- *     revised) says must not exist yet.
+ *     complete, so the abandoned-upload arm sees a row that AC-407 says
+ *     must not exist.
  * Each arm therefore fails — that is the intended TDD signal.
  *
  * Observation surface: the publisher's `onEventDispatched(handler)` —
@@ -354,11 +354,11 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
   // -------------------------------------------------------------------
   // Arm 3 — an upload abandoned before complete publishes no event.
   //
-  // Under the revised AC-219 the `attachment:add` row is written at
+  // Under AC-427 the `attachment:add` row is written at
   // complete, so an init-only (abandoned) upload writes NO such row and
   // therefore drives NO dispatch. At step-3 the row is still written at
   // INIT, so `countAttachmentAddRows` returns 1 → the count assertion
-  // fails (correctly pinning the revised AC-219 / AC-316 coupling).
+  // fails (correctly pinning the AC-407 / AC-316 coupling).
   // -------------------------------------------------------------------
   it('an upload abandoned before complete publishes no event', async () => {
     const pub = await loadPublisher();
@@ -374,7 +374,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
       // have landed an observation before we assert.
       await new Promise<void>((r) => setImmediate(r));
 
-      // No attachment:add row exists for an abandoned upload (AC-219).
+      // No attachment:add row exists for an abandoned upload (AC-407).
       expect(await countAttachmentAddRows(attachmentId)).toBe(0);
 
       // And no dispatch observation references this attachment's

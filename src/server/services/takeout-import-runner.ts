@@ -400,7 +400,7 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
     // An attachment an envelope invoice references is that invoice's
     // rendered PDF: restore it into the invoice namespace, under the
     // invoice lock, so it stays off the attachment surface (AC-365).
-    // Keyed by PDF id; the number rides on the restored object (AC-372).
+    // Keyed by PDF id; the number rides on the restored object (AC-440).
     const invoiceNumberByPdfId = new Map(
       envelope.invoices.flatMap((inv) =>
         inv.renderedPdfBinaryDescriptorId

@@ -3,7 +3,7 @@
 # Traceability check — spec ACs ↔ tests ↔ exceptions (S-ACTR, S-TRAC).
 #
 # Tests are the test spec: an AC is covered when a test file cites its ID.
-# There is no hand-kept matrix; `grep -rn AC-245 src e2e` is the map.
+# There is no hand-kept matrix; `grep -rn AC-397 src e2e` is the map.
 #
 # Inputs:
 #   docs/spec/verification.md                AC definitions:

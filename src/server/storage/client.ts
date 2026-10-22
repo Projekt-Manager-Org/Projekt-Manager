@@ -15,7 +15,7 @@
  * `DeleteObjectCommand` / `DeleteObjectsCommand` carries a `VersionId`
  * anywhere in the codebase.
  *
- * See architecture.md §11.4 for the module boundary definition.
+ * See ARCHITECTURE.md § Attachments Module for the module boundary.
  */
 
 import {
@@ -167,7 +167,7 @@ export interface PresignedPutDescriptor {
    *   is usable only for an upload of bytes that hash to this exact
    *   MD5.
    * - `x-amz-meta-*` — the object's envelope metadata (`objectMetadata.ts`,
-   *   AC-372). Signed, so a PUT that omits or alters it is rejected.
+   *   AC-439). Signed, so a PUT that omits or alters it is rejected.
    */
   headers: Record<string, string>;
   /** ISO 8601 — after this the descriptor is useless. */
@@ -224,8 +224,7 @@ export interface StorageClient {
 
   /**
    * Issue a presigned PUT descriptor pinning the exact key, content type,
-   * size, and body MD5. See api.md §14.2.11 "Presigned-PUT signed
-   * headers".
+   * size, and body MD5 (AC-399).
    *
    * Why PUT and not POST policy: B2's S3-compatible API does not implement
    * browser-based POST uploads — `POST /<bucket>` returns `501
@@ -234,7 +233,7 @@ export interface StorageClient {
    * lowest common denominator (AWS, B2, R2, MinIO, Wasabi all implement
    * it). See ADR-0022 § "Upload protocol".
    *
-   * Signed headers: the object metadata (`x-amz-meta-*`, AC-372 — the
+   * Signed headers: the object metadata (`x-amz-meta-*`, AC-439 — the
    * object carries its own wrapped DEK) plus the three below.
    * `Content-Type` and `Content-Length`
    * pin what the POST policy used to pin (`starts-with` on type,
@@ -285,7 +284,7 @@ export interface StorageClient {
    * a fresh version). Used by the Papierkorb restore flow (ADR-0022).
    *
    * Throws `StorageObjectNotFoundError` when the source version is not
-   * addressable: lifecycle reaped (data-model.md §6.12 race), or the
+   * addressable: lifecycle reaped (AC-424 race), or the
    * versionId predates a topology change (e.g. dev→VPS sync produced
    * fresh B2 versionIds the DB doesn't know — see scripts/ops/
    * sync-restore-vps.sh post-mirror repair). Implementation runs a
@@ -324,7 +323,7 @@ export interface StorageClient {
 
   /**
    * Server-side PUT of an in-memory body under a server-issued key,
-   * carrying the object's envelope metadata (AC-372) and an optional
+   * carrying the object's envelope metadata (AC-439) and an optional
    * per-object Compliance lock. Used for rendered invoice PDFs.
    */
   putObject?: (
@@ -678,7 +677,7 @@ export function createStorageClient(config: StorageConfig): AttachmentStorageCli
       expirySeconds: number = 60,
     ): Promise<PresignedPutDescriptor> {
       validateKey(key);
-      // Three signed headers — the load-bearing pins of AC-245:
+      // Three signed headers — the load-bearing pins of AC-399:
       //  * `Content-Type` — exact MIME type. Defense-in-depth: the
       //    complete() flip re-asserts via HEAD against the declared
       //    `mimeType`; the SigV4 binding makes the URL unusable for a

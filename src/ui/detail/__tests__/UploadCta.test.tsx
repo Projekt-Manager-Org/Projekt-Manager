@@ -235,7 +235,7 @@ describe('UploadCta — no silent retry (AC-225)', () => {
   });
 });
 
-describe('UploadCta — closed-enum label dropdown (AC-226)', () => {
+describe('UploadCta — closed-enum label dropdown (AC-446)', () => {
   it('renders a label selector populated with the document (non-photo) labels', async () => {
     // The dropdown belongs to the document block — photos are hardcoded
     // to `foto`, so `foto` is excluded from the picker. The remaining

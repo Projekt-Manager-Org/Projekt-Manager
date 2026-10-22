@@ -1,5 +1,5 @@
 /**
- * AC-372 — self-describing objects (data-model.md §5.13, ADR-0024).
+ * AC-439, AC-440 — self-describing objects (ADR-0024).
  *
  * Every object the app writes carries, as object metadata set by the same
  * PUT, the wrapped envelope of its own DEK and `wrappedDekVersion`; a
@@ -92,7 +92,7 @@ async function readRow(id: string) {
   return row;
 }
 
-describe('AC-372: every written object carries its own wrapped envelope', () => {
+describe('AC-439: every written object carries its own wrapped envelope', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -170,8 +170,8 @@ describe('AC-372: every written object carries its own wrapped envelope', () => 
     });
   });
 
-  // The other blob is PUT validly, so `complete` returning 409 can only
-  // mean storage refused the tampered PUT.
+  // AC-399. The other blob is PUT validly, so `complete` returning 409
+  // can only mean storage refused the tampered PUT.
   const tampers = [
     ['omits the metadata', withoutMetadata],
     ['alters the wrapped envelope', withAltered(META_WRAPPED_DEK, 'Zm9yZ2Vk')],
@@ -229,6 +229,7 @@ describe('AC-372: every written object carries its own wrapped envelope', () => 
     });
   });
 
+  // AC-440
   it('invoice issuance and cancellation: each PDF carries its envelope, version and number', async () => {
     const pr = await authGet(ownerToken, '/api/projects?status=rechnung_faellig&limit=200');
     const project = (pr.json() as { data: { id: string }[] }).data[0];

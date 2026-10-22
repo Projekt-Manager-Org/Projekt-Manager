@@ -162,7 +162,7 @@ describe('runImagePipeline — photo branch', () => {
     vi.clearAllMocks();
   });
 
-  it('shrinks a JPEG with the configured dimension / quality on the first attempt', async () => {
+  it('AC-404: shrinks a JPEG with the configured dimension / quality on the first attempt', async () => {
     // The dimension and quality switches drive the size of the output;
     // EXIF preservation is the library's structural guarantee (byte-
     // splice in `replaceJpegChunk`) and is asserted end-to-end via the

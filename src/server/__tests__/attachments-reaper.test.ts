@@ -1,7 +1,9 @@
 /**
- * API integration tests — attachment orphan reaper (AC-213).
+ * API integration tests — attachment orphan reaper.
  *
- * Pins the reaper contract from data-model.md §6.11:
+ * Pins AC-408 (deletion with stored objects) and AC-407 (no audit
+ * row); the log-line and missing-object clauses are implementation
+ * detail, kept as regression tests:
  *
  *   - Pending rows older than the configured TTL are removed.
  *   - For each removed row, both `originalKey` and `thumbKey` (when
@@ -17,7 +19,7 @@
  *   - A storage delete that fails (object already gone, transient
  *     provider error) is logged with `error_hint` and the row is still
  *     removed — the metadata-table cleanliness goal trumps a missing
- *     object (§6.11).
+ *     object.
  *
  * Test-module contract: the reaper is invoked directly (no scheduler
  * plumbing). The import path `../services/attachment-orphan-reaper.js`
@@ -170,7 +172,7 @@ async function objectAbsent(storage: StorageClient, key: string): Promise<boolea
   }
 }
 
-describe('Attachment orphan reaper (AC-213)', () => {
+describe('Attachment orphan reaper (AC-408)', () => {
   let db: Database;
   let pool: pg.Pool;
   let storage: StorageClient;
@@ -270,7 +272,7 @@ describe('Attachment orphan reaper (AC-213)', () => {
   });
 
   // -------------------------------------------------------------------
-  // Operational-log contract — data-model.md §6.11.
+  // Operational-log contract.
   // -------------------------------------------------------------------
   it('emits exactly one info line with event, ttl_minutes, removed_count, ran_at', async () => {
     const now = new Date();
@@ -335,7 +337,8 @@ describe('Attachment orphan reaper (AC-213)', () => {
 
   // -------------------------------------------------------------------
   // Audit invariant — reaper does NOT write an audit_log row.
-  // AC-179 allowlists the reaper; data-model.md §6.11 documents why.
+  // AC-179 allowlists the reaper; AC-407: an upload that never
+  // completes leaves no audit entry.
   // -------------------------------------------------------------------
   it('does not produce an audit_log row for reaped rows', async () => {
     const now = new Date();
@@ -370,9 +373,8 @@ describe('Attachment orphan reaper (AC-213)', () => {
 
   // -------------------------------------------------------------------
   // Idempotent storage-delete — the row removal completes even when
-  // there is no backing object for storage.delete to remove. Per §6.11:
-  // "an object delete that finds nothing is a no-op, not a failure";
-  // the metadata-table cleanliness goal trumps a missing backing object.
+  // there is no backing object for storage.delete to remove. An object
+  // delete that finds nothing is a no-op, not a failure; the metadata-table cleanliness goal trumps a missing backing object.
   // -------------------------------------------------------------------
   it('still removes the row when the backing object is already absent (idempotent storage-delete)', async () => {
     const now = new Date();
@@ -381,7 +383,7 @@ describe('Attachment orphan reaper (AC-213)', () => {
     // Seed the row, but DO NOT upload the backing object — the reaper's
     // storage.delete will address a missing key. S3 DeleteObject is
     // idempotent on a missing key (no-op, no throw); the reaper must
-    // therefore complete the row removal in this shape per §6.11.
+    // therefore complete the row removal in this shape.
     const expired = await seedPendingAt(
       db,
       seededProjectId,

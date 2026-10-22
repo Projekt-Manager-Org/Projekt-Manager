@@ -1,7 +1,7 @@
 /**
  * Placeholder object metadata for tests that seed storage through
  * `StorageClient.upload` and do not assert on the envelope itself.
- * `upload` requires metadata so no production writer can drop it (AC-372);
+ * `upload` requires metadata so no production writer can drop it (AC-439);
  * tests that do assert on it build their own.
  */
 

@@ -1,9 +1,9 @@
 /**
  * BinaryList — synthetic-origin Service-Worker download path
  * (ADR-0024, spec ui/project-detail.md §8.15.5), browser-side
- * streaming-zip bulk-fetch pipeline (AC-223), and the two lazy
- * placeholder branches (`"Datei fehlt"` AC-224, `"Schlüssel nicht
- * verfügbar"` AC-244).
+ * streaming-zip bulk-fetch pipeline (AC-433), and the lazy
+ * placeholder branches (`"Datei fehlt"` AC-436, `"Schlüssel nicht
+ * verfügbar"` AC-244, generic AC-437).
  *
  * Under the e2e contract:
  *   - The `Herunterladen` action issues a fetch / anchor click against
@@ -13,7 +13,7 @@
  *     response. Bytes never round-trip the application server.
  *   - `Auswahl als ZIP` calls `POST /api/projects/:id/attachments/bulk-fetch`
  *     and gets back per-file `{originalUrl, originalDekMaterial, ...}`
- *     payloads (api.md §14.2.11). The browser streams each ciphertext
+ *     payloads. The browser streams each ciphertext
  *     through the streaming-zip pipeline, decrypts per-file with the
  *     returned DEK material, and produces a single download at the end.
  *   - Cap-breach selection is blocked client-side with a German
@@ -163,7 +163,7 @@ beforeEach(() => {
   );
 });
 
-describe('BinaryList — Herunterladen routes through synthetic origin (AC-223)', () => {
+describe('BinaryList — Herunterladen routes through synthetic origin (AC-409, AC-417)', () => {
   it('renders one row per ready binary with filename / label / uploader / timestamp', async () => {
     render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
 
@@ -249,7 +249,7 @@ describe('BinaryList — Herunterladen routes through synthetic origin (AC-223)'
   });
 });
 
-describe('BinaryList — Auswahl als ZIP triggers bulk-fetch (AC-223)', () => {
+describe('BinaryList — Auswahl als ZIP triggers bulk-fetch (AC-433)', () => {
   it('shows Auswahl als ZIP only once at least one row is selected', async () => {
     render(<BinaryList projectId="p-42" bundleFileName="P-2026-042_Test-Projekt.zip" />);
     const pdfRow = await screen.findByTestId('attachment-binary-row-bin-pdf');
@@ -261,7 +261,7 @@ describe('BinaryList — Auswahl als ZIP triggers bulk-fetch (AC-223)', () => {
     expect(await screen.findByTestId('binary-bulk-download')).toBeInTheDocument();
   });
 
-  it('blocks a selection above the caps with a German message naming both caps', async () => {
+  it('blocks a selection above the caps with a German message naming both caps (AC-435)', async () => {
     const many = Array.from({ length: 25 }, (_, i) =>
       makeBinary({ id: `bin-${i}`, fileName: `file-${i}.pdf`, sizeBytes: 1_000_000 }),
     );
@@ -320,7 +320,7 @@ describe('BinaryList — Auswahl als ZIP triggers bulk-fetch (AC-223)', () => {
 
       // Wire contract: the component delegates to `requestBulkZipBlob`
       // with the selected ids; the store internally hits
-      // `POST /api/projects/:id/attachments/bulk-fetch` (api.md §14.2.11).
+      // `POST /api/projects/:id/attachments/bulk-fetch`.
       await waitFor(() => {
         expect(requestBulkZipBlobStub).toHaveBeenCalledTimes(1);
       });
@@ -342,7 +342,7 @@ describe('BinaryList — Auswahl als ZIP triggers bulk-fetch (AC-223)', () => {
   });
 });
 
-/** The SW's storage-404 answer: the code rides on the response header (§8.15.7). */
+/** The SW's storage-404 answer: the code rides on the response header (signal contract, `src/sw/decryptHandler.ts`). */
 function objectAbsentResponse(): Response {
   return new Response(JSON.stringify({ code: 'OBJECT_ABSENT' }), {
     status: 404,
@@ -350,9 +350,9 @@ function objectAbsentResponse(): Response {
   });
 }
 
-describe('BinaryList — "Datei fehlt" on download 404 (AC-224 binary side)', () => {
+describe('BinaryList — "Datei fehlt" on download 404 (AC-436 binary side)', () => {
   it('flips the row to "Datei fehlt" and disables the download when the SW signals object-absent', async () => {
-    // Lazy detection per ui/project-detail.md §8.15.7: the list endpoint
+    // Lazy detection: the list endpoint
     // does not probe storage. The UI learns bytes are missing when the
     // user clicks Herunterladen and the SW's ciphertext fetch resolves
     // to a non-2xx Response (storage 404). The component flags the row
@@ -398,7 +398,7 @@ describe('BinaryList — "Datei fehlt" on download 404 (AC-224 binary side)', ()
   });
 });
 
-describe('BinaryList — download failure without an SW code (AC-224 boundary)', () => {
+describe('BinaryList — download failure without an SW code (AC-437)', () => {
   it('shows "Datei konnte nicht geladen werden", not "Datei fehlt", and keeps download + delete enabled', async () => {
     // The page is not controlled by the SW: the request reaches the
     // server, which answers an uncoded 404 ROUTE_NOT_FOUND. Nothing is
@@ -484,10 +484,10 @@ describe('BinaryList — download failure without an SW code (AC-224 boundary)',
 
 describe('BinaryList — Schlüssel nicht verfügbar render (AC-244)', () => {
   it('flips the row to "Schlüssel nicht verfügbar" when the SW signals envelope-unwrap failure', async () => {
-    // Per AC-244 + ui/project-detail.md §8.15.7: an envelope unwrap
+    // Per AC-244: an envelope unwrap
     // failure on the SW's download-url call (e.g. partial key rotation,
     // recipient drift) surfaces a distinct German placeholder from
-    // AC-224. The SW returns a 422 Response carrying
+    // AC-436. The SW returns a 422 Response carrying
     // `{ code: 'DEK_UNWRAP_FAILED' }`; the component reads the body
     // (or an equivalent SW-attached header) to disambiguate. The
     // German label is locked at the component layer.
@@ -509,7 +509,7 @@ describe('BinaryList — Schlüssel nicht verfügbar render (AC-244)', () => {
       });
 
       // Download disabled and the row excluded from bulk-fetch
-      // selection — same exclusion rule as AC-224 with a different
+      // selection — same exclusion rule as AC-436 with a different
       // remediation prompt.
       expect(within(pdfRow).getByTestId('attachment-download')).toBeDisabled();
       const checkbox = within(pdfRow).queryByRole('checkbox');

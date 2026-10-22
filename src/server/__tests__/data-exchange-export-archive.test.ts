@@ -10,7 +10,7 @@
  *     AC-135 envelope; first manifest entry; no attachmentId) and
  *     `manifest.json` at root, plus every `status='ready'` attachment as
  *     PLAINTEXT under `attachments/<projektnummer>-<projekt-titel>/
- *     <attachment-id>-<dateiname>` (components sanitised per AC-245).
+ *     <attachment-id>-<dateiname>` (components sanitised per the data-model.md §5.13 file-name rules).
  *     `manifest.json` = { manifestVersion:1, exportedAt, totalFiles,
  *     totalBytes, files:[{ zipPath, sizeBytes, sha256, attachmentId? }] },
  *     server-computed, EXCLUDES itself, totalFiles === files.length,
@@ -354,7 +354,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
       const { entries, manifest } = await buildAndUnzip(ownerToken);
 
       // The path component for the project is `<number>-<title>` (each
-      // segment sanitised per AC-245). Title carries an umlaut in the
+      // segment sanitised per the §5.13 file-name rules). Title carries an umlaut in the
       // seed (e.g. "Fassadenanstrich Müller"); the sanitiser must not
       // emit a path separator, control char, or double-quote, but is NOT
       // required to strip the umlaut — so assert the dir prefix + the
@@ -371,7 +371,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
 
       // Exactly 3 path segments (attachments / <number>-<title> / <id>-<file>):
       // any '/' or '\' in the project title MUST have been sanitised away
-      // (AC-245), so no extra separator leaked into the path.
+      // (§5.13 file-name rules), so no extra separator leaked into the path.
       expect(attachmentEntry!.split('/').length).toBe(3);
       // The middle segment carries the sanitised title beyond the
       // "<number>-" prefix — not collapsed to a placeholder.

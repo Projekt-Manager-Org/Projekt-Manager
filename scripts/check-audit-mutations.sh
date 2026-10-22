@@ -116,7 +116,7 @@ ALLOWLIST=(
   # flag the legitimate `tx.insert(...)` calls inside repos. The
   # integrity guarantee is the type, not the allowlist.
   #
-  # AC-219 single audit-free exception for attachments lives here:
+  # AC-407 single audit-free exception for attachments lives here:
   # `createPending` (the init `pending`-row insert) is the state-machine
   # pre-step that writes NO audit row — an upload abandoned before
   # complete leaves nothing on the activity feed (parity with the orphan
@@ -157,7 +157,7 @@ ALLOWLIST=(
   # (audit_log is not in the audited-table set, but this job is the
   # archetypal allowlist case for parity with the helper.)
   "src/server/services/audit-retention.ts"
-  # Attachment orphan reaper (AC-213) — housekeeping sweep that
+  # Attachment orphan reaper (AC-408) — housekeeping sweep that
   # deletes pending rows past TTL with no audit row (orphans never
   # entered the domain). Parallel to audit-retention's allowlist slot.
   "src/server/services/attachment-orphan-reaper.ts"

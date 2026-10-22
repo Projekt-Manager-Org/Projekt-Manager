@@ -1,14 +1,14 @@
 /**
  * Service Worker decrypt handler — synthetic-origin intercept seam for
  * binary attachment e2e encryption (ADR-0024 §Service-Worker decryption,
- * AC-243 in `docs/spec/verification.md`).
+ * AC-416 in `docs/spec/verification.md`).
  *
  * The SPA installs a Service Worker that intercepts every request to
  * `/encrypted-storage/<projectId>/<attachmentId>.<variant>` (variant ∈
  * {original, thumbnail}). The handler:
  *
  *   1. Calls `GET /api/projects/<projectId>/attachments/<attachmentId>/download-url?variant=<variant>`
- *      to obtain `{ url, expiresAt, dekMaterial }` (api.md §14.2.11).
+ *      to obtain `{ url, expiresAt, dekMaterial }`.
  *   2. Fetches `url` to obtain the ciphertext bytes from object storage.
  *   3. AES-256-GCM-decrypts with `dekMaterial` (per-blob nonce is the
  *      ciphertext's leading 12 bytes — same convention `clientEncryption.ts`
@@ -16,18 +16,18 @@
  *   4. Returns the plaintext bytes via the Fetch response so
  *      `<img src="/encrypted-storage/...">` and friends keep working.
  *
- * Failure-mode signal contract (ui/project-detail.md §8.15.7, api.md
- * §14.2.11). Only two codes are sanctioned:
+ * Failure-mode signal contract — defined here; the UI maps it to the
+ * AC-436 / AC-244 / AC-437 placeholders. Only two codes are sanctioned:
  *
  *   - `OBJECT_ABSENT` — storage 404 / NoSuchKey on the presigned-GET
- *     fetch. Drives the `"Datei fehlt"` placeholder (AC-224).
+ *     fetch. Drives the `"Datei fehlt"` placeholder (AC-436).
  *   - `DEK_UNWRAP_FAILED` — `download-url` returned exactly
  *     `422 VALIDATION_ERROR { code: 'DEK_UNWRAP_FAILED' }`. Drives the
  *     `"Schlüssel nicht verfügbar"` placeholder (AC-244). The AES-GCM
  *     auth-tag path on read also collapses to this code: from the
  *     consumer's perspective a tag mismatch reads identically to an
- *     envelope-unwrap fault (§8.15.7 "envelope bytes corrupt … or the
- *     unwrap operation otherwise fails"). The handler does not invent
+ *     envelope-unwrap fault — the key "cannot be unwrapped" (AC-244),
+ *     and the bytes are refused either way (AC-418). The handler does not invent
  *     additional codes.
  *
  * Every other failure path (transport drops, non-pinned status codes,
@@ -37,7 +37,7 @@
  * generic error path in that case rather than mis-attributing to one
  * of the two pinned divergences.
  *
- * DOM-attribute mirror. §8.15.7 pins the signal as appearing on BOTH
+ * DOM-attribute mirror. The signal appears on BOTH
  * the failing Response (header) AND the requesting `<img>` / `<iframe>`
  * element (DOM attribute). A Service Worker cannot touch the DOM — only
  * a window-side script can. The handler posts the code over a
@@ -60,7 +60,7 @@ import { decryptBlob, decodeDekMaterial } from '@/domain/clientEncryption';
 
 const VALID_VARIANTS = new Set(['original', 'thumbnail']);
 
-/** Stable error codes per ui/project-detail.md §8.15.7. */
+/** Stable error codes of the failure-mode signal contract above. */
 type SwErrorCode = 'OBJECT_ABSENT' | 'DEK_UNWRAP_FAILED';
 
 /**
@@ -141,11 +141,10 @@ function broadcastSwError(requestUrl: string, code: SwErrorCode): void {
 }
 
 /**
- * Build a non-2xx Response carrying the SW error-code contract per
- * ui/project-detail.md §8.15.7:
+ * Build a non-2xx Response carrying the SW error-code contract:
  *   - `data-sw-error-code` response header,
  *   - JSON body `{ code, message }` so consumers that read the body
- *     (the binary download path) can disambiguate AC-224 vs AC-244
+ *     (the binary download path) can disambiguate AC-436 vs AC-244
  *     without a second request,
  *   - matching BroadcastChannel post so the SPA-side listener can
  *     mirror the code onto the requesting `<img>` / `<iframe>` DOM
@@ -215,14 +214,13 @@ export async function handleEncryptedStorageRequest(request: Request): Promise<R
     });
   } catch {
     // Network failure on the metadata call — neither pinned code
-    // applies (api.md §14.2.11 ties DEK_UNWRAP_FAILED to a 422 +
-    // explicit body code). Surface generic so the UI does not
+    // applies (DEK_UNWRAP_FAILED needs a 422 + explicit body code). Surface generic so the UI does not
     // mis-route to AC-244 placeholders.
     return genericFailureResponse(502, 'download-url metadata fetch failed in transit');
   }
 
   if (!descriptorResponse.ok) {
-    // Per api.md §14.2.11: only `422 VALIDATION_ERROR` with
+    // Only `422 VALIDATION_ERROR` with
     // `body.code === 'DEK_UNWRAP_FAILED'` produces the AC-244 signal.
     // Every other status (401, 403, 404, 5xx, …) is generic. We
     // attempt to read the body only on 422 to keep the parse cost
@@ -295,12 +293,12 @@ export async function handleEncryptedStorageRequest(request: Request): Promise<R
   } catch {
     // Storage-side transport failure — neither pinned code applies.
     // OBJECT_ABSENT is reserved for an explicit 404 / NoSuchKey
-    // response per §8.15.7; a transport drop has no such signal.
+    // response; a transport drop has no such signal.
     return genericFailureResponse(502, 'ciphertext fetch failed in transit');
   }
 
   if (ciphertextResponse.status === 404) {
-    // AC-224 path: the row exists and the DEK unwraps, but the
+    // AC-436 path: the row exists and the DEK unwraps, but the
     // backing object is gone. Most likely a Layer-1 restore whose
     // Layer-3 storage diverged.
     return failureResponse(
@@ -313,7 +311,7 @@ export async function handleEncryptedStorageRequest(request: Request): Promise<R
 
   if (!ciphertextResponse.ok) {
     // 401 (signature drift), 403 (URL expired), 5xx (storage outage),
-    // etc. — none of these are object-absence per §8.15.7. Surface
+    // etc. — none of these are object-absence. Surface
     // generic so the UI shows a transient-error path rather than the
     // permanent-divergence "Datei fehlt" placeholder.
     return genericFailureResponse(
@@ -325,9 +323,8 @@ export async function handleEncryptedStorageRequest(request: Request): Promise<R
   // Step 3 — decrypt. AES-GCM auth-tag failure (tampered bytes,
   // corrupted ciphertext, or wrong DEK) throws an OperationError;
   // the consumer cannot tell envelope-unwrap-fail from cipher-mismatch
-  // from the outside, so both collapse to DEK_UNWRAP_FAILED per the
-  // §8.15.7 framing of "envelope bytes corrupt … or the unwrap
-  // operation otherwise fails".
+  // from the outside, so both collapse to DEK_UNWRAP_FAILED (AC-244);
+  // the bytes are refused either way (AC-418).
   let ciphertext: Uint8Array;
   try {
     const buf = await ciphertextResponse.arrayBuffer();

@@ -1,6 +1,6 @@
 /**
  * API integration tests — thumbnail size cap + complete-side HEAD
- * re-assertion under ADR-0024 (AC-245 / AC-212 thumb defence in depth).
+ * re-assertion under ADR-0024 (AC-399 / AC-402 thumb defence in depth).
  *
  * Two regression surfaces are pinned here:
  *
@@ -16,7 +16,7 @@
  *
  * Direct-storage uploads bypass the SigV4 path so the complete-side
  * HEAD check can be exercised in isolation. Same pattern the existing
- * AC-212 arms in `attachments-routes.test.ts` use for the original-
+ * AC-402 arms in `attachments-routes.test.ts` use for the original-
  * side size-mismatch case. Storage objects carry the sentinel
  * `application/octet-stream` content type per ADR-0024.
  */

@@ -1,5 +1,5 @@
 /**
- * API integration tests — attachment audit contract (AC-219, AC-240).
+ * API integration tests — attachment audit contract (AC-427, AC-407, AC-240).
  *
  * Pins the single-write-path invariant (AC-177, ADR-0021) as it
  * applies to the attachment entity:
@@ -124,7 +124,7 @@ async function projectNumberTitleById(
 /**
  * Drive init → stage backing ciphertext bytes → complete for one
  * attachment, returning its id. Shared by the tests that need a
- * `ready` row carrying an `attachment:add` audit row (AC-219: the row
+ * `ready` row carrying an `attachment:add` audit row (AC-427: the row
  * is written at complete, not at init). Sizes match the photo fixture's
  * ciphertext defaults (120_064 original + 8_064 thumbnail) and the
  * content-type is the sentinel `application/octet-stream` (ADR-0024) so
@@ -167,7 +167,7 @@ async function stageAndComplete(
   return attachmentId;
 }
 
-describe('Attachment audit contract (AC-219)', () => {
+describe('Attachment audit contract (AC-427)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -182,7 +182,7 @@ describe('Attachment audit contract (AC-219)', () => {
   });
 
   // -------------------------------------------------------------------
-  // complete → exactly one `attachment:add` audit row (AC-219)
+  // complete → exactly one `attachment:add` audit row (AC-427)
   //
   // The `attachment:add` row is written at the `pending → ready`
   // finalize, NOT at init. We drive init+complete, asserting init alone
@@ -224,7 +224,7 @@ describe('Attachment audit contract (AC-219)', () => {
       TEST_OBJECT_METADATA,
     );
 
-    // Init alone writes NO audit row (AC-219).
+    // Init alone writes NO audit row (AC-407).
     const afterInit = await countAuditRows();
     expect(await fetchLatestAuditRow(attachmentId, 'attachment:add')).toBeNull();
 
@@ -263,7 +263,7 @@ describe('Attachment audit contract (AC-219)', () => {
 
     // The owning project's display name is NOT in payload.after — the
     // single source is `ancestor_entity_label` on the audit row itself
-    // (AC-219 / AC-339 / AC-342). The push composer, dock, and /audit
+    // (AC-339 / AC-342). The push composer, dock, and /audit
     // Projekt column all read from there. Assert the absence so a
     // regression that re-duplicates it into the payload is caught.
     expect(payload.after).not.toHaveProperty('projectLabel');
@@ -282,9 +282,9 @@ describe('Attachment audit contract (AC-219)', () => {
     const before = await countAuditRows();
 
     // Init ONLY — no backing bytes staged, no complete call. This is an
-    // upload abandoned before finalize (the orphan reaper, data-model.md
-    // §6.11, later removes the pending row + objects). It must produce no
-    // audit row (AC-219).
+    // upload abandoned before finalize (the orphan reaper, AC-408,
+    // later removes the pending row + objects). It must produce no
+    // audit row (AC-407).
     const initRes = await authPost(
       ownerToken,
       `/api/projects/${projectId}/attachments/init`,
@@ -299,7 +299,7 @@ describe('Attachment audit contract (AC-219)', () => {
   });
 
   // -------------------------------------------------------------------
-  // delete → exactly one `attachment:hide` audit row (AC-232)
+  // delete → exactly one `attachment:hide` audit row (AC-427)
   // -------------------------------------------------------------------
   it('delete writes exactly one attachment:hide row with before payload fields', async () => {
     // Seed directly — we don't need the real upload path here; the
@@ -376,7 +376,7 @@ describe('Attachment audit contract (AC-219)', () => {
   // -------------------------------------------------------------------
   it('attachment and non-attachment writes produce distinct entity_type audit rows', async () => {
     // Attachment write → `entity_type='attachment'`. The `attachment:add`
-    // row lands at complete (AC-219), so drive the full init→stage→
+    // row lands at complete (AC-427), so drive the full init→stage→
     // complete flow via the shared helper to get the row.
     const attachmentId = await stageAndComplete(
       ownerToken,
@@ -536,7 +536,7 @@ describe('AC-240: wrapped-DEK columns never appear in audit payloads', () => {
   }
 
   it('attachment:add (complete) audit row does not carry wrappedDek by name or by bytes', async () => {
-    // The `attachment:add` row is written at complete, not init (AC-219),
+    // The `attachment:add` row is written at complete, not init (AC-427),
     // so drive the full init→stage→complete flow via the shared helper
     // to produce it. The route wraps the DEK server-side; AC-240 pins
     // that the wrapped envelope must NOT surface in the audit payload —

@@ -538,7 +538,7 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
           db,
           // Real storage client — best-effort `.hide` on the seeded
           // keys; missing-object errors are tolerated by the reaper
-          // (data-model.md §6.11) and irrelevant to this assertion.
+          // (AC-408) and irrelevant to this assertion.
           storage: storageClient(),
           logger: { info: vi.fn(), error: vi.fn() } as unknown as ServiceLogger,
           ttlMinutes: 1,

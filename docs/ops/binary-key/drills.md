@@ -1,6 +1,6 @@
 # Binary Attachment Key — Drills
 
-Monthly operator-side decrypt drill. Proves the off-system custody copy of the binary `age` identity still decrypts live B2 ciphertext — through the same recovery tool a disaster would use ([AC-373](../../spec/verification.md#1526-attachments), [AC-374](../../spec/verification.md#1526-attachments)). Same cadence as ADR-0020's Tier 2 monthly drill.
+Monthly operator-side decrypt drill. Proves the off-system custody copy of the binary `age` identity still decrypts live B2 ciphertext — through the same recovery tool a disaster would use ([AC-441](../../spec/verification.md#1526-attachments), [AC-374](../../spec/verification.md#1526-attachments)). Same cadence as ADR-0020's Tier 2 monthly drill.
 
 Concept map: [overview.md](overview.md). Design rationale: [ADR-0024 §Decision "Self-describing objects"](../../adr/0024-binary-attachment-e2e-encryption.md#decision).
 

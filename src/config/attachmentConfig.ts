@@ -3,7 +3,7 @@
  * orphan-reaper TTL, worker self-delete grace.
  *
  * All four values are customer-configurable **[C]** per architecture.md
- * §12.2 and pinned by verification.md AC-245/213/215/216. Defaults are
+ * §12.2 and pinned by verification.md AC-398, AC-408, AC-411, AC-415. Defaults are
  * the shipping values documented in the spec; deployments override via
  * the env layer (`src/server/config/env.ts`) and the server resolves at
  * call time.
@@ -44,7 +44,7 @@ export interface AttachmentConfig {
   workerSelfDeleteGraceMinutes: number;
   /**
    * Hidden-row age (minutes) past `hiddenAt` after which the hidden
-   * reaper hard-deletes the row (data-model.md §6.12). Default 2880 =
+   * reaper hard-deletes the row (AC-426). Default 2880 =
    * 2 days, mirroring `L` for the bucket lifecycle so the row never
    * outlives recoverability of its bytes. [C]
    */

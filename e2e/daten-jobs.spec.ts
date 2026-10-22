@@ -310,7 +310,7 @@ async function exportJobZip(page: Page, opts?: { afterImport?: boolean }): Promi
   const dialog = page.getByTestId('export-job-dialog');
   await expect(dialog).toBeVisible();
   await expect(page.getByTestId('export-job-preflight')).toBeVisible();
-  // AC-220: the archive carries only `ready` attachments. Said here, where the
+  // AC-432: the archive carries only `ready` attachments. Said here, where the
   // operator's model of "what is in my backup" forms — not at restore time.
   await expect(page.getByTestId('export-job-papierkorb-notice')).toContainText('Papierkorb');
   await page.getByTestId('export-job-start').click();
@@ -400,7 +400,7 @@ async function importJobZip(
     // matches the configured phrase. Assert disabled-before, enabled-after.
     const confirm = page.getByTestId('import-job-confirm');
     await expect(confirm).toBeVisible();
-    // AC-220: the restore is also a Papierkorb purge, called out separately
+    // AC-432: the restore is also a Papierkorb purge, called out separately
     // from the generic destructive notice — "the existing data is deleted"
     // does not tell an operator the archive cannot bring the trash back.
     await expect(confirm.getByTestId('import-job-papierkorb-notice')).toContainText('Papierkorb');
@@ -702,8 +702,8 @@ test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import
   //    roundtrip verification, identical in shape to the retiring import
   //    spec) — the byte-equality is against the ORIGINAL seed plaintext:
   //    - (id, createdBy, createdAt) per row equals source
-  //    - download-URL plaintext byte-equals seed (AC-241)
-  //    - photo thumbnail renders via /encrypted-storage/.../thumbnail (AC-243)
+  //    - download-URL plaintext byte-equals seed (AC-416)
+  //    - photo thumbnail renders via /encrypted-storage/.../thumbnail (AC-416)
   // -------------------------------------------------------------
   // Identity-field cross-check via the project's attachment list, using the
   // page's freshly re-authed session.
@@ -756,7 +756,7 @@ test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import
   // Photo thumbnail render via the SW-intercepted synthetic-origin URL. The
   // import JOB regenerates the thumbnail server-side (AC-328), so the gallery
   // should mount an `<img>` whose `naturalWidth` decodes successfully — same
-  // load-bearing assertion shape as the retiring import spec / AC-243.
+  // load-bearing assertion shape as the retiring import spec / AC-416.
   await page.goto(`/projects/${projectId}`);
   await expect(page.getByTestId('project-detail-page')).toBeVisible();
   const photoImg = page.locator(

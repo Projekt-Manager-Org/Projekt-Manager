@@ -1,8 +1,7 @@
 /**
- * API integration tests — project purge cascades attachments (AC-218).
+ * API integration tests — project purge cascades attachments.
  *
- * Pins the cascade contract from data-model.md §5.13 "Cascade on project
- * hard-delete" and verification.md AC-218:
+ * Pins AC-428, AC-429 and AC-430:
  *
  *   - Purging a project (hard-delete) removes every `attachment` row via
  *     FK cascade AND deletes every backing object (`originalKey` and
@@ -136,7 +135,7 @@ async function objectAbsent(storage: StorageClient, key: string): Promise<boolea
   }
 }
 
-describe('Attachment purge cascade (AC-218)', () => {
+describe('Attachment purge cascade', () => {
   let ownerToken: string;
   let customerId: string;
   let storage: StorageClient;
@@ -171,7 +170,7 @@ describe('Attachment purge cascade (AC-218)', () => {
     expect(await attachmentRowExists(binary.id)).toBe(false);
 
     // Backing objects removed from storage — the load-bearing arm of
-    // AC-218. The FK cascade alone is not enough; the spec requires
+    // AC-428. The FK cascade alone is not enough; the spec requires
     // the storage-side cleanup to run alongside the DB delete.
     expect(await objectAbsent(storage, photo.originalKey)).toBe(true);
     expect(await objectAbsent(storage, photo.thumbKey!)).toBe(true);
@@ -180,8 +179,7 @@ describe('Attachment purge cascade (AC-218)', () => {
 
   // -------------------------------------------------------------------
   // Soft-delete (archive) leaves attachments intact — the cascade fires
-  // only on hard-delete. AC-218 final clause: "Soft-delete (archive)
-  // leaves attachments unchanged."
+  // only on hard-delete (AC-430).
   // -------------------------------------------------------------------
   it('archive leaves attachment rows and backing objects intact', async () => {
     const projectId = await createProject(ownerToken, customerId);
@@ -197,9 +195,7 @@ describe('Attachment purge cascade (AC-218)', () => {
   });
 
   // -------------------------------------------------------------------
-  // A failed storage delete does not abort the DB cascade. AC-218:
-  // "A failed storage delete during purge does not abort the database
-  // cascade; the operational logger records the orphaned object keys."
+  // A failed storage delete does not abort the DB cascade (AC-429).
   //
   // We simulate the failure-at-storage side by seeding the row without
   // its backing object (S3 DeleteObject on a missing key is idempotent,

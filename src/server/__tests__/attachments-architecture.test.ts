@@ -11,21 +11,25 @@
  *     without observing the mutation surface is exactly the fail-open
  *     that AC-179 forbids.
  *
- *   - AC-221: no attachment route handler accepts a raw/multipart
+ *   Design-conformance gates for ADR-0024 / ADR-0022 (the VPS stays
+ *   out of the attachment bytes path; no AC — the property is not
+ *   observable at the product boundary):
+ *
+ *   - No attachment route handler accepts a raw/multipart
  *     body. The upload path is presigned-PUT direct-to-storage; the
  *     only attachment endpoints on the app are init, complete, delete,
  *     list, download-url, bulk-fetch — all JSON control plane.
- *     "No byte traffic through the app" (api.md §14.2.11 design note)
- *     is load-bearing for module scalability and is pinned by a
- *     structural assertion parallel to AC-179.
+ *     "No byte traffic through the app" is load-bearing for module
+ *     scalability and is pinned by a structural assertion parallel to
+ *     AC-179.
  *
- *   - AC-242: no attachment route handler streams ciphertext bytes
+ *   - No attachment route handler streams ciphertext bytes
  *     to or from object storage. Under e2e (ADR-0024) the server
  *     handles only metadata, the wrapped envelope, and the unwrapped
  *     DEK during `download-url` / `bulk-fetch`. A handler that
  *     proxied ciphertext (e.g. `GetObjectCommand` → response.Body →
  *     reply.send) would put the VPS back in the data path and undo
- *     the e2e refactor. Parallel to AC-221 (inbound side); together
+ *     the e2e refactor. Parallel to the inbound gate; together
  *     they pin "the app handles only the control plane".
  *
  * Both assertions are structural, not behavioral. They run without
@@ -95,15 +99,15 @@ describe('AC-179: attachment table wired into the audit-mutation architecture ch
 });
 
 // ---------------------------------------------------------------------
-// AC-221 — No byte proxy through the app.
+// No byte proxy through the app (inbound; ADR-0024).
 // ---------------------------------------------------------------------
 
-describe('AC-221: no attachment route accepts a raw/multipart body', () => {
+describe('no attachment route accepts a raw/multipart body', () => {
   const ROUTES_SRC = readSource('src/server/routes/attachments.ts');
 
   it('the attachment routes file imports no multipart parser', () => {
     // @fastify/multipart would register parsers for multipart/form-data
-    // and turn Fastify into a byte proxy for upload payloads. AC-221
+    // and turn Fastify into a byte proxy for upload payloads. This gate
     // bans any such dependency on the attachment surface.
     expect(ROUTES_SRC).not.toContain('@fastify/multipart');
     expect(ROUTES_SRC).not.toContain('fastify-multipart');
@@ -124,7 +128,7 @@ describe('AC-221: no attachment route accepts a raw/multipart body', () => {
   });
 
   it('only the eight documented endpoints are registered under /api/projects/:id/attachments', () => {
-    // The documented control plane per api.md §14.2.11 + ADR-0024:
+    // The control plane per ADR-0024:
     //   GET    /api/projects/:id/attachments                             (list — ready only)
     //   POST   /api/projects/:id/attachments/init                        (init)
     //   POST   /api/projects/:id/attachments/:attId/complete             (complete)
@@ -190,25 +194,25 @@ describe('AC-221: no attachment route accepts a raw/multipart body', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-242 — No app-process bytes traffic for ciphertext (outbound).
+// No app-process bytes traffic for ciphertext (outbound; ADR-0024).
 //
-// Mirrors AC-221 on the read side: the app must never read or proxy
+// Mirrors the inbound gate on the read side: the app must never read or proxy
 // attachment ciphertext bytes. Under e2e (ADR-0024) the only data the
 // server touches is the metadata row, the wrapped envelope, and the
 // per-request unwrapped DEK during `download-url` / `bulk-fetch`. A
 // handler that piped a `GetObjectCommand` response body into a Fastify
 // reply would put the VPS back in the data path and undo the refactor.
 //
-// Source-text scan over `routes/attachments.ts` (parallel to AC-221).
+// Source-text scan over `routes/attachments.ts` (parallel to the inbound gate).
 // The detection is necessarily structural — a true AST-grade check
 // would require resolving SDK identifiers through the import table and
-// matching `pipe()` / `pipeline()` sinks; that's the AC-238 detector's
-// shape, but the scope of this AC is "no `GetObjectCommand` body sink
+// matching `pipe()` / `pipeline()` sinks; that's the version-delete
+// detector's shape, but the scope of this gate is "no `GetObjectCommand` body sink
 // inside the attachment routes file" which is observable via the
 // imports list and call shapes in the same file.
 // ---------------------------------------------------------------------
 
-describe('AC-242: no attachment route streams ciphertext bytes from object storage', () => {
+describe('no attachment route streams ciphertext bytes from object storage', () => {
   const ROUTES_SRC = readSource('src/server/routes/attachments.ts');
 
   it('the attachment routes file does not import GetObjectCommand', () => {
@@ -225,7 +229,7 @@ describe('AC-242: no attachment route streams ciphertext bytes from object stora
     // Stream-piping shapes that would proxy bytes through a Fastify
     // reply: `body.pipe(reply.raw)`, `pipeline(body, reply.raw)`,
     // `Readable.from(...).pipe(...)`, etc. None are admissible on the
-    // attachment routes file under AC-242.
+    // attachment routes file under this gate.
     expect(ROUTES_SRC).not.toMatch(/\.pipe\s*\(/);
     expect(ROUTES_SRC).not.toMatch(/pipeline\s*\(/);
   });
@@ -234,7 +238,7 @@ describe('AC-242: no attachment route streams ciphertext bytes from object stora
     // Fastify exposes the underlying Node response as `reply.raw`.
     // Any attachment route reaching for `reply.raw` is bypassing
     // Fastify's serializer to write bytes by hand — exactly the
-    // shape AC-242 forbids. A future need (e.g. SSE) is also
+    // shape this gate forbids. A future need (e.g. SSE) is also
     // unwelcome on the attachment routes file specifically.
     expect(ROUTES_SRC).not.toMatch(/reply\.raw/);
   });

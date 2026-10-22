@@ -1,6 +1,6 @@
 /**
  * Synthetic-origin URL builder for the Service-Worker decrypt path
- * (ADR-0024 / spec ui/project-detail.md §8.15.4 + §8.15.5 + §8.15.7).
+ * (ADR-0024; ui/project-detail.md §8.15.4, §8.15.5).
  *
  * The SW intercepts `/encrypted-storage/<projectId>/<attachmentId>.<variant>`
  * requests, calls `download-url`, fetches the ciphertext from object
@@ -18,7 +18,7 @@ import { SYNTHETIC_ORIGIN_PREFIX } from '@/config/syntheticOrigin';
 
 export type AttachmentVariant = 'original' | 'thumbnail';
 
-/** Per-row outcome of a failed synthetic-origin load (ui/project-detail.md §8.15.7). */
+/** Per-row outcome of a failed synthetic-origin load (AC-436, AC-244, AC-437). */
 export type AttachmentLoadError = 'object-absent' | 'key-unavailable' | 'load-failed';
 
 const LOAD_ERROR_BY_SW_CODE = new Map<string, AttachmentLoadError>([

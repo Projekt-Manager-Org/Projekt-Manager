@@ -56,7 +56,7 @@ vi.mock('@/api/client', async (importActual) => {
       completeUpload: vi.fn(),
       delete: vi.fn(),
       downloadUrl: vi.fn(),
-      // Per-blob bulk wire shape (api.md §14.2.11) — replaces the
+      // Per-blob bulk wire shape — replaces the
       // legacy server-side zip-URL endpoint per ADR-0024.
       bulkFetch: vi.fn(),
     },
@@ -299,7 +299,7 @@ describe('ProjectDetailPage — camera FAB MIME gate', () => {
     useToastStore.setState({ toasts: [] });
   });
 
-  it('rejects a non-whitelisted MIME (e.g. HEIC) with a toast and does not dispatch uploadFile', async () => {
+  it('AC-406: rejects a non-whitelisted MIME (e.g. HEIC) with a toast and does not dispatch uploadFile', async () => {
     // Mirror of UploadCta.dispatchUpload's whitelist gate. Without
     // this check a HEIC from an exotic camera app reaches the upload
     // orchestrator, trips the per-file size cap at the post-pipeline

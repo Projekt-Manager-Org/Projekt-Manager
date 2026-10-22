@@ -10,7 +10,7 @@
  *   - `decryptBlob` round-trips and verifies the auth tag; any tampering
  *     (nonce, body, tag, or wrong DEK) throws.
  *   - `encodeDekMaterial` / `decodeDekMaterial` are the base64 wire-format
- *     helpers used by `init` and `download-url` (api.md §14.2.11). The
+ *     helpers used by `init` and `download-url`. The
  *     decoder rejects anything that does not decode to exactly 32 bytes
  *     so the AES-256 invariant fails close to the source.
  *
@@ -117,8 +117,8 @@ export async function decryptBlob(ciphertext: Uint8Array, dek: Uint8Array): Prom
 }
 
 /**
- * Base64-encode a 32-byte DEK for the `dekMaterial` wire field
- * (api.md §14.2.11). Standard base64 (with `+`, `/`, padding) — the
+ * Base64-encode a 32-byte DEK for the `dekMaterial` wire field.
+ * Standard base64 (with `+`, `/`, padding) — the
  * server's init validator and the SW's decrypt path expect the same
  * alphabet.
  */

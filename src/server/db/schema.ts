@@ -565,7 +565,7 @@ export const attachments = pgTable(
      * Nullable here so legacy pre-e2e tests that raw-INSERT attachment
      * rows without ciphertext metadata still typecheck under Phase 1A;
      * Phase 2D wires the init flow to populate this column unconditionally
-     * and the production AC-245 path requires a non-null value at write
+     * and the production upload-init path requires a non-null value at write
      * time. Tightening to NOT NULL is tracked debt for Phase 2D.
      */
     ciphertextSizeBytes: bigint('ciphertext_size_bytes', { mode: 'number' }),
@@ -639,7 +639,7 @@ export const attachments = pgTable(
     /**
      * Set when the attachment is moved to the Papierkorb (status =
      * 'hidden'). Null while live or pending. The scheduled hidden reaper
-     * (data-model.md §6.12) hard-deletes the row once `now() - hiddenAt
+     * (AC-426) hard-deletes the row once `now() - hiddenAt
      * > L`; the bucket lifecycle reaps the underlying noncurrent versions
      * on the same window. Both are keyed off `L` so the row never
      * outlives recoverability.
@@ -699,7 +699,7 @@ export const attachments = pgTable(
  * audited and trigger-maintained derived state on an audited table
  * muddies the audit invariant boundary, and (2) cleaner separation of
  * concerns. The FK cascade hard-deletes the row alongside the parent
- * project on purge ([AC-266](docs/spec/verification.md#1526-attachments)).
+ * project on purge ([AC-266](docs/spec/verification.md#1529-storage-usage-ui)).
  *
  * Plaintext counters sum `size_bytes + COALESCE(thumb_size_bytes, 0)` —
  * the user-facing "what I uploaded" view. Ciphertext counters sum the

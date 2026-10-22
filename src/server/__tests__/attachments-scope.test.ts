@@ -1,5 +1,5 @@
 /**
- * API integration tests — attachment scope (AC-214, AC-217).
+ * API integration tests — attachment scope (AC-410).
  *
  * Pins the `attachmentScopeForCaller` repository predicate and the
  * worker-scope service gate:
@@ -14,7 +14,7 @@
  *
  *   - get-by-id three-way result (200 in-scope / 403 out-of-scope /
  *     404 missing) mirrors the project pattern in AC-147 /
- *     role-scoping.test.ts. AC-217 pins the symmetry explicitly.
+ *     role-scoping.test.ts. AC-410 pins the symmetry explicitly.
  *
  * Fixtures:
  *   - Worker1 (SEED_USERS.worker1, "arbeiter1") is assigned to YYYY-007,
@@ -47,7 +47,7 @@ async function projectIdByNumber(ownerToken: string, number: string): Promise<st
  * (set by `src/test/integration-setup.ts`). Real envelope — the
  * `download-url` arm in this file goes through the route's unwrap
  * pipeline, so synthetic Buffer.alloc bytes would surface as
- * DEK_UNWRAP_FAILED instead of the 200 + dekMaterial the AC-217 arm
+ * DEK_UNWRAP_FAILED instead of the 200 + dekMaterial the three-way arm
  * pins.
  *
  * Reads `process.env` directly because the env zod schema does not yet
@@ -73,7 +73,7 @@ async function seedReadyAttachment(projectId: string, createdBy: string | null):
   const { db, pool } = createDatabase();
   try {
     const id = crypto.randomUUID();
-    // Real wrapped envelope — the AC-217 download-url arms call into
+    // Real wrapped envelope — the three-way download-url arms call into
     // the route's unwrap pipeline, which validates the envelope via
     // `KeyEnvelopeService.unwrap`. A synthetic byte sequence would
     // fail at the AEAD step and surface as DEK_UNWRAP_FAILED.
@@ -96,7 +96,7 @@ async function seedReadyAttachment(projectId: string, createdBy: string | null):
   }
 }
 
-describe('Attachment scope (AC-214, AC-217)', () => {
+describe('Attachment scope (AC-410)', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -122,10 +122,10 @@ describe('Attachment scope (AC-214, AC-217)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-214 — Worker attachment ops on unassigned project → 403.
+  // AC-410 — Worker attachment ops on unassigned project → 403.
   //          Non-existent project id → 404.
   // -------------------------------------------------------------------
-  describe('AC-214: worker service-layer scope on init / complete / list', () => {
+  describe('AC-410: worker service-layer scope on init / complete / list', () => {
     it('worker list on an unassigned project returns 403 NOT_PERMITTED', async () => {
       const res = await authGet(workerToken, `/api/projects/${unassignedProjectId}/attachments`);
       expect(res.statusCode).toBe(403);
@@ -183,13 +183,13 @@ describe('Attachment scope (AC-214, AC-217)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-217 — Three-way get-by-id (200 / 403 / 404) mirrors AC-147.
+  // AC-410 — Three-way get-by-id (200 / 403 / 404) mirrors AC-147.
   //
   // The download-url endpoint is the natural get-by-id surface for an
   // attachment — it's the one caller-facing read path that keys off an
   // attachment id. Delete is a mutation; list is collection-scoped.
   // -------------------------------------------------------------------
-  describe('AC-217: download-url three-way (200 / 403 / 404)', () => {
+  describe('AC-410: download-url three-way (200 / 403 / 404)', () => {
     let inScopeAttachmentId: string;
     let outOfScopeAttachmentId: string;
 
@@ -204,8 +204,8 @@ describe('Attachment scope (AC-214, AC-217)', () => {
         `/api/projects/${assignedProjectId}/attachments/${inScopeAttachmentId}/download-url?variant=original`,
       );
       expect(res.statusCode).toBe(200);
-      // The 200 surface carries `{ url, expiresAt, dekMaterial }` per
-      // AC-241 — the SW consumes all three to fetch + decrypt. A
+      // The 200 surface carries `{ url, expiresAt, dekMaterial }` —
+      // the SW consumes all three to fetch + decrypt. A
       // regression that returned the legacy `{ url, expiresAt }` shape
       // (pre-ADR-0024) would fail here.
       const body = res.json();
@@ -244,8 +244,8 @@ describe('Attachment scope (AC-214, AC-217)', () => {
       '%s receives 200 with `dekMaterial` for any attachment (regression — unscoped)',
       async (_label, getToken) => {
         // Out-of-scope for a scoped worker, but the unscoped roles must
-        // still see it — that is the AC-217 contract (attachment:read is
-        // unscoped for owner/office/bookkeeper). Under e2e (AC-241) the
+        // still see it (attachment:read is unscoped for
+        // owner/office/bookkeeper, api.md §14.3). Under e2e the
         // returned shape carries `dekMaterial` so the SW can decrypt;
         // pin the field's presence on the unscoped path so a regression
         // that exposed the URL but stripped the DEK on a role split

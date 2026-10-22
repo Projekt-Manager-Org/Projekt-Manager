@@ -263,7 +263,7 @@ async function start(): Promise<void> {
     },
   });
 
-  // Attachment orphan reaper (AC-213). Sweeps pending rows past the
+  // Attachment orphan reaper (AC-408). Sweeps pending rows past the
   // TTL together with their backing storage objects. Default cadence
   // 5 min — tighter than audit retention because a stuck pending row
   // has a correlated storage object that needs cleanup before it
@@ -303,7 +303,7 @@ async function start(): Promise<void> {
     },
   });
 
-  // Attachment hidden reaper (AC-246 / data-model.md §6.12). Hard-deletes
+  // Attachment hidden reaper (AC-426). Hard-deletes
   // hidden rows past the TTL together with their audit row via mutate().
   // No storage dependency — bytes are the bucket lifecycle's concern
   // (ADR-0022). Default cadence is hourly because the action it takes

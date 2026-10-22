@@ -996,7 +996,7 @@ export class ImportService {
       // `attachments` is included in `counts` with value 0 for shape
       // uniformity — the text leg never inserts attachment rows (AC-253);
       // per-attachment audit on the binary-leg restore is the existing
-      // `attachment:add` flow under AC-219.
+      // `attachment:add` flow under AC-427.
       //
       // `correlationId` is null — the route layer doesn't thread the
       // Fastify request id through the ImportService constructor (would

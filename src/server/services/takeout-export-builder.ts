@@ -34,7 +34,7 @@
  * THE ENVELOPE IS THE SINGLE SOURCE OF TRUTH for what the archive
  * contains. The build iterates `envelope.attachments` and looks up only
  * the columns the envelope deliberately withholds (`originalKey`,
- * `wrappedDek` — AC-220 / ADR-0024), keyed by the envelope's own ids;
+ * `wrappedDek` — data-model.md §5.8 / ADR-0024), keyed by the envelope's own ids;
  * archive paths come from the envelope's `projects` + `fileName`. There
  * is no second `WHERE status='ready'` query, so envelope↔manifest parity
  * — the invariant the importer enforces before the wipe — holds by
@@ -88,7 +88,7 @@ import { stagedArtifactPath } from './takeout-staging.js';
 import type { AuthUser } from '../middleware/auth.js';
 
 /**
- * Filename-component sanitiser (AC-245): a single zip-path segment must
+ * Filename-component sanitiser (file-name rules, data-model.md §5.13): a single zip-path segment must
  * be ≤255 chars, carry no control bytes (`\x00–\x1F`, `\x7F`), and no
  * `/` `\` `"`. A violating char is replaced with `_`; an over-length
  * result is truncated. Mirrors the attachment filename rules so the
@@ -170,7 +170,7 @@ export interface BuildExportArchiveResult {
 
 /**
  * The per-row crypto + storage columns the envelope deliberately omits
- * (AC-220 / ADR-0024). Everything else the build needs — path components,
+ * (data-model.md §5.8 / ADR-0024). Everything else the build needs — path components,
  * plaintext size — comes from the envelope itself.
  */
 interface AttachmentKeys {
@@ -368,7 +368,7 @@ export async function buildExportArchive(
  * Load the withheld crypto/storage columns for exactly the envelope's
  * attachment ids. No status filter and no project join: the envelope
  * already settled WHICH rows travel (`status='ready'` inside its own
- * snapshot, AC-220), so re-deriving that set here is what let the two
+ * snapshot, AC-431), so re-deriving that set here is what let the two
  * reads disagree. An id with no row is caught by the caller.
  */
 async function loadAttachmentKeys(

@@ -1,5 +1,5 @@
 /**
- * Periodic attachment orphan reaper scheduler — data-model.md §6.11.
+ * Periodic attachment orphan reaper scheduler — AC-408.
  *
  * Thin caller over `createPeriodicSweeper` (see
  * `src/server/periodicSweeper.ts`): the timer drive, sustained-

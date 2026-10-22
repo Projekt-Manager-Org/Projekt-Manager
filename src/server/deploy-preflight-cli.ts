@@ -157,7 +157,7 @@ async function probeBucketSafety(storage: AttachmentStorageClient): Promise<void
 
 /**
  * Envelope-shaped probe metadata. The probe namespace carries no real
- * envelope (architecture.md §11.4); this only proves the round-trip.
+ * envelope (`storage/keyNamespaces.ts`); this only proves the round-trip.
  */
 const PROBE_METADATA = { wrappedDek: 'cHJvYmU=', wrappedDekVersion: 1 } as const;
 
@@ -166,7 +166,7 @@ const PROBE_METADATA = { wrappedDek: 'cHJvYmU=', wrappedDekVersion: 1 } as const
  * 1-byte body. Asserts the storage provider implements the verb the
  * browser upload flow depends on (ADR-0022 § Upload protocol), including
  * the signed `x-amz-meta-*` envelope headers, which a HEAD must read back
- * unchanged (AC-372 — objects carry their own wrapped DEK).
+ * unchanged (AC-439 — objects carry their own wrapped DEK).
  *
  * The sentinel key is fixed (`__probe/upload`) so each deploy
  * overwrites the prior probe — Object Lock retention ages out on the

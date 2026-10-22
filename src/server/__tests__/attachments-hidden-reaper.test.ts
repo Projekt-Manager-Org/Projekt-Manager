@@ -1,7 +1,9 @@
 /**
- * API integration tests — attachment hidden reaper (AC-246).
+ * API integration tests — attachment hidden reaper.
  *
- * Pins the reaper contract from data-model.md §6.12:
+ * Pins AC-426 (deletion) and AC-427 (one system-actor purge audit
+ * row); the log-line, DB-only and per-row-failure clauses are
+ * implementation detail, kept as regression tests:
  *
  *   - Rows at `status='hidden'` with `now() - hiddenAt > ttlMinutes`
  *     are hard-DELETEd. Rows at `status='ready'` or `'pending'` of any
@@ -75,7 +77,7 @@ import type { ServiceLogger } from '../services/Logger.js';
  *   const EVENT_ATTACHMENT_HIDDEN_REAPER = 'attachment-hidden-reaper';
  *   async function runAttachmentHiddenReaper(deps): Promise<void>;
  *
- * No `storage` dependency — the reaper is DB-only (data-model.md §6.12).
+ * No `storage` dependency — the reaper is DB-only.
  */
 interface RunAttachmentHiddenReaperDeps {
   db: Database;
@@ -221,7 +223,7 @@ async function projectAuditLabelById(db: Database, projectId: string): Promise<s
   return `${row.number} ${row.title}`;
 }
 
-describe('Attachment hidden reaper (AC-246)', () => {
+describe('Attachment hidden reaper (AC-426)', () => {
   let db: Database;
   let pool: pg.Pool;
   let seededProjectId: string;
@@ -318,7 +320,7 @@ describe('Attachment hidden reaper (AC-246)', () => {
     const now = new Date('2026-05-03T12:00:00.000Z');
     const ttlMinutes = 2880;
 
-    // Pending rows are the orphan reaper's territory (§6.11). The
+    // Pending rows are the orphan reaper's territory (AC-408). The
     // hidden reaper must not poach them even when they exceed its TTL.
     const ancientPendingId = await seedPendingAt(
       db,
@@ -340,7 +342,7 @@ describe('Attachment hidden reaper (AC-246)', () => {
 
   // -------------------------------------------------------------------
   // (4) Audit-row shape — exactly one row per purge with the pinned
-  // shape from data-model.md §6.12 + §5.10.
+  // shape from AC-427 + data-model.md §5.10.
   // -------------------------------------------------------------------
   it('writes exactly one attachment:purge audit row per purged row with the pinned shape', async () => {
     const now = new Date('2026-05-03T12:00:00.000Z');
@@ -548,8 +550,8 @@ describe('Attachment hidden reaper (AC-246)', () => {
     }
     expect(await fetchPurgeAuditRow(db, surviving[0]!.id)).toBeNull();
 
-    // One error line with `error_hint` populated. The spec pins
-    // `error_hint` (data-model.md §6.12) but does not pin the field
+    // One error line with `error_hint` populated. The reaper emits
+    // `error_hint` but does not fix the field
     // name carrying the row id; we assert the survivor's id appears
     // somewhere in the serialized context so a reasonable field name
     // (`attachment_id`, `id`, `entity_id`, ...) all pass while a
@@ -564,7 +566,7 @@ describe('Attachment hidden reaper (AC-246)', () => {
     expect(JSON.stringify(eCtx)).toContain(surviving[0]!.id);
 
     // Info line still emitted once. removed_count is the success count
-    // (mirrors §6.11's orphan reaper convention — the field
+    // (mirrors the orphan reaper's convention — the field
     // pins observed deletions, not attempted ones).
     expect(info).toHaveBeenCalledTimes(1);
     const [infoCtx] = info.mock.calls[0]!;

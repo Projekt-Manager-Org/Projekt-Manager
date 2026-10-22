@@ -392,7 +392,7 @@ flowchart LR
 
 ## Attachments Module
 
-Contract: [data-model.md §5.13](docs/spec/data-model.md#513-attachment), [api.md §14.2.11](docs/spec/api.md#14211-attachments). Design: [ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md) (end-to-end encryption), [ADR-0022](docs/adr/0022-binary-storage-b2-compliance-object-lock.md) (versioned bucket, Compliance lock — nothing destroys a version).
+Contract: [data-model.md §5.13](docs/spec/data-model.md#513-attachment), [verification.md §15.26](docs/spec/verification.md#1526-attachments). Design: [ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md) (end-to-end encryption), [ADR-0022](docs/adr/0022-binary-storage-b2-compliance-object-lock.md) (versioned bucket, Compliance lock — nothing destroys a version).
 
 ```mermaid
 sequenceDiagram
@@ -417,9 +417,9 @@ sequenceDiagram
 | DEK wrap / unwrap                                                | `src/server/services/KeyEnvelopeService.ts`                                                        |
 | Decrypt-on-fetch and push, one Service Worker                    | `src/sw/index.ts`                                                                                  |
 | Storage client; internal vs browser-facing endpoint              | `src/server/storage/client.ts`                                                                     |
-| Self-describing objects; DB-less recovery (AC-372/373)           | `src/server/storage/objectMetadata.ts`, `src/server/storage/recoverObjects.ts`                     |
+| Self-describing objects; DB-less recovery (AC-439, AC-441)       | `src/server/storage/objectMetadata.ts`, `src/server/storage/recoverObjects.ts`                     |
 | Boot probes: bucket shape, credential capability, `age` identity | `src/server/storage/safety.ts`, `src/server/storage/binaryIdentity.ts`                             |
-| No version-destroying delete anywhere (AC-238)                   | `src/server/__tests__/storage-architecture-detector.ts`                                            |
+| No version-destroying delete anywhere (ADR-0022)                 | `src/server/__tests__/storage-architecture-detector.ts`                                            |
 | Pending-row reaper                                               | `src/server/services/attachment-orphan-reaper.ts`                                                  |
 | Storage usage — trigger-maintained side table                    | `project_storage_usage` in `src/server/db/schema.ts`; `src/server/services/StorageUsageService.ts` |
 | Envelope columns never reach the audit log (AC-240)              | `AUDIT_EXCLUDED_FIELDS` in `src/server/db/schema.ts`, applied in `src/server/services/mutate.ts`   |

@@ -1,6 +1,6 @@
 /**
  * Tests for the attachment domain helpers and catalogs that back the
- * client-side enforcement surface of AC-245 — the closed `AttachmentLabel`
+ * client-side enforcement surface of AC-446 and AC-406 — the closed `AttachmentLabel`
  * enum, the closed MIME whitelist, `classifyKind` (MIME → photo|binary),
  * `validateKind`, `validateLabel`, and `validateMime`.
  *
@@ -137,8 +137,8 @@ describe('validateLabel', () => {
   );
 
   it('rejects a label outside the closed enum', () => {
-    // AC-245: "a `label` outside the enum … returns `422 VALIDATION_ERROR`".
-    // The client-side helper is the first gate — surface the rejection
+    // AC-446: the label control accepts no free text (the server rejects
+    // it too, AC-398). The client-side helper is the first gate — surface the rejection
     // before the bytes hit the network.
     expect(() => validateLabel('notiz')).toThrow();
     expect(() => validateLabel('FOTO')).toThrow();
@@ -158,10 +158,9 @@ describe('validateMime', () => {
   });
 
   it('rejects a MIME outside the whitelist', () => {
-    // AC-245: "a `mimeType` outside the whitelist … returns `422
-    // VALIDATION_ERROR`". The helper is the load-bearing client-side
-    // gate referenced by ui/project-detail.md §8.15.5 ("Dateityp nicht
-    // unterstützt") — a miss here is a silently-accepted upload. HEIC
+    // AC-406: a type outside the whitelist is blocked before upload (the
+    // server rejects it too, AC-398). The helper is the load-bearing
+    // client-side gate ("Dateityp nicht unterstützt") — a miss here is a silently-accepted upload. HEIC
     // is in this rejection set by design.
     expect(() => validateMime('image/heic')).toThrow();
     expect(() => validateMime('image/gif')).toThrow();

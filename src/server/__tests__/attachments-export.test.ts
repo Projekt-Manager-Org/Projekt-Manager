@@ -1,5 +1,5 @@
 /**
- * API integration tests — attachment export envelope (AC-220, post-#163).
+ * API integration tests — attachment export envelope (AC-431, post-#163).
  *
  * Pins the export-envelope extension from data-model.md §5.8:
  *
@@ -74,15 +74,15 @@ async function seedAttachment(spec: AttachmentSeed): Promise<string> {
     const originalKey = `attachments/${spec.projectId}/${id}.orig`;
     const thumbKey = kind === 'photo' ? `attachments/${spec.projectId}/${id}.thumb` : null;
     // Synthetic wrapped envelopes — the seeded rows do not need to be
-    // unwrappable; AC-220 only pins that the column rides the export
-    // envelope byte-for-byte. Real envelope shape is the `age` X25519
+    // unwrappable; AC-431 pins that the column never reaches the export
+    // envelope. Real envelope shape is the `age` X25519
     // KEM output wrapped in base64 — the seed uses base64 of opaque
     // bytes (length differs per blob to detect a regression that
     // copied one column over another). Ciphertext sizes mirror the
     // plaintext sizes for the seeded fixture; the row's
     // `ciphertext_size_bytes` column is what the export envelope
     // surfaces. (Numerical relationship between plaintext and
-    // ciphertext is implementation-defined per api.md §14.2.11.)
+    // ciphertext is implementation-defined.)
     const wrappedDek = Buffer.from(`wrapped-orig-${id}`).toString('base64');
     const wrappedThumbDek =
       kind === 'photo' ? Buffer.from(`wrapped-thumb-${id}`).toString('base64') : null;
@@ -106,7 +106,7 @@ async function seedAttachment(spec: AttachmentSeed): Promise<string> {
 
 /**
  * Wire shape for entries on the export envelope (post-#163,
- * data-model.md §5.8 / AC-220). The metadata-only descriptor: crypto
+ * data-model.md §5.8 / AC-431). The metadata-only descriptor: crypto
  * fields, opaque storage keys, and ciphertext sizes are off the wire.
  */
 interface AttachmentInEnvelope {
@@ -122,7 +122,7 @@ interface AttachmentInEnvelope {
   createdBy: string | null;
 }
 
-describe('Attachment export envelope (AC-220)', () => {
+describe('Attachment export envelope (AC-431)', () => {
   let ownerToken: string;
   let projectId: string;
   let readyIds: string[];
@@ -186,7 +186,7 @@ describe('Attachment export envelope (AC-220)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-220 Part 1 — Envelope shape + ready/pending filtering
+  // AC-431 Part 1 — Envelope shape + ready/pending filtering
   // -------------------------------------------------------------------
   it('includes every ready row with the documented metadata fields', async () => {
     const env = (await exportEnvelope()) as unknown as { attachments: AttachmentInEnvelope[] };
@@ -209,7 +209,7 @@ describe('Attachment export envelope (AC-220)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-220 (post-#163) — crypto fields, opaque storage keys, and
+  // AC-431 (post-#163) — crypto fields, opaque storage keys, and
   // ciphertext sizes MUST NOT appear on envelope entries. They are not
   // consumable on the importing instance and the wrapped envelopes
   // additionally remain inside the exporting instance's confidentiality
@@ -267,5 +267,5 @@ describe('Attachment export envelope (AC-220)', () => {
   // route-schema guard with no service-layer equivalent (ImportService
   // ignores the key — it never inserts attachment rows), and the override
   // truncate (AC-254) is owned by `data-exchange.test.ts`. Both went with
-  // the route; this file is now purely the AC-220 export envelope.
+  // the route; this file is now purely the AC-431 export envelope.
 });

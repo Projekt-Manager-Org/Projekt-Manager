@@ -506,7 +506,7 @@ export const STRINGS = {
     importError: 'Import fehlgeschlagen.',
     importValidationFailed: 'ZIP-Datei ungültig oder unvollständig.',
     restoreDestructiveNotice: 'Die bestehenden Daten werden unwiderruflich gelöscht.',
-    // AC-220: the envelope carries only `ready` attachments, so a restore is
+    // AC-432: the envelope carries only `ready` attachments, so a restore is
     // also a Papierkorb purge. Stated at the gate the operator types the
     // phrase into — the destruction is bounded and usually irrelevant, but it
     // must never be a surprise.
@@ -521,7 +521,7 @@ export const STRINGS = {
     exportPreflightBody:
       'Der vollständige Export wird auf dem Server erstellt und anschließend zum Download angeboten.',
     // The expectation of what a backup contains forms HERE, not at restore
-    // time — so the exclusion is stated on both legs (AC-220).
+    // time — so the exclusion is stated on both legs (AC-432).
     exportPapierkorbNotice: 'Der Papierkorb wird nicht mit exportiert.',
     exportReadyTitle: 'Export bereit',
     exportDownloadAction: 'Herunterladen',
@@ -932,13 +932,13 @@ export const STRINGS = {
     uploadMimeNotAllowed:
       'Dateityp nicht unterstützt. Bitte als JPEG, PNG oder WebP (Fotos) oder als PDF oder DOCX (Dokumente) hochladen.',
 
-    // Missing-file placeholder (AC-224)
+    // Missing-file placeholder (AC-436)
     fileMissing: 'Datei fehlt',
 
     // Unwrappable-envelope placeholder (AC-244, ADR-0024)
     keyUnavailable: 'Schlüssel nicht verfügbar',
 
-    // Load failure carrying neither code — no verdict on the row (ui/project-detail.md §8.15.7)
+    // Load failure carrying neither code — no verdict on the row (AC-437)
     loadFailed: 'Datei konnte nicht geladen werden',
 
     // Deletion (soft-hide → Papierkorb, ADR-0022)
@@ -966,7 +966,7 @@ export const STRINGS = {
      * Surfaces when the row is still at `status='hidden'` but the
      * source object version is no longer recoverable from object storage
      * — the bucket lifecycle reaper (ADR-0022) reaped the bytes ahead of
-     * the row reaper. A bounded race window per data-model.md §6.12;
+     * the row reaper. A bounded race window (AC-424);
      * 410 GONE is the right code because the bytes are permanently gone,
      * not "retry might work". The row reaper closes the window on its
      * next tick.
@@ -982,8 +982,8 @@ export const STRINGS = {
     noAttachments: 'Keine Dateien zum Herunterladen.',
     selectAll: 'Alle auswählen',
     /**
-     * Bulk-download cap violation message (AC-223) — MUST name both caps
-     * (file count AND summed bytes) per ui/project-detail.md §8.15.5.
+     * Bulk-download cap violation message (AC-435) — MUST name both caps
+     * (file count AND summed bytes).
      */
     bulkLimitExceeded: (maxFiles: number, maxMb: number) =>
       `Auswahl überschreitet das Limit: maximal ${maxFiles} Dateien und maximal ${maxMb} MB Gesamtgröße.`,
