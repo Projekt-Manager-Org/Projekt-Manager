@@ -112,7 +112,7 @@ async function createRule(
  * Init a binary attachment, stage its ciphertext object, and complete
  * the upload (pending → ready) — the path that writes the `attachment:add`
  * audit row. Returns the attachment id. The staged bytes must match the
- * binary fixture's `ciphertextSizeBytes` (50_064) under the
+ * binary fixture's `ciphertextSizeBytes` (50_028) under the
  * `application/octet-stream` sentinel or the complete-time HEAD verify
  * fails before the row is written. (Local copy of the upload dance every
  * attachment-touching integration test rolls — no shared helper exists.)
@@ -121,7 +121,7 @@ async function stageAndComplete(token: string, projectId: string): Promise<strin
   const initRes = await authPost(
     token,
     `/api/projects/${projectId}/attachments/init`,
-    binaryInitBody({ fileName: 'ars-upload.pdf', sizeBytes: 4321 }),
+    binaryInitBody({ fileName: 'ars-upload.pdf' }),
   );
   expect(initRes.statusCode).toBe(201);
   const body = initRes.json() as { attachment: { id: string; originalKey: string } };
@@ -130,7 +130,7 @@ async function stageAndComplete(token: string, projectId: string): Promise<strin
   const s = createStorageClientFromEnv(env);
   await s.upload(
     body.attachment.originalKey,
-    Buffer.alloc(50_064, 0xff),
+    Buffer.alloc(50_028, 0xff),
     'application/octet-stream',
     TEST_OBJECT_METADATA,
   );

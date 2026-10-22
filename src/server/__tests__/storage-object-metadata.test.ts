@@ -33,6 +33,7 @@ import {
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { photoInitBody } from '../../test/fixtures/attachmentInit.js';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 import {
   freshDekMaterial,
   md5Base64,
@@ -119,7 +120,7 @@ describe('AC-439: every written object carries its own wrapped envelope', () => 
       ownerToken,
       `/api/projects/${projectId}/attachments/init`,
       photoInitBody({
-        sizeBytes: 120,
+        sizeBytes: original.length - GCM_OVERHEAD_BYTES,
         thumbSizeBytes: 80,
         ciphertextSizeBytes: original.length,
         ciphertextContentMd5: md5Base64(original),

@@ -98,6 +98,7 @@ import type { ServiceLogger } from '../services/Logger.js';
 // resolves and the runtime arms run.
 import { PROJECT_CHANGED, STORAGE_USAGE_CHANGED } from '../../config/sseEvents.js';
 import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 
 // ---------------------------------------------------------------------
 // Bus module surface — same shape AC-270 uses. Dynamic import via a
@@ -196,7 +197,7 @@ function photoInit(): PhotoInitBody {
     hasThumbnail: true,
     thumbSizeBytes: 256,
     dekMaterial: freshDekMaterial(),
-    ciphertextSizeBytes: 4160,
+    ciphertextSizeBytes: 4096 + GCM_OVERHEAD_BYTES,
     ciphertextContentMd5: STUB_MD5_BASE64,
     thumbDekMaterial: freshDekMaterial(),
     ciphertextThumbSizeBytes: 320,

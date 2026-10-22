@@ -41,6 +41,7 @@ import crypto from 'node:crypto';
 import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { photoInitBody } from '../../test/fixtures/attachmentInit.js';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 import { freshDekMaterial, md5Base64, presignedPut } from '../../test/fixtures/presignedPut.js';
 
 const year = new Date().getFullYear();
@@ -105,7 +106,7 @@ describe('Attachment presigned PUT — real upload against MinIO', () => {
       photoInitBody({
         // Plaintext sizes on the row — the per-file cap and the export
         // envelope read these. Storage never sees them.
-        sizeBytes: 120,
+        sizeBytes: originalCiphertext.length - GCM_OVERHEAD_BYTES,
         thumbSizeBytes: 80,
         // Ciphertext sizes drive the signed Content-Length.
         ciphertextSizeBytes: originalCiphertext.length,
@@ -182,7 +183,7 @@ describe('Attachment presigned PUT — real upload against MinIO', () => {
       ownerToken,
       `/api/projects/${projectId}/attachments/init`,
       photoInitBody({
-        sizeBytes: 120,
+        sizeBytes: advertisedCiphertext.length - GCM_OVERHEAD_BYTES,
         ciphertextSizeBytes: advertisedCiphertext.length,
         ciphertextContentMd5: advertisedCiphertextMd5,
         dekMaterial: freshDekMaterial(),

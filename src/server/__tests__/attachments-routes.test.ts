@@ -46,6 +46,7 @@ import { AttachmentService } from '../services/AttachmentService.js';
 import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 import { STRINGS } from '../../config/strings.js';
 import { getEnv } from '../config/env.js';
 import type { Attachment } from '../../domain/types.js';
@@ -142,7 +143,7 @@ function photoInit(projectId: string) {
     // server wraps the DEK and signs the PUT against the ciphertext
     // size / MD5 / sentinel content-type.
     dekMaterial: freshDekMaterial(),
-    ciphertextSizeBytes: 120_064,
+    ciphertextSizeBytes: 120_000 + GCM_OVERHEAD_BYTES,
     ciphertextContentMd5: STUB_MD5_BASE64,
     thumbDekMaterial: freshDekMaterial(),
     ciphertextThumbSizeBytes: 8_064,
@@ -265,7 +266,7 @@ describe('Attachment routes — integration (issue #108)', () => {
         label: 'rechnung',
         hasThumbnail: false,
         dekMaterial: freshDekMaterial(),
-        ciphertextSizeBytes: 50_064,
+        ciphertextSizeBytes: 50_000 + GCM_OVERHEAD_BYTES,
         ciphertextContentMd5: STUB_MD5_BASE64,
       });
       expect(res.statusCode).toBe(201);
@@ -275,7 +276,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(body.thumbnailUpload).toBeUndefined();
       // Sentinel content-type still — even on a non-photo init.
       expect(body.originalUpload.headers['Content-Type']).toBe('application/octet-stream');
-      expect(body.originalUpload.headers['Content-Length']).toBe('50064');
+      expect(body.originalUpload.headers['Content-Length']).toBe('50028');
     });
 
     it('pins the presigned PUT URL to the issued key inside the fork prefix', async () => {
@@ -402,6 +403,21 @@ describe('Attachment routes — integration (issue #108)', () => {
         ciphertextSizeBytes: 0,
       });
       expect(res.statusCode).toBe(422);
+      expect(await countAttachmentRows()).toBe(before);
+    });
+
+    it('rejects a ciphertextSizeBytes that is not the encrypted size of sizeBytes with 422 (no row) — AC-398', async () => {
+      // The PUT is signed for the declared ciphertext size, the cap reads
+      // the declared plaintext size: a tiny `sizeBytes` must not buy a
+      // presigned PUT for an arbitrarily large object (#575).
+      const before = await countAttachmentRows();
+      const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
+        ...photoInit(projectId),
+        sizeBytes: 1,
+        ciphertextSizeBytes: 100 * 1024 * 1024,
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
       expect(await countAttachmentRows()).toBe(before);
     });
 
@@ -707,6 +723,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // ciphertext is 2 MB — must land as 409.
       const initRes = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
         ...photoInit(projectId),
+        sizeBytes: 1024 - GCM_OVERHEAD_BYTES,
         ciphertextSizeBytes: 1024,
       });
       expect(initRes.statusCode).toBe(201);
@@ -2390,7 +2407,7 @@ describe('Attachment routes — integration (issue #108)', () => {
         label: 'angebot',
         hasThumbnail: false,
         dekMaterial: freshDekMaterial(),
-        ciphertextSizeBytes: 164,
+        ciphertextSizeBytes: 100 + GCM_OVERHEAD_BYTES,
         ciphertextContentMd5: STUB_MD5_BASE64,
       });
       expect(initRes.statusCode).toBe(201);

@@ -183,12 +183,12 @@ describe('Attachment thumbnail-size cap + HEAD re-assertion', () => {
       const body = initRes.json();
       const s = storage();
 
-      // Original matches the row's declared ciphertextSizeBytes (120064
+      // Original matches the row's declared ciphertextSizeBytes (120028
       // by fixture default) so the original-side HEAD passes — the
       // failure must come from the thumb branch alone.
       await s.upload(
         body.attachment.originalKey,
-        Buffer.alloc(120_064, 0xff),
+        Buffer.alloc(120_028, 0xff),
         'application/octet-stream',
         TEST_OBJECT_METADATA,
       );
@@ -227,7 +227,7 @@ describe('Attachment thumbnail-size cap + HEAD re-assertion', () => {
 
       await s.upload(
         body.attachment.originalKey,
-        Buffer.alloc(120_064, 0xff),
+        Buffer.alloc(120_028, 0xff),
         'application/octet-stream',
         TEST_OBJECT_METADATA,
       );

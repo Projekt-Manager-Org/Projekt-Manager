@@ -98,6 +98,7 @@ import {
 } from '../repositories/attachment.js';
 import { getProjectRowById } from '../repositories/project.js';
 import { projectAuditLabel } from '../../domain/audit.js';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 import { mutate } from './mutate.js';
 import { emitAttachmentChanged, emitStorageUsageChanged } from '../sse/emitters.js';
 import {
@@ -443,7 +444,10 @@ export class AttachmentService {
     ) {
       throw validationError(STRINGS.attachments.uploadFileTooLarge);
     }
-    if (!Number.isInteger(input.ciphertextSizeBytes) || input.ciphertextSizeBytes <= 0) {
+    // The PUT is signed for the ciphertext size while the cap reads the
+    // plaintext size; pinning one to the other keeps the cap binding on
+    // what actually gets stored.
+    if (input.ciphertextSizeBytes !== input.sizeBytes + GCM_OVERHEAD_BYTES) {
       throw validationError(STRINGS.errors.invalidInput);
     }
     // RFC 1864 base64 of 16-byte MD5 → 24 chars, last two `==`.

@@ -1180,7 +1180,7 @@ describe('Ancestor-scoped filter unions project + nested entities', () => {
     const initRes = await authPost(
       ownerToken,
       `/api/projects/${projectId}/attachments/init`,
-      binaryInitBody({ fileName: 'ancestor.pdf', sizeBytes: 123 }),
+      binaryInitBody({ fileName: 'ancestor.pdf' }),
     );
     expect(initRes.statusCode).toBe(201);
     const initBody = initRes.json() as { attachment: { id: string; originalKey: string } };
@@ -1188,13 +1188,13 @@ describe('Ancestor-scoped filter unions project + nested entities', () => {
 
     // Stage the backing ciphertext object so the complete-time HEAD verify
     // passes. Size matches the binary fixture's ciphertext default
-    // (50_064); content-type is the `application/octet-stream` sentinel
+    // (50_028); content-type is the `application/octet-stream` sentinel
     // (ADR-0024).
     const env = getEnv();
     const storage = createStorageClientFromEnv(env);
     await storage.upload(
       initBody.attachment.originalKey,
-      Buffer.alloc(50_064, 0xff),
+      Buffer.alloc(50_028, 0xff),
       'application/octet-stream',
       TEST_OBJECT_METADATA,
     );

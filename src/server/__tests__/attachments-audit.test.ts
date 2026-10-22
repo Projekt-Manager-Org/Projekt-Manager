@@ -63,6 +63,7 @@ import { createDatabase } from '../db/connection.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import { photoInitBody } from '../../test/fixtures/attachmentInit.js';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const year = new Date().getFullYear();
@@ -126,7 +127,7 @@ async function projectNumberTitleById(
  * attachment, returning its id. Shared by the tests that need a
  * `ready` row carrying an `attachment:add` audit row (AC-427: the row
  * is written at complete, not at init). Sizes match the photo fixture's
- * ciphertext defaults (120_064 original + 8_064 thumbnail) and the
+ * ciphertext defaults (120_028 original + 8_064 thumbnail) and the
  * content-type is the sentinel `application/octet-stream` (ADR-0024) so
  * the complete-time HEAD verification passes.
  */
@@ -148,7 +149,7 @@ async function stageAndComplete(
   const s = createStorageClientFromEnv(env);
   await s.upload(
     body.attachment.originalKey,
-    Buffer.alloc(120_064, 0xff),
+    Buffer.alloc(120_028, 0xff),
     'application/octet-stream',
     TEST_OBJECT_METADATA,
   );
@@ -207,13 +208,14 @@ describe('Attachment audit contract (AC-427)', () => {
     const attachmentId = body.attachment.id as string;
 
     // Stage backing ciphertext bytes so the complete-time HEAD verify
-    // passes. Sizes match the photo fixture's ciphertext defaults
-    // (120_064 + 8_064); content-type is the sentinel per ADR-0024.
+    // passes. Sizes match the declared ciphertext sizes (the original's
+    // derived from `sizeBytes`, the fixture's 8_064 thumbnail);
+    // content-type is the sentinel per ADR-0024.
     const env = getEnv();
     const s = createStorageClientFromEnv(env);
     await s.upload(
       body.attachment.originalKey,
-      Buffer.alloc(120_064, 0xff),
+      Buffer.alloc(4321 + GCM_OVERHEAD_BYTES, 0xff),
       'application/octet-stream',
       TEST_OBJECT_METADATA,
     );

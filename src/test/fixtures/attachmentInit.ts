@@ -26,6 +26,7 @@
  */
 
 import { Buffer } from 'node:buffer';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 
 /** MD5 of the empty string, RFC 1864 base64. Schema-valid placeholder. */
 export const STUB_MD5_BASE64 = '1B2M2Y8AsgTpgAmY7PhCfg==';
@@ -50,7 +51,10 @@ export interface InitOverrides {
   hasThumbnail?: boolean;
   /** Base64 of the 32-byte AES-256-GCM DEK for the original blob. */
   dekMaterial?: string;
-  /** Ciphertext byte count — what the server signs as Content-Length. */
+  /**
+   * Ciphertext byte count — what the server signs as Content-Length.
+   * Defaults to `sizeBytes + GCM_OVERHEAD_BYTES`; init rejects any other value.
+   */
   ciphertextSizeBytes?: number;
   /** RFC 1864 base64 MD5 of the ciphertext bytes. */
   ciphertextContentMd5?: string;
@@ -82,14 +86,15 @@ export interface InitOverrides {
  */
 export function photoInitBody(overrides: InitOverrides = {}): Record<string, unknown> {
   const hasThumbnail = overrides.hasThumbnail ?? true;
+  const sizeBytes = overrides.sizeBytes ?? 120_000;
   return {
     fileName: overrides.fileName ?? 'photo.jpg',
     mimeType: overrides.mimeType ?? 'image/jpeg',
-    sizeBytes: overrides.sizeBytes ?? 120_000,
+    sizeBytes,
     label: overrides.label ?? 'foto',
     hasThumbnail,
     dekMaterial: overrides.dekMaterial ?? STUB_DEK_MATERIAL,
-    ciphertextSizeBytes: overrides.ciphertextSizeBytes ?? 120_064,
+    ciphertextSizeBytes: overrides.ciphertextSizeBytes ?? sizeBytes + GCM_OVERHEAD_BYTES,
     ciphertextContentMd5: overrides.ciphertextContentMd5 ?? STUB_MD5_BASE64,
     ...(hasThumbnail
       ? {
@@ -106,14 +111,15 @@ export function photoInitBody(overrides: InitOverrides = {}): Record<string, unk
  * default). Override any field via `overrides`.
  */
 export function binaryInitBody(overrides: InitOverrides = {}): Record<string, unknown> {
+  const sizeBytes = overrides.sizeBytes ?? 50_000;
   return {
     fileName: overrides.fileName ?? 'doc.pdf',
     mimeType: overrides.mimeType ?? 'application/pdf',
-    sizeBytes: overrides.sizeBytes ?? 50_000,
+    sizeBytes,
     label: overrides.label ?? 'rechnung',
     hasThumbnail: overrides.hasThumbnail ?? false,
     dekMaterial: overrides.dekMaterial ?? STUB_DEK_MATERIAL,
-    ciphertextSizeBytes: overrides.ciphertextSizeBytes ?? 50_064,
+    ciphertextSizeBytes: overrides.ciphertextSizeBytes ?? sizeBytes + GCM_OVERHEAD_BYTES,
     ciphertextContentMd5: overrides.ciphertextContentMd5 ?? STUB_MD5_BASE64,
   };
 }

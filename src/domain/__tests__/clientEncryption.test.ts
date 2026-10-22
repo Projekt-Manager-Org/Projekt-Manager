@@ -23,8 +23,14 @@
 
 import { describe, it, expect } from 'vitest';
 
-const { generateDek, encryptBlob, decryptBlob, encodeDekMaterial, decodeDekMaterial } =
-  await import('@/domain/clientEncryption');
+const {
+  generateDek,
+  encryptBlob,
+  decryptBlob,
+  encodeDekMaterial,
+  decodeDekMaterial,
+  GCM_OVERHEAD_BYTES,
+} = await import('@/domain/clientEncryption');
 
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
@@ -59,6 +65,8 @@ describe('clientEncryption — encryptBlob format (ADR-0024 §Encryption)', () =
     expect(ciphertext).toBeInstanceOf(Uint8Array);
     // Total length = nonce(12) + ct(plaintext.length) + tag(16).
     expect(ciphertext.byteLength).toBe(NONCE_BYTES + plaintext.byteLength + TAG_BYTES);
+    // The server's init check pins the declared ciphertext size with this constant.
+    expect(ciphertext.byteLength - plaintext.byteLength).toBe(GCM_OVERHEAD_BYTES);
   });
 
   it('uses a fresh nonce per call so two ciphertexts of the same plaintext differ', async () => {

@@ -44,6 +44,7 @@ import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
 import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 
 interface SseConnection {
   write(chunk: string): void;
@@ -96,7 +97,7 @@ function photoInit() {
     hasThumbnail: true as const,
     thumbSizeBytes: 256,
     dekMaterial: freshDekMaterial(),
-    ciphertextSizeBytes: 4160,
+    ciphertextSizeBytes: 4096 + GCM_OVERHEAD_BYTES,
     ciphertextContentMd5: STUB_MD5_BASE64,
     thumbDekMaterial: freshDekMaterial(),
     ciphertextThumbSizeBytes: 320,
