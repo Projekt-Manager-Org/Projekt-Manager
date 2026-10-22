@@ -64,7 +64,7 @@ assert_case 0 "nested spec file" $'docs/spec/ui/index.md\n' "Spec change: scope 
 echo "Case: CRLF line endings"
 # Bodies edited in the GitHub web UI arrive with \r\n. A trailing \r must
 # not turn a valid declaration into a failure.
-assert_case 0 "valid declaration with CRLF" "$SPEC" $'Intro\r\nSpec change: wrong — typo in AC-3\r\nmore\r\n'
+assert_case 0 "valid declaration with CRLF" "$SPEC" $'Intro\r\nSpec change: wrong — typo in AC-7\r\nmore\r\n'
 
 echo "Case: spec touched, declaration missing or malformed"
 assert_case 1 "empty body" "$SPEC" ""

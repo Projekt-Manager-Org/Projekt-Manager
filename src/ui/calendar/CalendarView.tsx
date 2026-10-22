@@ -40,8 +40,7 @@ export function CalendarView() {
     // Switch to kanban and apply the "no dates" filter so only projects
     // missing both planned dates are visible. Order matters: navigateTo
     // calls setView which clears filters, so the filter must be set AFTER
-    // the navigation. The filter is mutually exclusive with the
-    // workflow-state filter (see uiStore).
+    // the navigation.
     navigateTo(pathFromView('kanban'));
     setFilterNoDates(true);
   };

@@ -7,13 +7,13 @@ Section 8 of the [product spec](../index.md): UI surface. Split into per-subsyst
 | File                                       | Sections          | Contents                                                                                             |
 | ------------------------------------------ | ----------------- | ---------------------------------------------------------------------------------------------------- |
 | **index.md** (this file)                   | §8.1, §8.7        | Shell: top-level layout states, navigation matrix, user menu                                         |
-| **[workflow-views.md](workflow-views.md)** | §8.2–§8.6         | Kanban, Calendar, Project Detail Panel, Summary, Color Coding                                        |
+| **[workflow-views.md](workflow-views.md)** | §8.2–§8.4         | Kanban, Calendar, Project Detail Panel                                                               |
 | **[management.md](management.md)**         | §8.8–§8.10, §8.13 | Project, Customer, and User management tabular CRUD views; global Audit View                         |
 | **[daten.md](daten.md)**                   | §8.11             | Daten view — unified business-data restore + export, storage usage, company profile                  |
 | **[email-intake.md](email-intake.md)**     | §8.12             | Email Data Intake — modal LLM extraction to customer + project                                       |
 | **[project-detail.md](project-detail.md)** | §8.15             | Project Detail Page — dedicated `/projects/:id` route with attachments and per-project invoice block |
 | **[invoices.md](invoices.md)**             | §8.16             | Invoices View — list, draft form, issued-invoice viewer, Stornorechnung action                       |
-| **[behavior.md](behavior.md)**             | §9, §10           | Cross-cutting behavioral rules + responsive column collapse                                          |
+| **[behavior.md](behavior.md)**             | §9                | Cross-cutting behavioral rules                                                                       |
 
 ---
 
@@ -51,7 +51,7 @@ The login screen is the **only** view available to unauthenticated users. No pro
 ┌──────────────────────────────────────────────────────────┐
 │ [Insecure banner — only in insecure-mode evaluation]     │
 ├──────────────────────────────────────────────────────────┤
-│  Header: App Name  |  Navigation (§8.7)  |  Summary      │
+│  Header: App Name  |  Navigation (§8.7)                  │
 │                                    [Maria Schmidt ▾]     │
 ├──────────────────────────────────────────────────────────┤
 │ [Mutation error banner — only when a mutation failed]    │
@@ -65,7 +65,7 @@ The login screen is the **only** view available to unauthenticated users. No pro
 ```
 
 - **Insecure banner**: non-dismissible, visually prominent warning shown when the page loaded over plain HTTP on a non-localhost host. Covers both login and authenticated layout. See [AC-45](../verification.md#156-deployment) and [ADR-0013](../../adr/0013-http-only-evaluation-mode.md).
-- **Header**: app name **[C]**, navigation ([§8.7](#87-navigation)), summary indicators.
+- **Header**: app name **[C]**, navigation ([§8.7](#87-navigation)).
 - **User indicator**: displays the authenticated user's `displayName`. Clicking reveals a dropdown — see [§8.7.2](#872-user-menu).
 - **Mutation error banner**: appears when the most recent mutation failed. German message from the API error category (see [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior)), dismiss button. Cleared on next successful mutation or by dismissal.
 - **Default view**: Meine Projekte for worker; Kanban for owner and office; Rechnungen for bookkeeper (see [§8.7.1](#871-views)).

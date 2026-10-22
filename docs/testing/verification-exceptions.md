@@ -12,16 +12,24 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 
 | AC     | Status  | Verified by / missing                                                                                    |
 | ------ | ------- | -------------------------------------------------------------------------------------------------------- |
-| AC-2   | gap     | e2e asserts nine columns; card placement per state is unasserted                                         |
-| AC-8   | gap     | no test asserts the summary counts                                                                       |
-| AC-9   | gap     | only the no-dates counter is exercised; clearing an active indicator is unasserted                       |
+| AC-2   | retired | —                                                                                                        |
+| AC-3   | retired | —                                                                                                        |
+| AC-4   | retired | —                                                                                                        |
+| AC-5   | retired | —                                                                                                        |
+| AC-6   | retired | —                                                                                                        |
+| AC-8   | retired | —                                                                                                        |
+| AC-9   | retired | —                                                                                                        |
+| AC-10  | retired | —                                                                                                        |
 | AC-11  | gap     | needs an e2e that renders both column types                                                              |
 | AC-12  | gap     | needs an e2e walking Kanban dot + calendar bar + detail badge for one project                            |
-| AC-13  | gap     | needs an e2e with a seeded aged buffer card                                                              |
-| AC-14  | gap     | needs an e2e asserting card fields and the "Kein Termin" fallback                                        |
-| AC-15  | gap     | needs an e2e with a seeded card past the aging threshold                                                 |
-| AC-19  | gap     | needs an e2e asserting DD.MM.YYYY and a Monday-start calendar                                            |
-| AC-20  | gap     | needs an e2e with a seeded project missing every optional field                                          |
+| AC-13  | retired | —                                                                                                        |
+| AC-14  | retired | —                                                                                                        |
+| AC-15  | retired | —                                                                                                        |
+| AC-16  | retired | —                                                                                                        |
+| AC-17  | retired | —                                                                                                        |
+| AC-18  | retired | —                                                                                                        |
+| AC-19  | retired | —                                                                                                        |
+| AC-20  | retired | —                                                                                                        |
 | AC-30  | infra   | deployment review — reverse-proxy TLS                                                                    |
 | AC-31  | infra   | deploy procedure — `scripts/deploy.sh`                                                                   |
 | AC-32  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                                      |
@@ -32,10 +40,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-37  | infra   | CI `check` job; nightly `e2e.yml`                                                                        |
 | AC-38  | gap     | needs an e2e that flips the config value and checks header + footer                                      |
 | AC-40  | retired | —                                                                                                        |
-| AC-41  | gap     | needs an e2e below 1780 px walking tier-3 columns                                                        |
-| AC-42  | gap     | needs an e2e below 1350 px                                                                               |
-| AC-43  | gap     | needs an e2e below 940 px asserting action columns collapse last                                         |
-| AC-44  | gap     | needs an e2e driving collapse → click → expand → click → collapse                                        |
+| AC-41  | retired | —                                                                                                        |
+| AC-42  | retired | —                                                                                                        |
+| AC-43  | retired | —                                                                                                        |
 | AC-46  | infra   | deploy procedure — `scripts/deploy.sh`                                                                   |
 | AC-47  | infra   | deploy procedure — `scripts/deploy.sh <sha>`                                                             |
 | AC-48  | infra   | deploy procedure — `scripts/smoke-app-health.sh`                                                         |
@@ -138,3 +145,22 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-405 | gap     | no test drives the client-side cap block or the missing retry action                                     |
 | AC-423 | gap     | no test drives a restore whose storage copy fails with a non-410 error                                   |
 | AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review                       |
+| AC-452 | gap     | needs an e2e asserting the column order                                                                  |
+| AC-453 | gap     | e2e asserts nine columns; card placement per state is unasserted                                         |
+| AC-454 | gap     | needs an e2e asserting the oldest-first card order                                                       |
+| AC-455 | gap     | e2e asserts a bar is visible, not that it spans the planned dates                                        |
+| AC-456 | gap     | needs an e2e with a start-only project                                                                   |
+| AC-460 | gap     | needs a component test of the card buttons in the first, middle and last state                           |
+| AC-461 | gap     | needs a card test past the threshold; `aging.test.ts` covers only the helper                             |
+| AC-462 | gap     | needs a card test past the threshold; `aging.test.ts` covers only the helper                             |
+| AC-463 | gap     | e2e asserts the expanded header; the collapsed marker is unasserted                                      |
+| AC-464 | gap     | e2e asserts the counter label, not the count                                                             |
+| AC-466 | gap     | needs an e2e clicking "Filter aufheben"                                                                  |
+| AC-467 | gap     | needs an e2e switching views with the filter active                                                      |
+| AC-468 | gap     | needs a unit test of the date and range formatters                                                       |
+| AC-469 | gap     | needs an e2e asserting a Monday-start week                                                               |
+| AC-470 | gap     | needs an e2e below each tier width; `useCollapseTier.test.tsx` covers only the hook                      |
+| AC-471 | gap     | needs a panel test clearing the start while an end is set                                                |
+| AC-472 | gap     | `ProjectDetailPanel.test.tsx` asserts only the route change, not the back action                         |
+| AC-473 | gap     | e2e opens the panel from a card; no test opens it from a calendar bar                                    |
+| AC-474 | gap     | needs an e2e at phone width opening a project from the board and the calendar                            |

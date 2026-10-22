@@ -35,7 +35,7 @@ export function KanbanBoard() {
     : projects;
 
   // Aged-buffer counts keyed by state so the matching column header can
-  // surface the warning inline (replaces the old summary chip).
+  // surface the warning inline (AC-463).
   const agedByState = new Map(summary.agedBufferCounts.map((b) => [b.state, b]));
 
   return (
