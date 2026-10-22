@@ -42,9 +42,12 @@ export function buildProjectBundleFilename(project: { number: string; title: str
 }
 
 /**
- * Hands out names distinct within one archive (AC-434): the first
- * `a.txt` stays, later ones become `a (2).txt`, `a (3).txt`, … — skipping
- * any suffix an earlier entry already holds verbatim.
+ * Hands out names distinct within one archive, ignoring letter case
+ * (AC-434): the first `a.txt` stays, later ones, `A.txt` included, gain a
+ * suffix — `a (2).txt`, `A (3).txt`, … — skipping any an earlier entry
+ * already holds. Case is ignored because Windows extracts `Foto.jpg` and
+ * `foto.jpg` onto one path. Lower-casing, not upper-casing: `ß` upper-cases
+ * to `SS`, which would rename names Windows keeps apart.
  */
 export function createDistinctNamer(): (name: string) => string {
   const taken = new Set<string>();
@@ -52,8 +55,8 @@ export function createDistinctNamer(): (name: string) => string {
     const dot = name.lastIndexOf('.');
     const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
     let candidate = name;
-    for (let n = 2; taken.has(candidate); n++) candidate = `${stem} (${n})${ext}`;
-    taken.add(candidate);
+    for (let n = 2; taken.has(candidate.toLowerCase()); n++) candidate = `${stem} (${n})${ext}`;
+    taken.add(candidate.toLowerCase());
     return candidate;
   };
 }

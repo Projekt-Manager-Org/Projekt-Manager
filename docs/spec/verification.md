@@ -423,7 +423,7 @@ Access and download:
 - **AC-417** `[vis]`: When a user downloads an attachment, the system saves it under its file name.
 - **AC-418** `[crit]`: If stored content was altered, the system refuses to deliver it ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
 - **AC-433** `[vis]`: When a user downloads a selection as ZIP, the system delivers one archive of the selected files' content as uploaded.
-- **AC-434** `[vis]`: If a ZIP selection holds files with the same name, the archive keeps each file under a distinct name.
+- **AC-434** `[vis]`: If a ZIP selection holds files whose names differ at most in letter case, the archive keeps each file under a name distinct ignoring letter case.
 - **AC-435** `[vis]`: If a ZIP selection exceeds a bulk-download cap **[C]**, the system blocks it before download and shows a German message naming both caps.
 - **AC-436** `[vis]`: If an attachment's stored content is missing, the system shows it as `"Datei fehlt"` with a placeholder, disables download, ZIP selection and lightbox, and keeps the attachment.
 - **AC-244** `[vis]`: If an attachment's encryption key cannot be unwrapped, the system shows it as `"Schlüssel nicht verfügbar"` with a placeholder, disables download, ZIP selection and lightbox, and keeps the attachment.

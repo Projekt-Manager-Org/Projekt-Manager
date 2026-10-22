@@ -381,9 +381,9 @@ test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
     const download = await downloadPromise;
     expect(download.suggestedFilename().endsWith('.zip')).toBe(true);
 
-    // 4. One archive entry per selected file, no two under the same
-    //    name. `filter` sees every entry; the returned map would
-    //    collapse duplicates.
+    // 4. One archive entry per selected file, no two names equal
+    //    ignoring case (AC-434). `filter` sees every entry; the
+    //    returned map would collapse duplicates.
     const downloadPath = await download.path();
     const entryNames: string[] = [];
     unzipSync(fs.readFileSync(downloadPath), {
@@ -393,7 +393,7 @@ test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
       },
     });
     expect(entryNames.length).toBe(entries.length);
-    expect(new Set(entryNames).size).toBe(entryNames.length);
+    expect(new Set(entryNames.map((name) => name.toLowerCase())).size).toBe(entryNames.length);
   });
 });
 
