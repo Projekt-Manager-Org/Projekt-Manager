@@ -439,7 +439,8 @@ export const STRINGS = {
     taxModeStandard: 'Regulär',
     taxModeReverseCharge: 'Reverse-Charge §13b',
     save: 'Speichern',
-    ustIdRequired: 'USt-IdNr. ist erforderlich. Bitte ausfüllen.',
+    /** Client-side validation message for an empty required field. */
+    requiredField: (label: string) => `${label} ist erforderlich. Bitte ausfüllen.`,
     /**
      * Fetch-error fallback in the `!data` branch of the section. Surfaces
      * when `GET /api/company-profile` fails so the user sees a diagnostic
