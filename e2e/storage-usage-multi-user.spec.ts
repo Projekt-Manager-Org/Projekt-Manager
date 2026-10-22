@@ -103,15 +103,15 @@ async function readStorageReadout(officePage: Page): Promise<StorageReadout> {
 }
 
 /**
- * Parse a formatBytes-rendered string ("0 B", "12 KB", "2.50 MB", "1.20 GB")
+ * Parse a formatBytes-rendered string ("0 B", "12 KB", "2,50 MB", "1,20 GB")
  * back to a byte count. The directional asserts below need numeric ordering;
  * a "value-changed" gate alone (T-ACBS) would let a regression that flips the
  * readout in the wrong direction pass the test.
  */
 function parseBytes(displayed: string): number {
-  const m = displayed.match(/([\d.]+)\s*(B|KB|MB|GB)/);
+  const m = displayed.match(/(?:^|\s)(\d+(?:,\d{2})?) (B|KB|MB|GB)\b/);
   if (!m) throw new Error(`unparseable byte display: "${displayed}"`);
-  const value = Number(m[1]);
+  const value = Number(m[1].replace(',', '.'));
   const unit = m[2];
   const multiplier =
     unit === 'B' ? 1 : unit === 'KB' ? 1024 : unit === 'MB' ? 1024 ** 2 : 1024 ** 3;

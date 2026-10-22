@@ -155,7 +155,7 @@ describe('Footer storage badge — label and value (AC-448)', () => {
 
     const badge = await screen.findByTestId('storage-usage-badge');
     expect(badge.textContent).toContain('Daten:');
-    expect(badge.textContent).toContain('2.00 MB');
+    expect(badge.textContent).toContain('2,00 MB');
   });
 
   it('reflects refreshed values after a refresh trigger fires', async () => {
@@ -182,7 +182,7 @@ describe('Footer storage badge — label and value (AC-448)', () => {
     );
     await useStorageUsageStore.getState().refresh();
 
-    await vi.waitFor(() => expect(badge.textContent).toContain('5.00 MB'));
+    await vi.waitFor(() => expect(badge.textContent).toContain('5,00 MB'));
   });
 });
 
@@ -222,7 +222,7 @@ describe('Footer version chip — build-time git SHA', () => {
 
 describe('Footer storage badge — tooltip breakdown (AC-449)', () => {
   it('exposes the two-bucket plaintext breakdown with the German labels', async () => {
-    // ready.plaintext = 3 MB, hidden.plaintext = 1.50 MB — both
+    // ready.plaintext = 3 MB, hidden.plaintext = 1,50 MB — both
     // formatted via the shared helper. Tooltip wording mirrors the
     // DatenView labels pinned in [ui/daten.md §8.11.3]: `Sichtbar` for
     // ready, `Im Papierkorb` for hidden. Ciphertext buckets are
@@ -244,11 +244,11 @@ describe('Footer storage badge — tooltip breakdown (AC-449)', () => {
     // a clear locator miss and they can adapt the test.
     const tooltip = badge.getAttribute('title') ?? '';
     expect(tooltip).toContain('Sichtbar');
-    expect(tooltip).toContain('3.00 MB');
+    expect(tooltip).toContain('3,00 MB');
     expect(tooltip).toContain('Im Papierkorb');
-    expect(tooltip).toContain('1.50 MB');
+    expect(tooltip).toContain('1,50 MB');
     // Operator-only ciphertext buckets stay off the user surface.
-    expect(tooltip).not.toContain('9.00 MB');
-    expect(tooltip).not.toContain('4.50 MB');
+    expect(tooltip).not.toContain('9,00 MB');
+    expect(tooltip).not.toContain('4,50 MB');
   });
 });
