@@ -146,7 +146,7 @@ describe('DatenView storage row — bucket rendering', () => {
 
     const row = await screen.findByTestId('daten-storage-row');
     expect(within(row).getByText(/Sichtbar/)).toBeInTheDocument();
-    expect(within(row).getByText(/3\.00 MB/)).toBeInTheDocument();
+    expect(within(row).getByText(/3,00 MB/)).toBeInTheDocument();
     expect(within(row).getByText(/Im Papierkorb/)).toBeInTheDocument();
     expect(within(row).getByText(/512 KB/)).toBeInTheDocument();
   });
@@ -168,8 +168,8 @@ describe('DatenView storage row — bucket rendering', () => {
     const row = await screen.findByTestId('daten-storage-row');
     // Both plaintext values render exactly once each; both ciphertext
     // values must not appear at all.
-    expect(within(row).queryByText(/7\.00 MB/)).not.toBeInTheDocument();
-    expect(within(row).queryByText(/8\.00 MB/)).not.toBeInTheDocument();
+    expect(within(row).queryByText(/7,00 MB/)).not.toBeInTheDocument();
+    expect(within(row).queryByText(/8,00 MB/)).not.toBeInTheDocument();
   });
 
   it('exposes both buckets inline with no hover-only tooltip surface', async () => {
