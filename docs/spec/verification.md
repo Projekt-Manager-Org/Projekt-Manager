@@ -497,7 +497,7 @@ Totals: [data-model.md §5.14](data-model.md#514-storage-usage). What the screen
 - **AC-448** `[vis]`: While a user holding `data:export` is signed in, the footer shows "Daten:" followed by the visible total; otherwise it shows no storage badge.
 - **AC-449** `[vis]`: When the user hovers the footer storage badge, it shows the visible and Papierkorb totals with their [ui/daten.md §8.11.3](ui/daten.md#8113-speichernutzung) labels.
 - **AC-450** `[crit]`: When a storage total changes, every open session showing it shows the new value within 2 seconds, without a reload.
-- **AC-451** `[vis]`: The storage totals and the Export and Import progress byte counts are shown in powers of 1024: B and KB as whole numbers, MB and GB with two decimals after a decimal point.
+- **AC-451** `[vis]`: The storage totals and the Export and Import progress byte counts are shown in powers of 1024: B and KB as whole numbers, MB and GB with two decimals after a decimal comma ("1,50 MB").
 
 ### 15.30 Invoices
 
