@@ -1,5 +1,5 @@
 /**
- * Storage usage read routes (api.md §14.2.12, AC-264 / AC-265).
+ * Storage usage read routes (totals: data-model.md §5.14; permissions: api.md §14.3).
  *
  *   - GET  /api/projects/:id/storage-usage — per-project read.
  *     Permission and reachability mirror Get project ([api.md §14.2.2]):
@@ -32,7 +32,7 @@ export function storageUsageRoutes(db: Database) {
     requireSession(app, db);
 
     // ---------------------------------------------------------------
-    // GET /api/projects/:id/storage-usage — AC-264
+    // GET /api/projects/:id/storage-usage
     // ---------------------------------------------------------------
     app.get(
       '/api/projects/:id/storage-usage',
@@ -54,7 +54,7 @@ export function storageUsageRoutes(db: Database) {
     );
 
     // ---------------------------------------------------------------
-    // GET /api/storage-usage — AC-265 (data:export gate)
+    // GET /api/storage-usage — data:export gate (api.md §14.3)
     // ---------------------------------------------------------------
     app.get(
       '/api/storage-usage',

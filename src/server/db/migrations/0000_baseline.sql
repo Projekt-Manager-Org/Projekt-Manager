@@ -327,8 +327,8 @@ INSERT INTO "company_profile" DEFAULT VALUES
 --> statement-breakpoint
 -- ---------------------------------------------------------------
 -- Project storage usage — trigger-maintained side table
--- (data-model.md §5.14, ARCHITECTURE.md "Storage usage —
--- trigger-maintained side table", AC-263).
+-- (totals: data-model.md §5.14; design: ARCHITECTURE.md "Storage usage —
+-- trigger-maintained side table").
 -- ---------------------------------------------------------------
 
 -- Trigger 1: seed a zero usage row for every new project so the
@@ -383,7 +383,7 @@ BEGIN
   -- Cascade short-circuit: project DELETE → cascades to attachments.
   -- The side-table row is being removed via FK cascade in the same
   -- transaction, so the UPDATE is wasted work and would fail to
-  -- match. Pinned at TG_OP='DELETE' (data-model.md §5.14).
+  -- match. Pinned at TG_OP='DELETE'.
   IF TG_OP = 'DELETE' AND pg_trigger_depth() > 1 THEN
     RETURN NULL;
   END IF;
@@ -431,7 +431,7 @@ BEGIN
 
   -- INSERT/UPDATE keys on NEW.project_id; DELETE keys on OLD. The
   -- single UPDATE atomically applies all four deltas — partial
-  -- application is impossible (data-model.md §5.14).
+  -- application is impossible.
   IF TG_OP = 'DELETE' THEN
     target_project := OLD.project_id;
   ELSE

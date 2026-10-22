@@ -50,29 +50,14 @@ Permission: `data:restore`. Users without it do not see the action; the server r
 
 ### 8.11.3 Speichernutzung
 
-A storage-usage row sits at the top of the DatenView, above the Export ([§8.11.1](#8111-export)) and Import ([§8.11.2](#8112-import)) sections. It surfaces the deployment-wide totals from `GET /api/storage-usage` ([api.md §14.2.12](../api.md#14212-storage-usage)) inline — mobile-first, always-visible, no hover affordance.
+A row at the top of the view, above Export and Import, shown to `data:export` holders only. It shows two storage totals ([data-model.md §5.14](../data-model.md#514-storage-usage)), both always on screen, with no tooltip:
 
-**Visibility.** Permission-gated by `data:export`, parity with the Export action gate ([§8.11.1](#8111-export)) and the server gate on the global storage endpoint ([api.md §14.2.12](../api.md#14212-storage-usage)). Worker and bookkeeper hold neither permission and do not see the row. The component-level gate is defense in depth on top of the nav-level gate ([index.md §8.7.1](index.md#871-views)); the server remains authoritative.
+| Total      | Label           |
+| ---------- | --------------- |
+| Visible    | `Sichtbar`      |
+| Papierkorb | `Im Papierkorb` |
 
-**Layout.** Inline two-bucket plaintext breakdown — both buckets are on the surface at all times (mobile-first posture rules out a hover tooltip; no hover on touch). German labels:
-
-| Bucket             | Label           | Meaning                                                                                         |
-| ------------------ | --------------- | ----------------------------------------------------------------------------------------------- |
-| `ready.plaintext`  | `Sichtbar`      | what the user sees in the gallery / binary list (their "what I uploaded" view)                  |
-| `hidden.plaintext` | `Im Papierkorb` | recoverable until the hidden reaper consumes it ([AC-426](../verification.md#1526-attachments)) |
-
-The ciphertext buckets the API also returns (`ready.ciphertext`, `hidden.ciphertext`, see [api.md §14.2.12](../api.md#14212-storage-usage)) are operator / billing concerns over the same rows and stay off the user-facing surface; surfacing them here would conflate the user's "what I uploaded" view with the ops-storage-cost view, and the latter has no consumer in v1.
-
-Each value is rendered via the shared byte-formatting helper at the same precision as the Footer badge ([index.md §8.1.2](index.md#812-authenticated-state)).
-
-**Refresh triggers (apply equally to the Footer badge in [index.md §8.1.2](index.md#812-authenticated-state) and the DatenView row).** Footer and DatenView share a single storage-usage subscription that owns the fetch lifecycle:
-
-1. **Mount** — fetch on first render of the consuming surface.
-2. **`visibilitychange → visible`** — refetch when the tab returns to foreground (the always-open observer's idle-tab gap closer for the single-user case).
-3. **Post-mutation refresh hooks** — the orchestrators that move counter bytes invoke `refresh()` after their successful path: the upload-complete orchestrator ([project-detail.md §8.15](project-detail.md#815-project-detail-page) — covers `AttachmentService.completeUpload`), the Papierkorb hide and restore orchestrators ([project-detail.md §8.15](project-detail.md#815-project-detail-page) — covers `AttachmentService.hide` and `AttachmentService.restore`). The import **job** moves bytes server-side, so its storage delta reaches this surface via the `storage_usage_changed` SSE (trigger 4 below), not a client `refresh()`.
-4. **`storage_usage_changed` SSE event** — the cross-session invalidation path ([api.md §14.2.13](../api.md#14213-realtime-events), [architecture.md §11.13](../architecture.md#1113-realtime-invalidation-channel)). Closes the always-open-observer gap that mount + `visibilitychange` + post-mutation alone leave open: when another session's worker uploads a photo from the field, the office observer's Footer badge and DatenView row both reflect the new total without manual refresh. This is THE multi-user value the SSE channel exists to deliver — verified by [AC-273](../verification.md#1529-storage-usage-ui).
-
-The refetch always re-issues the global `GET /api/storage-usage`; the SSE event is an invalidation hint, not a data payload ([ADR-0025](../../adr/0025-realtime-ui-invalidation-via-sse.md)).
+Behavior: [verification.md §15.29](../verification.md#1529-storage-usage).
 
 ### 8.11.4 Company Profile
 

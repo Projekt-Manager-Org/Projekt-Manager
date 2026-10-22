@@ -116,6 +116,15 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-260 | retired | —                                                                                                        |
 | AC-261 | retired | —                                                                                                        |
 | AC-262 | retired | —                                                                                                        |
+| AC-263 | retired | —                                                                                                        |
+| AC-264 | retired | —                                                                                                        |
+| AC-265 | retired | —                                                                                                        |
+| AC-266 | retired | —                                                                                                        |
+| AC-267 | retired | —                                                                                                        |
+| AC-271 | retired | —                                                                                                        |
+| AC-272 | retired | —                                                                                                        |
+| AC-273 | retired | —                                                                                                        |
+| AC-274 | retired | —                                                                                                        |
 | AC-313 | retired | —                                                                                                        |
 | AC-314 | retired | —                                                                                                        |
 | AC-315 | retired | —                                                                                                        |

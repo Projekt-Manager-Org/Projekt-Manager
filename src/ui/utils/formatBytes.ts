@@ -1,9 +1,9 @@
 /**
  * Single source of truth for byte rendering across the Footer storage
  * badge ([ui/index.md §8.1.2]), the DatenView storage row
- * ([ui/daten.md §8.11.3]), and the Export / Import pre-flight dialogs.
+ * ([ui/daten.md §8.11.3]), and the Export / Import progress readouts.
  *
- * Contract pinned by AC-274:
+ * Contract pinned by AC-451:
  *   - Power-of-1024 thresholds at every tier break.
  *   - Integer precision at the B and KB tiers.
  *   - Two decimals at the MB and GB tiers (`.toFixed(2)` — preserves the

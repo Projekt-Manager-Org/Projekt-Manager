@@ -28,7 +28,7 @@ import { STORAGE_STATES } from './storage-states';
  * `project:dates` per the permission matrix in `src/config/permissions.ts`
  * (mirrored in api.md §14.3 and pinned by `auth.test.ts` AC-29). None of
  * the AC-276 project-mutation sites are worker-reachable, so a worker
- * session adds no value here. Contrast with AC-273 for storage usage,
+ * session adds no value here. Contrast with storage usage (`storage-usage-multi-user.spec.ts`),
  * where workers DO hold `attachment:write` / `attachment:hide` and a
  * worker arm is meaningful.
  *
@@ -43,7 +43,7 @@ import { STORAGE_STATES } from './storage-states';
  * This is the value test the realtime channel exists to deliver for
  * project lifecycle — the always-open-observer gap that mount +
  * `visibilitychange` + post-mutation refresh alone leave open
- * (ADR-0025), parity with AC-273 for storage usage.
+ * (ADR-0025), parity with `storage-usage-multi-user.spec.ts`.
  *
  * Topology:
  *   - One long-lived browser context: office (observer).
@@ -267,7 +267,7 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
   // 1. Owner advances a project (+1 transition per AC-5).
   //
   // Issued from a one-shot owner request context so the mutating session
-  // is distinct from the office observer (the AC-273 cross-session
+  // is distinct from the office observer (the storage-usage cross-session
   // pattern). `transitionForward` requires the caller's `expectedStatus`
   // to match the row's current status as a CAS guard against concurrent
   // transitions.
@@ -318,7 +318,7 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
   // ------------------------------------------------------------------
   // 2. Owner archives a project (AC-61).
   //
-  // Issued from a one-shot owner request context — the AC-273 precedent
+  // Issued from a one-shot owner request context — the storage-usage precedent
   // for cross-session-driven mutations. The OFFICE browser session does
   // not initiate the mutation; it must observe the resulting SSE frame.
   //

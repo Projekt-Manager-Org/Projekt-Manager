@@ -1,7 +1,7 @@
 /**
  * storageUsageStore — shared subscription that powers the Footer badge
  * ([ui/index.md §8.1.2]) and the DatenView storage row ([ui/daten.md
- * §8.11.3]). Pins the four refresh triggers per [ui/daten.md §8.11.3]:
+ * §8.11.3]). Pins the store's four refresh triggers:
  *
  *   1. Mount — first subscriber triggers a fetch via storageUsageApi.getGlobal()
  *   2. visibilitychange → visible — refetch when the tab returns to foreground
@@ -20,8 +20,8 @@
  *     from `@/sse/client` — a typed event bus over the browser-native
  *     EventSource per ADR-0025.
  *
- * Coverage references AC-271 (Footer refresh), AC-272 (DatenView refresh).
- * AC-273 is covered by an E2E spec, not this file.
+ * Coverage references AC-450 for the post-mutation and SSE refreshes;
+ * its cross-session form is covered by an E2E spec, not this file.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -112,7 +112,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('storageUsageStore — mount-time fetch (AC-271, AC-272)', () => {
+describe('storageUsageStore — mount-time fetch', () => {
   it('fetches via storageUsageApi.getGlobal() when the first subscriber registers', async () => {
     getGlobalMock.mockResolvedValue(ok(makeUsage(2048, 1024)));
 
@@ -145,7 +145,7 @@ describe('storageUsageStore — mount-time fetch (AC-271, AC-272)', () => {
   });
 });
 
-describe('storageUsageStore — visibilitychange refresh (AC-271, AC-272)', () => {
+describe('storageUsageStore — visibilitychange refresh', () => {
   it('refetches when document.visibilityState flips back to visible', async () => {
     getGlobalMock.mockResolvedValueOnce(ok(makeUsage(100, 0)));
     const unsubscribe = useStorageUsageStore.getState().subscribe();
@@ -167,7 +167,7 @@ describe('storageUsageStore — visibilitychange refresh (AC-271, AC-272)', () =
   });
 });
 
-describe('storageUsageStore — post-mutation refresh() (AC-271, AC-272)', () => {
+describe('storageUsageStore — post-mutation refresh() (AC-450)', () => {
   it('refetches and updates state when refresh() is called explicitly', async () => {
     getGlobalMock.mockResolvedValueOnce(ok(makeUsage(0, 0)));
     const unsubscribe = useStorageUsageStore.getState().subscribe();
@@ -183,7 +183,7 @@ describe('storageUsageStore — post-mutation refresh() (AC-271, AC-272)', () =>
   });
 });
 
-describe('storageUsageStore — SSE invalidation (AC-271, AC-272)', () => {
+describe('storageUsageStore — SSE invalidation (AC-450)', () => {
   it('subscribes to the storage_usage_changed event when the first subscriber registers', () => {
     getGlobalMock.mockResolvedValue(ok(makeUsage(0, 0)));
 

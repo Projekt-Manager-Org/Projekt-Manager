@@ -12,7 +12,7 @@ import { STORAGE_STATES } from './storage-states';
  * never reflected another user's add / hide / restore. This is the value
  * test that the fix closes it.
  *
- * Three actors on the same install (mirrors AC-273's storage spec): an
+ * Three actors on the same install (mirrors `storage-usage-multi-user.spec.ts`): an
  * office session (the observer, parked on the SAME project-detail page
  * with the photo gallery visible), a worker session that uploads then
  * hides a photo, and an owner-authenticated request context that restores
@@ -38,7 +38,7 @@ const __dirname = path.dirname(__filename);
 
 const JPG_FIXTURE = path.resolve(__dirname, 'fixtures', 'sample.jpg');
 
-/** AC-337 propagation budget — same 2 s window as the AC-273 storage spec. */
+/** AC-337 propagation budget — same 2 s window as the storage-usage spec. */
 const SSE_PROPAGATION_TIMEOUT_MS = 2_000;
 
 /**

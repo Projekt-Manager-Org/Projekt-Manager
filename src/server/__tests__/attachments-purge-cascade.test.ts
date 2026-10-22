@@ -238,10 +238,10 @@ describe('Attachment purge cascade', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-266 — project purge removes the storage-usage view alongside
+  // Project purge removes the storage-usage view alongside
   // the project row. Cascade is a property of the data layer
   // (`project_storage_usage.project_id REFERENCES projects(id)
-  // ON DELETE CASCADE` per data-model.md §5.14) — not an
+  // ON DELETE CASCADE` in schema.ts) — not an
   // orchestrated cleanup step.
   //
   // Two assertions:
@@ -257,7 +257,7 @@ describe('Attachment purge cascade', () => {
   // delta trigger while the row is being removed; this test verifies
   // the externally-visible result, not the internals.
   // -------------------------------------------------------------------
-  describe('AC-266: project purge removes the storage-usage view', () => {
+  describe('project purge removes the storage-usage view', () => {
     interface GlobalUsage {
       ready: { plaintext: number; ciphertext: number };
       hidden: { plaintext: number; ciphertext: number };
@@ -271,7 +271,7 @@ describe('Attachment purge cascade', () => {
       return res.json() as GlobalUsage;
     }
 
-    /** Direct-insert a hidden attachment so AC-266 covers both buckets. */
+    /** Direct-insert a hidden attachment so the purge covers both buckets. */
     async function seedHiddenAttachment(
       projectId: string,
       withThumb: boolean,
@@ -283,7 +283,7 @@ describe('Attachment purge cascade', () => {
       try {
         // Hidden rows inherit the wrapped DEK and ciphertext sizes
         // from their `ready` predecessor — synthetic envelope is fine
-        // here, the AC-266 assertion is on the cascade, not on unwrap.
+        // here, the assertion is on the cascade, not on unwrap.
         const wrappedDek = Buffer.alloc(192, 0x77).toString('base64');
         const wrappedThumbDek = withThumb ? Buffer.alloc(192, 0x88).toString('base64') : null;
         await db.execute(sql`
@@ -328,14 +328,14 @@ describe('Attachment purge cascade', () => {
 
       // Per-project endpoint now resolves to 404 NOT_FOUND — the
       // project no longer exists, so the storage-usage view does not
-      // either. Same shape as a never-existed id (mirrors AC-264's
-      // 404 path; the absence of the parent row drives the response).
+      // either. Same shape as a never-existed id (the 404
+      // path; the absence of the parent row drives the response).
       const afterRes = await authGet(ownerToken, `/api/projects/${projectId}/storage-usage`);
       expect(afterRes.statusCode).toBe(404);
       expect(afterRes.json().code).toBe('NOT_FOUND');
     });
 
-    it("excludes the purged project's prior totals from the global roll-up", async () => {
+    it("excludes the purged project's prior totals from the global roll-up (AC-447)", async () => {
       const projectId = await createProject(ownerToken, customerId);
       await seedReadyAttachment(projectId, storage, true);
       await seedHiddenAttachment(projectId, false);

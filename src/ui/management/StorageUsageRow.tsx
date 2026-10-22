@@ -1,5 +1,5 @@
 /**
- * DatenView storage row (spec ui/daten.md §8.11.3, AC-272).
+ * DatenView storage row (spec ui/daten.md §8.11.3).
  *
  * Mobile-first posture — both plaintext buckets render inline at all
  * times. No `title` tooltip: there is no hover on touch, so a

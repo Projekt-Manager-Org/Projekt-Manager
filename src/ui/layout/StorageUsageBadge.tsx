@@ -1,5 +1,5 @@
 /**
- * Footer storage badge (spec ui/index.md §8.1.2, AC-271).
+ * Footer storage badge (spec ui/index.md §8.1.2, AC-448, AC-449).
  *
  * Surfaces the total visible plaintext footprint of project data to
  * `data:export` holders (owner / office). The hover tooltip carries the

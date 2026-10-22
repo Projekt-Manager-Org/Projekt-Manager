@@ -487,7 +487,6 @@ A file attached to a project. Its content lives encrypted in object storage ([AD
 | `kind`                                            | `photo` for the three image types, `binary` otherwise                                                                                                                                                |
 | `fileName`                                        | Non-empty, at most 255 characters; no control character (`\x00`–`\x1F`, `\x7F`), no `/` or `\`, no `"`                                                                                               |
 | `sizeBytes`                                       | Declared plaintext size of the original; at most the per-file cap **[C]**                                                                                                                            |
-| `thumbSizeBytes`                                  | Plaintext size of a photo's thumbnail; not recorded by upload                                                                                                                                        |
 | `ciphertextSizeBytes`, `ciphertextThumbSizeBytes` | Stored (encrypted) size of the original and of a photo's thumbnail; the thumbnail at most the thumbnail cap **[C]**                                                                                  |
 | `hiddenAt`                                        | When it entered the Papierkorb; set only while `hidden`                                                                                                                                              |
 | `createdAt`                                       | Upload time                                                                                                                                                                                          |
@@ -495,31 +494,15 @@ A file attached to a project. Its content lives encrypted in object storage ([AD
 
 **Deploy-probe namespace.** Storage keys under `__probe/` hold deploy-preflight sentinels, not attachments.
 
-### 5.14 Project Storage Usage
+### 5.14 Storage Usage
 
-Each project carries an accumulated, system-maintained view of the byte volume of its attachments. The view is derived state — every value is the sum of `attachment` row fields — and exists so the application can render storage usage as a constant-time read instead of an aggregate over the attachment table. The per-project endpoint and the global roll-up in [api.md §14.2.12](api.md#14212-storage-usage) are the surfaces over this view.
+Deployment-wide totals over the attachments of every project ([§5.13](#513-attachment)). Behavior: [verification.md §15.29](verification.md#1529-storage-usage).
 
-```typescript
-interface ProjectStorageUsage {
-  projectId: string; // references Project.id
-  ready: {
-    plaintext: number; // sum of sizeBytes + thumbSizeBytes (when present) over status = 'ready' rows
-    ciphertext: number; // sum of ciphertextSizeBytes + ciphertextThumbSizeBytes (when present) over status = 'ready' rows
-  };
-  hidden: {
-    plaintext: number; // sum of sizeBytes + thumbSizeBytes (when present) over status = 'hidden' rows
-    ciphertext: number; // sum of ciphertextSizeBytes + ciphertextThumbSizeBytes (when present) over status = 'hidden' rows
-  };
-}
-```
-
-Design notes:
-
-- **Buckets align with attachment status.** `ready` is the live working set (the bytes the user can currently see in the gallery / binary list); `hidden` is the Papierkorb pool — recoverable until the hidden reaper ([AC-426](verification.md#1526-attachments)) consumes the row. `pending` rows are excluded by construction: their backing objects may not exist on object storage yet, and the orphan reaper ([AC-408](verification.md#1526-attachments)) is the only path that finalizes their disposition. Adding pending bytes to a user-facing total would surface uncommitted uploads; adding them to an operator-facing total would tally bytes that may never have been written.
-- **Two byte counts per bucket.** **Plaintext** sums each row's declared `sizeBytes` plus declared `thumbSizeBytes` when `hasThumbnail = true` — the user-facing "what I uploaded" total. **Ciphertext** sums declared `ciphertextSizeBytes` plus declared `ciphertextThumbSizeBytes` when `hasThumbnail = true` — the operator-facing "what is on object storage" total. A photo always contributes both an original and a thumbnail blob ([§5.13](#513-attachment)); a non-photo contributes only the original.
-- **System-maintained invariant.** The four totals are an authoritative invariant of the system, kept in lockstep with attachment lifecycle events (init pending, complete to ready, user-DELETE to hidden, restore to ready, orphan reaper deletes pending, hidden reaper deletes hidden, project purge cascade). The maintenance is automatic — no caller writes the totals; no lifecycle path can advance without the matching update; no missed write site can drift the totals against the underlying rows. The mechanism that delivers this invariant is documented in [`ARCHITECTURE.md § Attachments Module`](../../ARCHITECTURE.md#attachments-module).
-- **Project deletion removes the totals with the project.** Hard-deleting (purging) a project removes the project's storage-usage view alongside the project itself — the usage row does not survive the parent. Soft-delete (archive) is a board-only operation per [§6.9](#69-soft-deletes) and does not touch the row; an archived project retains its accumulated totals (its attachments still exist, see [§5.13](#513-attachment)) and is included in the global roll-up exposed by [api.md §14.2.12](api.md#14212-storage-usage).
-- **Authoritative totals, not a cache.** There is no cache layer; reads return the live totals at the time of the read. Reconciliation of the totals against the underlying attachment aggregate is the integration-test invariant pinned by [verification.md AC-267](verification.md#1529-storage-usage-ui) — the storage-usage view is authoritative only insofar as it stays equal to the row aggregate.
+| Total      | Sum of                                             | Over attachments with `status` |
+| ---------- | -------------------------------------------------- | ------------------------------ |
+| Visible    | `sizeBytes`                                        | `ready`                        |
+| Papierkorb | `sizeBytes`                                        | `hidden`                       |
+| Stored     | `ciphertextSizeBytes` + `ciphertextThumbSizeBytes` | `ready` or `hidden`            |
 
 ### 5.15 Invoice Entity
 

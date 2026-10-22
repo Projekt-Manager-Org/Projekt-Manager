@@ -1,5 +1,5 @@
 /**
- * DatenView storage row — covers AC-272 ([verification.md §15.29]):
+ * DatenView storage row — covers the row in [ui/daten.md §8.11.3]:
  *
  *   - Row visible to `data:export` holders only (owner, office under
  *     the default matrix).
@@ -78,7 +78,7 @@ afterEach(() => {
   useAuthStore.setState({ authUser: null, authError: null, sessionChecked: true });
 });
 
-describe('DatenView storage row — permission gating (AC-272)', () => {
+describe('DatenView storage row — permission gating', () => {
   it('renders the row when the user holds data:export (owner)', async () => {
     getGlobalMock.mockResolvedValue(
       ok({
@@ -128,11 +128,11 @@ describe('DatenView storage row — permission gating (AC-272)', () => {
   });
 });
 
-describe('DatenView storage row — bucket rendering (AC-272)', () => {
+describe('DatenView storage row — bucket rendering', () => {
   it('renders both plaintext buckets inline with the German labels and formatted values', async () => {
     // ready.plaintext = 3 MB, hidden.plaintext = 512 KB. The shared
     // byte-formatting helper renders the MB tier with two decimals and
-    // the KB tier as integer (AC-274). Pinning both tiers in one
+    // the KB tier as integer (AC-451). Pinning both tiers in one
     // assertion catches a regression that swaps formatters per surface.
     getGlobalMock.mockResolvedValue(
       ok({

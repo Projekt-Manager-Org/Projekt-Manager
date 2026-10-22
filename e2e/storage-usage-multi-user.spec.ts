@@ -5,22 +5,21 @@ import { STRINGS } from '../src/config/strings';
 import { STORAGE_STATES } from './storage-states';
 
 /**
- * AC-273 — multi-user storage-usage invalidation over the SSE channel.
+ * AC-450 — multi-user storage-usage invalidation over the SSE channel.
  *
- * Three actors on the same install per AC-273: an office session (the
+ * Three actors on the same install: an office session (the
  * observer, with the Footer badge + DatenView row visible), a worker
  * session, and an owner-authenticated request. The worker uploads a
  * photo and hides it via Papierkorb; the owner restores it (Papierkorb
  * restore is owner / office only per the permission matrix in
  * `src/config/permissions.ts` — workers hold `attachment:hide` but NOT
  * `attachment:trash`, so the route preHandler 403s a worker restore
- * before the service runs; the AC names "owner restores" to keep role
- * boundaries intact).
+ * before the service runs, so the owner restores).
  *
  * Each mutation must propagate to the office session within 2 seconds
  * with NO manual refresh — driven by the `storage_usage_changed` event
  * over `/api/events` (api.md §14.2.13) and the shared storage-usage
- * subscription (ui/daten.md §8.11.3 refresh trigger #4).
+ * subscription (its SSE refresh, `src/state/storageUsageStore.ts`).
  *
  * This is the value test the realtime channel exists to deliver — the
  * "always-open observer" gap that mount + `visibilitychange` +
@@ -46,7 +45,7 @@ const __dirname = path.dirname(__filename);
 const JPG_FIXTURE = path.resolve(__dirname, 'fixtures', 'sample.jpg');
 
 /**
- * AC-273 budget — both Footer and DatenView mirror the same
+ * AC-450 budget — both Footer and DatenView mirror the same
  * subscription, so the same window applies to either surface.
  */
 const SSE_PROPAGATION_TIMEOUT_MS = 2_000;
@@ -82,7 +81,7 @@ async function openWorkerProjectDetail(page: Page): Promise<string> {
  * value plus the DatenView "Sichtbar" bucket. Returned together so the
  * propagation poll can assert on either surface using a single read.
  *
- * Both surfaces consume the same subscription per ui/daten.md §8.11.3,
+ * Both surfaces consume the same subscription (`src/state/storageUsageStore.ts`),
  * so they must change in lockstep; reading both rather than one pins the
  * shared-subscription contract end-to-end.
  */
@@ -121,7 +120,7 @@ function parseBytes(displayed: string): number {
 
 /**
  * Assert the office session's readout changes — both surfaces — within
- * the AC-273 propagation budget. The poll's 2 s timeout is the gate; a
+ * the AC-450 propagation budget. The poll's 2 s timeout is the gate; a
  * passing implementation resolves on the first subscription tick after
  * the SSE frame lands.
  *
@@ -142,7 +141,7 @@ async function expectOfficeReadoutChanges(
         return now.footer !== before.footer || now.datenSichtbar !== before.datenSichtbar;
       },
       {
-        message: 'office storage readout did not change within the AC-273 propagation budget',
+        message: 'office storage readout did not change within the AC-450 propagation budget',
         timeout: SSE_PROPAGATION_TIMEOUT_MS,
       },
     )
@@ -199,7 +198,7 @@ async function waitForNewId(
   return newId!;
 }
 
-test.describe('AC-273: storage usage propagates from worker mutations to office observer over SSE', () => {
+test.describe('AC-450: storage usage propagates from worker mutations to office observer over SSE', () => {
   let officeContext: BrowserContext;
   let workerContext: BrowserContext;
   let officePage: Page;
@@ -222,8 +221,8 @@ test.describe('AC-273: storage usage propagates from worker mutations to office 
   }) => {
     // The office observer parks on DatenView so both surfaces (Footer
     // badge in the chrome, storage row in the view) are visible
-    // simultaneously. The whole point of AC-273 is "without manual
-    // refresh" — every assertion below is allowed to consume only the
+    // simultaneously. The whole point of AC-450 is "without a
+    // reload" — every assertion below is allowed to consume only the
     // SSE-driven invalidation; no `goto`, `reload`, or visibility-change
     // after this initial mount.
     await officePage.goto('/daten');
@@ -245,9 +244,9 @@ test.describe('AC-273: storage usage propagates from worker mutations to office 
 
     await uploadCta.getByTestId('attachment-photo-input').setInputFiles(JPG_FIXTURE);
 
-    // The worker's upload-complete orchestrator (AttachmentService.completeUpload,
-    // ui/daten.md §8.11.3 refresh trigger #3) emits `storage_usage_changed`
-    // post-commit (AC-270). The OFFICE session is the AC-273 gate — its
+    // The worker's upload-complete orchestrator (AttachmentService.completeUpload)
+    // emits `storage_usage_changed`
+    // post-commit (AC-270). The OFFICE session is the AC-450 gate — its
     // surfaces must reflect the change without a manual refresh.
     const attachmentId = await waitForNewId(gallery, 'photo-thumb-', galleryBefore);
     const afterUpload = await expectOfficeReadoutChanges(officePage, beforeUpload);
@@ -286,7 +285,7 @@ test.describe('AC-273: storage usage propagates from worker mutations to office 
     // -- Restore (cross-session, owner request context) -----------------
     // Workers do not hold `attachment:trash` — the restore route 403s
     // them at the preHandler (see file-level permission note). To
-    // preserve the AC-273 gate ("office session reflects the change
+    // preserve the AC-450 gate ("office session reflects the change
     // driven from another session"), the restore is issued from an
     // owner-authenticated request context. The OFFICE browser session
     // does not initiate the mutation; it must observe the resulting SSE

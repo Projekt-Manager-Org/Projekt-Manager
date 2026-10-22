@@ -2,16 +2,16 @@
  * Storage usage read service — projects + global roll-up.
  *
  * Surfaces the `project_storage_usage` side table maintained by the
- * two PL/pgSQL triggers (data-model.md §5.14; design at
+ * two PL/pgSQL triggers (totals: data-model.md §5.14; design at
  * `projectStorageUsage` in schema.ts). Pure read path; no writes,
  * no audit boundary, no caching layer.
  *
  * Three responsibilities:
  *   - per-project read with three-way distinguishability
- *     (200 in-scope / 403 out-of-scope / 404 missing) per AC-264 +
+ *     (200 in-scope / 403 out-of-scope / 404 missing) per
  *     ADR-0019;
  *   - global roll-up summed across every project, including archived
- *     ones (AC-265);
+ *     ones (AC-447);
  *   - shape coercion from the bigint columns (returned as strings on
  *     the default pg driver) into the API's `number` byte counts.
  */
@@ -26,7 +26,7 @@ import { STRINGS } from '../../config/strings.js';
 import type { AuthUser } from '../middleware/auth.js';
 
 /**
- * API-facing shape pinned by api.md §14.2.12 and AC-264 / AC-265. Each
+ * API-facing shape (totals: data-model.md §5.14). Each
  * leaf is a non-negative integer count of bytes; matching bucket name
  * matches the row `status` it summarises.
  */
@@ -75,7 +75,7 @@ export class StorageUsageService {
     const row = usageRows[0];
     if (!row) {
       // Trigger invariant: the projects-INSERT trigger seeds a zero
-      // row for every project (data-model.md §5.14). A missing
+      // row for every project. A missing
       // row past the existence-check above is an out-of-band drift
       // (direct SQL deletion, trigger disabled, baseline regenerated
       // without the tail). Refuse to serve rather than fabricate
@@ -100,13 +100,12 @@ export class StorageUsageService {
   /**
    * Global usage summed across every project — including archived
    * (soft-deleted per data-model.md §6.9) projects whose attachments
-   * still ride object storage. AC-265 pins the gate at `data:export`
+   * still ride object storage. api.md §14.3 puts the gate at `data:export`
    * (route layer); this method is gate-agnostic.
    *
    * `COALESCE(SUM(...), 0)` handles the empty-table case in the SQL
    * layer — the query always returns exactly one row, so there's no
-   * row-missing branch to handle here (api.md §14.2.12 "Zeros when
-   * there are no projects or no attachments").
+   * row-missing branch to handle here: no attachments read as zeros.
    */
   async getGlobalUsage(): Promise<StorageUsageDto> {
     const r = await this.db.execute(sql`

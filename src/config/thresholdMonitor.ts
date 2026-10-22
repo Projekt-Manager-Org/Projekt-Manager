@@ -67,7 +67,7 @@ export const THRESHOLD_MONITOR: ThresholdMonitorConfig = {
 
 /**
  * Bytes per declared GB. Power-of-1024 to match `formatBytes`
- * (AC-274) — a cap of 50 and a badge reading "50.00 GB" must mean the
+ * (AC-451) — a cap of 50 and a badge reading "50.00 GB" must mean the
  * same number of bytes, or the warning fires at a figure the owner
  * cannot reconcile with what the UI shows them.
  */

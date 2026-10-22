@@ -334,7 +334,7 @@ export const envSchema = z.object({
   // the monitor skips the storage check entirely (logged once at
   // startup). A default here would be a fabricated capacity figure, and
   // warnings measured against a number nobody chose are worse than no
-  // warnings. Power-of-1024 GB, matching `formatBytes` (AC-274).
+  // warnings. Power-of-1024 GB, matching `formatBytes` (AC-451).
   // ---------------------------------------------------------------
   STORAGE_QUOTA_GB: z.preprocess(
     (v) => (v === '' ? undefined : v),
