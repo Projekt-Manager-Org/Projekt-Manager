@@ -111,7 +111,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
    * POST complete. Returns the attachment id. Copies the upload pattern
    * from `attachments-audit.test.ts` ("complete writes zero audit rows"):
    * the staged bytes must match the persisted `ciphertextSizeBytes`
-   * (binary fixture default: 50_064) and carry the `application/octet-stream`
+   * (binary fixture default: 50_028) and carry the `application/octet-stream`
    * sentinel content-type (ADR-0024), or the complete-time HEAD verify
    * fails before the audit row is written.
    */
@@ -119,7 +119,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
     const initRes = await authPost(
       ownerToken,
       `/api/projects/${projectId}/attachments/init`,
-      binaryInitBody({ fileName: 'ac316-upload.pdf', sizeBytes: 4321 }),
+      binaryInitBody({ fileName: 'ac316-upload.pdf' }),
     );
     expect(initRes.statusCode).toBe(201);
     const body = initRes.json() as { attachment: { id: string; originalKey: string } };
@@ -128,7 +128,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
     const s = createStorageClientFromEnv(env);
     await s.upload(
       body.attachment.originalKey,
-      Buffer.alloc(50_064, 0xff),
+      Buffer.alloc(50_028, 0xff),
       'application/octet-stream',
       TEST_OBJECT_METADATA,
     );

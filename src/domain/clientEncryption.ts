@@ -20,6 +20,9 @@
  */
 
 const NONCE_BYTES = 12;
+const AUTH_TAG_BYTES = 16;
+/** Bytes `encryptBlob` adds to a plaintext; the server pins the declared ciphertext size with it. */
+export const GCM_OVERHEAD_BYTES = NONCE_BYTES + AUTH_TAG_BYTES;
 const DEK_BYTES = 32;
 const AES_GCM_ALGORITHM = 'AES-GCM';
 

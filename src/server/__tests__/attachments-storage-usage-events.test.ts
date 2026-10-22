@@ -71,6 +71,7 @@ import type { AuthUser } from '../middleware/auth.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
 import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
+import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 
 // ---------------------------------------------------------------------
 // Bus module surface — guess. The implementer conforms or asks for a
@@ -158,7 +159,7 @@ function photoInit(): PhotoInitBody {
     hasThumbnail: true,
     thumbSizeBytes: 256,
     dekMaterial: freshDekMaterial(),
-    ciphertextSizeBytes: 4160,
+    ciphertextSizeBytes: 4096 + GCM_OVERHEAD_BYTES,
     ciphertextContentMd5: STUB_MD5_BASE64,
     thumbDekMaterial: freshDekMaterial(),
     ciphertextThumbSizeBytes: 320,
