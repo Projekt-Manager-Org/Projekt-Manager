@@ -1,6 +1,6 @@
 /**
  * Tests for the attachment domain helpers and catalogs that back the
- * client-side enforcement surface of AC-226 and AC-406 — the closed `AttachmentLabel`
+ * client-side enforcement surface of AC-446 and AC-406 — the closed `AttachmentLabel`
  * enum, the closed MIME whitelist, `classifyKind` (MIME → photo|binary),
  * `validateKind`, `validateLabel`, and `validateMime`.
  *
@@ -137,7 +137,7 @@ describe('validateLabel', () => {
   );
 
   it('rejects a label outside the closed enum', () => {
-    // AC-226: the label control accepts no free text (the server rejects
+    // AC-446: the label control accepts no free text (the server rejects
     // it too, AC-398). The client-side helper is the first gate — surface the rejection
     // before the bytes hit the network.
     expect(() => validateLabel('notiz')).toThrow();

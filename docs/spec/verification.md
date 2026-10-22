@@ -408,7 +408,7 @@ Upload:
 - **AC-407** `[crit]`: If an upload never completes, the system records no audit entry for it.
 - **AC-408** `[crit]`: If an upload stays incomplete longer than the orphan-reaper TTL **[C]**, the system deletes it and its stored objects.
 - **AC-225** `[vis]`: If an upload fails for a transient reason — network, storage, or a conflict at completion — the system shows a German error beside the file and an `Erneut versuchen` action that restarts the upload from the beginning; it never retries on its own.
-- **AC-226** `[vis]`: Every label control — at upload and per attachment — offers exactly the label set ([data-model.md §5.13](data-model.md#513-attachment)), with German names **[C]**, and accepts no free text.
+- **AC-446** `[vis]`: The document upload's label control offers exactly the label set except `foto` ([data-model.md §5.13](data-model.md#513-attachment)), with German names **[C]**, and accepts no free text.
 
 Access and download:
 

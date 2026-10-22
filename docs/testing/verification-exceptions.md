@@ -89,6 +89,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-222 | retired | —                                                                                                        |
 | AC-223 | retired | —                                                                                                        |
 | AC-224 | retired | —                                                                                                        |
+| AC-226 | retired | —                                                                                                        |
 | AC-227 | retired | —                                                                                                        |
 | AC-229 | infra   | CI `lint` — `scripts/check-env-drift.sh`                                                                 |
 | AC-232 | retired | —                                                                                                        |

@@ -53,16 +53,16 @@ Worker-assignment editor visible on the page (not routed to a dedicated view). B
 
 The project's photo attachments ([AC-409](../verification.md#1526-attachments)) as thumbnails; a thumbnail opens the original in a lightbox.
 
-- **Upload** — with `attachment:write`: drop zone and file browse, plus camera capture on camera-capable devices. CTA copy **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)). A progress indicator per upload; a failed upload can be dismissed. Behavior: [AC-404](../verification.md#1526-attachments), [AC-405](../verification.md#1526-attachments), [AC-225](../verification.md#1526-attachments).
-- **Per photo** — label dropdown ([AC-226](../verification.md#1526-attachments)), default `Foto`; delete (§8.15.6).
+- **Upload** — with `attachment:write`: drop zone and file browse, plus camera capture on camera-capable devices. CTA copy **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)). Photos are labeled `Foto`. A progress indicator per upload; a failed upload can be dismissed. Behavior: [AC-404](../verification.md#1526-attachments), [AC-405](../verification.md#1526-attachments), [AC-225](../verification.md#1526-attachments).
+- **Per photo** — delete (§8.15.6).
 - **Unavailable content** — placeholders per [AC-436](../verification.md#1526-attachments), [AC-244](../verification.md#1526-attachments), [AC-437](../verification.md#1526-attachments).
 
 ### 8.15.5 Binary List
 
 The project's binary attachments — PDF, DOCX ([AC-409](../verification.md#1526-attachments)) — as a table: file name, label, uploader, upload time, `Herunterladen` ([AC-417](../verification.md#1526-attachments)).
 
-- **Upload** — with `attachment:write`: a file picker. A progress indicator per upload; a failed upload can be dismissed. Behavior: [AC-406](../verification.md#1526-attachments), [AC-225](../verification.md#1526-attachments).
-- **Per file** — label dropdown ([AC-226](../verification.md#1526-attachments)), default `Sonstiges`; delete (§8.15.6).
+- **Upload** — with `attachment:write`: a file picker and a label dropdown ([AC-446](../verification.md#1526-attachments)), default `Sonstiges`. A progress indicator per upload; a failed upload can be dismissed. Behavior: [AC-406](../verification.md#1526-attachments), [AC-225](../verification.md#1526-attachments).
+- **Per file** — delete (§8.15.6).
 - **Bulk download** — with at least one file selected, `Auswahl als ZIP` ([AC-433](../verification.md#1526-attachments), [AC-434](../verification.md#1526-attachments), [AC-435](../verification.md#1526-attachments)).
 - **Unavailable content** — as in §8.15.4.
 
