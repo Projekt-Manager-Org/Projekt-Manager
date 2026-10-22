@@ -1,6 +1,7 @@
 /**
  * Integration test — reconcilability invariant on the per-project
- * storage usage view (an internal side table, data-model.md §5.14).
+ * storage usage view (`project_storage_usage`, an internal side table;
+ * ARCHITECTURE.md "Storage usage — trigger-maintained side table").
  *
  * `attachments-storage-usage.test.ts` pins the trigger semantics by computing expected counter
  * values from the test fixture and asserting equality against the

@@ -493,7 +493,7 @@ Criteria for the SSE invalidation channel ([api.md §14.2.13](api.md#14213-realt
 
 Totals: [data-model.md §5.14](data-model.md#514-storage-usage). What the screens show: [ui/daten.md §8.11.3](ui/daten.md#8113-speichernutzung), [ui/index.md §8.1.2](ui/index.md#812-authenticated-state). Who may read them: [api.md §14.3](api.md#143-authorization-rules).
 
-- **AC-447** `[crit]`: Each storage total ([data-model.md §5.14](data-model.md#514-storage-usage)) equals, at every read, its sum over the complete attachments of every project, archived ones included; incomplete uploads count toward none.
+- **AC-447** `[crit]`: Each storage total equals, at every read, its [data-model.md §5.14](data-model.md#514-storage-usage) sum over the attachments of every project, archived ones included.
 - **AC-448** `[vis]`: While a user holding `data:export` is signed in, the footer shows "Daten:" followed by the visible total; otherwise it shows no storage badge.
 - **AC-449** `[vis]`: When the user hovers the footer storage badge, it shows the visible and Papierkorb totals with their [ui/daten.md §8.11.3](ui/daten.md#8113-speichernutzung) labels.
 - **AC-450** `[crit]`: When a storage total changes, every open session showing it shows the new value within 2 seconds, without a reload.

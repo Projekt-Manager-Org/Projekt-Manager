@@ -315,7 +315,7 @@ Periodic evaluator in the `app` process that turns two standing **conditions** i
 | Condition                                                  | Source of truth                                                                          | Event                    |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------ |
 | Backup badge on any non-green state                        | `meta_backup_status`, via `deriveBadgeState` ([§11.10](#1110-full-state-backup-layer-2)) | `backup.failed`          |
-| Global stored ciphertext ≥ warn band of `STORAGE_QUOTA_GB` | `project_storage_usage` roll-up ([data-model.md §5.14](data-model.md#514-storage-usage)) | `disk.threshold_reached` |
+| Global stored ciphertext ≥ warn band of `STORAGE_QUOTA_GB` | Stored total ([data-model.md §5.14](data-model.md#514-storage-usage))                    | `disk.threshold_reached` |
 
 **Why an evaluator, not a publish at the failure site.** The backup failure IS written at a failure site — but that site is the `backup` container, a separate image ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)), while the publisher binds its `Database` and dispatcher at `app` startup. A publish from the runner reaches an unbound publisher and is silently dropped. The age-derived states (`backup-stale`, `backup-aging`, `drill-expired`, `drill-stale`, never-run) have no failure site at all — nothing happens at the moment a row goes stale. Both are therefore evaluated in the `app` process over the rows the runner writes; the DB is the cross-process channel.
 
