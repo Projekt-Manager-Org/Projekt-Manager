@@ -52,7 +52,7 @@ The state layer is a client-side cache delegating to the API.
 - **Customers** — the full customer list, used in project forms and the customer management view.
 - **Users** — the user list (for admin views and worker assignment dropdowns). Only fetched when needed and when the user has `user:read` permission.
 - **Auth** — the authenticated user profile (including theme preference) and session state.
-- **View state** — active view, active filter (by workflow state, aged-buffer subset, or custom criteria), selected entity ID for detail views.
+- **View state** — active view, active filter (no planned dates, [AC-465](verification.md#151-workflow-board)), selected entity ID for detail views.
 - **Mutation tracking** — in-flight flags and error messages per mutation. Confirm-dialog state for transition confirmations.
 - **Import state** — parsed envelope, dry-run preview, submission progress, result summary (see [api.md §14.2.4](api.md#1424-unified-data-exchange)).
 
@@ -76,7 +76,7 @@ The state layer is a client-side cache delegating to the API.
 - Projects grouped by workflow state
 - Projects filtered by search, status, customer, date range, or composite criteria
 - Customers filtered by search
-- Summary: count of projects per action state, count of aged buffer items per state with threshold, count of projects without planned dates
+- Summary: count of aged buffer items per state with threshold, count of projects without planned dates
 - Current authenticated user and permissions
 
 **Server-side mutation path.** Every domain-entity mutation routes through a single service-layer helper that commits the state change and an `audit_log` row in one database transaction ([data-model.md §5.10](data-model.md#510-audit-log-entity), [ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md)). Subscribers — the notification publisher and any future projection — dispatch from the committed audit stream after the transaction commits, so subscriber failure cannot roll back domain state. Bypass is prevented at PR time by a CI-enforced architecture check ([AC-179](verification.md#1523-audit-log)) that rejects raw inserts, updates, or deletes on audited tables outside the helper. Allowlisted paths: migrations, the unified restore path ([api.md §14.2.4](api.md#1424-unified-data-exchange)), business-data seed loaders, and the retention cleanup ([data-model.md §6.10](data-model.md#610-audit-log-retention)). Each allowlist line is a reviewed PR.
@@ -233,8 +233,8 @@ v1 emitters of `project_changed`:
 - `ProjectCrudService.deleteProject` ([api.md §14.2.2](api.md#1422-projects), AC-61) — soft-delete (archive); flips `deleted` and changes the rows surfaced under `includeArchived`.
 - `ProjectCrudService.restoreProject` ([api.md §14.2.2](api.md#1422-projects)) — un-archive; inverse of the soft-delete above.
 - `ProjectCrudService.purgeProject` ([api.md §14.2.2](api.md#1422-projects), AC-155) — hard delete of an already-archived row; observable through the `includeArchived` list dropping the row.
-- `ProjectTransitionService.transitionForward` ([api.md §14.2.2](api.md#1422-projects), AC-5) — `+1` workflow-state transition.
-- `ProjectTransitionService.transitionBackward` ([api.md §14.2.2](api.md#1422-projects), AC-6) — `-1` workflow-state transition.
+- `ProjectTransitionService.transitionForward` ([api.md §14.2.2](api.md#1422-projects), AC-458) — `+1` workflow-state transition.
+- `ProjectTransitionService.transitionBackward` ([api.md §14.2.2](api.md#1422-projects), AC-458) — `-1` workflow-state transition.
 - `ProjectDatesService.updateDates` ([api.md §14.2.2](api.md#1422-projects), AC-7) — planned start / end edit.
 - `CustomerService.deleteCustomer` ([api.md §14.2.5](api.md#1425-customer-management), AC-91) — customer-delete cascade, when at least one archived project exists under the customer (the cascade removes those project rows alongside the customer). When the customer has zero archived projects, no event is emitted — the project rows visible to subscribers do not change.
 - `ImportService.import` (non-dry-run, [api.md §14.2.4](api.md#1424-unified-data-exchange)) — both branches write project rows inside one transaction: the override branch TRUNCATEs and re-inserts the full Layer 1 set (`users`, `company_profile`, `customers`, `projects`, `project_workers`, `invoice_sequence`, `invoices`, `attachments`) into a non-empty target; the empty-target branch inserts into empty tables (the seed-equivalent path). Exactly one `project_changed` is emitted post-commit per successful import — the project corpus is being established or replaced; one coarse signal is sufficient for every consumer to refetch. The `dryRun` path is read-only and emits nothing.
@@ -337,9 +337,7 @@ Consequence: this also covers the dead-runner case. A `backup` container that ne
 
 Rules that apply to all installations:
 
-- Adjacent-only forward/backward transitions
-- Terminal state concept (no transitions out of the final state)
-- Aging calculation semantics (days since `statusChangedAt`, compared against a threshold)
+- Workflow transitions and aging ([index.md §3](index.md#3-workflow-states), [AC-461](verification.md#151-workflow-board))
 - Authentication required for protected access
 - Authorization enforced server-side on every protected operation
 
@@ -359,7 +357,7 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 - Brand accent color — explicit light and dark values (see [§12.5](#125-theming-model))
 - Brand logo asset — optional served path, the file living at `public/brand/` (`BRANDING.mark.logo`, source constant, no env var). Set, it replaces the generic mark in the header at every viewport width and is drawn above the issuer block of every rendered invoice; unset, both surfaces fall back to the generic mark. PNG or JPEG only — one asset feeds both surfaces, and the invoice renderer embeds no other format. A deployment ships its asset with its configuration, the same way the other files under `public/` ship; this generalized repo carries none of its own, per [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)
 - Favicon and PWA icon set — neither env var nor source constant: the value _is_ the file. Two square SVG marks under `public/` and the PNG set rasterized from them. A deployment replaces the SVGs and regenerates; the procedure lives with the rest of the branding contract in `src/config/brandingConfig.ts`. Distinct from the brand logo above, which is sized for the header strip and the invoice issuer block
-- Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers
+- Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers ([index.md §3](index.md#3-workflow-states))
 - German UI and error strings
 - Date and locale display settings
 - Project numbering format — year + sequential (see [data-model.md §5.1](data-model.md#51-project-entity))
@@ -449,7 +447,7 @@ Configuration choices that disable features are the operator's deliberate decisi
 
 - Understandable by non-technical users in a demo context.
 - Main actions discoverable without training.
-- State type distinction (action/buffer) visually obvious at a glance.
+- State type distinction (action/buffer) visually obvious at a glance ([AC-11](verification.md#151-workflow-board)).
 
 ### 13.2 Performance
 

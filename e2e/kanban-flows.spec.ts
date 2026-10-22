@@ -129,7 +129,7 @@ test.describe('Kanban board flows', () => {
     test('clicking an expanded column header collapses it, and again expands it', async ({
       page,
     }) => {
-      // Regression: a column that is not auto-collapsed by the tier must
+      // AC-44. Regression: a column that is not auto-collapsed by the tier must
       // still toggle on header click. At 1920px viewport, tier is 0 and
       // all columns render expanded — the toggle is the user's only way
       // to collapse them. The expanded column renders the full header with
@@ -168,9 +168,8 @@ test.describe('Kanban board flows', () => {
     }
 
     test('advances a card via the forward button and confirmation', async ({ page }) => {
-      // AC-4 / AC-5 / AC-6: Transitions now live on the Kanban card
-      // itself — the detail panel no longer carries forward / backward
-      // buttons (the card is the single place to organize projects).
+      // Transitions live on the Kanban card only — the detail panel
+      // carries no forward / backward buttons.
       const initialGeplant = await readColumnCount(page, 'geplant');
 
       const geplantColumn = page.getByTestId('kanban-column-geplant');
@@ -178,10 +177,11 @@ test.describe('Kanban board flows', () => {
       const cardTestId = await geplantCard.getAttribute('data-testid');
       const projectId = cardTestId!.replace('project-card-', '');
 
-      // Forward transition with German confirmation dialog.
+      // AC-457: the forward dialog names the current and target state.
       await geplantCard.getByTestId(`forward-button-${projectId}`).click();
       const forwardDialog = page.getByTestId('confirm-dialog');
       await expect(forwardDialog).toBeVisible();
+      await expect(forwardDialog).toContainText('Geplant → In Arbeit');
       await page.getByTestId('confirm-ok').click();
       await expect(forwardDialog).not.toBeVisible();
 
@@ -226,7 +226,7 @@ test.describe('Kanban board flows', () => {
         .getByTestId(`project-card-${projectId}`);
       await expect(movedCard).toBeVisible();
 
-      // AC-6: Backward transition from the card.
+      // AC-457: the backward dialog names the current and target state.
       await movedCard.getByTestId(`backward-button-${projectId}`).click();
       const backwardDialog = page.getByTestId('confirm-dialog');
       await expect(backwardDialog).toBeVisible();
@@ -314,7 +314,7 @@ test.describe('Kanban board flows', () => {
         endDateInput.blur(),
       ]);
 
-      // AC-3: Calendar renders projects with planned dates as colored bars
+      // The calendar shows the project with its updated dates.
       await page.getByTestId('detail-close').click();
       await expect(detailPanel).not.toBeVisible();
 
@@ -332,7 +332,7 @@ test.describe('Kanban board flows', () => {
       await expect(page.getByTestId(plannedEndDate.testId)).toBeVisible();
     });
 
-    test('filters to projects without dates via the summary counter', async ({ page }) => {
+    test('filters to projects without dates via the calendar counter', async ({ page }) => {
       // Grab a geplant card ID — geplant projects have dates in seed data, so
       // this specific card must NOT show up once the dateless filter is applied.
       const geplantColumn = page.getByTestId('kanban-column-geplant');
@@ -344,20 +344,25 @@ test.describe('Kanban board flows', () => {
       await page.getByTestId('view-toggle-kalender').click();
       await expect(page.getByTestId('calendar-view')).toBeVisible();
 
-      // AC-10: "X Projekte ohne Termin" counter appears below calendar
+      // The "X Projekte ohne Termin" counter below the calendar.
       const noDatesCounter = page.getByTestId('no-dates-counter');
       await expect(noDatesCounter).toBeVisible();
       await expect(noDatesCounter).toContainText('Projekte ohne Termin');
       await noDatesCounter.click();
 
-      // Should be back on Kanban filtered to projects without dates.
+      // AC-465: back on Kanban, filtered to projects without dates.
       // The geplant card has dates — it must NOT appear in the dateless filter.
       await expect(page.getByTestId('kanban-board')).toBeVisible();
       await expect(page.getByTestId(`project-card-${projectId}`)).not.toBeVisible();
-      // Verify dateless projects are actually shown
+      // Verify dateless projects are actually shown, and only those
       const visibleCards = page.locator('[data-testid^="project-card-"]');
       const cardCount = await visibleCards.count();
       expect(cardCount).toBeGreaterThan(0);
+      const cardDates = page.locator('[data-testid^="card-dates-"]');
+      await expect(cardDates).toHaveCount(cardCount);
+      for (const dates of await cardDates.all()) {
+        await expect(dates).toHaveText('Kein Termin');
+      }
     });
   });
 
@@ -407,7 +412,7 @@ test.describe('Kanban board flows', () => {
       ]);
       await page.getByTestId('detail-close').click();
 
-      // AC-5/AC-6/AC-7: Changes persist across page reloads
+      // AC-458 / AC-7: the stored state and the date change survive a reload
       await page.reload();
 
       // AC-395: user is still authenticated — Kanban loads, not login screen

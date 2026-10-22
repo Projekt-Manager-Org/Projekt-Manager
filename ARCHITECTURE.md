@@ -321,7 +321,7 @@ Most of the Kanban, calendar, and aging rendering is genuinely config-driven. Tw
 4. **Hardcoded test fixtures**: a couple of tests pin the full state list — grep for the state keys and update as needed.
 5. Re-seed the database if existing data must be migrated to a new state (`SEED=force npm run dev`).
 
-This is not a zero-code-change operation. Improving it toward full configurability is tracked in [spec §3](docs/spec/index.md#3-workflow-states).
+This is not a zero-code-change operation.
 
 ### Adding a new SSE event
 

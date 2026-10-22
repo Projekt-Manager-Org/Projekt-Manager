@@ -32,7 +32,6 @@ All views are role-gated. The system enforces that every pending action (unanswe
 - Project detail panel accessible from both views
 - State transitions (forward/backward by one step)
 - Date changes (planned start/end)
-- Summary area with aggregate indicators and clickable filters
 
 ### Management
 
@@ -69,25 +68,21 @@ All views are role-gated. The system enforces that every pending action (unanswe
 
 ## 3. Workflow States
 
-The Kanban board reflects the full company workflow. The number and definition of states are driven by a single configuration array from which the `WorkflowState` type derives. This is not hardcoded at the rendering use-sites, but changing the set is a code change, not a zero-code reconfiguration — the database pins the valid states in a CHECK constraint (see the note below).
+| #   | State               | Type   | Description                                          | Aging threshold, days **[C]** | Collapse tier **[C]** |
+| --- | ------------------- | ------ | ---------------------------------------------------- | ----------------------------- | --------------------- |
+| 1   | **Anfrage**         | Action | Inquiry received — company must write an offer       | 3                             | 1                     |
+| 2   | **Angebot**         | Buffer | Offer sent — waiting for customer confirmation       | 14                            | 3                     |
+| 3   | **Beauftragt**      | Action | Customer confirmed — company must plan and schedule  | 5                             | 1                     |
+| 4   | **Geplant**         | Buffer | Planned — waiting for its turn on the calendar       | 21                            | 2                     |
+| 5   | **In Arbeit**       | Active | Being executed (incl. Aufmaß, photos, etc.)          | —                             | 2                     |
+| 6   | **Abnahme**         | Buffer | Execution complete — waiting for customer acceptance | 7                             | 2                     |
+| 7   | **Rechnung fällig** | Action | Customer accepted — company must write the invoice   | 3                             | 1                     |
+| 8   | **Abgerechnet**     | Buffer | Invoice sent — waiting for payment                   | 30                            | 3                     |
+| 9   | **Erledigt**        | Done   | Payment received — project closed                    | —                             | 3                     |
 
-The current configuration defines 9 states:
+A project moves one state forward or back at a time. No transition leaves Erledigt; Anfrage has no previous state.
 
-| #   | State               | Type   | Description                                          |
-| --- | ------------------- | ------ | ---------------------------------------------------- |
-| 1   | **Anfrage**         | Action | Inquiry received — company must write an offer       |
-| 2   | **Angebot**         | Buffer | Offer sent — waiting for customer confirmation       |
-| 3   | **Beauftragt**      | Action | Customer confirmed — company must plan and schedule  |
-| 4   | **Geplant**         | Buffer | Planned — waiting for its turn on the calendar       |
-| 5   | **In Arbeit**       | Active | Being executed (incl. Aufmaß, photos, etc.)          |
-| 6   | **Abnahme**         | Buffer | Execution complete — waiting for customer acceptance |
-| 7   | **Rechnung fällig** | Action | Customer accepted — company must write the invoice   |
-| 8   | **Abgerechnet**     | Buffer | Invoice sent — waiting for payment                   |
-| 9   | **Erledigt**        | Done   | Payment received — project closed                    |
-
-Three action states, four buffer states, one active, one terminal. The Kanban board makes action states naturally visible — items accumulating in an action column signal that work is falling behind.
-
-**[C]** The state set (names, types, order, count) is defined in a single configuration array; the `WorkflowState` type is derived from it. Because the database pins the valid states in a CHECK constraint, adding, renaming, or removing a state requires regenerating the migration — not only when the default status changes — plus updating the boundary-state references in the domain layer. See [ARCHITECTURE.md § Adding a new workflow state](../../ARCHITECTURE.md#adding-a-new-workflow-state).
+Aging threshold: [AC-461](verification.md#151-workflow-board), [AC-462](verification.md#151-workflow-board). Collapse tier: [AC-470](verification.md#151-workflow-board).
 
 ---
 

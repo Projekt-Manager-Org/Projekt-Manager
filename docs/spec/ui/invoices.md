@@ -46,7 +46,7 @@ Visible to callers with `invoice:write` (owner / office). Reachable from the per
 - **Performance date input.** Required to issue; pre-filled with `project.plannedEnd` when present (a sensible default — the Leistungsdatum often matches the project's planned end). German date picker (DD.MM.YYYY).
 - **Totals block.** Read-only; rendered from the client-side computation over `lines` + `taxMode` (`Nettosumme` + per-rate `MwSt …%` rows for `standard`, just net + gross for `reverse_charge`, plus `Bruttosumme`). EUR with German locale formatting. The server derives them on every write; the visible totals are a UX preview.
 - **Actions.** `Speichern` persists the draft via `PATCH /api/invoices/:id` (or `POST /api/invoices` on first save). `Abbrechen` (or modal close) discards any unsaved typed changes and closes the form; persisted state on the row stays intact. Issuance and discarding the persisted row are row-level affordances on the per-project block (§8.15.11) — the form itself does not expose them.
-- **In-flight lock.** Per [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior), all inputs and the modal close affordances are disabled while a save request is in flight ([AC-131](../verification.md#153-behavioral)).
+- **In-flight lock.** Per [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior), all inputs and the modal close affordances are disabled while a save request is in flight ([AC-131](../verification.md#1515-navigation)).
 - **Accessibility.** The form is announced as a modal dialog with a labelled heading; focus is trapped within the form and Escape closes (unless a save is in flight). Same pattern as the cancel dialog (§8.16.3).
 
 ### 8.16.3 Issued Invoice Viewer

@@ -1,34 +1,10 @@
-# UI: Behavior and Responsiveness
+# UI: Behavior
 
-Section 9 and 10 of the [product spec](../index.md) — cross-cutting behavioral rules that apply across views, plus responsive column-collapse tiers for the Kanban board.
+Section 9 of the [product spec](../index.md) — cross-cutting behavioral rules that apply across views.
 
 ---
 
 ## 9. Behavioral Rules
-
-### 9.1 State Transitions
-
-- **Forward**: to the next state in the sequence. Allowed from any state except `erledigt`.
-- **Backward**: to the immediately preceding state. Allowed from any state except `anfrage` (no previous) and `erledigt` (terminal).
-- **No skipping**: direct jumps across multiple states are not allowed.
-- **Terminal**: `erledigt` is a terminal state — no forward or backward transitions. Both transition buttons are hidden. Terminality is a domain rule, not just a UI rule.
-- Every transition requires a German confirmation dialog showing current and target state.
-
-Enforcement happens both server-side (API rejects invalid transitions) and client-side (buttons hidden). Server-side is authoritative.
-
-### 9.2 Inaction Visibility
-
-Visibility is provided by three mechanisms:
-
-**Board structure** (primary): action columns with accumulated cards are immediately visible. The column IS the signal.
-
-**Entry date and aging indicators**: per [workflow-views.md §8.2.3](workflow-views.md#823-entry-date-and-aging), cards show their entry date with bold thresholds and, for buffer states, a `"seit X Tagen"` text indicator.
-
-### 9.3 Date Handling
-
-- Display dates use the configured locale format **[C]**. Default: German (`DD.MM.YYYY`).
-- Week starts on **Monday** (ISO 8601).
-- No time zones — all dates are local calendar dates.
 
 ### 9.4 Authentication Behavior
 
@@ -79,14 +55,3 @@ The application never auto-requests the browser push permission. The prompt is r
 - **Mute toggle.** `Stummschalten` reflects `pushMuted`. Applied optimistically via self-update ([api.md §14.2.1](../api.md#1421-authentication)); reverts on failure per [§9.5](#95-asynchronous-mutation-behavior). Mute retains the subscription — unmuting restores delivery without another browser prompt.
 - **Unsubscribe.** `Gerät abmelden` removes the current device's subscription ([api.md §14.2.10](../api.md#14210-push-subscription)). Other registered devices remain subscribed. Optimistic UI hides the affordance on click; on failure (network error, 5xx) it returns with an error notification, the subscription remains registered, and a retry succeeds per [§9.5](#95-asynchronous-mutation-behavior).
 - **Permission denied / unsupported.** If the browser denies permission or web push is unsupported, the affordance is replaced by an informational German cue pointing at browser settings; no retry, no re-prompt on later sessions.
-
----
-
-## 10. Responsive Behavior
-
-The Kanban board uses a progressive column collapse to remain usable on narrower viewports. Columns are grouped into three tiers by priority. Action columns are always the last to collapse.
-
-- **Below 1780px** — tier-3 columns collapse: Angebot, Abgerechnet, Erledigt. Collapsed columns show a slim indicator with the column header and card count. Cards are hidden.
-- **Below 1350px** — tier-2 columns also collapse: Geplant, In Arbeit, Abnahme.
-- **Below 940px** — tier-1 columns also collapse: Anfrage, Beauftragt, Rechnung fällig. Action columns are always the last to collapse.
-- **Expanding**: clicking a collapsed column expands it. Clicking the column header again collapses it.

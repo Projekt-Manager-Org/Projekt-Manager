@@ -62,36 +62,8 @@ Design notes:
 - `customerId` references Customer (§5.6). The API nests the full customer object in responses; writes accept `customerId`.
 - `siteAddress` is the **Baustellen-/Leistungsadresse** — the address where the work physically happens. It is intentionally separate from `customer.address` (the **Rechnungsadresse**, §5.6) because a single customer (e.g., a Hausverwaltung) may carry multiple sites while having one legal billing address. **`null` means "the site is at the customer's billing address"** — the homeowner-renovating-their-house case. UI surfaces use the customer's address as the fallback display value with an inline `"(Kundenadresse)"` hint when `siteAddress` is null (see [ui/project-detail.md §8.15.2](ui/project-detail.md#8152-core-fields)). This is the standard ERP/CRM split and matches the Kickoff posture of a generalized Handwerker tool ([ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)).
 - `assignedWorkers` is m:n via a join table. API returns `{ userId, displayName }`; writes accept `assignedWorkerIds: string[]`.
-- `WorkflowState` reflects the default configuration. The type is derived from the configuration array (see [index.md §3](index.md#3-workflow-states)).
+- `WorkflowState`: one of the states in [index.md §3](index.md#3-workflow-states).
 - Warnings and aging are derived from state and timestamps at render time — not stored.
-
-### 5.2 State Metadata
-
-```typescript
-type StateType = 'action' | 'buffer' | 'active' | 'done';
-
-interface StateConfig {
-  key: WorkflowState;
-  label: string; // German display label
-  type: StateType;
-  order: number; // position in workflow sequence (1-9)
-  color: string; // hex color
-  agingThresholdDays?: number; // days before aging indicator appears [C]
-  agingBoldDays?: number; // days before date display turns bold [C]
-  collapseTier: 1 | 2 | 3; // responsive collapse priority (1 = last to collapse) [C]
-}
-```
-
-This configuration drives Kanban column rendering, color coding, and aging indicators from a single source.
-
-**Aging field mapping by state type:**
-
-| State type | `agingBoldDays`                    | `agingThresholdDays` | Visual effect                                                                   |
-| ---------- | ---------------------------------- | -------------------- | ------------------------------------------------------------------------------- |
-| Action     | Used                               | Ignored              | Entry date turns **bold** after threshold                                       |
-| Buffer     | Used (equals `agingThresholdDays`) | Used                 | Entry date turns **bold** at the same threshold + `"seit X Tagen"` text appears |
-| Active     | Ignored                            | Ignored              | No aging behavior                                                               |
-| Done       | Ignored                            | Ignored              | No aging behavior                                                               |
 
 ### 5.3 User Entity
 
