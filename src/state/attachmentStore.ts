@@ -34,6 +34,7 @@ import {
   generateDek,
 } from '@/domain/clientEncryption';
 import { runImagePipeline, exceedsRawCap, type ProcessedUpload } from '@/domain/imagePipeline';
+import { createDistinctNamer } from '@/domain/filename';
 import { handleSessionExpired } from './sessionExpired';
 import { useStorageUsageStore } from './storageUsageStore';
 import { useToastStore } from './toastStore';
@@ -926,6 +927,7 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => {
       //    20-MB cap.
       const liveAttachments = get().byProject[projectId] ?? [];
       const fileNameById = new Map(liveAttachments.map((a) => [a.id, a.fileName]));
+      const distinctName = createDistinctNamer();
 
       async function* zipInputs(): AsyncIterable<{
         name: string;
@@ -941,10 +943,9 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => {
           const plaintext = await decryptBlob(ciphertext, dek);
           // Fall back to the attachment id when the live list cache
           // doesn't contain a name for this entry (e.g. the user
-          // dispatched bulk-fetch on a stale cache). No filename-collision
-          // dedup happens here (AC-434 asks for distinct names) —
-          // `client-zip` happily writes duplicate names.
-          const name = fileNameById.get(entry.attachmentId) ?? entry.attachmentId;
+          // dispatched bulk-fetch on a stale cache). `client-zip` writes
+          // duplicate names as-is, so collisions are renamed here.
+          const name = distinctName(fileNameById.get(entry.attachmentId) ?? entry.attachmentId);
           yield {
             name,
             input: new ReadableStream<Uint8Array>({

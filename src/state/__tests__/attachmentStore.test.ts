@@ -811,19 +811,20 @@ describe('attachmentStore — image processing failures and stale-row sweep', ()
 });
 
 /**
- * Bulk-zip flow (ADR-0024 §"Bulk download" / AC-433).
+ * Bulk-zip flow (ADR-0024 §"Bulk download" / AC-433, AC-434).
  *
  * The state layer's `requestBulkZipBlob`:
  *   1. calls `attachmentApi.bulkFetch` to get a per-blob descriptor list
  *      (presigned-GET URL + unwrapped DEK + ciphertext size, ordered),
  *   2. fetches each ciphertext via `fetch`,
  *   3. AES-256-GCM-decrypts using the per-blob DEK,
- *   4. feeds the decrypted bytes into `client-zip`'s streaming generator,
+ *   4. feeds the decrypted bytes into `client-zip`'s streaming generator
+ *      under names distinct within the archive,
  *   5. returns the assembled zip as a `Blob`.
  *
  * These tests verify the wire-shape mapping, the fetch+decrypt sequence,
- * order preservation, the cap-breach passthrough, and the
- * decrypt-failure surface. The crypto helpers run for real against
+ * order preservation, distinct entry names, the cap-breach passthrough,
+ * and the decrypt-failure surface. The crypto helpers run for real against
  * Node 22's `globalThis.crypto` — the round-trip is the only honest way
  * to assert decrypt actually decrypted.
  */
@@ -953,6 +954,71 @@ describe('attachmentStore — requestBulkZipBlob', () => {
     expect(fetchOrder.length).toBe(2);
     expect(fetchOrder[0]).toContain('Z.ct');
     expect(fetchOrder[1]).toContain('A.ct');
+  });
+
+  it('AC-434: keeps each file of a same-named selection under a distinct entry name', async () => {
+    const { generateDek, encryptBlob, encodeDekMaterial } = await getCryptoHelpers();
+    const { unzipSync } = await import('fflate');
+
+    // Two `a.txt` plus an `a (2).txt` — the third is the name a naive
+    // suffix scheme would generate for the second, so it must not clash.
+    const files = [
+      { id: 'att-1', fileName: 'a.txt', content: 'one' },
+      { id: 'att-2', fileName: 'a.txt', content: 'two' },
+      { id: 'att-3', fileName: 'a (2).txt', content: 'three' },
+    ];
+    const encrypted = await Promise.all(
+      files.map(async (f) => {
+        const dek = generateDek();
+        const ct = await encryptBlob(new TextEncoder().encode(f.content), dek);
+        return { ...f, ct, dekMaterial: encodeDekMaterial(dek) };
+      }),
+    );
+
+    useAttachmentStore.setState({
+      byProject: {
+        'proj-1': files.map((f) =>
+          makeAttachment({ id: f.id, fileName: f.fileName, kind: 'binary' }),
+        ),
+      },
+    });
+    bulkFetchMock.mockResolvedValueOnce(
+      ok({
+        data: encrypted.map((f) => ({
+          attachmentId: f.id,
+          originalUrl: `https://storage/${f.id}.ct`,
+          originalDekMaterial: f.dekMaterial,
+          ciphertextSizeBytes: f.ct.byteLength,
+        })),
+      }),
+    );
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const match = encrypted.find((f) => String(url).includes(`${f.id}.ct`));
+      if (!match) throw new Error(`unexpected fetch ${String(url)}`);
+      return new Response(match.ct.slice(0).buffer, { status: 200 });
+    });
+
+    const blob = await useAttachmentStore.getState().requestBulkZipBlob(
+      'proj-1',
+      files.map((f) => f.id),
+    );
+    fetchSpy.mockRestore();
+
+    // `filter` sees every entry, duplicates included; the returned map
+    // would collapse them.
+    const entryNames: string[] = [];
+    const unzipped = unzipSync(new Uint8Array(await (blob as Blob).arrayBuffer()), {
+      filter: (entry) => {
+        entryNames.push(entry.name);
+        return true;
+      },
+    });
+    expect(new Set(entryNames).size).toBe(files.length);
+    expect(
+      Object.values(unzipped)
+        .map((bytes) => new TextDecoder().decode(bytes))
+        .sort(),
+    ).toEqual(files.map((f) => f.content).sort());
   });
 
   it('returns null and surfaces the German cap message on BULK_LIMIT_EXCEEDED', async () => {

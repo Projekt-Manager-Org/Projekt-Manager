@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { unzipSync } from 'fflate';
 import { STORAGE_STATES } from './storage-states';
 
 /**
@@ -290,7 +292,7 @@ test.describe('AC-404: Attachment upload preserves EXIF / GPS through the pipeli
 });
 
 test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
-  test('AC-433: Auswahl als ZIP dispatches bulk-fetch with per-file payloads and triggers a download', async ({
+  test('AC-433, AC-434: Auswahl als ZIP bulk-fetches per-file payloads and downloads one archive with distinct entry names', async ({
     page,
   }) => {
     // AC-433 (verification.md §15.26) — `Auswahl als ZIP` calls
@@ -299,14 +301,10 @@ test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
     // GET URL + unwrapped DEK material, and the browser assembles a
     // streaming zip locally so the user sees a single download.
     //
-    // E2E observability boundary: zip-content validation against the
-    // assembled bytes is brittle (streaming-zip output ordering,
-    // central-directory layout, in-memory decoding from a Node test
-    // process) and the library choice is implementation-defined. The
-    // task spec asks for the stable variant: assert the network sequence
-    // (bulk-fetch issued, response per-file with ≥ 2 entries) and the
-    // browser-level download event. Zip-payload assembly is pinned by
-    // the component-level test (`BinaryList.test.tsx`, AC-433).
+    // AC-434 — both uploads are `sample.pdf`, so the archive must rename
+    // one. Only entry names are asserted: the renaming scheme and entry
+    // order are implementation-defined, and payload assembly is pinned
+    // by `attachmentStore.test.ts` (`requestBulkZipBlob`).
     await openProjectDetailViaPanel(page);
 
     // Upload two PDFs so bulk-selection is meaningful. Re-uses the
@@ -382,6 +380,20 @@ test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
     //    hood.
     const download = await downloadPromise;
     expect(download.suggestedFilename().endsWith('.zip')).toBe(true);
+
+    // 4. One archive entry per selected file, no two under the same
+    //    name. `filter` sees every entry; the returned map would
+    //    collapse duplicates.
+    const downloadPath = await download.path();
+    const entryNames: string[] = [];
+    unzipSync(fs.readFileSync(downloadPath), {
+      filter: (file) => {
+        entryNames.push(file.name);
+        return false;
+      },
+    });
+    expect(entryNames.length).toBe(entries.length);
+    expect(new Set(entryNames).size).toBe(entryNames.length);
   });
 });
 
