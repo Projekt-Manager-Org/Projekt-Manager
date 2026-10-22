@@ -1,5 +1,5 @@
 /**
- * AC-373 — the binary recovery tool (architecture.md §11.4, ADR-0024
+ * AC-441, AC-442, AC-443, AC-444 — the binary recovery tool (ADR-0024
  * § Self-describing objects).
  *
  * The tool decrypts object versions written since a cutoff using only the
@@ -73,7 +73,7 @@ async function ageKeypair(): Promise<{ identity: string; recipient: string }> {
   return { identity, recipient };
 }
 
-describe('AC-373: binary recovery tool', () => {
+describe('binary recovery tool', () => {
   const env = getEnv();
   const storage = storageConfigFromEnv(env);
   const prefix = storage.keyPrefix ?? '';
@@ -186,6 +186,7 @@ describe('AC-373: binary recovery tool', () => {
     for (const dir of outDirs) rmSync(dir, { recursive: true, force: true });
   });
 
+  // AC-441, AC-443, AC-444
   it('recovers every version since the cutoff from metadata alone and lists failures', async () => {
     const dir = outDir();
     const result = await recoverObjects({ storage, identityPath, since: cutoff, outDir: dir });
@@ -261,6 +262,7 @@ describe('AC-373: binary recovery tool', () => {
     expect(onDisk).toEqual(result.entries);
   });
 
+  // AC-442
   it('with a key, reads only that key and still applies the cutoff', async () => {
     const recent = await recoverObjects({
       storage,
@@ -284,6 +286,7 @@ describe('AC-373: binary recovery tool', () => {
     expect(old.entries).toEqual([]);
   });
 
+  // AC-444
   it('CLI exits 0 when every version recovered and non-zero when any failed', async () => {
     const run = async (key: string, since = cutoff.toISOString()) => {
       const dir = outDir();

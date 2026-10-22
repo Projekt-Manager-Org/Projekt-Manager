@@ -1,5 +1,6 @@
 /**
- * Boot-time bucket-safety probe — unit tests for the pure validator and
+ * Boot-time bucket-safety probe (AC-236) and capability self-test
+ * (AC-237) — unit tests for the pure validator and
  * one integration test confirming the real MinIO surface satisfies the
  * canonical shape that init-storage.sh produces.
  *
@@ -276,6 +277,7 @@ describe('evaluateBucketSafety — multiple offences aggregate', () => {
 // custom result.
 // ---------------------------------------------------------------------
 
+// AC-236: a failing bucket shape refuses boot.
 describe('assertStorageBucketSafe — orchestration', () => {
   function makeReader(
     config: BucketSafetyConfig,
@@ -316,6 +318,7 @@ describe('assertStorageBucketSafe — orchestration', () => {
   // only AccessDenied passes; everything else trips a boot failure.
   // -------------------------------------------------------------------
 
+  // AC-237
   describe('capability self-test', () => {
     it('passes when the probe returns access-denied (capability split intact)', async () => {
       // Healthy case — the credential cannot destroy versions, both

@@ -144,7 +144,7 @@ export function isSafeFileName(fileName: string): boolean {
 
 /**
  * Client-side rule for showing the delete affordance on a row. Mirrors
- * the server-side check (AC-215): owner + office can delete any
+ * the server-side check (AC-411, api.md §14.3): owner + office can delete any
  * attachment; a worker only if they authored it AND the grace window has
  * not expired; bookkeeper never. The server stays authoritative — this
  * is UX gating per the hidden-control pattern (AC-121).

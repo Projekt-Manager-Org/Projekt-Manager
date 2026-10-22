@@ -1169,7 +1169,7 @@ describe('Ancestor-scoped filter unions project + nested entities', () => {
     }
 
     // Attachment init → stage backing ciphertext → complete. Under the
-    // revised AC-219 the `attachment:add` audit row (the ancestor-linked
+    // AC-427 the `attachment:add` audit row (the ancestor-linked
     // attachment row this feed asserts against) is written at COMPLETE,
     // not init — an init-only upload leaves no audit row. We drive the
     // full flow so a real `attachment:add` row with its project ancestor

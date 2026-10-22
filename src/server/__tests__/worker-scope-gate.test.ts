@@ -90,7 +90,7 @@ function plantedRoutes(db: Database) {
 /**
  * A ready attachment row with a real wrapped DEK — the bulk-fetch control
  * unwraps it. Created now by `createdBy`, so a worker's hide passes the
- * AC-215 self-delete check and only scope or binding can refuse it.
+ * AC-411 self-delete check and only scope or binding can refuse it.
  */
 async function insertReadyAttachment(projectId: string, createdBy: string): Promise<string> {
   const identityPath = process.env.BINARY_AGE_IDENTITY_PATH;
@@ -204,7 +204,7 @@ describe('Worker-scope route gate (AC-383)', () => {
       [
         'admits 422 on a fixture its control cannot pass',
         '-rejects-all',
-        { probe: 'by-id', invalidInputRefusal: 'AC-216' },
+        { probe: 'by-id', invalidInputRefusal: 'AC-414' },
         'control with in-scope ids answered 422',
       ],
       ['is left unclassified', '-unclassified', undefined, 'not classified'],

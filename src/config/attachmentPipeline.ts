@@ -10,14 +10,13 @@
  *   - `src/domain/imagePipeline.ts` reads the image/thumbnail encoding
  *     parameters and the per-file byte cap to enforce the size gate
  *     before calling `init` (matches the server-side cap that the
- *     presigned PUT pins via signed `Content-Length`, see
- *     [api.md §14.2.11](../../docs/spec/api.md#14211-attachments)).
+ *     presigned PUT pins via signed `Content-Length`, AC-399).
  *   - `src/ui/detail/BinaryList.tsx` reads the bulk-download caps to
- *     block client-side selections exceeding either cap (AC-223).
+ *     block client-side selections exceeding either cap (AC-435).
  *
  * Defaults mirror the architecture spec §12.2:
- *   - per-file cap: 1 MB (AC-214 ceiling and policy upper bound)
- *   - bulk caps: 20 files AND 20 MB (AC-216 twin-cap predicate)
+ *   - per-file cap: 1 MB (AC-398 ceiling and policy upper bound)
+ *   - bulk caps: 20 files AND 20 MB (AC-415 twin-cap predicate)
  *   - image-longest-edge / quality + thumbnail-longest-edge / quality
  *     are calibrated so a worker phone photo fits well within the
  *     1 MB per-file cap with EXIF (including GPS) preserved.

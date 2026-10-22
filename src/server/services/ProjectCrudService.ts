@@ -729,7 +729,7 @@ export class ProjectCrudService {
     try {
       // Collect attachment storage keys before the purge commits so the
       // post-commit best-effort delete has something to work with
-      // (AC-218). The FK cascade on `attachments.project_id` removes the
+      // (AC-428). The FK cascade on `attachments.project_id` removes the
       // rows atomically with the project, but storage objects do not
       // cascade — the app must delete them explicitly.
       let collectedKeys: Array<{
@@ -804,7 +804,7 @@ export class ProjectCrudService {
         emitStorageUsageChanged();
       }
 
-      // Post-commit storage cleanup (AC-218). A failure here does not
+      // Post-commit storage cleanup (AC-428, AC-429). A failure here does not
       // abort the DB cascade — the rows are already gone; orphaned
       // keys are logged for operator cleanup.
       if (this.storage && collectedKeys.length > 0) {

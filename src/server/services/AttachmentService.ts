@@ -2,7 +2,7 @@
  * Attachment service — init / complete / hide / restore / list /
  * Papierkorb listing / download-url / bulk-fetch.
  *
- * The state machine is pinned by api.md §14.2.11, data-model.md §5.13,
+ * The state machine is pinned by verification.md §15.26, data-model.md §5.13,
  * ADR-0022 (capability split + Papierkorb), and ADR-0024
  * (per-attachment envelope encryption):
  *
@@ -14,14 +14,14 @@
  *                 sentinel `application/octet-stream` content-type,
  *                 `ciphertextSizeBytes` length, and
  *                 `ciphertextContentMd5` body hash. No audit row
- *                 (AC-219) — an upload abandoned before complete leaves
+ *                 (AC-407) — an upload abandoned before complete leaves
  *                 no `attachment:add` row (allowlisted single-write-path
  *                 exception, parity with the orphan reaper).
  *   complete    → HEAD verify both objects against the persisted
  *                 ciphertext sizes + sentinel content-type, flip to
  *                 `status = 'ready'`, persist version-ids (ADR-0022).
  *                 Writes the authoritative `attachment:add` audit row
- *                 via `mutate()` (AC-219) — the row co-commits with the
+ *                 via `mutate()` (AC-427) — the row co-commits with the
  *                 state flip.
  *   hide        → see ADR-0022 — DeleteObject (no versionId) writes a
  *                 delete marker; CAS `ready → hidden` + audit row
@@ -50,7 +50,7 @@
  *
  * Worker scoping: the repository predicate narrows reads; the service
  * layer additionally rejects worker write/init on an unassigned project
- * (AC-214) and enforces the self-delete grace window (AC-215).
+ * (AC-410) and enforces the self-delete grace window (AC-411).
  *
  * Archive interaction: hide is gated on the project NOT being archived
  * (read-only preview); restore is permitted on archived projects so
@@ -185,8 +185,8 @@ export interface DownloadUrlResult {
 export type DownloadVariant = 'original' | 'thumbnail';
 
 /**
- * Per-attachment entry in a bulk-fetch response (api.md §14.2.11
- * `BulkFetchEntry`). Photos carry both the original and the thumbnail
+ * Per-attachment entry in a bulk-fetch response
+ * (`BulkFetchEntry`). Photos carry both the original and the thumbnail
  * triplet; binaries set the thumbnail fields to null (or omit them —
  * both shapes are admissible per the spec).
  */
@@ -350,7 +350,7 @@ function attachmentAuditLabel(row: AttachmentRow): string {
  * callback when the `pending → ready` CAS loses its predicate (the row
  * was reaped or already flipped between the pre-check read and the
  * UPDATE). Throwing rolls back the audit insert (no `attachment:add` row
- * for a flip that did not happen — AC-219); the caller catches it and
+ * for a flip that did not happen — AC-427); the caller catches it and
  * disambiguates 404 (reaper race) vs 409 (racing client) via a re-read.
  * A dedicated class keeps it distinct from the genuine domain errors
  * `mutate()` may surface from inside `run`.
@@ -391,7 +391,7 @@ export class AttachmentService {
   /**
    * Init: validate inputs, ensure caller scope, wrap each supplied DEK
    * against the operator-loaded recipient, write a `pending` row (no
-   * audit row — AC-219; the `attachment:add` row is written at
+   * audit row — AC-407; the `attachment:add` row is written at
    * `complete`), issue presigned PUT descriptors (one per blob).
    */
   async initUpload(
@@ -400,7 +400,7 @@ export class AttachmentService {
     input: InitUploadInput,
     log: ServiceLogger,
   ): Promise<InitUploadResult> {
-    // Project existence check — 404 takes precedence over scope (AC-214
+    // Project existence check — 404 takes precedence over scope (AC-410
     // + AC-147 pattern).
     const projectRow = await getProjectRowById(this.db, projectId);
     if (!projectRow) throw notFound(STRINGS.entities.project);
@@ -414,7 +414,7 @@ export class AttachmentService {
     }
 
     // Input validation — each branch produces `422 VALIDATION_ERROR` and
-    // persists no row (AC-245).
+    // persists no row (AC-398).
     const caps = resolveCaps();
     if (typeof input.fileName !== 'string' || input.fileName.length === 0) {
       throw validationError(STRINGS.validation.requiredString('fileName'));
@@ -470,7 +470,7 @@ export class AttachmentService {
       ) {
         throw validationError(STRINGS.errors.invalidInput);
       }
-      // Per-thumb cap (AC-245). Mirrors the original-side
+      // Per-thumb cap (AC-398). Mirrors the original-side
       // perFileCapBytes guard above; an oversized thumbnail
       // ciphertext rejects with the same shape (uploadFileTooLarge),
       // and persists no row.
@@ -491,7 +491,7 @@ export class AttachmentService {
     // shape — the file is irrelevant to `wrap()`. Errors here are
     // operator conditions (missing `age` binary, malformed recipient)
     // and bubble as 5xx — the per-row 422 surface is for unwrap-time
-    // failures only (api.md §14.2.11 design notes).
+    // failures only.
     const envelope = this.envelopeService();
     const wrappedDekBytes = await envelope.wrap(dekBytes);
     const wrappedDekBase64 = Buffer.from(wrappedDekBytes).toString('base64');
@@ -505,7 +505,7 @@ export class AttachmentService {
     const originalKey = storageKey(projectId, attachmentId, 'orig');
     const thumbKey = hasThumbnail ? storageKey(projectId, attachmentId, 'thumb') : null;
 
-    // Init writes the `pending` row WITHOUT an audit row (AC-219). The
+    // Init writes the `pending` row WITHOUT an audit row (AC-407). The
     // authoritative `attachment:add` row is written at `complete` (the
     // `pending → ready` finalize) — an upload abandoned before complete
     // leaves no audit entry and never surfaces on the activity feed
@@ -551,7 +551,7 @@ export class AttachmentService {
 
     // Sign one presigned PUT per blob against the *ciphertext* triplet
     // (sentinel content-type, ciphertext size, ciphertext MD5) plus the
-    // blob's own envelope as object metadata (AC-372) — each object then
+    // blob's own envelope as object metadata (AC-439) — each object then
     // decrypts without this row. The SigV4 binding rejects any
     // client-side divergence on these fields before the bytes reach the
     // storage provider; the provider additionally verifies Content-MD5
@@ -591,7 +591,7 @@ export class AttachmentService {
    * Complete: HEAD-check both objects, assert size against the row's
    * persisted `ciphertextSizeBytes` + sentinel content-type, flip
    * `pending` → `ready` through `mutate()`. This finalize writes the
-   * single authoritative `attachment:add` audit row (AC-219) — the row
+   * single authoritative `attachment:add` audit row (AC-427) — the row
    * co-commits with the status flip inside the `mutate()` transaction.
    */
   async completeUpload(
@@ -600,13 +600,13 @@ export class AttachmentService {
     attachmentId: string,
     log: ServiceLogger,
     // Optional trailing arg: complete now writes the `attachment:add`
-    // audit row (AC-219), so it threads the request correlation id into
+    // audit row (AC-427), so it threads the request correlation id into
     // `mutate()` like the other audited methods. Defaults to null so an
     // in-process caller (e.g. the AC-270 abort test) can omit it.
     correlationId: string | null = null,
   ): Promise<Attachment> {
     // Scope check early — spec requires worker on unassigned project to
-    // receive 403 even when the attachment id does not exist (AC-214).
+    // receive 403 even when the attachment id does not exist (AC-410).
     if (!(await isProjectInScope(this.db, caller, projectId))) {
       throw notPermitted();
     }
@@ -622,8 +622,8 @@ export class AttachmentService {
 
     const row = await getById(this.db, attachmentId);
     if (!row || row.projectId !== projectId) {
-      // Reaper already removed the row (or wrong-project mismatch). AC-212
-      // pins 404 here so the client discards pending state.
+      // Reaper already removed the row (or wrong-project mismatch): 404
+      // so the client discards pending state.
       throw notFound(STRINGS.entities.resource);
     }
     if (row.status === 'ready') {
@@ -639,7 +639,7 @@ export class AttachmentService {
     let versionId: string | null;
     try {
       const head = await this.storage.headObject(row.originalKey);
-      // Declared-ciphertext-size pin first (ADR-0024 / AC-212). The
+      // Declared-ciphertext-size pin first (ADR-0024 / AC-402). The
       // presigned PUT's signed `Content-Length` already rejects a size
       // deviation at the signature layer, so reaching this branch means
       // a signature bypass — refuse the flip so a size-substituted
@@ -692,7 +692,7 @@ export class AttachmentService {
         }
         // Sentinel content-type — no `startsWith('image/')` carve-out
         // under e2e. Both blobs are opaque ciphertext under the fixed
-        // type (api.md §14.2.11 / ADR-0024 §"Complete() flow rework").
+        // type (ADR-0024 §"Complete() flow rework").
         if (thumbHead.contentType !== CIPHERTEXT_CONTENT_TYPE) {
           throw conflict(STRINGS.errors.invalidInput);
         }
@@ -706,7 +706,7 @@ export class AttachmentService {
     }
 
     // Flip pending → ready through `mutate()` so the `attachment:add`
-    // audit row co-commits with the state change (AC-219). This is the
+    // audit row co-commits with the state change (AC-427). This is the
     // attachment's authoritative entry into the project — init writes no
     // audit row, so an abandoned upload leaves nothing on the feed. The
     // `markReady` CAS runs inside `mutate()`'s `run` callback; a racing
@@ -801,7 +801,7 @@ export class AttachmentService {
   /**
    * Hide (user-initiated DELETE; soft-hide per ADR-0022). Validates
    * caller scope, the project's read-write status (archive gate), and
-   * the worker self-delete grace window (AC-215).
+   * the worker self-delete grace window (AC-411).
    *
    * Storage-first ordering, outside the DB transaction. The
    * `DeleteObject` (no versionId) writes a delete marker on the
@@ -844,7 +844,7 @@ export class AttachmentService {
       throw notFound(STRINGS.entities.resource);
     }
 
-    // Worker self-delete grace (AC-215). Owner / office bypass.
+    // Worker self-delete grace (AC-411). Owner / office bypass.
     if (callerIsWorkerOnly(caller)) {
       if (row.createdBy !== caller.id) {
         throw notPermitted();
@@ -1063,7 +1063,7 @@ export class AttachmentService {
           // audit row. The bucket retains only the prior hidden version.
           //
           // The bucket lifecycle (provider-side, ADR-0022) and the row
-          // reaper (app-side, data-model.md §6.12) both fire on the same
+          // reaper (app-side, AC-426) both fire on the same
           // `L` window but on independent clocks. A row may briefly
           // outlive its bytes — the source version is gone from storage
           // while the row is still at `status='hidden'`. Surface that as
@@ -1133,7 +1133,7 @@ export class AttachmentService {
 
   /**
    * Issue a presigned-GET URL plus the unwrapped DEK material that
-   * decrypts the requested variant. ADR-0024 / api.md §14.2.11.
+   * decrypts the requested variant. ADR-0024.
    *
    * The unwrap runs per request via a fresh `KeyEnvelopeService` against
    * the operator-loaded identity path. Per-row unwrap failures
@@ -1158,7 +1158,7 @@ export class AttachmentService {
     }
 
     // Scope: worker hitting an attachment on an unassigned project is
-    // 403 (AC-217 three-way result). The attachment row existence is
+    // 403 (AC-410 / AC-147 three-way result). The attachment row existence is
     // already confirmed above, so this branch cannot collapse to 404.
     if (!(await isProjectInScope(this.db, caller, projectId))) {
       throw notPermitted();
@@ -1238,7 +1238,7 @@ export class AttachmentService {
 
   /**
    * Bulk fetch — per-file presigned-GETs + unwrapped DEK material for
-   * each requested attachment. ADR-0024 / api.md §14.2.11. The browser
+   * each requested attachment. ADR-0024. The browser
    * fetches each ciphertext, decrypts with the DEK, and assembles the
    * archive locally (streaming-zip).
    *
@@ -1297,8 +1297,7 @@ export class AttachmentService {
     if (rows.length !== attachmentIds.length) {
       throw validationError(STRINGS.errors.invalidInput);
     }
-    // No pending or hidden rows in the batch (api.md §14.2.11 design
-    // notes "Non-`ready` rows are ineligible for bulk fetch").
+    // No pending or hidden rows in the batch (AC-414).
     if (rows.some((r) => r.status !== 'ready')) {
       throw validationError(STRINGS.errors.invalidInput);
     }
@@ -1333,9 +1332,8 @@ export class AttachmentService {
         throw serverError();
       }
       // Original-side unwrap. Any failure here — including a missing
-      // `wrappedDek` column on a 'ready' row — propagates as 500 per
-      // api.md §14.2.11 ("any unwrap failure in the batch → 500
-      // SERVER_ERROR"). The boot probe is supposed to make
+      // `wrappedDek` column on a 'ready' row — propagates as 500
+      // SERVER_ERROR. The boot probe is supposed to make
       // `KeyEnvelopeUnwrapError` unreachable, so a hit here signals a
       // data-integrity break (corrupt envelope on a ready row, or a
       // partial key rotation that left some envelopes wrapped to a

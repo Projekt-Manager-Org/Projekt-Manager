@@ -1,5 +1,5 @@
 /**
- * Boot-time binary `age` identity probe — fail-closed (AC-239).
+ * Boot-time binary `age` identity probe — fail-closed (AC-438).
  *
  * Pins the operator-loaded-identity boot gate from ADR-0024:
  *   - happy path: a parseable identity at the configured tmpfs path lets
@@ -52,7 +52,7 @@ const FAIL_FAST_OPTIONS = { waitTimeoutMs: 0, progressLogIntervalMs: 0 } as cons
 // Pattern mirrors `evaluateBucketSafety` in `storage/safety.ts`.
 // ---------------------------------------------------------------------
 
-describe('AC-239: binary-identity boot probe — pure validator', () => {
+describe('AC-438: binary-identity boot probe — pure validator', () => {
   const CANONICAL: BinaryIdentitySnapshot = {
     fileExists: true,
     fileReadable: true,
@@ -139,7 +139,7 @@ describe('AC-239: binary-identity boot probe — pure validator', () => {
 // validator. Throws the aggregated error at the boot site.
 // ---------------------------------------------------------------------
 
-describe('AC-239: binary-identity boot probe — orchestration', () => {
+describe('AC-438: binary-identity boot probe — orchestration', () => {
   function withTempIdentity<T>(body: (filePath: string) => Promise<T> | T): Promise<T> {
     // Each arm gets its own tmp dir so parallel runs don't trample
     // each other's fixture. `os.tmpdir()` is always writable in the

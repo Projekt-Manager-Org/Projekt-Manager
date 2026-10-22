@@ -200,7 +200,7 @@ function projectUrl(row: AuditLogRow | null): string {
  * attachment, while the ancestor is `('project', projectId)`
  * (architecture.md §11.12, AC-211). Falls back to `/` only when the
  * ancestor is absent — a defensive branch the catalog should never hit,
- * since every `attachment:add` row carries a project ancestor (AC-219).
+ * since every `attachment:add` row carries a project ancestor (AC-427).
  */
 function projectUrlFromAncestor(row: AuditLogRow | null): string {
   if (!row || !row.ancestorEntityId) return '/';

@@ -1,6 +1,6 @@
 /**
  * Unit tests for the attachment hidden reaper scheduler — closes the
- * AC-246 scheduler-level clauses (graceful drain on stop, single-flight
+ * scheduler-level clauses (graceful drain on stop, single-flight
  * sweep) that the reaper-service tests deliberately leave to this file.
  *
  * Pattern mirrors `audit-retention-scheduler.test.ts`: vitest fake
@@ -74,7 +74,7 @@ describe('startAttachmentHiddenReaperScheduler', () => {
   });
 
   // ---------------------------------------------------------------------
-  // AC-246 graceful-shutdown drain. The first `it.todo` clause in
+  // Graceful-shutdown drain. The first `it.todo` clause in
   // `attachments-hidden-reaper.test.ts` punts here; this is the assertion.
   // ---------------------------------------------------------------------
   it('stop() cancels further sweeps and awaits an in-flight one', async () => {
@@ -115,7 +115,7 @@ describe('startAttachmentHiddenReaperScheduler', () => {
   });
 
   // ---------------------------------------------------------------------
-  // AC-246 single-flight invariant. The second `it.todo` clause in
+  // Single-flight invariant. The second `it.todo` clause in
   // `attachments-hidden-reaper.test.ts` punts here; this is the assertion.
   // ---------------------------------------------------------------------
   it('skips a tick that fires while a previous sweep is still in flight', async () => {

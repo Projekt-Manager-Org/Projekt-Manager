@@ -1,18 +1,18 @@
 /**
  * Photo gallery — ready photos rendered via the synthetic-origin
- * Service-Worker decrypt path (ADR-0024, spec §8.15.4 / §8.15.7).
+ * Service-Worker decrypt path (ADR-0024, ui/project-detail.md §8.15.4).
  *
  * Each `<img src>` points at `/encrypted-storage/<projectId>/<id>.thumbnail`;
  * the SW intercepts, calls `download-url`, fetches ciphertext, decrypts,
  * and serves plaintext bytes. The component never calls `download-url`
- * itself — that is the SW's job per AC-243.
+ * itself — that is the SW's job (AC-416).
  *
  * Failure-mode placeholders, distinguished by the SW's
  * `data-sw-error-code` attribute on the failing `<img>`:
- *   - `OBJECT_ABSENT` → AC-224 `"Datei fehlt"`
+ *   - `OBJECT_ABSENT` → AC-436 `"Datei fehlt"`
  *   - `DEK_UNWRAP_FAILED` → AC-244 `"Schlüssel nicht verfügbar"`
  *   - no code (SW not controlling the page, generic SW failure) →
- *     `"Datei konnte nicht geladen werden"`; delete stays available
+ *     AC-437 `"Datei konnte nicht geladen werden"`; delete stays available
  *
  * List fetching goes through the attachment store; this component is a
  * thin renderer.
@@ -65,8 +65,8 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
     await hideAttachment(projectId, photo.id);
   };
 
-  // Per-row error state, set by `<img onError>`. Spec §8.15.7 forbids
-  // caching this verdict — a list refetch that re-emits the same row id
+  // Per-row error state, set by `<img onError>`. Never cache this
+  // verdict — a list refetch that re-emits the same row id
   // wipes the entry; the SW re-probes on the next render.
   const [rowErrors, setRowErrors] = useState<Record<string, RowError>>({});
   const [lightbox, setLightbox] = useState<{ attachmentId: string; url: string } | null>(null);
@@ -81,8 +81,7 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
   }, [fetchForProject, projectId]);
 
   // Drop stale row-error verdicts when the underlying photo set changes
-  // — spec §8.15.7 forbids client-side caching of the missing/unwrap
-  // verdict across list refetches. React's documented "adjust state on
+  // — the missing/unwrap verdict is never cached across list refetches. React's documented "adjust state on
   // prop change during render" pattern (https://react.dev/reference/react/useState#storing-information-from-previous-renders);
   // an effect-based reset would re-render once, then setState, then
   // re-render again — wasted work flagged by `react-hooks/set-state-in-effect`.
@@ -122,7 +121,7 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
 
   const handleImgError = (photoId: string, target: HTMLElement | null) => {
     // SW signals divergence via `data-sw-error-code` on the failing
-    // `<img>` element (spec §8.15.7 "Failure-mode signal contract").
+    // `<img>` element (signal contract in `src/sw/decryptHandler.ts`).
     const verdict = loadErrorForSwCode(target?.getAttribute('data-sw-error-code'));
     setRowErrors((prev) => ({ ...prev, [photoId]: verdict }));
   };
@@ -186,7 +185,7 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
               // because the operator remediation is to restore the
               // matching binary `age` identity, not to investigate
               // storage. `data-bulk-eligible="false"` excludes the row
-              // from any future bulk-fetch selection (spec §8.15.7).
+              // from any future bulk-fetch selection.
               return (
                 <li
                   key={photo.id}
@@ -199,7 +198,7 @@ export function PhotoGallery({ projectId, archived = false }: PhotoGalleryProps)
               );
             }
             if (error === 'object-absent') {
-              // AC-224: storage 404 on the ciphertext fetch. Same
+              // AC-436: storage 404 on the ciphertext fetch. Same
               // exclusion rule — drop from bulk-fetch selection.
               return (
                 <li

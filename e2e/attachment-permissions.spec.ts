@@ -4,8 +4,8 @@ import { STORAGE_STATES } from './storage-states';
 /**
  * Attachment role-gating smoke — the browser-observable slice of the
  * route-scoping + per-role visibility contract on the project detail
- * page (AC-206 deep-link, AC-215 bookkeeper-no-delete, AC-217 unscoped
- * read). Server-layer contracts live in `src/server/__tests__/`.
+ * page (AC-206 deep-link, AC-121 hidden controls; the bookkeeper's
+ * unscoped read and lack of hide per api.md §14.3). Server-layer contracts live in `src/server/__tests__/`.
  *
  * Runs under `chromium` (read-only). The spec does not persist any new
  * `attachment` rows — it only asserts visibility and navigation.
@@ -68,7 +68,7 @@ test.describe('AC-206: unassigned worker deep-linking /projects/:id', () => {
   });
 });
 
-test.describe('AC-206 / AC-215 / AC-217: bookkeeper reads the detail page, cannot write', () => {
+test.describe('AC-206 / AC-121: bookkeeper reads the detail page, cannot write', () => {
   test.use({ storageState: STORAGE_STATES.bookkeeper });
 
   test('bookkeeper lands on the page and sees gallery + binary list, no control surfaces', async ({

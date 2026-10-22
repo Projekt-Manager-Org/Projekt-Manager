@@ -1,14 +1,14 @@
 /**
  * Service-level test — `AttachmentService.restoreAttachment` returns
  * `410 GONE` when the source object version is no longer recoverable
- * from object storage (verification.md AC-234, data-model.md §6.12 race
+ * from object storage (AC-424; the race
  * window between the bucket lifecycle reaper and the row reaper).
  *
  * Why a stand-alone file. The integration sibling
  * `attachments-routes.test.ts` cannot reach this surface because the
  * dev/test storage credentials inherit the same restricted capability
  * profile as production (`writeFiles, readFiles, listFiles` only —
- * AC-237). A versioned `DeleteObject` against the test bucket fails
+ * ADR-0022). A versioned `DeleteObject` against the test bucket fails
  * `AccessDenied` by design, so we cannot simulate the lifecycle reap
  * by destroying the version. Stubbing `copyFromVersion` at the service
  * boundary gets the same coverage with no architectural compromise:
@@ -100,7 +100,7 @@ function stubStorageBytesGone(): AttachmentStorageClient {
   } as unknown as AttachmentStorageClient;
 }
 
-describe('AttachmentService.restoreAttachment — bytes-gone race (AC-234, §6.12)', () => {
+describe('AttachmentService.restoreAttachment — bytes-gone race (AC-424)', () => {
   let db: Database;
   let pool: pg.Pool;
   let projectId: string;

@@ -1,6 +1,6 @@
 # Verification Exceptions
 
-Tests are the test spec: an AC is covered when a test file cites its ID (`grep -rn AC-245 src e2e scripts`). This file lists only what a test citation cannot show. [`scripts/check-traceability.sh`](../../scripts/check-traceability.sh) enforces it ([S-ACTR, S-TRAC](../../review/conventions-spec.md)).
+Tests are the test spec: an AC is covered when a test file cites its ID (`grep -rn AC-397 src e2e scripts`). This file lists only what a test citation cannot show. [`scripts/check-traceability.sh`](../../scripts/check-traceability.sh) enforces it ([S-ACTR, S-TRAC](../../review/conventions-spec.md)).
 
 | Status    | Meaning                                                                                           |
 | --------- | ------------------------------------------------------------------------------------------------- |
@@ -31,6 +31,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-36  | infra   | CI `lint` — ESLint, Prettier                                                                             |
 | AC-37  | infra   | CI `check` job; nightly `e2e.yml`                                                                        |
 | AC-38  | gap     | needs an e2e that flips the config value and checks header + footer                                      |
+| AC-40  | retired | —                                                                                                        |
 | AC-41  | gap     | needs an e2e below 1780 px walking tier-3 columns                                                        |
 | AC-42  | gap     | needs an e2e below 1350 px                                                                               |
 | AC-43  | gap     | needs an e2e below 940 px asserting action columns collapse last                                         |
@@ -75,8 +76,32 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-191 | retired | —                                                                                                        |
 | AC-194 | retired | —                                                                                                        |
 | AC-208 | gap     | `ProjectDetailPage.test.tsx` pins the read surface only; edit gating per permission is unasserted        |
+| AC-212 | retired | —                                                                                                        |
+| AC-213 | retired | —                                                                                                        |
+| AC-214 | retired | —                                                                                                        |
+| AC-215 | retired | —                                                                                                        |
+| AC-216 | retired | —                                                                                                        |
+| AC-217 | retired | —                                                                                                        |
+| AC-218 | retired | —                                                                                                        |
+| AC-219 | retired | —                                                                                                        |
+| AC-220 | retired | —                                                                                                        |
+| AC-221 | retired | —                                                                                                        |
+| AC-222 | retired | —                                                                                                        |
+| AC-223 | retired | —                                                                                                        |
+| AC-224 | retired | —                                                                                                        |
 | AC-227 | retired | —                                                                                                        |
 | AC-229 | infra   | CI `lint` — `scripts/check-env-drift.sh`                                                                 |
+| AC-232 | retired | —                                                                                                        |
+| AC-233 | retired | —                                                                                                        |
+| AC-234 | retired | —                                                                                                        |
+| AC-235 | retired | —                                                                                                        |
+| AC-238 | retired | —                                                                                                        |
+| AC-239 | retired | —                                                                                                        |
+| AC-241 | retired | —                                                                                                        |
+| AC-242 | retired | —                                                                                                        |
+| AC-243 | retired | —                                                                                                        |
+| AC-245 | retired | —                                                                                                        |
+| AC-246 | retired | —                                                                                                        |
 | AC-248 | retired | —                                                                                                        |
 | AC-249 | retired | —                                                                                                        |
 | AC-250 | retired | —                                                                                                        |
@@ -96,4 +121,11 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-348 | infra   | CI `lint` — lychee, `lychee.toml`                                                                        |
 | AC-350 | retired | —                                                                                                        |
 | AC-368 | infra   | review of `docs/ops/backup/recovery.md`                                                                  |
+| AC-372 | retired | —                                                                                                        |
+| AC-373 | retired | —                                                                                                        |
 | AC-374 | infra   | monthly binary-key drill — `docs/ops/binary-key/drills.md`                                               |
+| AC-401 | gap     | needs an e2e asserting the stored object is not the uploaded plaintext                                   |
+| AC-405 | gap     | no test drives the client-side cap block or the missing retry action                                     |
+| AC-423 | gap     | no test drives a restore whose storage copy fails with a non-410 error                                   |
+| AC-434 | gap     | not implemented — the ZIP assembler writes duplicate names as-is (`attachmentStore.ts`)                  |
+| AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review                       |

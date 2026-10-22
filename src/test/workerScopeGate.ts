@@ -32,7 +32,7 @@
  *
  * A refusal must come from scope or binding, not from a later check, so
  * foreign fixtures are rows the worker could otherwise act on — e.g. the
- * foreign attachment is the worker's own fresh upload, past the AC-215
+ * foreign attachment is the worker's own fresh upload, past the AC-411
  * self-delete check.
  *
  * Public routes are out of scope: no worker identity reaches them, and
@@ -100,7 +100,7 @@ export const WORKER_ROUTE_SCOPE: Record<string, RouteScope> = {
     probe: 'by-id',
     body: (ids) => ({ attachmentIds: [ids.attachment] }),
     childInBody: true,
-    invalidInputRefusal: 'AC-216',
+    invalidInputRefusal: 'AC-414',
   },
   'GET /api/invoices': { probe: 'leak' },
   'GET /api/invoices/years': { probe: 'leak' },

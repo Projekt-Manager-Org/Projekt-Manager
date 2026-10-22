@@ -96,7 +96,7 @@ describe('composePushPayload — AC-211', () => {
     // `entityId` is the attachment, the ancestor is the project. Distinct
     // ids for entityId vs ancestorEntityId so an entityId-based
     // regression on the url fails here. The payload-side projectLabel
-    // duplicate (legacy AC-219 shape) is no longer rendered, ensuring
+    // duplicate (legacy payload shape) is no longer rendered, ensuring
     // ancestorEntityLabel is the single source of the project name.
     const out = composePushPayload(
       'project.attachment_added',
@@ -131,7 +131,7 @@ describe('composePushPayload — AC-211', () => {
 
   it('falls back to "Neue Datei hinzugefügt" when attachment_added row has no ancestor label', () => {
     // Defensive branch: every `attachment:add` row is supposed to carry
-    // a project ancestor (AC-219), but the composer falls back gracefully
+    // a project ancestor (AC-427), but the composer falls back gracefully
     // when the snapshot is absent — e.g. a future top-level attachment
     // class, or a buggy write path. Pins the fallback string so a
     // regression that drops the conditional surfaces here instead of

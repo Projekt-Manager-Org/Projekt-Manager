@@ -226,7 +226,7 @@ function assertPdfDownloadShape(res: any): void {
     expect(buf!.subarray(0, 5).toString('utf-8')).toBe('%PDF-');
   } else if (ct.includes('application/json')) {
     // Presigned-GET wrapper — must carry `url` and `dekMaterial`
-    // (parity with the attachment download surface in §14.2.11).
+    // (parity with the attachment download surface).
     const body = res.json() as { url?: string; dekMaterial?: string };
     expect(typeof body.url).toBe('string');
     expect(body.url!.length).toBeGreaterThan(0);

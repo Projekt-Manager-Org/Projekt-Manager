@@ -18,7 +18,7 @@
  *     storage state along with the DB. Without this, a re-seed truncates
  *     `attachments` but leaves the bucket dirty — the orphan blobs still
  *     decrypt with the binary identity (each carries its own envelope,
- *     AC-372), consume bucket space, and would mirror real bytes onto
+ *     AC-439), consume bucket space, and would mirror real bytes onto
  *     B2's Compliance-locked bucket via
  *     `scripts/sync-dev-to-vps.sh` if its pollution guard didn't refuse.
  *

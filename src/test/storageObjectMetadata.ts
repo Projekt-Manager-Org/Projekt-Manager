@@ -1,6 +1,6 @@
 /**
  * Read an object's user metadata straight from object storage — the
- * observable surface of AC-372 ("self-describing objects"). Goes through
+ * observable surface of AC-439 ("self-describing objects"). Goes through
  * a raw `HeadObjectCommand` rather than the app's storage client so the
  * assertion does not depend on the code under test. Config comes from the
  * one env mapping, so the HEAD lands on the same `STORAGE_KEY_PREFIX`

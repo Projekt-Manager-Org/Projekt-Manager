@@ -23,7 +23,7 @@ import { getEnv } from '../config/env.js';
 
 export function projectRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    // Storage client for the purge-cascade's storage-side cleanup (AC-218).
+    // Storage client for the purge-cascade's storage-side cleanup (AC-428).
     const storage = createStorageClientFromEnv(getEnv());
     const crudService = new ProjectCrudService(db, { storage });
     const transitionService = new ProjectTransitionService(db);

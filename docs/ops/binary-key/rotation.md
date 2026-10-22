@@ -23,7 +23,7 @@ The supported path is **option 1**. Plan the rotation around an attachment-count
 
 ## Procedure
 
-You are about to mint a new keypair, deploy it, and accept that every existing attachment renders as the [AC-244](../../spec/verification.md#1526-attachments) "Schlüssel nicht verfügbar" placeholder (the wrapped envelope on each historical row was made for the old recipient; the new app cannot unwrap it) until re-uploaded. The placeholder is distinct from [AC-224](../../spec/verification.md#1526-attachments) "Datei fehlt" (which fires when the storage object is absent). Communicate this to users before starting.
+You are about to mint a new keypair, deploy it, and accept that every existing attachment renders as the [AC-244](../../spec/verification.md#1526-attachments) "Schlüssel nicht verfügbar" placeholder (the wrapped envelope on each historical row was made for the old recipient; the new app cannot unwrap it) until re-uploaded. The placeholder is distinct from [AC-436](../../spec/verification.md#1526-attachments) "Datei fehlt" (which fires when the storage object is absent). Communicate this to users before starting.
 
 ### Before — quiesce uploads
 

@@ -84,7 +84,7 @@ After the edit, redeploy and retry the paste. If the directive is intact in the 
 
 ## Decryption fails for one attachment
 
-A specific attachment renders as the [AC-244](../../spec/verification.md#1526-attachments) "Schlüssel nicht verfügbar" placeholder in the gallery / binary list while others render fine. (Distinct from the [AC-224](../../spec/verification.md#1526-attachments) "Datei fehlt" placeholder which fires when the storage object is absent.)
+A specific attachment renders as the [AC-244](../../spec/verification.md#1526-attachments) "Schlüssel nicht verfügbar" placeholder in the gallery / binary list while others render fine. (Distinct from the [AC-436](../../spec/verification.md#1526-attachments) "Datei fehlt" placeholder which fires when the storage object is absent.)
 
 Two distinct causes, with different remediations:
 

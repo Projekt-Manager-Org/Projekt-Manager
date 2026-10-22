@@ -1,5 +1,5 @@
 /**
- * Attachment hidden reaper — data-model.md §6.12, AC-246.
+ * Attachment hidden reaper — AC-426, AC-427.
  *
  * Hard-deletes `attachment` rows at `status = 'hidden'` whose age past
  * `hiddenAt` exceeds the configured TTL. Each removed row produces
@@ -142,7 +142,7 @@ export async function runAttachmentHiddenReaper(
       // Real DB / dispatcher fault on this row — log on the error
       // channel with the row id and continue. The info line at the
       // end still fires; `removed_count` reflects observed deletions
-      // only, parallel to the orphan reaper (data-model.md §6.11).
+      // only, parallel to the orphan reaper (`attachment-orphan-reaper.ts`).
       deps.logger.error(
         {
           event: EVENT_ATTACHMENT_HIDDEN_REAPER,

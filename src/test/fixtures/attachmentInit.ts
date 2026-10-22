@@ -15,7 +15,7 @@
  * For photo init bodies (`hasThumbnail = true`) the analogous thumbnail
  * triplet (`thumbDekMaterial`, `ciphertextThumbSizeBytes`,
  * `ciphertextThumbContentMd5`) lands too — thumbnails are independent
- * ciphertext objects with their own DEKs (api.md §14.2.11).
+ * ciphertext objects with their own DEKs (ADR-0024).
  *
  * `STUB_MD5_BASE64` (MD5 of the empty string) is the placeholder for
  * the ciphertext MD5 in tests that exercise the route/service layer in

@@ -1,6 +1,7 @@
 /**
  * Key namespaces the bucket carries that no `attachments` row indexes and
- * that hold no envelope metadata (architecture.md §11.4).
+ * that hold no envelope metadata (the deploy-probe namespace,
+ * data-model.md §5.13).
  *
  * `__probe/` holds the deploy-preflight sentinels `__probe/upload` and
  * `__probe/copyobj` (`deploy-preflight-cli.ts`), rewritten on every

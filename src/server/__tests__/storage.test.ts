@@ -5,7 +5,7 @@
  * HTTP routes). The module encapsulates upload/download/hide operations
  * against an S3-compatible object storage backend.
  *
- * Per architecture.md §11.4, the module must support:
+ * The module supports (ARCHITECTURE.md § Attachments Module):
  *   - Upload (key, data, content type) -> stored reference
  *   - Download (key) -> data stream
  *   - Hide (key) -> success/failure (DeleteObject without VersionId on a
@@ -34,7 +34,7 @@ import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 /**
  * STORAGE_* env vars are required. If they are not set, `storageConfigFromEnv`
  * throws at `beforeAll` instead of silently reporting green. The storage module is
- * a core boundary of the architecture (architecture.md §11.4) and whether it
+ * a core boundary of the architecture and whether it
  * is wired up correctly is not optional state — it must be observable from
  * CI. Running tests that skip themselves on missing config teaches you
  * nothing about whether the module works.
@@ -51,8 +51,8 @@ describe('Object Storage Module', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-40: Object storage module can upload a file, retrieve it,
-  //        and verify the retrieved contents match the original
+  // Object storage module can upload a file, retrieve it, and
+  // verify the retrieved contents match the original
   // ---------------------------------------------------------------
   //
   // Test isolation rationale:
@@ -69,10 +69,9 @@ describe('Object Storage Module', () => {
   // The cost is a few extra uploads per run. Storage tests are
   // integration-level and not performance-critical — isolation wins.
   // Do not "optimize" this back into a shared key.
-  // AC-40 [crit]
-  describe('AC-40: Upload, retrieve, and verify', () => {
+  describe('Upload, retrieve, and verify', () => {
     const testContent = Buffer.from(
-      'AC-40 Testdatei: Projekt-Manager Objekt-Speicher Integrationstest.',
+      'Testdatei: Projekt-Manager Objekt-Speicher Integrationstest.',
       'utf-8',
     );
     const testContentType = 'text/plain';
@@ -164,7 +163,7 @@ describe('Object Storage Module', () => {
   });
 
   // ---------------------------------------------------------------
-  // copyFromVersion() — restore primitive (ADR-0022, AC-234).
+  // copyFromVersion() — restore primitive (ADR-0022; the GONE path of AC-424).
   //
   // Provider-divergent behaviour on an unaddressable source version is
   // the reason for the HEAD-with-versionId probe in `copyFromVersion`:

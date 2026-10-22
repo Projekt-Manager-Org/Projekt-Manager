@@ -18,7 +18,7 @@ applyBranding();
 startThemeRuntime();
 initDebugConsole();
 // SW → SPA DOM-mirror bridge for binary attachment failure-mode
-// signals (ui/project-detail.md §8.15.7, AC-244). Installs a
+// signals (AC-436, AC-244, AC-437). Installs a
 // BroadcastChannel listener that writes `data-sw-error-code` on the
 // requesting `<img>` / `<iframe>` element when the SW decrypt handler
 // emits one of the two pinned codes.

@@ -419,7 +419,7 @@ describe('attachmentStore — hideAttachment optimistic-with-rollback', () => {
 });
 
 describe('attachmentStore — retry and download URL plumbing', () => {
-  it('retryUpload re-runs init for the retained client id (no caching of failure)', async () => {
+  it('retryUpload re-runs init for the retained client id (no caching of failure, AC-225)', async () => {
     // Drive a real upload through the store so the internal file map is
     // populated — retryUpload depends on it per the store's contract.
     initMock.mockResolvedValue({
@@ -482,7 +482,7 @@ describe('attachmentStore — retry and download URL plumbing', () => {
   });
 
   it('requestDownloadUrl returns { url, dekMaterial } on success and null on failure', async () => {
-    // ADR-0024 / api.md §14.2.11 — the download-url surface returns the
+    // ADR-0024 — the download-url surface returns the
     // presigned-GET URL plus the unwrapped DEK so the SW decrypt handler
     // can fetch + decrypt with one round-trip per blob. The state layer
     // forwards both fields verbatim; consuming the DEK is the SW's job.
@@ -811,7 +811,7 @@ describe('attachmentStore — image processing failures and stale-row sweep', ()
 });
 
 /**
- * Bulk-zip flow (ADR-0024 §"Bulk download" / AC-216).
+ * Bulk-zip flow (ADR-0024 §"Bulk download" / AC-433).
  *
  * The state layer's `requestBulkZipBlob`:
  *   1. calls `attachmentApi.bulkFetch` to get a per-blob descriptor list
@@ -822,7 +822,7 @@ describe('attachmentStore — image processing failures and stale-row sweep', ()
  *   5. returns the assembled zip as a `Blob`.
  *
  * These tests verify the wire-shape mapping, the fetch+decrypt sequence,
- * order preservation (AC-216), the cap-breach passthrough, and the
+ * order preservation, the cap-breach passthrough, and the
  * decrypt-failure surface. The crypto helpers run for real against
  * Node 22's `globalThis.crypto` — the round-trip is the only honest way
  * to assert decrypt actually decrypted.
@@ -949,7 +949,7 @@ describe('attachmentStore — requestBulkZipBlob', () => {
     fetchSpy.mockRestore();
 
     expect(blob).toBeInstanceOf(Blob);
-    // The fetch order matches the request order (AC-216): Z first, A second.
+    // The fetch order matches the request order: Z first, A second.
     expect(fetchOrder.length).toBe(2);
     expect(fetchOrder[0]).toContain('Z.ct');
     expect(fetchOrder[1]).toContain('A.ct');

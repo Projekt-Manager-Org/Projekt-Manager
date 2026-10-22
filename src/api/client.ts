@@ -645,7 +645,7 @@ export interface AttachmentInitResponse {
 }
 
 /**
- * Download-URL response — ADR-0024 / api.md §14.2.11. The server
+ * Download-URL response — ADR-0024. The server
  * unwraps `wrappedDek` (or `wrappedThumbDek` for the thumbnail variant)
  * per request and returns the raw 32-byte DEK as base64 alongside the
  * presigned-GET URL. The Service Worker fetches `url` and decrypts with
@@ -658,7 +658,7 @@ export interface AttachmentDownloadUrlResponse {
 }
 
 /**
- * One row in a bulk-fetch response (api.md §14.2.11 `BulkFetchEntry`).
+ * One row in a bulk-fetch response (server `BulkFetchEntry`).
  * Photos carry both the original and thumbnail triplet; binaries omit
  * the thumbnail fields. Ordered by request: the response array's
  * indices align with the supplied `attachmentIds` indices.

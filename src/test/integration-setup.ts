@@ -3,7 +3,7 @@
  *
  * Four concerns share this file because all must run BEFORE any test
  * imports — the per-fork DB, the per-fork binary `age` identity (ADR-0024
- * / AC-239), the per-fork storage namespace and the per-fork takeout
+ * / AC-438), the per-fork storage namespace and the per-fork takeout
  * staging directory are all consumed by the route layer via `process.env`,
  * and the route layer is reached on the first `startApp()` call which
  * re-parses env each time.
@@ -26,7 +26,7 @@
  *    Symmetric with the e2e fix in `a24ef66` (`projekt_manager_e2e`), but
  *    one-DB-per-process so multiple agents don't collide either.
  *
- * 2. Per-fork binary `age` identity (ADR-0024 / AC-239)
+ * 2. Per-fork binary `age` identity (ADR-0024 / AC-438)
  *    The route's `download-url` and `bulk-fetch` paths unwrap each row's
  *    `wrapped_dek` against an operator-loaded binary `age` identity at
  *    `BINARY_AGE_IDENTITY_PATH`; the configured `BINARY_AGE_RECIPIENT`

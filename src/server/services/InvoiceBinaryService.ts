@@ -41,7 +41,7 @@ import { insertRenderedInvoiceBinary, invoicePdfKey } from '../repositories/atta
  *      `KeyEnvelopeService.wrap()` — parity with attachment init.
  *   4. `putObject(key, ciphertext, "application/octet-stream", meta, lock)`
  *      — server-side direct PUT, no presign round-trip, carrying the
- *      envelope + invoice number as object metadata (AC-372) and its own
+ *      envelope + invoice number as object metadata (AC-439, AC-440) and its own
  *      Compliance lock of `invoiceObjectLockDays` (AC-296).
  *   5. Insert an `attachments` row at `status='ready'` carrying the
  *      ciphertext key + size + the wrapped DEK + MIME `application/pdf`
@@ -104,7 +104,7 @@ export class InvoiceBinaryService {
     const { storage, binaryAgeRecipient, binaryAgeIdentityPath, invoiceObjectLockDays } = this.deps;
     if (invoice.number === null) {
       // Only numbered (issued / Storno) invoices are rendered; the number
-      // rides on the object (AC-372), so a missing one is a caller bug.
+      // rides on the object (AC-440), so a missing one is a caller bug.
       throw new Error(`persistRendered: invoice ${invoice.id} has no number`);
     }
 
@@ -128,7 +128,7 @@ export class InvoiceBinaryService {
       originalKey,
       ciphertext,
       'application/octet-stream',
-      // Self-describing object (AC-372): decryptable without this row.
+      // Self-describing object (AC-439): decryptable without this row.
       {
         wrappedDek: wrappedDekBase64,
         wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,

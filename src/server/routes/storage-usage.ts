@@ -7,7 +7,7 @@
  *     payload; an existing project outside the caller's scope returns
  *     403 NOT_PERMITTED; an unknown project id returns 404 NOT_FOUND.
  *     The 403/404 distinguishability mirrors the attachment policy
- *     (AC-214) and the project policy (AC-147) — resource existence is
+ *     (AC-410) and the project policy (AC-147) — resource existence is
  *     not a secret at the role boundary under the project's threat
  *     model (ADR-0019).
  *   - GET  /api/storage-usage — deployment-wide roll-up. Gated by the

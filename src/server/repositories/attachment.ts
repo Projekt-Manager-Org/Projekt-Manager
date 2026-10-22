@@ -8,7 +8,7 @@
  * `TransactionalDatabase` alias for parity with other repos.
  *
  * The `attachmentScopeForCaller` predicate in `scope.ts` lets worker-
- * visible rows narrow by `project_workers` membership (AC-217); this
+ * visible rows narrow by `project_workers` membership (AC-410); this
  * module composes it into list / get-by-id queries.
  */
 
@@ -85,7 +85,7 @@ export interface CreatePendingAttachmentInput {
   /**
    * Ciphertext byte count for the original blob — what the server signs
    * into the presigned PUT's Content-Length and re-asserts at HEAD time
-   * (ADR-0024 / api.md §14.2.11). Distinct from plaintext `sizeBytes`.
+   * (ADR-0024, AC-399). Distinct from plaintext `sizeBytes`.
    */
   ciphertextSizeBytes: number;
   /** Same for the thumbnail blob; null for non-photo / no-thumb rows. */
@@ -110,7 +110,7 @@ export interface CreatePendingAttachmentInput {
 /**
  * List attachments on a project, ANDed with the caller's scope predicate
  * so a worker sees only rows on projects they are assigned to. Excludes
- * `pending` rows — the list surface in api.md §14.2.11 returns ready-only
+ * `pending` rows — the list surface (AC-409) returns ready-only
  * rows; the service layer is responsible for that filter so repositories
  * stay composable. Rendered invoice PDFs are excluded (`notInvoicePdf`).
  */
@@ -191,7 +191,7 @@ export async function createPending(
  * pair captured at HEAD-verify time (ADR-0022). Returns the updated row
  * when the status transition was applied; returns null when the row is
  * gone OR already at `ready` — the service layer distinguishes those
- * cases via a follow-up read (404 vs 409 per AC-212).
+ * cases via a follow-up read (404 vs 409; AC-403).
  *
  * The WHERE predicate on `status = 'pending'` is the atomic guard that
  * turns the two-call flow (read → write) into a single CAS.
@@ -342,7 +342,7 @@ export async function listHiddenByProject(
 
 /**
  * List pending rows older than the cutoff time. Used by the orphan
- * reaper (data-model.md §6.11).
+ * reaper (AC-408).
  */
 export async function listOrphans(db: Database, cutoffTime: Date): Promise<AttachmentRow[]> {
   return db
@@ -354,7 +354,7 @@ export async function listOrphans(db: Database, cutoffTime: Date): Promise<Attac
 /**
  * Fetch attachments on a project regardless of status — used by the
  * bulk-download service to detect pending rows inside the batch
- * (AC-216 "any id referencing a row with status = 'pending' …").
+ * (AC-414: a pending or hidden id rejects the whole batch).
  *
  * The caller's scope predicate is ANDed into the query per ADR-0019,
  * so a scoped caller hitting ids on an unassigned project gets an
@@ -384,7 +384,7 @@ export async function listByIdsForProject(
 /**
  * Collect every attachment key (original + thumb) for a project, with
  * status. Used by the purge cascade so the storage-side cleanup can
- * fire after the DB transaction commits (AC-218), and so the caller
+ * fire after the DB transaction commits (AC-428), and so the caller
  * can gate `storage_usage_changed` emission on whether the cascade
  * removed any byte-bearing rows (AC-270 — pending rows contribute zero
  * to every counter, so a purge whose attachments were all `pending`
@@ -434,7 +434,7 @@ export async function deleteOrphans(db: Database, cutoffTime: Date): Promise<Att
 }
 
 /**
- * List rows eligible for the hidden reaper (data-model.md §6.12): rows
+ * List rows eligible for the hidden reaper (AC-426): rows
  * at `status = 'hidden'` whose age past `hiddenAt` exceeds the TTL.
  *
  * Read outside the per-row transaction so the reaper can iterate one-

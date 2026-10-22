@@ -80,7 +80,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'attachment:hide',
     // attachment:trash gates the Papierkorb (list hidden + restore).
     // Owner + office only — workers can hide their own uploads inside
-    // the AC-215 grace window but do not browse or restore the trash.
+    // the AC-411 grace window but do not browse or restore the trash.
     // Bookkeepers are read-only on attachments.
     'attachment:trash',
     // invoice:read / invoice:write — ADR-0026. Owner + office hold

@@ -1,6 +1,6 @@
 /**
  * API integration tests — attachment permission matrix (api.md §14.3;
- * the coarse gate clause of AC-215).
+ * the worker hide rule of AC-411).
  *
  * Pins the 4-role x 3-operation matrix from api.md §14.3:
  *
@@ -13,7 +13,7 @@
  *
  *   (*) Worker capabilities are additionally scoped at the repository
  *       and service layers — covered in attachments-scope.test.ts
- *       (AC-214, AC-217). AC-215's grace-window branches also live
+ *       (AC-410). AC-411's grace-window branches also live
  *       here since the permission gate and the grace check share the
  *       DELETE surface.
  *
@@ -78,7 +78,7 @@ async function seedReadyAttachment(projectId: string, createdBy: string | null):
   }
 }
 
-describe('Attachment permission matrix (api.md §14.3 + AC-215)', () => {
+describe('Attachment permission matrix (api.md §14.3 + AC-411)', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -221,7 +221,7 @@ describe('Attachment permission matrix (api.md §14.3 + AC-215)', () => {
       expect(res.statusCode).toBe(204);
     });
 
-    it('worker deleting their own attachment within the grace window succeeds (AC-215)', async () => {
+    it('worker deleting their own attachment within the grace window succeeds (AC-411)', async () => {
       // Seed a row whose createdBy IS the worker and whose createdAt is
       // fresh (the default NOW()). The grace window is 15 minutes per
       // architecture.md §12.2; freshly created rows are well within it.
@@ -230,7 +230,7 @@ describe('Attachment permission matrix (api.md §14.3 + AC-215)', () => {
       expect(res.statusCode).toBe(204);
     });
 
-    it("worker deleting another's attachment is rejected with 403 NOT_PERMITTED (AC-215)", async () => {
+    it("worker deleting another's attachment is rejected with 403 NOT_PERMITTED (AC-411)", async () => {
       // createdBy = owner-ish (null here — no real owner mattered).
       // Either way the author is not the worker.
       const id = await seedReadyAttachment(projectId, null);
@@ -240,7 +240,7 @@ describe('Attachment permission matrix (api.md §14.3 + AC-215)', () => {
     });
 
     // -----------------------------------------------------------------
-    // AC-215 boundary — just-inside / just-outside the grace window.
+    // AC-411 boundary — just-inside / just-outside the grace window.
     //
     // The previous single "24 h in the past → 403" arm wasn't a boundary
     // test: 24 h sits beyond any conceivable grace, so a bug that mis-
@@ -253,7 +253,7 @@ describe('Attachment permission matrix (api.md §14.3 + AC-215)', () => {
     // build-time default; the in-process test app uses no env override,
     // so it matches the server-side value the service reads.
     // -----------------------------------------------------------------
-    describe('AC-215 grace-window boundary', () => {
+    describe('AC-411 grace-window boundary', () => {
       const graceMinutes = ATTACHMENT_CONFIG.workerSelfDeleteGraceMinutes;
 
       it('worker self-delete JUST OUTSIDE the grace window → 403 NOT_PERMITTED', async () => {

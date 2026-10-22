@@ -20,8 +20,7 @@
  * unwrap-side fault — wrong recipient (partial rotation), corrupted
  * envelope bytes (AEAD verify), structurally-invalid input (header
  * parse). The caller need not distinguish these — the route layer
- * surfaces the documented `DEK_UNWRAP_FAILED` 422 (api.md §14.2.11
- * download-url error paths) and the SW renders the AC-244 "Schlüssel
+ * surfaces `DEK_UNWRAP_FAILED` 422 on download-url and the SW renders the AC-244 "Schlüssel
  * nicht verfügbar" placeholder. `wrap` failures throw the underlying
  * error (operator-side condition: missing recipient, broken `age`
  * binary, malformed identity file); they're not part of the per-row

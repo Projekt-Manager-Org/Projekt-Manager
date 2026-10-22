@@ -317,7 +317,7 @@ export function mapFastify4xx(
  * help. Distinct from 404 (no representation, may have never existed) and
  * 409 (transient conflict, refetch+retry might resolve). Used when the
  * Papierkorb row is present but the source bytes were lifecycle-reaped
- * ahead of the row reaper (data-model.md §6.12 race window).
+ * ahead of the row reaper (AC-424 race window).
  */
 export function gone(message: string): AppError {
   return new AppError('GONE', message, 410);
@@ -332,7 +332,7 @@ export function serverError(): AppError {
 }
 
 /**
- * Bulk-download cap exceeded — AC-216. Specialized validation error
+ * Bulk-download cap exceeded — AC-415. Specialized validation error
  * surfaced with its own code so the UI can render the "too many files /
  * too large" copy without parsing the generic message.
  */
@@ -345,8 +345,8 @@ export function bulkLimitExceeded(details: BulkLimitDetails): AppError {
 }
 
 /**
- * Per-row envelope unwrap failure — ADR-0024 / api.md §14.2.11
- * download-url error paths. The route returns this on a corrupt
+ * Per-row envelope unwrap failure — ADR-0024, on the download-url
+ * route. The route returns this on a corrupt
  * `wrappedDek` (or `wrappedThumbDek` for thumbnail variant), or when
  * the row's envelope was wrapped to a different recipient than the
  * currently-loaded binary identity (partial key rotation). The SW

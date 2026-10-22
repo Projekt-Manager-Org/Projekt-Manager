@@ -52,7 +52,7 @@ Scheduled encrypted `pg_dump` → R2. Every run is verified on-create (Tier 1); 
 Uploaded files live on Backblaze B2. The app key cannot destroy versions; "deletion" surfaced to users is a hide on the versioned bucket, real destruction is a provider-side lifecycle action only. A finite-window Compliance Object Lock backstop catches operator-side mistakes during the first `R` days of every version. Boot-time bucket-shape, capability self-tests, and binary-identity probe refuse to start on drift.
 
 - **Design rationale:** [ADR-0022](docs/adr/0022-binary-storage-b2-compliance-object-lock.md) (durability), [ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md) (confidentiality)
-- **Contract:** [spec data-model.md §5.13](docs/spec/data-model.md#513-attachment), [api.md §14.2.11](docs/spec/api.md#14211-attachments), [verification.md §15.26](docs/spec/verification.md#1526-attachments)
+- **Contract:** [spec data-model.md §5.13](docs/spec/data-model.md#513-attachment), [verification.md §15.26](docs/spec/verification.md#1526-attachments)
 - **Operator procedure:** [docs/ops/object-storage-provisioning.md](docs/ops/object-storage-provisioning.md) — B2 bucket setup, capability-restricted app key, dev-MinIO parity; [docs/ops/binary-key/](docs/ops/binary-key/) — binary `age` identity provisioning, paste, and drill
 - **Code:** `src/server/services/AttachmentService.ts`, `src/server/services/KeyEnvelopeService.ts`, `src/server/storage/{client,safety}.ts`, `src/server/services/attachment-orphan-reaper.ts`
 

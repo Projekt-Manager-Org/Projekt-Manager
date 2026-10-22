@@ -1,5 +1,5 @@
 /**
- * Binary recovery tool (AC-373, architecture.md §11.4, ADR-0024
+ * Binary recovery tool (AC-441, AC-442, AC-443, AC-444; ADR-0024
  * § Self-describing objects).
  *
  * Decrypts every object version written at or after a cutoff using only

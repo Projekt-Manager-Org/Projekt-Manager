@@ -1,8 +1,8 @@
 /**
  * PhotoGallery — synthetic-origin Service-Worker render path
- * (ADR-0024, spec ui/project-detail.md §8.15.4) plus the two lazy
- * placeholder branches (`"Datei fehlt"` AC-224, `"Schlüssel nicht
- * verfügbar"` AC-244).
+ * (ADR-0024, spec ui/project-detail.md §8.15.4) plus the lazy
+ * placeholder branches (`"Datei fehlt"` AC-436, `"Schlüssel nicht
+ * verfügbar"` AC-244, generic AC-437).
  *
  * Under the e2e contract:
  *   - Each `<img src>` points at `/encrypted-storage/<projectId>/<attachmentId>.thumbnail`;
@@ -13,10 +13,10 @@
  *     the Fetch response.
  *   - Lightbox flips to `.original` under the same synthetic origin.
  *   - `<img onError>` is the integration seam: the SW returns a non-2xx
- *     Response on either an object-absent path (AC-224) or an
+ *     Response on either an object-absent path (AC-436) or an
  *     envelope-unwrap failure (AC-244), and the gallery flips the row
  *     to the matching German placeholder. A failure without either code
- *     renders the generic load-failure placeholder (§8.15.7).
+ *     renders the generic load-failure placeholder (AC-437).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -117,15 +117,14 @@ beforeEach(() => {
   );
 });
 
-describe('PhotoGallery — renders ready photo thumbnails (AC-222)', () => {
+describe('PhotoGallery — renders ready photo thumbnails (AC-409)', () => {
   it('points each ready-photo <img src> at the synthetic-origin thumbnail path', async () => {
     render(<PhotoGallery projectId="p-42" />);
 
     const thumb = await screen.findByTestId('photo-thumb-ph-ready');
     const img = thumb.querySelector('img');
     expect(img).not.toBeNull();
-    // Synthetic origin per ui/project-detail.md §8.15.4 — the SW path
-    // pinned by AC-243. The browser-internal scheme has no TTL and no
+    // Synthetic origin (ADR-0024) — the SW path behind AC-416. The browser-internal scheme has no TTL and no
     // cache headers leaked.
     expect(img?.getAttribute('src')).toBe('/encrypted-storage/p-42/ph-ready.thumbnail');
   });
@@ -143,7 +142,7 @@ describe('PhotoGallery — renders ready photo thumbnails (AC-222)', () => {
   });
 });
 
-describe('PhotoGallery — lightbox requests the original variant (AC-222)', () => {
+describe('PhotoGallery — lightbox requests the original variant (ui/project-detail.md §8.15.4)', () => {
   it('flips the open <img src> to the synthetic-origin original variant on click', async () => {
     render(<PhotoGallery projectId="p-42" />);
 
@@ -221,9 +220,9 @@ describe('PhotoGallery — lightbox a11y', () => {
   });
 });
 
-describe('PhotoGallery — "Datei fehlt" render (AC-224 photo side)', () => {
+describe('PhotoGallery — "Datei fehlt" render (AC-436 photo side)', () => {
   it('renders the "Datei fehlt" placeholder when the SW signals object-absent on the thumbnail', async () => {
-    // Lazy detection per ui/project-detail.md §8.15.7: the list endpoint
+    // Lazy detection: the list endpoint
     // does not probe storage. The UI learns bytes are missing only when
     // the `<img>` decode fails — the SW returned a non-2xx Response
     // because the ciphertext GET hit a storage 404. Distinct from
@@ -237,7 +236,7 @@ describe('PhotoGallery — "Datei fehlt" render (AC-224 photo side)', () => {
     expect(img).not.toBeNull();
 
     // The SW mirrors OBJECT_ABSENT onto the `<img>` before the error
-    // event fires (§8.15.7 failure-mode signal contract).
+    // event fires (signal contract, `src/sw/decryptHandler.ts`).
     img!.setAttribute('data-sw-error-code', 'OBJECT_ABSENT');
     fireEvent.error(img!, { target: img });
 
@@ -260,7 +259,7 @@ describe('PhotoGallery — "Datei fehlt" render (AC-224 photo side)', () => {
   });
 });
 
-describe('PhotoGallery — load failure without an SW code (AC-224 boundary)', () => {
+describe('PhotoGallery — load failure without an SW code (AC-437)', () => {
   it('renders "Datei konnte nicht geladen werden", not "Datei fehlt", and keeps the delete action', async () => {
     // No code on the `<img>`: the SW did not answer (page not controlled,
     // the request reached the server) or failed without a pinned code.
@@ -304,9 +303,9 @@ describe('PhotoGallery — load failure without an SW code (AC-224 boundary)', (
 
 describe('PhotoGallery — Schlüssel nicht verfügbar render (AC-244)', () => {
   it('renders the "Schlüssel nicht verfügbar" placeholder when the SW signals envelope-unwrap failure', async () => {
-    // Per ui/project-detail.md §8.15.7 and AC-244: an envelope unwrap
+    // Per AC-244: an envelope unwrap
     // failure (e.g. partial key rotation in progress, recipient drift)
-    // surfaces a distinct placeholder from AC-224. The SW's
+    // surfaces a distinct placeholder from AC-436. The SW's
     // download-url request returns 422 DEK_UNWRAP_FAILED; the SW
     // translates that into a non-2xx Response carrying the code so
     // `<img onError>` can disambiguate. The German label is locked at
@@ -319,7 +318,7 @@ describe('PhotoGallery — Schlüssel nicht verfügbar render (AC-244)', () => {
 
     // Mark the `<img>` as the unwrap-failure variant so the gallery's
     // `onError` handler reads the cause attribute and routes to AC-244
-    // instead of AC-224. The exact attribute name is the implementer's
+    // instead of AC-436. The exact attribute name is the implementer's
     // choice — the test pins it to `data-sw-error-code` because the SW
     // is the single seam that knows the reason. If the implementer
     // picks a different attribute, this test breaks loudly and the
@@ -342,7 +341,7 @@ describe('PhotoGallery — Schlüssel nicht verfügbar render (AC-244)', () => {
     const placeholder = await screen.findByTestId('photo-key-unavailable-ph-ready');
     await userEvent.click(placeholder);
     // Clicking the placeholder must not open the lightbox — same
-    // exclusion rule as AC-224. The "download disabled" contract from
+    // exclusion rule as AC-436. The "download disabled" contract from
     // AC-244 lives on BinaryList (where per-row downloads exist) and
     // is asserted there; the gallery surface has no per-row download
     // button to disable.

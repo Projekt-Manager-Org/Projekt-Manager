@@ -1,19 +1,19 @@
 /**
- * Attachment orphan reaper — data-model.md §6.11, AC-213.
+ * Attachment orphan reaper — AC-408.
  *
  * Removes `attachment` rows stuck at `status = 'pending'` past the
  * configured TTL together with the backing `originalKey` / `thumbKey`
  * objects. Allowlisted in `scripts/check-audit-mutations.sh`: pending
  * rows never entered the domain, so no `audit_log` row is produced.
  *
- * Operational-log contract (data-model.md §6.11): exactly one info
+ * Operational-log contract: exactly one info
  * line per run with fields `event`, `ttl_minutes`, `removed_count`
  * (non-negative; 0 on no-op), `ran_at` (ISO 8601).
  *
  * Failure semantics: a storage delete that fails (missing key,
  * transient provider error) is logged with `error_hint` and the row
  * is still removed. The metadata-table cleanliness goal trumps a
- * missing backing object (§6.11).
+ * missing backing object.
  */
 
 import type { Database } from '../db/connection.js';
@@ -82,7 +82,7 @@ async function bestEffortDelete(
   try {
     await storage.hide(key);
   } catch (err) {
-    // Per §6.11: the metadata-table cleanliness goal trumps a missing
+    // The metadata-table cleanliness goal trumps a missing
     // backing object. Log with `error_hint` (error channel so the single
     // info line-per-run contract stays intact) and continue. S3's
     // DeleteObject is idempotent, so reaching this branch means a

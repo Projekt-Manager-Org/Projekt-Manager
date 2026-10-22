@@ -18,7 +18,7 @@
  * `finished_at` is the staging clock: it is the moment the job reached its
  * terminal state (the test backdates `finished_at` to exercise this).
  *
- * Operational-log contract (mirrors attachment-orphan-reaper.ts §6.11):
+ * Operational-log contract (mirrors attachment-orphan-reaper.ts):
  * exactly one info line per run with fields `event`, `ttl_minutes`,
  * `removed_count` (non-negative; 0 on no-op), `ran_at` (ISO 8601). A
  * file delete that fails (already gone, transient FS error) is logged on

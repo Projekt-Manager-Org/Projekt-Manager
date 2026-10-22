@@ -2,7 +2,7 @@
  * Shared bulk-download cap defaults.
  *
  * Single source of truth for the 20-files / 20-MB twin-cap documented in
- * architecture.md §12.2 and pinned by verification.md AC-216. Imported by
+ * architecture.md §12.2 and pinned by verification.md AC-415 and AC-435. Imported by
  * both the client-facing pipeline config (`attachmentPipeline.ts`,
  * consumed by `BinaryList.tsx` for the UX pre-check) and the server-facing
  * config (`attachmentConfig.ts`, which layers env overrides on top for

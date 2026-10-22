@@ -1,12 +1,12 @@
 /**
- * SPA-side listener for SW failure-mode signals
- * (ui/project-detail.md §8.15.7, AC-244).
+ * SPA-side listener for SW failure-mode signals (the signal contract in
+ * `src/sw/decryptHandler.ts`).
  *
  * Asserts the round trip from a `BroadcastChannel('sw-attachment-errors')`
  * post (what the SW decrypt handler emits) to the `data-sw-error-code`
  * attribute landing on the matching `<img>` / `<iframe>` element. The
  * UI's `onError` handler reads that attribute to choose between the
- * AC-224 and AC-244 placeholders; without this listener, the SW's
+ * "Datei fehlt" and "Schlüssel nicht verfügbar" placeholders; without this listener, the SW's
  * Response header would be visible only to consumers that read it
  * explicitly, breaking the gallery render path that relies on the DOM
  * attribute (see PhotoGallery tests).

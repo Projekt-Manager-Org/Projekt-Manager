@@ -247,7 +247,7 @@ export const envSchema = z.object({
    * service so operators don't need to set it. */
   AGE_IDENTITY_PATH: z.string().default('/run/drill-key/identity'),
   // ---------------------------------------------------------------
-  // Binary attachment e2e (ADR-0024 / AC-239). Independent keypair from
+  // Binary attachment e2e (ADR-0024 / AC-438). Independent keypair from
   // the backup AGE_RECIPIENT above — separate rotation cadence and
   // separate blast radius. The boot-time probe
   // `assertBinaryIdentityLoaded` refuses to start the app service when

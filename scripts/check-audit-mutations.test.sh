@@ -35,7 +35,7 @@
 #      Expected: exit 1.
 #   9. Attachments positive — the same raw INSERT placed inside the
 #      allowlisted reaper (`src/server/services/attachment-orphan-reaper.ts`,
-#      the only legitimate `attachments` deleter per ADR-0023/AC-213)
+#      the only legitimate `attachments` deleter per ADR-0023/AC-408)
 #      must NOT be flagged. Expected: exit 0.
 #   (Previous scenarios 8–9 covered notification_rule as an audited
 #    entity; removed when ADR-0023 carved it out of the audit coupling.
@@ -237,7 +237,7 @@ assert_exit 1 "attachments raw INSERT in non-allowlisted file is flagged" \
 # The orphan reaper (src/server/services/attachment-orphan-reaper.ts)
 # is allowlisted — it's the only legitimate deleter of orphaned
 # `attachments` rows (housekeeping sweep past TTL, pre-domain rows
-# that never produced an audit entry; AC-213). The same INSERT that
+# that never produced an audit entry; AC-408). The same INSERT that
 # Scenario 8 flags must NOT fire here.
 echo ""
 echo "Scenario 9: attachments raw INSERT inside allowlisted reaper → expect exit 0"

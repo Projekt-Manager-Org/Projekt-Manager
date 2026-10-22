@@ -1,7 +1,7 @@
 /**
- * Service Worker decrypt handler — pinned by AC-243 in
- * docs/spec/verification.md §15.26 and the synthetic-origin contract in
- * ui/project-detail.md §8.15.4 / §8.15.5.
+ * Service Worker decrypt handler — pinned by AC-416 and AC-418 in
+ * docs/spec/verification.md §15.26; the synthetic-origin seam is
+ * ADR-0024's.
  *
  * The Service Worker installed by the SPA intercepts every request to
  * `/encrypted-storage/<projectId>/<attachmentId>.<variant>`
@@ -24,7 +24,7 @@
  *
  * NOTE — failing-test step (CONTRIBUTING.md § Workflow step 3): the
  * import `@/sw/decryptHandler` does not exist yet. This file pins the
- * AC-243 contract; the implementer iteration adds the module.
+ * AC-416 contract; the implementer iteration adds the module.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -150,10 +150,10 @@ function utf8(s: string): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
-// AC-243 — happy path + variants
+// AC-416 — happy path + variants
 // ---------------------------------------------------------------------------
 
-describe('AC-243: synthetic-origin intercept + decrypt', () => {
+describe('AC-416: synthetic-origin intercept + decrypt', () => {
   it('decrypts the original-variant ciphertext and returns the plaintext via the Fetch response', async () => {
     const dek = crypto.getRandomValues(new Uint8Array(DEK_BYTES));
     const plaintext = utf8('Hello, encrypted world.');
@@ -284,13 +284,12 @@ describe('AC-243: synthetic-origin intercept + decrypt', () => {
     expect(firstCallUrl).toContain('variant=thumbnail');
   });
 
-  it('returns a non-2xx Response when download-url returns 422 DEK_UNWRAP_FAILED so the consumer can render AC-244', async () => {
-    // Per api.md §14.2.11 Error paths: a wrapped-envelope unwrap failure
-    // surfaces as `422 VALIDATION_ERROR` with `code = DEK_UNWRAP_FAILED`.
+  it('returns a non-2xx Response when download-url returns 422 DEK_UNWRAP_FAILED so the consumer can render the key-unavailable placeholder', async () => {
+    // A wrapped-envelope unwrap failure surfaces as `422 VALIDATION_ERROR` with `code = DEK_UNWRAP_FAILED`.
     // The SW must translate this into a Response that fails the
     // browser's image / fetch consumer (so `<img onError>` fires and
     // BinaryList's download promise rejects), letting the UI flip to
-    // the AC-244 "Schlüssel nicht verfügbar" placeholder.
+    // the "Schlüssel nicht verfügbar" placeholder.
     installFetchPlan({
       downloadUrl: () =>
         jsonResponse({ code: 'DEK_UNWRAP_FAILED', message: 'envelope unwrap failed' }, 422),
@@ -302,20 +301,19 @@ describe('AC-243: synthetic-origin intercept + decrypt', () => {
 
     expect(response.ok).toBe(false);
     // Error code surfaces in the body so a consumer that wants to
-    // distinguish AC-244 (key-unavailable) from AC-224 (bytes-missing)
+    // distinguish key-unavailable from bytes-missing
     // can do so without a second request.
     const body = await response.json();
     expect(body.code).toBe('DEK_UNWRAP_FAILED');
-    // §8.15.7 also pins the code on the response header so the SW
+    // The signal contract also puts the code on the response header so the SW
     // wrapper / DOM-mirror layer can read it without re-parsing the
     // body.
     expect(response.headers.get('data-sw-error-code')).toBe('DEK_UNWRAP_FAILED');
   });
 
-  it('returns a non-2xx Response when the storage GET on the ciphertext fails (object-absent path → AC-224)', async () => {
-    // Per ui/project-detail.md §8.15.7 the operator remediation differs
-    // between AC-244 (envelope unwrap fails) and AC-224 (storage 404 /
-    // NoSuchKey). The SW returns a Response that drives the consumer
+  it('returns a non-2xx Response when the storage GET on the ciphertext fails (object-absent path)', async () => {
+    // The operator remediation differs between an envelope unwrap
+    // failure and a storage 404 / NoSuchKey. The SW returns a Response that drives the consumer
     // toward the right placeholder; the body code disambiguates.
     const dek = crypto.getRandomValues(new Uint8Array(DEK_BYTES));
     installFetchPlan({
@@ -337,11 +335,11 @@ describe('AC-243: synthetic-origin intercept + decrypt', () => {
     expect(response.headers.get('data-sw-error-code')).toBe('OBJECT_ABSENT');
   });
 
-  it('returns a non-2xx Response when the AES-GCM auth tag verification fails (tampered ciphertext)', async () => {
+  it('returns a non-2xx Response when the AES-GCM auth tag verification fails (tampered ciphertext, AC-418)', async () => {
     // Cryptographic-integrity failure on the read path: the underlying
     // bytes returned a 200 from storage but they no longer match the
-    // committed bytes. Per AC-243 / api.md §14.2.11 "two integrity
-    // layers, two failure modes", the AES-GCM tag is the catch — the
+    // committed bytes. Per AC-418 and ADR-0024's two integrity layers,
+    // the AES-GCM tag is the catch — the
     // SW must surface this as a fetch failure, not silently serve
     // garbled bytes (browser would then render a broken image / corrupt
     // PDF and confuse the user about which layer failed).
@@ -372,19 +370,19 @@ describe('AC-243: synthetic-origin intercept + decrypt', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC-244 negative-space — only sanctioned codes emit `data-sw-error-code`
+// Signal-contract negative space — only sanctioned codes emit `data-sw-error-code`
 // ---------------------------------------------------------------------------
-// Per ui/project-detail.md §8.15.7 the SW MUST NOT invent additional
-// codes. `OBJECT_ABSENT` is the storage-404 path; `DEK_UNWRAP_FAILED`
+// The SW MUST NOT invent additional codes. `OBJECT_ABSENT` is the storage-404 path; `DEK_UNWRAP_FAILED`
 // is the explicit `422 + body.code === 'DEK_UNWRAP_FAILED'` path. Every
 // other failure surface (transport drops, non-422 metadata errors,
 // non-404 storage errors, malformed bodies) returns a Response with NO
 // `data-sw-error-code` attribute set — the consumer's `<img onError>`
 // reads the absence of the attribute as "generic error" and renders the
-// generic error path rather than mis-routing to AC-224 / AC-244.
+// generic error path (AC-437) rather than mis-routing to "Datei fehlt" or
+// "Schlüssel nicht verfügbar".
 // ---------------------------------------------------------------------------
 
-describe('AC-244 narrowed semantics: data-sw-error-code only on sanctioned paths', () => {
+describe('signal contract: data-sw-error-code only on sanctioned paths', () => {
   // ----- Metadata-call failure paths (Defect 3) ----------------------------
 
   it('omits data-sw-error-code when the metadata fetch fails in transit (network drop)', async () => {
@@ -415,7 +413,7 @@ describe('AC-244 narrowed semantics: data-sw-error-code only on sanctioned paths
 
   it('omits data-sw-error-code on a 422 metadata error whose body code is NOT DEK_UNWRAP_FAILED', async () => {
     // 422 with a different VALIDATION_ERROR code (e.g. unknown variant
-    // per api.md §14.2.11). Spec sanctions DEK_UNWRAP_FAILED only for
+    // on download-url). The contract sanctions DEK_UNWRAP_FAILED only for
     // the envelope-unwrap arm; other 422 codes route to generic.
     installFetchPlan({
       downloadUrl: () => jsonResponse({ code: 'UNKNOWN_VARIANT' }, 422),
@@ -547,9 +545,9 @@ describe('AC-244 narrowed semantics: data-sw-error-code only on sanctioned paths
 });
 
 // ---------------------------------------------------------------------------
-// AC-244 DOM-mirror seam — BroadcastChannel pub/sub (Defect 1)
+// Signal-contract DOM-mirror seam — BroadcastChannel pub/sub (Defect 1)
 // ---------------------------------------------------------------------------
-// Per ui/project-detail.md §8.15.7, the SW writes `data-sw-error-code`
+// The SW writes `data-sw-error-code`
 // on BOTH the failing Response (header) AND the requesting `<img>` /
 // `<iframe>` element (DOM attribute). A Service Worker cannot touch the
 // DOM directly, so the handler posts the code over a BroadcastChannel
@@ -558,7 +556,7 @@ describe('AC-244 narrowed semantics: data-sw-error-code only on sanctioned paths
 // `src/sw/installAttachmentErrorListener.ts`.
 // ---------------------------------------------------------------------------
 
-describe('AC-244 DOM-mirror: handler posts to BroadcastChannel on sanctioned-code paths', () => {
+describe('signal contract DOM-mirror: handler posts to BroadcastChannel on sanctioned-code paths', () => {
   // Same-realm BroadcastChannel delivery is microtask-scheduled; a bare
   // `setTimeout(0)` flush is racy because we have no guarantee the
   // scheduled message is dispatched on that exact tick. For positive

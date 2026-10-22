@@ -11,7 +11,7 @@ This spec defines **what** the application does — not how it does it, how it w
 
 ## 1. Goal
 
-A hosted, authenticated system for centralized management of projects, customers, and users across the main company workflow. The system persists structured data in a database, authenticates users via a configurable role-based permission matrix (see [§4.2](#42-users)), and serves the front end through a backend API. Binary/object storage is included as a system component (see [architecture.md §11.4](architecture.md#114-object-storage-module)).
+A hosted, authenticated system for centralized management of projects, customers, and users across the main company workflow. The system persists structured data in a database, authenticates users via a configurable role-based permission matrix (see [§4.2](#42-users)), and serves the front end through a backend API. Binary/object storage is included as a system component (see [ARCHITECTURE.md § Attachments Module](../../ARCHITECTURE.md#attachments-module)).
 
 The system provides:
 
@@ -61,7 +61,7 @@ All views are role-gated. The system enforces that every pending action (unanswe
 - Persistent data storage in a database
 - Seed data providing a realistic starting snapshot
 - User authentication (login/logout, session management) with a configurable role-based permission matrix ([§4.2](#42-users))
-- Object storage module encapsulating all binary storage operations (see [architecture.md §11.4](architecture.md#114-object-storage-module))
+- Object storage module encapsulating all binary storage operations (see [ARCHITECTURE.md § Attachments Module](../../ARCHITECTURE.md#attachments-module))
 - Deployment to a hosted environment (reverse proxy, application, database, object storage)
 - CI builds images and pushes to the container registry; manual pull-based deploy over VPN per [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)
 

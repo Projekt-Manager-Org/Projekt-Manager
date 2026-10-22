@@ -75,8 +75,10 @@ async function openProjectDetailViaPanel(page: Page): Promise<string> {
 }
 
 test.describe('Attachment happy-path upload (worker on assigned project)', () => {
-  test('AC-243: photo upload renders a decoded thumbnail (SW decrypt path)', async ({ page }) => {
-    // AC-243 (verification.md §15.26) — the Service Worker installed by
+  test('AC-397 / AC-416: photo upload renders a decoded thumbnail (SW decrypt path)', async ({
+    page,
+  }) => {
+    // AC-416 (verification.md §15.26) — the Service Worker installed by
     // the SPA intercepts `/encrypted-storage/<projectId>/<attachmentId>.<variant>`,
     // calls `download-url` for the wrapped DEK material, fetches the
     // ciphertext from object storage, AES-256-GCM-decrypts, and returns
@@ -89,7 +91,7 @@ test.describe('Attachment happy-path upload (worker on assigned project)', () =>
     // The SW intercept itself cannot be asserted from the test page —
     // Playwright's page-side `route` API runs in the page's network
     // stack, not the SW's. The SW unit test (`src/sw/__tests__/sw-decrypt.test.ts`,
-    // AC-243) carries the
+    // AC-416) carries the
     // intercept-and-decrypt contract; this test pins the user-visible
     // outcome that proves the path worked end-to-end.
     await openProjectDetailViaPanel(page);
@@ -110,12 +112,12 @@ test.describe('Attachment happy-path upload (worker on assigned project)', () =>
 
     // After init → POST to storage → complete resolves, the gallery row
     // flips from "uploading" to a thumbnail rendered through the
-    // synthetic-origin SW path (ui/project-detail.md §8.15.4 + AC-222).
+    // synthetic-origin SW path (ui/project-detail.md §8.15.4, AC-409).
     const gallery = page.getByTestId('project-detail-photos');
     const thumb = gallery.getByTestId('attachment-thumbnail').first();
     await expect(thumb).toBeVisible({ timeout: 15_000 });
 
-    // AC-243 assertion: the `<img>` decoded successfully. `naturalWidth`
+    // AC-416 assertion: the `<img>` decoded successfully. `naturalWidth`
     // is non-zero only when the browser successfully decoded the bytes
     // returned through the synthetic origin — for ciphertext that means
     // the SW must have decrypted correctly. A decrypt failure (wrong
@@ -198,7 +200,7 @@ test.describe('Attachment happy-path upload (worker on assigned project)', () =>
   });
 });
 
-test.describe('Attachment upload preserves EXIF / GPS through the pipeline', () => {
+test.describe('AC-404: Attachment upload preserves EXIF / GPS through the pipeline', () => {
   test('photo lightbox blob retains the source APP1 segment and Make tag', async ({ page }) => {
     // Regression guard for #126. The previous library
     // (`browser-image-compression@2.0.2`) had an EXIF copier that
@@ -288,11 +290,11 @@ test.describe('Attachment upload preserves EXIF / GPS through the pipeline', () 
 });
 
 test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
-  test('AC-223: Auswahl als ZIP dispatches bulk-fetch with per-file payloads and triggers a download', async ({
+  test('AC-433: Auswahl als ZIP dispatches bulk-fetch with per-file payloads and triggers a download', async ({
     page,
   }) => {
-    // AC-223 (verification.md §15.26) — `Auswahl als ZIP` calls
-    // `POST /api/projects/:id/attachments/bulk-fetch` (api.md §14.2.11),
+    // AC-433 (verification.md §15.26) — `Auswahl als ZIP` calls
+    // `POST /api/projects/:id/attachments/bulk-fetch`,
     // receives one entry per requested attachment with per-file presigned
     // GET URL + unwrapped DEK material, and the browser assembles a
     // streaming zip locally so the user sees a single download.
@@ -304,7 +306,7 @@ test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
     // task spec asks for the stable variant: assert the network sequence
     // (bulk-fetch issued, response per-file with ≥ 2 entries) and the
     // browser-level download event. Zip-payload assembly is pinned by
-    // the component-level test (`BinaryList.test.tsx`, AC-223).
+    // the component-level test (`BinaryList.test.tsx`, AC-433).
     await openProjectDetailViaPanel(page);
 
     // Upload two PDFs so bulk-selection is meaningful. Re-uses the
@@ -351,11 +353,11 @@ test.describe('Attachment bulk-fetch + browser-side streaming zip', () => {
     await binaryList.getByTestId('binary-bulk-download').click();
 
     // 1. The wire endpoint is `bulk-fetch`, not the retired `bulk-download`
-    //    (api.md §14.2.11 — the route was rewritten as part of ADR-0024).
+    //    (the route was rewritten as part of ADR-0024).
     const bulkFetchResponse = await bulkFetchPromise;
     expect(bulkFetchResponse.ok()).toBe(true);
 
-    // 2. Response is `{ data: BulkFetchEntry[] }` (api.md §14.2.11) with
+    // 2. Response is `{ data: BulkFetchEntry[] }` with
     //    per-file payloads `{ attachmentId, originalUrl, originalDekMaterial,
     //    ciphertextSizeBytes, thumbUrl?, thumbDekMaterial?, ciphertextThumbSizeBytes? }`.
     //    ≥ 2 entries given two selected rows.
@@ -387,14 +389,14 @@ test.describe('Attachment placeholder for unwrappable wrapped envelope', () => {
   test('AC-244: download-url DEK_UNWRAP_FAILED renders "Schlüssel nicht verfügbar" and disables download', async ({
     page,
   }) => {
-    // AC-244 (verification.md §15.26 + ui/project-detail.md §8.15.7) —
+    // AC-244 (verification.md §15.26) —
     // a `status = 'ready'` row whose wrapped envelope cannot be
     // unwrapped at render time renders the German label
     // `"Schlüssel nicht verfügbar"` and disables the download action.
     // Trigger is a 422 `DEK_UNWRAP_FAILED` from `download-url`
-    // (api.md §14.2.11 — Error paths under "Download-URL").
+    // (api.md §14.4.1).
     //
-    // Detection is lazy per spec §8.15.7: the SW issues the
+    // Detection is lazy: the SW issues the
     // `download-url` call and surfaces the unwrap error to the UI on
     // the in-flight fetch. For binaries that means the click on
     // `attachment-download` triggers the lazy probe; this test mocks
@@ -446,9 +448,8 @@ test.describe('Attachment placeholder for unwrappable wrapped envelope', () => {
     });
 
     // Trigger the lazy probe. For binaries the click on
-    // `Herunterladen` is the documented detection point
-    // (ui/project-detail.md §8.15.7 — "the trigger is the user's
-    // download click").
+    // `Herunterladen` is the detection point — the user's download
+    // click.
     await pdfRow.getByTestId('attachment-download').click();
 
     // 1. The German placeholder label is rendered for the affected row.
@@ -465,7 +466,7 @@ test.describe('Attachment placeholder for unwrappable wrapped envelope', () => {
 
     // 3. The row is excluded from `bulk-fetch` selection — the per-row
     //    checkbox is disabled, mirroring the `"Datei fehlt"` exclusion
-    //    in the existing `missing` set (ui/project-detail.md §8.15.7).
+    //    in the existing `missing` set (AC-436).
     //    Asserts disabled-state on the checkbox; the row's id is
     //    embedded in the testid suffix, so a partial CSS attribute
     //    match avoids hardcoding the runtime-generated id.

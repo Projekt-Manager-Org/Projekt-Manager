@@ -35,9 +35,10 @@
  *   - AC-334 — the staging reaper sweeps an ABANDONED/terminal
  *     IMPORT upload (not just `ready` export artifacts), deleting the
  *     staged file and nulling `archiveRef`.
- *   - AC-372 — every object the job writes (original, regenerated
- *     thumbnail, invoice PDF) carries its own wrapped envelope +
- *     version as object metadata; the invoice PDF also its number.
+ *   - AC-439, AC-440 — every object the job writes (original,
+ *     regenerated thumbnail, invoice PDF) carries its own wrapped
+ *     envelope + version as object metadata; the invoice PDF also its
+ *     number.
  *   - AC-365 — an attachment an envelope invoice references as its
  *     rendered PDF is restored into the invoice namespace, under the
  *     invoice lock, off the attachment surface. The file runs with
@@ -579,7 +580,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // bigint columns come back from raw db.execute as strings — coerce.
       expect(Number(row.ciphertext_thumb_size_bytes ?? 0)).toBeGreaterThan(0);
 
-      // AC-372 — both restored objects carry their own envelope + version.
+      // AC-439 — both restored objects carry their own envelope + version.
       expect(await headObjectMetadata(row.original_key)).toMatchObject({
         [META_WRAPPED_DEK]: row.wrapped_dek,
         [META_WRAPPED_DEK_VERSION]: String(row.wrapped_dek_version),
@@ -769,7 +770,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(restored.length).toBe(1);
       const row = restored[0]!;
       expect(row.original_key.startsWith('invoices/')).toBe(true);
-      // AC-372 — the restored PDF carries its envelope, version and number.
+      // AC-439, AC-440 — the restored PDF carries its envelope, version and number.
       expect(await headObjectMetadata(row.original_key)).toMatchObject({
         [META_WRAPPED_DEK]: row.wrapped_dek,
         [META_WRAPPED_DEK_VERSION]: String(row.wrapped_dek_version),
@@ -794,7 +795,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-220 — ROUND-TRIP COVERAGE. The two-cycle e2e round proves the
+  // AC-431 — ROUND-TRIP COVERAGE. The two-cycle e2e round proves the
   // export is a FIXED POINT; it cannot prove the export is COMPLETE. A
   // table inside the wipe set but absent from the envelope round-trips
   // perfectly while losing every row it held, and no existing arm can
@@ -803,7 +804,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   // either survive a real export→import or sit on an exemption list with
   // a written reason. A new table added without a decision fails here.
   // -------------------------------------------------------------------
-  describe('AC-220: a full round trip loses no table (schema-drift tripwire)', () => {
+  describe('AC-431: a full round trip loses no table (schema-drift tripwire)', () => {
     /**
      * Tables a restore is allowed to shrink, each with the reason it is
      * allowed. This list is the decision record — adding a table to the
@@ -815,7 +816,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       push_subscriptions:
         'device- and VAPID-bound; a restored endpoint would be dead on any other instance',
       attachments:
-        'the `hidden` (Papierkorb) rows deliberately do not travel — AC-220; the `ready` rows are pinned by the next arm',
+        'the `hidden` (Papierkorb) rows deliberately do not travel — AC-431; the `ready` rows are pinned by the next arm',
     };
 
     /** Every base table in the live `public` schema. */
@@ -882,7 +883,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       }
     });
 
-    it('the restore purges the Papierkorb and keeps every ready attachment (AC-220)', async () => {
+    it('the restore purges the Papierkorb and keeps every ready attachment (AC-431)', async () => {
       const kept = await seedReadyAttachment({
         plaintext: crypto.randomBytes(512),
         fileName: 'behalten.pdf',

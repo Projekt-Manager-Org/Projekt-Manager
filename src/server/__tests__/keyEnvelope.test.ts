@@ -12,9 +12,7 @@
  *   - wrap(dek): produces opaque bytes that decode-back into the same
  *     32-byte DEK on unwrap with the matching identity.
  *   - unwrap with non-matching identity: throws a typed error so the
- *     route layer can map to the documented `DEK_UNWRAP_FAILED` 422
- *     surface ([api.md §14.2.11 error paths] for download-url, AC-244
- *     for the row-render placeholder).
+ *     route layer can map to the `DEK_UNWRAP_FAILED` 422 surface.
  *   - unwrap of corrupted envelope bytes: throws a typed error with
  *     the same shape — the route layer must not have to distinguish
  *     "wrong recipient" from "tampered bytes" at the per-row 422
@@ -90,8 +88,7 @@ describe('KeyEnvelopeService — wrap / unwrap round-trip', () => {
 describe('KeyEnvelopeService — unwrap failure modes', () => {
   it('unwrap with a non-matching identity throws KeyEnvelopeUnwrapError', async () => {
     // Wrap with one recipient, attempt unwrap with a different identity.
-    // This is the partial-rotation / wrong-recipient scenario named in
-    // api.md §14.2.11 download-url error paths and AC-244 (the SW
+    // This is the partial-rotation / wrong-recipient scenario (the SW
     // surfaces it as the "Schlüssel nicht verfügbar" placeholder).
     const wrappingPair = freshAgePair();
     const otherPair = freshAgePair();

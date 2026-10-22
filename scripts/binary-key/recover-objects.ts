@@ -1,5 +1,5 @@
 /**
- * Binary recovery tool — CLI (AC-373 / AC-374). Runs on the operator
+ * Binary recovery tool — CLI (AC-441, AC-442, AC-443, AC-444, AC-374). Runs on the operator
  * workstation; needs no database.
  *
  *   npx tsx scripts/binary-key/recover-objects.ts \

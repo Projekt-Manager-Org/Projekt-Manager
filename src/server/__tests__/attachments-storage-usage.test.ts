@@ -20,7 +20,7 @@
  *
  *   - AC-264 (api.md §14.2.12): GET /api/projects/:id/storage-usage —
  *     four-bucket payload shape (each leaf a non-negative integer);
- *     three-way result mirroring AC-214 / AC-147 (worker in scope →
+ *     three-way result mirroring AC-410 / AC-147 (worker in scope →
  *     200, worker out of scope → 403 NOT_PERMITTED, unknown id → 404
  *     NOT_FOUND); 401 UNAUTHENTICATED for an unauthenticated request;
  *     422 VALIDATION_ERROR on a syntactically invalid project id;
@@ -601,7 +601,7 @@ describe('Project storage usage tracking', () => {
     });
 
     it('returns 403 NOT_PERMITTED for a worker on a project they are not assigned to', async () => {
-      // Distinguishability mirrors AC-214 / AC-147: an existing project
+      // Distinguishability mirrors AC-410 / AC-147: an existing project
       // outside the caller's scope is 403, not 404.
       const res = await authGet(workerToken, `/api/projects/${unassignedProjectId}/storage-usage`);
       expect(res.statusCode).toBe(403);
@@ -611,7 +611,7 @@ describe('Project storage usage tracking', () => {
     it('returns 404 NOT_FOUND for an unknown project id (distinguishable from 403)', async () => {
       // Worker (the most-scoped role) — load-bearing case for the
       // missing-vs-out-of-scope distinction. Mirrors attachments-scope
-      // test for AC-214: a worker on a real-but-out-of-scope project
+      // test for AC-410: a worker on a real-but-out-of-scope project
       // gets 403; a worker on an unknown id gets 404. Conflating the
       // two would leak existence info through a differential response.
       const missingId = '00000000-0000-0000-0000-000000000099';

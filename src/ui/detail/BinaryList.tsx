@@ -1,20 +1,20 @@
 /**
  * Binary list — tabular view of ready non-photo attachments. Per-row
  * download + bulk-fetch ZIP under the synthetic-origin Service-Worker
- * decrypt path (ADR-0024, spec §8.15.5 / §8.15.7).
+ * decrypt path (ADR-0024, ui/project-detail.md §8.15.5).
  *
  * Per-row download issues a fetch against `/encrypted-storage/<projectId>/<id>.original`;
  * the SW intercepts, calls `download-url`, fetches ciphertext, decrypts,
  * and returns plaintext bytes. On a non-2xx response the row flips to
  * one of the two divergence placeholders:
- *   - `data-sw-error-code: OBJECT_ABSENT` → `"Datei fehlt"` (AC-224)
+ *   - `data-sw-error-code: OBJECT_ABSENT` → `"Datei fehlt"` (AC-436)
  *   - `data-sw-error-code: DEK_UNWRAP_FAILED` → `"Schlüssel nicht verfügbar"` (AC-244)
  * Any other failure (no code — e.g. the page is not SW-controlled) shows
- * `"Datei konnte nicht geladen werden"` and leaves the row usable.
+ * `"Datei konnte nicht geladen werden"` and leaves the row usable (AC-437).
  *
  * Bulk-fetch caps live in `attachmentPipeline.ts` [C]; violation
  * produces a client-side message naming both caps before any request
- * is issued (AC-223). The store's `requestBulkZipBlob` decrypts each
+ * is issued (AC-435). The store's `requestBulkZipBlob` decrypts each
  * ciphertext locally and assembles a streaming zip — this component
  * then triggers a Blob-URL download.
  */
@@ -69,7 +69,8 @@ function isVerdict(error: RowError | undefined): boolean {
 
 /**
  * Read the SW's `data-sw-error-code` signal off a non-2xx Response.
- * Header is the canonical channel per spec §8.15.7; the body is a
+ * Header is the canonical channel (signal contract in
+ * `src/sw/decryptHandler.ts`); the body is a
  * defense-in-depth fallback so a SW that surfaces the code via JSON
  * still works without a code change here.
  */
@@ -109,8 +110,8 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
   };
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  // Per-row error verdict observed at click-time. Spec §8.15.7 forbids
-  // caching across list refetches — the effect below prunes entries no
+  // Per-row error verdict observed at click-time. Never cached across
+  // list refetches — the effect below prunes entries no
   // longer in the live binaries list.
   const [rowErrors, setRowErrors] = useState<Record<string, RowError>>({});
   const [capError, setCapError] = useState<string | null>(null);
@@ -120,7 +121,7 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
   }, [fetchForProject, projectId]);
 
   // Drop stale row-error verdicts on list change so a refetch re-probes
-  // (spec §8.15.7 "no client-side caching of either verdict"). React's
+  // (no client-side caching of either verdict). React's
   // documented "adjust state on prop change during render" pattern
   // (https://react.dev/reference/react/useState#storing-information-from-previous-renders);
   // the effect-based equivalent triggers an extra render and is flagged
@@ -182,8 +183,7 @@ export function BinaryList({ projectId, bundleFileName, archived = false }: Bina
    * unwrap failure it surfaces a non-2xx Response carrying the code on
    * `data-sw-error-code`. Either way the response status is the seam
    * by which the component decides between "trigger download" and
-   * "flip to placeholder" (spec §8.15.7 — lazy, click-triggered for
-   * binaries).
+   * "flip to placeholder" (lazy, click-triggered for binaries).
    */
   const probeAndFetch = async (
     attachmentId: string,

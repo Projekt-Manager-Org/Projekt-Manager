@@ -1,5 +1,5 @@
 /**
- * Periodic attachment hidden reaper scheduler — data-model.md §6.12.
+ * Periodic attachment hidden reaper scheduler — AC-426.
  *
  * Thin caller over `createPeriodicSweeper` (see
  * `src/server/periodicSweeper.ts`): the timer drive, sustained-
