@@ -16,7 +16,7 @@ import { STORAGE_STATES } from './storage-states';
  * context that drives every mutation. Each named lifecycle action is
  * issued from a session distinct from the office observer:
  *
- *   1. Owner advances a project (`+1` transition per AC-5).
+ *   1. Owner advances a project (`+1` transition per AC-458).
  *   2. Owner archives a project (AC-61).
  *   3. Owner restores an archived project.
  *   4. Owner edits a project's planned dates (AC-7).
@@ -264,7 +264,7 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
   });
 
   // ------------------------------------------------------------------
-  // 1. Owner advances a project (+1 transition per AC-5).
+  // 1. Owner advances a project (+1 transition per AC-458).
   //
   // Issued from a one-shot owner request context so the mutating session
   // is distinct from the office observer (the storage-usage cross-session

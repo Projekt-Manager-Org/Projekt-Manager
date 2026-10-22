@@ -14,7 +14,7 @@ A full-page view of a single project. Reachable by URL (`/projects/:id`) and fro
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│ Header — number, title, status badge, forward/backward   │
+│ Header — number, title, status badge                     │
 ├──────────────────────────────────────────────────────────┤
 │ Core fields — customer, dates, value, notes              │
 ├──────────────────────────────────────────────────────────┤
@@ -34,7 +34,7 @@ Every region renders read-only for a caller without the relevant write permissio
 
 ### 8.15.2 Core Fields
 
-The core-field region reuses the read contents of [workflow-views.md §8.4](workflow-views.md#84-project-detail-panel) — project number and title, status badge, forward/backward transition buttons, customer (name, phone, email), `Baustelle:` line (see below), planned start/end date pickers, estimated value, notes, audit timestamps. Editability parity matches the management edit view ([management.md §8.8.3](management.md#883-edit-project)) — notes, customer, site address, estimated value, dates, and assigned workers are editable with `project:update`. Title edits also go through `project:update`. Status is mutated only through the transition operations; project number is immutable.
+The core-field region reuses the read contents of [workflow-views.md §8.4](workflow-views.md#84-project-detail-panel) — project number and title, status badge, customer (name, phone, email), `Baustelle:` line (see below), planned start/end date pickers, estimated value, notes, audit timestamps. Editability parity matches the management edit view ([management.md §8.8.3](management.md#883-edit-project)) — notes, customer, site address, estimated value, dates, and assigned workers are editable with `project:update`. Title edits also go through `project:update`. Status is mutated only through the transition operations; project number is immutable.
 
 **`Baustelle:` rendering.** The detail surface shows a single `Baustelle:` line carrying the work site address. When `project.siteAddress` is non-null, render `street, zip city` from that object. When `project.siteAddress` is null, fall back to the customer's `address` ([data-model.md §5.6](../data-model.md#56-customer-entity)) and append a subtle inline hint `"(Kundenadresse)"` so the reader knows the displayed value is the billing address standing in for the site (see [data-model.md §5.1](../data-model.md#51-project-entity) for the fallback rule). The map-link affordance is rendered on whichever address is shown — there is exactly one map link per detail surface and it points at the address actually displayed. When both `project.siteAddress` and `customer.address` are absent, the line renders the German placeholder `"Keine Adresse"` and no map link. The same rendering rule applies to the quick-glance Project Detail Panel ([workflow-views.md §8.4](workflow-views.md#84-project-detail-panel)).
 
@@ -47,7 +47,7 @@ Worker-assignment editor visible on the page (not routed to a dedicated view). B
 - Multi-select from the active set of users holding the `worker` role. Each selected entry renders as a chip carrying the worker's `displayName`; a remove affordance detaches.
 - Mutations require `project:update`. The control is hidden for callers without it; the page-level read surface continues to render the current assigned list.
 - Changes are audited per [AC-177](../verification.md#1523-audit-log) — the `mutate()` helper writes a `project_worker` audit row (`action` ∈ `create` / `delete`; `entityLabel` = worker displayName per [data-model.md §5.10](../data-model.md#510-audit-log-entity)).
-- In-flight mutation lock per [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior): while the patch is resolving, the chip set and the add control are disabled; a failed mutation reverts the optimistic UI ([AC-53](../verification.md#153-behavioral)).
+- In-flight mutation lock per [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior): while the patch is resolving, the chip set and the add control are disabled; a failed mutation reverts the optimistic UI ([AC-53](../verification.md#1515-navigation)).
 
 ### 8.15.4 Photo Gallery
 

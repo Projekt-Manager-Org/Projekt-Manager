@@ -60,7 +60,7 @@ export function Header() {
   // header wraps and the button lands near the left edge of the viewport,
   // that leftward open clips off-screen. Flip to left-anchor in that
   // case. A fixed breakpoint can't decide this reliably — wrap depends
-  // on summary content width, not viewport alone — so we measure the
+  // on header content width, not viewport alone — so we measure the
   // button's position on open. Mutating the class directly (rather than
   // via setState) avoids a cascading render before paint.
   //

@@ -292,7 +292,7 @@
 /* The dropdown defaults to right-anchor (opens leftward) because
    the userMenu sits at the header's right edge on wide layouts. When
    flex-wrap puts the button on the left of a new row — which happens
-   at viewport widths that vary with summary content length, not a
+   at viewport widths that vary with header content length, not a
    fixed breakpoint — the leftward open goes off-screen. The
    component measures the button's position on open and toggles this
    modifier to flip the dropdown's anchor. */

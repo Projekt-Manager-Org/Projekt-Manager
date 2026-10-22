@@ -26,7 +26,7 @@ describe('Project Operations — Transitions', () => {
     await stopApp();
   });
 
-  // AC-16 forward-edge spot-checks (single-edge advance + updatedBy) are
+  // Forward-edge spot-checks (single-edge advance + updatedBy) are
   // subsumed by the full-chain test below (every forward edge) and by
   // the backward-direction updatedBy arm — both pin the same mutate()
   // stamping path. Removed under T-REDU.
@@ -123,10 +123,9 @@ describe('Project Operations — Transitions', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-17: Transition forward from erledigt is rejected
-  // AC-16 [crit], AC-17 [crit]
+  // AC-459: Transition forward from erledigt is rejected
   // ---------------------------------------------------------------
-  describe('AC-17: Transition forward from erledigt', () => {
+  describe('AC-459: Transition forward from erledigt', () => {
     it('returns a validation error (erledigt is terminal)', async () => {
       const listRes = await authGet(token, '/api/projects');
       const projects = listRes.json().data;
@@ -145,14 +144,17 @@ describe('Project Operations — Transitions', () => {
       expect(body.code).toBe('VALIDATION_ERROR');
       expect(typeof body.message).toBe('string');
       expect(body.message.length).toBeGreaterThan(0);
+
+      const after = await authGet(token, `/api/projects/${erledigtProject.id}`);
+      expect(after.json().status).toBe('erledigt');
+      expect(after.json().updatedAt).toBe(erledigtProject.updatedAt);
     });
   });
 
   // ---------------------------------------------------------------
-  // AC-18: Transition backward from anfrage is rejected
-  // AC-16 [crit], AC-18 [crit]
+  // AC-459: Transition backward from anfrage or erledigt is rejected
   // ---------------------------------------------------------------
-  describe('AC-18: Transition backward from anfrage', () => {
+  describe('AC-459: Transition backward from anfrage or erledigt', () => {
     it('returns a validation error (anfrage is the first state)', async () => {
       const listRes = await authGet(token, '/api/projects');
       const projects = listRes.json().data;
@@ -168,6 +170,10 @@ describe('Project Operations — Transitions', () => {
       const body = res.json();
       expect(body.code).toBe('VALIDATION_ERROR');
       expect(typeof body.message).toBe('string');
+
+      const after = await authGet(token, `/api/projects/${anfrageProject.id}`);
+      expect(after.json().status).toBe('anfrage');
+      expect(after.json().updatedAt).toBe(anfrageProject.updatedAt);
     });
 
     it('also rejects backward from erledigt (terminal state)', async () => {
@@ -186,12 +192,16 @@ describe('Project Operations — Transitions', () => {
 
       const body = res.json();
       expect(body.code).toBe('VALIDATION_ERROR');
+
+      const after = await authGet(token, `/api/projects/${erledigtProject.id}`);
+      expect(after.json().status).toBe('erledigt');
+      expect(after.json().updatedAt).toBe(erledigtProject.updatedAt);
     });
   });
 
   // ---------------------------------------------------------------
   // Transition backward (success case)
-  // Backward counterpart of AC-16.
+  // Backward counterpart of the forward chain below (AC-458).
   // Covers api.md §14.2.2: Transition backward moves status back by
   // one step and sets status, statusChangedAt, updatedAt, updatedBy.
   // ---------------------------------------------------------------
@@ -199,7 +209,7 @@ describe('Project Operations — Transitions', () => {
     it('moves a project from in_arbeit back to geplant', async () => {
       // Explicit setup: transition a `geplant` project forward to `in_arbeit`
       // before testing the backward path. This keeps the test independent of
-      // prior test execution — AC-16 and this test no longer share state, so
+      // prior test execution — the forward tests and this one share no state, so
       // reordering or `--grep` filtering cannot break this case.
       const listRes = await authGet(token, '/api/projects');
       const geplantProject = listRes
@@ -277,9 +287,8 @@ describe('Project Operations — Transitions', () => {
   // asserting each intermediate state. This covers every forward edge
   // in the 9-state workflow (8 transitions) at the HTTP layer.
   //
-  // The AC-16 block above only spot-checks a couple of transitions; this
-  // block closes the gap without relying on the seed having a project
-  // in every possible state.
+  // AC-458: each confirmed transition stores the target state. The
+  // chain does not rely on the seed having a project in every state.
   // ---------------------------------------------------------------
   describe('full workflow forward chain', () => {
     it('transitions a project through every state from anfrage to erledigt', async () => {

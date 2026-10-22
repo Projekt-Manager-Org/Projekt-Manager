@@ -356,8 +356,7 @@ export function pathFromView(view: RouteView): string {
  * Views that live under the "Verwaltung" (administration) secondary menu
  * rather than the primary nav. Administration + audit observability are
  * lower-frequency surfaces for the roles that see them; keeping them out
- * of the primary row keeps the header compact when the summary area is
- * wide.
+ * of the primary row keeps the header compact.
  *
  * `rechnungen` is included so owner / office surface it under Verwaltung
  * (their secondary bucket has ≥2 entries). Bookkeeper has only
