@@ -40,3 +40,20 @@ export function buildProjectBundleFilename(project: { number: string; title: str
   const titleSlug = sanitiseFilenameSegment(project.title);
   return titleSlug.length > 0 ? `${project.number}_${titleSlug}.zip` : `${project.number}.zip`;
 }
+
+/**
+ * Hands out names distinct within one archive (AC-434): the first
+ * `a.txt` stays, later ones become `a (2).txt`, `a (3).txt`, … — skipping
+ * any suffix an earlier entry already holds verbatim.
+ */
+export function createDistinctNamer(): (name: string) => string {
+  const taken = new Set<string>();
+  return (name) => {
+    const dot = name.lastIndexOf('.');
+    const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+    let candidate = name;
+    for (let n = 2; taken.has(candidate); n++) candidate = `${stem} (${n})${ext}`;
+    taken.add(candidate);
+    return candidate;
+  };
+}
