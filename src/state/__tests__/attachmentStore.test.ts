@@ -819,12 +819,12 @@ describe('attachmentStore — image processing failures and stale-row sweep', ()
  *   2. fetches each ciphertext via `fetch`,
  *   3. AES-256-GCM-decrypts using the per-blob DEK,
  *   4. feeds the decrypted bytes into `client-zip`'s streaming generator
- *      under names distinct within the archive,
+ *      under names distinct within the archive, ignoring case,
  *   5. returns the assembled zip as a `Blob`.
  *
  * These tests verify the wire-shape mapping, the fetch+decrypt sequence,
- * order preservation, distinct entry names, the cap-breach passthrough,
- * and the decrypt-failure surface. The crypto helpers run for real against
+ * order preservation, entry names distinct ignoring case, the cap-breach
+ * passthrough, and the decrypt-failure surface. The crypto helpers run for real against
  * Node 22's `globalThis.crypto` — the round-trip is the only honest way
  * to assert decrypt actually decrypted.
  */
@@ -956,16 +956,18 @@ describe('attachmentStore — requestBulkZipBlob', () => {
     expect(fetchOrder[1]).toContain('A.ct');
   });
 
-  it('AC-434: keeps each file of a same-named selection under a distinct entry name', async () => {
+  it('AC-434: keeps each file of a same-named selection under a name distinct ignoring case', async () => {
     const { generateDek, encryptBlob, encodeDekMaterial } = await getCryptoHelpers();
     const { unzipSync } = await import('fflate');
 
     // Two `a.txt` plus an `a (2).txt` — the third is the name a naive
     // suffix scheme would generate for the second, so it must not clash.
+    // `A.txt` collides with `a.txt` on case-insensitive file systems.
     const files = [
       { id: 'att-1', fileName: 'a.txt', content: 'one' },
       { id: 'att-2', fileName: 'a.txt', content: 'two' },
       { id: 'att-3', fileName: 'a (2).txt', content: 'three' },
+      { id: 'att-4', fileName: 'A.txt', content: 'four' },
     ];
     const encrypted = await Promise.all(
       files.map(async (f) => {
@@ -1013,7 +1015,7 @@ describe('attachmentStore — requestBulkZipBlob', () => {
         return true;
       },
     });
-    expect(new Set(entryNames).size).toBe(files.length);
+    expect(new Set(entryNames.map((name) => name.toLowerCase())).size).toBe(files.length);
     expect(
       Object.values(unzipped)
         .map((bytes) => new TextDecoder().decode(bytes))
