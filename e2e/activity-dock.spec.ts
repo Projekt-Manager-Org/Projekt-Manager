@@ -14,7 +14,7 @@ import { SEED_USERS } from '../src/test/seedAssumptions';
  *     session appears in the dock within 2 seconds with no manual refresh
  *     on the observing session, driven by the `audit_changed` SSE event
  *     (api.md §14.2.13) + a refetch of api.md §14.2.8. Parity with AC-277
- *     (project lifecycle) and AC-273 (storage usage). The multi-session
+ *     (project lifecycle) and storage usage. The multi-session
  *     "always-open observer" structure mirrors
  *     `storage-usage-multi-user.spec.ts` precisely: a long-lived office
  *     context (the observer) plus a one-shot owner request context for
@@ -23,8 +23,7 @@ import { SEED_USERS } from '../src/test/seedAssumptions';
  *   - AC-318 [vis] — the dock is collapsible and default-COLLAPSED; its
  *     collapse state PERSISTS across view navigation within a session (it
  *     does NOT reset on a view switch); it is DESKTOP-ONLY (hidden on
- *     phones, parity with the Footer media query at max-width:768px,
- *     AC-271); it exposes an "Ältere anzeigen" affordance to page older
+ *     phones, parity with the Footer, hidden at max-width:768px); it exposes an "Ältere anzeigen" affordance to page older
  *     entries; and its default list is the caller's recipient-scoped set
  *     per AC-200.
  *
@@ -52,13 +51,13 @@ import { SEED_USERS } from '../src/test/seedAssumptions';
 /**
  * AC-317 propagation budget — the dock must reflect a cross-session audit
  * commit within this window, driven by the `audit_changed` SSE frame.
- * The 2 s poll timeout is the contractual gate (parity with AC-273/AC-277):
+ * The 2 s poll timeout is the contractual gate (parity with storage usage and AC-277):
  * it resolves on the first refetch after the frame lands, and a regression
  * to a slow path (long-poll, 30 s reconnect) surfaces as a timeout here.
  */
 const SSE_PROPAGATION_TIMEOUT_MS = 2_000;
 
-/** Phone viewport — below the 768px Footer/dock breakpoint (AC-318/AC-271). */
+/** Phone viewport — below the 768px Footer/dock breakpoint (AC-318). */
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 
 /** Count the entry rows currently rendered inside the expanded dock panel. */
@@ -275,7 +274,7 @@ test.describe('AC-318: activity dock collapse default, session persistence, resp
   });
 
   test('desktop-only: dock is hidden at phone viewport', async ({ page }) => {
-    // Parity with the Footer media query (max-width:768px, AC-271):
+    // Parity with the Footer (hidden at max-width:768px):
     // phones reach the same history through the Aktivität view, so the
     // dock must not render. The default project viewport is desktop
     // (1920×1080); shrink to a phone to exercise the hidden branch.

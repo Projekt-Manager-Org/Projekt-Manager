@@ -680,7 +680,7 @@ export const attachments = pgTable(
 
 // ---------------------------------------------------------------
 // Project storage usage — derived state, trigger-maintained
-// (data-model.md §5.14)
+// (ARCHITECTURE.md "Storage usage — trigger-maintained side table")
 // ---------------------------------------------------------------
 /**
  * Per-project four-bucket aggregate of attachment byte counts. Maintained
@@ -699,7 +699,7 @@ export const attachments = pgTable(
  * audited and trigger-maintained derived state on an audited table
  * muddies the audit invariant boundary, and (2) cleaner separation of
  * concerns. The FK cascade hard-deletes the row alongside the parent
- * project on purge ([AC-266](docs/spec/verification.md#1529-storage-usage-ui)).
+ * project on purge.
  *
  * Plaintext counters sum `size_bytes + COALESCE(thumb_size_bytes, 0)` —
  * the user-facing "what I uploaded" view. Ciphertext counters sum the
@@ -730,7 +730,7 @@ export const projectStorageUsage = pgTable(
     // and a divergence (broken trigger replacement, hand-edited row,
     // status-flip without matching insert) must trip at write time
     // rather than drift silently. The reconcilability invariant
-    // (verification.md AC-267) is the integration-test backstop;
+    // (`attachments-storage-usage-invariant.test.ts`) is the integration-test backstop;
     // this CHECK is the row-level one.
     check(
       'project_storage_usage_non_negative',

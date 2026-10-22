@@ -1,14 +1,14 @@
 /**
  * formatBytes — single source of truth for byte rendering across the
  * Footer storage badge ([ui/index.md §8.1.2]), the DatenView storage row
- * ([ui/daten.md §8.11.3]), and the Export / Import pre-flight dialogs.
+ * ([ui/daten.md §8.11.3]), and the Export / Import progress readouts.
  *
- * Pins the rounding contract AC-274 names: integer at the B / KB tiers,
+ * Pins the rounding contract AC-451 names: integer at the B / KB tiers,
  * two decimals at MB / GB. Decimal-SI tier breaks at 1024 (the existing
  * dialog implementations rely on power-of-1024 thresholds; extracting
  * the helper preserves that posture rather than switching to SI 1000).
  *
- * The boundary set comes verbatim from AC-274:
+ * The boundary set covers every tier break of AC-451:
  *   `0 B`, sub-KB byte counts, exact `1 KB`, sub-MB KB counts,
  *   exact `1 MB`, sub-GB MB counts, exact `1 GB`.
  *
@@ -19,7 +19,7 @@
 import { describe, it, expect } from 'vitest';
 import { formatBytes } from '@/ui/utils/formatBytes';
 
-describe('formatBytes — boundary cases (AC-274)', () => {
+describe('formatBytes — boundary cases (AC-451)', () => {
   it('renders 0 as "0 B"', () => {
     expect(formatBytes(0)).toBe('0 B');
   });
@@ -60,7 +60,7 @@ describe('formatBytes — boundary cases (AC-274)', () => {
   });
 });
 
-describe('formatBytes — determinism (AC-274)', () => {
+describe('formatBytes — determinism (AC-451)', () => {
   it('returns the same string for repeated calls with the same input', () => {
     // No `Intl.NumberFormat`, no time-of-day, no locale — the helper is
     // pure. A regression that introduces locale-aware grouping would

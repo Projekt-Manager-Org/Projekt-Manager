@@ -740,7 +740,7 @@ export const attachmentApi = {
 };
 
 /**
- * Storage usage read DTO (api.md §14.2.12). Each leaf is a non-negative
+ * Storage usage read DTO (totals: data-model.md §5.14). Each leaf is a non-negative
  * byte count; the four-bucket shape matches `StorageUsageService` server-
  * side. The deployment-wide endpoint is gated server-side by `data:export`;
  * the client method itself imposes no role check.

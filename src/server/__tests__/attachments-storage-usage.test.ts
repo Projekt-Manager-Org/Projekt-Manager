@@ -1,37 +1,29 @@
 /**
- * API integration tests — project storage usage tracking
- * (AC-263, AC-264, AC-265 in verification.md §15.26).
+ * API integration tests — storage usage (data-model.md §5.14).
  *
- * Pins three contracts:
+ * Pins three surfaces:
  *
- *   - AC-263 (data-model.md §5.14; design at `projectStorageUsage` in
- *     schema.ts): the four-bucket per-project view
- *     `project_storage_usage` is maintained accurately across every
- *     attachment lifecycle transition (init pending, complete, hide,
- *     restore, orphan-reaper delete pending, hidden-reaper delete
- *     hidden, and a no-op `label` rename). Drives transitions directly
- *     via raw SQL on `attachments` so the assertion is on the trigger
- *     semantics, not on whichever service path issues the write — the
- *     spec treats the maintenance mechanism as authoritative regardless
- *     of caller. Project-purge cascade is pinned in
- *     `attachments-purge-cascade.test.ts` under AC-266; the row
- *     aggregate ↔ view equality is pinned in
- *     `attachments-storage-usage-invariant.test.ts` under AC-267.
+ *   - The per-project side table `project_storage_usage` (internal;
+ *     design at `projectStorageUsage` in schema.ts) is maintained
+ *     accurately across every attachment lifecycle transition (init
+ *     pending, complete, hide, restore, orphan-reaper delete pending,
+ *     hidden-reaper delete hidden, and a no-op `label` rename). Drives
+ *     transitions directly via raw SQL on `attachments` so the
+ *     assertion is on the trigger semantics, not on whichever service
+ *     path issues the write. Project-purge cascade is pinned in
+ *     `attachments-purge-cascade.test.ts`; the row aggregate ↔ view
+ *     equality in `attachments-storage-usage-invariant.test.ts`.
  *
- *   - AC-264 (api.md §14.2.12): GET /api/projects/:id/storage-usage —
- *     four-bucket payload shape (each leaf a non-negative integer);
- *     three-way result mirroring AC-410 / AC-147 (worker in scope →
- *     200, worker out of scope → 403 NOT_PERMITTED, unknown id → 404
- *     NOT_FOUND); 401 UNAUTHENTICATED for an unauthenticated request;
- *     422 VALIDATION_ERROR on a syntactically invalid project id;
- *     all-zero buckets for a project with no attachments; no
- *     `audit_log` row.
+ *   - GET /api/projects/:id/storage-usage — payload shape; three-way
+ *     result mirroring AC-410 / AC-147 (worker in scope → 200, worker
+ *     out of scope → 403 NOT_PERMITTED, unknown id → 404 NOT_FOUND);
+ *     401 / 422; all-zero buckets for a project with no attachments;
+ *     no `audit_log` row.
  *
- *   - AC-265 (api.md §14.2.12): GET /api/storage-usage — `data:export`
- *     gate (owner / office → 200; worker / bookkeeper → 403; unauthed
- *     → 401), summed over every project including archived, all-zero
- *     buckets when there are no attachments anywhere, no `audit_log`
- *     row.
+ *   - GET /api/storage-usage — `data:export` gate (api.md §14.3: owner
+ *     / office → 200; worker / bookkeeper → 403; unauthed → 401), and
+ *     the totals of AC-447: summed over every project including
+ *     archived, zero when there are no attachments.
  *
  * Raw-SQL attachment-row seeding is permitted under `__tests__/` per
  * the AC-179 architecture-check allowlist (mirrors the pattern in
@@ -278,12 +270,12 @@ describe('Project storage usage tracking', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-263 — per-project storage totals across every lifecycle
+  // Per-project storage totals across every lifecycle
   // transition. One project per test for clean isolation; raw-SQL
   // transitions exercise the trigger without coupling to the service
   // surface.
   // -------------------------------------------------------------------
-  describe('AC-263: per-project storage totals across the lifecycle', () => {
+  describe('per-project storage totals across the lifecycle', () => {
     let projectId: string;
 
     beforeEach(async () => {
@@ -292,8 +284,7 @@ describe('Project storage usage tracking', () => {
 
     it('project insert seeds a usage row with all four counters at zero', async () => {
       // Independent assertion of the `projects_storage_usage_init`
-      // trigger — every project must have its usage row from creation
-      // (data-model.md §5.14: "system-maintained invariant").
+      // trigger — every project must have its usage row from creation.
       expect(await readUsageRow(db, projectId)).toEqual(ZERO_TOTALS);
     });
 
@@ -330,7 +321,7 @@ describe('Project storage usage tracking', () => {
       });
       await completeUpload(db, binary.id);
 
-      // Non-photo contributes only the original (data-model.md §5.14).
+      // Non-photo contributes only the original (no thumbnail).
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: { plaintext: 2048, ciphertext: 2112 },
         hidden: { plaintext: 0, ciphertext: 0 },
@@ -477,7 +468,7 @@ describe('Project storage usage tracking', () => {
       // — pinning that the cumulative deltas converge on the right
       // totals (a class of bug a single-row test cannot catch: a
       // trigger that aliases NEW/OLD across the row loop, or that
-      // double-counts under multi-row firing). The AC-263 clause about
+      // double-counts under multi-row firing). The
       // *concurrent* writes (independent transactions) is structurally
       // out of reach in an in-process integration test; the row-lock
       // serialization the spec calls out is a Postgres semantic, not a
@@ -520,9 +511,8 @@ describe('Project storage usage tracking', () => {
       expect(before).not.toBeNull();
 
       // A mutation that touches no `status`/byte field must compute a
-      // zero delta — pins the "row mutation that changes neither
-      // `status` nor any byte field … leaves every total unchanged"
-      // clause of AC-263.
+      // zero delta: a row mutation that changes neither `status` nor
+      // any byte field leaves every total unchanged.
       await db.execute(sql`
         UPDATE attachments
         SET filename = ${'renamed-' + r.id.slice(0, 4)}
@@ -541,7 +531,7 @@ describe('Project storage usage tracking', () => {
       const before = await readUsageRow(db, projectId);
       expect(before).not.toBeNull();
 
-      // AC-263 names "a `label` or `filename` rename" — pin the label
+      // Renames cover `label` and `filename` — pin the label
       // arm too so a regression that wires label changes into the
       // delta computation cannot pass.
       await db.execute(sql`
@@ -555,9 +545,9 @@ describe('Project storage usage tracking', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-264 — GET /api/projects/:id/storage-usage contract.
+  // GET /api/projects/:id/storage-usage contract.
   // -------------------------------------------------------------------
-  describe('AC-264: GET /api/projects/:id/storage-usage contract', () => {
+  describe('GET /api/projects/:id/storage-usage contract', () => {
     let assignedProjectId: string;
     let unassignedProjectId: string;
 
@@ -576,9 +566,7 @@ describe('Project storage usage tracking', () => {
         ready: { plaintext: expect.any(Number), ciphertext: expect.any(Number) },
         hidden: { plaintext: expect.any(Number), ciphertext: expect.any(Number) },
       });
-      // Each leaf is a non-negative integer byte count
-      // (api.md §14.2.12 "Each leaf is a non-negative integer count of
-      // bytes").
+      // Each leaf is a non-negative integer byte count.
       for (const bucket of ['ready', 'hidden'] as const) {
         for (const axis of ['plaintext', 'ciphertext'] as const) {
           const v = body[bucket][axis];
@@ -649,9 +637,9 @@ describe('Project storage usage tracking', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-265 — GET /api/storage-usage contract (data:export gate).
+  // GET /api/storage-usage contract (data:export gate, api.md §14.3).
   // -------------------------------------------------------------------
-  describe('AC-265: GET /api/storage-usage contract', () => {
+  describe('GET /api/storage-usage contract', () => {
     it('returns 200 with the four-bucket payload for an owner (holds data:export)', async () => {
       const res = await authGet(ownerToken, '/api/storage-usage');
       expect(res.statusCode).toBe(200);
@@ -692,12 +680,10 @@ describe('Project storage usage tracking', () => {
       expect(res.statusCode).toBe(401);
     });
 
-    it('returns all-zero buckets when no attachments exist anywhere', async () => {
+    it('returns all-zero buckets when no attachments exist anywhere (AC-447)', async () => {
       // Wipe every attachment on every project; the per-row trigger
       // decrements all `project_storage_usage` rows back to zero
       // (statement runs at depth 1 → no cascade short-circuit).
-      // Pins "Zeros when there are no projects or no attachments"
-      // (api.md §14.2.12, AC-265).
       await db.execute(sql`DELETE FROM attachments`);
       const res = await authGet(ownerToken, '/api/storage-usage');
       expect(res.statusCode).toBe(200);
@@ -711,30 +697,49 @@ describe('Project storage usage tracking', () => {
       expect(await countAuditRows(db)).toBe(before);
     });
 
-    it("includes archived projects' bytes in the global sum (api.md §14.2.12)", async () => {
+    it('global totals equal the sum over every complete attachment, archived projects included (AC-447)', async () => {
       // Archive (soft-delete per §6.9) is a board-state concept; the
-      // attachments still exist and contribute real bytes to the
-      // operator-facing tally until purge cascades them away
-      // (AC-265 + AC-266). The global endpoint must include them.
+      // attachments still exist and count until purge cascades them away.
+      // One archived project carries every bucket case: a ready binary, a
+      // ready photo with its thumbnail, a hidden binary, and a pending row
+      // that must count toward nothing. Upload never records the plaintext
+      // thumbnail size, so the photo's thumbnail counts only as stored bytes.
       await db.execute(sql`DELETE FROM attachments`);
       const archivedProjectId = await createProject(ownerToken);
-      const archivedRow = await seedPendingRow(db, archivedProjectId, {
+      const readyBinary = await seedPendingRow(db, archivedProjectId, {
         sizeBytes: 7777,
         ciphertextSizeBytes: 7841,
       });
-      await completeUpload(db, archivedRow.id);
+      await completeUpload(db, readyBinary.id);
+      const readyPhoto = await seedPendingRow(db, archivedProjectId, {
+        sizeBytes: 4096,
+        ciphertextSizeBytes: 4160,
+        ciphertextThumbSizeBytes: 320,
+        kind: 'photo',
+      });
+      await completeUpload(db, readyPhoto.id);
+      const hiddenBinary = await seedPendingRow(db, archivedProjectId, {
+        sizeBytes: 1000,
+        ciphertextSizeBytes: 1064,
+      });
+      await completeUpload(db, hiddenBinary.id);
+      await hideRow(db, hiddenBinary.id);
+      await seedPendingRow(db, archivedProjectId, {
+        sizeBytes: 500,
+        ciphertextSizeBytes: 564,
+      });
 
       // Soft-delete via DELETE-without-/purge — same surface that
       // drives `archiveProject` in attachments-purge-cascade.test.ts.
       const archiveRes = await authDelete(ownerToken, `/api/projects/${archivedProjectId}`);
       expect(archiveRes.statusCode).toBe(200);
 
-      // Global tally must still reflect the archived project's bytes.
       const res = await authGet(ownerToken, '/api/storage-usage');
       expect(res.statusCode).toBe(200);
-      const body = res.json() as UsageTotals;
-      expect(body.ready.plaintext).toBeGreaterThanOrEqual(7777);
-      expect(body.ready.ciphertext).toBeGreaterThanOrEqual(7841);
+      expect(res.json()).toEqual({
+        ready: { plaintext: 7777 + 4096, ciphertext: 7841 + 4160 + 320 },
+        hidden: { plaintext: 1000, ciphertext: 1064 },
+      });
     });
   });
 });

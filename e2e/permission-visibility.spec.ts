@@ -171,7 +171,7 @@ test.describe('AC-121: permission-based UI visibility', () => {
         await expectViewReachable(page, 'benachrichtigungen', c.canManageNotifications);
         await expect(page.getByTestId('extract-button')).toHaveCount(c.canExtract ? 1 : 0);
 
-        // -- Footer storage badge (AC-271) ---------------------------------
+        // -- Footer storage badge (AC-448) ---------------------------------
         // `data:export` gate mirrors the server gate on /api/storage-usage;
         // worker and bookkeeper see brand text alone. Desktop viewport
         // (default 1920×1080 in this project) — phones hide the Footer
@@ -283,7 +283,7 @@ test.describe('AC-121: permission-based UI visibility', () => {
             c.canRestoreData ? 1 : 0,
           );
 
-          // AC-272 — Speichernutzung row at the top of DatenView is pinned
+          // Speichernutzung row (ui/daten.md §8.11.3) at the top of DatenView is pinned
           // by `src/ui/management/__tests__/DatenView.storageRow.test.tsx`.
         }
 

@@ -1,5 +1,5 @@
 /**
- * Footer storage badge — covers AC-271's permission-gated visibility,
+ * Footer storage badge — covers AC-448 / AC-449: permission-gated visibility,
  * label, and tooltip surface ([ui/index.md §8.1.2], [verification.md
  * §15.29]).
  *
@@ -84,7 +84,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('Footer storage badge — permission gating (AC-271)', () => {
+describe('Footer storage badge — permission gating (AC-448)', () => {
   it('renders the badge when the authenticated user holds data:export (owner)', async () => {
     getGlobalMock.mockResolvedValue(
       ok({
@@ -139,10 +139,10 @@ describe('Footer storage badge — permission gating (AC-271)', () => {
   });
 });
 
-describe('Footer storage badge — label and value (AC-271)', () => {
+describe('Footer storage badge — label and value (AC-448)', () => {
   it('renders "Daten:" followed by ready.plaintext formatted via the shared helper', async () => {
     // 2 MB exact — pins both the German label and the formatBytes
-    // posture (two decimals at the MB tier per AC-274).
+    // posture (two decimals at the MB tier per AC-451).
     getGlobalMock.mockResolvedValue(
       ok({
         ready: { plaintext: 2 * 1024 * 1024, ciphertext: 0 },
@@ -160,9 +160,8 @@ describe('Footer storage badge — label and value (AC-271)', () => {
 
   it('reflects refreshed values after a refresh trigger fires', async () => {
     // Mount with one value; explicitly refresh() with another and assert
-    // the rendered text follows the subscription. Pins AC-271's
-    // "matches the response's `ready.plaintext` after every refresh
-    // trigger fires" clause.
+    // the rendered text follows the subscription. Pins AC-450 on the
+    // badge: a changed total shows without a reload.
     getGlobalMock.mockResolvedValueOnce(
       ok({
         ready: { plaintext: 1024, ciphertext: 0 },
@@ -221,7 +220,7 @@ describe('Footer version chip — build-time git SHA', () => {
   });
 });
 
-describe('Footer storage badge — tooltip breakdown (AC-271)', () => {
+describe('Footer storage badge — tooltip breakdown (AC-449)', () => {
   it('exposes the two-bucket plaintext breakdown with the German labels', async () => {
     // ready.plaintext = 3 MB, hidden.plaintext = 1.50 MB — both
     // formatted via the shared helper. Tooltip wording mirrors the

@@ -1,19 +1,19 @@
 /**
  * Integration test — reconcilability invariant on the per-project
- * storage usage view (AC-267 in verification.md §15.26).
+ * storage usage view (an internal side table, data-model.md §5.14).
  *
- * AC-263 pins the trigger semantics by computing expected counter
+ * `attachments-storage-usage.test.ts` pins the trigger semantics by computing expected counter
  * values from the test fixture and asserting equality against the
- * view. AC-267 pins a stronger property: at any checkpoint the view
+ * view. This test pins a stronger property: at any checkpoint the view
  * equals the row aggregate computed *independently* over `attachments`,
  * grouped by `status`. The test treats the two surfaces as oracles —
  * if a future trigger bug or operator-applied direct SQL drives them
  * apart, the assertion fails regardless of which side is wrong.
  *
  * Multi-project fixture (two projects with a photo + binary mix on
- * each) catches a class of bug AC-263 cannot: a trigger that updates
+ * each) catches a class of bug the lifecycle test cannot: a trigger that updates
  * the wrong project_id (e.g. always updates the first project found in
- * the table) would still satisfy AC-263 on a single-project test but
+ * the table) would still pass a single-project test but
  * would corrupt cross-project totals. The invariant fires per-project
  * at every checkpoint.
  *
@@ -197,7 +197,7 @@ async function aggregateFromView(db: Database, projectId: string): Promise<Usage
   };
 }
 
-describe('AC-267: reconcilability invariant — view equals row aggregate', () => {
+describe('reconcilability invariant — view equals row aggregate', () => {
   let db: Database;
   let pool: pg.Pool;
   let projectAId: string;
@@ -252,7 +252,7 @@ describe('AC-267: reconcilability invariant — view equals row aggregate', () =
     }
   }
 
-  it('holds at every checkpoint of the AC-263 lifecycle on multiple projects', async () => {
+  it('holds at every checkpoint of the lifecycle on multiple projects', async () => {
     const projectIds = [projectAId, projectBId] as const;
 
     // Empty state: every project has an init-trigger-seeded usage row
