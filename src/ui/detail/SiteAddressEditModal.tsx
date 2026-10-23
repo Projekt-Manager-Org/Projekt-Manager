@@ -8,9 +8,9 @@
  *     submits `null`, the OFF path submits the trimmed triple. AC-483,
  *     AC-484.
  *   - Surfaces the AC-485 partial-fill validation message inline.
- *   - Save dispatches PATCH via the project management store; on success
- *     the modal closes. The store has already written its own user-facing
- *     error on failure — the modal stays open so the user can retry.
+ *   - Save dispatches PATCH via the project store; on success the modal
+ *     closes. On failure it stays open with the store's message (AC-53)
+ *     so the user can retry.
  *   - Escape / overlay click cancels; both are no-ops while a save is
  *     in flight (mirrors CustomerEditForm).
  */
@@ -18,7 +18,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { STRINGS } from '@/config/strings';
 import type { Address } from '@/domain/types';
-import { useProjectManagementStore } from '@/state/projectManagementStore';
+import { useProjectStore } from '@/state/projectStore';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { SiteAddressGroup, type SiteAddressGroupHandle } from '@/ui/management/SiteAddressGroup';
 import managementStyles from '@/ui/management/Management.module.css';
@@ -38,7 +38,7 @@ interface Props {
 }
 
 export function SiteAddressEditModal({ projectId, initial, customerAddress, onClose }: Props) {
-  const updateProject = useProjectManagementStore((s) => s.updateProject);
+  const updateProject = useProjectStore((s) => s.updateProject);
 
   const handleRef = useRef<SiteAddressGroupHandle | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,9 +53,16 @@ export function SiteAddressEditModal({ projectId, initial, customerAddress, onCl
     }
     setError(null);
     setSubmitting(true);
-    const ok = await updateProject(projectId, { siteAddress: result.value });
+    const saved = await updateProject(projectId, { siteAddress: result.value });
     setSubmitting(false);
-    if (ok) onClose();
+    if (saved) {
+      onClose();
+      return;
+    }
+    // Shown inline instead of in the shell banner behind the overlay.
+    const { mutationError, clearMutationError } = useProjectStore.getState();
+    setError(mutationError);
+    clearMutationError();
   };
 
   const close = useCallback(() => {

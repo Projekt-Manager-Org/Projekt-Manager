@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { act, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import type { ApiResult } from '@/api/client';
@@ -71,6 +71,7 @@ const { useAuthStore } = await import('@/state/authStore');
 const { useProjectStore } = await import('@/state/projectStore');
 const { useAttachmentStore } = await import('@/state/attachmentStore');
 const { useToastStore } = await import('@/state/toastStore');
+const { projectApi } = await import('@/api/client');
 
 const CUSTOMER: Customer = {
   id: 'c-1',
@@ -470,5 +471,81 @@ describe('ProjectDetailPage — BAUSTELLE click opens SiteAddressEditModal', () 
 
     await userEvent.click(mapLink);
     expect(screen.queryByTestId('site-address-modal')).toBeNull();
+  });
+});
+
+describe('ProjectDetailPage — a failed edit shows the error and the stored value (AC-53)', () => {
+  const FAILURE = 'Ein interner Fehler ist aufgetreten.';
+
+  beforeEach(() => {
+    vi.mocked(projectApi.update).mockReset();
+    vi.mocked(projectApi.update).mockResolvedValue({
+      ok: false,
+      error: { code: 'SERVER_ERROR', message: FAILURE },
+      category: 'server_error',
+      sessionExpired: false,
+    });
+    setAuthUser(['owner']);
+  });
+
+  it.each([
+    { field: 'title', testId: 'project-title-edit', typed: 'Neuer Titel', stored: 'Dachsanierung' },
+    { field: 'estimated value', testId: 'project-value-edit', typed: '1234', stored: '15000' },
+    { field: 'notes', testId: 'project-notes-input', typed: 'Neue Notiz', stored: 'Kundennotiz' },
+  ])('$field', async ({ testId, typed, stored }) => {
+    renderAt('/projects/p-42');
+    const input = (await screen.findByTestId(testId)) as HTMLInputElement | HTMLTextAreaElement;
+
+    await userEvent.clear(input);
+    await userEvent.type(input, typed);
+    await userEvent.tab();
+
+    await waitFor(() => expect(input).toHaveValue(stored));
+    expect(useProjectStore.getState().mutationError).toBe(FAILURE);
+    expect(projectApi.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the value stored while the failed save was in flight, not the older one', async () => {
+    let fail!: () => void;
+    vi.mocked(projectApi.update).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          fail = () =>
+            resolve({
+              ok: false,
+              error: { code: 'SERVER_ERROR', message: FAILURE },
+              category: 'server_error',
+              sessionExpired: false,
+            });
+        }),
+    );
+    renderAt('/projects/p-42');
+    const input = (await screen.findByTestId('project-title-edit')) as HTMLTextAreaElement;
+
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Neuer Titel');
+    await userEvent.tab();
+    await waitFor(() => expect(projectApi.update).toHaveBeenCalledTimes(1));
+
+    // A refetch lands another user's title while the save is in flight.
+    act(() => {
+      useProjectStore.setState({ projects: [makeProject({ title: 'Fremd geändert' })] });
+    });
+    act(() => fail());
+
+    await waitFor(() => expect(useProjectStore.getState().mutationError).toBe(FAILURE));
+    await waitFor(() => expect(input).toHaveValue('Fremd geändert'));
+  });
+
+  it('site address: the modal stays open and shows the message', async () => {
+    renderAt('/projects/p-42');
+    await userEvent.click(await screen.findByTestId('project-detail-site-address-edit'));
+    await screen.findByTestId('site-address-modal');
+
+    await userEvent.click(screen.getByTestId('project-site-save'));
+
+    expect(await screen.findByTestId('project-site-address-error')).toHaveTextContent(FAILURE);
+    expect(screen.getByTestId('site-address-modal')).toBeInTheDocument();
+    expect(projectApi.update).toHaveBeenCalledTimes(1);
   });
 });
