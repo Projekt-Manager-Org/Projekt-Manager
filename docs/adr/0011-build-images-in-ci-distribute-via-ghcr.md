@@ -186,7 +186,7 @@ The window is 5 commits because `scripts/deploy.sh <sha>` is the rollback mechan
 - CI cold build adds ~1–2 minutes; warm builds ~10–15s. Net system cost is lower, but individual CI runs feel slightly slower.
 - Every commit produces a new image even on small deltas. GHA caching absorbs the redundant work; retention handles stale tags.
 - Image retention is a new operational concern. Left unclosed it reached 457 versions on `projekt-manager` and 453 on its backup sibling in 3.5 months; `ghcr-retention.yml` closes it (Decision § Retention, [#373](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/373)). Since GHCR storage is free, the cost was manageability and blast radius, not spend. The residual concern is that retention is now code the project owns rather than a registry setting — it can break, and it deletes, which is why `notify.yml` monitors it.
-- CI runner's Docker version is not pinned under ADR-0009. Controlled drift: OCI images are portable across reasonably-versioned daemons; only the manifest format needs to match. Upcoming security audit decides whether this needs explicit mitigation.
+- The image build runs on `setup-buildx-action`'s own BuildKit container, not under the [ADR-0009](0009-pin-docker-versions-across-environments.md) pins. Images are built once in CI and hosts only pull them, so no host build is reproduced; the daemon and Compose that scan and smoke them do run the pins.
 
 ## Dep lifecycle health (as of 2026-05-15)
 

@@ -124,15 +124,7 @@ sudo chmod 700 /home/deploy/.ssh
 
 ### Phase 4 -- Docker
 
-Pinned versions (ADR-0009):
-
-| Package                 | Version                         |
-| ----------------------- | ------------------------------- |
-| `docker-ce`             | `5:29.8.2-1~ubuntu.24.04~noble` |
-| `docker-ce-cli`         | `5:29.8.2-1~ubuntu.24.04~noble` |
-| `containerd.io`         | `2.3.6-1~ubuntu.24.04~noble`    |
-| `docker-buildx-plugin`  | `0.35.0-1~ubuntu.24.04~noble`   |
-| `docker-compose-plugin` | `5.3.1-1~ubuntu.24.04~noble`    |
+The five Docker packages are pinned in [`docker/host-versions.txt`](../../docker/host-versions.txt) ([ADR-0009](../adr/0009-pin-docker-versions-across-environments.md)) and installed by `scripts/ops/docker-converge.sh`. Docker must exist before Phase 6 (the WireGuard drop-in orders `docker.service` after `wg0`), but the deploy clone comes in Phase 8, so step 2 runs the script from a throwaway public clone.
 
 1. Add Docker apt repository:
 
@@ -147,25 +139,16 @@ Pinned versions (ADR-0009):
    sudo apt-get update
    ```
 
-2. Install pinned versions:
+2. Install and hold the pinned packages; give `deploy` the daemon:
 
    ```bash
-   sudo apt-get install -y \
-     docker-ce=5:29.8.2-1~ubuntu.24.04~noble \
-     docker-ce-cli=5:29.8.2-1~ubuntu.24.04~noble \
-     containerd.io=2.3.6-1~ubuntu.24.04~noble \
-     docker-buildx-plugin=0.35.0-1~ubuntu.24.04~noble \
-     docker-compose-plugin=5.3.1-1~ubuntu.24.04~noble
+   git clone --depth 1 https://github.com/Projekt-Manager-Org/Projekt-Manager.git /tmp/pm
+   sudo /tmp/pm/scripts/ops/docker-converge.sh
+   rm -rf /tmp/pm
    sudo usermod -aG docker deploy
    ```
 
-3. Hold versions:
-
-   ```bash
-   sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   ```
-
-4. Raise UDP socket buffers for HTTP/3:
+3. Raise UDP socket buffers for HTTP/3:
 
    Caddy's HTTP/3 listener (quic-go) wants ~7 MiB of UDP receive/send buffer; Ubuntu's default `net.core.rmem_max` is ~208 KiB. UDP buffer limits are a host kernel knob shared across all network namespaces, so this has to happen on the host even though Caddy runs in a container. Without it Caddy boots fine but logs `failed to sufficiently increase receive buffer size` on every start and HTTP/3 throughput is capped well below line rate. See [quic-go UDP-Buffer-Sizes](https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes).
 
@@ -182,44 +165,30 @@ Pinned versions (ADR-0009):
 **Verify:**
 
 ```bash
-docker --version              # 29.8.2
-docker compose version        # v5.3.1
 apt-mark showhold             # all five listed
 sudo -u deploy docker ps      # empty table, not "permission denied"
 sysctl net.core.rmem_max      # 7500000
 ```
 
+`deploy.sh` re-checks the pins on every deploy.
+
 #### Upgrading pinned versions
 
-Deliberate, lockstep bumps per [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) -- non-production host first, VPS last.
+A new Docker release arrives as a grouped Renovate PR (`docker-host`) editing `docker/host-versions.txt`; its CI ran on exactly those versions. Merging it is the decision to upgrade now: `deploy.sh` refuses to deploy until the VPS matches.
 
-1. Review [Docker's release notes](https://docs.docker.com/engine/release-notes/) for the target version.
-2. Non-production host first -- dev workstation, see [local-dev.md § Installing Docker](local-dev.md#installing-docker).
-3. Unhold, install the new pins, re-hold:
-
-   ```bash
-   sudo apt-mark unhold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   sudo apt-get install -y \
-     docker-ce=<version> \
-     docker-ce-cli=<version> \
-     containerd.io=<version> \
-     docker-buildx-plugin=<version> \
-     docker-compose-plugin=<version>
-   sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   apt-mark showhold
-   ```
-
-4. Restart the stack.
-
-   **VPS:** the package upgrade restarts the Docker daemon -- no `live-restore` is configured, so every running container stops. All services are `restart: unless-stopped` and self-heal once the daemon is back; re-run deploy:
+1. Review [Docker's release notes](https://docs.docker.com/engine/release-notes/) for the target versions; merge the PR.
+2. Dev workstation first: `git pull`, then `sudo scripts/ops/docker-converge.sh`, then `docker compose up -d` (per [local-dev.md](local-dev.md)).
+3. VPS last:
 
    ```bash
-   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
+   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh   # checks out the new pins, refuses at the drift guard
+   sudo /opt/projekt-manager/scripts/ops/docker-converge.sh
+   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh   # deploys
    ```
 
-   **Dev workstation:** `docker compose up -d` (per [local-dev.md](local-dev.md)) -- no `deploy.sh`, no secrets file.
+Converging restarts the Docker daemon -- no `live-restore` is configured, so every container stops (`restart: unless-stopped` brings them back) and the binary/drill-key tmpfs is wiped. The second `deploy.sh` reloads the keys.
 
-5. Update the pinned-version table above and in [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) (table + bump date).
+`scripts/ops/docker-converge.sh --check` reports drift without installing (no root needed).
 
 **Note:** Docker group membership = effective root. See ADR-0012 residual risks.
 
