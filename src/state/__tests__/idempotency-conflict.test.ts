@@ -192,14 +192,14 @@ describe('searchCustomers / searchProjects actions', () => {
     expect(customerListMock).not.toHaveBeenCalled();
   });
 
-  it('searchProjects returns projects on success', async () => {
+  it('searchProjects asks for archived projects too (AC-478)', async () => {
     projectListMock.mockResolvedValueOnce({
       ok: true,
       data: { data: [{ id: 'p-1', number: 'P-1' } as Project], total: 1 },
     });
     const result = await useProjectManagementStore.getState().searchProjects('P-1');
     expect(result).toHaveLength(1);
-    expect(projectListMock).toHaveBeenCalledWith({ search: 'P-1' });
+    expect(projectListMock).toHaveBeenCalledWith({ search: 'P-1', includeArchived: true });
   });
 
   it('searchProjects short-circuits on empty input', async () => {

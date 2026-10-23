@@ -221,7 +221,9 @@ export const useProjectManagementStore = create<ProjectManagementState>((set, ge
   searchProjects: async (search) => {
     const trimmed = search.trim();
     if (!trimmed) return [];
-    const result = await projectApi.list({ search: trimmed });
+    // Numbers are unique across all projects, so the create form's check
+    // must see archived ones too (AC-478).
+    const result = await projectApi.list({ search: trimmed, includeArchived: true });
     if (!result.ok) {
       if (result.sessionExpired) handleSessionExpired();
       return [];
