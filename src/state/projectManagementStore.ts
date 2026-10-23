@@ -94,19 +94,6 @@ interface ProjectManagementState {
      */
     siteAddress?: Address | null;
   }) => Promise<CreateProjectOutcome>;
-  updateProject: (
-    id: string,
-    data: {
-      title?: string;
-      estimatedValue?: number | null;
-      notes?: string | null;
-      /**
-       * PATCH semantics: omit to leave unchanged, `null` to clear,
-       * triple to overwrite. See AC-483 / AC-484.
-       */
-      siteAddress?: Address | null;
-    },
-  ) => Promise<Project | null>;
   updateDates: (
     id: string,
     dates: { plannedStart?: string | null; plannedEnd?: string | null },
@@ -255,26 +242,6 @@ export const useProjectManagementStore = create<ProjectManagementState>((set, ge
     await get().fetchProjects();
     useProjectStore.getState().fetchProjects();
     return { status: 'ok' };
-  },
-
-  updateProject: async (id, data) => {
-    set({ error: null });
-    const result = await projectApi.update(id, data);
-
-    if (!result.ok) {
-      if (result.sessionExpired) {
-        handleSessionExpired();
-        return null;
-      }
-      set({ error: result.error.message });
-      return null;
-    }
-
-    set((s) => ({
-      projects: s.projects.map((p) => (p.id === id ? result.data : p)),
-    }));
-    useProjectStore.getState().fetchProjects();
-    return result.data;
   },
 
   updateDates: async (id, dates) => {

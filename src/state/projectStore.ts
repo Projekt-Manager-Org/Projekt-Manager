@@ -9,7 +9,7 @@ import { create } from 'zustand';
 import { flushSync } from 'react-dom';
 import { STRINGS } from '@/config/strings';
 import type { WorkflowState } from '@/config/stateConfig';
-import type { Project, SummaryData } from '@/domain/types';
+import type { Address, Project, SummaryData } from '@/domain/types';
 import { getNextState, getPreviousState } from '@/domain/transitions';
 import { computeSummary } from '@/domain/summary';
 import { projectApi, type ApiResult } from '@/api/client';
@@ -55,6 +55,20 @@ interface ProjectState {
   transitionForward: (projectId: string) => void;
   transitionBackward: (projectId: string) => void;
   updateDates: (projectId: string, start?: string | null, end?: string | null) => void;
+  /**
+   * PATCH the editable fields. A failure surfaces as `mutationError`
+   * (AC-53) and resolves false, so the caller can show the stored value
+   * again. `siteAddress`: omit to leave unchanged, `null` to clear.
+   */
+  updateProject: (
+    projectId: string,
+    data: {
+      title?: string;
+      estimatedValue?: number | null;
+      notes?: string | null;
+      siteAddress?: Address | null;
+    },
+  ) => Promise<boolean>;
   clearMutationError: () => void;
 
   getProjectsByState: (state: WorkflowState) => Project[];
@@ -357,6 +371,25 @@ export const useProjectStore = create<ProjectState>((set, get) => {
             };
           });
         });
+    },
+
+    updateProject: async (projectId, data) => {
+      set({ mutationError: null });
+      const result = await projectApi.update(projectId, data);
+      if (!result.ok) {
+        if (result.sessionExpired) {
+          handleSessionExpired();
+          return false;
+        }
+        set({ mutationError: result.error.message || STRINGS.errors.mutationFailed });
+        return false;
+      }
+      set((s) => ({
+        projects: s.projects.map((p) => (p.id === projectId ? result.data : p)),
+      }));
+      // Sync the management store
+      useProjectManagementStore.getState().fetchProjects();
+      return true;
     },
 
     clearMutationError: () => {

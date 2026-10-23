@@ -95,9 +95,9 @@ export function ProjectDetailPage() {
 
   const fetchProject = useProjectStore((s) => s.fetchProject);
   const updateDates = useProjectStore((s) => s.updateDates);
+  const updateProject = useProjectStore((s) => s.updateProject);
   const storeProject = useProjectStore((s) => s.projects.find((p) => p.id === projectId));
 
-  const updateProject = useProjectManagementStore((s) => s.updateProject);
   const deleteProject = useProjectManagementStore((s) => s.deleteProject);
   const purgeProject = useProjectManagementStore((s) => s.purgeProject);
   const restoreProject = useProjectManagementStore((s) => s.restoreProject);
@@ -278,7 +278,7 @@ export function ProjectDetailPage() {
             <InlineTitle
               value={project.title}
               readOnly={!canUpdate || isArchived}
-              onCommit={(next) => void updateProject(project.id, { title: next })}
+              onCommit={(next) => updateProject(project.id, { title: next })}
             />
             <span
               className={styles.statusBadge}
@@ -535,7 +535,7 @@ export function ProjectDetailPage() {
               initial={project.estimatedValue}
               readOnly={!canUpdate || isArchived}
               testId="project-value-edit"
-              onCommit={(value) => void updateProject(project.id, { estimatedValue: value })}
+              onCommit={(value) => updateProject(project.id, { estimatedValue: value })}
             />
           </div>
           <div className={styles.coreFieldFull}>
@@ -544,7 +544,7 @@ export function ProjectDetailPage() {
               initial={project.notes}
               readOnly={!canUpdate || isArchived}
               testId="project-notes-input"
-              onCommit={(notes) => void updateProject(project.id, { notes })}
+              onCommit={(notes) => updateProject(project.id, { notes })}
             />
           </div>
         </div>
@@ -679,13 +679,19 @@ function InlineTitle({
 }: {
   value: string;
   readOnly: boolean;
-  onCommit: (next: string) => void;
+  onCommit: (next: string) => Promise<boolean>;
 }) {
   // "Adjust state during render" pattern — re-seed the draft when the
   // underlying prop changes (server-commit, store refetch) without a
   // useEffect cascade.
   const [draft, setDraft] = useState(value);
   const [lastSeen, setLastSeen] = useState(value);
+  // The stored value at settle time, not at blur: a refetch may land while
+  // the save is in flight, and the field must not revert to an older value.
+  const stored = useRef(value);
+  useEffect(() => {
+    stored.current = value;
+  });
   if (value !== lastSeen) {
     setLastSeen(value);
     setDraft(value);
@@ -714,7 +720,10 @@ function InlineTitle({
       setDraft(value);
       return;
     }
-    onCommit(normalized);
+    // A failed save shows the stored value again (AC-53).
+    void onCommit(normalized).then((saved) => {
+      if (!saved) setDraft(stored.current);
+    });
   };
 
   return (
@@ -795,11 +804,15 @@ function InlineNumberField({
   initial: number | null;
   readOnly: boolean;
   testId: string;
-  onCommit: (next: number | null) => void;
+  onCommit: (next: number | null) => Promise<boolean>;
 }) {
   const initialText = initial != null ? String(initial) : '';
   const [draft, setDraft] = useState(initialText);
   const [lastSeen, setLastSeen] = useState(initialText);
+  const stored = useRef(initialText);
+  useEffect(() => {
+    stored.current = initialText;
+  });
   if (initialText !== lastSeen) {
     setLastSeen(initialText);
     setDraft(initialText);
@@ -808,16 +821,15 @@ function InlineNumberField({
   const commit = () => {
     const trimmed = draft.trim();
     if (trimmed === lastSeen) return;
-    if (!trimmed) {
-      onCommit(null);
-      return;
-    }
-    const parsed = parseFloat(trimmed.replace(',', '.'));
+    const parsed = trimmed ? parseFloat(trimmed.replace(',', '.')) : null;
     if (Number.isNaN(parsed)) {
       setDraft(lastSeen);
       return;
     }
-    onCommit(parsed);
+    // A failed save shows the stored value again (AC-53).
+    void onCommit(parsed).then((saved) => {
+      if (!saved) setDraft(stored.current);
+    });
   };
 
   return (
@@ -850,11 +862,15 @@ function InlineTextareaField({
   initial: string | null;
   readOnly: boolean;
   testId: string;
-  onCommit: (next: string | null) => void;
+  onCommit: (next: string | null) => Promise<boolean>;
 }) {
   const initialText = initial ?? '';
   const [draft, setDraft] = useState(initialText);
   const [lastSeen, setLastSeen] = useState(initialText);
+  const stored = useRef(initialText);
+  useEffect(() => {
+    stored.current = initialText;
+  });
   if (initialText !== lastSeen) {
     setLastSeen(initialText);
     setDraft(initialText);
@@ -864,7 +880,10 @@ function InlineTextareaField({
     const trimmed = draft.trim();
     const normalized = trimmed || null;
     if ((normalized ?? '') === (initial ?? '')) return;
-    onCommit(normalized);
+    // A failed save shows the stored value again (AC-53).
+    void onCommit(normalized).then((saved) => {
+      if (!saved) setDraft(stored.current);
+    });
   };
 
   return (
