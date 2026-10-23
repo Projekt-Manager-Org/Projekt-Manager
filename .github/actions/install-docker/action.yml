@@ -1,0 +1,24 @@
+name: Install pinned Docker
+description: >
+  Brings the runner's Docker to the host pins in docker/host-versions.txt
+  (ADR-0009), on the containerd image store, through the same
+  scripts/ops/docker-converge.sh the dev workstations and the VPS run. A
+  green CI run then says the pinned set works, which is what lets a
+  Renovate bump of that file be judged by CI.
+
+  Only where CI reproduces what a host does with its own Docker: `lint`'s
+  compose validation and the `build-scan-smoke` composite (the `docker`
+  job and `promote`'s fallback). The daemon restarts during the install,
+  so it must run before anything starts containers or a buildx builder,
+  and never in a job with `services:` (e2e, `check-shard`), whose
+  containers the restart would stop.
+
+  The procedure lives in the sibling install-docker.sh so CI's shellcheck
+  gate covers it (actionlint does not read composite action.yml files).
+
+runs:
+  using: composite
+  steps:
+    - name: Install pinned Docker
+      shell: bash
+      run: bash "${GITHUB_ACTION_PATH}/install-docker.sh"

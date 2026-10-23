@@ -75,7 +75,8 @@ jobs:
   # tests only.
   # ---------------------------------------------------------------
   lint:
-    runs-on: ubuntu-latest
+    # Matches the ~noble Docker host pins it installs (ADR-0009).
+    runs-on: ubuntu-24.04
     # The release-age gate reaches the npm registry, so this job can now
     # block on a remote host. Without a bound a hung socket parks it at
     # the 6-hour default; the job otherwise runs in ~4 min.
@@ -338,6 +339,10 @@ jobs:
       # `lint` runs on every event. Same argument that put the Trivy
       # filesystem-secret and IaC scans here rather than in the image
       # job: it needs no image and costs seconds.
+      # Validate with the hosts' pinned Compose (ADR-0009), not the
+      # runner's own, which is a different major.
+      - uses: ./.github/actions/install-docker
+
       - name: Validate Compose file references
         env:
           # Placeholders for variables in docker-compose.yml that have
@@ -824,7 +829,8 @@ jobs:
   # ---------------------------------------------------------------
   docker:
     if: github.event_name != 'push'
-    runs-on: ubuntu-latest
+    # Matches the ~noble Docker host pins it installs (ADR-0009).
+    runs-on: ubuntu-24.04
     # Measured across the last 70 runs: 3-5 min warm, 7-14.4 min cold —
     # and cold is the first run on every new branch, not a rare tail. The
     # bound is ~2x the cold worst case, not 5x the warm median: a healthy
@@ -900,11 +906,7 @@ jobs:
       # is not a commit anything deploys, so they are untagged garbage
       # that `ghcr-retention.yml` sweeps. Cheaper than a branch.
       #
-      # Caddy has its own build context (./docker/caddy) with a custom
-      # xcaddy + pinned plugin SHA that adds ~60s of Go compile and
-      # rarely changes — documented accepted gap. If a Caddy build
-      # regression slips through, `scripts/deploy.sh`'s image build on
-      # the VPS is the backstop.
+      # Caddy is not part of this composite; it is built below.
       - uses: ./.github/actions/build-scan-smoke
         id: images
         with:
@@ -940,6 +942,40 @@ jobs:
         env:
           BACKUP_IMAGE: ${{ steps.tags.outputs.backup_repo }}:${{ steps.tags.outputs.sha_tag }}
         run: bash scripts/backup/verify-roundtrip.sh
+
+      # Caddy is the one image a host builds itself: deploy.sh runs
+      # `docker compose build caddy` on the VPS, on the daemon's embedded
+      # BuildKit. So does this, on the pinned daemon the composite above
+      # installed, through the `default` builder (setup-buildx switched the
+      # current builder to its own BuildKit container). Only when a build
+      # input changed — the Caddy context or the Docker pins — since the
+      # xcaddy Go compile costs minutes and the context rarely changes.
+      # An event with no base to diff against (workflow_dispatch) builds.
+      - name: Detect Caddy build input changes
+        id: caddy_inputs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE_SHA" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          # --quiet: 0 = no change, 1 = changed, anything else is an error
+          # that must fail the step rather than skip the build.
+          rc=0
+          git diff --quiet "$BASE_SHA" HEAD -- docker/caddy docker/host-versions.txt || rc=$?
+          case $rc in
+            0) echo "changed=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "changed=true" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$rc" ;;
+          esac
+
+      - name: Build Caddy on the pinned daemon's BuildKit
+        if: steps.caddy_inputs.outputs.changed == 'true'
+        timeout-minutes: 15
+        run: docker buildx build --builder default --tag projekt-manager-caddy:ci docker/caddy
 
   # ---------------------------------------------------------------
   # Point `sha-<pr-tip>` + `<branch-slug>` at the digests `docker`
@@ -1038,7 +1074,8 @@ jobs:
   promote:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [check, lint]
-    runs-on: ubuntu-latest
+    # Matches the ~noble Docker host pins it installs (ADR-0009).
+    runs-on: ubuntu-24.04
     # The happy path is seconds, but the fallback runs the same composite
     # `docker` does — and `docker` never runs on `push`, so main's layer
     # cache is written almost only by these fallbacks themselves. That

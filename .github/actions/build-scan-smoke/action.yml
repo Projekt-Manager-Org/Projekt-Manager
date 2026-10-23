@@ -50,6 +50,11 @@ outputs:
 runs:
   using: composite
   steps:
+    # Pinned host Docker (ADR-0009) before anything starts a builder or a
+    # container: the install restarts the daemon. Here rather than in the
+    # callers so the `docker` job and `promote`'s fallback both get it.
+    - uses: ./.github/actions/install-docker
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
