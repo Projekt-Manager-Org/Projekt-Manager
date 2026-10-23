@@ -416,6 +416,16 @@ fi
 echo "Reloading Caddy config..."
 docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --force
 
+# Smoke test from the outside in: https://$DOMAIN/api/health through the
+# port Docker published on the WireGuard IP, Caddy and its certificate.
+# The in-container probe above bypasses all three — and the published port
+# is the layer a Docker Engine upgrade changes (ADR-0009). 120s covers a
+# first certificate issuance via DNS-01.
+if ! ./scripts/smoke-caddy-health.sh 120; then
+  docker compose logs caddy --tail=50
+  exit 1
+fi
+
 # --- Drill-key reload (operator-loaded; AC-175 tmpfs-only) -----------
 # Container recreation wipes the tmpfs at /run/drill-key. Until the
 # operator re-pastes the age private identity, every Tier 2 drill tick
