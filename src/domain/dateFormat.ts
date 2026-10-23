@@ -1,4 +1,4 @@
-import { parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { LOCALE } from '@/config/localeConfig';
 import { STRINGS } from '@/config/strings';
@@ -48,15 +48,6 @@ export function formatDateTimeDE(isoDate: string): string {
 }
 
 /**
- * Format an ISO date string to short German DD.MM. format.
- */
-export function formatDateShortDE(isoDate: string): string {
-  return formatInTimeZone(parseISO(isoDate), DE_TIMEZONE, 'dd.MM.', {
-    locale: LOCALE.dateFns,
-  });
-}
-
-/**
  * Format an ISO timestamp for the backup-freshness badge tooltip:
  * `HH:mm EEE dd.MM.yyyy` — e.g. `14:00 So. 26.04.2026`.
  *
@@ -72,18 +63,23 @@ export function formatBackupTimestampDE(isoDate: string): string {
 }
 
 /**
- * Format a date range for display. Uses short format for start if same year.
+ * Format a range of `YYYY-MM-DD` calendar dates for display. Uses short
+ * format for start if same year.
+ *
+ * Calendar dates carry no zone, so they are formatted from their local
+ * components: a Berlin conversion of local midnight shifts them a day
+ * back on any host east of Berlin.
  */
 export function formatDateRange(start?: string, end?: string): string {
+  const fmt = (isoDate: string, pattern: string) =>
+    format(parseISO(isoDate), pattern, { locale: LOCALE.dateFns });
   if (!start && !end) return STRINGS.projects.noDate;
-  if (start && !end) return formatDateDE(start);
+  if (start && !end) return fmt(start, 'dd.MM.yyyy');
   if (start && end) {
-    const startDate = parseISO(start);
-    const endDate = parseISO(end);
-    if (startDate.getFullYear() === endDate.getFullYear()) {
-      return `${formatDateShortDE(start)} – ${formatDateDE(end)}`;
+    if (parseISO(start).getFullYear() === parseISO(end).getFullYear()) {
+      return `${fmt(start, 'dd.MM.')} – ${fmt(end, 'dd.MM.yyyy')}`;
     }
-    return `${formatDateDE(start)} – ${formatDateDE(end)}`;
+    return `${fmt(start, 'dd.MM.yyyy')} – ${fmt(end, 'dd.MM.yyyy')}`;
   }
   return STRINGS.projects.noDate;
 }

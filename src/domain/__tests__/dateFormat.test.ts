@@ -1,10 +1,15 @@
-import { describe, it, expect } from 'vitest';
-import { formatBackupTimestampDE, formatDateOnly, formatDateTimeDE } from '../dateFormat';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import {
+  formatBackupTimestampDE,
+  formatDateOnly,
+  formatDateRange,
+  formatDateTimeDE,
+} from '../dateFormat';
 
 // Z-suffixed inputs anchor the assertion to a single moment in time;
-// the formatters bind to Europe/Berlin, so the expected wall clock is
-// the same regardless of the runner's TZ (local dev on Berlin, CI on
-// UTC, any future runner elsewhere).
+// the timestamp formatters bind to Europe/Berlin, so the expected wall
+// clock is the same regardless of the runner's TZ (local dev on Berlin,
+// CI on UTC, any future runner elsewhere).
 describe('formatBackupTimestampDE', () => {
   it('formats as HH:mm EEE dd.MM.yyyy with German weekday', () => {
     // 2026-04-26T12:00Z → 14:00 Berlin (CEST, UTC+2), Sunday.
@@ -53,5 +58,36 @@ describe('formatDateOnly', () => {
   it('pads month and day to two digits', () => {
     expect(formatDateOnly(new Date(2026, 0, 5))).toBe('2026-01-05');
     expect(formatDateOnly(new Date(2026, 11, 31))).toBe('2026-12-31');
+  });
+});
+
+// AC-468: dates in DD.MM.YYYY; a range within one year shortens its start to DD.MM.
+describe('formatDateRange', () => {
+  // Planned dates are calendar dates with no zone. A runner east of
+  // Berlin catches a formatter that shifts them through a zone
+  // conversion, which a Berlin or UTC runner cannot see.
+  const originalTZ = process.env.TZ;
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+  afterAll(() => {
+    if (originalTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTZ;
+  });
+
+  it('shortens the start of a range within one year', () => {
+    expect(formatDateRange('2026-04-14', '2026-05-02')).toBe('14.04. – 02.05.2026');
+  });
+
+  it('keeps the start year of a range across years', () => {
+    expect(formatDateRange('2026-12-29', '2027-01-04')).toBe('29.12.2026 – 04.01.2027');
+  });
+
+  it('shows a start-only date in full', () => {
+    expect(formatDateRange('2026-04-14')).toBe('14.04.2026');
+  });
+
+  it('shows "Kein Termin" without dates', () => {
+    expect(formatDateRange()).toBe('Kein Termin');
   });
 });

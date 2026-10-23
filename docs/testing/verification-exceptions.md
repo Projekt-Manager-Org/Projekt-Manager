@@ -185,7 +185,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-464 | gap     | e2e asserts the counter label, not the count                                                             |
 | AC-466 | gap     | needs an e2e clicking "Filter aufheben"                                                                  |
 | AC-467 | gap     | needs an e2e switching views with the filter active                                                      |
-| AC-468 | gap     | needs a unit test of the date and range formatters                                                       |
 | AC-469 | gap     | needs an e2e asserting a Monday-start week                                                               |
 | AC-470 | gap     | needs an e2e below each tier width; `useCollapseTier.test.tsx` covers only the hook                      |
 | AC-471 | gap     | needs a panel test clearing the start while an end is set                                                |
