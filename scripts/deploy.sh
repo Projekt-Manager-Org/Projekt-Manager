@@ -75,6 +75,17 @@ fi
 EXPECTED_SHA="$(git rev-parse HEAD)"
 echo "(continuing deploy at $EXPECTED_SHA)"
 
+# --- Pre-flight: Docker host pins ---------------------------------------
+# The target SHA's docker/host-versions.txt is what CI tested this commit
+# on (ADR-0009). A host on other Docker packages, or on another image
+# store, is running something CI never ran: refuse, and let the operator
+# converge first. Before any compose call, so nothing touches the stack.
+# The check prints the drift and how to fix it.
+if ! "$REPO_DIR/scripts/ops/docker-converge.sh" --check; then
+  echo "ERROR: Docker host does not match the pins of $EXPECTED_SHA; deploy refused." >&2
+  exit 1
+fi
+
 # Pin the exact SHA-tagged image so this deploy is reproducible and a
 # rollback is just re-running with an older SHA. Both `app` and `backup`
 # images are produced by this repo and share APP_IMAGE_TAG — CI pushes

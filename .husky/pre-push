@@ -4,6 +4,13 @@ npm run format:check
 bash scripts/check-env-drift.sh
 npm run check:tokens
 
+# Docker host pins (ADR-0009): warn only — a dev host lagging a just-merged
+# bump should not block pushing. Skipped off apt (no dpkg-query).
+if command -v dpkg-query >/dev/null 2>&1; then
+  bash scripts/ops/docker-converge.sh --check >/dev/null 2>&1 ||
+    echo "warn: Docker host drifted from docker/host-versions.txt — see: scripts/ops/docker-converge.sh --check"
+fi
+
 if command -v shellcheck >/dev/null 2>&1; then
   find ./scripts ./.github/actions -type f \( -name '*.sh' -o -name '*.bash' \) -print0 \
     | xargs -0 -r shellcheck --severity=warning --format=gcc

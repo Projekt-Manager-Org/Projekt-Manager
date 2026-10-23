@@ -570,6 +570,9 @@ jobs:
       - name: Renovate annotation check — self-test
         run: bash scripts/__tests__/check-renovate-annotations.test.sh
 
+      - name: Docker converge script — self-test
+        run: bash scripts/__tests__/docker-converge.test.sh
+
       # Static check: every raw INSERT/UPDATE/DELETE on an audited
       # table (project, customer, user, project_worker) must be
       # authored inside the service-layer `mutate()` helper or on the
