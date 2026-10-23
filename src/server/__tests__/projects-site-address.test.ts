@@ -329,6 +329,38 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
       expect(patchRes.json().code).toBe('VALIDATION_ERROR');
     });
 
+    it('POST with a whitespace-only street → 422 VALIDATION_ERROR', async () => {
+      const number = nextProjectNumber('BLANKSTR');
+      const res = await authPost(ownerToken, '/api/projects', {
+        number,
+        title: 'Blank street',
+        customerId: seededCustomerId,
+        siteAddress: { street: '   ', zip: '51103', city: 'Köln' },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+    });
+
+    it('PATCH with a whitespace-only city → 422 VALIDATION_ERROR, site unchanged', async () => {
+      const number = nextProjectNumber('BLANKCTY');
+      const createRes = await authPost(ownerToken, '/api/projects', {
+        number,
+        title: 'PATCH blank city',
+        customerId: seededCustomerId,
+        siteAddress: SITE_BERLIN,
+      });
+      expect(createRes.statusCode).toBe(201);
+      const id = createRes.json().id;
+
+      const patchRes = await authPatch(ownerToken, `/api/projects/${id}`, {
+        siteAddress: { street: 'Goethestr. 18', zip: '51103', city: ' \t' },
+      });
+      expect(patchRes.statusCode).toBe(422);
+      expect(patchRes.json().code).toBe('VALIDATION_ERROR');
+      const getRes = await authGet(ownerToken, `/api/projects/${id}`);
+      expect(getRes.json().siteAddress).toEqual(SITE_BERLIN);
+    });
+
     it('POST with all three non-empty triple → 201 (existing behavior unbroken)', async () => {
       const number = nextProjectNumber('FULL');
       const res = await authPost(ownerToken, '/api/projects', {

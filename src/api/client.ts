@@ -354,7 +354,6 @@ export const projectApi = {
     number: string;
     title: string;
     customerId: string;
-    status?: string;
     plannedStart?: string | null;
     plannedEnd?: string | null;
     assignedWorkerIds?: string[];
@@ -373,7 +372,6 @@ export const projectApi = {
     id: string,
     data: {
       title?: string;
-      customerId?: string;
       assignedWorkerIds?: string[];
       estimatedValue?: number | null;
       notes?: string | null;

@@ -147,7 +147,6 @@ export const STRINGS = {
       'Projekt kann nicht zurückgestuft werden. Der aktuelle Status ist bereits der erste Status.',
     cannotRevertTerminal:
       'Projekt kann nicht zurückgestuft werden. Der aktuelle Status ist ein Endstatus.',
-    invalidStatus: (s: string) => `status '${s}' ist kein gültiger Workflow-Status.`,
     invalidPlannedStart: 'plannedStart muss ein gültiges ISO-Datum sein.',
     invalidPlannedEnd: 'plannedEnd muss ein gültiges ISO-Datum sein.',
     endWithoutStart: 'Enddatum kann nicht ohne Startdatum gesetzt werden.',

@@ -8,8 +8,15 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
-import { STATE_KEYS, WORKFLOW_ORDER } from '../../config/stateConfig.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPost,
+  seedProjectStatus,
+} from '../../test/api-helpers.js';
+import { STATE_KEYS, WORKFLOW_ORDER, type WorkflowState } from '../../config/stateConfig.js';
 
 describe('Project Operations — List', () => {
   let token: string;
@@ -196,7 +203,7 @@ describe('Project Operations — List', () => {
       // testing — alphabetic sort would put 'abnahme' before 'angebot',
       // but workflow order puts 'angebot' first.
       const tag = `${runId}-STS`;
-      const picks: { title: string; status: string }[] = [
+      const picks: { title: string; status: WorkflowState }[] = [
         { title: `${tag}-abnahme`, status: 'abnahme' },
         { title: `${tag}-anfrage`, status: 'anfrage' },
         { title: `${tag}-angebot`, status: 'angebot' },
@@ -206,9 +213,9 @@ describe('Project Operations — List', () => {
           number: num('S', i),
           title: p.title,
           customerId,
-          status: p.status,
         });
         expect(res.statusCode).toBe(201);
+        await seedProjectStatus(res.json().id, p.status);
       }
 
       const ascRes = await authGet(token, `/api/projects?search=${tag}&sortBy=status&sortDir=asc`);

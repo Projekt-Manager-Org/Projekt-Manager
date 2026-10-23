@@ -98,7 +98,6 @@ interface ProjectManagementState {
     id: string,
     data: {
       title?: string;
-      customerId?: string;
       estimatedValue?: number | null;
       notes?: string | null;
       /**

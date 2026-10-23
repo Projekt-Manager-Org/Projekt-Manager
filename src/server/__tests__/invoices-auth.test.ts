@@ -56,6 +56,7 @@ import {
   authPatch,
   authDelete,
   expectedVersion,
+  seedProjectStatus,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -308,12 +309,13 @@ describe('AC-297 — invoice auth + permission matrix (per-role × per-endpoint 
         number: `AUTH-${suffix}`,
         title: `Auth-matrix fixture ${suffix}`,
         customerId,
-        status: 'rechnung_faellig',
       });
       if (res.statusCode !== 201) {
         throw new Error(`mintRechnungFaelligProject failed ${res.statusCode} ${res.body}`);
       }
-      return res.json().id as string;
+      const id = res.json().id as string;
+      await seedProjectStatus(id, 'rechnung_faellig');
+      return id;
     }
     issueProjectIdOwner = await mintRechnungFaelligProject(
       `OWN-${crypto.randomUUID().slice(0, 6)}`,

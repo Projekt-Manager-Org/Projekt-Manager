@@ -504,7 +504,7 @@ export async function insertProject(
 }
 
 /**
- * Apply the project-level field update (title, customer, estimatedValue, notes).
+ * Apply the project-level field update (title, siteAddress, estimatedValue, notes).
  * Does NOT handle worker reassignment — that is split out into a separate
  * `replaceProjectWorkers` call so each add/remove can produce its own
  * audit row (AC-177 "every mutation produces exactly one audit_log row",
@@ -520,7 +520,6 @@ export async function updateProjectFields(
   userId: string,
   data: {
     title?: string;
-    customerId?: string;
     siteAddress?: { street: string; zip: string; city: string } | null;
     estimatedValue?: number | null;
     notes?: string | null;
@@ -532,7 +531,6 @@ export async function updateProjectFields(
     updatedBy: userId,
   };
   if (data.title !== undefined) setClause.title = data.title;
-  if (data.customerId !== undefined) setClause.customerId = data.customerId;
   // Mirrors the customer-address PATCH-clears semantics: presence (`'siteAddress' in data`)
   // distinguishes "set to null" (clear) from "omitted" (no-op).
   if ('siteAddress' in data) setClause.siteAddress = data.siteAddress ?? null;

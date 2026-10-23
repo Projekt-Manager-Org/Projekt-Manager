@@ -117,13 +117,15 @@ export function projectRoutes(db: Database) {
             additionalProperties: false,
             properties: {
               id: { type: 'string', format: 'uuid' },
-              number: { type: 'string', minLength: 1 },
-              title: { type: 'string', minLength: 1 },
+              number: { type: 'string', pattern: '\\S', maxLength: 20 },
+              title: { type: 'string', pattern: '\\S', maxLength: 500 },
               customerId: { type: 'string', format: 'uuid' },
-              status: { type: 'string' },
+              // A project starts in the first state (AC-475). Listed as `false`
+              // rather than omitted: Ajv strips unlisted properties silently.
+              status: false,
               // Baustellen-/Leistungsadresse — same JSON shape as customer.address.
               // Null means "site is at the customer's billing address" (data-model.md §5.1).
-              // AC-485 backstop: partial triples (any empty-string component)
+              // AC-485 backstop: partial triples (any blank component)
               // are rejected at this layer with 422 VALIDATION_ERROR. The
               // primary all-or-none rule lives in the UI; the API enforces
               // the same shape as defense-in-depth against a malformed client.
@@ -132,15 +134,20 @@ export function projectRoutes(db: Database) {
                 additionalProperties: false,
                 required: ['street', 'zip', 'city'],
                 properties: {
-                  street: { type: 'string', minLength: 1 },
-                  zip: { type: 'string', minLength: 1 },
-                  city: { type: 'string', minLength: 1 },
+                  street: { type: 'string', pattern: '\\S' },
+                  zip: { type: 'string', pattern: '\\S' },
+                  city: { type: 'string', pattern: '\\S' },
                 },
               },
               plannedStart: { type: ['string', 'null'], format: 'date' },
               plannedEnd: { type: ['string', 'null'], format: 'date' },
               assignedWorkerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
-              estimatedValue: { type: ['number', 'null'] },
+              // numeric(12,2): at most 10 integer digits (data-model.md §5.1).
+              estimatedValue: {
+                type: ['number', 'null'],
+                minimum: -9999999999.99,
+                maximum: 9999999999.99,
+              },
               notes: { type: ['string', 'null'] },
             },
           },
@@ -153,7 +160,6 @@ export function projectRoutes(db: Database) {
           number: string;
           title: string;
           customerId: string;
-          status?: string;
           siteAddress?: { street: string; zip: string; city: string } | null;
           plannedStart?: string | null;
           plannedEnd?: string | null;
@@ -338,25 +344,32 @@ export function projectRoutes(db: Database) {
             additionalProperties: false,
             minProperties: 1,
             properties: {
-              title: { type: 'string', minLength: 1 },
-              customerId: { type: 'string', format: 'uuid' },
+              title: { type: 'string', pattern: '\\S', maxLength: 500 },
+              // Immutable (data-model.md §5.1). Listed as `false` rather than
+              // omitted: Ajv strips unlisted properties silently.
+              customerId: false,
               // PATCH semantics: omitted leaves the stored value unchanged;
               // null clears (= "site is at the customer's billing address");
               // a populated triple overwrites. Mirrors the customer-address
-              // PATCH-clears rule. AC-485: each component requires minLength 1
-              // — empty-string in any field is a 422 VALIDATION_ERROR.
+              // PATCH-clears rule. AC-485: a blank component in any field is a
+              // 422 VALIDATION_ERROR.
               siteAddress: {
                 type: ['object', 'null'],
                 additionalProperties: false,
                 required: ['street', 'zip', 'city'],
                 properties: {
-                  street: { type: 'string', minLength: 1 },
-                  zip: { type: 'string', minLength: 1 },
-                  city: { type: 'string', minLength: 1 },
+                  street: { type: 'string', pattern: '\\S' },
+                  zip: { type: 'string', pattern: '\\S' },
+                  city: { type: 'string', pattern: '\\S' },
                 },
               },
               assignedWorkerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
-              estimatedValue: { type: ['number', 'null'] },
+              // numeric(12,2): at most 10 integer digits (data-model.md §5.1).
+              estimatedValue: {
+                type: ['number', 'null'],
+                minimum: -9999999999.99,
+                maximum: 9999999999.99,
+              },
               notes: { type: ['string', 'null'] },
             },
           },
@@ -367,7 +380,6 @@ export function projectRoutes(db: Database) {
         const { id } = request.params as { id: string };
         const body = request.body as {
           title?: string;
-          customerId?: string;
           siteAddress?: { street: string; zip: string; city: string } | null;
           assignedWorkerIds?: string[];
           estimatedValue?: number | null;

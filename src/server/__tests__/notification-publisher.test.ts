@@ -31,6 +31,7 @@ import {
   authPost,
   authPatch,
   authDelete,
+  seedProjectStatus,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -118,10 +119,11 @@ describe('Publisher resolves recipients as deduplicated union (AC-192)', () => {
       number,
       title: `AC-192 fixture (${status})`,
       customerId: seededCustomerId,
-      status,
     });
     expect(res.statusCode).toBe(201);
-    return (res.json() as { id: string }).id;
+    const id = (res.json() as { id: string }).id;
+    await seedProjectStatus(id, status);
+    return id;
   }
 
   beforeAll(async () => {
@@ -746,10 +748,10 @@ describe('Actor excluded from own-action push (AC-321)', () => {
         number: `AT135-${Date.now().toString(36)}`,
         title: 'AC-321 actor-exclusion fixture',
         customerId: seededCustomerId,
-        status: 'beauftragt',
       });
       expect(projRes.statusCode).toBe(201);
       const projectId = (projRes.json() as { id: string }).id;
+      await seedProjectStatus(projectId, 'beauftragt');
 
       // Owner is the actor.
       const res = await authPost(ownerToken, `/api/projects/${projectId}/transition/forward`, {

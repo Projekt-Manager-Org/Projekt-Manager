@@ -49,7 +49,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { startApp, stopApp, login, authPost } from '../../test/api-helpers.js';
+import { startApp, stopApp, login, authPost, seedProjectStatus } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
 import { InvoiceService } from '../services/InvoiceService.js';
@@ -114,12 +114,13 @@ describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup 
       number: `TOCTOU-${suffix}`,
       title: `TOCTOU fixture ${suffix}`,
       customerId,
-      status: 'in_arbeit',
     });
     if (res.statusCode !== 201) {
       throw new Error(`mintInArbeitProject failed ${res.statusCode} ${res.body}`);
     }
-    return res.json().id as string;
+    const id = res.json().id as string;
+    await seedProjectStatus(id, 'in_arbeit');
+    return id;
   }
 
   beforeAll(async () => {

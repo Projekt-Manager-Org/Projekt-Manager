@@ -35,8 +35,10 @@ import {
   authPost,
   authPatch,
   authPut,
+  seedProjectStatus,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
+import type { WorkflowState } from '../../config/stateConfig.js';
 import { createDatabase } from '../db/connection.js';
 import { getEnv } from '../config/env.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
@@ -74,16 +76,17 @@ const year = new Date().getFullYear();
 // Fixtures
 // ---------------------------------------------------------------------
 
-async function mintProject(status: string): Promise<string> {
+async function mintProject(status: WorkflowState): Promise<string> {
   const suffix = crypto.randomUUID().slice(0, 8);
   const res = await authPost(ownerToken, '/api/projects', {
     number: `SW-${suffix}`,
     title: `Stale-write fixture ${suffix}`,
     customerId,
-    status,
   });
   if (res.statusCode !== 201) throw new Error(`mintProject ${res.statusCode} ${res.body}`);
-  return res.json().id as string;
+  const id = res.json().id as string;
+  await seedProjectStatus(id, status);
+  return id;
 }
 
 async function mintCustomer(): Promise<string> {
