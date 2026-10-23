@@ -35,7 +35,7 @@ import type { WorkflowState } from '@/config/stateConfig';
 import type { Invoice } from '@/domain/invoice';
 import { buildInvoiceDownloadFilename } from '@/domain/invoice';
 import { orderInvoicesWithStornoGrouping } from '@/domain/invoiceGrouping';
-import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
+import { formatCurrencyDE, formatCalendarDateDE } from '@/domain/dateFormat';
 import { useInvoiceStore } from '@/state/invoiceStore';
 import { useProjectStore } from '@/state/projectStore';
 import { useConfirmStore } from '@/state/confirmStore';
@@ -474,7 +474,7 @@ function InvoiceRow({
           {status.label}
         </span>
       </div>
-      <div>{invoice.issueDate ? formatDateDE(invoice.issueDate) : '—'}</div>
+      <div>{invoice.issueDate ? formatCalendarDateDE(invoice.issueDate) : '—'}</div>
       <div className={styles.cellRecipient}>{invoice.recipient.name}</div>
       <div className={styles.cellTotal}>{formatCurrencyDE(invoice.totals.grossGrandTotal)}</div>
       <div className={styles.actions}>

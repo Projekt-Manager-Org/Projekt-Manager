@@ -5,6 +5,7 @@ import { useProjectStore } from '@/state/projectStore';
 import { useUIStore } from '@/state/uiStore';
 import { useRouterNav, pathFromView } from '@/hooks/useRouterNav';
 import { STRINGS } from '@/config/strings';
+import { formatDateOnly, formatDateRange } from '@/domain/dateFormat';
 import { CalendarGrid } from './CalendarGrid';
 import styles from './CalendarView.module.css';
 
@@ -23,9 +24,7 @@ export function CalendarView() {
   if (viewMode === 'week') {
     const weekStart = startOfWeek(currentMonth, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(currentMonth, { weekStartsOn: 1 });
-    const startStr = format(weekStart, 'dd.MM.', { locale: LOCALE.dateFns });
-    const endStr = format(weekEnd, 'dd.MM.yyyy', { locale: LOCALE.dateFns });
-    navigationLabel = `${startStr} – ${endStr}`;
+    navigationLabel = formatDateRange(formatDateOnly(weekStart), formatDateOnly(weekEnd));
   } else {
     const label = format(currentMonth, 'MMMM yyyy', { locale: LOCALE.dateFns });
     navigationLabel = label.charAt(0).toUpperCase() + label.slice(1);

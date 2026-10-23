@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import { STATE_CONFIGS, STATE_FALLBACK_COLOR } from '@/config/stateConfig';
+import { formatDateRange } from '@/domain/dateFormat';
 import type { Project } from '@/domain/types';
 import { usePermission } from '@/hooks/usePermission';
 import { useProjectManagementStore, type ProjectSortKey } from '@/state/projectManagementStore';
@@ -274,9 +275,7 @@ export function ProjectManagement() {
                   )}
                 </td>
                 <td data-label={STRINGS.ui.dates}>
-                  {p.plannedStart
-                    ? `${new Date(p.plannedStart).toLocaleDateString('de-DE')}${p.plannedEnd ? ' – ' + new Date(p.plannedEnd).toLocaleDateString('de-DE') : ''}`
-                    : STRINGS.projects.noDate}
+                  {formatDateRange(p.plannedStart ?? undefined, p.plannedEnd ?? undefined)}
                 </td>
                 <td data-label={STRINGS.ui.value}>
                   {p.estimatedValue != null

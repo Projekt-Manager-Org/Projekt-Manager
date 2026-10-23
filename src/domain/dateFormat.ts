@@ -1,10 +1,10 @@
-import { parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { LOCALE } from '@/config/localeConfig';
 import { STRINGS } from '@/config/strings';
 
-// The *DE formatters claim German formatting, which by convention
-// includes Berlin wall-clock time. Binding the zone here means a
+// The *DE timestamp formatters claim German formatting, which by
+// convention includes Berlin wall-clock time. Binding the zone here means a
 // process running on a UTC host (CI, default cloud VM) still renders
 // the audit log / badge tooltips in the timezone users expect, rather
 // than silently inheriting the host TZ.
@@ -28,7 +28,8 @@ export function formatDateOnly(d: Date): string {
 }
 
 /**
- * Format an ISO date string to German DD.MM.YYYY format.
+ * Format an ISO timestamp to its German DD.MM.YYYY date in Berlin.
+ * Calendar dates take `formatCalendarDateDE`.
  */
 export function formatDateDE(isoDate: string): string {
   return formatInTimeZone(parseISO(isoDate), DE_TIMEZONE, 'dd.MM.yyyy', {
@@ -48,15 +49,6 @@ export function formatDateTimeDE(isoDate: string): string {
 }
 
 /**
- * Format an ISO date string to short German DD.MM. format.
- */
-export function formatDateShortDE(isoDate: string): string {
-  return formatInTimeZone(parseISO(isoDate), DE_TIMEZONE, 'dd.MM.', {
-    locale: LOCALE.dateFns,
-  });
-}
-
-/**
  * Format an ISO timestamp for the backup-freshness badge tooltip:
  * `HH:mm EEE dd.MM.yyyy` — e.g. `14:00 So. 26.04.2026`.
  *
@@ -71,19 +63,32 @@ export function formatBackupTimestampDE(isoDate: string): string {
   });
 }
 
+// Calendar dates (`YYYY-MM-DD`) carry no zone, so they are formatted
+// from their local components: a Berlin conversion of local midnight
+// shifts them a day back on any host east of Berlin.
+function formatCalendarDate(isoDate: string, pattern: string): string {
+  return format(parseISO(isoDate), pattern, { locale: LOCALE.dateFns });
+}
+
 /**
- * Format a date range for display. Uses short format for start if same year.
+ * Format a `YYYY-MM-DD` calendar date to German DD.MM.YYYY format.
+ */
+export function formatCalendarDateDE(isoDate: string): string {
+  return formatCalendarDate(isoDate, 'dd.MM.yyyy');
+}
+
+/**
+ * Format a range of `YYYY-MM-DD` calendar dates for display. Uses short
+ * format for start if same year.
  */
 export function formatDateRange(start?: string, end?: string): string {
   if (!start && !end) return STRINGS.projects.noDate;
-  if (start && !end) return formatDateDE(start);
+  if (start && !end) return formatCalendarDateDE(start);
   if (start && end) {
-    const startDate = parseISO(start);
-    const endDate = parseISO(end);
-    if (startDate.getFullYear() === endDate.getFullYear()) {
-      return `${formatDateShortDE(start)} – ${formatDateDE(end)}`;
+    if (parseISO(start).getFullYear() === parseISO(end).getFullYear()) {
+      return `${formatCalendarDate(start, 'dd.MM.')} – ${formatCalendarDateDE(end)}`;
     }
-    return `${formatDateDE(start)} – ${formatDateDE(end)}`;
+    return `${formatCalendarDateDE(start)} – ${formatCalendarDateDE(end)}`;
   }
   return STRINGS.projects.noDate;
 }

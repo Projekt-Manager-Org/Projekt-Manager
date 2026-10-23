@@ -2,10 +2,9 @@
  * Convert an ISO date or datetime string into a value suitable for
  * `<input type="date">`, which only accepts `YYYY-MM-DD`.
  *
- * The API returns full ISO datetimes (`2026-04-25T00:00:00.000Z`) because
- * the database column is `timestamptz`. The HTML date input will refuse to
- * display anything but `YYYY-MM-DD`, so we strip the time portion when
- * present. Already-short values pass through unchanged.
+ * The HTML date input refuses anything but `YYYY-MM-DD`, so a time
+ * portion is stripped when present. The API's `YYYY-MM-DD` calendar dates
+ * pass through unchanged.
  *
  * Inputs:
  *   - `undefined` / `null` / empty string → `''`

@@ -38,7 +38,7 @@ import {
   labelForTaxMode,
   UNIT_PRICE_MAX_DECIMALS,
 } from '@/domain/invoice';
-import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
+import { formatCurrencyDE, formatCalendarDateDE } from '@/domain/dateFormat';
 import { usePermission } from '@/hooks/usePermission';
 import { useInvoiceDetailStore } from '@/state/invoiceDetailStore';
 import { useInvoiceStore } from '@/state/invoiceStore';
@@ -270,13 +270,13 @@ export function InvoiceDetailView() {
           <div className={styles.metaRow}>
             <span className={styles.metaLabel}>{STRINGS.invoices.detailLabelIssueDate}</span>
             <span className={styles.metaValue}>
-              {invoice.issueDate ? formatDateDE(invoice.issueDate) : '—'}
+              {invoice.issueDate ? formatCalendarDateDE(invoice.issueDate) : '—'}
             </span>
           </div>
           <div className={styles.metaRow}>
             <span className={styles.metaLabel}>{STRINGS.invoices.detailLabelPerformanceDate}</span>
             <span className={styles.metaValue}>
-              {invoice.performanceDate ? formatDateDE(invoice.performanceDate) : '—'}
+              {invoice.performanceDate ? formatCalendarDateDE(invoice.performanceDate) : '—'}
             </span>
           </div>
           <div className={styles.metaRow}>

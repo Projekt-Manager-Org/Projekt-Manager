@@ -22,7 +22,7 @@ import { useConfirmStore } from '@/state/confirmStore';
 import { useToastStore } from '@/state/toastStore';
 import { usePermission } from '@/hooks/usePermission';
 import { ATTACHMENT_MIME_WHITELIST } from '@/domain/attachments';
-import { formatDateDE } from '@/domain/dateFormat';
+import { formatCalendarDateDE } from '@/domain/dateFormat';
 import { buildProjectBundleFilename } from '@/domain/filename';
 import { ActivityFeed } from '@/ui/audit/ActivityFeed';
 import { NotPermittedView } from '@/ui/common/NotPermittedView';
@@ -507,7 +507,7 @@ export function ProjectDetailPage() {
               />
             ) : (
               <span className={styles.coreValue}>
-                {project.plannedStart ? formatDateDE(project.plannedStart) : '—'}
+                {project.plannedStart ? formatCalendarDateDE(project.plannedStart) : '—'}
               </span>
             )}
           </div>
@@ -525,7 +525,7 @@ export function ProjectDetailPage() {
               />
             ) : (
               <span className={styles.coreValue}>
-                {project.plannedEnd ? formatDateDE(project.plannedEnd) : '—'}
+                {project.plannedEnd ? formatCalendarDateDE(project.plannedEnd) : '—'}
               </span>
             )}
           </div>

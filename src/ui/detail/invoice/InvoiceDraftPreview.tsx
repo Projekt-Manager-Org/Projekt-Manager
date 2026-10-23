@@ -8,7 +8,7 @@
 
 import { STRINGS } from '@/config/strings';
 import { labelForTaxMode, type Invoice } from '@/domain/invoice';
-import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
+import { formatCurrencyDE, formatCalendarDateDE } from '@/domain/dateFormat';
 import styles from './InvoiceDraftPreview.module.css';
 
 export function InvoiceDraftPreview({ invoice }: { invoice: Invoice }) {
@@ -27,7 +27,7 @@ export function InvoiceDraftPreview({ invoice }: { invoice: Invoice }) {
           )}
         </dd>
         <dt>{STRINGS.invoices.detailLabelPerformanceDate}</dt>
-        <dd>{invoice.performanceDate ? formatDateDE(invoice.performanceDate) : '—'}</dd>
+        <dd>{invoice.performanceDate ? formatCalendarDateDE(invoice.performanceDate) : '—'}</dd>
         <dt>{STRINGS.invoices.detailLabelTaxMode}</dt>
         <dd>
           {labelForTaxMode(invoice.taxMode, {

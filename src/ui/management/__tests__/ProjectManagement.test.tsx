@@ -325,3 +325,29 @@ function withDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void }
   });
   return { promise, resolve };
 }
+
+describe('ProjectManagement — dates column (AC-468)', () => {
+  it('renders planned dates as DD.MM.YYYY, shortening a same-year start', async () => {
+    projectListMock.mockResolvedValue(
+      ok({
+        data: [
+          mockProject({
+            number: 'P-001',
+            plannedStart: '2026-04-14',
+            plannedEnd: '2026-05-02',
+          }),
+        ],
+        total: 1,
+      }),
+    );
+
+    renderWithRouter(<ProjectManagement />);
+    await screen.findByText('P-001');
+
+    const datesCell = screen
+      .getByText('P-001')
+      .closest('tr')!
+      .querySelector('td[data-label="Termine"]');
+    expect(datesCell?.textContent).toBe('14.04. – 02.05.2026');
+  });
+});
