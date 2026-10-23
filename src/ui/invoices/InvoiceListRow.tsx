@@ -31,7 +31,7 @@
 import { useLocation, useNavigate } from 'react-router';
 import { STRINGS } from '@/config/strings';
 import { buildInvoiceDownloadFilename, type Invoice } from '@/domain/invoice';
-import { formatCurrencyDE, formatDateDE } from '@/domain/dateFormat';
+import { formatCurrencyDE, formatCalendarDateDE } from '@/domain/dateFormat';
 import { useInvoiceListStore } from '@/state/invoiceListStore';
 import { useInvoiceStore } from '@/state/invoiceStore';
 import { useConfirmStore } from '@/state/confirmStore';
@@ -180,7 +180,7 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
         </span>
       </div>
       <div className={styles.cellDate}>
-        {invoice.issueDate ? formatDateDE(invoice.issueDate) : '—'}
+        {invoice.issueDate ? formatCalendarDateDE(invoice.issueDate) : '—'}
       </div>
       <div className={styles.cellRecipient}>{invoice.recipient.name}</div>
       <div className={styles.cellTotal}>{formatCurrencyDE(invoice.totals.grossGrandTotal)}</div>

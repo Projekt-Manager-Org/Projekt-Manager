@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { useTimezone } from '@/test/timezone';
 import {
   formatBackupTimestampDE,
   formatDateOnly,
+  formatCalendarDateDE,
   formatDateRange,
   formatDateTimeDE,
 } from '../dateFormat';
@@ -62,17 +64,14 @@ describe('formatDateOnly', () => {
 });
 
 // AC-468: dates in DD.MM.YYYY; a range within one year shortens its start to DD.MM.
-describe('formatDateRange', () => {
-  // Planned dates are calendar dates with no zone. A runner east of
-  // Berlin catches a formatter that shifts them through a zone
+describe('calendar-date formatters', () => {
+  // Planned and invoice dates are calendar dates with no zone. A runner
+  // east of Berlin catches a formatter that shifts them through a zone
   // conversion, which a Berlin or UTC runner cannot see.
-  const originalTZ = process.env.TZ;
-  beforeAll(() => {
-    process.env.TZ = 'Asia/Tokyo';
-  });
-  afterAll(() => {
-    if (originalTZ === undefined) delete process.env.TZ;
-    else process.env.TZ = originalTZ;
+  useTimezone('Asia/Tokyo');
+
+  it('formats a date as DD.MM.YYYY', () => {
+    expect(formatCalendarDateDE('2026-04-09')).toBe('09.04.2026');
   });
 
   it('shortens the start of a range within one year', () => {

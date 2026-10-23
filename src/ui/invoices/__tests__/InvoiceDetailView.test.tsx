@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useTimezone } from '@/test/timezone';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import type { ApiResult } from '@/api/client';
@@ -302,5 +303,24 @@ describe('InvoiceDetailView — not-found surface', () => {
     await waitFor(() => {
       expect(screen.getByTestId('invoice-detail-not-found')).toBeInTheDocument();
     });
+  });
+});
+
+describe('InvoiceDetailView — dates', () => {
+  // Invoice dates are calendar dates; east of Berlin a zone conversion
+  // would show them a day early.
+  useTimezone('Asia/Tokyo');
+
+  it('renders issue and performance date as stored east of Berlin', async () => {
+    setAuthUser(['owner']);
+    getByIdMock.mockResolvedValue({
+      ok: true,
+      data: makeInvoice({ issueDate: '2026-04-10', performanceDate: '2026-03-31' }),
+    });
+    renderAt('/rechnungen/inv-1');
+
+    const view = await screen.findByTestId('invoice-detail-view');
+    expect(view).toHaveTextContent('10.04.2026');
+    expect(view).toHaveTextContent('31.03.2026');
   });
 });
