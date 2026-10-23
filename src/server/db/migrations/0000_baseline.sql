@@ -470,15 +470,17 @@ EXECUTE FUNCTION attachments_storage_usage_delta_fn();
 -- `cancellation_reason` is NOT in the allow-list. Per
 -- data-model.md §5.15 ("null on non-Storno rows; frozen on the
 -- Storno row at issuance of the cancellation") and
--- `invoices-cancel.test.ts:313` (`cancellation_reason` is listed in
--- the original's `immutableFields` set), the original invoice's
--- `cancellation_reason` stays NULL forever. The reason text is
--- carried by the Storno sibling row, which is a fresh INSERT — this
--- trigger fires only on UPDATE, so the Storno's `cancellation_reason`
--- is set without touching the trigger.
+-- the AC-290 happy-path test in `invoices-cancel.test.ts` (it lists
+-- `cancellation_reason` in the original's `immutableFields`), the
+-- original invoice's `cancellation_reason` stays NULL forever. The
+-- reason text is carried by the Storno sibling row, which is a fresh
+-- INSERT — this trigger fires only on UPDATE, so the Storno's
+-- `cancellation_reason` is set without touching the trigger.
 --
--- Every other column UPDATE on an issued row is rejected. A
--- 'cancelled' row is fully frozen — no further UPDATEs at all.
+-- Every other column UPDATE on an issued row is rejected, except
+-- `version`: `invoices_version_bump_fn` (50-row-version.sql) resets it
+-- to its old value instead. A 'cancelled' row is fully frozen — no
+-- further UPDATEs at all.
 -- Drafts are unconstrained; the route layer manages their lifecycle.
 -- ---------------------------------------------------------------
 CREATE OR REPLACE FUNCTION invoices_enforce_immutability_fn()
