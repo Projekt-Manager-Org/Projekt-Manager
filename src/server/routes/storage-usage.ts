@@ -2,7 +2,7 @@
  * Storage usage read routes (totals: data-model.md §5.14; permissions: api.md §14.3).
  *
  *   - GET  /api/projects/:id/storage-usage — per-project read.
- *     Permission and reachability mirror Get project ([api.md §14.2.2]):
+ *     Permission and reachability mirror Get project (AC-147):
  *     a known, in-scope project returns 200 with the four-bucket
  *     payload; an existing project outside the caller's scope returns
  *     403 NOT_PERMITTED; an unknown project id returns 404 NOT_FOUND.

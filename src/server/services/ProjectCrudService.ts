@@ -119,7 +119,7 @@ export class ProjectCrudService {
     // because project IDs are UUIDs and callers are internal users.
     if (isOutOfScope(result)) throw notPermitted();
     // Archived rows flow through here unchanged with `deleted: true` on
-    // the body — the UI renders them as a read-only preview. AC-95
+    // the body — the UI renders them as a read-only preview. AC-499
     // immutability is enforced by mutation paths via getProjectForMutation.
     return result;
   }
@@ -752,7 +752,7 @@ export class ProjectCrudService {
             // to HTTP codes.
             const priorRows = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
             const priorRow = priorRows[0];
-            // AC-308: a project carrying any issued or cancelled invoice
+            // AC-504: a project carrying any issued or cancelled invoice
             // is frozen (ADR-0026) — purge is rejected with a dedicated
             // code so the UI can target the invoice message rather
             // than the generic CONFLICT. Drafts cascade-delete with the

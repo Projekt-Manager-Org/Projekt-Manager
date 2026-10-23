@@ -1,6 +1,6 @@
 /**
  * AssignedWorkerEditor — inline worker-chip editor on the project
- * detail page (spec §8.15.3, AC-209 + AC-210).
+ * detail page (spec §8.15.3, AC-481 + AC-53).
  *
  * The control shows the current assigned workers as chips, lets callers
  * with `project:update` add or remove workers, and is hidden as a
@@ -140,7 +140,7 @@ describe('AssignedWorkerEditor — read surface', () => {
   });
 });
 
-describe('AssignedWorkerEditor — add worker (AC-209)', () => {
+describe('AssignedWorkerEditor — add worker (AC-481)', () => {
   it('dispatches projectApi.update with the full new assignedWorkerIds list', async () => {
     setAuthUser(['owner']);
     updateMock.mockResolvedValue(
@@ -173,12 +173,12 @@ describe('AssignedWorkerEditor — add worker (AC-209)', () => {
     ];
     expect(projectId).toBe('p-42');
     // The patch names the full new set — the Update project API takes a
-    // replacement list, not a delta (api.md §14.2.2 + spec §8.15.3).
+    // replacement list, not a delta.
     expect(new Set(patch.assignedWorkerIds)).toEqual(new Set(['u-w1', 'u-w2', 'u-w3']));
   });
 });
 
-describe('AssignedWorkerEditor — remove worker (AC-209)', () => {
+describe('AssignedWorkerEditor — remove worker (AC-481)', () => {
   it('dispatches projectApi.update with the remaining worker ids', async () => {
     setAuthUser(['owner']);
     updateMock.mockResolvedValue(
@@ -218,7 +218,7 @@ describe('AssignedWorkerEditor — hidden control for callers without project:up
   });
 });
 
-describe('AssignedWorkerEditor — optimistic revert on failure (AC-210 + §9.5)', () => {
+describe('AssignedWorkerEditor — optimistic revert on failure (AC-53 + §9.5)', () => {
   it('restores the original chip set when the mutation fails', async () => {
     setAuthUser(['owner']);
     updateMock.mockResolvedValue({

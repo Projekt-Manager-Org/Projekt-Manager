@@ -238,7 +238,7 @@ export function ProjectManagement() {
             const rowClassName = p.deleted
               ? `${styles.clickableRow} ${styles.rowInactive}`
               : styles.clickableRow;
-            // AC-159: the purge action is gated on archive state + toggle
+            // AC-501: the purge action is gated on archive state + toggle
             // + permission. The archive action is gated on permission +
             // non-archived row. A caller with only `project:delete` still
             // gets the actions cell for non-archived rows; a caller with

@@ -433,8 +433,8 @@ export function customerHasInvoices(details: InvoiceRetentionDetails): AppError 
 
 /**
  * Project purge rejected — the project carries at least one issued or
- * cancelled invoice. AC-308. Distinct from the generic CONFLICT used
- * for the non-archived purge precondition (AC-156).
+ * cancelled invoice. AC-504. Distinct from the generic CONFLICT used
+ * for the non-archived purge precondition (AC-503).
  */
 export function projectHasInvoices(details: InvoiceRetentionDetails): AppError {
   return new AppError('PROJECT_HAS_INVOICES', STRINGS.errors.projectHasInvoices, 409, details);

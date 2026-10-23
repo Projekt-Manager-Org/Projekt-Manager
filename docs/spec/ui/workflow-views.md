@@ -55,14 +55,14 @@ On wide viewports ([AC-473](../verification.md#151-workflow-board)), a panel ove
 Contents:
 
 - Project number, title
-- **`Öffnen`** — opens the Project Detail Page ([AC-207](../verification.md#1525-project-detail-page), [AC-472](../verification.md#151-workflow-board))
+- **`Öffnen`** — opens the Project Detail Page ([AC-207](../verification.md#1512-projects), [AC-472](../verification.md#151-workflow-board))
 - Status badge in the state color, with the German label
 - Customer: name, phone (clickable), email (clickable)
 - `Baustelle:` line, rendered as on the Project Detail Page ([project-detail.md §8.15.2](project-detail.md#8152-core-fields)), with a single map link
-- **Planned start / end** date pickers ([AC-7](../verification.md#151-workflow-board), [AC-471](../verification.md#151-workflow-board); valid combinations: [data-model.md §6.8](../data-model.md#68-date-validation))
-- Assigned workers (display names). Editing is on the Project Detail Page ([project-detail.md §8.15.3](project-detail.md#8153-assigned-worker-editor)) and in the Project Management View ([management.md §8.8.3](management.md#883-edit-project)).
+- **Planned start / end** date pickers ([AC-7](../verification.md#151-workflow-board), [AC-471](../verification.md#151-workflow-board); valid combinations: [AC-482](../verification.md#1512-projects))
+- Assigned workers (display names). Editing is on the Project Detail Page ([project-detail.md §8.15.3](project-detail.md#8153-assigned-worker-editor)).
 - Estimated value, formatted as `8.500,00 €`
-- Notes, read-only here; editable in the Project Management View ([management.md §8.8.3](management.md#883-edit-project))
+- Notes, read-only here; editable on the Project Detail Page ([project-detail.md §8.15.2](project-detail.md#8152-core-fields))
 - Timestamps: created, last updated, status changed
 
 ### 8.4.1 Activity Feed

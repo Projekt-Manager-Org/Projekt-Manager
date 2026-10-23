@@ -4,7 +4,7 @@
  * ([project-detail.md §8.15.2]). Both surfaces MUST render this line
  * identically; the component is the single source of truth.
  *
- * Render rules (AC-282 / AC-283):
+ * Render rules (AC-489, AC-490, AC-491, AC-283):
  *   - `project.siteAddress` non-null → `street, zip city` from
  *     `project.siteAddress`. No fallback hint.
  *   - `project.siteAddress` null + `customer.address` present →

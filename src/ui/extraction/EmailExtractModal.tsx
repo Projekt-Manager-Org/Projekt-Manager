@@ -56,7 +56,7 @@ export function EmailExtractModal({ onClose }: Props) {
   // ("site = customer billing address"), matching the data-model.md §5.1
   // fallback rule for emails that mention only one address.
   const [extractedSiteAddress, setExtractedSiteAddress] = useState<Address | null>(null);
-  // AC-284 partial-fill validation hint, set by handleSave on a partial read.
+  // AC-485 partial-fill validation hint, set by handleSave on a partial read.
   const [siteAddressError, setSiteAddressError] = useState<string | null>(null);
 
   // Save state
@@ -158,7 +158,7 @@ export function EmailExtractModal({ onClose }: Props) {
     if (saving) return;
     setError(null);
 
-    // AC-284: all-or-none on the Baustelle group. Read the draft *before*
+    // AC-485: all-or-none on the Baustelle group. Read the draft *before*
     // any network call so a partial fill blocks the save without creating
     // a stranded customer row from step 1.
     const siteResult = siteAddressRef.current?.read() ?? { kind: 'valid' as const, value: null };

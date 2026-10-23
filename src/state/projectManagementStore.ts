@@ -50,7 +50,7 @@ interface ProjectManagementState {
   /**
    * Whether the list should include archived (soft-deleted) projects.
    * Default `false` — archived rows are hidden. Toggled by the
-   * "Archivierte einblenden" checkbox in the management toolbar (AC-152).
+   * "Archivierte einblenden" checkbox in the management toolbar (AC-492).
    */
   showArchived: boolean;
   /**
@@ -90,7 +90,7 @@ interface ProjectManagementState {
     /**
      * Baustelle (work-site) address. `null` (or omitted) inherits the
      * customer's billing address via the fallback rule. See
-     * data-model.md §5.1, AC-280 / AC-278.
+     * data-model.md §5.1, AC-483 / AC-484.
      */
     siteAddress?: Address | null;
   }) => Promise<CreateProjectOutcome>;
@@ -103,7 +103,7 @@ interface ProjectManagementState {
       notes?: string | null;
       /**
        * PATCH semantics: omit to leave unchanged, `null` to clear,
-       * triple to overwrite. See AC-279 / AC-280.
+       * triple to overwrite. See AC-483 / AC-484.
        */
       siteAddress?: Address | null;
     },
@@ -114,7 +114,7 @@ interface ProjectManagementState {
   ) => Promise<Project | null>;
   deleteProject: (id: string) => Promise<boolean>;
   /**
-   * Hard-delete an archived project (AC-155, AC-156, AC-157, AC-158). Returns:
+   * Hard-delete an archived project (AC-502, AC-503, AC-157). Returns:
    *   - true on 204 success (row removed from local state)
    *   - true on 404 — treat as "already gone", remove locally, no error
    *   - false on 409 (not archived) / 403 — surfaces server message

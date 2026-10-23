@@ -83,4 +83,4 @@ Rejected: purging one project has strictly narrower blast radius than deleting a
 ## References
 
 - [data-model.md §6.9](../spec/data-model.md) — soft-delete and purge specification.
-- [verification.md](../spec/verification.md) — AC-61 (soft-delete marks project deleted), AC-79 (management delete soft-deletes), AC-91 (customer delete atomically purges archived projects), AC-95 (mutations on soft-deleted projects rejected), plus purge ACs covering `project:purge`, the archive-first gate, and the `Endgültig löschen` UI path.
+- [verification.md](../spec/verification.md) — AC-497 (archive), AC-498 (restore), AC-499 (archived projects refuse changes), AC-91 (customer delete purges archived projects), and AC-501, AC-502, AC-503, AC-504 and AC-505 (permanent delete).

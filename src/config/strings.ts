@@ -162,7 +162,7 @@ export const STRINGS = {
     concurrentModification:
       'Der Projektstatus wurde zwischenzeitlich geändert. Bitte Seite neu laden.',
 
-    // Site-address (Baustelle) labels — see ui/management.md §8.8.6
+    // Site-address (Baustelle) labels — see ui/management.md §8.8.2
     // and ui/project-detail.md §8.15.2. The Baustelle group on the
     // project create / edit forms and the read-only `Baustelle:` line
     // on both detail surfaces source their German copy from these keys.
@@ -177,7 +177,7 @@ export const STRINGS = {
     siteAddressNone: 'Keine Adresse',
     /** All-or-none validation message for the Baustelle group — fires
      *  when the toggle is OFF and at least one but not all three of
-     *  street / zip / city carry a non-whitespace value. AC-284. */
+     *  street / zip / city carry a non-whitespace value. AC-485. */
     siteAddressPartial:
       'Bitte alle drei Felder ausfüllen oder „Identisch mit Kundenadresse“ aktivieren.',
   },

@@ -7,7 +7,7 @@
  * These tests are written ahead of the implementation (TDD). They define
  * the filter contract for the GET /api/projects endpoint.
  *
- * Spec §14.2.2 filter parameters:
+ * List filter parameters:
  *   - status: single or multiple workflow states
  *   - search: free-text across number, title, customer name
  *   - hasNoDates: boolean — projects without planned dates
@@ -34,9 +34,9 @@ describe('Project List Filters', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-76: Status filter
+  // Status filter
   // ---------------------------------------------------------------
-  describe('AC-76: Filter by status', () => {
+  describe('Filter by status', () => {
     it('returns only projects matching a single status', async () => {
       const res = await authGet(token, '/api/projects?status=rechnung_faellig');
 
@@ -99,9 +99,9 @@ describe('Project List Filters', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-76: Search parameter
+  // AC-493: Search parameter
   // ---------------------------------------------------------------
-  describe('AC-76: Search across number, title, customer name', () => {
+  describe('AC-493: Search across number, title, customer name', () => {
     it('finds projects by number substring', async () => {
       // Get a known project number from seed
       const allRes = await authGet(token, '/api/projects?limit=1');
@@ -150,9 +150,9 @@ describe('Project List Filters', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-76: hasNoDates filter
+  // hasNoDates filter (the board filter of AC-465)
   // ---------------------------------------------------------------
-  describe('AC-76: Filter by hasNoDates', () => {
+  describe('Filter by hasNoDates', () => {
     it('returns only projects without planned dates', async () => {
       const res = await authGet(token, '/api/projects?hasNoDates=true');
 
@@ -230,7 +230,7 @@ describe('Project List Filters', () => {
   // seed counts) so the assertions remain stable as seed data evolves.
   // The leaked rows are tolerated — every case scopes its assertions to
   // the ids it just created.
-  describe('Filter by assignedWorkerIds + includeUnassigned', () => {
+  describe('AC-495: Filter by assignedWorkerIds + includeUnassigned', () => {
     let customerId: string;
     let worker1Id: string;
     let worker2Id: string;
@@ -252,7 +252,7 @@ describe('Project List Filters', () => {
 
       // Four fixture projects covering the matrix: w1-only, w2-only, both,
       // and unassigned. POST takes assignedWorkerIds as the create-time
-      // assignment list (api.md §14.2.2).
+      // assignment list.
       const make = async (number: string, workerIds: string[]) => {
         const res = await authPost(token, '/api/projects', {
           number,
@@ -403,13 +403,13 @@ describe('Project List Filters', () => {
   });
 
   // ---------------------------------------------------------------
-  // includeArchived filter (AC-151)
+  // includeArchived filter (AC-497, AC-492)
   // ---------------------------------------------------------------
   // Setup creates an archived project in `beforeAll` by creating a fresh
   // project, then soft-deleting it via DELETE /api/projects/:id (same
-  // pattern as AC-61). The leaked row is tolerated — tests only assert
+  // pattern as AC-497). The leaked row is tolerated — tests only assert
   // on rows they created or seed rows that cannot be archived.
-  describe('AC-151: Filter by includeArchived', () => {
+  describe('AC-497, AC-492: Filter by includeArchived', () => {
     /** ID of the archived project used across the cases below. */
     let archivedId: string;
     /** The status the archived project carried at the time of archive. */
@@ -438,7 +438,7 @@ describe('Project List Filters', () => {
     });
 
     it('excludes archived rows by default (includeArchived omitted)', async () => {
-      // Default-exclude behaviour is already covered by AC-61 for the
+      // Default-exclude behaviour is already covered by AC-497 for the
       // generic soft-delete plumbing. This case re-asserts specifically
       // for the includeArchived contract's neutral default — the archived
       // fixture must not appear without the explicit opt-in.

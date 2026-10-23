@@ -63,7 +63,7 @@ export function ProjectDetailPanel({ project, onClose }: ProjectDetailPanelProps
     if (startDraft === storeValue) return;
     if (!startDraft && currentProject.plannedEnd) {
       // Explicit clear of start while end exists → clear both
-      // (AC-471, data-model §6.8). The intermediate-empty case is
+      // (AC-471, AC-482). The intermediate-empty case is
       // excluded by the blur gate: by the time blur fires the user has
       // left the field, so an empty value reflects a deliberate clear.
       updateDates(currentProject.id, null, null);
@@ -151,7 +151,7 @@ export function ProjectDetailPanel({ project, onClose }: ProjectDetailPanelProps
               via SiteAddressLine. Renders project.siteAddress when set,
               falls back to customer.address with a "(Kundenadresse)"
               hint when null, and shows "Keine Adresse" when both are
-              absent. AC-282 / AC-283. */}
+              absent. AC-489, AC-283. */}
           <SiteAddressLine project={currentProject} variant="panel" />
 
           {/* Dates */}

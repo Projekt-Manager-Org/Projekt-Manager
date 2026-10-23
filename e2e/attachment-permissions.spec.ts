@@ -4,7 +4,7 @@ import { STORAGE_STATES } from './storage-states';
 /**
  * Attachment role-gating smoke — the browser-observable slice of the
  * route-scoping + per-role visibility contract on the project detail
- * page (AC-206 deep-link, AC-121 hidden controls; the bookkeeper's
+ * page (AC-507 deep-link, AC-121 hidden controls; the bookkeeper's
  * unscoped read and lack of hide per api.md §14.3). Server-layer contracts live in `src/server/__tests__/`.
  *
  * Runs under `chromium` (read-only). The spec does not persist any new
@@ -38,7 +38,7 @@ async function resolveProjectIdBySuffix(
   return hit!.id;
 }
 
-test.describe('AC-206: unassigned worker deep-linking /projects/:id', () => {
+test.describe('AC-507: unassigned worker deep-linking /projects/:id', () => {
   test.use({ storageState: STORAGE_STATES.worker });
 
   test('worker hitting a project they are not on lands on the not-permitted surface', async ({
@@ -68,7 +68,7 @@ test.describe('AC-206: unassigned worker deep-linking /projects/:id', () => {
   });
 });
 
-test.describe('AC-206 / AC-121: bookkeeper reads the detail page, cannot write', () => {
+test.describe('AC-509 / AC-121: bookkeeper reads the detail page, cannot write', () => {
   test.use({ storageState: STORAGE_STATES.bookkeeper });
 
   test('bookkeeper lands on the page and sees gallery + binary list, no control surfaces', async ({
@@ -85,7 +85,7 @@ test.describe('AC-206 / AC-121: bookkeeper reads the detail page, cannot write',
     await page.goto(`/projects/${projectId}`);
 
     // Bookkeeper reaches the page (holds `attachment:read` unscoped per
-    // ui/project-detail.md §8.15.9).
+    // api.md §14.3).
     await expect(page.getByTestId('project-detail-page')).toBeVisible();
     await expect(page.getByTestId('not-permitted-view')).toHaveCount(0);
 
@@ -95,7 +95,7 @@ test.describe('AC-206 / AC-121: bookkeeper reads the detail page, cannot write',
     await expect(page.getByTestId('project-detail-binaries')).toBeVisible();
 
     // Bookkeeper holds `attachment:read` only (ui/project-detail.md
-    // §8.15.6 + §8.15.9) — no upload CTA, no delete affordance, no
+    // §8.15.6, api.md §14.3) — no upload CTA, no delete affordance, no
     // worker-editor control. Any of those rendering is the client-side
     // gate leaking state the server would 403 anyway (hidden-control
     // pattern, AC-121).

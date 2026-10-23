@@ -264,7 +264,7 @@ describe('ProjectDetailPage — out-of-scope worker surface (AC-149 mirror)', ()
     expect(screen.queryByTestId('project-detail-core')).not.toBeInTheDocument();
   });
 
-  it('renders the not-found surface when the server returns 404 (unknown project)', async () => {
+  it('AC-508: renders the not-found surface when the server returns 404 (unknown project)', async () => {
     // An unknown project id is a 404, not a 403. The page must
     // distinguish so the user is not shown a stale authorization error.
     setAuthUser(['owner']);

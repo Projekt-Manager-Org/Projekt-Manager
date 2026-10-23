@@ -49,17 +49,26 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-49  | infra   | deployment review — VPN-only reachability                                                                |
 | AC-50  | infra   | deployment review — persistent volumes                                                                   |
 | AC-51  | infra   | deploy procedure — `scripts/deploy.sh` takes a commit SHA                                                |
+| AC-59  | retired | —                                                                                                        |
+| AC-60  | retired | —                                                                                                        |
+| AC-61  | retired | —                                                                                                        |
+| AC-62  | retired | —                                                                                                        |
 | AC-70  | retired | —                                                                                                        |
 | AC-71  | retired | —                                                                                                        |
 | AC-72  | retired | —                                                                                                        |
 | AC-73  | retired | —                                                                                                        |
 | AC-74  | gap     | the navigation walk misses Daten, Aktivität, Benachrichtigungen, Meine Projekte; no-reload is unasserted |
+| AC-76  | retired | —                                                                                                        |
+| AC-77  | retired | —                                                                                                        |
+| AC-78  | retired | —                                                                                                        |
+| AC-79  | retired | —                                                                                                        |
 | AC-80  | gap     | needs an e2e walking the customer table + project-count column                                           |
 | AC-86  | retired | —                                                                                                        |
 | AC-87  | retired | —                                                                                                        |
 | AC-88  | retired | —                                                                                                        |
 | AC-89  | retired | —                                                                                                        |
 | AC-90  | retired | —                                                                                                        |
+| AC-95  | retired | —                                                                                                        |
 | AC-105 | gap     | needs an e2e confirming the entry is visible only with `customer:write`                                  |
 | AC-106 | gap     | needs an e2e covering the textarea and the action disabled while empty / in flight                       |
 | AC-107 | gap     | needs an e2e walking the extraction-review form + existing-customer match                                |
@@ -68,12 +77,19 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-110 | gap     | needs an e2e walking dark-mode surfaces, plus a WCAG AA contrast check                                   |
 | AC-113 | infra   | CI `lint` — `scripts/check-theme-tokens.sh`                                                              |
 | AC-114 | gap     | needs an e2e that swaps the accent and walks primary, link, focus, selection                             |
+| AC-125 | retired | —                                                                                                        |
 | AC-126 | retired | —                                                                                                        |
 | AC-128 | gap     | needs an e2e of the create-form dropdown flows (`CustomerManagement.test.tsx` is mock-based)             |
 | AC-129 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
-| AC-130 | gap     | needs an e2e covering blur → verdict → edit clears verdict (`ProjectManagement.test.tsx` is mock-based)  |
+| AC-130 | retired | —                                                                                                        |
 | AC-143 | retired | —                                                                                                        |
 | AC-144 | retired | —                                                                                                        |
+| AC-151 | retired | —                                                                                                        |
+| AC-152 | retired | —                                                                                                        |
+| AC-155 | retired | —                                                                                                        |
+| AC-156 | retired | —                                                                                                        |
+| AC-158 | retired | —                                                                                                        |
+| AC-159 | retired | —                                                                                                        |
 | AC-162 | retired | —                                                                                                        |
 | AC-163 | retired | —                                                                                                        |
 | AC-172 | infra   | compose-file review                                                                                      |
@@ -82,7 +98,10 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-181 | retired | —                                                                                                        |
 | AC-191 | retired | —                                                                                                        |
 | AC-194 | retired | —                                                                                                        |
-| AC-208 | gap     | `ProjectDetailPage.test.tsx` pins the read surface only; edit gating per permission is unasserted        |
+| AC-206 | retired | —                                                                                                        |
+| AC-208 | retired | —                                                                                                        |
+| AC-209 | retired | —                                                                                                        |
+| AC-210 | retired | —                                                                                                        |
 | AC-212 | retired | —                                                                                                        |
 | AC-213 | retired | —                                                                                                        |
 | AC-214 | retired | —                                                                                                        |
@@ -132,6 +151,13 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-272 | retired | —                                                                                                        |
 | AC-273 | retired | —                                                                                                        |
 | AC-274 | retired | —                                                                                                        |
+| AC-278 | retired | —                                                                                                        |
+| AC-279 | retired | —                                                                                                        |
+| AC-280 | retired | —                                                                                                        |
+| AC-281 | retired | —                                                                                                        |
+| AC-282 | retired | —                                                                                                        |
+| AC-284 | retired | —                                                                                                        |
+| AC-308 | retired | —                                                                                                        |
 | AC-313 | retired | —                                                                                                        |
 | AC-314 | retired | —                                                                                                        |
 | AC-315 | retired | —                                                                                                        |
@@ -164,3 +190,8 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-472 | gap     | `ProjectDetailPanel.test.tsx` asserts only the route change, not the back action                         |
 | AC-473 | gap     | e2e opens the panel from a card; no test opens it from a calendar bar                                    |
 | AC-474 | gap     | needs an e2e at phone width opening a project from the board and the calendar                            |
+| AC-478 | gap     | #593: the check ignores archived projects; then an e2e as for AC-479                                     |
+| AC-479 | gap     | needs an e2e covering blur → verdict → edit clears verdict (`ProjectManagement.test.tsx` is mock-based)  |
+| AC-500 | gap     | #601: the invoice block still offers changes; then a page test of an archived project                    |
+| AC-506 | gap     | `archive-flows.spec.ts` does not assert the project name; restore is untested                            |
+| AC-511 | gap     | needs a page test clearing the start while an end is set                                                 |

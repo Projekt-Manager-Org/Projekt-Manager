@@ -257,7 +257,7 @@ describe('ProjectManagement — number preflight', () => {
   });
 });
 
-describe('ProjectManagement — sortable headers', () => {
+describe('ProjectManagement — sortable headers (AC-494)', () => {
   it('clicking a header refetches with that column ascending', async () => {
     renderWithRouter(<ProjectManagement />);
 

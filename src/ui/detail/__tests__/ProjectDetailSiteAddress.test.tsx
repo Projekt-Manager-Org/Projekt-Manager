@@ -4,7 +4,7 @@
  * and the Project Detail Page (project-detail.md §8.15.2).
  *
  * Covers:
- *   - AC-282  Both surfaces render a `Baustelle:` line:
+ *   - AC-489, AC-490, AC-491  Both surfaces render a `Baustelle:` line:
  *               - non-null `project.siteAddress`         → "{street}, {zip} {city}", no hint
  *               - null + customer.address present       → customer address + "(Kundenadresse)" hint
  *               - both absent                           → "Keine Adresse" placeholder, no map link
@@ -195,7 +195,7 @@ function renderPage(project: Project) {
 
 /**
  * The two surfaces render the line under different testids. Use a
- * single helper so each AC-282 case asserts on both surfaces and the
+ * single helper so each Baustelle-line case asserts on both surfaces and the
  * test loudly distinguishes which side regressed.
  */
 async function findSiteAddressLineOnPanel(): Promise<HTMLElement> {
@@ -206,9 +206,9 @@ async function findSiteAddressLineOnPage(): Promise<HTMLElement> {
 }
 
 // --------------------------------------------------------------------
-// AC-282 — Baustelle: line rendering on both surfaces
+// AC-489, AC-490, AC-491 — Baustelle: line rendering on both surfaces
 // --------------------------------------------------------------------
-describe('Baustelle: line — non-null project.siteAddress (AC-282)', () => {
+describe('Baustelle: line — non-null project.siteAddress (AC-489)', () => {
   const project = makeProject(SITE, CUSTOMER_ADDRESS);
 
   it('panel renders street, zip city from siteAddress with no fallback hint', async () => {
@@ -232,7 +232,7 @@ describe('Baustelle: line — non-null project.siteAddress (AC-282)', () => {
   });
 });
 
-describe('Baustelle: line — fallback to customer.address with hint (AC-282)', () => {
+describe('Baustelle: line — fallback to customer.address with hint (AC-490)', () => {
   const project = makeProject(null, CUSTOMER_ADDRESS);
 
   it('panel renders the customer address with the (Kundenadresse) hint', async () => {
@@ -254,7 +254,7 @@ describe('Baustelle: line — fallback to customer.address with hint (AC-282)', 
   });
 });
 
-describe('Baustelle: line — both addresses absent → "Keine Adresse" (AC-282)', () => {
+describe('Baustelle: line — both addresses absent → "Keine Adresse" (AC-491)', () => {
   const project = makeProject(null, null);
 
   it('panel renders the "Keine Adresse" placeholder with no map link', async () => {

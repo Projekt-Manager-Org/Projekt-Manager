@@ -32,12 +32,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
 
 // ---------------------------------------------------------------
-// §15.18 AC-95: Soft-deleted projects are immutable via API
-// AC-95
+// §15.12 AC-499: Soft-deleted projects are immutable via API
+// AC-499
 // ---------------------------------------------------------------
-describe('AC-95: Mutations on soft-deleted projects', () => {
+describe('AC-499: Mutations on soft-deleted projects', () => {
   let token: string;
   let deletedProjectId: string;
+  let archivedSnapshot: unknown;
 
   beforeAll(async () => {
     await startApp();
@@ -55,21 +56,22 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     const delRes = await authDelete(token, `/api/projects/${deletedProjectId}`);
     expect(delRes.statusCode).toBe(200);
 
-    // Confirm it's archived. Per api.md §14.2.2, GET returns the archived
+    // Confirm it's archived. GET returns the archived
     // row as a regular 200 with `deleted: true` so the UI can render a
-    // read-only preview. AC-95 still holds — subsequent mutation attempts
+    // read-only preview. AC-499 still holds — subsequent mutation attempts
     // continue to return 404 via the mutation-path repository (verified
     // by the transition / date / PATCH tests below).
     const after = await authGet(token, `/api/projects/${deletedProjectId}`);
     expect(after.statusCode).toBe(200);
     expect(after.json().deleted).toBe(true);
+    archivedSnapshot = after.json();
   });
 
   afterAll(async () => {
     await stopApp();
   });
 
-  it('AC-95: transition on a soft-deleted project returns 404', async () => {
+  it('AC-499: transition on a soft-deleted project returns 404', async () => {
     const res = await authPost(token, `/api/projects/${deletedProjectId}/transition/forward`, {
       expectedStatus: 'angebot',
     });
@@ -77,7 +79,7 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
-  it('AC-95: backward transition on a soft-deleted project returns 404', async () => {
+  it('AC-499: backward transition on a soft-deleted project returns 404', async () => {
     const res = await authPost(token, `/api/projects/${deletedProjectId}/transition/backward`, {
       expectedStatus: 'angebot',
     });
@@ -85,7 +87,7 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
-  it('AC-95: date update on a soft-deleted project returns 404', async () => {
+  it('AC-499: date update on a soft-deleted project returns 404', async () => {
     const res = await authPatch(token, `/api/projects/${deletedProjectId}/dates`, {
       plannedStart: '2026-09-01',
       plannedEnd: '2026-09-15',
@@ -94,12 +96,38 @@ describe('AC-95: Mutations on soft-deleted projects', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
-  it('AC-95: PATCH update on a soft-deleted project returns 404', async () => {
+  it('AC-499: PATCH update on a soft-deleted project returns 404', async () => {
     const res = await authPatch(token, `/api/projects/${deletedProjectId}`, {
       title: 'Should Not Work',
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().code).toBe('NOT_FOUND');
+  });
+
+  it('AC-499: worker assignment on a soft-deleted project returns 404', async () => {
+    const usersRes = await authGet(token, '/api/users');
+    const users = (usersRes.json() as { users: { id: string; roles: string[] }[] }).users;
+    const archived = archivedSnapshot as { assignedWorkers?: { userId: string }[] };
+    const assigned = new Set((archived.assignedWorkers ?? []).map((w) => w.userId));
+    const worker = users.find((u) => u.roles.includes('worker') && !assigned.has(u.id));
+    expect(worker).toBeDefined();
+
+    const res = await authPatch(token, `/api/projects/${deletedProjectId}`, {
+      assignedWorkerIds: [...assigned, worker!.id],
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('NOT_FOUND');
+  });
+
+  it('AC-499: archiving a soft-deleted project again returns 404', async () => {
+    const res = await authDelete(token, `/api/projects/${deletedProjectId}`);
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('NOT_FOUND');
+  });
+
+  it('AC-499: the refused requests change nothing', async () => {
+    const res = await authGet(token, `/api/projects/${deletedProjectId}`);
+    expect(res.json()).toEqual(archivedSnapshot);
   });
 });
 

@@ -6,85 +6,25 @@ Sections 8.8–8.10 and 8.13 of the [product spec](../index.md) — the tabular 
 
 ## 8.8 Project Management View
 
-A tabular list of all projects with search, filtering, and CRUD operations.
+A table of projects. Behavior: [verification.md §15.12](../verification.md#1512-projects).
 
 ### 8.8.1 List
 
-- Columns: project number, title, customer name, status (colored badge), planned dates, estimated value, assigned workers.
-- Sortable by any column. Default sort: project number descending.
-- Search: free-text filter across project number, title, and customer name.
-- Filters: by status (multi-select), by customer, by date range (planned start), by "has no dates" flag, by archive inclusion (`Archivierte einblenden` toggle, off by default). Filters use AND logic. A "Filter aufheben" control clears all filters.
-- Pagination when the list exceeds a configurable page size **[C]**.
-- Soft-deleted (archived) projects are excluded by default; the `Archivierte einblenden` toggle includes them. Archived rows are visually distinguished (muted text, `Archiviert` badge).
+- **Columns** — number, title, customer, assigned workers, status (badge in the state color), planned dates, estimated value; actions for a caller who may archive or permanently delete.
+- **Order** — newest first. Every column but assigned workers sorts ([AC-494](../verification.md#1512-projects)): status in workflow order, empty values last.
+- **Toolbar** — `Erstellen` (§8.8.2), `Archivierte einblenden`, off at start ([AC-492](../verification.md#1512-projects), [AC-153](../verification.md#1512-projects)), the Mitarbeiter filter ([AC-495](../verification.md#1512-projects)), search ([AC-493](../verification.md#1512-projects)).
+- **Row** — opens the Project Detail Page ([AC-496](../verification.md#1512-projects)). `Archivieren` on an active row; `Endgültig löschen` on an archived one ([AC-501](../verification.md#1512-projects)).
 
 ### 8.8.2 Create Project
 
-Accessible via a primary action button. Requires `project:create` permission (button hidden otherwise).
+A form with:
 
-Fields:
+- **Number** — free text, with its free / taken verdict ([AC-478](../verification.md#1512-projects), [AC-479](../verification.md#1512-projects)).
+- **Title**.
+- **Customer** — one of the existing customers.
+- **Baustelle** — the toggle `Identisch mit Kundenadresse` over street, zip and city ([AC-483](../verification.md#1512-projects), [AC-484](../verification.md#1512-projects), [AC-485](../verification.md#1512-projects), [AC-486](../verification.md#1512-projects), [AC-487](../verification.md#1512-projects), [AC-488](../verification.md#1512-projects)).
 
-- **Project number** — auto-suggested from the configured format **[C]**, editable by the user, immutable after creation. On blur, the field shows a green "available" indicator if the number is free and a red "taken" indicator if an existing project already uses it. The indicator is UX feedback only — the server's uniqueness constraint is authoritative (see [api.md §14.2.2](../api.md#1422-projects)) and is what ultimately produces or rejects the create. Editing the field after a verdict clears the indicator until the next blur.
-- **Title** — required.
-- **Customer** — required. Selection from existing customers, with an option to create a new customer inline (see [§8.9.4](#894-inline-customer-creation)).
-- **Status** — defaults to the first workflow state. Optionally selectable if configuration allows **[C]**.
-- **Baustelle (site address)** — optional nested group: street, zip, city. Headed by an `"Identisch mit Kundenadresse"` toggle. Toggle ON sends `siteAddress: null` on submit (the project inherits the customer's Rechnungsadresse for display per [data-model.md §5.1](../data-model.md#51-project-entity)) and disables the street/zip/city inputs. Toggle OFF reveals the inputs and submits the entered values. Default state for create is **ON** — the homeowner-renovating-their-house case is the common path; the operator opts into divergence explicitly. See [§8.8.6](#886-site-address-form-rule) for the rule that applies to both create and edit.
-- **Planned start / Planned end** — optional. Same validation as the detail panel (end requires start).
-- **Assigned workers** — optional multi-select from active users with the `worker` role.
-- **Estimated value** — optional numeric input.
-- **Notes** — optional free text.
-
-On success, the new project appears in the list and in Kanban/Calendar views.
-
-**In-flight mutation lock** and **idempotency-conflict recovery** apply as defined in [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior).
-
-### 8.8.3 Edit Project
-
-Clicking a project row opens the project for editing. The editing surface reuses the Project Detail Panel ([workflow-views.md §8.4](workflow-views.md#84-project-detail-panel)) with expanded editability:
-
-- **Planned start / Planned end** — editable via date inputs. Same validation as the detail panel (end requires start, end disabled when start is empty).
-- **Notes** are editable.
-- **Assigned workers** are editable via multi-select.
-- **Estimated value** is editable.
-- **Customer** can be changed.
-- **Baustelle (site address)** — editable. Same group + `"Identisch mit Kundenadresse"` toggle as create (see [§8.8.6](#886-site-address-form-rule)). The toggle's initial state reflects the stored value: **ON** when `project.siteAddress` is null (the row inherits the customer's Rechnungsadresse), **OFF** with the stored street/zip/city populated when `project.siteAddress` is non-null.
-
-All editable fields use PATCH semantics via the Update project API operation. Status changes use their dedicated transition operations. Date changes use the dedicated update-dates operation (see [api.md §14.2.2](../api.md#1422-projects)).
-
-Requires `project:update` permission for mutations. Users without this permission see all fields as read-only.
-
-### 8.8.4 Archive Project
-
-Available per project row or in the edit view. The action is labelled "Archivieren". Confirmation dialog: `"Projekt {number} wirklich archivieren?"` with OK / Abbrechen. The API call soft-deletes the project (see [api.md §14.2.2](../api.md#1422-projects) and [ADR-0017](../../adr/0017-soft-delete-as-board-archive.md)).
-
-Requires `project:delete` permission.
-
-### 8.8.5 Permanently delete project
-
-A secondary action labelled `Endgültig löschen` on archived project rows. Hard-deletes the project via `DELETE /api/projects/:id/purge` (see [api.md §14.2.2](../api.md#1422-projects)).
-
-Visibility: the action appears only when the row has `deleted = true` AND the `Archivierte einblenden` toggle is on AND the caller holds `project:purge`. Hidden in every other case (consistent with [AC-121](../verification.md#1516-management-views)).
-
-Confirmation dialog: simple Yes / No with a German warning that states the project will be permanently deleted and recovery is not possible. The archive-first gate on the API (a non-archived project is rejected with 409) is the primary friction; the confirmation is the secondary check.
-
-Permission: requires `project:purge` (owner-only per the permission matrix in [api.md §14.3](../api.md#143-authorization-rules)). The button is not rendered for users without it. Server-side authorization is authoritative.
-
-See [ADR-0017](../../adr/0017-soft-delete-as-board-archive.md) for the trash-bin rationale (archive-first, purge as the second step).
-
-### 8.8.6 Site-Address Form Rule
-
-Both Create Project ([§8.8.2](#882-create-project)) and Edit Project ([§8.8.3](#883-edit-project)) carry a **Baustelle** group with the same shape:
-
-- A toggle labelled `"Identisch mit Kundenadresse"`.
-- Three inputs for `street`, `zip`, `city`, grouped under the toggle.
-
-Form behavior:
-
-- **Toggle ON.** Street/zip/city inputs are disabled and visually muted. The inputs visibly mirror the selected customer's billing address (`customer.address`) as a read-only preview of what the project will inherit; if the customer has no stored address — or no customer has been picked yet on create — the inputs stay empty. The visual fill is presentation only: on submit, the request body always carries `siteAddress: null` regardless of what is shown (PATCH-null on edit clears any stored value — the project's site falls back to the customer's Rechnungsadresse per [data-model.md §5.1](../data-model.md#51-project-entity)).
-- **Toggle OFF.** Inputs are enabled. On submit, the request body carries `siteAddress: { street, zip, city }`. Required-field validation follows the same all-or-none rule pinned on the customer Address group at [§8.9.2](#892-create-customer): all three of `street`, `zip`, `city` are required if any field has a non-empty value; a partial group is rejected at submit with a German validation message. The toggle's "all blank" axis is taken instead by the ON state, so under OFF the operator commits to filling all three.
-- **Initial state.** ON by default for create. For edit, the toggle reflects the stored value: ON when `project.siteAddress` is null, OFF when non-null.
-- **Switch ON → OFF (edit).** Reveals the inputs pre-filled empty so the operator can type the divergent address. Switching back to ON before submit discards the typed values without reverting any persisted state — the persisted state is whatever the previous successful PATCH stored.
-
-This is the only form-level rule for the Baustelle group; rendering rules for read-only surfaces live in [project-detail.md §8.15.2](project-detail.md#8152-core-fields).
+Behavior: [AC-475](../verification.md#1512-projects), [AC-476](../verification.md#1512-projects).
 
 ---
 
@@ -127,10 +67,6 @@ On success, the new customer appears in the list and is immediately available in
 Clicking a customer row opens the customer for editing. PATCH semantics: omitted fields unchanged, explicit `null` clears optional fields.
 
 Requires `customer:write` permission for mutations. Users without this permission see all fields as read-only.
-
-### 8.9.4 Inline Customer Creation
-
-When creating or editing a project ([§8.8.2](#882-create-project), [§8.8.3](#883-edit-project)), the customer selector includes an option to create a new customer inline. On successful creation, the new customer is automatically selected for the project.
 
 ### 8.9.5 Delete Customer
 
@@ -273,4 +209,4 @@ Row action or edit-form action. Yes / No confirmation. On success the rule disap
 
 ### 8.14.4 Permission and Hiding
 
-Access is gated on `notifications:manage`. Users without it do not see the nav tab; manual URL entry presents the not-permitted surface per [AC-149](../verification.md#1521-role-scoping). All UI controls are hidden without the permission per [AC-121](../verification.md#1516-management-views).
+Access is gated on `notifications:manage`. Users without it do not see the nav tab; manual URL entry presents the not-permitted surface per [AC-149](../verification.md#1521-role-scoping). All UI controls are hidden without the permission per [AC-121](../verification.md#1521-role-scoping).

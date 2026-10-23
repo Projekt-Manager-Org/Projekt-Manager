@@ -6,64 +6,24 @@
 
 ### 5.1 Project Entity
 
-The entity is stored in the database. Two audit fields (`createdBy`, `updatedBy`) track the acting user.
+A job for one customer, moving through the workflow states. Behavior: [verification.md §15.12](verification.md#1512-projects).
 
-```typescript
-// Derived from the workflow state configuration — see §3 in index.md.
-type WorkflowState =
-  | 'anfrage'
-  | 'angebot'
-  | 'beauftragt'
-  | 'geplant'
-  | 'in_arbeit'
-  | 'abnahme'
-  | 'rechnung_faellig'
-  | 'abgerechnet'
-  | 'erledigt';
-
-interface Project {
-  id: string; // UUID
-  number: string; // "2026-042" — year + sequential [C]
-  title: string; // "Fassadenanstrich Müller"
-  status: WorkflowState;
-  statusChangedAt: string; // ISO 8601 — for aging calculations
-
-  customerId: string; // references Customer.id (§5.6)
-
-  siteAddress?: {
-    // Baustellen- / Leistungsadresse — where the work happens.
-    // Distinct from `customer.address` (Rechnungsadresse, §5.6).
-    // `null` indicates the site is at the customer's billing address;
-    // the UI renders the fallback with a "(Kundenadresse)" hint.
-    street: string;
-    zip: string;
-    city: string;
-  } | null;
-
-  plannedStart?: string; // ISO 8601 date
-  plannedEnd?: string; // ISO 8601 date
-
-  assignedWorkers?: { userId: string; displayName: string }[]; // references UserAccount (m:n join, see §6.6)
-  estimatedValue?: number; // EUR net
-  notes?: string;
-
-  deleted: boolean; // soft-delete flag — excluded from queries when true
-
-  createdAt: string; // ISO 8601
-  updatedAt: string; // ISO 8601
-  createdBy?: string; // UserAccount.id — optional: seeded/imported records may lack a known actor
-  updatedBy?: string; // UserAccount.id — optional: seeded/imported records may lack a known actor
-}
-```
-
-Design notes:
-
-- `statusChangedAt` is separate from `updatedAt` — editing notes must not reset aging calculations.
-- `customerId` references Customer (§5.6). The API nests the full customer object in responses; writes accept `customerId`.
-- `siteAddress` is the **Baustellen-/Leistungsadresse** — the address where the work physically happens. It is intentionally separate from `customer.address` (the **Rechnungsadresse**, §5.6) because a single customer (e.g., a Hausverwaltung) may carry multiple sites while having one legal billing address. **`null` means "the site is at the customer's billing address"** — the homeowner-renovating-their-house case. UI surfaces use the customer's address as the fallback display value with an inline `"(Kundenadresse)"` hint when `siteAddress` is null (see [ui/project-detail.md §8.15.2](ui/project-detail.md#8152-core-fields)). This is the standard ERP/CRM split and matches the Kickoff posture of a generalized Handwerker tool ([ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)).
-- `assignedWorkers` is m:n via a join table. API returns `{ userId, displayName }`; writes accept `assignedWorkerIds: string[]`.
-- `WorkflowState`: one of the states in [index.md §3](index.md#3-workflow-states).
-- Warnings and aging are derived from state and timestamps at render time — not stored.
+| Field                        | Constraint                                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `id`                         | UUID                                                                                                                |
+| `number`                     | Non-empty, at most 20 characters; unique across all projects, archived ones included; immutable after creation      |
+| `title`                      | Non-empty, at most 500 characters                                                                                   |
+| `status`                     | A workflow state ([index.md §3](index.md#3-workflow-states)); changes only by transition                            |
+| `statusChangedAt`            | When the project entered its state                                                                                  |
+| `customerId`                 | An existing customer ([§5.6](#56-customer-entity)); immutable after creation                                        |
+| `siteAddress`                | The work site (Baustelle): `street`, `zip`, `city`, all non-empty — or none, and the site is the customer's address |
+| `plannedStart`, `plannedEnd` | Calendar dates (ISO 8601, no time); one range per project; an end needs a start and is not before it                |
+| `assignedWorkers`            | Users with the worker role                                                                                          |
+| `estimatedValue`             | EUR net, two decimals, at most 10 integer digits                                                                    |
+| `notes`                      | Free text                                                                                                           |
+| `deleted`                    | Archived ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md))                                                  |
+| `createdAt`, `updatedAt`     | Server time                                                                                                         |
+| `createdBy`, `updatedBy`     | The acting user; empty for seeded or imported rows without a known actor                                            |
 
 ### 5.3 User Entity
 
@@ -688,7 +648,7 @@ Low write concurrency is assumed. A write to a versioned entity based on a stale
 - **State transitions** use optimistic concurrency on `status` — a transition is rejected as a conflict if the project's status has moved since the client's last read (see [AC-94](verification.md#1517-data-integrity)). The client should refetch and present the new state.
 - **Edits** to Customer, Invoice and Company Profile use optimistic concurrency on `version`, a server-managed integer. Every committed API write to the row changes it ([AC-378](verification.md#1517-data-integrity)). Two exceptions: an issued or cancelled invoice is frozen, so its version no longer changes; database-level cascades ([§6.6](#66-referential-integrity)) do not change it.
 - **Versioned operations** (input `expectedVersion` in [api.md](api.md)) carry the version their edit started from. A mismatch is rejected with `VERSION_CONFLICT` and nothing is written ([AC-375](verification.md#1517-data-integrity), [AC-376](verification.md#1517-data-integrity)). The check and the write are atomic: of two writes carrying the same current version, exactly one commits ([AC-381](verification.md#1517-data-integrity)).
-- **Check order.** Request-shape validation first — a missing `expectedVersion` is a validation error ([AC-377](verification.md#1517-data-integrity)). Then: not found and archived ([AC-95](verification.md#1517-data-integrity)); the invoice state checks (`INVOICE_FROZEN`, issue on a non-draft); the version check; business-rule checks (e.g. the issuance preconditions in [api.md §14.2.14](api.md#14214-invoice-operations)).
+- **Check order.** Request-shape validation first — a missing `expectedVersion` is a validation error ([AC-377](verification.md#1517-data-integrity)). Then: not found and archived ([AC-499](verification.md#1512-projects)); the invoice state checks (`INVOICE_FROZEN`, issue on a non-draft); the version check; business-rule checks (e.g. the issuance preconditions in [api.md §14.2.14](api.md#14214-invoice-operations)).
 - **Not versioned.** Project edits (Update project, Update dates) are last-write-wins: the detail page saves one field at a time, so a lost update needs two users on the same field at once — rare, and recoverable from the audit `before`. A project-wide `version` would instead reject an edit to one field whenever anything else on the project moved (a transition, an assignment, the issuance flip), discarding the user's input. Lifecycle operations — project archive / restore / purge, customer delete — act on the row's existence, not its content; their preconditions are state checks ([§6.9](#69-soft-deletes)). Delete draft is versioned: discarding a draft is a judgement on its content. Invoice cancel — its target is frozen. Attachments — own state checks ([verification.md §15.26](verification.md#1526-attachments)). Users and notification rules — low-stakes rows whose stale overwrite freezes nothing.
 - **Not exported.** `version` is a concurrency token, not business data: the export envelope omits it ([§5.8](#58-export-envelope)) and import sets it fresh. No stale client survives an override import — it drops every session ([api.md §14.2.4](api.md#1424-unified-data-exchange)).
 
@@ -713,22 +673,12 @@ Timestamp ownership rules are defined in section 5.5. Additionally, `statusChang
 
 **Storage vs. API representation**: the database stores timestamps with timezone awareness. The API serializes them as ISO 8601 strings (e.g., `"2026-04-10T14:30:00.000Z"`). The client receives and sends ISO 8601 strings; the persistence layer handles conversion transparently. The spec uses `string` (ISO 8601) in entity type definitions to describe the API contract, not the storage type.
 
-### 6.8 Date Validation
-
-- If both `plannedStart` and `plannedEnd` are provided, `plannedEnd` must not be before `plannedStart`.
-- Either date may be null (cleared). Setting only `plannedStart` without `plannedEnd` is valid (renders as single-day block in calendar).
-- Setting only `plannedEnd` without `plannedStart` is not valid — the API rejects this combination, **and the database enforces the same invariant via a defense-in-depth CHECK constraint**. This guards direct DB writes (seed scripts, migrations, manual SQL) that bypass the route layer.
-- The API rejects all invalid date combinations.
-
 ### 6.9 Soft Deletes
 
 - Users can be deactivated (`active = false`) or hard-deleted. Deactivation is the default for preserving assignment history. Hard deletion is available to the owner role and cascades sessions and worker assignments; `createdBy`/`updatedBy` references are set to null. Self-deletion is rejected by the API. A user referenced as `createdBy` or `updatedBy` by an issued or cancelled `Invoice` row cannot be hard-deleted (`USER_HAS_INVOICES`): the row is frozen ([§6.14](#614-immutability-of-issued-invoices)), and the reference keeps its author traceable. Deactivation is the remedy.
-- Projects are soft-deleted (`deleted = true`) as an **archive-from-board** mechanism (see [ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). Archived projects are excluded from active views (Kanban, Calendar, list endpoints) but retained in the database as historical reference. This is not an audit trail — there is no immutability guarantee.
-  - Archived projects are **immutable via the API**: transitions, date updates, PATCH, and re-delete are rejected as not found (see [AC-95](verification.md#1517-data-integrity)).
+- Projects are archived (`deleted`), not deleted ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). Archiving, restoring and permanently deleting a project: [verification.md §15.12](verification.md#1512-projects).
   - When a customer is deleted, their archived projects are **purged atomically** with the customer iff none of those archived projects carries an issued or cancelled `Invoice` row; otherwise the customer-delete is rejected. The archive has no value without the customer relationship, but issued invoices are frozen artifacts whose PDFs are Object-Locked ([§6.14](#614-immutability-of-issued-invoices)) and cannot cascade away with their parent customer either. Draft invoices on those archived projects cascade-delete with the project (drafts were never issued). Active (non-archived) projects still block customer deletion as a conflict (see [AC-92](verification.md#1511-customer-management)); a customer whose project graph (active or archived) carries any issued or cancelled invoice is rejected with `CUSTOMER_HAS_INVOICES`.
-  - `project:purge` (owner-only) allows per-project hard-delete via `DELETE /api/projects/:id/purge`. Purge requires the project already be archived (`deleted = true`); the endpoint rejects with 409 Conflict otherwise. A project that carries any issued or cancelled `Invoice` row is also rejected (`PROJECT_HAS_INVOICES`). Draft invoices on a purged project cascade-delete via FK alongside `project_workers`. See [AC-155](verification.md#1512-project-management) to [AC-158](verification.md#1512-project-management).
   - The API exposes archived-project AND invoice counts on the customer GET response so the UI can warn before destructive customer deletion. The exposed `invoiceCount` counts issued + cancelled rows only (the rows that block); drafts are excluded by construction.
-  - No restore path exists via the API. Recovery requires database access.
 
 ### 6.10 Audit Log Retention
 

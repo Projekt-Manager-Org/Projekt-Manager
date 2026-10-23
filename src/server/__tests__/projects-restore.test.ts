@@ -1,10 +1,10 @@
 /**
- * API integration tests: Project restore (undo archive).
+ * API integration tests: Project restore (undo archive) — AC-498, AC-512.
  *
  * Restore is the inverse of soft-delete (archive). Preconditions:
  *   - Target must currently be archived (`deleted = true`) → 200 with
  *     active project body.
- *   - Active project → 409 CONFLICT.
+ *   - Active project → 409 CONFLICT, nothing changes (AC-512).
  *   - Missing id → 404 NOT_FOUND.
  *   - Caller must hold `project:delete` (symmetric — same role can
  *     archive and restore).
@@ -19,6 +19,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
 import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
+import { STATE_KEYS } from '../../config/stateConfig.js';
 
 describe('Project Restore (undo archive)', () => {
   let ownerToken: string;
@@ -37,6 +38,17 @@ describe('Project Restore (undo archive)', () => {
       throw new Error(`Fixture: project create failed ${createRes.statusCode} ${createRes.body}`);
     }
     const projectId = createRes.json().id as string;
+    // Leave the first state, so a restore that resets the state fails.
+    const transitionRes = await authPost(
+      ownerToken,
+      `/api/projects/${projectId}/transition/forward`,
+      { expectedStatus: STATE_KEYS[0] },
+    );
+    if (transitionRes.statusCode !== 200) {
+      throw new Error(
+        `Fixture: project transition failed ${transitionRes.statusCode} ${transitionRes.body}`,
+      );
+    }
     const archiveRes = await authDelete(ownerToken, `/api/projects/${projectId}`);
     if (archiveRes.statusCode !== 200) {
       throw new Error(
@@ -77,7 +89,7 @@ describe('Project Restore (undo archive)', () => {
     await stopApp();
   });
 
-  it('restores an archived project: 200, body has deleted=false, GET returns active', async () => {
+  it('AC-498: restores an archived project in the state it had', async () => {
     const projectId = await createArchivedProject();
 
     // Confirm the fixture really is archived.
@@ -90,6 +102,7 @@ describe('Project Restore (undo archive)', () => {
     const body = res.json();
     expect(body.id).toBe(projectId);
     expect(body.deleted).toBe(false);
+    expect(body.status).toBe(STATE_KEYS[1]);
     // Full project shape — the spec note "Full project object returned
     // after every mutation so the client can reconcile without a separate
     // fetch" applies to restore too.
@@ -102,12 +115,17 @@ describe('Project Restore (undo archive)', () => {
     expect(items.find((p: { id: string }) => p.id === projectId)).toBeTruthy();
   });
 
-  it('returns 409 CONFLICT when restoring an already-active project', async () => {
+  it('AC-512: restoring an active project is refused as a conflict and changes nothing', async () => {
     const projectId = await createActiveProject();
+    const before = (await authGet(ownerToken, `/api/projects/${projectId}`)).json();
+
     const res = await authPost(ownerToken, `/api/projects/${projectId}/restore`, {});
     expect(res.statusCode).toBe(409);
     const body = res.json();
     expect(body.code).toBe('CONFLICT');
+
+    const after = (await authGet(ownerToken, `/api/projects/${projectId}`)).json();
+    expect(after).toEqual(before);
   });
 
   it('returns 404 NOT_FOUND when the project id does not exist', async () => {

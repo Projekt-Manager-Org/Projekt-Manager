@@ -35,7 +35,7 @@ export class ProjectNotFoundError extends Error {
 /**
  * Thrown when a purge (hard-delete) targets a project that is not yet
  * archived. The service maps this to 409 CONFLICT with a German message
- * directing the caller to archive first (AC-156).
+ * directing the caller to archive first (AC-503).
  */
 export class ProjectNotArchivedError extends Error {
   constructor() {
@@ -226,7 +226,7 @@ export interface ListProjectsOpts {
   customerId?: string;
   /**
    * When true, include soft-deleted (archived) rows in the result.
-   * Default `false` — archived rows excluded (AC-151). The flag composes
+   * Default `false` — archived rows excluded (AC-497). The flag composes
    * with all other filters via AND.
    */
   includeArchived?: boolean;
@@ -258,7 +258,7 @@ export async function listProjects(
   caller: AuthUser,
   opts: ListProjectsOpts = {},
 ): Promise<{ data: ReturnType<typeof toProject>[]; total: number }> {
-  // Build WHERE conditions. AC-151: only exclude archived rows when
+  // Build WHERE conditions. AC-497: only exclude archived rows when
   // includeArchived is not truthy — when true, the deleted predicate is
   // omitted so archived rows appear. All other filters still AND-compose.
   const conditions = [];
@@ -424,7 +424,7 @@ export async function listProjects(
  * returned alongside active ones; the scope check runs first so we
  * don't leak the existence of a row the caller had no right to see.
  *
- * AC-95 (mutations rejected on archived rows) is enforced separately
+ * AC-499 (mutations rejected on archived rows) is enforced separately
  * via `getProjectForMutation`, which keeps the `deleted = false`
  * filter in place — this read path is intentionally permissive.
  */
@@ -697,7 +697,7 @@ export async function restoreProject(
 }
 
 /**
- * Hard-delete a project (AC-155). Distinguishes three outcomes:
+ * Hard-delete a project (AC-502). Distinguishes three outcomes:
  *   - Row does not exist                → ProjectNotFoundError
  *   - Row exists but `deleted = false`  → ProjectNotArchivedError
  *   - Row exists and `deleted = true`   → deletes the row; resolves

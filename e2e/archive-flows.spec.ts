@@ -4,9 +4,9 @@ import { test, expect } from '@playwright/test';
  * E2E Archive flows
  *
  * Pins the project-archive feature introduced by issue #98:
- *   - AC-79 (updated): "Archivieren" button soft-deletes a project from
+ *   - AC-497: "Archivieren" button soft-deletes a project from
  *     the management view; the project disappears from the default list.
- *   - AC-152: "Archivierte einblenden" toggle on the project management
+ *   - AC-492: "Archivierte einblenden" toggle on the project management
  *     view; when on, archived projects appear in the table alongside
  *     active ones.
  *   - AC-153: archived rows are visually distinguished from active ones
@@ -22,8 +22,8 @@ import { test, expect } from '@playwright/test';
  *
  * Serial mode — steps depend on each other's state:
  *   1. Create a customer + two projects under it.
- *   2. Archive one project (AC-79).
- *   3. Toggle the filter — archived project appears/disappears (AC-152).
+ *   2. Archive one project (AC-497).
+ *   3. Toggle the filter — archived project appears/disappears (AC-492).
  *   4. Verify the visual distinction (AC-153).
  *   5. Archive the second project, then delete the customer with the
  *      archived-count warning text and confirm cleanup (AC-154).
@@ -87,10 +87,10 @@ test.describe('Archive flows', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-79 (updated): "Archivieren" button archives from management view.
+  // AC-497: "Archivieren" button archives from management view.
   // The row disappears from the default table after confirm.
   // ---------------------------------------------------------------
-  test('AC-79: Archivieren from project management hides the project from default list', async ({
+  test('AC-497: Archivieren from project management hides the project from default list', async ({
     page,
   }) => {
     await page.getByTestId('view-toggle-projekte').click();
@@ -122,9 +122,9 @@ test.describe('Archive flows', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-152: "Archivierte einblenden" toggle includes archived rows.
+  // AC-492: "Archivierte einblenden" toggle includes archived rows.
   // ---------------------------------------------------------------
-  test('AC-152: show-archived toggle includes and re-hides archived rows', async ({ page }) => {
+  test('AC-492: show-archived toggle includes and re-hides archived rows', async ({ page }) => {
     await page.getByTestId('view-toggle-projekte').click();
     await expect(page.getByTestId('project-table')).toBeVisible();
 
@@ -219,7 +219,7 @@ test.describe('Archive flows', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-159: Per-project `Endgültig löschen` action on archived rows.
+  // AC-501, AC-505: Per-project `Endgültig löschen` action on archived rows.
   //
   // Uses a dedicated customer + project so this test stands on its own
   // and does not depend on the AC-154 test's teardown state. The AC-154
@@ -236,7 +236,7 @@ test.describe('Archive flows', () => {
   //   7. Row is gone from the table (even with archive toggle still on).
   //   8. Clean up: delete the now-empty customer.
   // ---------------------------------------------------------------
-  test('AC-159: Endgültig löschen hard-deletes an archived project from the management view', async ({
+  test('AC-501, AC-505: Endgültig löschen hard-deletes an archived project from the management view', async ({
     page,
   }) => {
     const purgeCustomerName = 'E2E Purge Testkunde';
@@ -279,6 +279,14 @@ test.describe('Archive flows', () => {
     const archivedRow = page.getByRole('row', { name: new RegExp(purgeProjectNumber) });
     await expect(archivedRow).toBeVisible();
 
+    // AC-501: with archived rows shown, no active row offers permanent delete.
+    const activeRows = page
+      .getByTestId('project-table')
+      .locator('tbody tr')
+      .filter({ hasNot: page.getByTestId('project-archived-badge') });
+    await expect(activeRows.first()).toBeVisible();
+    await expect(activeRows.getByTestId('project-purge-button')).toHaveCount(0);
+
     // 5. The per-row purge button must be present on an archived row.
     const purgeButton = archivedRow.getByTestId('project-purge-button');
     await expect(purgeButton).toBeVisible();
@@ -288,6 +296,7 @@ test.describe('Archive flows', () => {
     const dialog = page.getByTestId('confirm-dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText(/endgültig/i);
+    await expect(dialog).toContainText(purgeProjectNumber);
 
     // 7. Confirm → wait for the purge request → row disappears even with
     //    the archive toggle still on (purge removes the record entirely).

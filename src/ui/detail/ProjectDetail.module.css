@@ -191,7 +191,7 @@
 }
 
 /* Inline-field validation hint shown inside the SiteAddressEditModal.
-   Matches the management form's `.fieldHintError` shape so the AC-284
+   Matches the management form's `.fieldHintError` shape so the AC-485
    Baustelle partial-fill message reads consistently across surfaces. */
 .fieldHintError {
   margin-top: 4px;

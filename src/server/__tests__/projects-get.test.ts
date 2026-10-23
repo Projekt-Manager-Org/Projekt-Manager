@@ -1,8 +1,7 @@
 /**
  * API integration tests: Get single project.
  *
- * Covers api.md §14.2.2: "Get project — Returns the full project
- * object or a not-found error."
+ * Covers Get project: the full project object, or a not-found error.
  * Runs against a real test database via Fastify inject (no network).
  *
  * All project operations require authentication. Tests use the `login` helper
@@ -26,8 +25,7 @@ describe('Project Operations — Get Single', () => {
 
   // ---------------------------------------------------------------
   // Get single project by ID
-  // Covers api.md §14.2.2: "Get project — Returns the full project
-  // object or a not-found error."
+  // Covers Get project: the full project object, or a not-found error.
   // ---------------------------------------------------------------
   describe('Get single project by ID', () => {
     it('returns 200 with the project matching the requested ID', async () => {
@@ -79,7 +77,7 @@ describe('Project Operations — Get Single', () => {
     // actionable archive state into a "never existed" lie. The endpoint
     // now returns 200 with the project payload and `deleted: true` so the
     // UI can render a read-only preview rather than an error surface.
-    // AC-95 (mutations rejected on archived rows) is enforced by mutation
+    // AC-499 (mutations rejected on archived rows) is enforced by mutation
     // routes via `getProjectForMutation`, not by this read path.
     it('returns 200 with deleted:true for a soft-deleted (archived) project', async () => {
       // Grab any existing customer id — mirrors the shape handling in
