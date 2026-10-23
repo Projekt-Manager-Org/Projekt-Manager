@@ -104,12 +104,31 @@
       "platformAutomerge": true
     },
     {
+      "description": "Docker host packages (docker/host-versions.txt, ADR-0009): one grouped PR, never auto-merged. Merging is the operator's decision to converge every host now: deploy.sh refuses to deploy until the VPS matches the file, so an auto-merge would block deploys at a time nobody chose. Sorted after the auto-merge rule above so it overrides it. No minimumReleaseAge: the deb datasource reports no release timestamps, and with timestamp-required a missing timestamp never ages, so the PR would never be created.",
+      "groupName": "docker-host",
+      "matchFileNames": ["docker/host-versions.txt"],
+      "separateMajorMinor": false,
+      "separateMultipleMajor": false,
+      "automerge": false
+    },
+    {
       "description": "Belt-and-braces: never auto-merge major bumps. The rule above opts in only non-major types, so majors already fall through to no auto-merge — this states the exclusion explicitly and survives edits to the rule above",
       "matchUpdateTypes": ["major"],
       "automerge": false
     }
   ],
   "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Docker host packages pinned in docker/host-versions.txt (ADR-0009), tracked against Docker's own apt repo for the hosts' Ubuntu release. Each non-comment line is `<package>=<apt version>`; the line-start anchor keeps `#` comments out. Grouped and never auto-merged by the `docker-host` packageRule.",
+      "managerFilePatterns": ["/^docker/host-versions\\.txt$/"],
+      "matchStrings": [
+        "(?:^|\\n)(?<depName>[a-z0-9][a-z0-9.+-]*)=(?<currentValue>[A-Za-z0-9.+:~-]+)"
+      ],
+      "datasourceTemplate": "deb",
+      "registryUrlTemplate": "https://download.docker.com/linux/ubuntu?suite=noble&components=stable&binaryArch=amd64",
+      "versioningTemplate": "deb"
+    },
     {
       "customType": "regex",
       "description": "Caddy version inside `xcaddy build vN.N.N` in docker/caddy/Dockerfile. Tracks the `caddy` Docker image (not github-releases) so the built version can only advance to a Caddy release that already has a published image — keeping it in lockstep with the FROM caddy:X base tags, which the dockerfile manager bumps from the same datasource. Grouped under groupName 'caddy' above.",
