@@ -158,6 +158,8 @@ CREATE TABLE "invoices" (
           OR "invoices"."number" ~ '^(RE|ST)-[0-9]{4}-[0-9]{4,}$'),
 	CONSTRAINT "invoices_number_required_when_not_draft" CHECK (("invoices"."status" = 'draft' AND "invoices"."number" IS NULL)
           OR ("invoices"."status" IN ('issued', 'cancelled') AND "invoices"."number" IS NOT NULL)),
+	CONSTRAINT "invoices_issue_date_required_when_not_draft" CHECK (("invoices"."status" = 'draft' AND "invoices"."issue_date" IS NULL)
+          OR ("invoices"."status" IN ('issued', 'cancelled') AND "invoices"."issue_date" IS NOT NULL)),
 	CONSTRAINT "invoices_cancellation_pair" CHECK (("invoices"."cancellation_of" IS NULL AND ("invoices"."number" IS NULL OR "invoices"."number" LIKE 'RE-%'))
           OR ("invoices"."cancellation_of" IS NOT NULL AND "invoices"."number" LIKE 'ST-%'))
 );

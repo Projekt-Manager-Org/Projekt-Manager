@@ -903,6 +903,48 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
+  // #561: an issued or cancelled invoice has an issue date; a draft has
+  // none. The importer leaves this to the DB CHECK, so the commit rolls
+  // back and nothing lands.
+  // -------------------------------------------------------------------
+  describe('#561: invoice issueDate must match its status', () => {
+    type Mutate = (env: Envelope) => void;
+    const cases: Array<[string, Mutate]> = [
+      ['a cancelled invoice without issueDate', (env) => (env.invoices[0]!.issueDate = null)],
+      ['an issued Storno without issueDate', (env) => (env.invoices[1]!.issueDate = null)],
+      [
+        'a draft with an issueDate',
+        (env) =>
+          env.invoices.push({
+            ...env.invoices[0]!,
+            id: uuid('inv', 3),
+            status: 'draft',
+            number: null,
+          }),
+      ],
+    ];
+
+    beforeAll(wipeBusinessDataExceptUsers);
+    afterAll(reseed);
+
+    it.each(cases)('rejects %s', async (_label, mutate) => {
+      const env = buildExpandedEnvelope();
+      mutate(env);
+
+      const err = await expectImportRejection(env, {
+        dryRun: false,
+        override: false,
+        confirmationPhrase: null,
+      });
+      // Drizzle wraps the driver error; the CHECK name is on its cause.
+      expect(err).toMatchObject({
+        cause: { code: '23514', constraint: 'invoices_issue_date_required_when_not_draft' },
+      });
+      expect(await db.select().from(invoices)).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------
   // MISSING_USER_REFS strict semantic. Refs resolve only against
   // `envelope.users` — the target's `users` table is wiped (override) or
   // empty (fresh) at insert time, so a ref absent from the envelope

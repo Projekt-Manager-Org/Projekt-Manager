@@ -949,6 +949,12 @@ export const invoices = pgTable(
       sql`(${table.status} = 'draft' AND ${table.number} IS NULL)
           OR (${table.status} IN ('issued', 'cancelled') AND ${table.number} IS NOT NULL)`,
     ),
+    // Same shape for the issue date: set at issuance, never on a draft.
+    check(
+      'invoices_issue_date_required_when_not_draft',
+      sql`(${table.status} = 'draft' AND ${table.issueDate} IS NULL)
+          OR (${table.status} IN ('issued', 'cancelled') AND ${table.issueDate} IS NOT NULL)`,
+    ),
     // Storno rows MUST carry an ST- prefix; non-Storno rows MUST NOT.
     // `cancellationOf IS NOT NULL` ↔ `number LIKE 'ST-%'`. Drafts can
     // never be Storno rows (cancellation creates a sibling on an

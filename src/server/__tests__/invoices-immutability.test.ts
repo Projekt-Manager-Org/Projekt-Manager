@@ -2,7 +2,7 @@
  * Persistence-layer immutability for issued invoices (AC-294,
  * AC-295) and the DB-level CHECK on `invoices.number`.
  *
- * Two invariants pinned here — defense-in-depth backstops on direct DB
+ * Three invariants pinned here — defense-in-depth backstops on direct DB
  * writes that bypass the route layer (seed scripts, migrations, manual
  * SQL):
  *
@@ -16,6 +16,9 @@
  *     `^(RE|ST)-\d{4}-\d{4,}$` is rejected by the DB CHECK constraint.
  *     A handful of variants probe the anchors: short suffix, lowercase
  *     prefix, two-digit year, unknown prefix.
+ *
+ *   - #561: `issue_date` is null on drafts and set on issued or
+ *     cancelled rows (CHECK `invoices_issue_date_required_when_not_draft`).
  *
  * Pattern mirrors `data-integrity.test.ts` (AC-96 / AC-97): raw SQL
  * inserts/updates via `pool.query`, with SQLSTATE assertion on the
@@ -356,5 +359,52 @@ describe('AC-295: invoices.number CHECK constraint matches /^(RE|ST)-\\d{4}-\\d{
   it('accepts a 5-digit suffix (the regex pins {4,} — growth past 9999 is allowed)', async () => {
     const err = await insertWithNumber(`RE-${year}-12345`);
     expect(err).toBeNull();
+  });
+});
+
+// data-model.md §5.15: `issueDate` is null in draft and set at issuance.
+// Pin the CHECK by name: the fixture rows are otherwise valid, so a
+// rejection from any other mechanism would hide a missing CHECK.
+describe('invoices.issue_date is null on drafts and set on issued or cancelled rows (#561)', () => {
+  let db: Database;
+  let pool: pg.Pool;
+  let testProjectId: string;
+
+  beforeAll(async () => {
+    const conn = createDatabase();
+    db = conn.db;
+    pool = conn.pool;
+    await pool.query('SELECT 1');
+    await migrate(db, { migrationsFolder });
+    await seed(db, { force: true });
+
+    const projects = await db.execute(sql`SELECT id FROM projects LIMIT 1`);
+    testProjectId = (projects.rows[0] as { id: string }).id;
+  });
+
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  it.each([
+    ['an issued row without issue_date', 'issued', `RE-${year}-9601`, null],
+    ['a cancelled row without issue_date', 'cancelled', `RE-${year}-9602`, null],
+    ['a draft with an issue_date', 'draft', null, `${year}-01-15`],
+  ])('rejects INSERT of %s', async (_label, status, number, issueDate) => {
+    let pgError: PgErrorShape | null = null;
+    try {
+      await pool.query(
+        `INSERT INTO invoices
+          (id, project_id, status, number, issue_date, performance_date,
+           tax_mode, profile, issuer, recipient, lines, totals)
+         VALUES ($1, $2, $3, $4, $5, CURRENT_DATE,
+                 'standard', 'zugferd-en16931', '{}', '{}', '[]', '{}')`,
+        [crypto.randomUUID(), testProjectId, status, number, issueDate],
+      );
+    } catch (err) {
+      pgError = err as PgErrorShape;
+    }
+    expect(pgError?.code).toBe('23514');
+    expect(pgError?.constraint).toBe('invoices_issue_date_required_when_not_draft');
   });
 });
