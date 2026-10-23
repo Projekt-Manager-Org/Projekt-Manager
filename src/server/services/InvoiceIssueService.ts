@@ -70,10 +70,9 @@ export class InvoiceIssueService {
     private binary: InvoiceBinaryService,
     renderer?: InvoiceRenderer,
   ) {
-    // Renderer is constructor-injected so the test mock seam in
-    // `invoices-issue.test.ts:521-536` is honored — the mocked module's
-    // class is what `new InvoiceRenderer()` resolves to in the test
-    // process. In production the default constructor is fine.
+    // Injectable so a test can pass a fault-injecting renderer
+    // (`FaultyInvoiceRenderer` in `invoices-issue.test.ts`); production
+    // uses the default.
     this.renderer = renderer ?? new InvoiceRenderer();
   }
 
@@ -265,8 +264,9 @@ export class InvoiceIssueService {
     //    `taxMode`, `profile`, `number`, `issueDate` — so the rendered
     //    bytes match the eventually-persisted row exactly. A throw
     //    inside `render()` rolls back the entire transaction; the
-    //    sequence value returns to the pool (AC-288). The mock seam in
-    //    `invoices-issue.test.ts:521-536` exercises this exact path.
+    //    sequence value returns to the pool (AC-288). The rollback tests
+    //    in `invoices-issue.test.ts` (AC-288) and
+    //    `invoices-xsd-abort.test.ts` (AC-293) exercise this path.
     const previewInvoice: Invoice = {
       id: invoiceId,
       number,

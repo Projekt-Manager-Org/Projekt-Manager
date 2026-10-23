@@ -45,8 +45,8 @@ import { InvoiceBinaryService } from './InvoiceBinaryService.js';
 
 /**
  * Shape returned by the cancel call (api.md §14.2.14 — pinned exactly
- * as `{ original, storno }` per the wire contract assertion in
- * `invoices-cancel.test.ts:254`).
+ * as `{ original, storno }` per the wire contract assertion in the
+ * `invoices-cancel.test.ts` happy path).
  */
 export interface CancelResult {
   original: Invoice;
@@ -64,10 +64,8 @@ export class InvoiceCancelService {
     private binary: InvoiceBinaryService,
     renderer?: InvoiceRenderer,
   ) {
-    // Renderer is constructor-injected so the test mock seam in
-    // `invoices-issue.test.ts:521-536` is honored — the mocked module's
-    // class is what `new InvoiceRenderer()` resolves to in the test
-    // process. In production the default constructor is fine.
+    // Injectable like `InvoiceIssueService`'s; no test uses it today (the
+    // cancel abort test mocks modules in `invoices-xsd-abort.test.ts`).
     this.renderer = renderer ?? new InvoiceRenderer();
   }
 

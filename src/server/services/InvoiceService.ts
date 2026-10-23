@@ -510,7 +510,7 @@ export class InvoiceService {
   /**
    * Hard-delete a draft. Rejected with `INVOICE_FROZEN` (422) for any
    * non-draft row (AC-286). Audit `action='invoice:delete'` — the
-   * exact string is pinned in `invoices-routes.test.ts:467`. Ancestor
+   * exact string is pinned in `invoices-routes.test.ts`. Ancestor
    * link is the parent project.
    */
   async deleteDraft(
