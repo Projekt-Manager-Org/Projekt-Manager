@@ -573,6 +573,9 @@ jobs:
       - name: Docker converge script — self-test
         run: bash scripts/__tests__/docker-converge.test.sh
 
+      - name: Caddy health probe — self-test
+        run: bash scripts/__tests__/smoke-caddy-health.test.sh
+
       # Static check: every raw INSERT/UPDATE/DELETE on an audited
       # table (project, customer, user, project_worker) must be
       # authored inside the service-layer `mutate()` helper or on the
