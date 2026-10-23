@@ -16,12 +16,8 @@
  * accepts structurally-correct ZUGFeRD; certified PDF/A-3 (via
  * veraPDF) is a future-work seam and not a §14a UStG requirement.
  *
- * Surface kept stable from the Phase B stub: named `InvoiceRenderer`
- * class export (used by `InvoiceService`'s constructor injection) and
- * `default` object export (used by the mock-seam in
- * `src/server/__tests__/invoices-issue.test.ts:521-536`). Both
- * `render()` shapes are async — @cantoo/pdf-lib's `embedFont` /
- * `doc.save()` are async by construction.
+ * The issue and cancel services take `InvoiceRenderer` by constructor
+ * injection; `invoices-issue.test.ts` passes a fault-injecting subclass.
  *
  * Split across four sibling files for readability:
  *   - `invoice/facturXmlBuilder.ts` — EN 16931 CII-100 XML builder.
@@ -38,7 +34,7 @@ import { validateFacturXml } from './invoice/xsdValidator.js';
 /**
  * What the renderer hands back to the issuance transaction. The bytes
  * ride the existing binary descriptor pipeline (ADR-0022 / ADR-0024)
- * via `InvoiceService.persistRenderedBinary`; the XML payload is
+ * via `InvoiceBinaryService.persistRendered`; the XML payload is
  * exposed separately so the test harness can re-assert AC-293 without
  * re-extracting from the PDF/A-3 envelope. `render()` already runs the
  * EN 16931 XSD check against the XML before this struct is returned —
@@ -94,14 +90,3 @@ export class InvoiceRenderer {
     return { pdfBytes, facturXml };
   }
 }
-
-/**
- * Default export — the test seam in `invoices-issue.test.ts:521-536`
- * mocks both `InvoiceRenderer` and `default`. Matching the shape here
- * keeps the seam wire-compatible regardless of how the impl team
- * imports the renderer from the service.
- */
-const defaultRenderer = new InvoiceRenderer();
-export default {
-  render: (input: InvoiceRenderInput): Promise<RenderedInvoice> => defaultRenderer.render(input),
-};
