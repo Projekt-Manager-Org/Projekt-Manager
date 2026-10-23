@@ -557,13 +557,6 @@ describe('Invoice issuance — gapless sequence (AC-288)', () => {
     // `rechnung_faellig`) and assert the fresh issue claims the value
     // the failed call rolled back.
     //
-    // Canonical mock seam: `../services/InvoiceRenderer.js` exporting
-    // `InvoiceRenderer` with an instance `render()` method. The impl
-    // team honours this path or refactors the test in lock-step. The
-    // architecture's documented seam for ZUGFeRD rendering (ADR-0026
-    // §Storage) is a new server-side dependency wrapped behind a
-    // service; this is the natural module to mock.
-    //
     // Proof the failure reached the renderer step (i.e. ran AFTER
     // sequence allocation) is `expect(spy).toHaveBeenCalled()` — the
     // production error handler collapses 5xx bodies to a generic
@@ -578,10 +571,9 @@ describe('Invoice issuance — gapless sequence (AC-288)', () => {
     const SENTINEL = 'test-injected-render-fault';
 
     // Prototype-level spy on the renderer's `render` method. `this.renderer.render(...)`
-    // inside InvoiceService resolves via the prototype chain, so the spy intercepts
+    // inside InvoiceIssueService resolves via the prototype chain, so the spy intercepts
     // the live singleton's calls — no module-mock timing concerns (the route +
     // service modules were already loaded by `startApp()` in `beforeAll`).
-    // Precedent: backup.test.ts:94, backup-status.test.ts:209, error-handler.test.ts:50.
     const spy = vi.spyOn(InvoiceRenderer.prototype, 'render').mockImplementation(() => {
       throw new Error(SENTINEL);
     });
@@ -601,7 +593,7 @@ describe('Invoice issuance — gapless sequence (AC-288)', () => {
       // assert on the response body's text content here.
       expect(failed.statusCode).toBeGreaterThanOrEqual(400);
       // Proof the failure reached the renderer step: by construction,
-      // InvoiceService.runIssueInsideTx calls `this.renderer.render(...)`
+      // InvoiceIssueService.runIssueInsideTx calls `this.renderer.render(...)`
       // ONLY after `allocateInvoiceNumber(...)`, so the spy being called
       // guarantees the throw is post-allocation. The load-bearing AC-288
       // assertion is the rolled-back-value check below.
@@ -881,9 +873,8 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
 
     // Faulty renderer — extends the real class so the constructor's
     // `renderer?: InvoiceRenderer` parameter type-checks without a
-    // structural cast. The `render` override throws synchronously
-    // (mirrors the existing rollback test's `mockImplementation` style
-    // at line 545-547 above).
+    // structural cast. The `render` override rejects, like the
+    // rollback test's spy above.
     class FaultyInvoiceRenderer extends InvoiceRenderer {
       async render(): Promise<RenderedInvoice> {
         throw new Error('test-injected-render-fault');
