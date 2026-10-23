@@ -383,7 +383,6 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
     await importSvc.import(
       envelope,
       {
-        dryRun: false,
         override: true,
         confirmationPhrase: RESTORE_CONFIRMATION_PHRASE,
         writeAuditRow: false,

@@ -610,7 +610,6 @@ export async function loadBusiness(
   const envelope = buildBusinessEnvelope(now, opts.hashedPassword);
   const importService = new ImportService(db);
   await importService.import(envelope, {
-    dryRun: false,
     override: false,
     confirmationPhrase: null,
   });

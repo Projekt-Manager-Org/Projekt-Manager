@@ -52,12 +52,7 @@ import {
 import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
 import { allocateInvoiceNumber } from '../repositories/invoice-read.js';
 import type { Database } from '../db/connection.js';
-import type {
-  DryRunPreview,
-  Envelope,
-  ImportOptions,
-  ValidationIssue,
-} from '../../domain/dataExchange.js';
+import type { Envelope, ImportOptions, ValidationIssue } from '../../domain/dataExchange.js';
 import { AppError } from '../errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -386,7 +381,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       try {
         const env = buildExpandedEnvelope();
         const body = (await importEnvelope(env, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         })) as {
@@ -461,7 +455,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         await clearSeededInvoices();
         const env = buildExpandedEnvelope();
         const result = (await importEnvelope(env, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         })) as {
@@ -510,7 +503,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
           { year: 2026, kind: 'invoice', nextValue: 42, updatedAt: '2026-01-15T00:00:00.000Z' },
           { year: 2026, kind: 'storno', nextValue: 7, updatedAt: '2026-01-20T00:00:00.000Z' },
         ];
-        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+        await importEnvelope(env, { override: false, confirmationPhrase: null });
 
         const allocated = await db.transaction(async (tx) => ({
           invoice: await allocateInvoiceNumber(tx, 2026, 'invoice'),
@@ -528,7 +521,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   const OVERRIDE: ImportOptions = {
-    dryRun: false,
     override: true,
     confirmationPhrase: EXPECTED_RESTORE_PHRASE,
   };
@@ -544,7 +536,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       try {
         // Target: RE-2026-0001 (issued) + ST-2026-0001 (cancelled).
         await importEnvelope(buildExpandedEnvelope(), {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -571,7 +562,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       await wipeBusinessDataExceptUsers();
       try {
         await importEnvelope(buildExpandedEnvelope(), {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -607,7 +597,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
           },
         ];
         await importEnvelope(withDraft, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -633,7 +622,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       await wipeBusinessDataExceptUsers();
       try {
         await importEnvelope(buildExpandedEnvelope(), {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -682,7 +670,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       try {
         const env = buildExpandedEnvelope();
         // env.invoices already arrives in originals-first order.
-        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+        await importEnvelope(env, { override: false, confirmationPhrase: null });
 
         const dbInvoices = await db.select().from(invoices).orderBy(asc(invoices.number));
         expect(dbInvoices.length).toBe(2);
@@ -702,7 +690,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         const env = buildExpandedEnvelope();
         // Reverse so the Storno comes first — a hand-edited envelope.
         env.invoices = [...env.invoices].reverse();
-        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+        await importEnvelope(env, { override: false, confirmationPhrase: null });
 
         const dbInvoices = await db.select().from(invoices).orderBy(asc(invoices.number));
         expect(dbInvoices.length).toBe(2);
@@ -747,7 +735,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         );
 
         const err = await expectImportRejection(env, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -855,15 +842,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       const env = buildExpandedEnvelope();
       mutate(env.invoices[0]!);
 
-      const preview = (await importEnvelope(env, {
-        dryRun: true,
-        override: false,
-        confirmationPhrase: null,
-      })) as DryRunPreview;
-      expect(preview.validation_errors.map((i) => i.path)).toEqual([path]);
-
       const err = await expectImportRejection(env, {
-        dryRun: false,
         override: false,
         confirmationPhrase: null,
       });
@@ -878,12 +857,11 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       Object.assign(env.invoices[0]!, { taxMode: 'kleinunternehmer' });
       Object.assign(env.invoices[0]!.lines[0]!, { unitPrice: null });
 
-      const preview = (await importEnvelope(env, {
-        dryRun: true,
+      const err = await expectImportRejection(env, {
         override: false,
         confirmationPhrase: null,
-      })) as DryRunPreview;
-      expect(preview.validation_errors.map((i) => i.path)).toEqual([
+      });
+      expect((err.details as ValidationIssue[]).map((i) => i.path)).toEqual([
         'invoices[0].taxMode',
         'invoices[0].lines[0].unitPrice',
       ]);
@@ -891,7 +869,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
 
     it('imports a cancelled invoice and its Storno with lines and totals unchanged', async () => {
       const env = buildExpandedEnvelope();
-      await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+      await importEnvelope(env, { override: false, confirmationPhrase: null });
 
       const stored = await db.select().from(invoices);
       for (const inv of env.invoices) {
@@ -932,7 +910,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       mutate(env);
 
       const err = await expectImportRejection(env, {
-        dryRun: false,
         override: false,
         confirmationPhrase: null,
       });
@@ -959,7 +936,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         const workerId = env.project_workers[0]!.userId;
         expect(env.users.some((u) => u.id === workerId)).toBe(true);
 
-        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+        await importEnvelope(env, { override: false, confirmationPhrase: null });
       } finally {
         await reseed();
       }
@@ -976,7 +953,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         env.project_workers[0]!.userId = UUID_ZERO;
 
         const err = await expectImportRejection(env, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1019,7 +995,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         env.project_workers[0]!.userId = seededId;
 
         const err = await expectImportRejection(env, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1058,7 +1033,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       );
       try {
         const env = buildExpandedEnvelope();
-        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+        await importEnvelope(env, { override: false, confirmationPhrase: null });
 
         const rows = await db
           .select()
@@ -1164,7 +1139,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
           },
         ];
 
-        await importEnvelope(env, { dryRun: false, override: false, confirmationPhrase: null });
+        await importEnvelope(env, { override: false, confirmationPhrase: null });
 
         // The slot was ignored — no attachment rows landed.
         const count = await pool.query<{ c: string }>(
@@ -1211,7 +1186,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         env.schema_version = 2;
 
         const err = await expectImportRejection(env, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1254,7 +1228,6 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         // database — the wipe + restore must reproduce every slot.
         // ImportService ignores the envelope's `attachments` slot (AC-253).
         await importEnvelope(e1, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });

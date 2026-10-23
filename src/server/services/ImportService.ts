@@ -3,7 +3,7 @@
  *
  * Empty target → proceed; non-empty target → refuse unless the caller sets
  * `override`, which wipes the importable set in the same transaction. IDs
- * are preserved; dry-run validates without writes.
+ * are preserved.
  *
  * Issue #230 expanded the importable set to all user-meaningful business
  * state: `users`, `company_profile`, `invoices`, `invoice_sequence` join
@@ -55,7 +55,6 @@ import {
   type EnvelopeUser,
   type ImportOptions,
   type ImportResult,
-  type DryRunPreview,
   type MissingUserReference,
   type MissingUserRefsPayload,
   type ValidationIssue,
@@ -78,9 +77,9 @@ import {
  * Within-envelope structural checks — uniqueness of keys that become DB
  * constraints on insert, plus referential integrity between tables. Row-level
  * column validation is left to the DB, except invoice `lines` / `totals`:
- * JSONB the DB does not check. This pre-check exists so dry-run
- * reports issues without writes, and so non-dry-run fails cleanly (422)
- * before TRUNCATE rather than bubbling a 23505 through as a generic 500.
+ * JSONB the DB does not check. This pre-check exists so the import fails
+ * cleanly (422) before TRUNCATE rather than bubbling a 23505 through as a
+ * generic 500.
  */
 function validateEnvelope(envelope: Envelope): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -418,7 +417,7 @@ function collectEnvelopeUserRefs(envelope: Envelope): MissingUserReference[] {
  * From a collected reference list and a set of user ids known to exist
  * within the envelope, compute the `MISSING_USER_REFS` payload. Returns
  * `null` when every reference resolves — callers use that to skip raising
- * the error and to omit the sibling field from the dry-run preview.
+ * the error.
  *
  * `missingUserIds` is deduplicated (insertion-ordered); `references`
  * retains one entry per offending site (duplicates across distinct paths
@@ -612,8 +611,8 @@ export class ImportService {
   ) {}
 
   /**
-   * Whether the importable target carries any data — the EXISTS probe the
-   * override / dry-run paths run, exposed for the import JOB's create-time
+   * Whether the importable target carries any data — the EXISTS probe
+   * `import()` runs, exposed for the import JOB's create-time
    * destructive guard (api.md §14.2.4, AC-329). `users` and `company_profile`
    * are excluded (they always carry the bootstrap admin + the baseline-seeded
    * singleton), so a fresh install reads as empty (issue #230).
@@ -648,35 +647,29 @@ export class ImportService {
   }
 
   /**
-   * `caller` carries the operator's auth identity. Threaded through so
-   * the commit path can mint an import-token bound to the operator's
-   * user-id when the override wipes the session (issue #230 fixup).
+   * `caller` carries the operator's auth identity, recorded on the attempt
+   * log (`callerUserId`) for the forensic trail.
    *
    * Pass `null` only when the caller has no operator identity — the
    * seed path is the sole legitimate user (it runs at boot, before any
    * session exists). Empty-target imports without override never invalidate
    * the session, so the `null` caller is harmless on the seed branch.
-   *
-   * Dry-run ignores `caller` — the preview path is read-only and never
-   * mints a token.
    */
   async import(
     envelope: Envelope,
     opts: ImportOptions,
     log?: ServiceLogger,
     caller?: AuthUser | null,
-  ): Promise<ImportResult | DryRunPreview> {
+  ): Promise<ImportResult> {
     // Forensic trail for failed attempts. The success-case audit row at the
     // end of the commit transaction rolls back on any mid-tx throw (FK
     // violation, OOM, confirmation-phrase mismatch, etc.), so a series of
     // failed attempts would otherwise be invisible. The server log lives
-    // outside the tx and survives the rollback. Dry-run and commit are both
-    // logged so failed-validation telemetry is uniform across paths.
+    // outside the tx and survives the rollback.
     const batchId = randomUUID();
     log?.info(
       {
         batchId,
-        dryRun: opts.dryRun === true,
         override: opts.override === true,
         callerUserId: caller?.id ?? null,
         plannedCounts: {
@@ -699,63 +692,6 @@ export class ImportService {
     const validationIssues = validateEnvelope(envelope);
     const userRefs = collectEnvelopeUserRefs(envelope);
     const uniqueReferencedIds = Array.from(new Set(userRefs.map((r) => r.userId)));
-
-    if (opts.dryRun) {
-      // Read-only snapshot matches the ExportService pattern — the preview
-      // answers "what would happen if I committed right now", and a
-      // repeatable-read read-only transaction is the closest match to that
-      // semantic without contending with concurrent writers.
-      const presentIds = this.resolvePresentUserIds(envelope, uniqueReferencedIds);
-      const missingUserPayload = deriveMissingUserRefsPayload(userRefs, presentIds);
-      const targetNonEmpty = await this.db.transaction(
-        async (tx) => {
-          const presenceResult = await tx.execute<{ present: boolean }>(
-            // Issue #230: probe the importable *data* tables — customers /
-            // projects / project_workers (pre-#230 set), plus invoices /
-            // attachments. `users` and `company_profile` are NOT in this
-            // probe: `users` always carries the bootstrap admin
-            // (ADR-0010), and `company_profile` is pre-seeded by the
-            // baseline migration as an empty singleton. Treating either
-            // as "non-empty" would mean every fresh install reports
-            // target_non_empty=true, gating the UI's no-warning fast
-            // path for operators who legitimately have nothing to
-            // overwrite.
-            sql`SELECT (
-              EXISTS (SELECT 1 FROM customers)
-              OR EXISTS (SELECT 1 FROM projects)
-              OR EXISTS (SELECT 1 FROM project_workers)
-              OR EXISTS (SELECT 1 FROM invoices)
-              OR EXISTS (SELECT 1 FROM attachments)
-            ) AS present`,
-          );
-          return presenceResult.rows[0]?.present === true;
-        },
-        { isolationLevel: 'repeatable read', accessMode: 'read only' },
-      );
-
-      // AC-388: on the dry-run path both classes are evaluated regardless
-      // of intra-envelope state. `validation_errors` continues to carry
-      // intra-envelope issues only; missing-user issues surface under the
-      // sibling `missing_user_refs` field. api.md §14.2.4 deliberately
-      // does not mint a wire-field name for the preview surface — we
-      // mirror the commit-path `details` shape so a future UI can render
-      // one component for both paths.
-      return {
-        schema_version: SCHEMA_VERSION,
-        target_non_empty: targetNonEmpty,
-        would_write: {
-          users: envelope.users.length,
-          company_profile: envelope.company_profile.length,
-          customers: envelope.customers.length,
-          projects: envelope.projects.length,
-          project_workers: envelope.project_workers.length,
-          invoices: envelope.invoices.length,
-          invoice_sequence: envelope.invoice_sequence.length,
-        },
-        validation_errors: validationIssues,
-        missing_user_refs: missingUserPayload,
-      };
-    }
 
     // AC-389: commit-path ordering. Intra-envelope integrity is reported
     // first; the missing-user check runs only on an intra-consistent
@@ -829,7 +765,7 @@ export class ImportService {
       // AC-160: destructive path (override into a non-empty target) demands
       // a typed confirmation phrase in the request body. The shared
       // `restorePhraseMatches` predicate keeps this check identical to the
-      // client-side UX gate. Dry-run and empty-target paths never reach here.
+      // client-side UX gate. The empty-target path never reaches here.
       if (opts.override && hasExisting) {
         const typed = opts.confirmationPhrase;
         if (typeof typed !== 'string' || !restorePhraseMatches(typed)) {
@@ -1037,12 +973,11 @@ export class ImportService {
       } // end writeAuditRow guard
     });
 
-    // Post-commit project-list invalidation (AC-276). Both non-dry-run
-    // branches write project rows: override TRUNCATEs and re-inserts
-    // (replacing the corpus); empty-target inserts into empty tables
-    // (establishing the corpus). One coarse signal is sufficient for
-    // every consumer to refetch (architecture.md §11.13). The dry-run
-    // path returned early above and never reaches here.
+    // Post-commit project-list invalidation (AC-276). Both branches write
+    // project rows: override TRUNCATEs and re-inserts (replacing the
+    // corpus); empty-target inserts into empty tables (establishing the
+    // corpus). One coarse signal is sufficient for every consumer to
+    // refetch (architecture.md §11.13).
     emitProjectChanged();
 
     // Post-commit storage cleanup. A failure here does not abort the
