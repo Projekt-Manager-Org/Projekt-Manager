@@ -15,12 +15,17 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 
 ### Installing Docker
 
-The pinned-version flow below is apt-based and assumes a **Debian/Ubuntu-family workstation** (matching the VPS). Follow [server-setup.md](server-setup.md) Phase 4 for the apt repo, version table, and install/hold commands, with two differences for a workstation:
+The pinned-version flow is apt-based and assumes a **Debian/Ubuntu-family workstation** (matching the VPS):
 
-- Install for your own interactive user, not `deploy` -- add yourself to the `docker` group instead: `sudo usermod -aG docker $USER` (log out/in to apply).
-- Skip step 4 (UDP socket buffer tuning) -- that's Caddy/HTTP3-specific and only applies to the VPS.
+1. Add Docker's apt repo: [server-setup.md Phase 4](server-setup.md#phase-4----docker) step 1.
+2. From the repo root: `sudo scripts/ops/docker-converge.sh` -- installs and holds the pins in [`docker/host-versions.txt`](../../docker/host-versions.txt).
+3. `sudo usermod -aG docker $USER` (log out/in to apply).
 
-On any other platform (macOS, Windows, non-Debian Linux), install Docker Engine + Compose plugin from [Docker's official install docs](https://docs.docker.com/engine/install/) -- Docker Desktop on macOS/Windows, your distro's own packages on other Linux. The [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) version pin is enforced by `apt-mark hold`; off apt, match the pinned major version best-effort.
+A dev host needs the containerd image store too; a fresh Engine 29+ install has it. On an older install upgraded in place, `--check` reports overlay2 -- enable the store per [Docker's docs](https://docs.docker.com/engine/storage/containerd/).
+
+`.husky/pre-push` warns when the host drifts from the pins (`scripts/ops/docker-converge.sh --check`). Upgrades: [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions).
+
+On any other platform (macOS, Windows, non-Debian Linux), install Docker Engine + Compose plugin from [Docker's official install docs](https://docs.docker.com/engine/install/) -- Docker Desktop on macOS/Windows, your distro's own packages on other Linux. Off apt, match the pinned major versions in `docker/host-versions.txt` best-effort.
 
 ## First-time setup
 

@@ -47,10 +47,10 @@ We will adopt **three coupled changes**:
 - **Schedule:** weekly window (e.g. `before 9am on monday`) for routine bumps. Vulnerability PRs bypass the schedule and the PR concurrency/hourly limits.
 - **Grouping:** seven lockstep clusters, one PR per cluster — AWS SDK (`@aws-sdk/**`), ESLint cluster (`eslint` + `@eslint/js` + `globals` + `typescript-eslint` + `eslint-plugin-react-hooks` + `eslint-plugin-react-refresh`), Vitest pair (`vitest` + `@vitest/coverage-v8`), React quartet (`react` + `react-dom` + `@types/react` + `@types/react-dom`), Fastify family (`fastify` + `@fastify/**`), Drizzle pair (`drizzle-orm` + `drizzle-kit`), and Caddy (the two `caddy` base-image FROM tags and the `xcaddy build` version all track the `caddy` Docker image, grouped into one PR so all three advance to the same version together; sharing one datasource keeps them in lockstep. The `caddy-dns/cloudflare` plugin SHA tracks separately via git-refs).
 - **Per-major-version PRs.** No grouping across majors; each major bump gets its own PR with the changelog inline.
-- **Auto-merge** for patch + minor (plus digest/pin/lockfile) when CI is green, including the lockstep clusters — grouping consolidates one PR per cluster, it does not gate the merge. Majors never auto-merge.
+- **Auto-merge** for patch + minor (plus digest/pin/lockfile) when CI is green, including the lockstep clusters — grouping consolidates one PR per cluster, it does not gate the merge. Majors never auto-merge, nor do Docker host packages: they merge after acceptance on the VPS, quarterly ([ADR-0009](0009-pin-docker-versions-across-environments.md)).
 - **Release-age cooldown, 3 days, npm only.** Inherited from `config:best-practices` → `security:minimumReleaseAgeNpm` on the Renovate side; set again in `.npmrc` (`min-release-age=3`) for the resolution paths Renovate hands to npm, and backstopped by a required CI check on the candidate lockfile ([2026-09-17 amendment](#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff)). Non-npm datasources are excluded — [2026-08-28 amendment](#2026-08-28--release-age-cooldown-and-its-limits).
 - **Lockfile maintenance** PR daily to bound transitive drift, exempt from the PR limits (see the [2026-08-06 amendment](#2026-08-06--renovate-does-not-remediate-transitive-deps)).
-- **Managers:** `npm`, `dockerfile`, `docker-compose`, `github-actions`, and four `customManagers` of type `regex`, each covering a pin the built-in managers cannot see:
+- **Managers:** `npm`, `dockerfile`, `docker-compose`, `github-actions`, and five `customManagers` of type `regex`, each covering a pin the built-in managers cannot see:
 
   | #   | Surface                                                                                                               | Datasource                   |
   | --- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
@@ -58,12 +58,13 @@ We will adopt **three coupled changes**:
   | 2   | `caddy-dns/cloudflare` plugin SHA, same Dockerfile                                                                    | `git-refs`                   |
   | 3   | PostgreSQL major in `Dockerfile.backup` apk pins                                                                      | `docker`                     |
   | 4   | CLI binaries installed by URL + SHA256 in a workflow or composite-action step (OSV-Scanner, actionlint, ripgrep, age) | `github-release-attachments` |
+  | 5   | Docker host apt packages, `docker/host-versions.txt` ([ADR-0009](0009-pin-docker-versions-across-environments.md))    | `deb`                        |
 
   Manager 4 closes a gap this ADR had left open: a binary pinned by checksum with no update path is the same "adopted-already-dying" failure this ADR was written to retire, and it is worse on a **scanner** — a stale OSV-Scanner keeps reporting green while no longer knowing about new advisories. The `github-release-attachments` datasource locates the release's checksums asset from the current digest and re-reads it on the next release, so version and SHA256 advance in one PR; no checksum is ever hand-edited. When no checksums asset matches — `age` ships only Sigsum `.proof` files — it falls back to hashing the release assets directly and matching on the digest, so a checksum-less upstream is still tracked. It is driven by an inline `# renovate:` annotation at the call site, and requires `currentValue` to be the literal git tag, `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep), because the digest lookup calls `GET /releases/tags/{currentValue}` verbatim.
 
   `github-releases` is the wrong datasource for this manager even though the shape looks identical: its digest is the release tag's **commit** SHA, not an asset checksum, so it would overwrite a 64-hex `expected_sha` with a 40-hex value — failing the workflow's checksum compare and then falling out of the manager's `[a-f0-9]{64}` match entirely, leaving the pin untracked.
 
-  **Out of scope for Renovate:** Alpine `apk add` packages on top of base images (unpinned versions; surface enumerated and walked in [`docs/ops/dep-management.md` § Quarterly lifecycle review](../ops/dep-management.md#quarterly-lifecycle-review)) and Docker Engine apt packages on the VPS (tracked manually per [ADR-0009](0009-pin-docker-versions-across-environments.md) lifecycle table). Both are deliberate exclusions with a documented manual review; **no pin is left both unautomated and unreviewed.**
+  **Out of scope for Renovate:** Alpine `apk add` packages on top of base images (unpinned versions; surface enumerated and walked in [`docs/ops/dep-management.md` § Quarterly lifecycle review](../ops/dep-management.md#quarterly-lifecycle-review)). It is a deliberate exclusion with a documented manual review; **no pin is left both unautomated and unreviewed.**
 
 Dependabot Alerts stays on at the GH Security tab as the CVE **notification** surface. Renovate is the **action** surface for **direct** deps only — its vulnerability PRs, whether sourced from GitHub alerts or from `osvVulnerabilityAlerts: true`, are [direct-dependency-only by design](https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts) ("You will only get OSV-based vulnerability alerts for _direct_ dependencies"). Transitive npm deps are owned by two other mechanisms:
 
@@ -116,7 +117,7 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
 - **CVE time-to-merge measured in hours — for direct deps.** Vulnerability PRs bypass schedule; with auto-merge on green CI for patch/minor, the median CVE patch lands the same day it is published. Transitive-only advisories run on a different path (Dependabot security updates + daily `lockFileMaintenance`, backstopped by the nightly OSV scan) — see the [2026-08-06 amendment](#2026-08-06--renovate-does-not-remediate-transitive-deps).
 - **Dying-upstream signal at decision time.** The mandatory lifecycle-health section converts "the agent recommended MinIO" into "the agent recommended MinIO; here is its archive flag, last release, license, deps.dev score at adoption time." A future reader has an evaluable trail.
 - **Quarterly review catches BSL/SSPL relicensings and bus-factor erosion** without depending on someone happening to notice during routine work.
-- **Existing artifacts cooperate.** Dependabot Alerts is unchanged. ADR-0009's Docker version table doubles as the lifecycle table for that ADR's deps.
+- **Existing artifacts cooperate.** Dependabot Alerts is unchanged.
 - **Aligned with the project's "refuse to serve" principle** — CVE scanning in CI blocks the merge, not deferring it to a runtime probe.
 
 ### Negative
@@ -304,7 +305,7 @@ Renovate, OSV-Scanner, Trivy and actionlint are the adopted _tooling_; the choic
 ## References
 
 - [ADR-0007 (superseded)](0007-suppress-esbuild-dev-server-advisory.md) — `npm audit`-only baseline that proved insufficient; the suppression pattern is reused for OSV-Scanner allowlists.
-- [ADR-0009](0009-pin-docker-versions-across-environments.md) — Docker version pinning; its existing version table is the lifecycle-health surface for the Docker stack.
+- [ADR-0009](0009-pin-docker-versions-across-environments.md) — Docker host version pinning; tracked by manager 5.
 - [Issue #187](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/187) — the omnibus audit this ADR is responding to.
 - [Issue #191](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/191) — MinIO archival; the canonical failure case for "adopted-already-dying."
 - [Issue #192](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/192) — libxmljs2 unmaintained replacement.

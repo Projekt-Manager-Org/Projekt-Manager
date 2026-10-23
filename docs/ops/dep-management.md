@@ -209,7 +209,7 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
 [#514](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/514) is the worked example of the checks — no provenance, so the tag match. [#413](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/413) is the worked example of row 2 — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
-**Not covered:** the cooldown is npm-only. Docker base images, digest-pinned Actions, and the checksum-pinned CLI binaries have no release-age delay — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
+**Not covered:** the cooldown is npm-only. Docker base images, Docker host packages, digest-pinned Actions, and the checksum-pinned CLI binaries have no release-age delay — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
 ## Weekly wrangler
 
