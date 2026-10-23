@@ -3,7 +3,7 @@
  * ADR-0026).
  *
  * Argumented C-SIZE exception (review/conventions-code.md §C-SIZE,
- * 200 LOC guideline): this file is ~340 LOC. It hosts one cohesive
+ * 200 LOC guideline): this file is ~390 LOC. It hosts one cohesive
  * mutation surface — the section's permission gate + fetch-error
  * fallback, the form's owner-vs-read-only field rendering with
  * client-side validation, and the `LabeledInput` atom the form
@@ -63,22 +63,46 @@ function isValidAccentColor(value: string): boolean {
   return ACCENT_COLOR_PATTERN.test(trimmed);
 }
 
+interface FieldSpec {
+  key: keyof FormValues;
+  label: string;
+  required: boolean;
+  full?: boolean;
+}
+
 /**
- * Walk fields in render order and return the key of the first one that
- * fails its rule, or `null` when everything is valid. The submit path
- * uses this to focus the offending input directly — DOM-querying
- * `aria-invalid="true"` immediately after `setShowErrors(true)` would
- * miss the update because React has not yet committed the new attribute.
+ * Text inputs in render order. The single source of each field's rule:
+ * the `*`, the inline message and the submit short-circuit all derive
+ * from it, so they cannot disagree.
+ */
+const FIELDS: FieldSpec[] = [
+  { key: 'companyName', label: STRINGS.companyProfile.companyName, required: true, full: true },
+  { key: 'street', label: STRINGS.companyProfile.street, required: true },
+  { key: 'zip', label: STRINGS.companyProfile.zip, required: true },
+  { key: 'city', label: STRINGS.companyProfile.city, required: true, full: true },
+  { key: 'taxId', label: STRINGS.companyProfile.taxId, required: true },
+  { key: 'ustId', label: STRINGS.companyProfile.ustId, required: true },
+  { key: 'iban', label: STRINGS.companyProfile.iban, required: false },
+  { key: 'accentColor', label: STRINGS.companyProfile.accentColor, required: false },
+];
+
+function fieldError(f: FieldSpec, values: FormValues): string | null {
+  if (f.required && !values[f.key].trim()) return STRINGS.companyProfile.requiredField(f.label);
+  if (f.key === 'accentColor' && !isValidAccentColor(values.accentColor)) {
+    return STRINGS.companyProfile.accentColorInvalid;
+  }
+  return null;
+}
+
+/**
+ * Key of the first field (render order) that fails its rule, or `null`
+ * when everything is valid. The submit path uses this to focus the
+ * offending input directly — DOM-querying `aria-invalid="true"`
+ * immediately after `setShowErrors(true)` would miss the update because
+ * React has not yet committed the new attribute.
  */
 function firstInvalidFieldKey(values: FormValues): keyof FormValues | null {
-  if (!values.companyName.trim()) return 'companyName';
-  if (!values.street.trim()) return 'street';
-  if (!values.zip.trim()) return 'zip';
-  if (!values.city.trim()) return 'city';
-  if (!values.taxId.trim()) return 'taxId';
-  if (!values.ustId.trim()) return 'ustId';
-  if (!isValidAccentColor(values.accentColor)) return 'accentColor';
-  return null;
+  return FIELDS.find((f) => fieldError(f, values) !== null)?.key ?? null;
 }
 
 function profileToFormValues(profile: CompanyProfile): FormValues {
@@ -94,13 +118,6 @@ function profileToFormValues(profile: CompanyProfile): FormValues {
     footerText: profile.footerText ?? '',
     defaultTaxMode: profile.defaultTaxMode,
   };
-}
-
-interface FieldSpec {
-  key: keyof FormValues;
-  label: string;
-  required: boolean;
-  full?: boolean;
 }
 
 export function CompanyProfileSection() {
@@ -184,8 +201,6 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
   };
 
   const firstInvalid = firstInvalidFieldKey(values);
-  const ustIdMissing = !values.ustId.trim();
-  const accentColorInvalid = !isValidAccentColor(values.accentColor);
 
   const handleSubmit = async () => {
     if (!isOwner || submitting) return;
@@ -227,17 +242,6 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
   // readOnly attribute; use `disabled` there — values still render.
   const readOnly = !isOwner;
 
-  const fields: FieldSpec[] = [
-    { key: 'companyName', label: STRINGS.companyProfile.companyName, required: true, full: true },
-    { key: 'street', label: STRINGS.companyProfile.street, required: true },
-    { key: 'zip', label: STRINGS.companyProfile.zip, required: true },
-    { key: 'city', label: STRINGS.companyProfile.city, required: true, full: true },
-    { key: 'taxId', label: STRINGS.companyProfile.taxId, required: true },
-    { key: 'ustId', label: STRINGS.companyProfile.ustId, required: true },
-    { key: 'iban', label: STRINGS.companyProfile.iban, required: false },
-    { key: 'accentColor', label: STRINGS.companyProfile.accentColor, required: false },
-  ];
-
   return (
     <section className={styles.section}>
       <p className={styles.description}>{STRINGS.companyProfile.description}</p>
@@ -250,7 +254,7 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
         }}
         data-testid="company-profile-form"
       >
-        {fields.map((f) => (
+        {FIELDS.map((f) => (
           <LabeledInput
             key={f.key}
             fieldKey={f.key}
@@ -261,13 +265,7 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
             onChange={setField(f.key)}
             readOnly={readOnly}
             helperText={f.key === 'accentColor' ? STRINGS.companyProfile.accentColorHelper : null}
-            inlineError={
-              showErrors && f.key === 'ustId' && ustIdMissing
-                ? STRINGS.companyProfile.ustIdRequired
-                : showErrors && f.key === 'accentColor' && accentColorInvalid
-                  ? STRINGS.companyProfile.accentColorInvalid
-                  : null
-            }
+            inlineError={showErrors ? fieldError(f, values) : null}
           />
         ))}
 

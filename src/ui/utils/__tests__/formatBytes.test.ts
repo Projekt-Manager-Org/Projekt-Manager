@@ -4,9 +4,10 @@
  * ([ui/daten.md §8.11.3]), and the Export / Import progress readouts.
  *
  * Pins the rounding contract AC-451 names: integer at the B / KB tiers,
- * two decimals at MB / GB. Decimal-SI tier breaks at 1024 (the existing
- * dialog implementations rely on power-of-1024 thresholds; extracting
- * the helper preserves that posture rather than switching to SI 1000).
+ * two decimals after a decimal comma at MB / GB. Tier breaks at 1024
+ * (the existing dialog implementations rely on power-of-1024
+ * thresholds; extracting the helper preserves that posture rather than
+ * switching to SI 1000).
  *
  * The boundary set covers every tier break of AC-451:
  *   `0 B`, sub-KB byte counts, exact `1 KB`, sub-MB KB counts,
@@ -40,23 +41,23 @@ describe('formatBytes — boundary cases (AC-451)', () => {
     expect(formatBytes(999 * 1024)).toBe('999 KB');
   });
 
-  it('renders exactly 1048576 bytes as "1.00 MB"', () => {
-    expect(formatBytes(1024 * 1024)).toBe('1.00 MB');
+  it('renders exactly 1048576 bytes as "1,00 MB"', () => {
+    expect(formatBytes(1024 * 1024)).toBe('1,00 MB');
   });
 
   it('renders sub-GB MB counts with two decimal places', () => {
-    expect(formatBytes(5 * 1024 * 1024)).toBe('5.00 MB');
-    // 1.50 MB exact — pins both the rounding posture and the trailing
-    // zero (a `.toString()` regression would render "1.5 MB").
-    expect(formatBytes(1.5 * 1024 * 1024)).toBe('1.50 MB');
+    expect(formatBytes(5 * 1024 * 1024)).toBe('5,00 MB');
+    // 1.5 MiB exact — pins both the rounding posture and the trailing
+    // zero (a `.toString()` regression would render "1,5 MB").
+    expect(formatBytes(1.5 * 1024 * 1024)).toBe('1,50 MB');
   });
 
-  it('renders exactly 1073741824 bytes as "1.00 GB"', () => {
-    expect(formatBytes(1024 * 1024 * 1024)).toBe('1.00 GB');
+  it('renders exactly 1073741824 bytes as "1,00 GB"', () => {
+    expect(formatBytes(1024 * 1024 * 1024)).toBe('1,00 GB');
   });
 
   it('renders multi-GB counts with two decimal places at the GB tier', () => {
-    expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe('2.50 GB');
+    expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe('2,50 GB');
   });
 });
 
