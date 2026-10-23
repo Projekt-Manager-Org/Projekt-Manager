@@ -92,7 +92,7 @@ import { ImportService } from './ImportService.js';
 import { KeyEnvelopeService } from './KeyEnvelopeService.js';
 import { renderWebpThumbnail } from './serverImagePipeline.js';
 import { encryptInvoicePayload } from './invoice/payloadCrypto.js';
-import { emitStorageUsageChanged } from '../sse/emitters.js';
+import { emitAttachmentChanged, emitStorageUsageChanged } from '../sse/emitters.js';
 import {
   WRAPPED_DEK_CURRENT_VERSION,
   isSafeFileName,
@@ -586,9 +586,12 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
     // Pass-2 storage rollback is attempted — hiding here would strand the
     // committed rows' still-valid bytes in the window before a re-run.
   } finally {
-    // One coarse event at the job's end, once the wipe committed (AC-450,
-    // architecture.md §11.13). Not at the restore commit: Pass 2 keeps
-    // changing the totals after it.
-    if (restoreCommitted) emitStorageUsageChanged();
+    // One coarse frame each at the job's end, once the wipe committed
+    // (AC-450, AC-336, architecture.md §11.13). Not at the restore commit:
+    // Pass 2 keeps changing the totals and the attachment lists after it.
+    if (restoreCommitted) {
+      emitStorageUsageChanged();
+      emitAttachmentChanged();
+    }
   }
 }

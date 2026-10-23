@@ -44,8 +44,9 @@
  *     invoice lock, off the attachment surface. The file runs with
  *     `INVOICE_OBJECT_LOCK_DAYS = 1` (set before `startApp()`, which wires
  *     the import route) so the restore PUT carries a lock to assert.
- *   - AC-450 — the job emits one `storage_usage_changed` when it ends,
- *     ready or failed after the wipe; none when Pass 1 fails.
+ *   - AC-450, AC-336 — the job emits one `storage_usage_changed` and one
+ *     `attachment_changed` when it ends, ready or failed after the wipe;
+ *     neither when Pass 1 fails.
  *
  * SEEDING REAL CIPHERTEXT (AC-328): the export builder unwraps each ready
  * attachment's `wrappedDek` against the per-fork binary `age` identity,
@@ -1251,15 +1252,17 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-450 — Pass 2 keeps changing the totals after the restore commits,
-  // so the job emits one `storage_usage_changed` when it ends, after its
-  // terminal `data_exchange_job_changed`: ready, or failed after the wipe
-  // (Pass 2 has already committed rows). None when Pass 1 fails (nothing
-  // moved). The runner is driven directly: the route only fires it, and a
-  // Pass-2 fault needs a storage client that rejects its PUTs.
+  // AC-450, AC-336 — Pass 2 keeps inserting attachments after the restore
+  // commits, so the job emits one `storage_usage_changed` and one
+  // `attachment_changed` when it ends, after its terminal
+  // `data_exchange_job_changed`: ready, or failed after the wipe (Pass 2
+  // has already committed rows). None when Pass 1 fails (nothing moved).
+  // The runner is driven directly: the route only fires it, and a Pass-2
+  // fault needs a storage client that rejects its PUTs.
   // -------------------------------------------------------------------
-  describe('AC-450: the import job emits storage_usage_changed when it ends', () => {
+  describe('AC-450, AC-336: the import job emits storage and attachment events when it ends', () => {
     const STORAGE_EVENT = 'event: storage_usage_changed';
+    const ATTACHMENT_EVENT = 'event: attachment_changed';
     const JOB_EVENT = 'event: data_exchange_job_changed';
 
     interface FakeSubscriber extends SseConnection {
@@ -1309,23 +1312,25 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       return { status: row!.status, errorDetail: row!.errorDetail, events };
     }
 
-    /** Exactly one storage event, broadcast after the job's terminal frame. */
-    function expectOneStorageEventAtJobEnd(events: string[]): void {
-      expect(events.filter((e) => e === STORAGE_EVENT)).toHaveLength(1);
-      expect(events.indexOf(STORAGE_EVENT)).toBeGreaterThan(events.lastIndexOf(JOB_EVENT));
+    /** Exactly one of each event, broadcast after the job's terminal frame. */
+    function expectOneOfEachAtJobEnd(events: string[]): void {
+      for (const event of [STORAGE_EVENT, ATTACHMENT_EVENT]) {
+        expect(events.filter((e) => e === event)).toHaveLength(1);
+        expect(events.indexOf(event)).toBeGreaterThan(events.lastIndexOf(JOB_EVENT));
+      }
     }
 
-    it('a ready job emits exactly one event, at its end', async () => {
+    it('a ready job emits one of each, at its end', async () => {
       await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'e.pdf' });
       const archive = await buildExportArchive(ownerToken);
 
       const result = await runImportJob(archive, createStorageClientFromEnv(getEnv()));
 
       expect(result.status).toBe('ready');
-      expectOneStorageEventAtJobEnd(result.events);
+      expectOneOfEachAtJobEnd(result.events);
     });
 
-    it('a job that fails in Pass 2, after the wipe, emits exactly one event, at its end', async () => {
+    it('a job that fails in Pass 2, after the wipe, emits one of each, at its end', async () => {
       await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'f.pdf' });
       const archive = await buildExportArchive(ownerToken);
       const base = createStorageClientFromEnv(getEnv());
@@ -1341,11 +1346,11 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
 
       expect(result.status).toBe('failed');
       expect(result.errorDetail).toContain('storage down'); // failed in Pass 2
-      expectOneStorageEventAtJobEnd(result.events);
+      expectOneOfEachAtJobEnd(result.events);
       expect(await countRows('attachments')).toBe(0); // the wipe committed
     });
 
-    it('a job that fails in Pass 1, before the wipe, emits no event', async () => {
+    it('a job that fails in Pass 1, before the wipe, emits neither', async () => {
       await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'g.pdf' });
       const archive = await buildExportArchive(ownerToken);
       const truncated = archive.subarray(0, Math.floor(archive.length / 2));
@@ -1354,6 +1359,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
 
       expect(result.status).toBe('failed');
       expect(result.events).not.toContain(STORAGE_EVENT);
+      expect(result.events).not.toContain(ATTACHMENT_EVENT);
       expect(await countRows('attachments')).toBe(1); // nothing wiped
     });
   });
