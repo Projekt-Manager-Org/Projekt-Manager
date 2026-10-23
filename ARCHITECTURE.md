@@ -377,7 +377,8 @@ Overlays: `docker-compose.dev.yml` (DB + storage for `npm run dev`), `docker-com
 flowchart LR
   pr([PR]) --> lint & shard["check-shard ×2"] & docker["docker<br/>build, push by digest,<br/>scan, smoke"]
   shard --> check
-  lint & check & docker --> publish["publish<br/>tag digests"]
+  docker --> upgrade["docker-upgrade<br/>Docker pin bumps:<br/>upgrade + revert"]
+  lint & check & docker & upgrade --> publish["publish<br/>tag digests"]
   publish --> merge([squash merge])
   merge -->|"push: lint + check"| promote["promote<br/>re-tag as main SHA"]
   promote -.-> deploy["scripts/deploy.sh<br/>manual, on the VPS"]

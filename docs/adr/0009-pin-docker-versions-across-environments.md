@@ -23,18 +23,20 @@ Pin Docker Engine, CLI, containerd, BuildKit plugin, and Compose plugin to expli
 
 ```
 docker/host-versions.txt ──▶ Renovate PR (grouped, manual merge)
-        │                            │
-        ├──▶ CI installs the pins ───┘  compose validation + smoke + Caddy build = merge check
-        ├──▶ docker-converge.sh (sudo, one command per host)
-        └──▶ deploy.sh: docker-converge.sh --check → refuses on drift
+  ├──▶ CI, every PR: fresh install of the pins → compose validation, stack smoke, Caddy build ─┐
+  ├──▶ CI, pins changed: base → PR → base pins on a running stack ──────────────────────────────┴─ merge check
+  ├──▶ docker-converge.sh (sudo, one command per host)
+  └──▶ deploy.sh: refuse on drift → deploy → health through Caddy from the host
 ```
 
 - **Source of truth:** [`docker/host-versions.txt`](../../docker/host-versions.txt). Hosts converge to the file; no copy of the versions lives anywhere else.
 - **Image store:** the containerd image store, the Engine 29 fresh-install default. It is part of "in sync": an in-place upgrade from an older Engine keeps overlay2 ([Docker docs](https://docs.docker.com/engine/storage/containerd/)). The converge script reports store drift but never switches the store, which would hide every existing image and container.
 - **Hosts:** `scripts/ops/docker-converge.sh` installs the five pins in one call and holds them; a no-op when in sync. `--check` reports drift without installing.
-- **Enforcement:** `deploy.sh` runs `--check` before any compose call and refuses to deploy on drift; `.husky/pre-push` warns.
+- **Enforcement:** `deploy.sh` runs `--check` before any compose call and refuses to deploy on drift; after deploying it probes health through Caddy on the published port. `.husky/pre-push` warns.
 - **Bumps:** Renovate proposes one grouped PR (`deb` datasource), never auto-merged. Merging is the decision to converge the hosts now. Procedure: [server-setup.md § Upgrading pinned versions](../ops/server-setup.md#upgrading-pinned-versions).
-- **CI:** `.github/actions/install-docker` brings the runner to the pins (same converge script) wherever CI reproduces what a host does with its own Docker: `lint`'s compose validation, the `build-scan-smoke` composite, and the Caddy build (the one image a host builds itself; path-filtered). Jobs with `services:` (e2e, `check-shard`) stay on the runner's Docker: they need only _a_ container, and the install's daemon restart would stop theirs.
+- **Upgrade path in CI:** when the pins (or the converge path) change, the `docker-upgrade` job converges a running stack, Caddy included, from the base pins to the PR's and back, verifying after each step: containers back without compose, data intact, keys reloaded, health inside the container and through Caddy. That answers "does it break, and can it be reverted?" before merge.
+- **Revert:** every SHA carries the pins CI tested it on. Deploying a pre-bump SHA refuses until the host is converged back to its pins, the downgrade CI ran. An app-only rollback across a bump is `git revert`.
+- **CI:** `.github/actions/install-docker` brings the runner to the pins (same converge script) wherever CI reproduces what a host does with its own Docker: `lint`'s compose validation, the `build-scan-smoke` composite, the Caddy build (the one image a host builds itself; path-filtered), and the upgrade path. Jobs with `services:` (e2e, `check-shard`) stay on the runner's Docker: they need only _a_ container, and the install's daemon restart would stop theirs.
 
 ## Alternatives Considered
 
@@ -52,13 +54,14 @@ docker/host-versions.txt ──▶ Renovate PR (grouped, manual merge)
 - Silent `apt upgrade` drift is eliminated at the package layer.
 - Upgrades are explicit, reviewable changes — easy to correlate with regressions.
 - Reproducing production incidents locally is reliable.
-- New releases surface as a Renovate PR whose CI ran on exactly the proposed versions.
+- New releases surface as a Renovate PR whose CI ran on exactly the proposed versions, upgrade and revert included.
 
 ### Negative
 
 - Applying a bump stays a manual step per host, and it restarts the daemon (all containers stop; tmpfs keys are wiped until the next `deploy.sh`).
 - A merged bump blocks deploys until the VPS is converged.
-- Pinned CI costs an apt install per `lint` and `docker` run.
+- Pinned CI costs an apt install per `lint` and `docker` run; a PR that changes the pins also runs the upgrade path (three converges and the Caddy build).
+- Upstream supports upgrades, not downgrades (containerd: sequential minor upgrades only). The CI downgrade leg is the evidence that a given revert works.
 - No release-age cooldown: the `deb` datasource reports no release timestamps. Manual merge is the delay.
 - Renovate surfaces releases, not advisories: advisory tracking stays an operator duty ([Betriebsverantwortung §3](../compliance/betriebsverantwortung.md#3-operator)).
 
@@ -74,7 +77,7 @@ The version surface is `docker/host-versions.txt`. Upstream metadata:
 
 ### 2026-10-23 — Pins in one file, bumps proposed by Renovate, CI on the pins
 
-Manual tracking did not hold: on 2026-10-23 all five packages were behind, and the previous bump had moved only Engine and containerd, leaving buildx and Compose 3–4 months stale. The version table was hand-synced in two documents, and CI ran the runner's own Docker (Engine 28, Compose 2.38, overlay2), so a green CI said nothing about the pins. The VPS was the source of truth; the file is now ([#599](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/599)). New for the operator: `deploy.sh` refuses on drift, and a non-containerd image store counts as drift.
+Manual tracking did not hold: on 2026-10-23 all five packages were behind, and the previous bump had moved only Engine and containerd, leaving buildx and Compose 3–4 months stale. The version table was hand-synced in two documents, and CI ran the runner's own Docker (Engine 28, Compose 2.38, overlay2), so a green CI said nothing about the pins, and nothing ever ran an in-place upgrade or a downgrade before the VPS did. The VPS was the source of truth; the file is now ([#599](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/599)). New for the operator: `deploy.sh` refuses on drift (a non-containerd image store counts) and fails when health through Caddy fails; a pin PR's CI runs the upgrade and the revert on a running stack.
 
 ## References
 

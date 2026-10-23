@@ -47,11 +47,12 @@ Three composite actions in `.github/actions/`, split at the **naming** boundary 
 
 Callers in `.github/workflows/ci.yml`:
 
-| Job       | Event                                                               | Runs                                                                      |
-| --------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `docker`  | every PR, `merge_group`, `workflow_dispatch`                        | computes the tag triple → `build-scan-smoke` → Tier 1 round-trip          |
-| `publish` | PR (non-fork) + `workflow_dispatch`, `needs: [check, lint, docker]` | `tag-images` → `sha-<pr-tip>` + `<branch-slug>`                           |
-| `promote` | `push: main`                                                        | `tag-images` (see next section); fallback rebuilds then names the digests |
+| Job              | Event                                                                                                           | Runs                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `docker`         | every PR, `merge_group`, `workflow_dispatch`                                                                    | computes the tag triple → `build-scan-smoke` → Tier 1 round-trip                                                             |
+| `docker-upgrade` | every PR, `merge_group`, `workflow_dispatch`; work only when the Docker pins or their upgrade path change       | runs the images `docker` pushed through a pin upgrade and back ([ADR-0009](0009-pin-docker-versions-across-environments.md)) |
+| `publish`        | PR (non-fork) + `workflow_dispatch`, `needs: [check, lint, docker, docker-upgrade]`; fails unless all succeeded | `tag-images` → `sha-<pr-tip>` + `<branch-slug>`                                                                              |
+| `promote`        | `push: main`                                                                                                    | `tag-images` (see next section); fallback rebuilds then names the digests                                                    |
 
 `scripts/ci/image-refs.sh` is the single derivation of the tag triple (`sha_tag`, `branch_slug`, `git_sha`) and the two GHCR repository paths. `docker` exposes its output as job outputs and `publish` consumes those rather than re-deriving them; `promote` runs the same script against the merge commit. `git_sha` is part of the image cache key, so two independent expressions of it can drift into naming bytes `docker` never validated — and the slug expression previously existed in five places, only one of which refused a branch whose slug is `main`. Lowercasing means a branch called `Main` lands on the production pointer, and since #355 a PR is a writer of the slug tag, not just an operator dispatch. The guard has a scenario table (`scripts/__tests__/image-refs.test.sh`) because its failure mode is publishing over production rather than a red build.
 

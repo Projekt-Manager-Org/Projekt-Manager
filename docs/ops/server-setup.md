@@ -174,19 +174,31 @@ sysctl net.core.rmem_max      # 7500000
 
 #### Upgrading pinned versions
 
-A new Docker release arrives as a grouped Renovate PR (`docker-host`) editing `docker/host-versions.txt`; its CI ran on exactly those versions. Merging it is the decision to upgrade now: `deploy.sh` refuses to deploy until the VPS matches.
+A new Docker release arrives as a grouped Renovate PR (`docker-host`) editing `docker/host-versions.txt`. Its CI installs exactly those versions, and the `docker-upgrade` job upgrades a running stack from the current pins to the new ones and back, checking it after each step. A green PR answers "does this break the stack, and can it be reverted?". Merging it is the decision to upgrade now: `deploy.sh` refuses to deploy until the VPS matches.
 
-1. Review [Docker's release notes](https://docs.docker.com/engine/release-notes/) for the target versions; merge the PR.
-2. Dev workstation first: `git pull`, then `sudo scripts/ops/docker-converge.sh`, then `docker compose up -d` (per [local-dev.md](local-dev.md)).
-3. VPS last:
+1. Review [Docker's release notes](https://docs.docker.com/engine/release-notes/); merge the PR once CI is green.
+2. Dev workstation: `git pull`, then `sudo scripts/ops/docker-converge.sh`, then `docker compose up -d` (per [local-dev.md](local-dev.md)).
+3. VPS:
 
    ```bash
    sudo -u deploy /opt/projekt-manager/scripts/deploy.sh   # checks out the new pins, refuses at the drift guard
    sudo /opt/projekt-manager/scripts/ops/docker-converge.sh
-   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh   # deploys
+   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh   # deploys; probes health through Caddy
    ```
 
+Then open the app from a WireGuard client: the probe runs on the VPS itself and does not cover a client's path in (the forwarding rules a Docker Engine release may change).
+
 Converging restarts the Docker daemon -- no `live-restore` is configured, so every container stops (`restart: unless-stopped` brings them back) and the binary/drill-key tmpfs is wiped. The second `deploy.sh` reloads the keys.
+
+**Revert** (the VPS misbehaves on the new versions): deploy the last SHA before the bump. `deploy.sh` refuses, the converge downgrades to that SHA's pins (the downgrade CI ran), and the second `deploy.sh` deploys:
+
+```bash
+sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <pre-bump-sha>   # refuses at the drift guard
+sudo /opt/projekt-manager/scripts/ops/docker-converge.sh
+sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <pre-bump-sha>
+```
+
+Then `git revert` the bump on `main`, so the next deploy of `main` does not upgrade again.
 
 `scripts/ops/docker-converge.sh --check` reports drift without installing (no root needed).
 
