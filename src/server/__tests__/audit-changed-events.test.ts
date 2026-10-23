@@ -18,7 +18,8 @@
  *     `audit_changed` frame on the SSE bus, post-commit;
  *   - a transaction that aborts emits no event (parity with the
  *     `project_changed` AC-276 tx-abort arm and AC-270's
- *     storage_usage_changed posture).
+ *     storage_usage_changed posture);
+ *   - a takeout job's terminal audit row emits one event too (AC-320).
  *
  * Strategy mirrors `project-changed-events.test.ts`: subscribe a fake
  * connection directly to the in-process bus, drive a happy-path
@@ -26,13 +27,15 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import crypto from 'node:crypto';
 
 import { startApp, stopApp, login, authGet, authPost } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import type { Database } from '../db/connection.js';
+import { dataExchangeJob } from '../db/schema.js';
+import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
 import { ProjectCrudService } from '../services/ProjectCrudService.js';
 import type { ServiceLogger } from '../services/Logger.js';
 import { AUDIT_CHANGED } from '../../config/sseEvents.js';
@@ -232,4 +235,31 @@ describe('audit_changed: SSE emission per audit-row commit', () => {
       bus.unsubscribe(conn);
     }
   });
+
+  // The takeout jobs write their terminal row outside `mutate()` (it is
+  // atomic with the status flip, AC-332), so they need their own dispatch.
+  it.each([
+    { kind: 'import', terminal: 'ready', action: 'import_restored' },
+    { kind: 'export', terminal: 'failed', action: 'export_failed' },
+  ] as const)(
+    'emits exactly one audit_changed frame for a $kind job turning $terminal',
+    async ({ kind, terminal, action }) => {
+      const bus = await loadBus();
+      const jobs = new DataExchangeJobService(db);
+      const job = await jobs.create(kind, null);
+      await jobs.markRunning(job.id);
+      const audit = { action, entityLabel: `audit_changed ${kind}`, payload: {} };
+
+      const conn = subscribeFake(bus);
+      try {
+        if (terminal === 'ready') await jobs.markReady(job.id, null, audit);
+        else await jobs.markFailed(job.id, 'simulated', audit);
+
+        expect(countAuditChanged(conn)).toBe(1);
+      } finally {
+        bus.unsubscribe(conn);
+        await db.delete(dataExchangeJob).where(eq(dataExchangeJob.id, job.id));
+      }
+    },
+  );
 });

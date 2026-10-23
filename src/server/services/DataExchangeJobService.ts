@@ -30,6 +30,7 @@ import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
 import { auditLog, dataExchangeJob } from '../db/schema.js';
 import { emitDataExchangeJobChanged } from '../sse/emitters.js';
+import { dispatchAuditRows, toAuditLogRow } from './mutate.js';
 
 export type DataExchangeJobKind = 'export' | 'import';
 export type DataExchangeJobStatus = 'pending' | 'running' | 'ready' | 'failed';
@@ -296,22 +297,28 @@ export class DataExchangeJobService {
       // compound CHECK). `data_import` backs no physical table, so it sits
       // outside the single-write-path scan; `entity_id` is the (synthetic) job
       // id. Progress updates write none of this — only this terminal flip does.
-      await tx.insert(auditLog).values({
-        actorKind: 'system',
-        actorId: null,
-        actorReason: 'data_import',
-        entityType: 'data_import',
-        entityId: id,
-        entityLabel: audit.entityLabel,
-        action: audit.action,
-        payload: audit.payload,
-        ancestorEntityType: null,
-        ancestorEntityId: null,
-        correlationId: null,
-      });
-      return updated;
+      const [auditRow] = await tx
+        .insert(auditLog)
+        .values({
+          actorKind: 'system',
+          actorId: null,
+          actorReason: 'data_import',
+          entityType: 'data_import',
+          entityId: id,
+          entityLabel: audit.entityLabel,
+          action: audit.action,
+          payload: audit.payload,
+          ancestorEntityType: null,
+          ancestorEntityId: null,
+          correlationId: null,
+        })
+        .returning();
+      return { updated, auditRow: auditRow! };
     });
     emitDataExchangeJobChanged();
-    return row;
+    // Written outside `mutate()`, so dispatch by hand: the publisher's
+    // subscribers emit `audit_changed` (AC-320).
+    await dispatchAuditRows([toAuditLogRow(row.auditRow)]);
+    return row.updated;
   }
 }
