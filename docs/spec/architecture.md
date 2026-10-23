@@ -220,7 +220,7 @@ In-process bus that fans out typed invalidation events to subscribed SSE connect
 - `AttachmentService.hide` (`ready → hidden`)
 - `AttachmentService.restore` (`hidden → ready`)
 - `attachment-hidden-reaper` ([AC-426](verification.md#1526-attachments)) — `hidden` row delete
-- `ProjectCrudService.purgeProject` ([api.md §14.2.2](api.md#1422-projects), AC-155) — FK cascade removes every `attachment` row on the purged project
+- `ProjectCrudService.purgeProject` (AC-502) — FK cascade removes every `attachment` row on the purged project
 - `CustomerService.deleteCustomer` ([api.md §14.2.5](api.md#1425-customer-management), AC-91) — atomic purge of every archived project under the customer; the cascade removes their attachments alongside
 - the full-account **import job** ([api.md §14.2.4](api.md#1424-unified-data-exchange)) — its server-side restore replaces the attachment set wholesale (override wipe + per-attachment re-encrypt → PUT → insert)
 
@@ -228,14 +228,14 @@ The first three AttachmentService paths cover every byte-moving mutation reachab
 
 v1 emitters of `project_changed`:
 
-- `ProjectCrudService.createProject` ([api.md §14.2.2](api.md#1422-projects), AC-59) — new row visible to every project list / detail consumer.
-- `ProjectCrudService.updateProject` ([api.md §14.2.2](api.md#1422-projects), AC-60) — covers every field-update path on the row (`title`, `customerId`, `estimatedValue`, `notes`) and the assigned-worker join (`assignedWorkerIds`). Emission is on every successful return — including the assigned-worker-only path that mutates `project_workers` without writing the `projects` row, because the join is part of the project list / detail read surface.
-- `ProjectCrudService.deleteProject` ([api.md §14.2.2](api.md#1422-projects), AC-61) — soft-delete (archive); flips `deleted` and changes the rows surfaced under `includeArchived`.
-- `ProjectCrudService.restoreProject` ([api.md §14.2.2](api.md#1422-projects)) — un-archive; inverse of the soft-delete above.
-- `ProjectCrudService.purgeProject` ([api.md §14.2.2](api.md#1422-projects), AC-155) — hard delete of an already-archived row; observable through the `includeArchived` list dropping the row.
-- `ProjectTransitionService.transitionForward` ([api.md §14.2.2](api.md#1422-projects), AC-458) — `+1` workflow-state transition.
-- `ProjectTransitionService.transitionBackward` ([api.md §14.2.2](api.md#1422-projects), AC-458) — `-1` workflow-state transition.
-- `ProjectDatesService.updateDates` ([api.md §14.2.2](api.md#1422-projects), AC-7) — planned start / end edit.
+- `ProjectCrudService.createProject` (AC-475) — new row visible to every project list / detail consumer.
+- `ProjectCrudService.updateProject` (AC-480) — covers every field-update path on the row (`title`, `siteAddress`, `estimatedValue`, `notes`) and the assigned-worker join (`assignedWorkerIds`). Emission is on every successful return — including the assigned-worker-only path that mutates `project_workers` without writing the `projects` row, because the join is part of the project list / detail read surface.
+- `ProjectCrudService.deleteProject` (AC-497) — soft-delete (archive); flips `deleted` and changes the rows surfaced under `includeArchived`.
+- `ProjectCrudService.restoreProject` (AC-498) — un-archive; inverse of the soft-delete above.
+- `ProjectCrudService.purgeProject` (AC-502) — hard delete of an already-archived row; observable through the `includeArchived` list dropping the row.
+- `ProjectTransitionService.transitionForward` (AC-458) — `+1` workflow-state transition.
+- `ProjectTransitionService.transitionBackward` (AC-458) — `-1` workflow-state transition.
+- `ProjectDatesService.updateDates` (AC-7) — planned start / end edit.
 - `CustomerService.deleteCustomer` ([api.md §14.2.5](api.md#1425-customer-management), AC-91) — customer-delete cascade, when at least one archived project exists under the customer (the cascade removes those project rows alongside the customer). When the customer has zero archived projects, no event is emitted — the project rows visible to subscribers do not change.
 - `ImportService.import` (non-dry-run, [api.md §14.2.4](api.md#1424-unified-data-exchange)) — both branches write project rows inside one transaction: the override branch TRUNCATEs and re-inserts the full Layer 1 set (`users`, `company_profile`, `customers`, `projects`, `project_workers`, `invoice_sequence`, `invoices`, `attachments`) into a non-empty target; the empty-target branch inserts into empty tables (the seed-equivalent path). Exactly one `project_changed` is emitted post-commit per successful import — the project corpus is being established or replaced; one coarse signal is sufficient for every consumer to refetch. The `dryRun` path is read-only and emits nothing.
 
@@ -360,7 +360,6 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 - Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers ([index.md §3](index.md#3-workflow-states))
 - German UI and error strings
 - Date and locale display settings
-- Project numbering format — year + sequential (see [data-model.md §5.1](data-model.md#51-project-entity))
 - Password policy — minimum length, maximum byte length, blocklist
 - Session duration
 - Role set and per-role permission matrix
@@ -372,7 +371,7 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 - Audit log retention window — rolling age at which `audit_log` entries are removed by the scheduled cleanup (default 90 days; see [data-model.md §6.10](data-model.md#610-audit-log-retention)). Env var: `AUDIT_RETENTION_WINDOW_DAYS`; unset falls back to the build-time default in `src/config/auditRetention.ts`
 - Audit activity-feed rendering — mapping from audit entry (`action`, `payload`) ([data-model.md §5.10](data-model.md#510-audit-log-entity)) to the German display string in the activity feed ([ui/workflow-views.md §8.4.1](ui/workflow-views.md#841-activity-feed)) and global Aktivität view ([ui/management.md §8.13](ui/management.md#813-audit-view)). Covers each mutation-sourced [`NotificationEventClass`](data-model.md#511-notification-rule) — every such class has an `(action, payload)` projection; system events have no audit row to render ([§11.11](#1111-notification-publisher-and-dispatch)).
 - Realtime invalidation heartbeat — interval of `:` keepalive comment lines on `/api/events` ([§11.13](#1113-realtime-invalidation-channel), [api.md §14.2.13](api.md#14213-realtime-events)). Default 25 seconds; bounded 1 s … 600 s. Env var: `SSE_HEARTBEAT_INTERVAL_MS`.
-- List page size — default row count for paginated list endpoints (projects, customers, users, audit) and their management views
+- List page size — default row count for paginated list endpoints (customers, users, audit) and their management views
 - Rate limit buckets — per-session ceilings defined in `getRateLimit()` (`src/server/config/index.ts`); exceeding returns `429 RATE_LIMITED`. Push-subscription mutations (`POST`, `DELETE`) 20/min and password change 5/min are source constants ([api.md §14.2.10](api.md#14210-push-subscription)). The login bucket is env-backed — env var `LOGIN_RATE_LIMIT_MAX`; unset falls back to an environment-aware default (5/min under `NODE_ENV=production`, 30/min elsewhere)
 - Attachment per-file size cap — maximum `sizeBytes` of a single attachment original (default 1 MB); enforced at init validation, pinned via the presigned PUT's signed `Content-Length`, and re-verified at complete ([data-model.md §5.13](data-model.md#513-attachment)). The derived thumbnail carries its own cap (default 200 KB). Env vars: `ATTACHMENT_PER_FILE_CAP_BYTES`, `ATTACHMENT_THUMB_CAP_BYTES`; unset falls back to the build-time defaults in `src/config/attachmentConfig.ts`
 - Attachment bulk-fetch caps — maximum attachment count and summed plaintext byte size per request (default 20 files AND 20 MB); breach rejected with `BULK_LIMIT_EXCEEDED` ([verification.md AC-415](verification.md#1526-attachments)). Env vars: `ATTACHMENT_BULK_MAX_FILES`, `ATTACHMENT_BULK_MAX_BYTES`

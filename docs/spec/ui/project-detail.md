@@ -1,6 +1,6 @@
 # UI: Project Detail Page
 
-Section 8.15 of the [product spec](../index.md) — the dedicated, shareable detail surface for a single project at `/projects/:id`. The existing Project Detail Panel ([workflow-views.md §8.4](workflow-views.md#84-project-detail-panel)) stays as the quick-glance overlay on Kanban and Calendar; the page is the canonical full-context view.
+Section 8.15 of the [product spec](../index.md) — the full-page view of one project at `/projects/:id`. The detail panel ([workflow-views.md §8.4](workflow-views.md#84-project-detail-panel)) is the quick-glance overlay on the board and calendar.
 
 Shell and navigation live in [index.md](index.md); cross-cutting behavioral rules (in-flight lock, error handling, mutation semantics) in [behavior.md](behavior.md).
 
@@ -8,46 +8,38 @@ Shell and navigation live in [index.md](index.md); cross-cutting behavioral rule
 
 ## 8.15 Project Detail Page
 
-A full-page view of a single project. Reachable by URL (`/projects/:id`) and from the `Öffnen` affordance on the quick-glance detail panel. Route access follows the role matrix — workers land on the not-permitted surface ([AC-149](../verification.md#1521-role-scoping)) when the project is out of their scope.
+Reached by URL, from a project list row ([AC-496](../verification.md#1512-projects)), from the panel's `Öffnen` ([AC-207](../verification.md#1512-projects)), and on narrow viewports from the board and calendar ([AC-474](../verification.md#151-workflow-board)). Access: [AC-509](../verification.md#1512-projects), [AC-507](../verification.md#1512-projects), [AC-508](../verification.md#1512-projects). An archived project: [AC-500](../verification.md#1512-projects). Controls a caller may not use are hidden ([AC-121](../verification.md#1521-role-scoping)); who may do what: [api.md §14.3](../api.md#143-authorization-rules).
 
 ### 8.15.1 Layout
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│ Header — number, title, status badge                     │
+│ Header — number, title, status badge; actions            │
 ├──────────────────────────────────────────────────────────┤
-│ Core fields — customer, dates, value, notes              │
+│ Core fields — customer, Baustelle, dates, value, notes   │
 ├──────────────────────────────────────────────────────────┤
-│ Assigned workers — inline editor                         │
+│ Assigned workers                                         │
 ├──────────────────────────────────────────────────────────┤
-│ Photo gallery — thumbnails + lightbox                    │
+│ Attachments — photo gallery, binary list; Papierkorb tab │
 ├──────────────────────────────────────────────────────────┤
-│ Binary list — PDFs, DOCX, other non-photo attachments    │
-├──────────────────────────────────────────────────────────┤
-│ Invoice — per-project list + Neue Rechnung CTA (§8.15.11)│
+│ Invoice (§8.15.11)                                       │
 ├──────────────────────────────────────────────────────────┤
 │ Activity feed — scoped to this project (see §8.4.1)      │
 └──────────────────────────────────────────────────────────┘
 ```
 
-Every region renders read-only for a caller without the relevant write permission; mutation controls follow [AC-121](../verification.md#1516-management-views).
+- **Header** — number; title, editable in place ([AC-480](../verification.md#1512-projects)); status badge; `Archiviert` badge and notice on an archived project. Actions: download of all attachments as ZIP; `Archivieren` on an active project, `Wiederherstellen` and `Endgültig löschen` on an archived one ([AC-497](../verification.md#1512-projects), [AC-498](../verification.md#1512-projects), [AC-501](../verification.md#1512-projects), [AC-505](../verification.md#1512-projects), [AC-506](../verification.md#1512-projects)).
+- **Camera button** — on touch devices, for a caller who may upload (§8.15.4).
 
 ### 8.15.2 Core Fields
 
-The core-field region reuses the read contents of [workflow-views.md §8.4](workflow-views.md#84-project-detail-panel) — project number and title, status badge, customer (name, phone, email), `Baustelle:` line (see below), planned start/end date pickers, estimated value, notes, audit timestamps. Editability parity matches the management edit view ([management.md §8.8.3](management.md#883-edit-project)) — notes, customer, site address, estimated value, dates, and assigned workers are editable with `project:update`. Title edits also go through `project:update`. Status is mutated only through the transition operations; project number is immutable.
-
-**`Baustelle:` rendering.** The detail surface shows a single `Baustelle:` line carrying the work site address. When `project.siteAddress` is non-null, render `street, zip city` from that object. When `project.siteAddress` is null, fall back to the customer's `address` ([data-model.md §5.6](../data-model.md#56-customer-entity)) and append a subtle inline hint `"(Kundenadresse)"` so the reader knows the displayed value is the billing address standing in for the site (see [data-model.md §5.1](../data-model.md#51-project-entity) for the fallback rule). The map-link affordance is rendered on whichever address is shown — there is exactly one map link per detail surface and it points at the address actually displayed. When both `project.siteAddress` and `customer.address` are absent, the line renders the German placeholder `"Keine Adresse"` and no map link. The same rendering rule applies to the quick-glance Project Detail Panel ([workflow-views.md §8.4](workflow-views.md#84-project-detail-panel)).
-
-**`Baustelle:` editing.** Unlike the page's other core fields (notes, dates, estimated value, customer, title, assigned workers) which commit save-on-blur, the `Baustelle` group commits via an explicit `Speichern` button. The toggle + structured triple + all-or-none requiredness ([management.md §8.9.2](management.md#892-create-customer)) do not fit per-field blur semantics — a blur on `street` while `zip` is still empty would either dispatch a partial body or silently swallow the edit, neither acceptable. The save button is disabled while a mutation is in flight to prevent duplicate dispatches.
+- **Customer** — name; phone and email as links. A caller who may edit customers opens the customer's edit form from it ([management.md §8.9.3](management.md#893-edit-customer)); the project's customer itself does not change ([data-model.md §5.1](../data-model.md#51-project-entity)).
+- **`Baustelle:` line** — the site address, or its fallback ([AC-489](../verification.md#1512-projects), [AC-490](../verification.md#1512-projects), [AC-491](../verification.md#1512-projects)), with one map link ([AC-283](../verification.md#1512-projects)); the same on the panel. Clicking it opens a dialog with the Baustelle group and `Speichern` ([AC-483](../verification.md#1512-projects), [AC-484](../verification.md#1512-projects), [AC-485](../verification.md#1512-projects), [AC-486](../verification.md#1512-projects), [AC-487](../verification.md#1512-projects), [AC-488](../verification.md#1512-projects), [AC-510](../verification.md#1512-projects)).
+- **Planned start, planned end, estimated value, notes** — editable in place ([AC-480](../verification.md#1512-projects), [AC-511](../verification.md#1512-projects), [AC-482](../verification.md#1512-projects)).
 
 ### 8.15.3 Assigned-Worker Editor
 
-Worker-assignment editor visible on the page (not routed to a dedicated view). Backed by the existing Update project API operation ([api.md §14.2.2](../api.md#1422-projects)) with a patch carrying `assignedWorkerIds`.
-
-- Multi-select from the active set of users holding the `worker` role. Each selected entry renders as a chip carrying the worker's `displayName`; a remove affordance detaches.
-- Mutations require `project:update`. The control is hidden for callers without it; the page-level read surface continues to render the current assigned list.
-- Changes are audited per [AC-177](../verification.md#1523-audit-log) — the `mutate()` helper writes a `project_worker` audit row (`action` ∈ `create` / `delete`; `entityLabel` = worker displayName per [data-model.md §5.10](../data-model.md#510-audit-log-entity)).
-- In-flight mutation lock per [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior): while the patch is resolving, the chip set and the add control are disabled; a failed mutation reverts the optimistic UI ([AC-53](../verification.md#1515-navigation)).
+The assigned workers as chips, each with a remove control, and an add control offering the active users with the worker role ([AC-481](../verification.md#1512-projects)).
 
 ### 8.15.4 Photo Gallery
 
@@ -71,21 +63,6 @@ The project's binary attachments — PDF, DOCX ([AC-409](../verification.md#1526
 The delete action moves an attachment to the Papierkorb (§8.15.10, [AC-419](../verification.md#1526-attachments)). Offered to owner and office on every attachment, to a worker on their own uploads within the self-delete grace window **[C]** ([AC-411](../verification.md#1526-attachments)), never to the bookkeeper, and to no one on an archived project ([AC-412](../verification.md#1526-attachments)).
 
 It asks first: a Yes / No dialog whose German warning names the Papierkorb, the retention window `L` **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)) during which restore is possible, and the permanent deletion after it ([AC-426](../verification.md#1526-attachments)).
-
-### 8.15.9 Permissions Summary
-
-Capability-to-region mapping on the project detail page:
-
-| Region                   | Permission required to see / use                                                                                                   |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| View gallery + list      | `attachment:read`                                                                                                                  |
-| Upload photo / binary    | `attachment:write` (worker additionally requires project assignment)                                                               |
-| Hide an attachment       | `attachment:hide` (soft-hide per ADR-0022; worker additionally requires authorship AND self-delete grace window **[C]** — §8.15.6) |
-| Papierkorb tab + restore | `attachment:trash` (list hidden attachments and restore them)                                                                      |
-| Bulk download (ZIP)      | `attachment:read`                                                                                                                  |
-| Assigned-worker editor   | read inherent to the page; edit requires `project:update`                                                                          |
-
-The role → capability mapping (which role holds `attachment:read`, `attachment:write`, `attachment:hide`, `attachment:trash`) is defined by the permission matrix in [api.md §14.3](../api.md#143-authorization-rules) — that is the SSOT. Server-side authorization is authoritative ([api.md §14.3](../api.md#143-authorization-rules)); client-side hiding is a UX convenience per [AC-121](../verification.md#1516-management-views).
 
 ### 8.15.10 Papierkorb Tab
 
@@ -113,4 +90,4 @@ Per-project invoice block. Surfaces every invoice tied to the project as a list 
 
 ---
 
-_Cross-references: [index.md](../index.md) for scope and assumptions, [data-model.md](../data-model.md) for the Attachment entity, [api.md](../api.md) for the presigned-PUT upload flow, [workflow-views.md §8.4](workflow-views.md#84-project-detail-panel) for the quick-glance overlay, [verification.md](../verification.md) for acceptance criteria._
+_Cross-references: [index.md](../index.md) for scope and assumptions, [data-model.md](../data-model.md) for the Attachment entity, [workflow-views.md §8.4](workflow-views.md#84-project-detail-panel) for the quick-glance overlay, [verification.md](../verification.md) for acceptance criteria._

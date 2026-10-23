@@ -364,7 +364,7 @@ export const projectApi = {
      * Baustelle (work-site) address. `null` (or omitted) means the
      * project's site is the customer's billing address by the
      * fallback rule (data-model.md §5.1). A populated triple is
-     * persisted on the row. See AC-278 / AC-280.
+     * persisted on the row. See AC-483 / AC-484.
      */
     siteAddress?: Address | null;
   }) => apiCall<Project>('/api/projects', { method: 'POST', body: data }),
@@ -380,7 +380,7 @@ export const projectApi = {
       /**
        * Baustelle (work-site) address. PATCH semantics: omit to leave
        * unchanged, `null` to clear (project reverts to fallback), a
-       * populated triple to overwrite. See AC-279 / AC-280.
+       * populated triple to overwrite. See AC-483 / AC-484.
        */
       siteAddress?: Address | null;
     },

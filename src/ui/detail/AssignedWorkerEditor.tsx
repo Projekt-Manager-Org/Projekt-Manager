@@ -17,7 +17,7 @@ import styles from './ProjectDetail.module.css';
 
 interface AssignedWorkerEditorProps {
   projectId: string;
-  /** Archived projects render the chips read-only; AC-95 also rejects
+  /** Archived projects render the chips read-only; AC-499 also rejects
    * mutations server-side, so hiding the controls keeps the user out
    * of dead-end interactions. */
   archived?: boolean;

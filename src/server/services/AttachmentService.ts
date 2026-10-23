@@ -834,7 +834,7 @@ export class AttachmentService {
     }
 
     // Archived projects are read-only previews — server-side defence
-    // matching the project-mutation gate (AC-95). The detail-page UI
+    // matching the project-mutation gate (AC-499). The detail-page UI
     // already hides the trash affordance, but a direct API call must
     // not slip through. 404 mirrors the project-mutation contract: the
     // attachment "is gone" from the perspective of editable surfaces.
@@ -929,7 +929,7 @@ export class AttachmentService {
     // 404 / 403 order mirrors the project-detail policy (AC-147) —
     // a missing project is 404, an existing project out-of-scope is 403.
     // Archived projects ARE listed: the detail page renders them as a
-    // read-only preview (api.md §14.2.2), so the attachment listing has
+    // read-only preview (AC-500), so the attachment listing has
     // to surface alongside the rest of the body. Mutation paths
     // (initUpload, hideAttachment) keep the archived gate.
     const projectRow = await getProjectRowById(this.db, projectId);

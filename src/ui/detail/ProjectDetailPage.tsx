@@ -186,7 +186,7 @@ export function ProjectDetailPage() {
   // Archived projects are returned by GET as a regular 200 with
   // `deleted: true`. The page renders them in preview mode: every
   // editable surface is forced read-only and mutation affordances
-  // collapse to the purge action. AC-95 immutability is enforced
+  // collapse to the purge action. AC-499 immutability is enforced
   // server-side regardless, but suppressing the controls keeps the
   // user from staring at a button that always 404s.
   const isArchived = project.deleted;
@@ -468,7 +468,7 @@ export function ProjectDetailPage() {
             )}
           </div>
           {/* Baustelle (work-site address) — read-only line via
-              SiteAddressLine (shared with the panel; AC-282 / AC-283).
+              SiteAddressLine (shared with the panel; AC-489, AC-283).
               Wrapped in a clickable surface when the user can edit so
               the whole row taps through to SiteAddressEditModal. The
               inner map anchor is delegated past the card-open handler. */}

@@ -1,14 +1,15 @@
 /**
  * Baustelle (site-address) form group used by both the project Create
- * form and the project Detail page edit surface. See ui/management.md
- * §8.8.6 for the form rule.
+ * form and the project Detail page edit surface. Rules: AC-483, AC-484,
+ * AC-485, AC-486, AC-487, AC-488 and AC-510 (verification.md §15.12).
  *
  * Owns its own draft state — toggle + street/zip/city — and never
  * dispatches a request as a side-effect of a toggle or input change.
  * The parent reads the draft via {@link SiteAddressGroupHandle} and
  * builds the submit body; commit is the parent's call.
  *
- * Toggle behavior pinned by AC-281:
+ * Toggle behavior (AC-487, AC-488; the discard on OFF → ON is this
+ * component's choice, not a contract):
  *   - ON  : inputs disabled and visually muted; their displayed values
  *           mirror `customerAddress` so the operator can see which
  *           address the project will inherit. The submit body's
@@ -30,7 +31,7 @@ import styles from './Management.module.css';
  * - `valid` carries the request-body value the parent should submit:
  *     - toggle ON                     → `value: null`
  *     - toggle OFF + all three filled → `value: { street, zip, city }` (trimmed)
- * - `partial` is the AC-284 form-error case: toggle is OFF and exactly
+ * - `partial` is the AC-485 form-error case: toggle is OFF and exactly
  *   one or two of street/zip/city are populated (whitespace-only counts
  *   as empty). The parent surfaces `STRINGS.projects.siteAddressPartial`
  *   and refuses to dispatch.
@@ -82,7 +83,7 @@ export function SiteAddressGroup({
   const [identical, setIdentical] = useState<boolean>(initial === null);
   // Inputs always carry the most recent typed value, even when the
   // toggle is ON (and the inputs are visually disabled). Switching
-  // OFF → ON discards those values per AC-281.
+  // OFF → ON discards those values.
   const [street, setStreet] = useState<string>(initial?.street ?? '');
   const [zip, setZip] = useState<string>(initial?.zip ?? '');
   const [city, setCity] = useState<string>(initial?.city ?? '');
@@ -112,7 +113,7 @@ export function SiteAddressGroup({
   // While the toggle is ON, the disabled inputs display the customer's
   // address as a read-only preview of what the project will inherit.
   // The underlying draft state is untouched so OFF reverts to whatever
-  // the operator had typed (or empty after the AC-281 OFF→ON wipe).
+  // the operator had typed (or empty after the OFF→ON wipe).
   const displayedStreet = identical ? (customerAddress?.street ?? '') : street;
   const displayedZip = identical ? (customerAddress?.zip ?? '') : zip;
   const displayedCity = identical ? (customerAddress?.city ?? '') : city;
@@ -128,7 +129,7 @@ export function SiteAddressGroup({
           onChange={(e) => {
             const next = e.target.checked;
             setIdentical(next);
-            // OFF → ON discards typed values per AC-281. Clearing
+            // OFF → ON discards typed values. Clearing
             // here keeps the next OFF flip visibly empty without a
             // separate "have I been here before?" piece of state.
             if (next) {

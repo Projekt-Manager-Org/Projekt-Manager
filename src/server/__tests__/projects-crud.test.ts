@@ -61,10 +61,10 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-59: Create project with valid fields → first workflow state
-  // AC-58 [crit], AC-59 [crit]
+  // AC-475: Create project with valid fields → first workflow state
+  // AC-58 [crit], AC-475 [crit]
   // ---------------------------------------------------------------
-  describe('AC-59: Create project', () => {
+  describe('AC-475: Create project', () => {
     it('returns 201 with a project in the first workflow state', async () => {
       const res = await authPost(ownerToken, '/api/projects', {
         number: 'CRUD-001',
@@ -144,12 +144,21 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-62: Duplicate project number → validation error
-  // AC-62 [crit]
+  // AC-476: Duplicate project number → validation error
+  // AC-476 [crit]
   // ---------------------------------------------------------------
-  describe('AC-62: Duplicate project number', () => {
-    it('rejects creation with an already-used number', async () => {
-      // CRUD-001 was created in the AC-59 test
+  describe('AC-476: Duplicate project number', () => {
+    const countWithNumber = async (number: string): Promise<number> => {
+      const res = await authGet(
+        ownerToken,
+        `/api/projects?search=${encodeURIComponent(number)}&includeArchived=true`,
+      );
+      return (res.json().data as { number: string }[]).filter((p) => p.number === number).length;
+    };
+
+    it('rejects creation with an already-used number, naming it, and creates nothing', async () => {
+      // CRUD-001 was created in the AC-475 test
+      const before = await countWithNumber('CRUD-001');
       const res = await authPost(ownerToken, '/api/projects', {
         number: 'CRUD-001',
         title: 'Duplicate Number Attempt',
@@ -160,8 +169,29 @@ describe('Project CRUD Operations', () => {
 
       const body = res.json();
       expect(body.code).toBe('CONFLICT');
-      expect(typeof body.message).toBe('string');
-      expect(body.message.length).toBeGreaterThan(0);
+      expect(body.message).toContain('CRUD-001');
+      expect(await countWithNumber('CRUD-001')).toBe(before);
+    });
+
+    it('rejects a number held by an archived project', async () => {
+      const number = `AD-${Date.now()}`; // number holds at most 20 characters
+      const created = await authPost(ownerToken, '/api/projects', {
+        number,
+        title: 'Archived number holder',
+        customerId: seededCustomerId,
+      });
+      expect(created.statusCode).toBe(201);
+      const archived = await authDelete(ownerToken, `/api/projects/${created.json().id}`);
+      expect(archived.statusCode).toBe(200);
+
+      const res = await authPost(ownerToken, '/api/projects', {
+        number,
+        title: 'Reuse attempt',
+        customerId: seededCustomerId,
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(await countWithNumber(number)).toBe(1);
     });
   });
 
@@ -186,12 +216,12 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-60: Update project changes specified fields, preserves others
-  // AC-60 [crit]
+  // AC-480: Update project changes specified fields, preserves others
+  // AC-480 [crit]
   // ---------------------------------------------------------------
-  describe('AC-60: Update project', () => {
+  describe('AC-480: Update project', () => {
     it('changes the specified fields and preserves untouched ones', async () => {
-      // Read the project created in the AC-59 test
+      // Read the project created in the AC-475 test
       const beforeRes = await authGet(ownerToken, `/api/projects/${createdProjectId}`);
       expect(beforeRes.statusCode).toBe(200);
       const before = beforeRes.json();
@@ -222,10 +252,10 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-60: Update rejects status and number changes
-  // AC-60 [crit]
+  // Update rejects status and number changes (status: AC-459;
+  // number: data-model.md §5.1 "immutable")
   // ---------------------------------------------------------------
-  describe('AC-60: Update rejects status/number', () => {
+  describe('Update rejects status/number', () => {
     it('does not accept status changes via update', async () => {
       await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
         status: 'erledigt',
@@ -249,10 +279,10 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-61: Soft-delete project
-  // AC-61 [crit]
+  // AC-497: Soft-delete project
+  // AC-497 [crit]
   // ---------------------------------------------------------------
-  describe('AC-61: Delete project (soft-delete)', () => {
+  describe('AC-497: Delete project (soft-delete)', () => {
     /** A project created specifically for deletion testing. */
     let deleteTargetId: string;
 

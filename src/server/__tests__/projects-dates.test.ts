@@ -76,9 +76,9 @@ describe('Project Operations — Dates', () => {
 
   // ---------------------------------------------------------------
   // Update dates with plannedEnd before plannedStart is rejected
-  // (data-model.md §6.8)
+  // (AC-482)
   // ---------------------------------------------------------------
-  describe('Update dates with invalid range', () => {
+  describe('AC-482: Update dates with invalid range', () => {
     it('rejects when plannedEnd is before plannedStart', async () => {
       const listRes = await authGet(token, '/api/projects');
       const projects = listRes.json().data;
@@ -96,10 +96,15 @@ describe('Project Operations — Dates', () => {
       expect(body.code).toBe('VALIDATION_ERROR');
       expect(typeof body.message).toBe('string');
       expect(body.message.length).toBeGreaterThan(0);
+
+      // Changes nothing.
+      const after = (await authGet(token, `/api/projects/${project.id}`)).json();
+      expect(after.plannedStart).toBe(project.plannedStart);
+      expect(after.plannedEnd).toBe(project.plannedEnd);
     });
 
     it('rejects when only plannedEnd is set without plannedStart', async () => {
-      // data-model.md §6.8: setting only plannedEnd without plannedStart is not valid
+      // Setting only plannedEnd without plannedStart is not valid.
       const listRes = await authGet(token, '/api/projects');
       const projects = listRes.json().data;
       // Find a project without dates to test setting end-only
@@ -117,10 +122,15 @@ describe('Project Operations — Dates', () => {
 
       const body = res.json();
       expect(body.code).toBe('VALIDATION_ERROR');
+
+      // Changes nothing.
+      const after = (await authGet(token, `/api/projects/${project.id}`)).json();
+      expect(after.plannedStart ?? null).toBeNull();
+      expect(after.plannedEnd ?? null).toBeNull();
     });
 
     it('accepts plannedStart without plannedEnd (single-day block)', async () => {
-      // data-model.md §6.8: plannedStart alone is valid — renders as a
+      // plannedStart alone is valid (data-model.md §5.1) — renders as a
       // single-day block on the calendar. Seed the precondition by
       // first clearing both dates; then PATCH plannedStart alone.
       const listRes = await authGet(token, '/api/projects');

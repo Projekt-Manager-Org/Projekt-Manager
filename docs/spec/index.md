@@ -111,10 +111,6 @@ The system is authenticated and implements a **four-role permission matrix**. Th
 
 The role set and per-role permission list are configurable **[C]**.
 
-### 4.3 Scheduling
-
-Each project has at most one planned date range (start/end) representing the main execution slot.
-
 ### 4.4 Data Origin
 
 All data is stored in a persistent database, accessed through an API layer. Seed data (see [data-model.md §7](data-model.md#7-seed-data-specification)) is loaded only in non-production environments — the production start-up path deliberately skips seeding to avoid overwriting real data on a first deploy. Re-seeding drops and recreates all seed records.

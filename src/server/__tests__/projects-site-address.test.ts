@@ -2,8 +2,8 @@
  * API integration tests: project siteAddress (Baustelle).
  *
  * Covers the new AC pair from issue #179:
- *   - AC-278  POST /api/projects with `siteAddress` round-trip + replay rules
- *   - AC-279  PATCH /api/projects/:id `siteAddress` semantics
+ *   - AC-483, AC-484  POST /api/projects with `siteAddress` round-trip + replay rules
+ *   - AC-483, AC-484  PATCH /api/projects/:id `siteAddress` semantics
  *             (set / null clears / omitted no-op)
  *
  * `siteAddress` is the Baustellen-/Leistungsadresse — distinct from
@@ -50,9 +50,9 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
   });
 
   // -----------------------------------------------------------------
-  // AC-278 — POST /api/projects with `siteAddress` round-trip + replay
+  // AC-483, AC-484 — POST /api/projects with `siteAddress` round-trip + replay
   // -----------------------------------------------------------------
-  describe('AC-278: POST /api/projects round-trip', () => {
+  describe('AC-483, AC-484: POST /api/projects round-trip', () => {
     it('persists a fully populated siteAddress and round-trips on GET', async () => {
       const number = nextProjectNumber('SET');
       const createRes = await authPost(ownerToken, '/api/projects', {
@@ -169,9 +169,9 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
   });
 
   // -----------------------------------------------------------------
-  // AC-279 — PATCH /api/projects/:id siteAddress semantics
+  // AC-483, AC-484 — PATCH /api/projects/:id siteAddress semantics
   // -----------------------------------------------------------------
-  describe('AC-279: PATCH /api/projects/:id siteAddress', () => {
+  describe('AC-483, AC-484: PATCH /api/projects/:id siteAddress', () => {
     it('sets a stored siteAddress when supplied as a populated object', async () => {
       const number = nextProjectNumber('PATCHSET');
       const createRes = await authPost(ownerToken, '/api/projects', {
@@ -193,10 +193,10 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
       const getRes = await authGet(ownerToken, `/api/projects/${id}`);
       expect(getRes.json().siteAddress).toEqual(SITE_BERLIN);
 
-      // AC-279 ties the mutation to the single-write-path helper
+      // AC-177 ties the mutation to the single-write-path helper
       // (mutate(), AC-177): a successful PATCH that changes
       // siteAddress must produce an `update` audit row scoped to this
-      // project. Pattern mirrors projects-restore.test.ts §AC-156.
+      // project. Pattern mirrors the audit-row test in projects-restore.test.ts.
       const auditRes = await authGet(
         ownerToken,
         `/api/audit?ancestorType=project&ancestorId=${id}&limit=200`,
@@ -228,7 +228,7 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
       const getRes = await authGet(ownerToken, `/api/projects/${id}`);
       expect(getRes.json().siteAddress).toBeNull();
 
-      // Clearing changes the stored value, so AC-279 owes an audit row
+      // Clearing changes the stored value, so AC-177 owes an audit row
       // here too — one `update`, recording the set → null transition.
       const auditRes = await authGet(
         ownerToken,
@@ -269,13 +269,13 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
   });
 
   // -----------------------------------------------------------------
-  // AC-284 — API backstop: a malformed client that bypasses the form's
+  // AC-485 — API backstop: a malformed client that bypasses the form's
   // all-or-none rule must still be refused. The route's JSON Schema
   // pins `minLength: 1` on each of street / zip / city, so an empty
   // string in any one component is a 400 VALIDATION_ERROR. The
   // happy-paths (full triple, null) remain 201.
   // -----------------------------------------------------------------
-  describe('AC-284: API backstop — partial siteAddress is rejected', () => {
+  describe('AC-485: API backstop — partial siteAddress is rejected', () => {
     it('POST with empty zip → 422 VALIDATION_ERROR', async () => {
       const number = nextProjectNumber('PARTZIP');
       const res = await authPost(ownerToken, '/api/projects', {

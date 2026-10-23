@@ -17,11 +17,11 @@ import { STORAGE_STATES } from './storage-states';
  * issued from a session distinct from the office observer:
  *
  *   1. Owner advances a project (`+1` transition per AC-458).
- *   2. Owner archives a project (AC-61).
+ *   2. Owner archives a project (AC-497).
  *   3. Owner restores an archived project.
  *   4. Owner edits a project's planned dates (AC-7).
  *   5. Owner edits an assigned-worker set.
- *   6. Owner creates a new project (AC-59).
+ *   6. Owner creates a new project (AC-475).
  *
  * Why no worker actor: workers do not hold `project:transition`,
  * `project:create`, `project:update`, `project:delete`, or
@@ -38,7 +38,7 @@ import { STORAGE_STATES } from './storage-states';
  * must reflect the change within 2 seconds with NO manual refresh —
  * driven by the `project_changed` event over `/api/events`
  * (api.md §14.2.13) and the project store's SSE refresh trigger that
- * re-issues api.md §14.2.2 (Projects).
+ * re-issues the project reads.
  *
  * This is the value test the realtime channel exists to deliver for
  * project lifecycle — the always-open-observer gap that mount +
@@ -316,7 +316,7 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
   });
 
   // ------------------------------------------------------------------
-  // 2. Owner archives a project (AC-61).
+  // 2. Owner archives a project (AC-497).
   //
   // Issued from a one-shot owner request context — the storage-usage precedent
   // for cross-session-driven mutations. The OFFICE browser session does
@@ -455,7 +455,7 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
   });
 
   // ------------------------------------------------------------------
-  // 6. Owner creates a new project (AC-59).
+  // 6. Owner creates a new project (AC-475).
   //
   // The new project's row must appear in the office list within 2 s.
   // The number is suffixed with the run timestamp so a re-run

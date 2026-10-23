@@ -105,7 +105,7 @@ while IFS=: read -r file id; do
 done < <(git ls-files -z | grep -zvxF "${exclude[@]}" |
   xargs -0 grep -oHIP '\bAC-\d+[a-z]?\b' 2>/dev/null | sort -u || true)
 
-# A range (`AC-189..AC-193`, `AC-155–158`) hides every ID but the first
+# A range (`AC-189..AC-193`, `AC-502–504`) hides every ID but the first
 # from the checks above — including a retired one inside it.
 while IFS= read -r hit; do
   errors+=("${hit%%:*}: AC range '${hit#*:}' — list each ID")

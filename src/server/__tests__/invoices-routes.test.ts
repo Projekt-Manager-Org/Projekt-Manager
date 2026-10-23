@@ -433,7 +433,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('draft on an archived project returns 404 NOT_FOUND (parity with AC-95)', async () => {
+    it('draft on an archived project returns 404 NOT_FOUND (parity with AC-499)', async () => {
       // Use an in_arbeit project we can safely archive — the seeded
       // rechnung_faellig set is reserved for issue-path arms.
       const archivableId = await anyActiveProjectId(ownerToken);

@@ -38,8 +38,8 @@ describe('Project Operations — Transitions', () => {
   // updateDates all returned the updated project with
   // assignedWorkers: null regardless of the join-table state — the
   // catch was that toProject() defaults workers to [], which the
-  // projection collapses to null. The api.md §14.2.2 contract says
-  // every mutation returns "the full project object" so the client
+  // projection collapses to null. The API returns the full project
+  // object after every mutation so the client
   // can update its local state without a second fetch; dropping the
   // workers silently broke that contract. The kickoff principle says
   // silent data corruption / contract violations of this class are
@@ -202,7 +202,7 @@ describe('Project Operations — Transitions', () => {
   // ---------------------------------------------------------------
   // Transition backward (success case)
   // Backward counterpart of the forward chain below (AC-458).
-  // Covers api.md §14.2.2: Transition backward moves status back by
+  // Transition backward moves status back by
   // one step and sets status, statusChangedAt, updatedAt, updatedBy.
   // ---------------------------------------------------------------
   describe('Transition backward (success)', () => {

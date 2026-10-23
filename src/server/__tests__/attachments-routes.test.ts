@@ -936,7 +936,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     it('returns 404 NOT_FOUND when the project is archived between init and complete', async () => {
       // Race window: init lands on an active project, the project is
       // archived while the bytes upload, then complete tries to flip
-      // pending → ready. AC-95 says mutations on archived rows must
+      // pending → ready. AC-499 says mutations on archived rows must
       // not stick — without the archive guard in completeUpload, a
       // racing client could land a `ready` attachment on a frozen
       // project. The pending row remains for the reaper.

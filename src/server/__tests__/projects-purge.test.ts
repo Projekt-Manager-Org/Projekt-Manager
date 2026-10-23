@@ -1,7 +1,8 @@
 /**
  * API integration tests: Project hard-delete (purge) operation.
  *
- * Pins AC-155, AC-156, AC-157, AC-158 from §15.12.
+ * Pins AC-502, AC-503, AC-157 from §15.12; the not-found case is wire
+ * shape with no AC.
  *
  * The purge endpoint is a narrower, strictly more destructive counterpart to
  * the soft-delete (archive) endpoint. Preconditions pinned here:
@@ -99,10 +100,10 @@ describe('Project Purge (hard-delete)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-155: Purge an archived project → 204
-  // AC-155 [crit]
+  // AC-502: Purge an archived project → 204
+  // AC-502 [crit]
   // ---------------------------------------------------------------
-  describe('AC-155: Hard-delete an archived project', () => {
+  describe('AC-502: Hard-delete an archived project', () => {
     it('removes the row; subsequent get returns 404 and list (includeArchived) omits it', async () => {
       // Pick two workers to exercise the project_workers cascade.
       const ownerMe = await authGet(ownerToken, '/api/auth/me');
@@ -127,10 +128,10 @@ describe('Project Purge (hard-delete)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-156: Purge on a non-archived project → 409 Conflict
-  // AC-156 [crit]
+  // AC-503: Purge on a non-archived project → 409 Conflict
+  // AC-503 [crit]
   // ---------------------------------------------------------------
-  describe('AC-156: Reject purge on non-archived project', () => {
+  describe('AC-503: Reject purge on non-archived project', () => {
     it('returns 409 CONFLICT with a German message directing to archive first', async () => {
       const projectId = await createActiveProject();
 
@@ -142,7 +143,7 @@ describe('Project Purge (hard-delete)', () => {
       expect(typeof body.message).toBe('string');
       // Load-bearing: the copy must direct the user to archive first.
       // A regex keeps the assertion resilient to minor copy edits while
-      // still pinning the semantic requirement from AC-156.
+      // still pinning the semantic requirement from AC-503.
       expect(body.message).toMatch(/archiv/i);
 
       // Project row is unchanged — still present and still not deleted.
@@ -153,9 +154,9 @@ describe('Project Purge (hard-delete)', () => {
   });
 
   // ---------------------------------------------------------------
-  // Permission (AC-157) + not-found (AC-158)
+  // Permission (AC-157) + not-found
   // ---------------------------------------------------------------
-  describe('AC-157, AC-158: Permission and not-found contracts', () => {
+  describe('AC-157: Permission and not-found contracts', () => {
     describe('permission gate (AC-157)', () => {
       it('rejects callers without project:purge — worker, bookkeeper, office; only owner succeeds', async () => {
         const projectId = await createArchivedProject();
@@ -185,7 +186,7 @@ describe('Project Purge (hard-delete)', () => {
       });
     });
 
-    describe('not-found (AC-158)', () => {
+    describe('not-found', () => {
       it('returns 404 NOT_FOUND for a non-existent project id', async () => {
         const res = await authDelete(
           ownerToken,

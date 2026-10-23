@@ -123,7 +123,7 @@ export function attachmentScopeForCaller(user: AuthUser): SQL | null {
  * Soft-deleted (archived) rows are returned as `T` with the entity's
  * own archive flag set — the caller renders read-only preview rather
  * than a "gone" surface. Mutation paths use a separate `*ForMutation`
- * fetch that filters archived rows back to null (AC-95).
+ * fetch that filters archived rows back to null (AC-499).
  *
  * See ADR-0019 for the rationale behind 403-over-404.
  */

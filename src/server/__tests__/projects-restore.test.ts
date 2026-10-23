@@ -1,5 +1,5 @@
 /**
- * API integration tests: Project restore (undo archive).
+ * API integration tests: Project restore (undo archive) — AC-498.
  *
  * Restore is the inverse of soft-delete (archive). Preconditions:
  *   - Target must currently be archived (`deleted = true`) → 200 with
@@ -32,6 +32,8 @@ describe('Project Restore (undo archive)', () => {
       number: `RST-${uniqueSuffix}`,
       title: `Restore fixture ${uniqueSuffix}`,
       customerId: seededCustomerId,
+      // Not the first state, so a restore that resets the state fails.
+      status: 'geplant',
     });
     if (createRes.statusCode !== 201) {
       throw new Error(`Fixture: project create failed ${createRes.statusCode} ${createRes.body}`);
@@ -77,7 +79,7 @@ describe('Project Restore (undo archive)', () => {
     await stopApp();
   });
 
-  it('restores an archived project: 200, body has deleted=false, GET returns active', async () => {
+  it('AC-498: restores an archived project in the state it had', async () => {
     const projectId = await createArchivedProject();
 
     // Confirm the fixture really is archived.
@@ -90,6 +92,7 @@ describe('Project Restore (undo archive)', () => {
     const body = res.json();
     expect(body.id).toBe(projectId);
     expect(body.deleted).toBe(false);
+    expect(body.status).toBe('geplant');
     // Full project shape — the spec note "Full project object returned
     // after every mutation so the client can reconcile without a separate
     // fetch" applies to restore too.

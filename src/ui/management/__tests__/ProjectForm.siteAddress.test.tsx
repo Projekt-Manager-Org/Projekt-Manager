@@ -1,22 +1,22 @@
 /**
  * Component tests for the Baustelle group on the project Create form
  * (and Edit surface, which the spec routes through the project detail
- * page — see ui/management.md §8.8.3 + §8.8.6).
+ * page — see ui/project-detail.md §8.15.2).
  *
  * Covers:
- *   - AC-280  Both Create and Edit render a `Baustelle` group with an
- *             "Identisch mit Kundenadresse" toggle and street/zip/city
- *             inputs. Default state is ON for create; on edit the toggle
+ *   - AC-486, AC-510  Initial toggle state: ON for create; on edit it
  *             reflects the stored value (ON when null, OFF + populated
- *             when non-null). Submit body shape:
+ *             when non-null).
+ *   - AC-483, AC-484  Submit body shape:
  *               toggle ON  → siteAddress: null
  *               toggle OFF → siteAddress: { street, zip, city }
- *   - AC-281  Toggle ON↔OFF behavior — fields disabled when ON,
+ *   - AC-487  Toggle ON shows the customer address in the disabled inputs.
+ *   - AC-488  Toggle ON↔OFF behavior — fields disabled when ON,
  *             revealed empty when OFF, no premature dispatch.
  *
  * Surface under test: `ProjectCreateForm` for the create branch. The
  * edit branch is the project detail page (`ProjectDetailPage`) — its
- * Baustelle group lives in the same form-rule (§8.8.6) so we exercise
+ * Baustelle group follows the same rules, so we exercise
  * the rendering + initial state there too.
  *
  * The API client is stubbed at module boundary; real stores run.
@@ -216,9 +216,9 @@ async function fillRequiredCreateFields() {
 }
 
 // ---------------------------------------------------------------------
-// AC-280 — render + default state + submit body shape (Create branch)
+// AC-486, AC-483, AC-484 — render + default state + submit body shape (Create branch)
 // ---------------------------------------------------------------------
-describe('ProjectCreateForm — Baustelle group (AC-280, create branch)', () => {
+describe('ProjectCreateForm — Baustelle group (AC-486, AC-483, AC-484, create branch)', () => {
   it('renders the Baustelle group label, the toggle, and street/zip/city inputs', async () => {
     await openCreateForm();
 
@@ -287,9 +287,9 @@ describe('ProjectCreateForm — Baustelle group (AC-280, create branch)', () => 
 });
 
 // ---------------------------------------------------------------------
-// AC-280 — Edit branch (Project Detail Page is the edit surface)
+// AC-510 — Edit branch (Project Detail Page is the edit surface)
 // ---------------------------------------------------------------------
-describe('ProjectDetailPage — Baustelle group (AC-280, edit branch)', () => {
+describe('ProjectDetailPage — Baustelle group (AC-510, edit branch)', () => {
   function renderDetailAt(project: Project) {
     projectGetMock.mockResolvedValue(ok(project));
     useProjectStore.setState({
@@ -362,9 +362,9 @@ describe('ProjectDetailPage — Baustelle group (AC-280, edit branch)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-281 — toggle ON↔OFF behavior + no premature dispatch
+// AC-488 — toggle ON↔OFF behavior + no premature dispatch
 // ---------------------------------------------------------------------
-describe('ProjectCreateForm — Baustelle toggle behavior (AC-281)', () => {
+describe('ProjectCreateForm — Baustelle toggle behavior (AC-488)', () => {
   it('switching ON → OFF reveals the empty inputs without dispatching', async () => {
     await openCreateForm();
 
@@ -417,11 +417,11 @@ describe('ProjectCreateForm — Baustelle toggle behavior (AC-281)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-281 — Edit-branch: OFF → ON discards typed values without
-// reverting persisted state. The "persisted state" clause has teeth
+// AC-488 — Edit-branch: OFF → ON stores nothing and does not revert
+// persisted state; the discard of typed values is component behavior. The "persisted state" clause has teeth
 // only on Edit, where the underlying project.siteAddress is non-null.
 // ---------------------------------------------------------------------
-describe('ProjectDetailPage — Baustelle toggle behavior (AC-281, edit branch)', () => {
+describe('ProjectDetailPage — Baustelle toggle behavior (AC-488, edit branch)', () => {
   const STORED = { street: 'Goethestr. 18', zip: '51103', city: 'Köln' };
 
   function renderDetailWithStoredAddress() {
@@ -461,10 +461,10 @@ describe('ProjectDetailPage — Baustelle toggle behavior (AC-281, edit branch)'
     await userEvent.type(street, 'Schillerstr. 4');
     expect(street.value).toBe('Schillerstr. 4');
 
-    // Toggle OFF → ON. Per AC-281 this must:
+    // Toggle OFF → ON. This must:
     //   (a) disable the inputs,
     //   (b) discard the typed values (no commit/PATCH),
-    //   (c) NOT revert the persisted state.
+    //   (c) NOT revert the persisted state (AC-488).
     await userEvent.click(toggle);
     expect(toggle.checked).toBe(true);
     expect((screen.getByTestId('project-site-street-input') as HTMLInputElement).disabled).toBe(
@@ -482,10 +482,10 @@ describe('ProjectDetailPage — Baustelle toggle behavior (AC-281, edit branch)'
     expect(stored?.siteAddress).toEqual(STORED);
 
     // Round-trip back OFF — the typed "Schillerstr. 4" was discarded
-    // by the OFF→ON flip per AC-281, so the inputs render empty. Only
+    // by the OFF→ON flip, so the inputs render empty. Only
     // a server commit (which bumps project.updatedAt and remounts via
     // `key`) re-seeds from persisted state. This mirrors the create-
-    // branch round-trip at AC-281 above and pins the destructive-wipe
+    // branch round-trip above and pins the destructive-wipe
     // behavior so any future "preserve typed value" change must
     // update the test on purpose.
     await userEvent.click(toggle);
@@ -500,7 +500,7 @@ describe('ProjectDetailPage — Baustelle toggle behavior (AC-281, edit branch)'
 });
 
 // ---------------------------------------------------------------------
-// AC-284 — All-or-none validation on the Baustelle group.
+// AC-485 — All-or-none validation on the Baustelle group.
 //
 // The defense-in-depth pair (form blocks; API would 400 anyway) lives
 // in this file's form layer. The API arm is exercised in
@@ -513,7 +513,7 @@ describe('ProjectDetailPage — Baustelle toggle behavior (AC-281, edit branch)'
 // remains the canonical "site = customer billing address" submission
 // and MUST NOT trigger this validation.
 // ---------------------------------------------------------------------
-describe('ProjectCreateForm — Baustelle all-or-none validation (AC-284)', () => {
+describe('ProjectCreateForm — Baustelle all-or-none validation (AC-485)', () => {
   it('toggle OFF with only street filled → submit blocked, German message visible, no POST', async () => {
     await openCreateForm();
     await fillRequiredCreateFields();
@@ -554,7 +554,7 @@ describe('ProjectCreateForm — Baustelle all-or-none validation (AC-284)', () =
 
     await userEvent.click(screen.getByLabelText(STRINGS.projects.siteAddressIdenticalToggle));
     await userEvent.type(screen.getByTestId('project-site-street-input'), 'Goethestr. 18');
-    // ZIP gets whitespace only — counts as empty per AC-284.
+    // ZIP gets whitespace only — counts as empty per AC-485.
     await userEvent.type(screen.getByTestId('project-site-zip-input'), '   ');
     await userEvent.type(screen.getByTestId('project-site-city-input'), 'Köln');
 
@@ -612,7 +612,7 @@ describe('ProjectCreateForm — Baustelle all-or-none validation (AC-284)', () =
 // will inherit. Submit shape is unaffected (still `siteAddress: null`)
 // since the fields are never the source of truth in the ON state.
 // ---------------------------------------------------------------------
-describe('ProjectCreateForm — Baustelle visual auto-fill (toggle ON)', () => {
+describe('ProjectCreateForm — Baustelle visual auto-fill (toggle ON, AC-487)', () => {
   it('selecting a customer with an address fills the disabled inputs with that address', async () => {
     await openCreateForm();
     await fillRequiredCreateFields();
@@ -718,7 +718,7 @@ describe('ProjectCreateForm — Baustelle visual auto-fill (toggle ON)', () => {
   });
 });
 
-describe('SiteAddressEditModal — Baustelle visual auto-fill (toggle ON)', () => {
+describe('SiteAddressEditModal — Baustelle visual auto-fill (toggle ON, AC-487)', () => {
   function renderDetailAt(project: Project) {
     projectGetMock.mockResolvedValue(ok(project));
     useProjectStore.setState({

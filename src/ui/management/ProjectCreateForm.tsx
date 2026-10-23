@@ -29,7 +29,7 @@ export function ProjectCreateForm({ onClose }: Props) {
   const [customerId, setCustomerId] = useState('');
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  // Surfaces the AC-284 all-or-none Baustelle validation. Cleared on
+  // Surfaces the AC-485 all-or-none Baustelle validation. Cleared on
   // every fresh submit attempt; only set when read() returns `partial`.
   const [siteAddressError, setSiteAddressError] = useState<string | null>(null);
 
@@ -66,7 +66,7 @@ export function ProjectCreateForm({ onClose }: Props) {
   const handleCreate = async () => {
     if (submitting || !number.trim() || !title.trim() || !customerId) return;
 
-    // AC-284: all-or-none on the Baustelle group. `read()` distinguishes
+    // AC-485: all-or-none on the Baustelle group. `read()` distinguishes
     // a valid value (null OR full triple) from a partial fill; partial
     // blocks submit and surfaces the German validation hint.
     const siteResult = siteAddressRef.current?.read() ?? { kind: 'valid', value: null };

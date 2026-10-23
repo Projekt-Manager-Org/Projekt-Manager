@@ -238,7 +238,7 @@ export class InvoiceService {
    * from the project's customer (live row; the actual snapshot is
    * taken at issuance — AC-285).
    *
-   * Rejected on an archived project (mirrors AC-95) — 404 NOT_FOUND.
+   * Rejected on an archived project (mirrors AC-499) — 404 NOT_FOUND.
    *
    * TOCTOU safety: the project + customer lookups run INSIDE the
    * `mutate()` transaction body so they share the same READ COMMITTED
@@ -303,7 +303,7 @@ export class InvoiceService {
             .where(eq(projects.id, input.projectId))
             .limit(1);
           const project = projRows[0];
-          // AC-285: archived project → 404 (mirrors AC-95 for draft writes).
+          // AC-285: archived project → 404 (mirrors AC-499 for draft writes).
           if (!project || project.deleted) {
             throw notFound(STRINGS.entities.project);
           }

@@ -14,7 +14,7 @@
  * and without the audit transaction's snapshot. A concurrent commit
  * that flips `projects.deleted = true` after (2) but before (4) slips
  * a draft onto an archived project — AC-285 promises 404 NOT_FOUND
- * for that case (mirrors AC-95 for draft writes).
+ * for that case (mirrors AC-499 for draft writes).
  *
  * After Wave 3 the project lookup moves inside `mutate()`'s `run(tx)`
  * callback, sharing the audit transaction's READ COMMITTED snapshot

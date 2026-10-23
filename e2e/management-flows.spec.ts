@@ -71,7 +71,7 @@ test.describe('Management flows', () => {
 
   // ---------------------------------------------------------------
   // Step 19: Create project referencing the new customer
-  // AC-59, AC-77, AC-85
+  // AC-475, AC-85
   // ---------------------------------------------------------------
   test('step 19: navigate to Project view and create a project', async ({ page }) => {
     // Navigate to the Project Management view
@@ -99,7 +99,7 @@ test.describe('Management flows', () => {
 
   // ---------------------------------------------------------------
   // Step 20: New project appears in Kanban under first state
-  // AC-77
+  // AC-475
   // ---------------------------------------------------------------
   test('step 20: new project appears in Kanban board under Anfrage', async ({ page }) => {
     // Navigate to Kanban view
@@ -113,7 +113,7 @@ test.describe('Management flows', () => {
 
   // ---------------------------------------------------------------
   // Step 21: Search and edit project notes
-  // AC-76, AC-78
+  // AC-493, AC-496, AC-480
   // ---------------------------------------------------------------
   test('step 21: search project in management view and edit notes', async ({ page }) => {
     // Navigate to Project Management view
@@ -338,7 +338,7 @@ test.describe('Management flows', () => {
   // assignment anchor: stable across the suite because no test
   // touches his assignments.
   // ---------------------------------------------------------------
-  test('Mitarbeiter filter narrows the list to the selected worker', async ({ page }) => {
+  test('AC-495: Mitarbeiter filter narrows the list to the selected worker', async ({ page }) => {
     await page.getByTestId('view-toggle-projekte').click();
     await expect(page.getByTestId('project-table')).toBeVisible();
 
@@ -373,7 +373,9 @@ test.describe('Management flows', () => {
     }
   });
 
-  test('Mitarbeiter filter ORs in unassigned projects via "Nicht zugewiesen"', async ({ page }) => {
+  test('AC-495: Mitarbeiter filter ORs in unassigned projects via "Nicht zugewiesen"', async ({
+    page,
+  }) => {
     await page.getByTestId('view-toggle-projekte').click();
     await expect(page.getByTestId('project-table')).toBeVisible();
 
@@ -408,7 +410,7 @@ test.describe('Management flows', () => {
     }
   });
 
-  test('Mitarbeiter filter clear chip restores the full list', async ({ page }) => {
+  test('AC-495: Mitarbeiter filter clear chip restores the full list', async ({ page }) => {
     await page.getByTestId('view-toggle-projekte').click();
     await expect(page.getByTestId('project-table')).toBeVisible();
 

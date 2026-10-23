@@ -248,7 +248,7 @@ export async function getInvoiceRowForMutation(
 
 /**
  * Count issued + cancelled invoice rows for a given project. Drafts are
- * excluded by construction (AC-307 / AC-308): drafts cascade-delete and
+ * excluded by construction (AC-307 / AC-504): drafts cascade-delete and
  * have no legal weight. Returns 0 when the project carries no invoices.
  */
 export async function countIssuedOrCancelledForProject(

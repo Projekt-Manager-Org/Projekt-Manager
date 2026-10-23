@@ -15,14 +15,14 @@
  *     `GET /api/customers/:id` returns `invoiceCount` on every
  *     customer (zero when no issued/cancelled rows; drafts don't count).
  *
- *   - AC-308: `DELETE /api/projects/:id/purge` against an
+ *   - AC-504, AC-502: `DELETE /api/projects/:id/purge` against an
  *     archived project carrying any issued or cancelled invoice is
  *     rejected with `409 PROJECT_HAS_INVOICES`; `details.invoiceCount`
  *     matches the issued+cancelled count. Archived project with only
  *     draft invoices succeeds atomically. Archived project with zero
- *     invoices succeeds (regression cover with AC-155). Non-archived
+ *     invoices succeeds (regression cover with AC-502). Non-archived
  *     project with zero invoices → 409 CONFLICT (regression cover with
- *     AC-156; distinct error code).
+ *     AC-503; distinct error code).
  *
  * Pre-impl red state: no invoices table, no PROJECT_HAS_INVOICES /
  * CUSTOMER_HAS_INVOICES codes wired. Every assertion that depends on
@@ -325,10 +325,10 @@ describe('AC-307: DELETE /api/customers/:id retention/cascade behaviour', () => 
 });
 
 // ---------------------------------------------------------------------
-// AC-308 — Project purge cascade with invoices.
+// AC-504, AC-502 — Project purge cascade with invoices.
 // ---------------------------------------------------------------------
 
-describe('AC-308: DELETE /api/projects/:id/purge retention/cascade behaviour', () => {
+describe('AC-504, AC-502: DELETE /api/projects/:id/purge retention/cascade behaviour', () => {
   let ownerToken: string;
   let customerId: string;
 
@@ -379,7 +379,7 @@ describe('AC-308: DELETE /api/projects/:id/purge retention/cascade behaviour', (
     expect(proj.statusCode).toBe(404);
   });
 
-  it('archived project with zero invoices → 204 (regression cover with AC-155)', async () => {
+  it('archived project with zero invoices → 204 (regression cover with AC-502)', async () => {
     const projectId = await createProject(ownerToken, customerId);
     await archiveProject(ownerToken, projectId);
 
@@ -387,13 +387,13 @@ describe('AC-308: DELETE /api/projects/:id/purge retention/cascade behaviour', (
     expect(purge.statusCode).toBe(204);
   });
 
-  it('non-archived project with zero invoices → 409 CONFLICT (regression cover with AC-156; distinct code)', async () => {
+  it('non-archived project with zero invoices → 409 CONFLICT (regression cover with AC-503; distinct code)', async () => {
     const projectId = await createProject(ownerToken, customerId);
 
     const purge = await authDelete(ownerToken, `/api/projects/${projectId}/purge`);
     expect(purge.statusCode).toBe(409);
     expect(purge.json().code).toBe('CONFLICT');
-    // AC-308's load-bearing distinction: NOT PROJECT_HAS_INVOICES.
+    // AC-503 refusal, distinct from AC-504's code: NOT PROJECT_HAS_INVOICES.
     expect(purge.json().code).not.toBe('PROJECT_HAS_INVOICES');
   });
 });

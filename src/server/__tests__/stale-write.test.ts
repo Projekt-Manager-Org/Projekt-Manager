@@ -1,6 +1,6 @@
 /**
  * Stale-write rejection — optimistic concurrency on edits
- * (data-model.md §6.4, api.md §14.2.2 / §14.2.5 / §14.2.14 / §14.2.15).
+ * (data-model.md §6.4, api.md §14.2.5 / §14.2.14 / §14.2.15).
  *
  * AC coverage in this file:
  *   - AC-375: every versioned edit rejects a stale `expectedVersion`

@@ -1,7 +1,7 @@
 /**
  * Integration tests: client-supplied id / idempotent create.
  *
- * Covers AC-124 (customer idempotent create), AC-125 (project idempotent
+ * Covers AC-124 (customer idempotent create), AC-477 (project idempotent
  * create), and AC-127 (IDEMPOTENCY_CONFLICT on body mismatch). Exercises
  * POST /api/customers and POST /api/projects with the optional `id` field:
  * fresh insert, replay on identical body, IDEMPOTENCY_CONFLICT on

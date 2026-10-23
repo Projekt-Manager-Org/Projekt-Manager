@@ -12,7 +12,7 @@
  *     cascade; the operational logger records the orphaned keys. The
  *     metadata-table cleanliness goal trumps a transient storage fault.
  *
- * Skeleton state: the purge route already exists (AC-155 passes), but
+ * Skeleton state: the purge route already exists (AC-502 passes), but
  * the attachment-cascade storage-delete arm is not wired. With the
  * skeleton, the DB cascade via the FK alone succeeds (the migration's
  * `ON DELETE CASCADE` does its job) — the asserts that FAIL today are
@@ -54,7 +54,7 @@ async function createProject(ownerToken: string, customerId: string): Promise<st
   return res.json().id as string;
 }
 
-/** Archive a project in preparation for purge (AC-156 precondition). */
+/** Archive a project in preparation for purge (AC-503 precondition). */
 async function archiveProject(ownerToken: string, projectId: string): Promise<void> {
   const res = await authDelete(ownerToken, `/api/projects/${projectId}`);
   if (res.statusCode !== 200) {

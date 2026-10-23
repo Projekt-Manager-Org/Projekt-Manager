@@ -123,7 +123,7 @@ export function projectRoutes(db: Database) {
               status: { type: 'string' },
               // Baustellen-/Leistungsadresse — same JSON shape as customer.address.
               // Null means "site is at the customer's billing address" (data-model.md §5.1).
-              // AC-284 backstop: partial triples (any empty-string component)
+              // AC-485 backstop: partial triples (any empty-string component)
               // are rejected at this layer with 422 VALIDATION_ERROR. The
               // primary all-or-none rule lives in the UI; the API enforces
               // the same shape as defense-in-depth against a malformed client.
@@ -343,7 +343,7 @@ export function projectRoutes(db: Database) {
               // PATCH semantics: omitted leaves the stored value unchanged;
               // null clears (= "site is at the customer's billing address");
               // a populated triple overwrites. Mirrors the customer-address
-              // PATCH-clears rule. AC-284: each component requires minLength 1
+              // PATCH-clears rule. AC-485: each component requires minLength 1
               // — empty-string in any field is a 422 VALIDATION_ERROR.
               siteAddress: {
                 type: ['object', 'null'],
@@ -407,7 +407,7 @@ export function projectRoutes(db: Database) {
     );
 
     // ---------------------------------------------------------------
-    // DELETE /api/projects/:id/purge — hard-delete (AC-155, AC-156, AC-157, AC-158)
+    // DELETE /api/projects/:id/purge — hard-delete (AC-502, AC-503, AC-157)
     //
     // Requires the narrower `project:purge` permission (owner-only).
     // `project:delete` (which office holds) does not grant purge.

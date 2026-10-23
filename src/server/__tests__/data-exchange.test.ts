@@ -765,7 +765,7 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-284: ImportService refuses partial siteAddress envelopes.
+  // AC-485: ImportService refuses partial siteAddress envelopes.
   //
   // Mirrors the POST /api/projects backstop. Without this, a hand-
   // edited or round-tripped envelope is the canonical bypass for the
@@ -774,7 +774,7 @@ describe('Unified Data Exchange', () => {
   // propagates it. The validation runs before TRUNCATE so a rejected
   // envelope leaves the target untouched.
   // ---------------------------------------------------------------
-  describe('AC-284: ImportService partial-siteAddress validation', () => {
+  describe('AC-485: ImportService partial-siteAddress validation', () => {
     it('rejects an envelope whose project has an empty-component siteAddress (non-dry-run, 422)', async () => {
       await wipeBusinessData();
       try {

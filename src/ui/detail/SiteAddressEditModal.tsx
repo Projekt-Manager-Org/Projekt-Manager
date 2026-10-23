@@ -5,8 +5,9 @@
  *
  * Behaviour:
  *   - Loads the current `siteAddress` into the group; the toggle ON path
- *     submits `null`, the OFF path submits the trimmed triple. AC-281.
- *   - Surfaces the AC-284 partial-fill validation message inline.
+ *     submits `null`, the OFF path submits the trimmed triple. AC-483,
+ *     AC-484.
+ *   - Surfaces the AC-485 partial-fill validation message inline.
  *   - Save dispatches PATCH via the project management store; on success
  *     the modal closes. The store has already written its own user-facing
  *     error on failure — the modal stays open so the user can retry.

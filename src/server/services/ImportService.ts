@@ -227,7 +227,7 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     }
   }
 
-  // AC-284: siteAddress is all-or-nothing — null (site = customer
+  // AC-485: siteAddress is all-or-nothing — null (site = customer
   // billing address) or a fully populated triple. A partial fill
   // (any empty-string component) is rejected here to mirror the
   // POST /api/projects backstop, so a hand-edited or round-tripped
