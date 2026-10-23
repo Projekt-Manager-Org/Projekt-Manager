@@ -1,8 +1,8 @@
 /**
  * Integration tests: Unified Data Exchange (ExportService / ImportService).
  *
- * Covers AC-133 through AC-141 (verification.md §15.14) for the unified
- * business-data export/import surface introduced by ADR-0018.
+ * Covers the unified business-data export/import surface introduced by
+ * ADR-0018 (verification.md §15.14).
  *
  * The text-leg HTTP routes (`GET /api/export`, `POST /api/import`) were
  * removed once the operator UI moved to the export/import JOB endpoints:
@@ -12,10 +12,10 @@
  * the jobs use, via `src/test/data-exchange-helpers.ts`:
  *
  *   exportEnvelope()                  → returns the Envelope directly
- *   importEnvelope(env, opts, options?) → returns ImportResult | DryRunPreview
- *                                         on success; THROWS an AppError on
- *                                         failure (carries .code / .statusCode
- *                                         / .details).
+ *   importEnvelope(env, opts, options?) → returns ImportResult on success;
+ *                                         THROWS an AppError on failure
+ *                                         (carries .code / .statusCode /
+ *                                         .details).
  *
  * The auth/permission gate that the removed routes enforced is covered on
  * the live job routes (`data-exchange-export-job.test.ts` asserts 401 +
@@ -49,7 +49,7 @@ import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { getEnv } from '../config/env.js';
 import { AppError } from '../errors.js';
-import type { Envelope, ImportOptions } from '../../domain/dataExchange.js';
+import type { Envelope, ImportOptions, ValidationIssue } from '../../domain/dataExchange.js';
 import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -438,7 +438,6 @@ describe('Unified Data Exchange', () => {
       const bad = buildOverrideEnvelope();
       bad.schema_version = CURRENT_SCHEMA_VERSION + 1;
       const err = await expectImportRejection(bad as unknown as Envelope, {
-        dryRun: false,
         override: true,
         confirmationPhrase: EXPECTED_RESTORE_PHRASE,
       });
@@ -456,7 +455,6 @@ describe('Unified Data Exchange', () => {
       const bad = buildOverrideEnvelope();
       bad.schema_version = CURRENT_SCHEMA_VERSION - 1;
       const err = await expectImportRejection(bad as unknown as Envelope, {
-        dryRun: false,
         override: true,
         confirmationPhrase: EXPECTED_RESTORE_PHRASE,
       });
@@ -476,7 +474,6 @@ describe('Unified Data Exchange', () => {
       try {
         const envelope = buildFreshEnvelope();
         await importEnvelope(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -514,7 +511,6 @@ describe('Unified Data Exchange', () => {
           ],
         };
         const err = await expectImportRejection(broken as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -542,8 +538,8 @@ describe('Unified Data Exchange', () => {
   // INSERT, where Postgres raises a 23505 unique-violation that surfaces
   // to the caller as a generic 500. The validation layer must catch these
   // collisions up-front and return the same 422 VALIDATION_ERROR shape
-  // used by the referential-integrity checks — so dry-run can preview
-  // them without a write, and non-dry-run never touches the DB at all.
+  // used by the referential-integrity checks — so the import never
+  // touches the DB at all.
   // ---------------------------------------------------------------
   describe('Envelope uniqueness validation', () => {
     // Start from an empty DB so a duplicate-detection failure cannot be
@@ -555,7 +551,7 @@ describe('Unified Data Exchange', () => {
     // test) remain valid. The tests below do not rely on that, because
     // validation must reject duplicate composite keys before any insert.
 
-    it('rejects duplicate customer ids (non-dry-run) with 422 VALIDATION_ERROR', async () => {
+    it('rejects duplicate customer ids with 422 VALIDATION_ERROR', async () => {
       await wipeBusinessData();
       try {
         const envelope = buildFreshEnvelope();
@@ -571,7 +567,6 @@ describe('Unified Data Exchange', () => {
         });
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -579,16 +574,9 @@ describe('Unified Data Exchange', () => {
         expect(err.statusCode).toBe(422);
         expect(err.code).toBe('VALIDATION_ERROR');
 
-        // `details` carries the validation issues. The existing
-        // referential-integrity path stores them as a plain array;
-        // accept either the array-directly or a {validation_errors:[…]}
-        // wrapper so the test pins structure, not incidental nesting.
-        const details = err.details as
-          | { validation_errors?: Array<{ path: string; message: string }> }
-          | Array<{ path: string; message: string }>;
-        const issues = Array.isArray(details) ? details : details?.validation_errors;
+        const issues = err.details as ValidationIssue[];
         expect(Array.isArray(issues)).toBe(true);
-        const dup = issues!.find((i) => /customers\[1\]/.test(i.path));
+        const dup = issues.find((i) => /customers\[1\]/.test(i.path));
         expect(dup).toBeDefined();
         expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
 
@@ -603,44 +591,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    it('reports duplicate customer ids in dry-run validation_errors without writes', async () => {
-      await wipeBusinessData();
-      try {
-        const envelope = buildFreshEnvelope();
-        const dupId = envelope.customers[0]!.id;
-        envelope.customers.push({
-          ...envelope.customers[0]!,
-          id: dupId,
-          name: 'Duplicate Kunde',
-          email: 'duplicate2@example.de',
-          createdAt: '2026-01-03T00:00:00.000Z',
-          updatedAt: '2026-01-03T00:00:00.000Z',
-        });
-
-        // Dry-run never throws for invalid envelopes — the preview carries
-        // the errors so the UI can render them. This is the clean proof
-        // that validation (not the DB) surfaces the issue.
-        const preview = (await importEnvelope(envelope as unknown as Envelope, {
-          dryRun: true,
-          override: false,
-          confirmationPhrase: null,
-        })) as { validation_errors: Array<{ path: string; message: string }> };
-
-        expect(Array.isArray(preview.validation_errors)).toBe(true);
-        const dup = preview.validation_errors.find((i) => /customers\[1\]/.test(i.path));
-        expect(dup).toBeDefined();
-        expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
-
-        // No state change.
-        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
-        expect(out.customers.length).toBe(0);
-        expect(out.projects.length).toBe(0);
-      } finally {
-        await reseed();
-      }
-    });
-
-    it('rejects duplicate project ids (non-dry-run) with 422 VALIDATION_ERROR', async () => {
+    it('rejects duplicate project ids with 422 VALIDATION_ERROR', async () => {
       await wipeBusinessData();
       try {
         const envelope = buildFreshEnvelope();
@@ -658,19 +609,15 @@ describe('Unified Data Exchange', () => {
         });
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
 
         expect(err.statusCode).toBe(422);
         expect(err.code).toBe('VALIDATION_ERROR');
-        const details = err.details as
-          | { validation_errors?: Array<{ path: string; message: string }> }
-          | Array<{ path: string; message: string }>;
-        const issues = Array.isArray(details) ? details : details?.validation_errors;
+        const issues = err.details as ValidationIssue[];
         expect(Array.isArray(issues)).toBe(true);
-        const dup = issues!.find((i) => /projects\[1\]/.test(i.path) && /id/i.test(i.path));
+        const dup = issues.find((i) => /projects\[1\]/.test(i.path) && /id/i.test(i.path));
         expect(dup).toBeDefined();
         expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
 
@@ -698,19 +645,15 @@ describe('Unified Data Exchange', () => {
         });
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
 
         expect(err.statusCode).toBe(422);
         expect(err.code).toBe('VALIDATION_ERROR');
-        const details = err.details as
-          | { validation_errors?: Array<{ path: string; message: string }> }
-          | Array<{ path: string; message: string }>;
-        const issues = Array.isArray(details) ? details : details?.validation_errors;
+        const issues = err.details as ValidationIssue[];
         expect(Array.isArray(issues)).toBe(true);
-        const dup = issues!.find((i) => /projects\[1\]/.test(i.path) && /number/i.test(i.path));
+        const dup = issues.find((i) => /projects\[1\]/.test(i.path) && /number/i.test(i.path));
         expect(dup).toBeDefined();
         expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
 
@@ -738,19 +681,15 @@ describe('Unified Data Exchange', () => {
         ];
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
 
         expect(err.statusCode).toBe(422);
         expect(err.code).toBe('VALIDATION_ERROR');
-        const details = err.details as
-          | { validation_errors?: Array<{ path: string; message: string }> }
-          | Array<{ path: string; message: string }>;
-        const issues = Array.isArray(details) ? details : details?.validation_errors;
+        const issues = err.details as ValidationIssue[];
         expect(Array.isArray(issues)).toBe(true);
-        const dup = issues!.find((i) => /project_workers\[1\]/.test(i.path));
+        const dup = issues.find((i) => /project_workers\[1\]/.test(i.path));
         expect(dup).toBeDefined();
         expect(dup!.message.toLowerCase()).toMatch(/duplicate|duplikat|doppelt/);
 
@@ -775,7 +714,7 @@ describe('Unified Data Exchange', () => {
   // envelope leaves the target untouched.
   // ---------------------------------------------------------------
   describe('AC-485: ImportService partial-siteAddress validation', () => {
-    it('rejects an envelope whose project has an empty-component siteAddress (non-dry-run, 422)', async () => {
+    it('rejects an envelope whose project has an empty-component siteAddress (422)', async () => {
       await wipeBusinessData();
       try {
         const envelope = buildFreshEnvelope();
@@ -784,7 +723,6 @@ describe('Unified Data Exchange', () => {
         envelope.projects[0]!.siteAddress = { street: 'Goethestr. 18', zip: '', city: 'Köln' };
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -792,43 +730,13 @@ describe('Unified Data Exchange', () => {
         expect(err.statusCode).toBe(422);
         expect(err.code).toBe('VALIDATION_ERROR');
 
-        const details = err.details as
-          | { validation_errors?: Array<{ path: string; message: string }> }
-          | Array<{ path: string; message: string }>;
-        const issues = Array.isArray(details) ? details : details?.validation_errors;
+        const issues = err.details as ValidationIssue[];
         expect(Array.isArray(issues)).toBe(true);
-        const partial = issues!.find((i) => /projects\[0\]\.siteAddress/.test(i.path));
+        const partial = issues.find((i) => /projects\[0\]\.siteAddress/.test(i.path));
         expect(partial).toBeDefined();
         expect(partial!.message.toLowerCase()).toMatch(/partial|street|zip|city|empty/);
 
         // No rows written — DB remains empty.
-        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
-        expect(out.customers.length).toBe(0);
-        expect(out.projects.length).toBe(0);
-      } finally {
-        await reseed();
-      }
-    });
-
-    it('reports partial siteAddress in dry-run validation_errors without writes', async () => {
-      await wipeBusinessData();
-      try {
-        const envelope = buildFreshEnvelope();
-        envelope.projects[0]!.siteAddress = { street: '', zip: '51103', city: 'Köln' };
-
-        // Dry-run never throws — preview carries the issues.
-        const preview = (await importEnvelope(envelope as unknown as Envelope, {
-          dryRun: true,
-          override: false,
-          confirmationPhrase: null,
-        })) as { validation_errors: Array<{ path: string; message: string }> };
-
-        expect(Array.isArray(preview.validation_errors)).toBe(true);
-        const partial = preview.validation_errors.find((i) =>
-          /projects\[0\]\.siteAddress/.test(i.path),
-        );
-        expect(partial).toBeDefined();
-
         const out = (await exportEnvelope()) as unknown as ExportEnvelope;
         expect(out.customers.length).toBe(0);
         expect(out.projects.length).toBe(0);
@@ -842,7 +750,6 @@ describe('Unified Data Exchange', () => {
       await wipeBusinessData();
       try {
         await importEnvelope(buildFreshEnvelope() as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -865,7 +772,6 @@ describe('Unified Data Exchange', () => {
 
       const env = buildOverrideEnvelope();
       const err = await expectImportRejection(env as unknown as Envelope, {
-        dryRun: false,
         override: false,
         confirmationPhrase: null,
       });
@@ -903,7 +809,6 @@ describe('Unified Data Exchange', () => {
       try {
         await clearSeededInvoices();
         await importEnvelope(env as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });
@@ -933,7 +838,6 @@ describe('Unified Data Exchange', () => {
 
       try {
         const err = await expectImportRejection(broken as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });
@@ -948,82 +852,6 @@ describe('Unified Data Exchange', () => {
       } finally {
         await reseed();
       }
-    });
-  });
-
-  // ---------------------------------------------------------------
-  // AC-140: dry-run — full validation, preview, no writes
-  // ---------------------------------------------------------------
-  describe('AC-140: dry-run import', () => {
-    // AC-140 valid + dry-run: returns a preview of would-be writes, no state change.
-    it('returns a preview for a valid envelope and performs no writes', async () => {
-      const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
-
-      const env = buildOverrideEnvelope();
-      const preview = (await importEnvelope(env as unknown as Envelope, {
-        dryRun: true,
-        override: false,
-        confirmationPhrase: null,
-      })) as {
-        target_non_empty: boolean;
-        would_write: { customers: number; projects: number; project_workers: number };
-        validation_errors: unknown[];
-      };
-      expect(preview.would_write).toBeDefined();
-      expect(preview.would_write.customers).toBe(env.customers.length);
-      expect(preview.would_write.projects).toBe(env.projects.length);
-      expect(preview.would_write.project_workers).toBe(env.project_workers.length);
-      expect(Array.isArray(preview.validation_errors)).toBe(true);
-      expect(preview.validation_errors.length).toBe(0);
-      // AC-140 (target_non_empty): the seeded DB is non-empty, so the
-      // preview must declare it. The UI uses this to gate the override
-      // warning; committing without override still fails with
-      // TARGET_NOT_EMPTY (AC-138).
-      expect(preview.target_non_empty).toBe(true);
-
-      // No writes.
-      const post = (await exportEnvelope()) as unknown as ExportEnvelope;
-      expect(post.customers.length).toBe(baseline.customers.length);
-      expect(post.projects.length).toBe(baseline.projects.length);
-    });
-
-    // AC-140 (target_non_empty, empty DB branch): dry-run against a wiped
-    // target must report target_non_empty: false so the UI skips the
-    // warning and enables commit directly.
-    it('reports target_non_empty=false when the DB is empty', async () => {
-      await wipeBusinessData();
-      try {
-        const env = buildFreshEnvelope();
-        const preview = (await importEnvelope(env as unknown as Envelope, {
-          dryRun: true,
-          override: false,
-          confirmationPhrase: null,
-        })) as { target_non_empty: boolean };
-        expect(preview.target_non_empty).toBe(false);
-      } finally {
-        await reseed();
-      }
-    });
-
-    // AC-140 invalid + dry-run: preview carries validation errors, still no writes.
-    it('reports validation_errors for an invalid envelope and performs no writes', async () => {
-      const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
-
-      const broken = buildOverrideEnvelope();
-      broken.projects[0]!.customerId = UUID_ZERO; // FK violation
-
-      const preview = (await importEnvelope(broken as unknown as Envelope, {
-        dryRun: true,
-        override: false,
-        confirmationPhrase: null,
-      })) as { validation_errors: unknown[] };
-      expect(Array.isArray(preview.validation_errors)).toBe(true);
-      expect(preview.validation_errors.length).toBeGreaterThan(0);
-
-      // Still no writes.
-      const post = (await exportEnvelope()) as unknown as ExportEnvelope;
-      expect(post.customers.length).toBe(baseline.customers.length);
-      expect(post.projects.length).toBe(baseline.projects.length);
     });
   });
 
@@ -1055,7 +883,6 @@ describe('Unified Data Exchange', () => {
         // envelope's `attachments` slot (AC-253) and never restores
         // attachment rows. No session is held now, so no re-login.
         await importEnvelope(e1 as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });
@@ -1082,7 +909,7 @@ describe('Unified Data Exchange', () => {
   // AC-160: restore confirmation phrase gate
   // Server-authoritative check on override into a non-empty DB.
   // AC-160 pins enforcement (missing, case-wrong, trim, happy path).
-  // AC-160 pins the two exempt paths (dry-run, empty target).
+  // AC-160 pins the exempt path (empty target).
   // ---------------------------------------------------------------
   describe('AC-160: restore confirmation phrase gate', () => {
     // AC-160 — missing phrase: override into non-empty DB without a
@@ -1093,7 +920,6 @@ describe('Unified Data Exchange', () => {
 
       const env = buildOverrideEnvelope();
       const err = await expectImportRejection(env as unknown as Envelope, {
-        dryRun: false,
         override: true,
         confirmationPhrase: null,
       });
@@ -1115,7 +941,6 @@ describe('Unified Data Exchange', () => {
 
       const env = buildOverrideEnvelope();
       const err = await expectImportRejection(env as unknown as Envelope, {
-        dryRun: false,
         override: true,
         confirmationPhrase: `  ${EXPECTED_RESTORE_PHRASE.toLowerCase()}  `,
       });
@@ -1134,7 +959,6 @@ describe('Unified Data Exchange', () => {
       try {
         await clearSeededInvoices();
         await importEnvelope(env as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });
@@ -1154,25 +978,12 @@ describe('Unified Data Exchange', () => {
       try {
         await clearSeededInvoices();
         await importEnvelope(env as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: `  ${EXPECTED_RESTORE_PHRASE}\n`,
         });
       } finally {
         await reseed();
       }
-    });
-
-    // AC-160 — dry-run exempt: dry-run against a non-empty DB without a
-    // phrase returns the preview (no writes, no enforcement).
-    it('accepts dry_run without confirmation_phrase on non-empty DB', async () => {
-      const env = buildOverrideEnvelope();
-      const preview = (await importEnvelope(env as unknown as Envelope, {
-        dryRun: true,
-        override: true,
-        confirmationPhrase: null,
-      })) as { target_non_empty: boolean };
-      expect(preview.target_non_empty).toBe(true);
     });
 
     // AC-160 — empty-target exempt: override into an empty DB succeeds
@@ -1185,7 +996,6 @@ describe('Unified Data Exchange', () => {
       try {
         await wipeBusinessData();
         await importEnvelope(env as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: null,
         });
@@ -1201,17 +1011,15 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-387 / AC-388 / AC-389: missing-user-reference check
+  // AC-387 / AC-389: missing-user-reference check
   //
   // The envelope carries user-id fields — `customers.createdBy`,
   // `customers.updatedBy`, `projects.createdBy`, `projects.updatedBy`,
   // `project_workers.userId`. On restore, those user ids must already
   // exist in the target's `users` table. If any referenced id is absent,
-  // the commit path rejects with 422 `MISSING_USER_REFS`; the dry-run
-  // surfaces it alongside intra-envelope issues.
+  // the commit path rejects with 422 `MISSING_USER_REFS`.
   //
   // AC-387: commit-path rejection + `details` shape.
-  // AC-388: dry-run surfaces both classes together.
   // AC-389: commit-path ordering + single-code guarantee.
   //
   // Two ghost UUIDs (`GHOST_USER_A`, `GHOST_USER_B`) are valid UUIDs
@@ -1220,7 +1028,7 @@ describe('Unified Data Exchange', () => {
   // the same idea; distinct ids let "same user at two sites" and
   // "multiple distinct missing users" tests isolate their assertions.
   // ---------------------------------------------------------------
-  describe('AC-387 / AC-388 / AC-389: missing-user references', () => {
+  describe('AC-387 / AC-389: missing-user references', () => {
     // NB: `uuid()` hex-encodes then slices to 8 chars, so `ghosta`/`ghostb`
     // collide on the prefix — we rely on the `i` counter to differentiate.
     const GHOST_USER_A = uuid('ghosta', 1);
@@ -1286,7 +1094,6 @@ describe('Unified Data Exchange', () => {
         envelope.project_workers = [{ projectId: envelope.projects[0]!.id, userId: GHOST_USER_A }];
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1312,7 +1119,6 @@ describe('Unified Data Exchange', () => {
         envelope.project_workers = [{ projectId: envelope.projects[0]!.id, userId: GHOST_USER_A }];
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1343,7 +1149,6 @@ describe('Unified Data Exchange', () => {
         envelope.project_workers = [{ projectId: envelope.projects[0]!.id, userId: GHOST_USER_A }];
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1406,7 +1211,6 @@ describe('Unified Data Exchange', () => {
         envelope.project_workers = [];
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1448,60 +1252,11 @@ describe('Unified Data Exchange', () => {
         envelope.projects[0]!.createdBy = GHOST_USER_A;
 
         const err = await expectImportRejection(envelope as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
         expect(err.statusCode).toBe(422);
         expect(err.code).toBe('MISSING_USER_REFS');
-
-        const after = await businessRowCounts();
-        expect(after).toEqual(before);
-      } finally {
-        await reseed();
-      }
-    });
-
-    // AC-388 — dry-run surfaces BOTH classes of issue.
-    // The envelope is intra-inconsistent (`projects[0].customerId` points
-    // at a UUID not present in envelope.customers) AND carries a
-    // missing-user reference. On `?dry_run=true`, the preview returns 200
-    // and surfaces both issues together; no writes.
-    it('dry-run surfaces both intra-envelope and missing-user issues together; no writes', async () => {
-      await wipeBusinessData();
-      try {
-        const before = await businessRowCounts();
-
-        const envelope = buildFreshEnvelope();
-        // Intra-envelope inconsistency: project references a customerId
-        // that doesn't exist in envelope.customers (AC-389 example).
-        envelope.projects[0]!.customerId = UUID_ZERO;
-        // Missing-user reference: createdBy points at a user absent in
-        // the target `users` table.
-        envelope.projects[0]!.createdBy = GHOST_USER_A;
-
-        const preview = (await importEnvelope(envelope as unknown as Envelope, {
-          dryRun: true,
-          override: false,
-          confirmationPhrase: null,
-        })) as { validation_errors?: Array<{ path: string; message: string }> };
-
-        // Intra-envelope class — already surfaced via `validation_errors`
-        // in the existing preview shape.
-        expect(Array.isArray(preview.validation_errors)).toBe(true);
-        const intra = preview.validation_errors!.find((i) =>
-          /projects\[0\]\.customerId/.test(i.path),
-        );
-        expect(intra).toBeDefined();
-
-        // Missing-user class — the preview surfaces the ghost reference.
-        // Per the brief we do not mint a new field name here; instead we
-        // pin evidence: the ghost user id appears somewhere in the preview
-        // payload (either inside validation_errors, or under a
-        // missingUserIds/references sub-tree the impl chooses — spec
-        // §14.2.4 says "surfaces both classes of issue in the preview").
-        const serialized = JSON.stringify(preview);
-        expect(serialized).toContain(GHOST_USER_A);
 
         const after = await businessRowCounts();
         expect(after).toEqual(before);
@@ -1531,7 +1286,6 @@ describe('Unified Data Exchange', () => {
         dual.projects[0]!.customerId = UUID_ZERO; // intra-envelope issue
         dual.projects[0]!.createdBy = GHOST_USER_A; // missing-user issue
         const err1 = await expectImportRejection(dual as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1549,7 +1303,6 @@ describe('Unified Data Exchange', () => {
         const clean = buildFreshEnvelope();
         clean.projects[0]!.createdBy = GHOST_USER_A;
         const err2 = await expectImportRejection(clean as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -1574,10 +1327,9 @@ describe('Unified Data Exchange', () => {
   // equivalent structural guard — it simply never inserts attachment
   // rows and ignores any `attachments` key on the envelope. With the
   // route gone there is no service-level analog to assert, so the whole
-  // describe (including the dry_run × override `it.each` matrix and the
-  // "proceeds normally without the key" arm) was removed. The "no
-  // attachment rows are restored" invariant is covered by AC-254 below
-  // (post-override truncate count is 0) and the AC-141 roundtrip.
+  // describe was removed. The "no attachment rows are restored" invariant
+  // is covered by AC-254 below (post-override truncate count is 0) and the
+  // AC-141 roundtrip.
   // ---------------------------------------------------------------
 
   // ---------------------------------------------------------------
@@ -1649,7 +1401,6 @@ describe('Unified Data Exchange', () => {
         // re-inserted attachment rows — the post-call count is 0.
         const envelope = buildOverrideEnvelope();
         await importEnvelope(envelope as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });
@@ -1685,7 +1436,6 @@ describe('Unified Data Exchange', () => {
         const broken = buildOverrideEnvelope();
         broken.projects[0]!.customerId = UUID_ZERO;
         const err = await expectImportRejection(broken as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });
@@ -1772,7 +1522,7 @@ describe('Unified Data Exchange', () => {
         const envelope = buildOverrideEnvelope();
         await importEnvelope(
           envelope as unknown as Envelope,
-          { dryRun: false, override: true, confirmationPhrase: EXPECTED_RESTORE_PHRASE },
+          { override: true, confirmationPhrase: EXPECTED_RESTORE_PHRASE },
           { storage },
         );
 
@@ -1826,7 +1576,7 @@ describe('Unified Data Exchange', () => {
         broken.projects[0]!.customerId = UUID_ZERO;
         const err = await expectImportRejection(
           broken as unknown as Envelope,
-          { dryRun: false, override: true, confirmationPhrase: EXPECTED_RESTORE_PHRASE },
+          { override: true, confirmationPhrase: EXPECTED_RESTORE_PHRASE },
           { storage },
         );
         expect(err.statusCode).toBeGreaterThanOrEqual(400);

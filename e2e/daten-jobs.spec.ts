@@ -42,7 +42,7 @@ import { seed } from '../src/server/seed.js';
  *           photo thumbnail regenerated server-side and decodes.
  *   AC-161  The Import confirmation-phrase input gates the start action: it
  *           stays disabled until the typed value matches the configured
- *           phrase. No client dry-run probe.
+ *           phrase.
  *
  * testids the UI implementation MUST introduce (per
  * `docs/wip/step4-ui-rewire-design.md §testids` — use these EXACT names;

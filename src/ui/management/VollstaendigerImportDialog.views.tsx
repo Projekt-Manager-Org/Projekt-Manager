@@ -90,8 +90,8 @@ export function ConfirmView(props: ConfirmViewProps) {
       title={STRINGS.dataExchange.importPreflightTitle}
       body={
         <>
-          {/* A full-account restore is ALWAYS destructive — no client dry-run
-              (AC-161), so the phrase gate is unconditional. */}
+          {/* A full-account restore is ALWAYS destructive, so the phrase gate
+              is unconditional (AC-161). */}
           <div
             className={styles.destructiveNotice}
             data-testid="import-job-destructive-notice"

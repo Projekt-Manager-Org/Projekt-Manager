@@ -12,17 +12,12 @@
  * on failure (the error carries `.code` / `.statusCode`) instead of
  * returning an HTTP envelope — failure cases assert via
  * `await expect(importEnvelope(...)).rejects.toMatchObject({ code, statusCode })`.
- * Success returns the `Envelope` / `ImportResult` / `DryRunPreview` directly.
+ * Success returns the `Envelope` / `ImportResult` directly.
  */
 
 import { sql } from 'drizzle-orm';
 import type { AuthUser } from '../server/middleware/auth.js';
-import type {
-  Envelope,
-  ImportOptions,
-  ImportResult,
-  DryRunPreview,
-} from '../domain/dataExchange.js';
+import type { Envelope, ImportOptions, ImportResult } from '../domain/dataExchange.js';
 import type { AttachmentStorageClient } from '../server/storage/client.js';
 import type { ServiceLogger } from '../server/services/Logger.js';
 import { ExportService } from '../server/services/ExportService.js';
@@ -56,7 +51,7 @@ const SILENT_LOG: ServiceLogger = { info() {}, error() {} };
  * Lazily-built storage client mirroring the route construction. Cached so
  * repeated imports in a file don't reopen a client per call. The override
  * attachment-hide path (issue #163) requires a non-null storage client; the
- * dry-run / empty-target paths never touch it.
+ * empty-target path never touches it.
  */
 let cachedStorage: AttachmentStorageClient | null = null;
 function defaultStorage(): AttachmentStorageClient {
@@ -73,7 +68,7 @@ export async function exportEnvelope(caller: AuthUser = TEST_OWNER): Promise<Env
 }
 
 /**
- * Restore an envelope (was `POST /api/import[?dry_run=&override=]`). Supplies a
+ * Restore an envelope (was `POST /api/import[?override=]`). Supplies a
  * real storage client + logger by default so the override path works without
  * per-test wiring; pass `storage` explicitly to inspect storage side effects
  * (issue #163), or `storage: null` to exercise the missing-collaborator guard.
@@ -87,7 +82,7 @@ export async function importEnvelope(
     log?: ServiceLogger;
     caller?: AuthUser | null;
   } = {},
-): Promise<ImportResult | DryRunPreview> {
+): Promise<ImportResult> {
   const storage = options.storage !== undefined ? options.storage : defaultStorage();
   const log = options.log ?? SILENT_LOG;
   const caller = options.caller !== undefined ? options.caller : TEST_OWNER;

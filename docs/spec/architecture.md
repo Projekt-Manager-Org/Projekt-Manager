@@ -54,7 +54,7 @@ The state layer is a client-side cache delegating to the API.
 - **Auth** — the authenticated user profile (including theme preference) and session state.
 - **View state** — active view, active filter (no planned dates, [AC-465](verification.md#151-workflow-board)), selected entity ID for detail views.
 - **Mutation tracking** — in-flight flags and error messages per mutation. Confirm-dialog state for transition confirmations.
-- **Import state** — parsed envelope, dry-run preview, submission progress, result summary (see [api.md §14.2.4](api.md#1424-unified-data-exchange)).
+- **Import state** — the import job: upload progress, restore status, result summary (see [api.md §14.2.4](api.md#1424-unified-data-exchange)).
 
 **Mutations** (per [§11.1](#111-mandatory-constraints)):
 
@@ -237,7 +237,7 @@ v1 emitters of `project_changed`:
 - `ProjectTransitionService.transitionBackward` (AC-458) — `-1` workflow-state transition.
 - `ProjectDatesService.updateDates` (AC-7) — planned start / end edit.
 - `CustomerService.deleteCustomer` ([api.md §14.2.5](api.md#1425-customer-management), AC-91) — customer-delete cascade, when at least one archived project exists under the customer (the cascade removes those project rows alongside the customer). When the customer has zero archived projects, no event is emitted — the project rows visible to subscribers do not change.
-- `ImportService.import` (non-dry-run, [api.md §14.2.4](api.md#1424-unified-data-exchange)) — both branches write project rows inside one transaction: the override branch TRUNCATEs and re-inserts the full Layer 1 set (`users`, `company_profile`, `customers`, `projects`, `project_workers`, `invoice_sequence`, `invoices`, `attachments`) into a non-empty target; the empty-target branch inserts into empty tables (the seed-equivalent path). Exactly one `project_changed` is emitted post-commit per successful import — the project corpus is being established or replaced; one coarse signal is sufficient for every consumer to refetch. The `dryRun` path is read-only and emits nothing.
+- `ImportService.import` ([api.md §14.2.4](api.md#1424-unified-data-exchange)) — both branches write project rows inside one transaction: the override branch TRUNCATEs and re-inserts the full Layer 1 set (`users`, `company_profile`, `customers`, `projects`, `project_workers`, `invoice_sequence`, `invoices`, `attachments`) into a non-empty target; the empty-target branch inserts into empty tables (the seed-equivalent path). Exactly one `project_changed` is emitted post-commit per successful import — the project corpus is being established or replaced; one coarse signal is sufficient for every consumer to refetch.
 
 The `ProjectCrudService.purgeProject` and `CustomerService.deleteCustomer` paths are the same call sites that emit `storage_usage_changed` when the cascade carries byte-bearing attachment rows; both events are emitted independently from the same post-commit phase. `ProjectCrudService.purgeProject` always emits `project_changed` (the project row is being deleted) but only emits `storage_usage_changed` when the cascade carried byte-bearing rows. `CustomerService.deleteCustomer` emits `project_changed` whenever any archived project is purged in the cascade and emits `storage_usage_changed` only when those archived projects carried byte-bearing rows; the two gates are independent.
 

@@ -69,7 +69,7 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     const confirm = screen.getByTestId('import-job-confirm');
     expect(confirm).toBeInTheDocument();
     expect(within(confirm).getByTestId('import-job-phrase-input')).toBeInTheDocument();
-    // Destructive notice is unconditional — no client dry-run (AC-161).
+    // Destructive notice is unconditional (AC-161).
     expect(within(confirm).getByTestId('import-job-destructive-notice')).toBeInTheDocument();
     // Gate closed until the phrase matches.
     expect(screen.getByTestId('import-job-start')).toBeDisabled();

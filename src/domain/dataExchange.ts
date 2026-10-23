@@ -243,12 +243,11 @@ export interface Envelope {
 }
 
 export interface ImportOptions {
-  dryRun: boolean;
   override: boolean;
   /**
    * Typed confirmation phrase from the caller. Required by the server when
    * `override` is true AND the target database is non-empty (AC-160);
-   * ignored on the dry-run and empty-target paths. `null` indicates the
+   * ignored on the empty-target path. `null` indicates the
    * request body omitted the field entirely.
    */
   confirmationPhrase: string | null;
@@ -278,46 +277,12 @@ export interface MissingUserReference {
 }
 
 /**
- * Payload for the `MISSING_USER_REFS` error code and the dry-run preview.
+ * Payload for the `MISSING_USER_REFS` error code.
  * See api.md §14.4.1.
  */
 export interface MissingUserRefsPayload {
   missingUserIds: string[];
   references: MissingUserReference[];
-}
-
-export interface DryRunPreview {
-  schema_version: number;
-  /**
-   * True when at least one of the importable tables (users,
-   * company_profile beyond the seeded singleton, customers, projects,
-   * project_workers, invoices, invoice_sequence, attachments) has rows
-   * at dry-run time. The UI uses this to gate the override-warning
-   * checkbox; the server still enforces `TARGET_NOT_EMPTY` on commit
-   * when override is not set (defense in depth).
-   */
-  target_non_empty: boolean;
-  would_write: {
-    users: number;
-    company_profile: number;
-    customers: number;
-    projects: number;
-    project_workers: number;
-    invoices: number;
-    invoice_sequence: number;
-  };
-  validation_errors: ValidationIssue[];
-  /**
-   * Missing-user references surfaced by the dry-run path (AC-388). The
-   * commit-path error code `MISSING_USER_REFS` uses the same payload shape
-   * under `details`. The spec (api.md §14.2.4) deliberately does not mint
-   * a wire-field name for the preview, so this sibling field carries the
-   * same payload shape as the commit-path `details` for symmetry. `null`
-   * when no missing references were found; optional so pre-existing test
-   * fixtures that only care about `validation_errors` remain valid without
-   * spelling it out.
-   */
-  missing_user_refs?: MissingUserRefsPayload | null;
 }
 
 export interface ImportResult {
@@ -337,9 +302,9 @@ export interface ImportResult {
    * `sessions` via `ON DELETE CASCADE`, so the operator's session token
    * is gone before this response reaches the client. The UI uses this
    * flag to redirect to login cleanly rather than hitting a 401 on the
-   * next call. `false` in every other code path (dry-run never reaches
-   * the commit; empty-target inserts into empty tables; envelopes
-   * without users — once another path produces one — would not wipe).
+   * next call. `false` in every other code path (empty-target inserts
+   * into empty tables; envelopes without users — once another path
+   * produces one — would not wipe).
    */
   sessionInvalidated: boolean;
 }

@@ -22,13 +22,12 @@
  *   8. ProjectTransitionService.transitionBackward (-1)
  *   9. ProjectDatesService.updateDates (planned start / end edit)
  *  10. CustomerService.deleteCustomer (cascade with archived projects)
- *  11. ImportService.import — non-dry-run, both branches:
+ *  11. ImportService.import — both branches:
  *      a. override path (TRUNCATE + re-insert into a non-empty target)
  *      b. empty-target path (insert into empty tables; the seed-equivalent path)
  *
  * Silence cases:
  *   - CustomerService.deleteCustomer with zero archived projects
- *   - ImportService.import dry-run
  *   - A mutation that aborts inside its transaction
  *
  * Co-emission independence — the two cascading sites that may also
@@ -323,11 +322,10 @@ function uuidWithPrefix(prefix: string, i: number): string {
  * Build a minimal valid envelope distinct from the seed so the
  * override path actually replaces business data. The shape mirrors
  * `buildOverrideEnvelope` in `data-exchange.test.ts`. AC-276 pins
- * exactly one `project_changed` per successful non-dry-run commit
- * (architecture.md §11.13: "one coarse signal is sufficient for every
- * consumer to refetch") and zero events per dry-run. Both non-dry-run
- * branches reuse this envelope: the override test runs it against a
- * non-empty target; the empty-target test wipes the tables first.
+ * exactly one `project_changed` per successful commit (architecture.md
+ * §11.13: "one coarse signal is sufficient for every consumer to
+ * refetch"). Both branches reuse this envelope: the override test runs it
+ * against a non-empty target; the empty-target test wipes the tables first.
  */
 function buildOverrideEnvelope(): Record<string, unknown> {
   // Deterministic per-test-run UUIDs would collide on a re-run; lift
@@ -733,7 +731,6 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
       try {
         await clearSeededInvoices();
         await importEnvelope(buildOverrideEnvelope() as unknown as Envelope, {
-          dryRun: false,
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });
@@ -760,7 +757,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // and is observable to any subscriber connected at the time (e.g. an
   // admin re-importing into a wiped staging DB while the office tab is
   // open). AC-276 widens to cover this branch alongside override —
-  // both non-dry-run paths emit one signal post-commit.
+  // both paths emit one signal post-commit.
   // -------------------------------------------------------------------
   describe('AC-276: ImportService.import (empty-target commit) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a successful empty-target import', async () => {
@@ -777,7 +774,6 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
       const conn = subscribeFake(bus);
       try {
         await importEnvelope(buildOverrideEnvelope() as unknown as Envelope, {
-          dryRun: false,
           override: false,
           confirmationPhrase: null,
         });
@@ -806,28 +802,6 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
       try {
         const res = await authDelete(ownerToken, `/api/customers/${customerId}`);
         expect(res.statusCode).toBe(204);
-
-        await new Promise<void>((r) => setImmediate(r));
-
-        expect(countProjectChanged(conn)).toBe(0);
-      } finally {
-        bus.unsubscribe(conn);
-      }
-    });
-  });
-
-  // (13) ImportService.import dry-run — read-only, emits nothing.
-  describe('AC-276: ImportService.import dry-run emits no event', () => {
-    it('a subscribed connection observes zero project_changed events', async () => {
-      const bus = await loadBus();
-
-      const conn = subscribeFake(bus);
-      try {
-        await importEnvelope(buildOverrideEnvelope() as unknown as Envelope, {
-          dryRun: true,
-          override: false,
-          confirmationPhrase: null,
-        });
 
         await new Promise<void>((r) => setImmediate(r));
 

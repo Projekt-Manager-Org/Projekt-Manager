@@ -6,10 +6,10 @@
  * Five phases, derived from the `importJobStore` job + the picked `file`:
  *   - confirm    — destructive notice + confirmation-phrase gate + mobile
  *                  warning. Shown on a fresh open (DatenView mounts this with a
- *                  picked archive) while no job exists yet. No client dry-run
- *                  (AC-161): the phrase gate is unconditional. Start is disabled
- *                  until the typed value matches the configured phrase and while
- *                  a create/upload is in flight.
+ *                  picked archive) while no job exists yet. The phrase gate is
+ *                  unconditional (AC-161). Start is disabled until the typed
+ *                  value matches the configured phrase and while a
+ *                  create/upload is in flight.
  *   - uploading  — client→VPS resumable upload (`uploadOffset` / `bytesTotal`).
  *   - processing — server restore readout (files-done/total + current item).
  *   - summary    — restored count.
