@@ -56,6 +56,7 @@ import {
   authPost,
   authPut,
   expectedVersion,
+  seedProjectStatus,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
@@ -686,8 +687,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
    * helper keeps the new tests independent of that count — case 2 alone
    * needs three fresh `rechnung_faellig` projects (A, B, then a third
    * after the rollback), and stacking on top of the seed's three would
-   * couple the test to seed shape. POST /api/projects accepts an
-   * explicit `status` field (routes/projects.ts:138), so we can land in
+   * couple the test to seed shape. `seedProjectStatus` lands it in
    * `rechnung_faellig` without walking the transition graph.
    */
   async function mintRechnungFaelligProject(): Promise<string> {
@@ -696,12 +696,13 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
       number: `RACE-${suffix}`,
       title: `Race fixture ${suffix}`,
       customerId,
-      status: 'rechnung_faellig',
     });
     if (res.statusCode !== 201) {
       throw new Error(`mintRechnungFaelligProject failed ${res.statusCode} ${res.body}`);
     }
-    return res.json().id as string;
+    const id = res.json().id as string;
+    await seedProjectStatus(id, 'rechnung_faellig');
+    return id;
   }
 
   /**
@@ -996,12 +997,13 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
       number: `M1-${suffix}`,
       title: `M1 race fixture ${suffix}`,
       customerId,
-      status: 'rechnung_faellig',
     });
     if (res.statusCode !== 201) {
       throw new Error(`mintRechnungFaelligProject failed ${res.statusCode} ${res.body}`);
     }
-    return res.json().id as string;
+    const id = res.json().id as string;
+    await seedProjectStatus(id, 'rechnung_faellig');
+    return id;
   }
 
   const noopLog: ServiceLogger = {

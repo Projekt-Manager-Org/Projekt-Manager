@@ -6,6 +6,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
+import { STATE_KEYS, type WorkflowState } from '../src/config/stateConfig';
 import { STORAGE_STATES } from './storage-states';
 
 /**
@@ -59,7 +60,7 @@ async function officeRequest(browser: Browser): Promise<APIRequestContext> {
 
 async function mintProject(
   request: APIRequestContext,
-  status: string,
+  status: WorkflowState,
 ): Promise<{ projectId: string; customerName: string }> {
   const customerName = `Stale-Kunde ${suffix()}`;
   // A billing address makes drafts on the project issuable (AC-289).
@@ -75,11 +76,18 @@ async function mintProject(
       number: `SW-${suffix()}`,
       title: `Stale-write ${suffix()}`,
       customerId: (await customer.json()).id,
-      status,
     },
   });
   expect(project.status(), await project.text()).toBe(201);
-  return { projectId: (await project.json()).id, customerName };
+  const projectId = (await project.json()).id as string;
+  // A project starts in the first state (AC-475); walk it forward.
+  for (const expectedStatus of STATE_KEYS.slice(0, STATE_KEYS.indexOf(status))) {
+    const step = await request.post(`/api/projects/${projectId}/transition/forward`, {
+      data: { expectedStatus },
+    });
+    expect(step.status(), await step.text()).toBe(200);
+  }
+  return { projectId, customerName };
 }
 
 async function mintDraft(

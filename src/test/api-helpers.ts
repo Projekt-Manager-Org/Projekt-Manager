@@ -20,7 +20,8 @@ import { __resetForTests as resetNotificationPublisher } from '../server/service
 import { __resetForTests as resetSseBus } from '../server/sse/bus.js';
 import { randomBytes } from 'node:crypto';
 import type { Database } from '../server/db/connection.js';
-import { sessions, users } from '../server/db/schema.js';
+import { projects, sessions, users } from '../server/db/schema.js';
+import type { WorkflowState } from '../config/stateConfig.js';
 import type pg from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -286,6 +287,16 @@ export async function revokeSession(token: string): Promise<void> {
 export async function expireSession(token: string): Promise<void> {
   const past = new Date(Date.now() - 60_000);
   await db.update(sessions).set({ expiresAt: past }).where(eq(sessions.token, token));
+}
+
+/**
+ * Put a project straight into a workflow state. The API creates every
+ * project in the first state (AC-475); fixtures that need a later one
+ * skip the transitions, whose audit rows and events the test does not
+ * expect.
+ */
+export async function seedProjectStatus(projectId: string, status: WorkflowState): Promise<void> {
+  await db.update(projects).set({ status }).where(eq(projects.id, projectId));
 }
 
 /**

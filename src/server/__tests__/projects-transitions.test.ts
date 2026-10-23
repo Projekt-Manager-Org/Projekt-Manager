@@ -8,7 +8,15 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { startApp, stopApp, login, authGet, authPatch, authPost } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPatch,
+  authPost,
+  seedProjectStatus,
+} from '../../test/api-helpers.js';
 import { WORKFLOW_ORDER } from '../../config/stateConfig.js';
 
 /** ISO 8601 date-time regex (loose — allows date-only or full timestamp) */
@@ -70,11 +78,11 @@ describe('Project Operations — Transitions', () => {
         number: 'IMP-BF1-WORKERS',
         title: 'workers-in-response regression fixture',
         customerId: custId,
-        status: 'geplant',
         assignedWorkerIds: workerIds,
       });
       expect(createRes.statusCode).toBe(201);
       projectId = createRes.json().id;
+      await seedProjectStatus(projectId, 'geplant');
 
       // Sanity: GET returns both workers — baseline for the mutation tests.
       const getRes = await authGet(token, `/api/projects/${projectId}`);

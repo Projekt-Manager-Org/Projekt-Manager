@@ -46,7 +46,7 @@ export { PROJECT_SORT_KEYS };
 export type { ProjectSortKey };
 import { customers, projects } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { WORKFLOW_ORDER, STATE_KEYS } from '../../config/stateConfig.js';
+import { STATE_KEYS } from '../../config/stateConfig.js';
 import type { WorkflowState } from '../../config/stateConfig.js';
 import { STRINGS } from '../../config/strings.js';
 import { DB_CONSTRAINTS } from '../db/constraints.js';
@@ -70,8 +70,6 @@ import { bestEffortHideStorageKeys } from './AttachmentService.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { emitProjectChanged, emitStorageUsageChanged } from '../sse/emitters.js';
 
-const VALID_STATES: ReadonlySet<string> = new Set(WORKFLOW_ORDER);
-
 /**
  * Subset of project fields considered for the `update` audit payload.
  * Excludes server-managed timestamps and the immutable identifier — the
@@ -79,14 +77,12 @@ const VALID_STATES: ReadonlySet<string> = new Set(WORKFLOW_ORDER);
  */
 function projectUpdatableDiff(row: {
   title: string;
-  customerId: string;
   siteAddress: { street: string; zip: string; city: string } | null;
   estimatedValue: string | null;
   notes: string | null;
 }): Record<string, unknown> {
   return {
     title: row.title,
-    customerId: row.customerId,
     siteAddress: row.siteAddress ?? null,
     estimatedValue: row.estimatedValue ?? null,
     notes: row.notes ?? null,
@@ -130,7 +126,6 @@ export class ProjectCrudService {
       number: string;
       title: string;
       customerId: string;
-      status?: string;
       siteAddress?: { street: string; zip: string; city: string } | null;
       plannedStart?: string | null;
       plannedEnd?: string | null;
@@ -142,10 +137,7 @@ export class ProjectCrudService {
     log: ServiceLogger,
     correlationId?: string | null,
   ) {
-    const status = (data.status ?? STATE_KEYS[0]) as WorkflowState;
-    if (!VALID_STATES.has(status)) {
-      throw validationError(STRINGS.projects.invalidStatus(status));
-    }
+    const status = STATE_KEYS[0];
 
     if (data.id !== undefined) {
       return this.createProjectWithClientId(
@@ -426,7 +418,7 @@ export class ProjectCrudService {
   /**
    * PATCH /api/projects/:id — field update and/or worker reassignment.
    *
-   * Field updates (title/customerId/estimatedValue/notes) produce a
+   * Field updates (title/siteAddress/estimatedValue/notes) produce a
    * single `update` audit row carrying the diff.
    *
    * Worker reassignment produces one `project_worker` row per actual
@@ -441,7 +433,6 @@ export class ProjectCrudService {
     id: string,
     data: {
       title?: string;
-      customerId?: string;
       siteAddress?: { street: string; zip: string; city: string } | null;
       assignedWorkerIds?: string[];
       estimatedValue?: number | null;
@@ -462,7 +453,6 @@ export class ProjectCrudService {
     // address rule. `'siteAddress' in data` distinguishes from omission.
     const hasFieldUpdate =
       data.title !== undefined ||
-      data.customerId !== undefined ||
       'siteAddress' in data ||
       data.estimatedValue !== undefined ||
       data.notes !== undefined;
@@ -481,7 +471,6 @@ export class ProjectCrudService {
             run: async (innerTx) => {
               const updated = await updateProjectFields(innerTx, id, userId, {
                 title: data.title,
-                customerId: data.customerId,
                 // Pass through with `'siteAddress' in data` semantics so the
                 // repo's set-clause distinguishes "clear" (null) from
                 // "leave unchanged" (omitted).
@@ -495,14 +484,12 @@ export class ProjectCrudService {
               const after: Record<string, unknown> = {};
               const priorDiff = projectUpdatableDiff({
                 title: priorRow.title,
-                customerId: priorRow.customerId,
                 siteAddress: priorRow.siteAddress ?? null,
                 estimatedValue: priorRow.estimatedValue,
                 notes: priorRow.notes,
               });
               const updatedDiff = projectUpdatableDiff({
                 title: updated.title,
-                customerId: updated.customerId,
                 siteAddress: updated.siteAddress ?? null,
                 estimatedValue: updated.estimatedValue,
                 notes: updated.notes,
@@ -510,10 +497,6 @@ export class ProjectCrudService {
               if (data.title !== undefined) {
                 before.title = priorDiff.title;
                 after.title = updatedDiff.title;
-              }
-              if (data.customerId !== undefined) {
-                before.customerId = priorDiff.customerId;
-                after.customerId = updatedDiff.customerId;
               }
               if ('siteAddress' in data) {
                 before.siteAddress = priorDiff.siteAddress;

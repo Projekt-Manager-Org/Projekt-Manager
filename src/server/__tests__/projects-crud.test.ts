@@ -113,7 +113,6 @@ describe('Project CRUD Operations', () => {
         number: 'CRUD-003',
         title: 'Vollständiges Projekt',
         customerId: seededCustomerId,
-        status: 'geplant',
         plannedStart: '2026-06-01',
         plannedEnd: '2026-06-15',
         assignedWorkerIds: [workerId],
@@ -124,7 +123,6 @@ describe('Project CRUD Operations', () => {
       expect(res.statusCode).toBe(201);
 
       const project = res.json();
-      expect(project.status).toBe('geplant');
       expect(project.plannedStart).toContain('2026-06-01');
       expect(project.plannedEnd).toContain('2026-06-15');
       expect(project.estimatedValue).toBe(12500.0);
@@ -307,6 +305,167 @@ describe('Project CRUD Operations', () => {
       // Verify the number did NOT change
       const getRes = await authGet(ownerToken, `/api/projects/${createdProjectId}`);
       expect(getRes.json().number).toBe('CRUD-001');
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // data-model.md §5.1 field table: input it rules out is refused as a
+  // validation error and changes nothing (#600)
+  // ---------------------------------------------------------------
+  describe('§5.1: input outside the field table is refused', () => {
+    const expectValidationError = (res: { statusCode: number; json: () => { code: string } }) => {
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+    };
+
+    const projectExists = async (number: string): Promise<boolean> => {
+      const res = await authGet(
+        ownerToken,
+        `/api/projects?search=${encodeURIComponent(number)}&includeArchived=true`,
+      );
+      return (res.json().data as { number: string }[]).some((p) => p.number === number);
+    };
+
+    /** Own fixture, so each PATCH case stands alone under a filtered run. */
+    let fixtureId: string;
+
+    beforeAll(async () => {
+      const res = await authPost(ownerToken, '/api/projects', {
+        number: 'BOUND-FIXTURE',
+        title: 'Grenzwert-Fixture',
+        customerId: seededCustomerId,
+        estimatedValue: 100,
+      });
+      expect(res.statusCode).toBe(201);
+      fixtureId = res.json().id;
+    });
+
+    it('refuses a customerId change via update (immutable)', async () => {
+      const customers = (await authGet(ownerToken, '/api/customers')).json().customers as {
+        id: string;
+      }[];
+      const otherCustomerId = customers.find((c) => c.id !== seededCustomerId)!.id;
+      const before = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+
+      const res = await authPatch(ownerToken, `/api/projects/${fixtureId}`, {
+        customerId: otherCustomerId,
+        title: 'Kundenwechsel',
+      });
+
+      expectValidationError(res);
+      const after = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      expect(after.customerId).toBe(before.customerId);
+      expect(after.title).toBe(before.title);
+    });
+
+    it('AC-475: refuses a status on create', async () => {
+      const res = await authPost(ownerToken, '/api/projects', {
+        number: 'BOUND-STATUS',
+        title: 'Startet nicht im ersten Zustand',
+        customerId: seededCustomerId,
+        status: 'geplant',
+      });
+
+      expectValidationError(res);
+      expect(await projectExists('BOUND-STATUS')).toBe(false);
+    });
+
+    it('refuses a blank number or title on create, and a blank title on update', async () => {
+      const blankNumber = await authPost(ownerToken, '/api/projects', {
+        number: '   ',
+        title: 'Leere Nummer',
+        customerId: seededCustomerId,
+      });
+      expectValidationError(blankNumber);
+      expect(await projectExists('   ')).toBe(false);
+
+      const blankTitle = await authPost(ownerToken, '/api/projects', {
+        number: 'BOUND-BLANK',
+        title: ' \t',
+        customerId: seededCustomerId,
+      });
+      expectValidationError(blankTitle);
+      expect(await projectExists('BOUND-BLANK')).toBe(false);
+
+      const before = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      const patch = await authPatch(ownerToken, `/api/projects/${fixtureId}`, { title: '  ' });
+      expectValidationError(patch);
+      const after = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      expect(after.title).toBe(before.title);
+    });
+
+    it('refuses a number over 20 characters; accepts exactly 20', async () => {
+      const atLimit = 'BOUND-NUMBER-0000021';
+      expect(`${atLimit}X`).toHaveLength(21);
+      const res = await authPost(ownerToken, '/api/projects', {
+        number: `${atLimit}X`,
+        title: 'Zu lange Nummer',
+        customerId: seededCustomerId,
+      });
+      expectValidationError(res);
+      expect(await projectExists(`${atLimit}X`)).toBe(false);
+
+      const ok = await authPost(ownerToken, '/api/projects', {
+        number: atLimit,
+        title: 'Nummer mit 20 Zeichen',
+        customerId: seededCustomerId,
+      });
+      expect(ok.statusCode).toBe(201);
+    });
+
+    it('refuses a title over 500 characters on create and update', async () => {
+      const title = 'T'.repeat(501);
+      const res = await authPost(ownerToken, '/api/projects', {
+        number: 'BOUND-TITLE',
+        title,
+        customerId: seededCustomerId,
+      });
+      expectValidationError(res);
+      expect(await projectExists('BOUND-TITLE')).toBe(false);
+
+      const before = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      const patch = await authPatch(ownerToken, `/api/projects/${fixtureId}`, { title });
+      expectValidationError(patch);
+      const after = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      expect(after.title).toBe(before.title);
+    });
+
+    it.each([
+      { tag: 'POS', estimatedValue: 1e10 },
+      { tag: 'ROUND', estimatedValue: 9999999999.995 },
+      { tag: 'NEG', estimatedValue: -1e10 },
+    ])(
+      'refuses an estimatedValue of $estimatedValue (over 10 integer digits) on create and update',
+      async ({ tag, estimatedValue }) => {
+        const number = `BOUND-EV-${tag}`;
+        const res = await authPost(ownerToken, '/api/projects', {
+          number,
+          title: 'Zu hoher Wert',
+          customerId: seededCustomerId,
+          estimatedValue,
+        });
+        expectValidationError(res);
+        expect(await projectExists(number)).toBe(false);
+
+        const before = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+        const patch = await authPatch(ownerToken, `/api/projects/${fixtureId}`, {
+          estimatedValue,
+        });
+        expectValidationError(patch);
+        const after = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+        expect(after.estimatedValue).toBe(before.estimatedValue);
+      },
+    );
+
+    it('accepts the largest estimatedValue with 10 integer digits', async () => {
+      const res = await authPost(ownerToken, '/api/projects', {
+        number: 'BOUND-EV-MAX',
+        title: 'Höchster Wert',
+        customerId: seededCustomerId,
+        estimatedValue: 9999999999.99,
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json().estimatedValue).toBe(9999999999.99);
     });
   });
 

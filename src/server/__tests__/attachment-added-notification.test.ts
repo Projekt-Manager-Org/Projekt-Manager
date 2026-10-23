@@ -48,7 +48,15 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
-import { startApp, stopApp, login, authGet, authPost, authPatch } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPost,
+  authPatch,
+  seedProjectStatus,
+} from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
@@ -100,10 +108,11 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
       number,
       title: `AC-316 fixture #${fixtureCounter}`,
       customerId: seededCustomerId,
-      status: 'beauftragt',
     });
     expect(res.statusCode).toBe(201);
-    return (res.json() as { id: string }).id;
+    const id = (res.json() as { id: string }).id;
+    await seedProjectStatus(id, 'beauftragt');
+    return id;
   }
 
   /**
