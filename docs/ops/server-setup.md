@@ -226,23 +226,15 @@ Not covered, accepted: ACME renewal (DNS-01 egress from Caddy, weeks later; Cadd
   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main
   ```
 
-- **c. Fresh Docker state, volumes kept** (after a containerd minor change, or when b leaves the daemon broken or without its images). Images, containers and networks are rebuilt by `deploy.sh`; named volumes (Postgres data) stay in place:
+- **c. Fresh Docker state, volumes kept** (after a containerd minor change, or when b leaves the daemon broken or without its images). `scripts/ops/docker-fresh-state.sh` moves the state aside, installs the pins of the checkout before any daemon starts, then starts Docker and checks it. Named volumes (Postgres data) stay in place; `deploy.sh` rebuilds the rest:
 
   ```bash
-  df -h / && df -i /                                                    # the old state stays on this disk while fresh images are pulled
   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main   # checks out main's pins, refuses: drift
-  ts=$(date +%Y%m%d-%H%M%S)
-  sudo systemctl stop docker.socket docker.service containerd.service
-  sudo mv /var/lib/containerd "/var/lib/containerd.pre-revert-$ts"
-  sudo mkdir "/var/lib/docker.pre-revert-$ts"
-  sudo find /var/lib/docker -mindepth 1 -maxdepth 1 ! -name volumes -exec mv -t "/var/lib/docker.pre-revert-$ts" {} +
-  sudo /opt/projekt-manager/scripts/ops/docker-converge.sh            # installs main's pins before any daemon starts; may report "daemon unreachable": expected
-  sudo systemctl start containerd.service docker.service
-  sudo /opt/projekt-manager/scripts/ops/docker-converge.sh --check    # must be in sync; on an image-store error apply the printed fix
+  sudo /opt/projekt-manager/scripts/ops/docker-fresh-state.sh         # asks before it stops Docker
   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main
   ```
 
-  The old daemon must never start on state the newer one wrote, hence converge before start. Run the acceptance (step 3); only then delete the `.pre-revert-$ts` directories.
+  Run the acceptance (step 3), then delete the old state with the `rm -rf` line the script printed.
 
 - **d. Restore from backup:** [backup/recovery.md](backup/recovery.md).
 

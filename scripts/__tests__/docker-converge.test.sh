@@ -31,15 +31,10 @@ PIN="5:1.0-1~ubuntu.24.04~noble"
 OLDER="5:0.9-1~ubuntu.24.04~noble"
 NEWER="5:2.0-1~ubuntu.24.04~noble"
 
-TMP_DIRS=()
-# shellcheck disable=SC2317  # invoked via `trap cleanup EXIT`
-cleanup() {
-  local d
-  for d in "${TMP_DIRS[@]:-}"; do
-    [[ -n "${d:-}" && -d "$d" ]] && rm -rf "$d"
-  done
-}
-trap cleanup EXIT
+# One root for every sandbox: `stage` runs in a $(...) subshell, so it
+# cannot register its dir with the parent.
+TMP_ROOT="$(mktemp -d)"
+trap 'rm -rf "$TMP_ROOT"' EXIT
 
 # A fresh sandbox per case: pins file, fake dpkg database, daemon state,
 # call log, stubs. Every package starts installed at $PIN and pinned at
@@ -48,8 +43,7 @@ trap cleanup EXIT
 # those are accepted.
 stage() {
   local d p
-  d="$(mktemp -d)"
-  TMP_DIRS+=("$d")
+  d="$(mktemp -d -p "$TMP_ROOT")"
   mkdir -p "$d/bin" "$d/db"
   : >"$d/calls"
   printf '# header comment\n\n' >"$d/pins"
@@ -175,6 +169,10 @@ d="$(stage)"
 rm "$d/driver-status"
 run "$d" --check
 expect_rc 1 "unknown image store fails"
+# A stopped daemon needs starting, not the store switch: the daemon.json
+# advice would hide every existing image and container for nothing.
+if grep -q 'systemctl start docker' <<<"$out"; then ok "says to start the daemon"; else ko "daemon-down report lacks the start hint"; fi
+if grep -q 'containerd-snapshotter' <<<"$out"; then ko "daemon-down report must not advise the store switch"; else ok "no store-switch advice"; fi
 
 echo "Case: pins file has a line that is not <package>=<version>"
 d="$(stage)"
@@ -245,6 +243,37 @@ printf 'installed %s' "$OLDER" >"$d/db/docker-ce"
 FAIL_INSTALL=1 run "$d"
 if [[ "$rc" != 0 && "$rc" != 2 && "$rc" != 127 ]]; then ok "failed install fails (exit $rc)"; else ko "failed install: expected an apt failure exit, got $rc"; fi
 if grep -qE '^apt-get .*install' "$d/calls"; then ok "it did attempt the install"; else ko "failed without attempting the install"; fi
+
+echo "Case: --packages-only, packages match, daemon stopped"
+# How docker-fresh-state.sh calls it after moving the state aside: the
+# store is unknowable until the daemon runs, so it must not count.
+d="$(stage)"
+rm "$d/driver-status"
+run "$d" --packages-only
+expect_rc 0 "in-sync packages pass without a daemon"
+if grep -qE '^apt-(get|mark) ' "$d/calls"; then ko "no-op must not call apt"; else ok "nothing installed"; fi
+if grep -q '^docker ' "$d/calls"; then ko "must not query the daemon"; else ok "daemon not queried"; fi
+
+echo "Case: --packages-only, a package drifted, daemon stopped"
+d="$(stage)"
+rm "$d/driver-status"
+printf 'installed %s' "$NEWER" >"$d/db/containerd.io"
+run "$d" --packages-only
+expect_rc 0 "downgrade installs without a daemon"
+if grep -qE "^apt-get .*install.* containerd\.io=$PIN" "$d/calls"; then ok "installs the pin"; else ko "pin not installed"; fi
+if grep -q '^apt-mark hold' "$d/calls"; then ok "holds the packages"; else ko "packages not held"; fi
+
+echo "Case: --packages-only, apt-get install fails"
+d="$(stage)"
+rm "$d/driver-status"
+printf 'installed %s' "$OLDER" >"$d/db/docker-ce"
+FAIL_INSTALL=1 run "$d" --packages-only
+if [[ "$rc" != 0 ]]; then ok "failed install fails (exit $rc)"; else ko "failed install reported success"; fi
+
+echo "Case: unknown option"
+d="$(stage)"
+run "$d" --bogus
+expect_rc 2 "usage error"
 
 echo "Case: the real pins file pins exactly the five ADR-0009 packages"
 if [[ -f "$REAL_PINS" ]]; then

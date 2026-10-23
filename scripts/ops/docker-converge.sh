@@ -4,8 +4,13 @@
 # workstations and the VPS.
 #
 # Usage:
-#   sudo scripts/ops/docker-converge.sh      # converge; a no-op when in sync
-#   scripts/ops/docker-converge.sh --check   # report drift only, never installs
+#   sudo scripts/ops/docker-converge.sh                   # converge; a no-op when in sync
+#   scripts/ops/docker-converge.sh --check                # report drift only, never installs
+#   sudo scripts/ops/docker-converge.sh --packages-only   # pins only, no image-store check
+#
+# --packages-only is for scripts/ops/docker-fresh-state.sh, which installs
+# the pins while the daemon is deliberately stopped and checks the store
+# itself once the daemon runs.
 #
 # "In sync" means every pinned package is installed at exactly its pinned
 # version AND the daemon runs the containerd image store, which the hosts
@@ -37,8 +42,9 @@ mode=converge
 case "${1:-}" in
   "") ;;
   --check) mode=check ;;
+  --packages-only) mode=packages ;;
   *)
-    echo "usage: $0 [--check]" >&2
+    echo "usage: $0 [--check | --packages-only]" >&2
     exit 2
     ;;
 esac
@@ -77,13 +83,23 @@ pkg_drift() {
 }
 store_drift() {
   local store
+  [[ "$mode" != packages ]] || return 0
   store="$(docker info --format '{{json .DriverStatus}}' 2>/dev/null)" || store=""
-  if [[ "$store" != *"$WANT_STORE"* ]]; then
-    echo "  image store: have '${store:-daemon unreachable}', want containerd ($WANT_STORE)"
+  if [[ -z "$store" ]]; then
+    echo "  daemon: unreachable (stopped, or no permission), so the image store is unknown"
+  elif [[ "$store" != *"$WANT_STORE"* ]]; then
+    echo "  image store: have '$store', want containerd ($WANT_STORE)"
   fi
 }
 
+DAEMON_FIX="Fix: start the daemon (sudo systemctl start docker.service), or run as root or a docker-group member; then re-run with --check"
 STORE_FIX="Fix: set \"features\": {\"containerd-snapshotter\": true} in /etc/docker/daemon.json and restart dockerd -- existing images and containers become invisible, volumes stay (https://docs.docker.com/engine/storage/containerd/)"
+
+# The daemon-down advice when the daemon is unreachable; the store switch
+# only when it runs on the wrong store.
+store_fix() {
+  if [[ "$store_report" == *"daemon: unreachable"* ]]; then echo "$DAEMON_FIX"; else echo "$STORE_FIX"; fi
+}
 
 pkg_report="$(pkg_drift)"
 store_report="$(store_drift)"
@@ -98,12 +114,12 @@ echo "Docker host drifted from $PINS_FILE:"
 
 if [[ "$mode" == check ]]; then
   [[ -z "$pkg_report" ]] || echo "Fix: sudo $REPO_ROOT/scripts/ops/docker-converge.sh"
-  [[ -z "$store_report" ]] || echo "$STORE_FIX"
+  [[ -z "$store_report" ]] || store_fix
   exit 1
 fi
 
 if [[ -z "$pkg_report" ]]; then
-  echo "$STORE_FIX" >&2
+  store_fix >&2
   exit 1
 fi
 
@@ -124,8 +140,12 @@ store_report="$(store_drift)"
 if [[ -n "$pkg_report$store_report" ]]; then
   echo "error: still drifted after install:" >&2
   [[ -z "$pkg_report" ]] || echo "$pkg_report" >&2
-  [[ -z "$store_report" ]] || echo "$store_report" "$STORE_FIX" >&2
+  [[ -z "$store_report" ]] || { echo "$store_report"; store_fix; } >&2
   exit 1
 fi
-echo "Docker host converged to $PINS_FILE. If the daemon restarted,"
-echo "re-run deploy.sh on the VPS to reload the binary and drill keys."
+if [[ "$mode" == packages ]]; then
+  echo "Docker packages converged to $PINS_FILE."
+else
+  echo "Docker host converged to $PINS_FILE. If the daemon restarted,"
+  echo "re-run deploy.sh on the VPS to reload the binary and drill keys."
+fi
