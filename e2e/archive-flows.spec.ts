@@ -14,18 +14,16 @@ import { test, expect } from '@playwright/test';
  *   - AC-154: the customer-delete confirmation dialog names the archived
  *     project count when `archivedProjectCount > 0` (sourced from
  *     GET /api/customers/:id; purge is atomic per AC-91).
- *
- * These tests are written ahead of the implementation (TDD). They will
- * fail until the archive toggle, badge, and customer-delete warning are
- * implemented. Align new `data-testid` values in the UI with the ones
- * used here.
+ *   - AC-478: the create form's number check reports an archived
+ *     project's number as taken.
  *
  * Serial mode — steps depend on each other's state:
  *   1. Create a customer + two projects under it.
  *   2. Archive one project (AC-497).
  *   3. Toggle the filter — archived project appears/disappears (AC-492).
  *   4. Verify the visual distinction (AC-153).
- *   5. Archive the second project, then delete the customer with the
+ *   5. The number check counts the archived project (AC-478).
+ *   6. Archive the second project, then delete the customer with the
  *      archived-count warning text and confirm cleanup (AC-154).
  *
  * Seed data assumptions (inherited from auth.setup.ts):
@@ -161,6 +159,23 @@ test.describe('Archive flows', () => {
 
     // Active row: badge absent.
     await expect(activeRow.getByTestId('project-archived-badge')).toHaveCount(0);
+  });
+
+  // ---------------------------------------------------------------
+  // AC-478: the create form's number check counts archived projects.
+  // ---------------------------------------------------------------
+  test('AC-478: number check reports an archived project number as taken', async ({ page }) => {
+    await page.getByTestId('view-toggle-projekte').click();
+    await expect(page.getByTestId('project-table')).toBeVisible();
+    await page.getByTestId('project-create-button').click();
+
+    await page.getByTestId('project-number-input').fill(firstProjectNumber);
+    await page.getByTestId('project-title-input').focus();
+
+    await expect(page.getByTestId('project-number-taken')).toBeVisible();
+    await expect(page.getByTestId('project-number-available')).toHaveCount(0);
+
+    await page.keyboard.press('Escape');
   });
 
   // ---------------------------------------------------------------
