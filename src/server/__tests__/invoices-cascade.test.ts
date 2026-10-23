@@ -36,6 +36,7 @@ import crypto from 'node:crypto';
 import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
+import { STRINGS } from '../../config/strings.js';
 
 const year = new Date().getFullYear();
 
@@ -352,6 +353,7 @@ describe('AC-504, AC-502: DELETE /api/projects/:id/purge retention/cascade behav
     const purge = await authDelete(ownerToken, `/api/projects/${projectId}/purge`);
     expect(purge.statusCode).toBe(409);
     expect(purge.json().code).toBe('PROJECT_HAS_INVOICES');
+    expect(purge.json().message).toBe(STRINGS.errors.projectHasInvoices);
     expect(purge.json().details.invoiceCount).toBe(2);
 
     // Project + invoices unchanged.

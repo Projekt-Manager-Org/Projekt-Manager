@@ -144,24 +144,26 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-476: Duplicate project number → validation error
+  // AC-476: Duplicate project number → conflict
   // AC-476 [crit]
   // ---------------------------------------------------------------
   describe('AC-476: Duplicate project number', () => {
-    const countWithNumber = async (number: string): Promise<number> => {
+    // The unique number caps a count by number at one, so "creates
+    // nothing" is checked by the refused request's own title.
+    const countWithTitle = async (title: string): Promise<number> => {
       const res = await authGet(
         ownerToken,
-        `/api/projects?search=${encodeURIComponent(number)}&includeArchived=true`,
+        `/api/projects?search=${encodeURIComponent(title)}&includeArchived=true`,
       );
-      return (res.json().data as { number: string }[]).filter((p) => p.number === number).length;
+      return (res.json().data as { title: string }[]).filter((p) => p.title === title).length;
     };
 
     it('rejects creation with an already-used number, naming it, and creates nothing', async () => {
       // CRUD-001 was created in the AC-475 test
-      const before = await countWithNumber('CRUD-001');
+      const title = `Duplicate Number Attempt ${Date.now()}`;
       const res = await authPost(ownerToken, '/api/projects', {
         number: 'CRUD-001',
-        title: 'Duplicate Number Attempt',
+        title,
         customerId: seededCustomerId,
       });
 
@@ -170,7 +172,7 @@ describe('Project CRUD Operations', () => {
       const body = res.json();
       expect(body.code).toBe('CONFLICT');
       expect(body.message).toContain('CRUD-001');
-      expect(await countWithNumber('CRUD-001')).toBe(before);
+      expect(await countWithTitle(title)).toBe(0);
     });
 
     it('rejects a number held by an archived project', async () => {
@@ -184,14 +186,15 @@ describe('Project CRUD Operations', () => {
       const archived = await authDelete(ownerToken, `/api/projects/${created.json().id}`);
       expect(archived.statusCode).toBe(200);
 
+      const title = `Reuse attempt ${number}`;
       const res = await authPost(ownerToken, '/api/projects', {
         number,
-        title: 'Reuse attempt',
+        title,
         customerId: seededCustomerId,
       });
 
       expect(res.statusCode).toBe(409);
-      expect(await countWithNumber(number)).toBe(1);
+      expect(await countWithTitle(title)).toBe(0);
     });
   });
 
@@ -248,6 +251,35 @@ describe('Project CRUD Operations', () => {
       // Server-managed audit fields updated
       expect(after.updatedAt).not.toBe(before.updatedAt);
       expect(after.updatedBy).toBeDefined();
+    });
+  });
+
+  // ---------------------------------------------------------------
+  // AC-481: Adding / removing an assigned worker is stored
+  // AC-481 [crit]
+  // ---------------------------------------------------------------
+  describe('AC-481: Assigned workers', () => {
+    const storedWorkerIds = async (): Promise<string[]> => {
+      const res = await authGet(ownerToken, `/api/projects/${createdProjectId}`);
+      const workers = res.json().assignedWorkers as { userId: string }[] | null;
+      return (workers ?? []).map((w) => w.userId);
+    };
+
+    it('stores an added worker, then a removal', async () => {
+      const workerId = (await authGet(workerToken, '/api/auth/me')).json().user.id as string;
+      const others = (await storedWorkerIds()).filter((id) => id !== workerId);
+
+      const added = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        assignedWorkerIds: [...others, workerId],
+      });
+      expect(added.statusCode).toBe(200);
+      expect(await storedWorkerIds()).toContain(workerId);
+
+      const removed = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        assignedWorkerIds: others,
+      });
+      expect(removed.statusCode).toBe(200);
+      expect(await storedWorkerIds()).not.toContain(workerId);
     });
   });
 

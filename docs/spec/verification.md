@@ -171,6 +171,7 @@ Fields: [data-model.md §5.1](data-model.md#51-project-entity). What the screens
 - **AC-496** `[vis]`: When a user clicks a project row in the project list, the system opens its Project Detail Page.
 - **AC-497** `[crit]`: When a user archives a project, the system removes it from the board, the calendar and the default project list.
 - **AC-498** `[crit]`: When a user restores an archived project, the system makes it active again, in the state it had.
+- **AC-512** `[crit]`: If a user restores a project that is not archived, the system refuses it as a conflict ([api.md §14.4.1](api.md#1441-error-categories)) and changes nothing.
 - **AC-499** `[crit]`: If a request would change an archived project — a transition, an edit, its dates, its workers, or archiving it again — the system refuses it as not found ([api.md §14.4.1](api.md#1441-error-categories)) and changes nothing.
 - **AC-506** `[vis]`: When a user clicks `Archivieren` or `Wiederherstellen`, the system asks for confirmation naming the project.
 - **AC-501** `[vis]`: The system offers `Endgültig löschen` only on archived projects.
@@ -182,7 +183,7 @@ Fields: [data-model.md §5.1](data-model.md#51-project-entity). What the screens
 - **AC-509** `[vis]`: When a user who may read a project ([api.md §14.3](api.md#143-authorization-rules), [AC-147](#1521-role-scoping)) opens its Project Detail Page, the system shows it.
 - **AC-507** `[vis]`: If a worker opens the Project Detail Page of a project they are not assigned to, the system shows the not-permitted surface ([AC-149](#1521-role-scoping)).
 - **AC-508** `[vis]`: If a user opens the Project Detail Page of a project that does not exist, the system shows a not-found message.
-- **AC-500** `[vis]`: While a project is archived, its Project Detail Page shows an archived notice, and its fields, Baustelle and assigned workers read-only.
+- **AC-500** `[vis]`: While a project is archived, its Project Detail Page shows an archived notice and offers no change other than `Wiederherstellen` and `Endgültig löschen`.
 - **AC-207** `[vis]`: While the detail panel is open, it offers `Öffnen`, which opens the project's Project Detail Page.
 
 ### 15.13 User Management
