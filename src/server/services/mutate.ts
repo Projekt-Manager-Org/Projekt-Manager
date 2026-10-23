@@ -243,7 +243,12 @@ export async function mutateInTx<T>(
     throw new Error('mutateInTx(): audit_log insert returned no rows');
   }
 
-  const publicRow: AuditLogRow = {
+  return { value: domainResult.value, auditRow: toAuditLogRow(inserted) };
+}
+
+/** Map an inserted `audit_log` row to the shape the audit publisher dispatches. */
+export function toAuditLogRow(inserted: typeof auditLog.$inferSelect): AuditLogRow {
+  return {
     id: inserted.id,
     createdAt: inserted.createdAt,
     actorId: inserted.actorId,
@@ -259,8 +264,6 @@ export async function mutateInTx<T>(
     payload: inserted.payload,
     correlationId: inserted.correlationId,
   };
-
-  return { value: domainResult.value, auditRow: publicRow };
 }
 
 /**

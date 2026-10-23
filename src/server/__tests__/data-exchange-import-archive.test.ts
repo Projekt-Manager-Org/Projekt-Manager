@@ -44,6 +44,9 @@
  *     invoice lock, off the attachment surface. The file runs with
  *     `INVOICE_OBJECT_LOCK_DAYS = 1` (set before `startApp()`, which wires
  *     the import route) so the restore PUT carries a lock to assert.
+ *   - AC-450, AC-336 — the job emits one `storage_usage_changed` and one
+ *     `attachment_changed` when it ends, ready or failed after the wipe;
+ *     neither when Pass 1 fails.
  *
  * SEEDING REAL CIPHERTEXT (AC-328): the export builder unwraps each ready
  * attachment's `wrappedDek` against the per-fork binary `age` identity,
@@ -74,7 +77,7 @@ import { unzipSync, zipSync } from 'fflate';
 import sharp from 'sharp';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 
@@ -93,10 +96,13 @@ import {
   EXPECTED_RESTORE_PHRASE,
 } from '../../test/seedAssumptions.js';
 import { createDatabase, type Database } from '../db/connection.js';
-import { type StorageClient } from '../storage/client.js';
+import { type AttachmentStorageClient, type StorageClient } from '../storage/client.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
+import { DataExchangeJobService } from '../services/DataExchangeJobService.js';
+import { runTakeoutImport } from '../services/takeout-import-runner.js';
 import { stagedArtifactPath } from '../services/takeout-staging.js';
+import { subscribe, unsubscribe, type SseConnection } from '../sse/bus.js';
 import { getEnv } from '../config/env.js';
 import {
   headObjectMetadata,
@@ -1242,6 +1248,119 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(row[0]!.archive_ref).toBeNull();
 
       ownerToken = reauth;
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // AC-450, AC-336 — Pass 2 keeps inserting attachments after the restore
+  // commits, so the job emits one `storage_usage_changed` and one
+  // `attachment_changed` when it ends, after its terminal
+  // `data_exchange_job_changed`: ready, or failed after the wipe (Pass 2
+  // has already committed rows). None when Pass 1 fails (nothing moved).
+  // The runner is driven directly: the route only fires it, and a Pass-2
+  // fault needs a storage client that rejects its PUTs.
+  // -------------------------------------------------------------------
+  describe('AC-450, AC-336: the import job emits storage and attachment events when it ends', () => {
+    const STORAGE_EVENT = 'event: storage_usage_changed';
+    const ATTACHMENT_EVENT = 'event: attachment_changed';
+    const JOB_EVENT = 'event: data_exchange_job_changed';
+
+    interface FakeSubscriber extends SseConnection {
+      chunks: string[];
+    }
+
+    /**
+     * Stage `archive` as a running import job and run the job to its end.
+     * Returns the terminal row and the `event:` lines broadcast meanwhile.
+     */
+    async function runImportJob(
+      archive: Buffer,
+      jobStorage: AttachmentStorageClient,
+    ): Promise<{ status: string; errorDetail: string | null; events: string[] }> {
+      const jobs = new DataExchangeJobService(db);
+      const job = await jobs.create('import', null);
+      const stagingDir = getEnv().TAKEOUT_STAGING_DIR;
+      const stagedPath = stagedArtifactPath(stagingDir, 'import', job.id);
+      mkdirSync(stagingDir, { recursive: true });
+      writeFileSync(stagedPath, archive);
+      await jobs.markRunning(job.id, { bytesTotal: archive.length, archiveRef: stagedPath });
+
+      const subscriber: FakeSubscriber = {
+        chunks: [],
+        write(chunk: string): void {
+          this.chunks.push(chunk);
+        },
+      };
+      subscribe(subscriber);
+      try {
+        await runTakeoutImport({
+          db,
+          jobs,
+          storage: jobStorage,
+          jobId: job.id,
+          stagedPath,
+          logger: { info: vi.fn(), error: vi.fn() },
+          binaryAgeRecipient: recipient,
+          binaryAgeIdentityPath: process.env.BINARY_AGE_IDENTITY_PATH!,
+          invoiceObjectLockDays: INVOICE_LOCK_DAYS,
+        });
+      } finally {
+        unsubscribe(subscriber);
+      }
+      const row = await jobs.get(job.id);
+      const events = subscriber.chunks.join('').match(/^event: \S+/gm) ?? [];
+      return { status: row!.status, errorDetail: row!.errorDetail, events };
+    }
+
+    /** Exactly one of each event, broadcast after the job's terminal frame. */
+    function expectOneOfEachAtJobEnd(events: string[]): void {
+      for (const event of [STORAGE_EVENT, ATTACHMENT_EVENT]) {
+        expect(events.filter((e) => e === event)).toHaveLength(1);
+        expect(events.indexOf(event)).toBeGreaterThan(events.lastIndexOf(JOB_EVENT));
+      }
+    }
+
+    it('a ready job emits one of each, at its end', async () => {
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'e.pdf' });
+      const archive = await buildExportArchive(ownerToken);
+
+      const result = await runImportJob(archive, createStorageClientFromEnv(getEnv()));
+
+      expect(result.status).toBe('ready');
+      expectOneOfEachAtJobEnd(result.events);
+    });
+
+    it('a job that fails in Pass 2, after the wipe, emits one of each, at its end', async () => {
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'f.pdf' });
+      const archive = await buildExportArchive(ownerToken);
+      const base = createStorageClientFromEnv(getEnv());
+      const failingUploads = new Proxy(base, {
+        get(target, prop) {
+          if (prop === 'upload') return () => Promise.reject(new Error('storage down'));
+          const value = Reflect.get(target, prop, target) as unknown;
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+
+      const result = await runImportJob(archive, failingUploads);
+
+      expect(result.status).toBe('failed');
+      expect(result.errorDetail).toContain('storage down'); // failed in Pass 2
+      expectOneOfEachAtJobEnd(result.events);
+      expect(await countRows('attachments')).toBe(0); // the wipe committed
+    });
+
+    it('a job that fails in Pass 1, before the wipe, emits neither', async () => {
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'g.pdf' });
+      const archive = await buildExportArchive(ownerToken);
+      const truncated = archive.subarray(0, Math.floor(archive.length / 2));
+
+      const result = await runImportJob(truncated, createStorageClientFromEnv(getEnv()));
+
+      expect(result.status).toBe('failed');
+      expect(result.events).not.toContain(STORAGE_EVENT);
+      expect(result.events).not.toContain(ATTACHMENT_EVENT);
+      expect(await countRows('attachments')).toBe(1); // nothing wiped
     });
   });
 });

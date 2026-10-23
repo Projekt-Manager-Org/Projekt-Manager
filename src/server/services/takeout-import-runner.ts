@@ -92,6 +92,7 @@ import { ImportService } from './ImportService.js';
 import { KeyEnvelopeService } from './KeyEnvelopeService.js';
 import { renderWebpThumbnail } from './serverImagePipeline.js';
 import { encryptInvoicePayload } from './invoice/payloadCrypto.js';
+import { emitAttachmentChanged, emitStorageUsageChanged } from '../sse/emitters.js';
 import {
   WRAPPED_DEK_CURRENT_VERSION,
   isSafeFileName,
@@ -371,6 +372,7 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
  */
 export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void> {
   const { db, jobs, storage, jobId, logger } = deps;
+  let restoreCommitted = false;
   try {
     // PASS 1 — validate before any destructive write.
     const { envelope, attachmentById, attachmentIdByZipPath } = await validateArchive(deps);
@@ -390,6 +392,7 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
       logger,
       null,
     );
+    restoreCommitted = true;
 
     // PASS 2 — re-encrypt + insert attachments, one buffered entry at a time.
     const envelopeService = new KeyEnvelopeService({
@@ -582,5 +585,13 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
     // re-run re-PUTs the deterministic `(projectId, id)` keys. No explicit
     // Pass-2 storage rollback is attempted — hiding here would strand the
     // committed rows' still-valid bytes in the window before a re-run.
+  } finally {
+    // One coarse frame each at the job's end, once the wipe committed
+    // (AC-450, AC-336, architecture.md §11.13). Not at the restore commit:
+    // Pass 2 keeps changing the totals and the attachment lists after it.
+    if (restoreCommitted) {
+      emitStorageUsageChanged();
+      emitAttachmentChanged();
+    }
   }
 }

@@ -13,8 +13,7 @@ export const STORAGE_USAGE_CHANGED = 'storage_usage_changed' as const;
 
 /**
  * Fired post-commit from every attachment mutation that changes a
- * project's attachment list — completeUpload (pending→ready), hide,
- * restore, and the hidden-reaper purge (ADR-0025, AC-336). Invalidates
+ * project's attachment list (api.md §14.2.13, ADR-0025). Invalidates
  * the per-project `attachmentStore` caches (the gallery / binary list
  * and the Papierkorb) so the always-open observer's view refreshes
  * cross-session. Invalidation-only like the rest of the catalog.
