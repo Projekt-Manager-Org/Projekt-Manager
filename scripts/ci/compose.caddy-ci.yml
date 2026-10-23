@@ -1,0 +1,13 @@
+# CI-only overlay for scripts/ci/stack-smoke.sh with SMOKE_CADDY=1: the
+# production Caddy build and ports, with the Caddyfile swapped for the copy
+# stack-smoke.sh derives (`tls internal` instead of DNS-01 ACME). Compose
+# merges `volumes` by target, so only the Caddyfile mount is replaced.
+services:
+  caddy:
+    volumes:
+      - type: bind
+        source: ${SMOKE_CADDYFILE:?SMOKE_CADDYFILE must be set}
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false

@@ -4,7 +4,7 @@
 # or fail with a diagnostic. Single source of truth for the readiness gate
 # used by:
 #
-#   - .github/workflows/ci.yml         (Runtime smoke test step)
+#   - scripts/ci/stack-smoke.sh        (CI runtime smoke, upgrade path)
 #   - scripts/deploy.sh                (post-deploy verification)
 #   - scripts/ops/sync-restore-vps.sh  (post-restore verification, via the
 #                                       copy shipped in $REMOTE_TMP)

@@ -578,6 +578,9 @@ jobs:
       - name: Docker converge script — self-test
         run: bash scripts/__tests__/docker-converge.test.sh
 
+      - name: Caddy health probe — self-test
+        run: bash scripts/__tests__/smoke-caddy-health.test.sh
+
       # Static check: every raw INSERT/UPDATE/DELETE on an audited
       # table (project, customer, user, project_worker) must be
       # authored inside the service-layer `mutate()` helper or on the
@@ -978,6 +981,120 @@ jobs:
         run: docker buildx build --builder default --tag projekt-manager-caddy:ci docker/caddy
 
   # ---------------------------------------------------------------
+  # Docker upgrade path (ADR-0009). `docker` proves a fresh install of
+  # the pins; a host never gets one. It converges a running stack in
+  # place, with a daemon restart that stops every container, and converges
+  # back if the bump misbehaves. scripts/ci/docker-upgrade-path.sh runs
+  # both directions — base pins → PR pins → base pins — on the full stack
+  # including Caddy, and verifies after each converge (header there).
+  #
+  # Only when an input of that path changed: the pins, the converge
+  # script, the install composite, or the job's own files. Every other PR
+  # passes in seconds. Not a required check itself: `publish` (required)
+  # fails unless this job succeeded, so a failed upgrade or revert blocks
+  # the merge. With no base
+  # (workflow_dispatch) it upgrades from main's pins; a base without a
+  # pins file has nothing to upgrade from and skips.
+  #
+  # After `docker` because it runs the images `docker` pushed.
+  # ---------------------------------------------------------------
+  docker-upgrade:
+    if: github.event_name != 'push'
+    needs: docker
+    # Matches the ~noble Docker host pins it installs (ADR-0009).
+    runs-on: ubuntu-24.04
+    # Measured 4.4 min for a real bump (29.8.2 → 29.9.2 → 29.8.2,
+    # cold xcaddy compile included); ~4x, since a hung apt mirror or
+    # daemon restart would otherwise hold the runner for 360 minutes.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Detect upgrade-path input changes
+        id: inputs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BASE_SHA" ]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            base="$BASE_SHA"
+            # --quiet: 0 = no change, 1 = changed, anything else is an
+            # error that must fail the step rather than skip the job.
+            rc=0
+            git diff --quiet "$base" HEAD -- \
+              docker/host-versions.txt \
+              scripts/ops/docker-converge.sh \
+              .github/actions/install-docker \
+              scripts/ci/docker-upgrade-path.sh \
+              scripts/ci/stack-smoke.sh \
+              scripts/ci/compose.caddy-ci.yml \
+              scripts/smoke-caddy-health.sh || rc=$?
+            case $rc in
+              0)
+                echo "run=false" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+              1) ;;
+              *) exit "$rc" ;;
+            esac
+          else
+            git fetch --no-tags --depth=1 origin main
+            base=FETCH_HEAD
+          fi
+          if ! git cat-file -e "$base:docker/host-versions.txt" 2>/dev/null; then
+            echo "::notice::The base has no docker/host-versions.txt: nothing to upgrade from"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git show "$base:docker/host-versions.txt" > "$RUNNER_TEMP/base-pins.txt"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/install-docker
+        if: steps.inputs.outputs.run == 'true'
+        with:
+          pins_file: ${{ runner.temp }}/base-pins.txt
+
+      - uses: ./.github/actions/install-age
+        if: steps.inputs.outputs.run == 'true'
+
+      - name: Log in to GHCR
+        if: steps.inputs.outputs.run == 'true'
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The digests `docker` pushed and smoked, named locally under the
+      # tag compose declares — after the install, so they land in the
+      # containerd store the daemon now runs.
+      - name: Pull the images `docker` pushed
+        if: steps.inputs.outputs.run == 'true'
+        env:
+          APP_DIGEST_REF: ${{ needs.docker.outputs.app_repo }}@${{ needs.docker.outputs.app_digest }}
+          APP_REF: ${{ needs.docker.outputs.app_repo }}:${{ needs.docker.outputs.sha_tag }}
+          BACKUP_DIGEST_REF: ${{ needs.docker.outputs.backup_repo }}@${{ needs.docker.outputs.backup_digest }}
+          BACKUP_REF: ${{ needs.docker.outputs.backup_repo }}:${{ needs.docker.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          docker pull "$APP_DIGEST_REF"
+          docker tag "$APP_DIGEST_REF" "$APP_REF"
+          docker pull "$BACKUP_DIGEST_REF"
+          docker tag "$BACKUP_DIGEST_REF" "$BACKUP_REF"
+
+      - name: Upgrade and revert on a running stack
+        if: steps.inputs.outputs.run == 'true'
+        timeout-minutes: 15
+        env:
+          APP_IMAGE_TAG: ${{ needs.docker.outputs.sha_tag }}
+          SMOKE_STATE_DIR: ${{ runner.temp }}/stack-smoke
+        run: scripts/ci/docker-upgrade-path.sh "$RUNNER_TEMP/base-pins.txt"
+
+  # ---------------------------------------------------------------
   # Point `sha-<pr-tip>` + `<branch-slug>` at the digests `docker`
   # pushed. This is the producer `promote`'s guard 3 looks for at merge
   # time — it used to be a `workflow_dispatch`-only job, i.e. an operator
@@ -985,10 +1102,11 @@ jobs:
   # failed on 100% of merges and every merge paid a full rebuild (#355).
   #
   # `needs` is the whole safety story. Naming waits on every gate:
-  # `check` + `lint` (tests, type-check, static analysis) and `docker`
+  # `check` + `lint` (tests, type-check, static analysis), `docker`
   # (both images built, both Trivy-scanned, stack booted, Tier 1
-  # round-trip). No name resolves to bytes that have not passed all of
-  # them. The bytes themselves are already on GHCR — `docker` pushed
+  # round-trip) and `docker-upgrade` (a Docker pin bump upgrades and
+  # reverts on a running stack). No name resolves to bytes that have not
+  # passed all of them. The bytes themselves are already on GHCR — `docker` pushed
   # them by digest, which nothing can pull, deploy or promote — so this
   # job is a registry-side manifest copy, not a build.
   #
@@ -1016,13 +1134,19 @@ jobs:
   # queue's train SHA is not a commit anything deploys, and `promote`
   # promotes the PR-tip artifact this job already pushed from the PR run.
   # ---------------------------------------------------------------
+  #
+  # `!cancelled()` plus the verify step: a failed `needs` job would
+  # otherwise SKIP this required check, and branch protection treats a
+  # skipped required check as success — the same trap the `check`
+  # aggregator closes. `docker-upgrade` is gated only through here.
   publish:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'merge_group' ||
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
-    needs: [check, lint, docker]
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'merge_group' ||
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name == github.repository))
+    needs: [check, lint, docker, docker-upgrade]
     runs-on: ubuntu-latest
     # Registry-side manifest copies only, measured ~20s. Bounded for the
     # same reason as `docker`: `imagetools create` is an unbounded
@@ -1032,6 +1156,23 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Verify every gate passed
+        env:
+          RESULTS: >-
+            check=${{ needs.check.result }}
+            lint=${{ needs.lint.result }}
+            docker=${{ needs.docker.result }}
+            docker-upgrade=${{ needs.docker-upgrade.result }}
+        run: |
+          failed=0
+          for r in $RESULTS; do
+            if [ "${r#*=}" != success ]; then
+              echo "::error::${r%%=*} reported ${r#*=} — not publishing"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         if: github.event_name != 'merge_group'
 

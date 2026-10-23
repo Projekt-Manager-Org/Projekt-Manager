@@ -40,7 +40,10 @@ if [ -s "$daemon_json" ]; then current=$(sudo cat "$daemon_json"); fi
 jq '.features["containerd-snapshotter"] = true' <<<"$current" | sudo tee "$daemon_json" >/dev/null
 sudo systemctl restart docker
 
-sudo bash "${GITHUB_WORKSPACE}/scripts/ops/docker-converge.sh"
+# sudo resets the environment: pass the pins override through (the
+# upgrade-path job starts from the base branch's pins). Empty means the
+# repo's own file.
+sudo DOCKER_PINS_FILE="${DOCKER_PINS_FILE:-}" bash "${GITHUB_WORKSPACE}/scripts/ops/docker-converge.sh"
 docker version --format 'Engine {{.Server.Version}}'
 docker compose version
 docker buildx version

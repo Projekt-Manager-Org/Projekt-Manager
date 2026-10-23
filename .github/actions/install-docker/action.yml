@@ -7,8 +7,8 @@ description: >
   Renovate bump of that file be judged by CI.
 
   Only where CI reproduces what a host does with its own Docker: `lint`'s
-  compose validation and the `build-scan-smoke` composite (the `docker`
-  job and `promote`'s fallback). The daemon restarts during the install,
+  compose validation, the `build-scan-smoke` composite (the `docker` job
+  and `promote`'s fallback) and the `docker-upgrade` job. The daemon restarts during the install,
   so it must run before anything starts containers or a buildx builder,
   and never in a job with `services:` (e2e, `check-shard`), whose
   containers the restart would stop.
@@ -16,9 +16,19 @@ description: >
   The procedure lives in the sibling install-docker.sh so CI's shellcheck
   gate covers it (actionlint does not read composite action.yml files).
 
+inputs:
+  pins_file:
+    description: >
+      Pins file to converge to instead of docker/host-versions.txt. The
+      upgrade-path job starts from the base branch's pins.
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
     - name: Install pinned Docker
       shell: bash
+      env:
+        DOCKER_PINS_FILE: ${{ inputs.pins_file }}
       run: bash "${GITHUB_ACTION_PATH}/install-docker.sh"
