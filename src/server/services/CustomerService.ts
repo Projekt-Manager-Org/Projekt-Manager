@@ -38,7 +38,11 @@ import { isOutOfScope } from '../repositories/scope.js';
 import { mutate, mutateInTx, dispatchAuditRows } from './mutate.js';
 import type { AuditLogRow } from './audit-publisher.js';
 import { projectAuditLabel } from '../../domain/audit.js';
-import { emitProjectChanged, emitStorageUsageChanged } from '../sse/emitters.js';
+import {
+  emitInvoiceChanged,
+  emitProjectChanged,
+  emitStorageUsageChanged,
+} from '../sse/emitters.js';
 import { countIssuedOrCancelledForCustomer } from '../repositories/invoice-read.js';
 import { customerHasInvoices } from '../errors.js';
 
@@ -439,6 +443,8 @@ export class CustomerService {
     // projects: the rows visible to subscribers did not change.
     if (purgedArchivedProjects) {
       emitProjectChanged();
+      // The FK cascade removed the purged projects' drafts (api.md §14.2.13).
+      emitInvoiceChanged();
     }
 
     // Post-commit storage-usage invalidation (AC-270). The atomic

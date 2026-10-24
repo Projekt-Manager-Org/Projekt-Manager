@@ -1,17 +1,20 @@
 /**
  * API integration tests — invoice mutations on an archived project (AC-513).
  *
- * Every arm starts from a request that would succeed on an active project:
- * complete company profile, `rechnung_faellig` project, valid draft. The
- * project is then archived, so a 404 can only come from the archive state.
- * "Changes nothing" is a database snapshot of the project's invoice rows,
- * the project row and the audit log, equal before and after the call.
+ * Every arm starts from a request an active project would accept — complete
+ * company profile, `rechnung_faellig` project, valid draft — except the
+ * issued-invoice edit, which pins the check order. The project is then
+ * archived, so a 404 can only come from the archive state. "Changes
+ * nothing" is a database snapshot of the project's invoice rows, the
+ * project row and the audit log, equal before and after the call.
  *
  * Reads carry `projectArchived`, the state the `/rechnungen` surfaces gate
- * their changes on (api.md §14.2.14). Archive and restore flip it, so they
- * emit `invoice_changed` (api.md §14.2.13).
+ * their changes on (api.md §14.2.14). Archive and restore flip it, and a
+ * purge — direct or through customer delete — cascades the drafts away, so
+ * each emits `invoice_changed` (api.md §14.2.13).
  */
 
+import crypto from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import {
@@ -205,23 +208,67 @@ describe('AC-513: invoice changes on an archived project', () => {
     expect(await snapshot(issuedProjectId)).toEqual(before);
   });
 
-  it('archiving and restoring a project each emit one invoice_changed', async () => {
+  /** Runs `act` and returns how many `invoice_changed` frames it emitted. */
+  async function invoiceChangedDuring(act: () => Promise<void>): Promise<number> {
     const chunks: string[] = [];
     const conn = { write: (chunk: string) => void chunks.push(chunk) };
-    const count = () =>
-      (chunks.join('').match(new RegExp(`event: ${INVOICE_CHANGED}\\n`, 'g')) ?? []).length;
     subscribe(conn);
     try {
-      await archive(activeProjectId);
+      await act();
       await new Promise<void>((r) => setImmediate(r));
-      expect(count()).toBe(1);
-
-      const res = await authPost(token, `/api/projects/${activeProjectId}/restore`);
-      expect(res.statusCode).toBe(200);
-      await new Promise<void>((r) => setImmediate(r));
-      expect(count()).toBe(2);
     } finally {
       unsubscribe(conn);
     }
+    return (chunks.join('').match(new RegExp(`event: ${INVOICE_CHANGED}\\n`, 'g')) ?? []).length;
+  }
+
+  async function listedInvoiceIds(): Promise<string[]> {
+    const list = await authGet(token, '/api/invoices?limit=200');
+    return (list.json().data as { id: string }[]).map((i) => i.id);
+  }
+
+  it('archiving and restoring a project each emit one invoice_changed', async () => {
+    expect(await invoiceChangedDuring(() => archive(activeProjectId))).toBe(1);
+    expect(
+      await invoiceChangedDuring(async () => {
+        const res = await authPost(token, `/api/projects/${activeProjectId}/restore`);
+        expect(res.statusCode).toBe(200);
+      }),
+    ).toBe(1);
+  });
+
+  // Runs after the AC-513 arms: it removes the project they act on.
+  it('purging a project emits one invoice_changed for its cascaded drafts', async () => {
+    expect(await listedInvoiceIds()).toContain(editDraftId);
+    expect(
+      await invoiceChangedDuring(async () => {
+        const res = await authDelete(token, `/api/projects/${draftProjectId}/purge`);
+        expect(res.statusCode).toBe(204);
+      }),
+    ).toBe(1);
+    expect(await listedInvoiceIds()).not.toContain(editDraftId);
+  });
+
+  it('deleting a customer emits one invoice_changed for its purged projects’ drafts', async () => {
+    const customer = await authPost(token, '/api/customers', { name: 'Archiv-Kunde' });
+    if (customer.statusCode !== 201) throw new Error(`customer ${customer.statusCode}`);
+    const customerId = customer.json().id as string;
+    const project = await authPost(token, '/api/projects', {
+      number: `ARCH-${crypto.randomUUID().slice(0, 8)}`,
+      title: 'Archived with draft',
+      customerId,
+    });
+    if (project.statusCode !== 201) throw new Error(`project ${project.statusCode}`);
+    const projectId = project.json().id as string;
+    const draftId = await createDraft(projectId);
+    await archive(projectId);
+
+    expect(
+      await invoiceChangedDuring(async () => {
+        const res = await authDelete(token, `/api/customers/${customerId}`);
+        expect(res.statusCode).toBe(204);
+      }),
+    ).toBe(1);
+    expect(await listedInvoiceIds()).not.toContain(draftId);
   });
 });

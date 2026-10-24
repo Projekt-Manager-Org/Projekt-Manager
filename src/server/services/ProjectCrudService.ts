@@ -778,6 +778,8 @@ export class ProjectCrudService {
       // Post-commit invalidation (AC-276). The project row is gone — every
       // project list / detail consumer must refetch unconditionally.
       emitProjectChanged();
+      // The FK cascade removed the project's drafts (api.md §14.2.13).
+      emitInvoiceChanged();
 
       // Post-commit invalidation (AC-270). The FK cascade removed every
       // attachment row alongside the project; the per-row delete trigger
