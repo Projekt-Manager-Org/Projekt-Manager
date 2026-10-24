@@ -236,14 +236,21 @@ export async function getInvoice(
  * Fetch and row-lock a raw invoice row inside a transaction. Used by the
  * service layer to read `payload.before` and check `version` (data-model.md
  * §6.4); the lock holds until commit, so no concurrent write lands between
- * the checks and the write. Returns null on miss; callers map to `NOT_FOUND`.
+ * the checks and the write. Returns null on miss and when the invoice's
+ * project is archived (AC-513); callers map to `NOT_FOUND`.
  */
 export async function getInvoiceRowForMutation(
   tx: MutatingDatabase,
   id: string,
 ): Promise<InvoiceRow | null> {
-  const rows = await tx.select().from(invoices).where(eq(invoices.id, id)).limit(1).for('update');
-  return rows[0] ?? null;
+  const rows = await tx
+    .select({ invoice: invoices })
+    .from(invoices)
+    .innerJoin(projects, eq(invoices.projectId, projects.id))
+    .where(and(eq(invoices.id, id), eq(projects.deleted, false)))
+    .limit(1)
+    .for('update', { of: invoices });
+  return rows[0]?.invoice ?? null;
 }
 
 /**
