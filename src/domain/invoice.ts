@@ -99,6 +99,9 @@ export interface Invoice {
   cancellationReason: string | null;
   renderedPdfBinaryDescriptorId: string | null;
 
+  /** True while the parent project is archived: no change is offered (AC-514). */
+  projectArchived: boolean;
+
   /** Concurrency token (data-model.md §6.4); frozen once issued. */
   version: number;
 

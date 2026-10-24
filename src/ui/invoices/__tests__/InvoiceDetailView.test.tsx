@@ -10,7 +10,8 @@
  *   - Storno row renders the `Original anzeigen` link to its
  *     `cancellationOf`.
  *   - Issued-original viewer renders the Stornieren button for
- *     `invoice:write` holders; cancelled / storno rows do not.
+ *     `invoice:write` holders unless the project is archived (AC-514);
+ *     cancelled / storno rows do not.
  *   - A draft id redirects to `/projects/:projectId`.
  *
  * Network surface is mocked at the API-client boundary; the
@@ -110,6 +111,7 @@ function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
     performanceDate: '2026-04-10',
     cancellationReason: null,
     renderedPdfBinaryDescriptorId: 'pdf-1',
+    projectArchived: false,
     version: 1,
     createdAt: '2026-04-10T00:00:00Z',
     updatedAt: '2026-04-10T00:00:00Z',
@@ -183,6 +185,15 @@ describe('InvoiceDetailView — issued row', () => {
 
     await screen.findByTestId('invoice-detail-view');
     expect(screen.getByTestId('invoice-detail-cancel-button')).toBeInTheDocument();
+  });
+
+  it('AC-514: hides the Stornieren button while the project is archived', async () => {
+    setAuthUser(['owner']);
+    getByIdMock.mockResolvedValue({ ok: true, data: makeInvoice({ projectArchived: true }) });
+    renderAt('/rechnungen/inv-1');
+
+    await screen.findByTestId('invoice-detail-view');
+    expect(screen.queryByTestId('invoice-detail-cancel-button')).toBeNull();
   });
 
   it('hides the Stornieren button for invoice:read-only callers (bookkeeper)', async () => {

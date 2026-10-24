@@ -86,7 +86,8 @@ interface Props {
 export function InvoiceListRow({ invoice, originalNumber }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-  const canWrite = usePermission('invoice:write');
+  // An archived project's invoices change only after a restore (AC-514).
+  const canWrite = usePermission('invoice:write') && !invoice.projectArchived;
   const fetchList = useInvoiceListStore((s) => s.fetch);
   const deleteDraft = useInvoiceStore((s) => s.deleteDraft);
   const requestConfirm = useConfirmStore((s) => s.request);

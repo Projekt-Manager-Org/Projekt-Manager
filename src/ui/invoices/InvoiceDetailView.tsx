@@ -203,7 +203,8 @@ export function InvoiceDetailView() {
 
   const recipientAddress = invoice.recipient.address;
   const issuerAddress = invoice.issuer.address;
-  const showCancelButton = isIssuedOriginal && canWrite;
+  // An archived project's invoices change only after a restore (AC-514).
+  const showCancelButton = isIssuedOriginal && canWrite && !invoice.projectArchived;
 
   return (
     <article className={styles.container} data-testid="invoice-detail-view">

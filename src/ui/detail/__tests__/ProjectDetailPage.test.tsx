@@ -17,11 +17,14 @@ import { act, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import type { ApiResult } from '@/api/client';
-import type { Customer, Project } from '@/domain/types';
+import type { Attachment, Customer, Project } from '@/domain/types';
+import type { Invoice } from '@/domain/invoice';
 
 type ProjectResult = ApiResult<Project>;
 
 const projectGetMock = vi.fn<(id: string) => Promise<ProjectResult>>();
+const attachmentListMock = vi.fn<() => Promise<ApiResult<{ data: Attachment[] }>>>();
+const invoiceListMock = vi.fn<() => Promise<ApiResult<{ data: Invoice[]; total: number }>>>();
 
 vi.mock('@/api/client', async (importActual) => {
   const actual = (await importActual()) as Record<string, unknown>;
@@ -51,7 +54,7 @@ vi.mock('@/api/client', async (importActual) => {
       changePassword: vi.fn(),
     },
     attachmentApi: {
-      list: vi.fn().mockResolvedValue({ ok: true, data: { data: [] } }),
+      list: () => attachmentListMock(),
       initUpload: vi.fn(),
       completeUpload: vi.fn(),
       delete: vi.fn(),
@@ -62,6 +65,17 @@ vi.mock('@/api/client', async (importActual) => {
     },
     auditApi: {
       list: vi.fn().mockResolvedValue({ ok: true, data: { data: [], nextCursor: null } }),
+    },
+    invoicesApi: {
+      list: vi.fn().mockResolvedValue({ ok: true, data: { data: [], total: 0 } }),
+      listByProject: () => invoiceListMock(),
+      getById: vi.fn(),
+      createDraft: vi.fn(),
+      updateDraft: vi.fn(),
+      deleteDraft: vi.fn(),
+      issue: vi.fn(),
+      cancel: vi.fn(),
+      pdfUrl: (id: string) => `/api/invoices/${id}/pdf`,
     },
   };
 });
@@ -152,6 +166,10 @@ beforeAll(() => {
 beforeEach(() => {
   projectGetMock.mockReset();
   projectGetMock.mockResolvedValue({ ok: true, data: makeProject() });
+  attachmentListMock.mockReset();
+  attachmentListMock.mockResolvedValue({ ok: true, data: { data: [] } });
+  invoiceListMock.mockReset();
+  invoiceListMock.mockResolvedValue({ ok: true, data: { data: [], total: 0 } });
   useAuthStore.setState({ authUser: null, authError: null, sessionChecked: true });
   useProjectStore.setState({
     projects: [makeProject()],
@@ -547,5 +565,137 @@ describe('ProjectDetailPage — a failed edit shows the error and the stored val
     expect(await screen.findByTestId('project-site-address-error')).toHaveTextContent(FAILURE);
     expect(screen.getByTestId('site-address-modal')).toBeInTheDocument();
     expect(projectApi.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+function makeInvoice(overrides: Partial<Invoice>): Invoice {
+  return {
+    id: 'inv-1',
+    number: null,
+    status: 'draft',
+    projectId: 'p-42',
+    cancellationOf: null,
+    issuer: {
+      companyName: 'Test GmbH',
+      address: { street: 'Hauptstr. 1', zip: '10115', city: 'Berlin' },
+      taxId: '12/345/67890',
+    },
+    recipient: {
+      name: 'Kunde GmbH',
+      address: { street: 'Gartenweg 2', zip: '10117', city: 'Berlin' },
+      ustId: null,
+    },
+    lines: [
+      {
+        description: 'Anstrich',
+        quantity: 1,
+        unit: 'pauschal',
+        unitPrice: 100,
+        lineTotal: 100,
+        taxRate: 19,
+      },
+    ],
+    taxMode: 'standard',
+    profile: 'zugferd-en16931',
+    totals: {
+      perRate: [{ taxRate: 19, netSubtotal: 100, taxAmount: 19 }],
+      netGrandTotal: 100,
+      taxGrandTotal: 19,
+      grossGrandTotal: 119,
+    },
+    issueDate: null,
+    performanceDate: '2026-04-10',
+    cancellationReason: null,
+    renderedPdfBinaryDescriptorId: null,
+    projectArchived: false,
+    version: 1,
+    createdAt: '2026-04-10T00:00:00Z',
+    updatedAt: '2026-04-10T00:00:00Z',
+    createdBy: null,
+    updatedBy: null,
+    ...overrides,
+  };
+}
+
+function makeAttachment(overrides: Partial<Attachment>): Attachment {
+  return {
+    id: 'att-1',
+    projectId: 'p-42',
+    status: 'ready',
+    kind: 'binary',
+    label: 'sonstiges',
+    fileName: 'plan.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 200_000,
+    originalKey: 'proj/p-42/att-1/o.pdf',
+    thumbKey: null,
+    hasThumbnail: false,
+    hiddenAt: null,
+    createdAt: '2026-04-20T10:00:00Z',
+    createdBy: { id: 'u-w1', displayName: 'Anna Arbeiter' },
+    ...overrides,
+  };
+}
+
+describe('ProjectDetailPage — archived project (AC-500)', () => {
+  it('AC-500: shows the archived notice and offers no change but restore and permanent delete', async () => {
+    // An owner on a `rechnung_faellig` project with assigned workers, a
+    // photo, a document, a draft and an issued invoice: on an active
+    // project, each of them offers a change.
+    const archived = makeProject({ status: 'rechnung_faellig', deleted: true });
+    projectGetMock.mockResolvedValue({ ok: true, data: archived });
+    useProjectStore.setState({ projects: [archived] });
+    attachmentListMock.mockResolvedValue({
+      ok: true,
+      data: {
+        data: [
+          makeAttachment({ id: 'ph-1', kind: 'photo', label: 'foto', mimeType: 'image/jpeg' }),
+          makeAttachment({ id: 'bin-1' }),
+        ],
+      },
+    });
+    invoiceListMock.mockResolvedValue({
+      ok: true,
+      data: {
+        data: [
+          makeInvoice({ id: 'inv-draft' }),
+          makeInvoice({
+            id: 'inv-issued',
+            status: 'issued',
+            number: 'RE-2026-0001',
+            issueDate: '2026-04-11',
+            renderedPdfBinaryDescriptorId: 'bin-pdf',
+          }),
+        ],
+        total: 2,
+      },
+    });
+    setAuthUser(['owner']);
+    // The `/rechnungen` list's deep link into the draft editor.
+    renderAt('/projects/p-42?editDraft=inv-draft');
+
+    expect(await screen.findByTestId('project-detail-archived-notice')).toBeInTheDocument();
+    await screen.findByTestId('invoice-row-inv-issued');
+    await screen.findByText('plan.pdf');
+
+    // Opening and downloading read; they change nothing.
+    const reads = new Set([
+      'Alle herunterladen',
+      'Fotogalerie — 20.04.2026',
+      'Ansehen',
+      'Herunterladen',
+      'PDF herunterladen',
+    ]);
+    const offered = screen
+      .getAllByRole('button')
+      .map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())
+      .filter((name) => !reads.has(name ?? ''));
+    expect(offered).toEqual(['Wiederherstellen', 'Endgültig löschen']);
+
+    const fields = screen.queryAllByRole('textbox');
+    expect(fields.length).toBeGreaterThan(0);
+    for (const field of fields) {
+      expect(field).toHaveAttribute('readonly');
+    }
   });
 });

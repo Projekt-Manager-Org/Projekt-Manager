@@ -119,7 +119,7 @@ export class InvoiceIssueService {
     // emit this (AC-290 — the cancel atom does not modify project
     // status).
     emitProjectChanged();
-    return toInvoiceResponse(issued);
+    return toInvoiceResponse(issued, false);
   }
 
   /**
@@ -144,8 +144,8 @@ export class InvoiceIssueService {
     ancestorEntityId: string;
     ancestorEntityLabel: string;
   }> {
-    // 0. Lock the draft row, then state and version checks
-    //    (data-model.md §6.4, architecture.md §11.14): the issued invoice
+    // 0. Lock the draft row of an active project, then state and version
+    //    checks (data-model.md §6.4, architecture.md §11.14): the issued invoice
     //    is exactly the draft the issuer saw, and no concurrent draft
     //    write commits between this check and step 8.
     const before = await getInvoiceRowForMutation(tx, invoiceId);
@@ -285,6 +285,7 @@ export class InvoiceIssueService {
         : null,
       cancellationReason: null,
       renderedPdfBinaryDescriptorId: null,
+      projectArchived: false,
       // Step 8's UPDATE bumps the draft's version once, then it freezes.
       version: before.version + 1,
       createdAt: before.createdAt.toISOString(),

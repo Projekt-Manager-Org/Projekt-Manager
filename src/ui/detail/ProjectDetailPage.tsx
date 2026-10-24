@@ -637,7 +637,7 @@ export function ProjectDetailPage() {
         </>
       )}
 
-      <InvoiceSection projectId={project.id} projectStatus={project.status} />
+      <InvoiceSection projectId={project.id} projectStatus={project.status} archived={isArchived} />
 
       <section
         aria-label={STRINGS.attachments.activity}

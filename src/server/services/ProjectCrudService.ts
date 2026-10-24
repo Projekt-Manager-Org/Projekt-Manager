@@ -68,7 +68,11 @@ import type { AuditLogRow } from './audit-publisher.js';
 import { projectAuditLabel } from '../../domain/audit.js';
 import { bestEffortHideStorageKeys } from './AttachmentService.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
-import { emitProjectChanged, emitStorageUsageChanged } from '../sse/emitters.js';
+import {
+  emitInvoiceChanged,
+  emitProjectChanged,
+  emitStorageUsageChanged,
+} from '../sse/emitters.js';
 
 /**
  * Subset of project fields considered for the `update` audit payload.
@@ -638,6 +642,8 @@ export class ProjectCrudService {
       );
       log.info({ projectId: id }, 'project_archived');
       emitProjectChanged();
+      // Invoice reads carry `projectArchived` (api.md §14.2.14).
+      emitInvoiceChanged();
     } catch (err) {
       if (err instanceof ProjectNotFoundError) throw notFound(STRINGS.entities.project);
       throw err;
@@ -693,6 +699,8 @@ export class ProjectCrudService {
       });
       log.info({ projectId: id }, 'project_restored');
       emitProjectChanged();
+      // Invoice reads carry `projectArchived` (api.md §14.2.14).
+      emitInvoiceChanged();
       return project;
     } catch (err) {
       if (err instanceof ProjectNotFoundError) throw notFound(STRINGS.entities.project);
@@ -770,6 +778,8 @@ export class ProjectCrudService {
       // Post-commit invalidation (AC-276). The project row is gone — every
       // project list / detail consumer must refetch unconditionally.
       emitProjectChanged();
+      // The FK cascade removed the project's drafts (api.md §14.2.13).
+      emitInvoiceChanged();
 
       // Post-commit invalidation (AC-270). The FK cascade removed every
       // attachment row alongside the project; the per-row delete trigger

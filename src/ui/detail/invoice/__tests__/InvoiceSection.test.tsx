@@ -133,6 +133,7 @@ function makeDraft(overrides: Partial<Invoice> = {}): Invoice {
     performanceDate: '2026-04-10',
     cancellationReason: null,
     renderedPdfBinaryDescriptorId: null,
+    projectArchived: false,
     version: 1,
     createdAt: '2026-04-10T00:00:00Z',
     updatedAt: '2026-04-10T00:00:00Z',
@@ -201,7 +202,11 @@ function renderSection(opts: RenderOptions = {}) {
           path="/projects/:projectId"
           element={
             <>
-              <InvoiceSection projectId="proj-abc" projectStatus="rechnung_faellig" />
+              <InvoiceSection
+                projectId="proj-abc"
+                projectStatus="rechnung_faellig"
+                archived={false}
+              />
               <LocationProbe />
             </>
           }
