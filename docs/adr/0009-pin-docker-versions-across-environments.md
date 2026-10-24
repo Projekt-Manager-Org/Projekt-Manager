@@ -32,7 +32,7 @@ docker/host-versions.txt ──▶ Renovate PR (grouped, quarterly, manual merge
 - **Image store:** the containerd image store, the Engine 29 fresh-install default. It is part of "in sync": an in-place upgrade from an older Engine keeps overlay2 ([Docker docs](https://docs.docker.com/engine/storage/containerd/)). The converge script reports store drift but never switches the store, which would hide every existing image and container.
 - **Hosts:** `scripts/ops/docker-converge.sh` installs the five pins in one call and holds them; a no-op when in sync. `--check` reports drift without installing.
 - **Enforcement:** `deploy.sh` runs `--check` before any compose call and refuses to deploy on drift; `.husky/pre-push` warns. After deploying, `deploy.sh` checks health through Caddy on the published address, the layer Engine releases change.
-- **Bumps:** Renovate proposes one grouped PR (`deb` datasource) per quarter, never auto-merged. The operator tests it on the VPS (staging) and merges only once it passes acceptance. Procedure, acceptance and revert: [server-setup.md § Upgrading pinned versions](../ops/server-setup.md#upgrading-pinned-versions).
+- **Bumps:** Renovate proposes one grouped PR (`deb` datasource) per quarter, never auto-merged. The operator tests it on the VPS (staging) with `scripts/ops/docker-bump.sh`, which switches the host and runs the acceptance, and merges only once it passes. Procedure, acceptance and revert: [server-setup.md § Upgrading pinned versions](../ops/server-setup.md#upgrading-pinned-versions).
 - **CI does not run the pins.** It uses the runner's Docker. The acceptance test is the real host: a runner has no ufw, WireGuard or external storage, where Engine releases change behaviour.
 
 ## Alternatives Considered
@@ -56,7 +56,7 @@ docker/host-versions.txt ──▶ Renovate PR (grouped, quarterly, manual merge
 
 ### Negative
 
-- Testing and applying a bump stays manual per host, and each converge restarts the daemon: an outage until the key paste.
+- Testing a bump is operator-run: one command on the VPS plus a check from a WireGuard client. Each converge restarts the daemon: an outage until the key paste.
 - While open, the `docker-host` PR holds Renovate's single PR slot.
 - No release-age cooldown: the `deb` datasource reports no release timestamps. Review judges a release's age.
 - Renovate surfaces releases, not advisories: advisory tracking stays an operator duty ([Betriebsverantwortung §3](../compliance/betriebsverantwortung.md#3-operator)).

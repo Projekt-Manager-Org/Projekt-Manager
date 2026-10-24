@@ -7,8 +7,8 @@
 # data) stay in place.
 #
 # Installs the pins of this checkout's docker/host-versions.txt. On the VPS,
-# run deploy.sh <target> first: it checks out the target's pins and refuses
-# at the drift guard.
+# `docker-bump.sh revert --fresh-state` runs it between the deploy that
+# checks out the target's pins and the one that deploys them.
 #
 # Order: stop, move the state aside, install the pins, start, check. The
 # older binaries never start on state the newer ones wrote. The old state

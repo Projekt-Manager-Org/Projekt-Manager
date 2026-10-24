@@ -174,7 +174,7 @@ sysctl net.core.rmem_max      # 7500000
 
 #### Upgrading pinned versions
 
-A Docker release arrives once a quarter as a grouped Renovate PR (`docker-host`, branch `renovate/docker-host`) that edits only `docker/host-versions.txt`. CI does not run the pins: the PR is tested on the VPS (staging) **before** merge. Merging finalizes the bump; closing it skips the round (step 5). Outside the schedule window Renovate leaves the PR as it is. While open, the PR holds Renovate's only PR slot, so act on it within days.
+A Docker release arrives once a quarter as a grouped Renovate PR (`docker-host`, branch `renovate/docker-host`) that edits only `docker/host-versions.txt`. CI does not run the pins: the PR is tested on the VPS (staging) **before** merge. Merging finalizes the bump; closing it skips the round (step 5). Outside the schedule window Renovate leaves the PR as it is. While open, the PR blocks Renovate's other scheduled PRs, so act on it within days.
 
 ```
 Renovate PR ─▶ 1. review ─▶ 2. test on the VPS ─▶ 3. acceptance ─┬─ pass ─▶ 4. merge, converge the dev workstation
@@ -190,51 +190,43 @@ Out of schedule (a security advisory): tick `docker-host` under "Awaiting Schedu
 - A fresh `.0` release: let it settle (skip it) unless a fix is needed now.
 - **`containerd.io` minor change** (e.g. 2.3 → 2.4): a one-way door. Upstream supports sequential minor upgrades only, never downgrades, and may migrate storage formats. Never skip a minor: if the PR jumps two, edit `containerd.io` on the PR branch to the last patch of the next minor first. A revert takes step 5c, not 5b.
 
-**2. Test on the VPS** once the PR's CI is green (it publishes the images). The first `deploy.sh` checks out the PR's pins and refuses at the drift guard, before the passphrase prompt; the second deploys that same SHA, even if Renovate rebases the branch meanwhile:
+**2. Test on the VPS** once the PR's CI is green (it publishes the images):
 
 ```bash
-sudo -u deploy docker exec projekt-manager-backup-1 node /app/dist/server/backup-runner.js run   # restore point
-sudo -u deploy docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -tAc \
-  'SELECT system_identifier FROM pg_control_system()'                                            # note it: step 3
-sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/renovate/docker-host                # refuses: drift
-sha=$(sudo -u deploy git -C /opt/projekt-manager rev-parse HEAD)                                 # the tested SHA
-sudo /opt/projekt-manager/scripts/ops/docker-converge.sh
-sudo -u deploy /opt/projekt-manager/scripts/deploy.sh "$sha"
+sudo /opt/projekt-manager/scripts/ops/docker-bump.sh test origin/renovate/docker-host
 ```
+
+It records the Postgres `system_identifier` (once, in `/var/lib/projekt-manager/docker-bump-sysid`: it names the cluster, so a later test refuses on another one; after replacing the cluster on purpose, a restore or a reseed on a new volume, delete the file), runs one backup cycle as the restore point, then switches: `deploy.sh <ref>` checks out the PR's pins and refuses at the drift guard, `docker-converge.sh` installs them, `deploy.sh <sha>` deploys the SHA the first run checked out, even if Renovate rebased the branch meanwhile. It asks for the secrets passphrase and the key pastes.
 
 A converge that moves `docker-ce` or `containerd.io` restarts the Docker daemon (no `live-restore`): every container stops, `restart: unless-stopped` brings them back, and the binary/drill-key tmpfs is wiped. The app stays down until the second `deploy.sh` reloads the keys ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
 
-**3. Acceptance.** All four pass = the bump works:
+**3. Acceptance.** All four pass = the bump works. The script runs 1, 2 and 4 and ends with `PASS`, or `FAIL` and the next step:
 
-1. The second `deploy.sh` ends with `Deploy verified — healthy at <sha>` and printed no `WARN: drill key not loaded`. It covers: containers up, both keys loaded, `/api/health` inside the app (DB query + external object storage, i.e. container DNS and egress), and `https://$DOMAIN/api/health` through Caddy on the published WireGuard address.
-2. One backup cycle exits 0: `sudo -u deploy docker exec projekt-manager-backup-1 node /app/dist/server/backup-runner.js run`. Nothing else checks the backup container after a converge.
-3. From the workstation, over WireGuard: `curl -fsS https://$DOMAIN/api/health` returns `"status":"ok"`. The host-side probe never traverses the forwarding rules a client's packets take.
-4. The `system_identifier` query from step 2 returns the same value: the data is the same Postgres cluster. A lost volume would come back empty, and the app would still report healthy.
+1. The second `deploy.sh` exits 0 and the drill key is loaded: containers up, both keys loaded, `/api/health` inside the app (DB query + external object storage, i.e. container DNS and egress), and `https://$DOMAIN/api/health` through Caddy on the published WireGuard address.
+2. One backup cycle exits 0. Nothing else checks the backup container after a converge.
+3. **By hand**, from the workstation over WireGuard: `curl -fsS https://$DOMAIN/api/health` returns `"status":"ok"`. The host-side probe never traverses the forwarding rules a client's packets take.
+4. The `system_identifier` equals the recorded one: the data is the same Postgres cluster. A lost volume would come back empty, and the app would still report healthy.
 
 Not covered, accepted: ACME renewal (DNS-01 egress from Caddy, weeks later; Caddy retries), load-dependent limits, the next reboot.
 
-**4. Pass.** Merge the PR, if its head is still the tested `$sha` (otherwise repeat from step 2). Dev workstation: `git pull`, `sudo scripts/ops/docker-converge.sh`, `docker compose up -d` ([local-dev.md](local-dev.md)). Deploying the merged `main` to the VPS needs no converge.
+**4. Pass.** Merge the PR if its pins are unchanged since the tested SHA (the script prints the `git diff --quiet` line; a rebase onto a newer `main` does not matter, a newer Docker release does: repeat from step 2). Dev workstation: `git pull`, `sudo scripts/ops/docker-converge.sh`, `docker compose up -d` ([local-dev.md](local-dev.md)). Deploying the merged `main` to the VPS needs no converge.
 
-**5. Fail.** Revert, then close the PR after the schedule window (the first seven days of January, April, July and October). A grouped PR has no version in its title, so Renovate recreates one closed inside the window. Reverts, in order of preference:
+**5. Fail.** Revert, then close the PR after the schedule window (the first seven days of January, April, July and October). A grouped PR has no version in its title, so Renovate recreates one closed inside the window. Reverts, in order of preference, each followed by the same acceptance against the recorded `system_identifier`:
 
 - **a. Roll forward.** Docker fixes most regressions in the next patch. If one is out, edit the pins on the PR branch to it and repeat from step 2.
-- **b. Downgrade with apt.** Low risk when `containerd.io` stays within one minor; unsupported upstream across one (use c):
+- **b. Downgrade with apt** to `main`'s pins. Low risk when `containerd.io` stays within one minor; unsupported upstream across one (use c). Needs no healthy stack:
 
   ```bash
-  sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main   # refuses: drift
-  sudo /opt/projekt-manager/scripts/ops/docker-converge.sh             # downgrades to main's pins
-  sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main
+  sudo /opt/projekt-manager/scripts/ops/docker-bump.sh revert
   ```
 
-- **c. Fresh Docker state, volumes kept** (after a containerd minor change, or when b leaves the daemon broken or without its images). `scripts/ops/docker-fresh-state.sh` moves the state aside, installs the pins of the checkout before any daemon starts, then starts Docker and checks it. Named volumes (Postgres data) stay in place; `deploy.sh` rebuilds the rest:
+- **c. Fresh Docker state, volumes kept** (after a containerd minor change, or when b leaves the daemon broken or without its images). In place of the converge, `scripts/ops/docker-fresh-state.sh` moves the state aside, installs `main`'s pins before any daemon starts, then starts Docker and checks it. Named volumes (Postgres data) stay in place; `deploy.sh` rebuilds the rest:
 
   ```bash
-  sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main   # checks out main's pins, refuses: drift
-  sudo /opt/projekt-manager/scripts/ops/docker-fresh-state.sh         # asks before it stops Docker
-  sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main
+  sudo /opt/projekt-manager/scripts/ops/docker-bump.sh revert --fresh-state   # asks before it stops Docker
   ```
 
-  Run the acceptance (step 3), then delete the old state with the `rm -rf` line the script printed.
+  After `PASS`, delete the old state with the `rm -rf` line the script printed.
 
 - **d. Restore from backup:** [backup/recovery.md](backup/recovery.md).
 

@@ -576,6 +576,9 @@ jobs:
       - name: Docker fresh-state script — self-test
         run: bash scripts/__tests__/docker-fresh-state.test.sh
 
+      - name: Docker bump script — self-test
+        run: bash scripts/__tests__/docker-bump.test.sh
+
       - name: Caddy health probe — self-test
         run: bash scripts/__tests__/smoke-caddy-health.test.sh
 
