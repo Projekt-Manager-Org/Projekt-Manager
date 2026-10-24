@@ -34,7 +34,7 @@ Then delete the attachment in the app. The drill now reads a version behind a de
 
 ### 2. Load a custody copy
 
-One off-system copy (encrypted USB mounted, paper copy transcribed, KeePass entry exported) — never the workstation's working copy; this is the load-bearing step. It goes to tmpfs, never to disk, and never through an editor (swap and backup files outlive the teardown):
+After a rotation the custody copy is the keyring; the recovery tool tries every key in it. The sample proves only the active key — check the retired ones are present with `age-keygen -y <copy> | sort` ([rotation.md § 3](rotation.md#3-verify)). One off-system copy (encrypted USB mounted, paper copy transcribed, KeePass entry exported) — never the workstation's working copy; this is the load-bearing step. It goes to tmpfs, never to disk, and never through an editor (swap and backup files outlive the teardown):
 
 ```bash
 D="$XDG_RUNTIME_DIR/binary-drill"

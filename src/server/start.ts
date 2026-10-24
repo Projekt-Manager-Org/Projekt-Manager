@@ -277,9 +277,10 @@ async function start(): Promise<void> {
   // cannot accumulate side-effects.
   await assertStorageBucketSafe(attachmentStorageForReaper);
 
-  // Boot-time binary `age` identity probe (ADR-0024 §"Boot probe").
-  // Refuses to start when the operator-loaded binary private identity is
-  // missing, unreadable, malformed, or for the wrong recipient. Same
+  // Boot-time binary `age` keyring probe (ADR-0024 §"Boot probe").
+  // Refuses to start when the operator-loaded binary keyring is missing,
+  // unreadable, malformed, or holds other keys than the active and the
+  // retired recipients. Same
   // fail-closed character as the bucket-safety probe above; ADR-0024
   // explicitly rejects degraded modes (uploads-yes-downloads-no, fall
   // back to plaintext). Presence of BINARY_AGE_RECIPIENT is enforced by
@@ -289,6 +290,7 @@ async function start(): Promise<void> {
   await assertBinaryIdentityLoaded({
     identityPath: env.BINARY_AGE_IDENTITY_PATH,
     configuredRecipient: env.BINARY_AGE_RECIPIENT ?? '',
+    retiredRecipients: env.BINARY_AGE_RETIRED_RECIPIENTS,
   });
 
   const attachmentReaper = startAttachmentOrphanReaperScheduler({

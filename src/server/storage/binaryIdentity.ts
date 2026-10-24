@@ -1,8 +1,10 @@
 /**
- * Boot-time binary `age` identity probe (ADR-0024 § Boot probe).
+ * Boot-time binary `age` keyring probe (ADR-0024 § Boot probe, § Key
+ * rotation).
  *
- * The app refuses to start when the operator-loaded binary `age` private
- * identity is not available — same character as `assertStorageBucketSafe`
+ * The app refuses to start when the operator-loaded binary `age` keyring
+ * is not available, or holds other keys than the configured ones — the
+ * active recipient plus every retired one. Same character as `assertStorageBucketSafe`
  * for ADR-0022. Degraded modes ("uploads-yes-downloads-no", "fall back to
  * plaintext") are explicitly rejected: they would create a misleading-state
  * defect class (ADR-0014) and are unnecessary in a single-operator topology
@@ -11,8 +13,8 @@
  *
  * Mirrors `storage/safety.ts`:
  *   - `evaluateBinaryIdentity` is a pure validator over a structured
- *     snapshot of {file present?, readable?, derived recipient?,
- *     configured recipient?}. Each fail-path can be unit-tested without
+ *     snapshot of {file present?, readable?, derived recipients?,
+ *     configured recipients?}. Each fail-path can be unit-tested without
  *     touching the filesystem or spawning age-keygen.
  *   - `assertBinaryIdentityLoaded` is the orchestrator: it checks the
  *     file, runs `age-keygen -y` (system binary at `/usr/bin/age-keygen`,
@@ -40,19 +42,20 @@ export const AGE_KEYGEN_BIN = '/usr/bin/age-keygen';
 
 /**
  * Spawn `age-keygen -y` and pipe `input` to its stdin. Resolves to the
- * trimmed stdout on success, or `null` on any non-zero exit / spawn
- * error (the validator's "round-trip rejected" arm). We use `spawn`
+ * derived recipients — one stdout line per identity in the keyring — on
+ * success, or `null` on any non-zero exit / spawn error / empty output
+ * (the validator's "round-trip rejected" arm). We use `spawn`
  * rather than `execFile + promisify` because Node's promisified
  * `execFile` does not surface the `input` option from the callback API,
  * and writing the secret material to a temp file just to feed argv would
  * defeat the tmpfs-only invariant for no benefit.
  */
-function runAgeKeygenY(input: string): Promise<string | null> {
+function runAgeKeygenY(input: string): Promise<string[] | null> {
   return new Promise((resolve) => {
     const child = spawn(AGE_KEYGEN_BIN, ['-y'], { stdio: ['pipe', 'pipe', 'ignore'] });
     let stdout = '';
     let settled = false;
-    const settle = (value: string | null): void => {
+    const settle = (value: string[] | null): void => {
       if (settled) return;
       settled = true;
       resolve(value);
@@ -64,8 +67,11 @@ function runAgeKeygenY(input: string): Promise<string | null> {
     child.on('error', () => settle(null));
     child.on('close', (code) => {
       if (code === 0) {
-        const trimmed = stdout.trim();
-        settle(trimmed === '' ? null : trimmed);
+        const recipients = stdout
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean);
+        settle(recipients.length === 0 ? null : recipients);
       } else {
         settle(null);
       }
@@ -89,8 +95,8 @@ export const PROBE_EVENT_ID = 'binary-identity';
  * snapshot mirrors the {versioning, objectLock, lifecycleRules} shape
  * `evaluateBucketSafety` consumes.
  *
- * `derivedRecipient: null` encodes "the file content failed the
- * `age-keygen -y` round-trip" — distinct from "recipient mismatch", so
+ * `derivedRecipients: null` encodes "the file content failed the
+ * `age-keygen -y` round-trip" — distinct from "keyring mismatch", so
  * the validator can produce a failure message naming `age-keygen` for
  * the malformed-paste path and a different message for the
  * wrong-identity-loaded path.
@@ -101,17 +107,19 @@ export interface BinaryIdentitySnapshot {
   /** Did `fs.access(R_OK)` on the configured path succeed? */
   fileReadable: boolean;
   /**
-   * The public recipient derived by round-tripping the file's content
-   * through `age-keygen -y`. `null` when:
+   * The public recipients derived by round-tripping the file's content
+   * through `age-keygen -y`, one per identity in the keyring. `null` when:
    *   - the file could not be read (orchestrator skipped the round-trip), OR
    *   - `age-keygen -y` exited non-zero (malformed identity content).
    * The validator uses the null state to name the offending check
    * ("age-keygen rejected the round-trip") rather than blurring it into
-   * a generic "recipient mismatch".
+   * a generic "keyring mismatch".
    */
-  derivedRecipient: string | null;
-  /** The expected public recipient from `BINARY_AGE_RECIPIENT`. */
+  derivedRecipients: string[] | null;
+  /** The active public recipient from `BINARY_AGE_RECIPIENT`. */
   configuredRecipient: string;
+  /** The retired public recipients from `BINARY_AGE_RETIRED_RECIPIENTS`. */
+  retiredRecipients: readonly string[];
 }
 
 export type BinaryIdentityVerdict = { ok: true } | { ok: false; failures: string[] };
@@ -131,7 +139,7 @@ export function evaluateBinaryIdentity(snapshot: BinaryIdentitySnapshot): Binary
   if (!snapshot.fileExists) {
     failures.push(
       'binary `age` identity not loaded: file at BINARY_AGE_IDENTITY_PATH is absent. ' +
-        'Run scripts/binary-key/load-binary-key.sh on the VPS to paste the operator identity into tmpfs.',
+        'Run scripts/binary-key/load-binary-key.sh on the VPS to paste the binary keyring into tmpfs.',
     );
   } else if (!snapshot.fileReadable) {
     // Distinct from "absent" so the operator log points at perms drift,
@@ -146,23 +154,44 @@ export function evaluateBinaryIdentity(snapshot: BinaryIdentitySnapshot): Binary
   // actually read; we still surface them when applicable so the
   // aggregation contract holds even in the file-readable + everything-
   // else-broken case.
-  if (snapshot.derivedRecipient === null && snapshot.fileExists && snapshot.fileReadable) {
+  if (snapshot.derivedRecipients === null && snapshot.fileExists && snapshot.fileReadable) {
     failures.push(
       'binary `age` identity malformed: the file content failed the `age-keygen -y` round-trip. ' +
         'The pasted material is not a valid age private identity (expected an `AGE-SECRET-KEY-1...` line).',
     );
   }
 
-  if (
-    snapshot.derivedRecipient !== null &&
-    snapshot.derivedRecipient !== snapshot.configuredRecipient
-  ) {
-    failures.push(
-      `binary \`age\` identity recipient mismatch: derived recipient ` +
-        `"${snapshot.derivedRecipient}" does not match BINARY_AGE_RECIPIENT ` +
-        `"${snapshot.configuredRecipient}". The wrong identity was pasted into the binary loader ` +
-        `(common operator error: pasting the backup drill identity instead).`,
-    );
+  // Set equality, checked both ways: a configured key missing from the
+  // keyring leaves everything wrapped to it unreadable; an unlisted key
+  // is a mispaste (most often the backup drill identity).
+  if (snapshot.derivedRecipients !== null) {
+    const derived = new Set(snapshot.derivedRecipients);
+    const configured = new Set([snapshot.configuredRecipient, ...snapshot.retiredRecipients]);
+    if (!derived.has(snapshot.configuredRecipient)) {
+      failures.push(
+        `binary \`age\` keyring mismatch: missing the active key — BINARY_AGE_RECIPIENT ` +
+          `"${snapshot.configuredRecipient}" is not in the keyring. The wrong identity was ` +
+          `pasted into the binary loader.`,
+      );
+    }
+    for (const retired of new Set(snapshot.retiredRecipients)) {
+      if (retired !== snapshot.configuredRecipient && !derived.has(retired)) {
+        failures.push(
+          `binary \`age\` keyring mismatch: missing a retired key — ` +
+            `BINARY_AGE_RETIRED_RECIPIENTS lists "${retired}", the keyring lacks it. Everything ` +
+            `wrapped to it would be unreadable — paste the full keyring.`,
+        );
+      }
+    }
+    for (const recipient of derived) {
+      if (!configured.has(recipient)) {
+        failures.push(
+          `binary \`age\` keyring mismatch: unlisted key "${recipient}" — neither ` +
+            `BINARY_AGE_RECIPIENT nor BINARY_AGE_RETIRED_RECIPIENTS names it ` +
+            `(common operator error: pasting the backup drill identity).`,
+        );
+      }
+    }
   }
 
   return failures.length === 0 ? { ok: true } : { ok: false, failures };
@@ -201,11 +230,12 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * Build a fresh `BinaryIdentitySnapshot` by inspecting the
  * filesystem. Extracted from the orchestrator so the wait loop can
  * re-run it cheaply per tick without re-reading the constant
- * `configuredRecipient` from anywhere.
+ * configured recipients from anywhere.
  */
 async function captureSnapshot(
   identityPath: string,
   configuredRecipient: string,
+  retiredRecipients: readonly string[],
 ): Promise<BinaryIdentitySnapshot> {
   // Two separate probes (F_OK then R_OK) so the snapshot can
   // distinguish "missing" from "perms drift" — the operator
@@ -230,10 +260,10 @@ async function captureSnapshot(
   }
 
   // Round-trip via age-keygen -y is only attempted when the file is
-  // actually readable — otherwise derivedRecipient stays null and the
+  // actually readable — otherwise derivedRecipients stays null and the
   // validator surfaces the file-level failure instead of a noisy
   // "age-keygen rejected: ENOENT" stack.
-  let derivedRecipient: string | null = null;
+  let derivedRecipients: string[] | null = null;
   if (fileExists && fileReadable) {
     try {
       const content = await readFile(identityPath, 'utf-8');
@@ -241,21 +271,23 @@ async function captureSnapshot(
       // path as argv to `age-keygen -y`; piping via stdin keeps the
       // secret material out of `ps`/argv surface and matches what
       // integration-setup.ts already uses for its keypair derivation.
-      derivedRecipient = await runAgeKeygenY(content);
+      derivedRecipients = await runAgeKeygenY(content);
     } catch {
       // readFile failed despite R_OK passing earlier — treat as a
       // round-trip failure so the validator surfaces a recognizable
       // arm.
-      derivedRecipient = null;
+      derivedRecipients = null;
     }
   }
 
-  return { fileExists, fileReadable, derivedRecipient, configuredRecipient };
+  return { fileExists, fileReadable, derivedRecipients, configuredRecipient, retiredRecipients };
 }
 
 export interface AssertBinaryIdentityOptions {
   identityPath: string;
   configuredRecipient: string;
+  /** `BINARY_AGE_RETIRED_RECIPIENTS`. Default: none. */
+  retiredRecipients?: readonly string[];
   /**
    * Maximum time to wait for the identity file to appear when its
    * absence is the *only* outstanding failure. Default:
@@ -263,7 +295,7 @@ export interface AssertBinaryIdentityOptions {
    * original fail-fast behavior — used by tests to exercise the
    * absent-file arm without paying for the wait window.
    *
-   * Hard failures — perms drift, malformed identity, recipient
+   * Hard failures — perms drift, malformed identity, keyring
    * mismatch — throw immediately regardless of this value: those
    * arms cannot fix themselves with time, and waiting just delays
    * the operator's diagnostic.
@@ -294,7 +326,7 @@ export interface AssertBinaryIdentityOptions {
  * and delegates to `evaluateBinaryIdentity`. Returns silently on the
  * first ok verdict. Throws an aggregated error when:
  *   - the snapshot reports any HARD failure (file present but
- *     unreadable, malformed, or recipient mismatch) — those throw
+ *     unreadable, malformed, or keyring mismatch) — those throw
  *     immediately, no wait, since they need operator action not
  *     time;
  *   - the wait window elapses with the file still absent — the
@@ -313,6 +345,7 @@ export async function assertBinaryIdentityLoaded(
   const {
     identityPath,
     configuredRecipient,
+    retiredRecipients = [],
     waitTimeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
     progressLogIntervalMs = DEFAULT_PROGRESS_LOG_INTERVAL_MS,
@@ -330,7 +363,7 @@ export async function assertBinaryIdentityLoaded(
   let lastNonOkVerdict!: { ok: false; failures: string[] };
 
   while (true) {
-    const snapshot = await captureSnapshot(identityPath, configuredRecipient);
+    const snapshot = await captureSnapshot(identityPath, configuredRecipient, retiredRecipients);
     const verdict = evaluateBinaryIdentity(snapshot);
     if (verdict.ok) {
       return;
@@ -372,7 +405,7 @@ export async function assertBinaryIdentityLoaded(
 
   // Aggregated throw — same character as `assertStorageBucketSafe`'s
   // message. The first failure is inlined into the header so the
-  // primary diagnostic ("recipient mismatch", "file absent", etc.)
+  // primary diagnostic ("keyring mismatch", "file absent", etc.)
   // sits on the same line as "Refusing to start" — operator-grep
   // ergonomics, and it lets dotall-less regex assertions in callers
   // / tests still match. Subsequent failures (when present) are

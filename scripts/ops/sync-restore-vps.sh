@@ -230,7 +230,7 @@ the boot probe is now blocking on the operator paste (ADR-0024).
 Recover:
 
   docker exec -it $APP_CONTAINER load-binary-key
-  # paste the age private identity, then Ctrl-D
+  # paste the binary keyring, then Ctrl-D
 
 Then re-run scripts/sync-dev-to-vps.sh.
 ERR

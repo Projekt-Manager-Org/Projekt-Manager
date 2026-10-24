@@ -1212,7 +1212,7 @@ export class AttachmentService {
       dekBytes = await envelope.unwrap(wrappedBytes);
     } catch (err) {
       if (err instanceof KeyEnvelopeUnwrapError) {
-        // Per-row failure — corrupt envelope or recipient mismatch.
+        // Per-row failure — corrupt envelope or a key not in the keyring.
         // Propagate as 422 with the documented code so the SW renders
         // the placeholder (AC-244).
         throw dekUnwrapFailed();
@@ -1339,10 +1339,9 @@ export class AttachmentService {
       // `wrappedDek` column on a 'ready' row — propagates as 500
       // SERVER_ERROR. The boot probe is supposed to make
       // `KeyEnvelopeUnwrapError` unreachable, so a hit here signals a
-      // data-integrity break (corrupt envelope on a ready row, or a
-      // partial key rotation that left some envelopes wrapped to a
-      // different recipient). The single documented per-row 422
-      // surface is `download-url`, not bulk.
+      // data-integrity break (corrupt envelope on a ready row, or an
+      // envelope wrapped to a key the loaded keyring does not hold). The
+      // single documented per-row 422 surface is `download-url`, not bulk.
       let originalDekBytes: Uint8Array;
       try {
         if (!row.wrappedDek) {

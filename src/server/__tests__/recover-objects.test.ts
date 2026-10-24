@@ -3,7 +3,7 @@
  * § Self-describing objects).
  *
  * The tool decrypts object versions written since a cutoff using only the
- * binary identity and each object's own metadata — no database. It is the
+ * binary keyring and each object's own metadata — no database. It is the
  * Layer 2 disaster-recovery path for objects whose rows a restore dropped
  * and the monthly binary-key drill.
  *
@@ -28,7 +28,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -92,6 +92,8 @@ describe('binary recovery tool', () => {
   const plaintexts = new Map<string, Buffer>();
   let cutoff: Date;
   let orphanFirstPlaintext: Buffer;
+  /** Not the deployed key — `wrongRecipient` is wrapped to it. */
+  let other: { identity: string; recipient: string };
 
   async function put(key: string, body: Buffer, metadata: Record<string, string>) {
     await s3.send(
@@ -157,9 +159,11 @@ describe('binary recovery tool', () => {
       [META_WRAPPED_DEK_VERSION]: '2',
     });
 
-    const other = await ageKeypair();
+    other = await ageKeypair();
     const dekW = crypto.randomBytes(32);
-    await put(keys.wrongRecipient, encrypt(crypto.randomBytes(64), dekW), {
+    const plaintextW = crypto.randomBytes(64);
+    plaintexts.set(keys.wrongRecipient, plaintextW);
+    await put(keys.wrongRecipient, encrypt(plaintextW, dekW), {
       [META_WRAPPED_DEK]: await wrap(dekW, other.recipient, other.identity),
       [META_WRAPPED_DEK_VERSION]: '1',
     });
@@ -284,6 +288,27 @@ describe('binary recovery tool', () => {
       outDir: outDir(),
     });
     expect(old.entries).toEqual([]);
+  });
+
+  // AC-441
+  it('with a keyring, recovers versions written under any of its keys', async () => {
+    const keyringPath = path.join(outDir(), 'keyring');
+    writeFileSync(keyringPath, `${identity}\n${other.identity}\n`, { mode: 0o600 });
+    for (const key of [keys.invoice, keys.wrongRecipient]) {
+      const dir = outDir();
+      const { entries } = await recoverObjects({
+        storage,
+        identityPath: keyringPath,
+        since: cutoff,
+        key,
+        outDir: dir,
+      });
+      expect(
+        entries.map((e) => e.outcome),
+        key,
+      ).toEqual(['recovered']);
+      expect(readFileSync(path.join(dir, entries[0]!.file!)), key).toEqual(plaintexts.get(key));
+    }
   });
 
   // AC-444

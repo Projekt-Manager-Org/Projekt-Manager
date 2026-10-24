@@ -108,7 +108,7 @@ process.env.DATABASE_URL = 'postgresql://api-surface:unused@127.0.0.1:1/api_surf
 process.env.STORAGE_ENDPOINT = 'http://127.0.0.1:1';
 process.env.STORAGE_ACCESS_KEY = 'api-surface-unused';
 process.env.STORAGE_SECRET_KEY = 'api-surface-unused';
-process.env.BINARY_AGE_RECIPIENT = 'age1apisurfaceunusedplaceholderplaceholderplaceholder';
+process.env.BINARY_AGE_RECIPIENT = 'age15nf2qq4znfwup9khgjk0rdgp5wg9vx33fngc727m3zdkctq29djqyr9su6';
 
 /** One published row. */
 interface Endpoint {

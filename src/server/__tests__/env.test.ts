@@ -27,6 +27,10 @@ import {
 } from '../config/env.js';
 import type { Env } from '../config/env.js';
 
+/** A well-formed recipient for fixtures that don't exercise the binary key. */
+const PLACEHOLDER_BINARY_RECIPIENT =
+  'age15nf2qq4znfwup9khgjk0rdgp5wg9vx33fngc727m3zdkctq29djqyr9su6';
+
 /** Minimal Env shape with only the fields assertProductionSafe reads. */
 function makeEnv(overrides: Partial<Env>): Env {
   return {
@@ -67,7 +71,8 @@ function makeEnv(overrides: Partial<Env>): Env {
     // BINARY_AGE_RECIPIENT placeholder so happy-path fixtures pass the
     // app-server presence check (ADR-0024). Per-test arms override to
     // undefined when exercising the missing-field branch.
-    BINARY_AGE_RECIPIENT: 'age1unused',
+    BINARY_AGE_RECIPIENT: PLACEHOLDER_BINARY_RECIPIENT,
+    BINARY_AGE_RETIRED_RECIPIENTS: [],
     BINARY_AGE_IDENTITY_PATH: '/run/binary-key/identity',
     VAPID_PRIVATE_KEY: undefined,
     VAPID_SUBJECT: undefined,
@@ -290,6 +295,56 @@ describe('envSchema AGE_RECIPIENT handling (#199)', () => {
           'AGE-SECRET-KEY-1QQPQQS4M3Q4HMNAWPV4TXMFQ8YUL9G6X5RKTZ8KLZ9TYUZZTJVHWQRYR9SU',
       }),
     ).toThrow(/public recipient.*age1/);
+  });
+});
+
+describe('envSchema BINARY_AGE_RETIRED_RECIPIENTS handling (#554)', () => {
+  const minimal = { DATABASE_URL: 'postgres://unused' };
+  const R1 = 'age15nf2qq4znfwup9khgjk0rdgp5wg9vx33fngc727m3zdkctq29djqyr9su6';
+  const R2 = 'age1u9nz02vl6zkushsq0e8lrg24ak8285whxdeu4fffu8m3wzzdmq2s6w3mn5';
+
+  it('parses unset and "" (compose `${VAR:-}`) as no retired keys', () => {
+    expect(envSchema.parse(minimal).BINARY_AGE_RETIRED_RECIPIENTS).toEqual([]);
+    expect(
+      envSchema.parse({ ...minimal, BINARY_AGE_RETIRED_RECIPIENTS: '' })
+        .BINARY_AGE_RETIRED_RECIPIENTS,
+    ).toEqual([]);
+  });
+
+  it('parses a comma-separated list, trimming whitespace around entries', () => {
+    const parsed = envSchema.parse({ ...minimal, BINARY_AGE_RETIRED_RECIPIENTS: ` ${R1} , ${R2}` });
+    expect(parsed.BINARY_AGE_RETIRED_RECIPIENTS).toEqual([R1, R2]);
+  });
+
+  it('rejects a private identity pasted by mistake', () => {
+    expect(() =>
+      envSchema.parse({
+        ...minimal,
+        BINARY_AGE_RETIRED_RECIPIENTS: `${R1},AGE-SECRET-KEY-1QQPQQS4M3Q4HMNAWPV4TXMFQ8YUL9G6X5RKTZ8KLZ9TYUZZTJVHWQRYR9SU`,
+      }),
+    ).toThrow(/BINARY_AGE_RETIRED_RECIPIENTS/);
+  });
+
+  it('rejects a truncated recipient', () => {
+    expect(() =>
+      envSchema.parse({ ...minimal, BINARY_AGE_RETIRED_RECIPIENTS: R1.slice(0, 20) }),
+    ).toThrow(/BINARY_AGE_RETIRED_RECIPIENTS/);
+  });
+
+  it('rejects a private identity as the active recipient, before it reaches a log line', () => {
+    expect(() =>
+      envSchema.parse({
+        ...minimal,
+        BINARY_AGE_RECIPIENT:
+          'AGE-SECRET-KEY-1QQPQQS4M3Q4HMNAWPV4TXMFQ8YUL9G6X5RKTZ8KLZ9TYUZZTJVHWQRYR9SU',
+      }),
+    ).toThrow(/BINARY_AGE_RECIPIENT must be a public age recipient/);
+  });
+
+  it('rejects an empty entry (stray comma)', () => {
+    expect(() =>
+      envSchema.parse({ ...minimal, BINARY_AGE_RETIRED_RECIPIENTS: `${R1},,${R2}` }),
+    ).toThrow(/BINARY_AGE_RETIRED_RECIPIENTS/);
   });
 });
 
@@ -528,7 +583,7 @@ describe('dev-default credentials guard in env.ts', () => {
       // App-server presence requirement (ADR-0024). Tests in this block
       // exercise the dev-default credentials guard, not the binary-age
       // wiring; a placeholder keeps the unrelated guard from tripping.
-      BINARY_AGE_RECIPIENT: 'age1unused',
+      BINARY_AGE_RECIPIENT: PLACEHOLDER_BINARY_RECIPIENT,
       ALLOW_INSECURE_HTTP: 'false',
       // Reverse-proxy trust boundary, required in production. Present so
       // this block's arms trip only the dev-default credential guard.
@@ -774,7 +829,7 @@ function baseAggregatedInput(extra: Record<string, string>): Record<string, stri
     STORAGE_SECRET_KEY: 'sk',
     STORAGE_BUCKET: 'pm',
     STORAGE_REGION: 'us-east-1',
-    BINARY_AGE_RECIPIENT: 'age1unused',
+    BINARY_AGE_RECIPIENT: PLACEHOLDER_BINARY_RECIPIENT,
     ALLOW_INSECURE_HTTP: 'false',
     // Required in production (checkTrustedProxyInProduction). Part of the
     // "fully valid prod input" baseline so each arm trips only its guard.

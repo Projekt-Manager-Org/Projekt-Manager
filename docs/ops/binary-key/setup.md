@@ -37,7 +37,7 @@ Expected: a `tmpfs:` entry under `services.app` of the form `/run/binary-key:mod
 The private identity is the root of the binary recovery chain. Lost private identity = unrecoverable customer deliverables (binaries are work-product, not recovery artifacts — [ADR-0024 §Consequences](../../adr/0024-binary-attachment-e2e-encryption.md#negative)). Generate it on the operator workstation and never let it leave.
 
 ```bash
-mkdir -p ~/secrets
+mkdir -m 700 -p ~/secrets
 age-keygen -o ~/secrets/binary-identity.txt
 chmod 600 ~/secrets/binary-identity.txt
 age-keygen -y ~/secrets/binary-identity.txt    # prints the public recipient (age1...)
@@ -57,11 +57,11 @@ Do **not** rely on a single off-system copy. A safe fire, a corrupted USB, a mis
 
 ## 3. Push the recipient to the VPS
 
-The VPS needs the public recipient in `secrets.env.age` (the variable lives there, alongside `AGE_RECIPIENT`, per [secrets.manifest.txt](../../../secrets.manifest.txt)). This reuses the rotation flow in [manual-deploy.md § Rotate a secret](../manual-deploy.md#rotate-a-secret); the addition is the single `BINARY_AGE_RECIPIENT` key.
+The VPS needs the public recipient in `secrets.env.age` (the variable lives there, alongside `AGE_RECIPIENT`, per [secrets.manifest.txt](../../../secrets.manifest.txt)). This reuses the rotation flow in [manual-deploy.md § Rotate a secret](../manual-deploy.md#rotate-a-secret); the additions are `BINARY_AGE_RECIPIENT` and `BINARY_AGE_RETIRED_RECIPIENTS` (empty until the first [rotation](rotation.md); `scripts/deploy.sh` refuses a `secrets.env.age` that does not declare it).
 
 You are about to replace the live `secrets.env.age`; this is reversible **only** if the previous file is still on hand. A fat-fingered edit with no prior copy overwrites the live file and leaves the VPS non-bootable.
 
-1. On the operator workstation, pull the current VPS copy as a typo-recovery snapshot; keep it until step 6 in §4 succeeds. Then SSH to the VPS as the admin user — keep that session open; subsequent VPS-side commands run in it.
+1. On the operator workstation, pull the current VPS copy as a typo-recovery snapshot; keep it until the deploy in §4 succeeds. Then SSH to the VPS as the admin user — keep that session open; subsequent VPS-side commands run in it.
 
    ```bash
    # workstation
@@ -74,6 +74,7 @@ You are about to replace the live `secrets.env.age`; this is reversible **only**
    ```bash
    age -d ./secrets.env.age.bak > /tmp/secrets.env
    echo "BINARY_AGE_RECIPIENT='age1...'" >> /tmp/secrets.env   # paste the recipient from §2
+   echo "BINARY_AGE_RETIRED_RECIPIENTS=''" >> /tmp/secrets.env  # empty until the first rotation
    ```
 
 3. Re-encrypt with the same passphrase. `age -p` prompts twice (enter + confirm) — reuse the existing passphrase so `scripts/deploy.sh` keeps working:
@@ -97,10 +98,10 @@ You are about to replace the live `secrets.env.age`; this is reversible **only**
 5. On the VPS: verify the new value round-trips (`age -d` prompts once for the same passphrase).
 
    ```bash
-   sudo -u deploy age -d /opt/projekt-manager/secrets.env.age | grep -E '^BINARY_AGE_RECIPIENT'
+   sudo -u deploy age -d /opt/projekt-manager/secrets.env.age | grep -E '^BINARY_AGE_'
    ```
 
-   You should see exactly the recipient sent in §2. If missing or mangled, restore the pre-change snapshot (re-run the step-4 `scp` + `mv/chown/chmod` with `./secrets.env.age.bak` as the source) and repeat from step 2.
+   You should see exactly the recipient sent in §2 and an empty retired list. If missing or mangled, restore the pre-change snapshot (re-run the step-4 `scp` + `mv/chown/chmod` with `./secrets.env.age.bak` as the source) and repeat from step 2.
 
    After the deploy in §4 succeeds, `shred -u ./secrets.env.age.bak` on the operator workstation — the snapshot is a window into live credentials and should not linger.
 

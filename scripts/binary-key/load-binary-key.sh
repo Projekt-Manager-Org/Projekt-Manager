@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Operator helper: load the binary-attachment age private identity into
-# the app container's tmpfs (docs/ops/binary-key/load.md § The paste).
+# Operator helper: load the binary-attachment age keyring — the active
+# private identity plus every retired one — into the app container's
+# tmpfs (docs/ops/binary-key/load.md § The paste).
 #
 # Invoked from the VPS as:
 #   sudo -u deploy docker exec -it projekt-manager-app-1 load-binary-key
@@ -12,13 +13,14 @@
 #      script refuses to write — a persisted identity on the VPS disk
 #      defeats the entire threat model.
 #   2. The pasted material is validated by round-tripping through
-#      age-keygen -y; a malformed paste (e.g., the operator copied the
-#      public recipient file instead of the private identity) is
-#      rejected and the partial write deleted.
-#   3. The derived recipient is compared to BINARY_AGE_RECIPIENT.
-#      Mismatch = operator loaded the wrong key pair (the most common
-#      mixup is pasting the backup drill identity here); reject before
-#      the boot probe accepts a useless key.
+#      age-keygen -y before anything is written; a malformed paste
+#      (e.g., the operator copied the public recipient file instead of
+#      the private identity) is rejected.
+#   3. The derived recipients must equal BINARY_AGE_RECIPIENT plus
+#      BINARY_AGE_RETIRED_RECIPIENTS as a set — the boot probe's check
+#      (ADR-0024 § Key rotation). A missing key leaves everything wrapped
+#      to it unreadable; an unlisted one is a mispaste (most often the
+#      backup drill identity). Reject before the boot probe sees it.
 #   4. The identity string lives in shell memory only for the duration
 #      of this script; the variable is `unset` before exit. A
 #      kernel-level secure-wipe of the memory pages is not attempted —
@@ -79,9 +81,16 @@ if [[ -z "${BINARY_AGE_RECIPIENT:-}" ]]; then
   echo "       Cannot verify the pasted identity matches the deployed recipient." >&2
   exit 1
 fi
+# Shape check before the value can reach the mismatch error below — a
+# private key put there by mistake must never be echoed.
+RECIPIENT_RE='^age1[02-9ac-hj-np-z]{58}$'
+if [[ ! "$BINARY_AGE_RECIPIENT" =~ $RECIPIENT_RE ]]; then
+  echo "ERROR: BINARY_AGE_RECIPIENT is not a public age recipient. Fix the deploy's secrets.env.age." >&2
+  exit 1
+fi
 
 # --- Prompt ----------------------------------------------------------
-echo "Paste age identity, finish with Ctrl-D:"
+echo "Paste the binary keyring (active + retired identities), finish with Ctrl-D:"
 # -s  suppress echo (no visible leak to the terminal)
 # -r  raw mode (preserve backslashes in the pasted material)
 # -d $'\004' use EOT (Ctrl-D) as the delimiter so multi-line paste works
@@ -104,32 +113,14 @@ if [[ -z "$IDENTITY" ]]; then
   exit 1
 fi
 
-# --- Write to tmpfs with restrictive mode ----------------------------
-# Partial-write safety: if the script is interrupted (Ctrl-C, SIGTERM)
-# or hits an error between `printf > "$BINARY_FILE"` and the final
-# validation below, the file on tmpfs is an unvalidated paste that
-# the next boot-probe poll would accept. Install a trap BEFORE the
-# write so any exit path short of explicit success wipes the partial
-# file. The trap is cleared at the end of the validation block on the
-# success path.
-trap 'rm -f "$BINARY_FILE"; unset IDENTITY; exit 1' ERR INT TERM
-
-# umask 0077 so a race between creat() and chmod() cannot expose the
-# file to other UIDs on the container (defensive; the container is
-# root-only anyway).
-umask 0077
-printf '%s' "$IDENTITY" > "$BINARY_FILE"
-chmod 0400 "$BINARY_FILE"
-
-# --- Invariant 2 + 3: validate ---------------------------------------
-# age-keygen -y reads the identity and prints the derived public
-# recipient. If the input is malformed it exits non-zero with a short
-# error.
+# --- Invariant 2 + 3: validate in memory, before any write ----------
+# age-keygen -y reads the keyring from stdin (no argv exposure) and
+# prints one derived public recipient per identity; malformed input
+# exits non-zero. Nothing touches the tmpfs until the paste is valid, so
+# the boot probe never sees an unvalidated file and a bad paste leaves
+# an already-loaded keyring in place.
 derived=""
-if ! derived="$(age-keygen -y "$BINARY_FILE" 2>/dev/null)"; then
-  # Wipe the partial write BEFORE surfacing the error, so a bad paste
-  # never persists even for an instant after failure.
-  rm -f "$BINARY_FILE"
+if ! derived="$(printf '%s' "$IDENTITY" | age-keygen -y 2>/dev/null)" || [[ -z "$derived" ]]; then
   unset IDENTITY derived
   echo "ERROR: pasted material does not parse as a valid age identity." >&2
   echo "       Expected the file produced by 'age-keygen -o ...' —" >&2
@@ -137,21 +128,57 @@ if ! derived="$(age-keygen -y "$BINARY_FILE" 2>/dev/null)"; then
   exit 1
 fi
 
-if [[ "$derived" != "$BINARY_AGE_RECIPIENT" ]]; then
-  rm -f "$BINARY_FILE"
+# Expected set, parsed exactly as the env schema does: the active
+# recipient verbatim; the retired list split on commas, each entry
+# trimmed, an empty value meaning none. A malformed entry is refused
+# without echoing it — it may be a private key pasted by mistake. The
+# recipients are public; naming them in the mismatch error below is safe
+# and tells the operator which custody copy is missing or extra.
+expected="$BINARY_AGE_RECIPIENT"
+if [[ -n "${BINARY_AGE_RETIRED_RECIPIENTS:-}" ]]; then
+  IFS=',' read -r -a retired_entries <<<"${BINARY_AGE_RETIRED_RECIPIENTS},"
+  for entry in "${retired_entries[@]}"; do
+    entry="$(sed 's/^[[:space:]]*//; s/[[:space:]]*$//' <<<"$entry")"
+    if [[ ! "$entry" =~ $RECIPIENT_RE ]]; then
+      unset IDENTITY derived
+      echo "ERROR: BINARY_AGE_RETIRED_RECIPIENTS holds an entry that is not a public age recipient." >&2
+      echo "       Fix the deploy's secrets.env.age. Nothing persisted." >&2
+      exit 1
+    fi
+    expected+=$'\n'"$entry"
+  done
+fi
+expected="$(printf '%s\n' "$expected" | sort -u)"
+derived="$(printf '%s\n' "$derived" | sort -u)"
+missing="$(comm -23 <(printf '%s\n' "$expected") <(printf '%s\n' "$derived"))"
+unlisted="$(comm -13 <(printf '%s\n' "$expected") <(printf '%s\n' "$derived"))"
+if [[ -n "$missing" || -n "$unlisted" ]]; then
   unset IDENTITY derived
-  echo "ERROR: the pasted identity's public recipient does not match BINARY_AGE_RECIPIENT." >&2
-  echo "       The identity is for a DIFFERENT key pair than the one binaries" >&2
-  echo "       are encrypted to. Uploads/downloads would fail with this key. Nothing persisted." >&2
+  echo "ERROR: the pasted keyring does not match BINARY_AGE_RECIPIENT + BINARY_AGE_RETIRED_RECIPIENTS." >&2
+  if [[ -n "$missing" ]]; then
+    while read -r r; do echo "       missing:  $r"; done <<<"$missing" >&2
+  fi
+  if [[ -n "$unlisted" ]]; then
+    while read -r r; do echo "       unlisted: $r"; done <<<"$unlisted" >&2
+  fi
+  echo "       Nothing persisted." >&2
   exit 1
 fi
 
-# Validation passed — the file on tmpfs is the real, matching identity.
-# Disarm the cleanup trap so normal exit doesn't wipe it.
-trap - ERR INT TERM
+# --- Write to tmpfs, atomically --------------------------------------
+# Write a temp file on the same tmpfs, then rename it into place: the
+# probe sees either the previous file or the complete new one. The trap
+# wipes the temp file on any exit short of success. umask 0077 so a race
+# between creat() and chmod() cannot expose it to other UIDs.
+TMP_FILE="${BINARY_FILE}.tmp.$$"
+trap 'rm -f "$TMP_FILE"; unset IDENTITY; exit 1' ERR HUP INT TERM
+umask 0077
+printf '%s' "$IDENTITY" > "$TMP_FILE"
+chmod 0400 "$TMP_FILE"
+mv -f "$TMP_FILE" "$BINARY_FILE"
+trap - ERR HUP INT TERM
 
-# Clear the in-memory copy; the disk copy in tmpfs is the only
-# remaining holder.
+# Clear the in-memory copy; the tmpfs file is the only remaining holder.
 unset IDENTITY derived
 
-echo "Binary identity loaded. Boot probe will accept on next poll."
+echo "Binary keyring loaded. Boot probe will accept on next poll."
