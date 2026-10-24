@@ -88,6 +88,7 @@ function invoice(mode: TaxMode, withNegative: boolean): Invoice {
     performanceDate: '2026-09-30',
     cancellationReason: null,
     renderedPdfBinaryDescriptorId: null,
+    projectArchived: false,
     version: 1,
     createdAt: '2026-10-01T00:00:00.000Z',
     updatedAt: '2026-10-01T00:00:00.000Z',

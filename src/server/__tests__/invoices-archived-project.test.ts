@@ -6,6 +6,10 @@
  * project is then archived, so a 404 can only come from the archive state.
  * "Changes nothing" is a database snapshot of the project's invoice rows,
  * the project row and the audit log, equal before and after the call.
+ *
+ * Reads carry `projectArchived`, the state the `/rechnungen` surfaces gate
+ * their changes on (api.md §14.2.14). Archive and restore flip it, so they
+ * emit `invoice_changed` (api.md §14.2.13).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -23,6 +27,8 @@ import {
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
+import { subscribe, unsubscribe } from '../sse/bus.js';
+import { INVOICE_CHANGED } from '../../config/sseEvents.js';
 
 interface Project {
   id: string;
@@ -54,6 +60,8 @@ describe('AC-513: invoice changes on an archived project', () => {
   let deleteDraftId: string;
   let issueDraftId: string;
   let issuedId: string;
+  let activeProjectId: string;
+  let activeDraftId: string;
 
   async function createDraft(projectId: string): Promise<string> {
     const res = await authPost(token, '/api/invoices', {
@@ -110,12 +118,38 @@ describe('AC-513: invoice changes on an archived project', () => {
     if (issued.statusCode !== 200) throw new Error(`issue ${issued.statusCode} ${issued.body}`);
     issuedId = issued.json().id as string;
 
+    const all = await authGet(token, '/api/projects?limit=200');
+    const active = (all.json().data as Project[]).find(
+      (p) => !p.deleted && p.id !== draftProjectId && p.id !== issuedProjectId,
+    );
+    if (!active) throw new Error('seed needs a third active project');
+    activeProjectId = active.id;
+    activeDraftId = await createDraft(activeProjectId);
+
     await archive(draftProjectId);
     await archive(issuedProjectId);
   });
 
   afterAll(async () => {
     await stopApp();
+  });
+
+  it('invoice reads say whether the project is archived', async () => {
+    const list = await authGet(token, '/api/invoices?limit=200');
+    const archivedOf = new Map(
+      (list.json().data as { id: string; projectArchived: boolean }[]).map((i) => [
+        i.id,
+        i.projectArchived,
+      ]),
+    );
+    expect(archivedOf.get(issuedId)).toBe(true);
+    expect(archivedOf.get(editDraftId)).toBe(true);
+    expect(archivedOf.get(activeDraftId)).toBe(false);
+
+    expect((await authGet(token, `/api/invoices/${issuedId}`)).json().projectArchived).toBe(true);
+    expect((await authGet(token, `/api/invoices/${activeDraftId}`)).json().projectArchived).toBe(
+      false,
+    );
   });
 
   it('AC-513: editing a draft is refused as not found and changes nothing', async () => {
@@ -169,5 +203,25 @@ describe('AC-513: invoice changes on an archived project', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().code).toBe('NOT_FOUND');
     expect(await snapshot(issuedProjectId)).toEqual(before);
+  });
+
+  it('archiving and restoring a project each emit one invoice_changed', async () => {
+    const chunks: string[] = [];
+    const conn = { write: (chunk: string) => void chunks.push(chunk) };
+    const count = () =>
+      (chunks.join('').match(new RegExp(`event: ${INVOICE_CHANGED}\\n`, 'g')) ?? []).length;
+    subscribe(conn);
+    try {
+      await archive(activeProjectId);
+      await new Promise<void>((r) => setImmediate(r));
+      expect(count()).toBe(1);
+
+      const res = await authPost(token, `/api/projects/${activeProjectId}/restore`);
+      expect(res.statusCode).toBe(200);
+      await new Promise<void>((r) => setImmediate(r));
+      expect(count()).toBe(2);
+    } finally {
+      unsubscribe(conn);
+    }
   });
 });

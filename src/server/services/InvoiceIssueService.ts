@@ -119,7 +119,7 @@ export class InvoiceIssueService {
     // emit this (AC-290 — the cancel atom does not modify project
     // status).
     emitProjectChanged();
-    return toInvoiceResponse(issued);
+    return toInvoiceResponse(issued, false);
   }
 
   /**
@@ -285,6 +285,7 @@ export class InvoiceIssueService {
         : null,
       cancellationReason: null,
       renderedPdfBinaryDescriptorId: null,
+      projectArchived: false,
       // Step 8's UPDATE bumps the draft's version once, then it freezes.
       version: before.version + 1,
       createdAt: before.createdAt.toISOString(),

@@ -162,6 +162,7 @@ export class InvoiceCancelService {
           : null,
         cancellationReason,
         renderedPdfBinaryDescriptorId: null,
+        projectArchived: false,
         version: 1,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -265,8 +266,8 @@ export class InvoiceCancelService {
       collected.push(stornoAudit.auditRow);
 
       return {
-        original: toInvoiceResponse(originalRow),
-        storno: toInvoiceResponse(stornoRow),
+        original: toInvoiceResponse(originalRow, false),
+        storno: toInvoiceResponse(stornoRow, false),
       };
     });
 

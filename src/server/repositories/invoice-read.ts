@@ -56,9 +56,11 @@ function dateToIso(value: Date | null | undefined): string | null {
  * TypeScript types in `schema.ts` use `$type<>()` on a handful of
  * columns but not on the invoice snapshots, so we cast through the
  * documented shape here. Casts are localised to this projection
- * function (the entrypoint for "raw row → wire shape").
+ * function (the entrypoint for "raw row → wire shape"). `projectArchived`
+ * comes from the parent project row; a successful mutation response passes
+ * false, as only an active project's invoices change (AC-513).
  */
-export function toInvoiceResponse(row: InvoiceRow): Invoice {
+export function toInvoiceResponse(row: InvoiceRow, projectArchived: boolean): Invoice {
   return {
     id: row.id,
     number: row.number,
@@ -75,6 +77,7 @@ export function toInvoiceResponse(row: InvoiceRow): Invoice {
     performanceDate: dateToIso(row.performanceDate),
     cancellationReason: row.cancellationReason,
     renderedPdfBinaryDescriptorId: row.renderedPdfBinaryDescriptorId,
+    projectArchived,
     version: row.version,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -82,6 +85,9 @@ export function toInvoiceResponse(row: InvoiceRow): Invoice {
     updatedBy: row.updatedBy,
   };
 }
+
+/** Read projection: the invoice row plus its project's archive state. */
+const invoiceWithArchiveState = { invoice: invoices, projectArchived: projects.deleted };
 
 export interface ListInvoicesOpts {
   offset?: number;
@@ -168,13 +174,15 @@ export async function listInvoices(
 
   const baseQuery = whereClause
     ? db
-        .select()
+        .select(invoiceWithArchiveState)
         .from(invoices)
+        .innerJoin(projects, eq(invoices.projectId, projects.id))
         .where(whereClause)
         .orderBy(...orderBy)
     : db
-        .select()
+        .select(invoiceWithArchiveState)
         .from(invoices)
+        .innerJoin(projects, eq(invoices.projectId, projects.id))
         .orderBy(...orderBy);
   const paginated =
     opts.limit !== undefined ? baseQuery.limit(opts.limit).offset(opts.offset ?? 0) : baseQuery;
@@ -184,7 +192,7 @@ export async function listInvoices(
 
   const [rows, countResult] = await Promise.all([paginated, countQuery]);
   return {
-    data: rows.map(toInvoiceResponse),
+    data: rows.map((r) => toInvoiceResponse(r.invoice, r.projectArchived)),
     total: countResult[0]?.value ?? 0,
   };
 }
@@ -226,10 +234,15 @@ export async function getInvoice(
   caller: AuthUser,
   id: string,
 ): Promise<ScopedReadResult<Invoice>> {
-  const rows = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+  const rows = await db
+    .select(invoiceWithArchiveState)
+    .from(invoices)
+    .innerJoin(projects, eq(invoices.projectId, projects.id))
+    .where(eq(invoices.id, id))
+    .limit(1);
   if (rows.length === 0) return null;
   if (!isUnscoped(caller)) return OUT_OF_SCOPE;
-  return toInvoiceResponse(rows[0]!);
+  return toInvoiceResponse(rows[0]!.invoice, rows[0]!.projectArchived);
 }
 
 /**

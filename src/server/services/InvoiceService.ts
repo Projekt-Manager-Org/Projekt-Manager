@@ -386,7 +386,7 @@ export class InvoiceService {
     );
     log.info({ invoiceId: created.id, projectId: input.projectId }, 'invoice_draft_created');
     emitInvoiceChanged();
-    return toInvoiceResponse(created);
+    return toInvoiceResponse(created, false);
   }
 
   /**
@@ -504,7 +504,7 @@ export class InvoiceService {
     );
     log.info({ invoiceId: id }, 'invoice_draft_updated');
     emitInvoiceChanged();
-    return toInvoiceResponse(updated);
+    return toInvoiceResponse(updated, false);
   }
 
   /**
