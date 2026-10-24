@@ -71,6 +71,8 @@ The viewer for `status ∈ {'issued', 'cancelled'}` rows — reachable from a li
 | PDF download                        | `invoice:read` (per [AC-299](../verification.md#1530-invoices))                                                                                                                                                                                                 |
 | Worker access                       | Not visible. Worker is excluded by the repository scope predicate ([ADR-0019](../../adr/0019-worker-data-scoping-repository-layer-predicate.md)). The `/rechnungen` route returns the not-permitted surface per [AC-149](../verification.md#1521-role-scoping). |
 
+Every change also needs the invoice's project not archived ([AC-514](../verification.md#1530-invoices); the server refuses it per [AC-513](../verification.md#1530-invoices)).
+
 Server-side authorization is authoritative; client-side hiding is a UX convenience per [AC-121](../verification.md#1521-role-scoping).
 
 ### 8.16.5 Realtime Refresh
