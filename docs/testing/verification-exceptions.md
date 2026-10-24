@@ -192,6 +192,5 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-473 | gap     | e2e opens the panel from a card; no test opens it from a calendar bar                                    |
 | AC-474 | gap     | needs an e2e at phone width opening a project from the board and the calendar                            |
 | AC-479 | gap     | needs an e2e covering blur → verdict → edit clears verdict (`ProjectManagement.test.tsx` is mock-based)  |
-| AC-500 | gap     | #601: the invoice block still offers changes; then a page test of an archived project                    |
 | AC-506 | gap     | `archive-flows.spec.ts` does not assert the project name; restore is untested                            |
 | AC-511 | gap     | needs a page test clearing the start while an end is set                                                 |

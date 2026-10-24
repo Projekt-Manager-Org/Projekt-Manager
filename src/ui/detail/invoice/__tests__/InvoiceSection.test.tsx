@@ -201,7 +201,11 @@ function renderSection(opts: RenderOptions = {}) {
           path="/projects/:projectId"
           element={
             <>
-              <InvoiceSection projectId="proj-abc" projectStatus="rechnung_faellig" />
+              <InvoiceSection
+                projectId="proj-abc"
+                projectStatus="rechnung_faellig"
+                archived={false}
+              />
               <LocationProbe />
             </>
           }

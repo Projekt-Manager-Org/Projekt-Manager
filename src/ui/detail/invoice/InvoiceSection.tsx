@@ -19,9 +19,10 @@
  *
  * Permission gating: the whole section is hidden for callers without
  * `invoice:read` (workers — server is authoritative via the repository
- * scope predicate). The `Neue Rechnung` CTA is additionally gated on
- * `invoice:write` AND `project.status === 'rechnung_faellig'` per
- * spec §8.15.11.
+ * scope predicate). Every change — CTA, row actions, draft form — needs
+ * `invoice:write` on a project that is not archived (AC-500); the
+ * `Neue Rechnung` CTA additionally needs `project.status ===
+ * 'rechnung_faellig'` per spec §8.15.11.
  *
  * Realtime: a global `invoice_changed` SSE subscription
  * (state/invoiceSseSubscription.ts) refreshes every project's invoice
@@ -79,11 +80,12 @@ function labelForCompanyProfileField(path: string): string {
 interface Props {
   projectId: string;
   projectStatus: WorkflowState;
+  archived: boolean;
 }
 
-export function InvoiceSection({ projectId, projectStatus }: Props) {
+export function InvoiceSection({ projectId, projectStatus, archived }: Props) {
   const canRead = usePermission('invoice:read');
-  const canWrite = usePermission('invoice:write');
+  const canWrite = usePermission('invoice:write') && !archived;
 
   const invoices = useInvoiceStore((s) => s.byProject[projectId]);
   const loading = useInvoiceStore((s) => s.loadingByProject[projectId] ?? false);
@@ -339,7 +341,7 @@ export function InvoiceSection({ projectId, projectStatus }: Props) {
         </Link>
       </div>
 
-      {(formOpen || urlEditDraft !== null) && (
+      {canWrite && (formOpen || urlEditDraft !== null) && (
         <InvoiceDraftForm
           projectId={projectId}
           draft={editingDraft ?? urlEditDraft}
