@@ -112,7 +112,7 @@
       "prConcurrentLimit": 0,
       "prHourlyLimit": 0,
       "prBodyNotes": [
-        "**Merge only after acceptance on the VPS:** `sudo /opt/projekt-manager/scripts/ops/docker-bump.sh test origin/renovate/docker-host`. Procedure, review checklist and revert: [server-setup.md § Upgrading pinned versions](https://github.com/Projekt-Manager-Org/Projekt-Manager/blob/main/docs/ops/server-setup.md#upgrading-pinned-versions). A `containerd.io` minor change is a one-way door: never skip a minor, and a revert takes step 5c."
+        "**Merge only after acceptance on the VPS:** `sudo /opt/projekt-manager/scripts/ops/docker-bump.sh test origin/renovate/docker-host`, then `merge-check` before merging. Procedure, review checklist and revert: [server-setup.md § Upgrading pinned versions](https://github.com/Projekt-Manager-Org/Projekt-Manager/blob/main/docs/ops/server-setup.md#upgrading-pinned-versions). A `containerd.io` minor change is a one-way door: never skip a minor, and a revert takes step 5c."
       ],
       "separateMajorMinor": false,
       "separateMultipleMajor": false,

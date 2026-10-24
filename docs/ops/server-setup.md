@@ -200,7 +200,7 @@ It records the Postgres `system_identifier` (once, in `/var/lib/projekt-manager/
 
 A converge that moves `docker-ce` or `containerd.io` restarts the Docker daemon (no `live-restore`): every container stops, `restart: unless-stopped` brings them back, and the binary/drill-key tmpfs is wiped. The app stays down until the second `deploy.sh` reloads the keys ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
 
-**3. Acceptance.** All four pass = the bump works. The script runs 1, 2 and 4 and ends with `PASS`, or `FAIL` and the next step:
+**3. Acceptance.** All four pass = the bump works. The script runs 1, 2 and 4 and ends with `PASS` (and records the tested SHA for step 4), or `FAIL` and the next step:
 
 1. The second `deploy.sh` exits 0 and the drill key is loaded: containers up, both keys loaded, `/api/health` inside the app (DB query + external object storage, i.e. container DNS and egress), and `https://$DOMAIN/api/health` through Caddy on the published WireGuard address.
 2. One backup cycle exits 0. Nothing else checks the backup container after a converge.
@@ -209,7 +209,7 @@ A converge that moves `docker-ce` or `containerd.io` restarts the Docker daemon 
 
 Not covered, accepted: ACME renewal (DNS-01 egress from Caddy, weeks later; Caddy retries), load-dependent limits, the next reboot.
 
-**4. Pass.** Merge the PR if its pins are unchanged since the tested SHA (the script prints the `git diff --quiet` line; a rebase onto a newer `main` does not matter, a newer Docker release does: repeat from step 2). Dev workstation: `git pull`, `sudo scripts/ops/docker-converge.sh`, `docker compose up -d` ([local-dev.md](local-dev.md)). Deploying the merged `main` to the VPS needs no converge.
+**4. Pass.** Merge the PR once `sudo /opt/projekt-manager/scripts/ops/docker-bump.sh merge-check origin/renovate/docker-host` says `unchanged`. It compares the PR's pins with those of the SHA the last passed test recorded: the PR rebases whenever `main` moves inside the window, which does not matter, but a newer Docker release does (repeat from step 2). Dev workstation: `git pull`, `sudo scripts/ops/docker-converge.sh`, `docker compose up -d` ([local-dev.md](local-dev.md)). Deploying the merged `main` to the VPS needs no converge.
 
 **5. Fail.** Revert, then close the PR after the schedule window (the first seven days of January, April, July and October). A grouped PR has no version in its title, so Renovate recreates one closed inside the window. Reverts, in order of preference, each followed by the same acceptance against the recorded `system_identifier`:
 

@@ -2,10 +2,10 @@
 #
 # Scenario tests for scripts/ops/docker-bump.sh.
 #
-# The script runs a Docker pin bump and its revert on the VPS
-# (server-setup.md § Upgrading pinned versions, steps 2-3 and 5b/5c). A
-# wrong order deploys on pins nobody converged to, or accepts a bump that
-# lost the Postgres volume.
+# The script runs a Docker pin bump, its merge check and its revert on the
+# VPS (server-setup.md § Upgrading pinned versions, steps 2-4 and 5b/5c). A
+# wrong order deploys on pins nobody converged to, accepts a bump that lost
+# the Postgres volume, or passes a host left on other pins.
 #
 # `id`, `sudo`, `git` and `docker` are PATH stubs; deploy.sh, the converge
 # and the fresh-state script are stubs in a fake repo. All log every call,
@@ -32,7 +32,8 @@ trap 'rm -rf "$TMP_ROOT"' EXIT
 # FAIL_CHECKOUT, FAIL_DEPLOY (fails past the drift guard), FAIL_CONVERGE,
 # FAIL_FRESH, LOSE_VOLUME (the switch replaces the cluster), DB_DOWN,
 # FAIL_BACKUP=<n> (the n-th backup cycle fails), DRILL_MISSING,
-# FAIL_DRILL_LOAD.
+# FAIL_DRILL_LOAD, NO_GUARD (deploy.sh predates the drift guard),
+# PINS_CHANGED / DIFF_ERROR (git diff exits 1 / 128).
 stage() {
   local d
   d="$(mktemp -d -p "$TMP_ROOT")"
@@ -54,8 +55,18 @@ exec "$@"
 EOF
   cat >"$d/bin/git" <<'EOF'
 #!/usr/bin/env bash
-[[ "$1" == -C && "$3" == rev-parse ]] || { echo "git stub: unexpected $*" >&2; exit 99; }
-if [[ "$4" == HEAD ]]; then cat "$STUB_DIR/head"; else echo "sha-$4"; fi
+[[ "$1" == -C ]] || { echo "git stub: unexpected $*" >&2; exit 99; }
+shift 2
+case "$1" in
+  rev-parse) if [[ "$2" == HEAD ]]; then cat "$STUB_DIR/head"; else echo "sha-$2"; fi ;;
+  fetch) echo "git $*" >>"$STUB_DIR/calls" ;;
+  diff)
+    echo "git $*" >>"$STUB_DIR/calls"
+    [[ "${DIFF_ERROR:-0}" == 1 ]] && exit 128
+    [[ "${PINS_CHANGED:-0}" != 1 ]]
+    ;;
+  *) echo "git stub: unexpected $*" >&2; exit 99 ;;
+esac
 EOF
   cat >"$d/bin/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -81,7 +92,7 @@ EOF
 echo "deploy $1" >>"$STUB_DIR/calls"
 [[ "${FAIL_CHECKOUT:-0}" == 1 ]] && exit 1
 case "$1" in sha-*) echo "$1" ;; *) echo "sha-$1" ;; esac >"$STUB_DIR/head"
-[[ -f "$STUB_DIR/drift" ]] && { echo "ERROR: Docker host does not match the pins"; exit 1; }
+[[ -f "$STUB_DIR/drift" && "${NO_GUARD:-0}" != 1 ]] && { echo "ERROR: Docker host does not match the pins"; exit 1; }
 [[ "${FAIL_DEPLOY:-0}" != 1 ]]
 EOF
   cat >"$d/repo/scripts/ops/docker-converge.sh" <<'EOF'
@@ -106,7 +117,8 @@ exit 0
 EOF
   chmod +x "$d/bin/"* "$d/repo/scripts/deploy.sh" "$d/repo/scripts/ops/"*
   [[ "${INSYNC:-0}" == 1 ]] && rm -f "$d/drift"
-  [[ -z "${RECORDED:-}" ]] || echo "$RECORDED" >"$d/state/sysid"
+  [[ -z "${RECORDED:-}" ]] || echo "$RECORDED" >"$d/state/docker-bump-sysid"
+  [[ -z "${TESTED:-}" ]] || echo "$TESTED" >"$d/state/docker-bump-tested"
   echo "$d"
 }
 
@@ -115,7 +127,7 @@ run() {
   local d="$1"
   shift
   out="$(PATH="$d/bin:$PATH" STUB_DIR="$d" DOCKER_BUMP_REPO_DIR="$d/repo" \
-    DOCKER_BUMP_STATE_FILE="$d/state/sysid" bash "$SCRIPT" "$@" 2>&1 </dev/null)"
+    DOCKER_BUMP_STATE_DIR="$d/state" bash "$SCRIPT" "$@" 2>&1 </dev/null)"
   rc=$?
 }
 
@@ -146,6 +158,7 @@ expect_rc() {
 called() { grep -qxF -- "$1" "$d/calls"; }
 not_called() { ! grep -qF -- "$1" "$d/calls"; }
 says() { grep -qF -- "$1" <<<"$out"; }
+not_says() { ! says "$1"; }
 line_of() { grep -nxF -m1 -- "$1" "$d/calls" | cut -d: -f1; }
 before() {
   local a b
@@ -165,7 +178,7 @@ FAKE_UID=1000 run "$d" test "$REF"
 expect_rc 2 "refuses"
 check "nothing called" bash -c "[[ ! -s '$d/calls' ]]"
 
-for args in "" "test" "test a b" "revert --bogus" "revert --fresh-state x" "bogus"; do
+for args in "" "test" "test a b" "merge-check" "merge-check a b" "revert --bogus" "revert --fresh-state x" "bogus"; do
   echo "Case: usage '$args'"
   d="$(stage)"
   # shellcheck disable=SC2086  # split the argument list on purpose
@@ -183,38 +196,39 @@ check "restore point before the first deploy" before "$BACKUP_RUN" "deploy $REF"
 check "first deploy, then converge to the ref's pins" before "deploy $REF" "converge install sha-$REF"
 check "second deploy pins the checked-out SHA" before "converge install sha-$REF" "deploy sha-$REF"
 check "two backup cycles" [ "$(backups)" == 2 ]
-check "identifier recorded" [ "$(cat "$d/state/sysid")" == "$SYSID" ]
-check "says PASS" says "PASS: acceptance 1-3 at sha-$REF"
-check "prints the merge check" says "git diff --quiet sha-$REF $REF -- docker/host-versions.txt"
+check "identifier recorded" [ "$(cat "$d/state/docker-bump-sysid")" == "$SYSID" ]
+check "says PASS, numbered as in the runbook" says "PASS: acceptance 1, 2 and 4 at sha-$REF"
+check "records the tested SHA" [ "$(cat "$d/state/docker-bump-tested")" == "sha-$REF" ]
+check "prints the merge check" says "merge-check $REF"
 check "prints the WireGuard check with the domain" says "curl -fsS https://pm.example.test/api/health"
 
 echo "Case: test, recorded identifier matches"
 d="$(RECORDED=$SYSID stage)"
 run "$d" test "$REF"
 expect_rc 0 "accepted"
-check "record unchanged" [ "$(cat "$d/state/sysid")" == "$SYSID" ]
+check "record unchanged" [ "$(cat "$d/state/docker-bump-sysid")" == "$SYSID" ]
 
 echo "Case: test, running cluster is not the recorded one"
 d="$(RECORDED=4242 stage)"
 run "$d" test "$REF"
 expect_rc 1 "refuses"
 check "no backup, no deploy" bash -c "! grep -qE 'backup-runner|^deploy' '$d/calls'"
-check "says how to reset the record" says "sudo rm $d/state/sysid"
-check "record kept" [ "$(cat "$d/state/sysid")" == 4242 ]
+check "says how to reset the record" says "sudo rm $d/state/docker-bump-sysid"
+check "record kept" [ "$(cat "$d/state/docker-bump-sysid")" == 4242 ]
 
 echo "Case: test, database down"
 d="$(stage)"
 DB_DOWN=1 run "$d" test "$REF"
 expect_rc 1 "refuses"
 check "no deploy" not_called "deploy "
-check "nothing recorded" [ ! -e "$d/state/sysid" ]
+check "nothing recorded" [ ! -e "$d/state/docker-bump-sysid" ]
 
 echo "Case: test, restore-point backup fails"
 d="$(stage)"
 FAIL_BACKUP=1 run "$d" test "$REF"
 expect_rc 1 "refuses"
 check "no deploy" not_called "deploy "
-check "says nothing changed" says "nothing changed"
+check "says nothing changed, or revert mid-bump" says "nothing changed. Fix the stack; mid-bump (rolling forward), revert instead: step 5b or 5c"
 
 echo "Case: test, checkout fails"
 d="$(stage)"
@@ -222,6 +236,7 @@ FAIL_CHECKOUT=1 run "$d" test "$REF"
 expect_rc 1 "fails"
 check "no converge" not_called "converge install"
 check "names the checkout" says "did not check out $REF"
+check "says Docker is untouched" says "Next: Docker untouched"
 
 echo "Case: test, first deploy fails past the drift guard"
 d="$(INSYNC=1 stage)"
@@ -276,6 +291,7 @@ d="$(stage)"
 LOSE_VOLUME=1 run "$d" test "$REF"
 expect_rc 1 "fails"
 check "names both identifiers" says "system_identifier is 1111, recorded $SYSID"
+check "no tested SHA recorded" [ ! -e "$d/state/docker-bump-tested" ]
 check "points to the restore" says "step 5d"
 
 echo "Case: revert, happy path"
@@ -292,8 +308,8 @@ echo "Case: revert, no recorded identifier"
 d="$(stage)"
 run "$d" revert
 expect_rc 0 "accepted"
-check "warns check 3 skipped" says "check 3 skipped"
-check "records nothing" [ ! -e "$d/state/sysid" ]
+check "warns check 4 skipped" says "check 4 skipped"
+check "records nothing" [ ! -e "$d/state/docker-bump-sysid" ]
 
 echo "Case: revert --fresh-state"
 d="$(RECORDED=$SYSID stage)"
@@ -315,13 +331,72 @@ d="$(RECORDED=$SYSID stage)"
 FAIL_FRESH=1 run "$d" revert --fresh-state
 expect_rc 1 "fails"
 check "no deploy after it" not_called "deploy sha-"
-check "points to 5d" says "step 5d"
+check "points to its own message, then 5d" says "Next: docker-fresh-state.sh says above what it moved; then step 5d"
 
 echo "Case: revert, the cluster changed"
 d="$(RECORDED=4242 stage)"
 run "$d" revert
 expect_rc 1 "fails"
 check "points to the restore" says "step 5d"
+
+echo "Case: test, the ref predates the drift guard"
+d="$(stage)"
+NO_GUARD=1 run "$d" test "$REF"
+expect_rc 1 "fails"
+check "no converge" not_called "converge install"
+check "names it" says "deployed without the drift guard"
+check "no tested SHA recorded" [ ! -e "$d/state/docker-bump-tested" ]
+
+echo "Case: revert, main predates the drift guard"
+d="$(RECORDED=$SYSID stage)"
+NO_GUARD=1 run "$d" revert
+expect_rc 1 "fails, no false PASS"
+check "names it" says "deployed without the drift guard"
+check "no PASS" not_says "PASS"
+
+echo "Case: test clears a stale tested SHA up front"
+d="$(TESTED=sha-stale stage)"
+FAIL_CONVERGE=1 run "$d" test "$REF"
+expect_rc 1 "fails"
+check "stale record gone" [ ! -e "$d/state/docker-bump-tested" ]
+
+echo "Case: revert clears the tested SHA"
+d="$(RECORDED=$SYSID TESTED=sha-x stage)"
+run "$d" revert
+expect_rc 0 "accepted"
+check "record gone" [ ! -e "$d/state/docker-bump-tested" ]
+
+echo "Case: merge-check, pins unchanged"
+d="$(TESTED=sha-tested stage)"
+run "$d" merge-check "$REF"
+expect_rc 0 "merge"
+check "fetches first" before "git fetch -q origin" "git diff --quiet sha-tested $REF -- docker/host-versions.txt"
+check "says merge" says "unchanged since the passed test at sha-tested: merge"
+check "touches nothing else" bash -c "! grep -qE '^(deploy|converge|docker)' '$d/calls'"
+
+echo "Case: merge-check, pins changed"
+d="$(TESTED=sha-tested stage)"
+PINS_CHANGED=1 run "$d" merge-check "$REF"
+expect_rc 1 "no merge"
+check "says repeat step 2" says "repeat step 2"
+
+echo "Case: merge-check, comparison fails"
+d="$(TESTED=sha-tested stage)"
+DIFF_ERROR=1 run "$d" merge-check "$REF"
+expect_rc 1 "no merge"
+check "says it could not compare" says "cannot compare sha-tested with $REF"
+
+echo "Case: merge-check, no passed test"
+d="$(stage)"
+run "$d" merge-check "$REF"
+expect_rc 1 "no merge"
+check "says run step 2" says "run step 2 first"
+check "no git call" not_called "git "
+
+echo "Case: merge-check, not root"
+d="$(TESTED=sha-tested stage)"
+FAKE_UID=1000 run "$d" merge-check "$REF"
+expect_rc 2 "refuses"
 
 echo
 echo "Result: $pass passed, $fail failed"
