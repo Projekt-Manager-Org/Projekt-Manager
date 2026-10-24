@@ -101,7 +101,7 @@ process.env.DATABASE_URL = 'postgresql://openapi-spike:unused@127.0.0.1:1/openap
 process.env.STORAGE_ENDPOINT = 'http://127.0.0.1:1';
 process.env.STORAGE_ACCESS_KEY = 'openapi-spike-unused';
 process.env.STORAGE_SECRET_KEY = 'openapi-spike-unused';
-process.env.BINARY_AGE_RECIPIENT = 'age1openapispikeunusedplaceholderplaceholderplaceholder';
+process.env.BINARY_AGE_RECIPIENT = 'age15nf2qq4znfwup9khgjk0rdgp5wg9vx33fngc727m3zdkctq29djqyr9su6';
 
 /**
  * The document's header. Lives here, not in `src/server/app.ts`: what

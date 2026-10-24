@@ -60,6 +60,25 @@ function parseTrustedProxyCidrs(raw: string): string[] | null {
   return entries;
 }
 
+/**
+ * An `age` X25519 public recipient: `age1` + 58 bech32 characters. Shape
+ * only — no checksum — but it catches a truncated paste and a private
+ * key (`AGE-SECRET-KEY-1…`) before the value reaches a log line.
+ */
+const AGE_X25519_RECIPIENT_RE = /^age1[02-9ac-hj-np-z]{58}$/;
+
+/**
+ * Splits a `BINARY_AGE_RETIRED_RECIPIENTS` value into its recipients.
+ * Returns null on an empty entry (stray comma) or one that is not a
+ * public `age1…` recipient, so the deploy pre-flight rejects it before
+ * any container is recreated — the boot probe would otherwise report it
+ * only as a key missing from the keyring.
+ */
+function parseRetiredRecipients(raw: string): string[] | null {
+  const entries = raw.split(',').map((e) => e.trim());
+  return entries.every((e) => AGE_X25519_RECIPIENT_RE.test(e)) ? entries : null;
+}
+
 export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   // Default to 'production' so the production-safety checks (see
@@ -251,14 +270,43 @@ export const envSchema = z.object({
   // the backup AGE_RECIPIENT above — separate rotation cadence and
   // separate blast radius. The boot-time probe
   // `assertBinaryIdentityLoaded` refuses to start the app service when
-  // the derived recipient of the tmpfs-loaded identity does not match
-  // BINARY_AGE_RECIPIENT.
+  // the recipients derived from the tmpfs-loaded keyring are not exactly
+  // BINARY_AGE_RECIPIENT plus BINARY_AGE_RETIRED_RECIPIENTS.
   // ---------------------------------------------------------------
   /** Public age recipient (X25519) for wrapping per-attachment DEKs.
    * Optional at the schema layer because the backup-runner CLI shares
    * `validateEnvRuntime`; `assertAppServerEnv` enforces presence on the
    * app-server boot path. */
-  BINARY_AGE_RECIPIENT: z.string().optional(),
+  BINARY_AGE_RECIPIENT: z
+    .string()
+    .refine(
+      (v) => v === '' || AGE_X25519_RECIPIENT_RE.test(v),
+      'BINARY_AGE_RECIPIENT must be a public age recipient (age1… , 62 characters), not the ' +
+        'private identity. Re-derive with: age-keygen -y <identity-file>',
+    )
+    .optional(),
+  /** Public recipients of retired binary keypairs (ADR-0024 § Key
+   * rotation): unwrap only, never wrapped to. Compose forwards
+   * `${VAR:-}`, so "" means none. */
+  BINARY_AGE_RETIRED_RECIPIENTS: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z
+      .string()
+      .transform((v, ctx) => {
+        const parsed = parseRetiredRecipients(v);
+        if (parsed === null) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              'BINARY_AGE_RETIRED_RECIPIENTS must be a comma-separated list of public ' +
+              'recipients (age1…), with no empty entries.',
+          });
+          return z.NEVER;
+        }
+        return parsed;
+      })
+      .default([]),
+  ),
   /** Tmpfs-resident path the boot probe reads the operator-loaded
    * private identity from. Default matches the tmpfs mount declared on
    * the `app` service in docker-compose.yml — operators that follow the

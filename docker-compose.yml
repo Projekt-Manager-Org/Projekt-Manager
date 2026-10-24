@@ -201,10 +201,13 @@ services:
       # Binary attachment e2e encryption (ADR-0024). The recipient is the
       # public half of the operator-held binary `age` keypair — independent
       # from AGE_RECIPIENT (backup) so a single compromise does not span
-      # both domains. The identity (private half) is operator-loaded into
-      # the tmpfs mount above via scripts/binary-key/load-binary-key.sh
-      # after each VPS reboot; the boot probe refuses to start without it.
+      # both domains. The keyring (the active private identity plus every
+      # retired one) is operator-loaded into the tmpfs mount above via
+      # scripts/binary-key/load-binary-key.sh after each VPS reboot; the
+      # boot probe refuses to start unless it holds exactly the active
+      # recipient plus BINARY_AGE_RETIRED_RECIPIENTS (ADR-0024 § Key rotation).
       BINARY_AGE_RECIPIENT: ${BINARY_AGE_RECIPIENT:-}
+      BINARY_AGE_RETIRED_RECIPIENTS: ${BINARY_AGE_RETIRED_RECIPIENTS:-}
       BINARY_AGE_IDENTITY_PATH: ${BINARY_AGE_IDENTITY_PATH:-/run/binary-key/identity}
     # No `healthcheck:` on app. /api/health is a real probe (DB query +
     # B2 ListObjectsV2) and Docker would invoke it every 10 s for the

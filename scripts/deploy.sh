@@ -359,19 +359,19 @@ docker compose --profile backup up -d
 # Skip when the tmpfs is still warm (compose-only changes that didn't
 # recreate the app container).
 if docker exec projekt-manager-app-1 test -s /run/binary-key/identity 2>/dev/null; then
-  echo "Binary identity already in tmpfs — skipping reload."
+  echo "Binary keyring already in tmpfs — skipping reload."
 else
   echo
-  echo "==> Loading binary identity (operator paste; ADR-0024 tmpfs-only)"
+  echo "==> Loading binary keyring (operator paste; ADR-0024 tmpfs-only)"
   # `-it` allocates a pseudo-TTY so load-binary-key's `read -s` actually
   # suppresses echo. A missed paste keeps the app DOWN — the boot
   # probe is fail-closed (it eventually throws on timeout, no degraded
   # mode) — so we abort the deploy rather than pretend "verified"
   # downstream.
   if ! docker exec -it projekt-manager-app-1 load-binary-key; then
-    echo "ERROR: binary identity not loaded — aborting deploy." >&2
+    echo "ERROR: binary keyring not loaded — aborting deploy." >&2
     echo "       The app boot probe is fail-closed (ADR-0024); without the" >&2
-    echo "       identity the next container start will refuse to serve." >&2
+    echo "       keyring the next container start will refuse to serve." >&2
     echo "       Re-run the deploy after resolving the paste failure, or:" >&2
     echo "       docker exec -it projekt-manager-app-1 load-binary-key" >&2
     exit 1

@@ -1,11 +1,13 @@
 /**
- * Boot-time binary `age` identity probe — fail-closed (AC-438).
+ * Boot-time binary `age` keyring probe — fail-closed (AC-438).
  *
- * Pins the operator-loaded-identity boot gate from ADR-0024:
- *   - happy path: a parseable identity at the configured tmpfs path lets
+ * Pins the operator-loaded-keyring boot gate from ADR-0024:
+ *   - happy path: a parseable keyring at the configured tmpfs path whose
+ *     recipients equal the active one plus the listed retired ones lets
  *     the assertion resolve;
  *   - fail-closed branches: file absent / file unreadable / malformed
- *     identity that fails `age-keygen -y` round-trip → a thrown error
+ *     identity that fails `age-keygen -y` round-trip / a configured key
+ *     missing from the keyring / an unlisted key in it → a thrown error
  *     identifying the offending check (translated to a non-zero process
  *     exit at the boot site, parallel to the bucket-safety probe in
  *     `assertStorageBucketSafe`);
@@ -15,14 +17,10 @@
  *
  * Mirrors the structure of `storage-safety.test.ts` (AC-236 / AC-237) —
  * a pure validator (`evaluateBinaryIdentity`) over a snapshot of {file
- * present?, file readable?, parsed recipient?, configured recipient?},
+ * present?, file readable?, derived recipients?, configured recipients?},
  * plus an orchestrator (`assertBinaryIdentityLoaded`) that reads the
  * file + spawns `age-keygen -y` and aggregates findings into one
  * thrown error matching the same message shape.
- *
- * The implementation does NOT yet exist — these tests fail at import
- * time. Compile errors against the missing module are the right failure
- * mode; the implementation phase lands the module and resolves both.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -53,15 +51,91 @@ const FAIL_FAST_OPTIONS = { waitTimeoutMs: 0, progressLogIntervalMs: 0 } as cons
 // ---------------------------------------------------------------------
 
 describe('AC-438: binary-identity boot probe — pure validator', () => {
+  const ACTIVE = 'age1abcde1234567890abcdef1234567890abcdef1234567890abcde1234abcd';
+  const RETIRED_1 = 'age1rrrrr1111111111111111111111111111111111111111111111111111111';
+  const RETIRED_2 = 'age1rrrrr2222222222222222222222222222222222222222222222222222222';
+  const STRANGER = 'age1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz';
   const CANONICAL: BinaryIdentitySnapshot = {
     fileExists: true,
     fileReadable: true,
-    derivedRecipient: 'age1abcde1234567890abcdef1234567890abcdef1234567890abcde1234abcd',
-    configuredRecipient: 'age1abcde1234567890abcdef1234567890abcdef1234567890abcde1234abcd',
+    derivedRecipients: [ACTIVE],
+    configuredRecipient: ACTIVE,
+    retiredRecipients: [],
   };
 
   it('passes on the canonical snapshot (file present, readable, recipient match)', () => {
     expect(evaluateBinaryIdentity(CANONICAL)).toEqual({ ok: true });
+  });
+
+  it('passes on a keyring holding exactly the active and the listed retired keys, in any order', () => {
+    expect(
+      evaluateBinaryIdentity({
+        ...CANONICAL,
+        derivedRecipients: [RETIRED_2, ACTIVE, RETIRED_1],
+        retiredRecipients: [RETIRED_1, RETIRED_2],
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it('fails when the active key is missing from the keyring', () => {
+    const verdict = evaluateBinaryIdentity({
+      ...CANONICAL,
+      derivedRecipients: [RETIRED_1],
+      retiredRecipients: [RETIRED_1],
+    });
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) {
+      expect(verdict.failures.join(' ')).toMatch(/missing.*BINARY_AGE_RECIPIENT/);
+      expect(verdict.failures.join(' ')).toContain(ACTIVE);
+    }
+  });
+
+  it('fails when a listed retired key is missing from the keyring', () => {
+    // Without it, everything written under that key is unreadable in the
+    // app (AC-515) — the probe must not let the deploy serve.
+    const verdict = evaluateBinaryIdentity({ ...CANONICAL, retiredRecipients: [RETIRED_1] });
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) {
+      expect(verdict.failures.join(' ')).toMatch(/missing.*BINARY_AGE_RETIRED_RECIPIENTS/);
+      expect(verdict.failures.join(' ')).toContain(RETIRED_1);
+    }
+  });
+
+  it('fails when the keyring holds a key that is configured neither as active nor as retired', () => {
+    // The backup drill identity pasted alongside the binary keyring.
+    const verdict = evaluateBinaryIdentity({
+      ...CANONICAL,
+      derivedRecipients: [ACTIVE, STRANGER],
+    });
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) {
+      expect(verdict.failures.join(' ')).toMatch(/unlisted/);
+      expect(verdict.failures.join(' ')).toContain(STRANGER);
+    }
+  });
+
+  it('ignores a retired entry listed twice and the active key listed as retired', () => {
+    expect(
+      evaluateBinaryIdentity({
+        ...CANONICAL,
+        derivedRecipients: [ACTIVE, RETIRED_1],
+        retiredRecipients: [RETIRED_1, RETIRED_1, ACTIVE],
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it('reports a missing and an unlisted key together', () => {
+    const verdict = evaluateBinaryIdentity({
+      ...CANONICAL,
+      derivedRecipients: [ACTIVE, STRANGER],
+      retiredRecipients: [RETIRED_1],
+    });
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) {
+      expect(verdict.failures).toHaveLength(2);
+      expect(verdict.failures.join(' ')).toContain(RETIRED_1);
+      expect(verdict.failures.join(' ')).toContain(STRANGER);
+    }
   });
 
   it('fails when the identity file is absent', () => {
@@ -86,11 +160,11 @@ describe('AC-438: binary-identity boot probe — pure validator', () => {
   });
 
   it('fails when the identity is present but malformed (age-keygen -y rejected it)', () => {
-    // The orchestrator captures `derivedRecipient = null` when the
+    // The orchestrator captures `derivedRecipients = null` when the
     // round-trip via `age-keygen -y` exits non-zero. The validator
     // must surface that as a failure naming `age-keygen` so the
     // operator knows the paste was corrupt or the wrong format.
-    const verdict = evaluateBinaryIdentity({ ...CANONICAL, derivedRecipient: null });
+    const verdict = evaluateBinaryIdentity({ ...CANONICAL, derivedRecipients: null });
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) {
       expect(verdict.failures.join(' ')).toMatch(/age-keygen|malformed|round-trip/i);
@@ -101,13 +175,11 @@ describe('AC-438: binary-identity boot probe — pure validator', () => {
     // The most common operator error per `docs/ops/binary-key/load.md`:
     // pasting the backup drill identity into the binary loader (or
     // vice versa). The probe rejects before any wrap takes place.
-    const verdict = evaluateBinaryIdentity({
-      ...CANONICAL,
-      derivedRecipient: 'age1zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz',
-    });
+    const verdict = evaluateBinaryIdentity({ ...CANONICAL, derivedRecipients: [STRANGER] });
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) {
-      expect(verdict.failures.join(' ')).toMatch(/recipient.*mismatch|does not match/i);
+      expect(verdict.failures.join(' ')).toMatch(/missing.*BINARY_AGE_RECIPIENT/);
+      expect(verdict.failures.join(' ')).toMatch(/unlisted/);
     }
   });
 
@@ -122,8 +194,9 @@ describe('AC-438: binary-identity boot probe — pure validator', () => {
     const verdict = evaluateBinaryIdentity({
       fileExists: true,
       fileReadable: false,
-      derivedRecipient: 'age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      derivedRecipients: ['age1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
       configuredRecipient: 'age1bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      retiredRecipients: [],
     });
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) {
@@ -233,7 +306,37 @@ describe('AC-438: binary-identity boot probe — orchestration', () => {
           identityPath: filePath,
           configuredRecipient: wrongRecipient,
         }),
-      ).rejects.toThrow(/Refusing to start.*recipient/);
+      ).rejects.toThrow(/Refusing to start.*missing the active key/);
+    });
+  });
+
+  it('accepts a real multi-key keyring matching the active and retired recipients', async () => {
+    await withTempIdentity(async (filePath) => {
+      const active = freshAgeIdentity();
+      const retired = freshAgeIdentity();
+      writeFileSync(filePath, `${retired.identity}\n${active.identity}\n`, { mode: 0o400 });
+      await assertBinaryIdentityLoaded({
+        identityPath: filePath,
+        configuredRecipient: active.recipient,
+        retiredRecipients: [retired.recipient],
+        ...FAIL_FAST_OPTIONS,
+      });
+    });
+  });
+
+  it('throws when a real keyring holds a key the deploy does not list as retired', async () => {
+    await withTempIdentity(async (filePath) => {
+      const active = freshAgeIdentity();
+      const unlisted = freshAgeIdentity();
+      writeFileSync(filePath, `${active.identity}\n${unlisted.identity}\n`, { mode: 0o400 });
+      await expect(
+        assertBinaryIdentityLoaded({
+          identityPath: filePath,
+          configuredRecipient: active.recipient,
+          retiredRecipients: [],
+          ...FAIL_FAST_OPTIONS,
+        }),
+      ).rejects.toThrow(new RegExp(`Refusing to start.*unlisted.*${unlisted.recipient}`));
     });
   });
 
@@ -388,7 +491,7 @@ describe('binary-identity boot probe — bounded wait for absent file', () => {
           pollIntervalMs: 25,
           progressLogIntervalMs: 0,
         }),
-      ).rejects.toThrow(/Refusing to start.*recipient/);
+      ).rejects.toThrow(/Refusing to start.*missing the active key/);
       expect(Date.now() - start).toBeLessThan(500);
     });
   });
