@@ -75,6 +75,18 @@ fi
 EXPECTED_SHA="$(git rev-parse HEAD)"
 echo "(continuing deploy at $EXPECTED_SHA)"
 
+# --- Pre-flight: Docker host pins ---------------------------------------
+# The target SHA's docker/host-versions.txt is the Docker set this commit
+# was accepted on (ADR-0009). A host on other Docker packages, or on
+# another image store, would run something nobody accepted: refuse, and
+# let the operator converge first. Before any compose call, so nothing
+# touches the stack.
+# The check prints the drift and how to fix it.
+if ! "$REPO_DIR/scripts/ops/docker-converge.sh" --check; then
+  echo "ERROR: Docker host does not match the pins of $EXPECTED_SHA; deploy refused." >&2
+  exit 1
+fi
+
 # Pin the exact SHA-tagged image so this deploy is reproducible and a
 # rollback is just re-running with an older SHA. Both `app` and `backup`
 # images are produced by this repo and share APP_IMAGE_TAG — CI pushes
@@ -404,6 +416,16 @@ fi
 # unchanged" when nothing differs.
 echo "Reloading Caddy config..."
 docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --force
+
+# Smoke test from the outside in: https://$DOMAIN/api/health through the
+# port Docker published on the WireGuard IP, Caddy and its certificate.
+# The in-container probe above bypasses all three — and the published port
+# is the layer a Docker Engine upgrade changes (ADR-0009). 120s covers a
+# first certificate issuance via DNS-01.
+if ! ./scripts/smoke-caddy-health.sh 120; then
+  docker compose logs caddy --tail=50
+  exit 1
+fi
 
 # --- Drill-key reload (operator-loaded; AC-175 tmpfs-only) -----------
 # Container recreation wipes the tmpfs at /run/drill-key. Until the

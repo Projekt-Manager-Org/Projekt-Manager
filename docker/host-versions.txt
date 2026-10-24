@@ -1,0 +1,11 @@
+# Docker host packages, pinned and held on every host (ADR-0009).
+# Single source of truth: dev workstations and the VPS install exactly
+# these via scripts/ops/docker-converge.sh. Renovate proposes bumps as one
+# grouped PR (deb datasource, download.docker.com, Ubuntu noble).
+#
+# One <package>=<apt version> per line; the line is passed to apt-get as is.
+docker-ce=5:29.8.2-1~ubuntu.24.04~noble
+docker-ce-cli=5:29.8.2-1~ubuntu.24.04~noble
+containerd.io=2.3.6-1~ubuntu.24.04~noble
+docker-buildx-plugin=0.35.0-1~ubuntu.24.04~noble
+docker-compose-plugin=5.3.1-1~ubuntu.24.04~noble

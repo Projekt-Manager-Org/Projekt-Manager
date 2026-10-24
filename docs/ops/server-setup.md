@@ -124,15 +124,7 @@ sudo chmod 700 /home/deploy/.ssh
 
 ### Phase 4 -- Docker
 
-Pinned versions (ADR-0009):
-
-| Package                 | Version                         |
-| ----------------------- | ------------------------------- |
-| `docker-ce`             | `5:29.8.2-1~ubuntu.24.04~noble` |
-| `docker-ce-cli`         | `5:29.8.2-1~ubuntu.24.04~noble` |
-| `containerd.io`         | `2.3.6-1~ubuntu.24.04~noble`    |
-| `docker-buildx-plugin`  | `0.35.0-1~ubuntu.24.04~noble`   |
-| `docker-compose-plugin` | `5.3.1-1~ubuntu.24.04~noble`    |
+The five Docker packages are pinned in [`docker/host-versions.txt`](../../docker/host-versions.txt) ([ADR-0009](../adr/0009-pin-docker-versions-across-environments.md)) and installed by `scripts/ops/docker-converge.sh`. Docker must exist before Phase 6 (the WireGuard drop-in orders `docker.service` after `wg0`), but the deploy clone comes in Phase 8, so step 2 runs the script from a throwaway public clone.
 
 1. Add Docker apt repository:
 
@@ -147,25 +139,16 @@ Pinned versions (ADR-0009):
    sudo apt-get update
    ```
 
-2. Install pinned versions:
+2. Install and hold the pinned packages; give `deploy` the daemon:
 
    ```bash
-   sudo apt-get install -y \
-     docker-ce=5:29.8.2-1~ubuntu.24.04~noble \
-     docker-ce-cli=5:29.8.2-1~ubuntu.24.04~noble \
-     containerd.io=2.3.6-1~ubuntu.24.04~noble \
-     docker-buildx-plugin=0.35.0-1~ubuntu.24.04~noble \
-     docker-compose-plugin=5.3.1-1~ubuntu.24.04~noble
+   git clone --depth 1 https://github.com/Projekt-Manager-Org/Projekt-Manager.git /tmp/pm
+   sudo /tmp/pm/scripts/ops/docker-converge.sh
+   rm -rf /tmp/pm
    sudo usermod -aG docker deploy
    ```
 
-3. Hold versions:
-
-   ```bash
-   sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   ```
-
-4. Raise UDP socket buffers for HTTP/3:
+3. Raise UDP socket buffers for HTTP/3:
 
    Caddy's HTTP/3 listener (quic-go) wants ~7 MiB of UDP receive/send buffer; Ubuntu's default `net.core.rmem_max` is ~208 KiB. UDP buffer limits are a host kernel knob shared across all network namespaces, so this has to happen on the host even though Caddy runs in a container. Without it Caddy boots fine but logs `failed to sufficiently increase receive buffer size` on every start and HTTP/3 throughput is capped well below line rate. See [quic-go UDP-Buffer-Sizes](https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes).
 
@@ -182,44 +165,78 @@ Pinned versions (ADR-0009):
 **Verify:**
 
 ```bash
-docker --version              # 29.8.2
-docker compose version        # v5.3.1
 apt-mark showhold             # all five listed
 sudo -u deploy docker ps      # empty table, not "permission denied"
 sysctl net.core.rmem_max      # 7500000
 ```
 
+`deploy.sh` re-checks the pins on every deploy.
+
 #### Upgrading pinned versions
 
-Deliberate, lockstep bumps per [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) -- non-production host first, VPS last.
+A Docker release arrives once a quarter as a grouped Renovate PR (`docker-host`, branch `renovate/docker-host`) that edits only `docker/host-versions.txt`. CI does not run the pins: the PR is tested on the VPS (staging) **before** merge. Merging finalizes the bump; closing it skips the round (step 5). Outside the schedule window Renovate leaves the PR as it is. While open, the PR blocks Renovate's other scheduled PRs, so act on it within days.
 
-1. Review [Docker's release notes](https://docs.docker.com/engine/release-notes/) for the target version.
-2. Non-production host first -- dev workstation, see [local-dev.md § Installing Docker](local-dev.md#installing-docker).
-3. Unhold, install the new pins, re-hold:
+```
+Renovate PR ─▶ 1. review ─▶ 2. test on the VPS ─▶ 3. acceptance ─┬─ pass ─▶ 4. merge, converge the dev workstation
+                                                                  └─ fail ─▶ 5. revert, close the PR
+```
 
-   ```bash
-   sudo apt-mark unhold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   sudo apt-get install -y \
-     docker-ce=<version> \
-     docker-ce-cli=<version> \
-     containerd.io=<version> \
-     docker-buildx-plugin=<version> \
-     docker-compose-plugin=<version>
-   sudo apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-   apt-mark showhold
-   ```
+Out of schedule (a security advisory): tick `docker-host` under "Awaiting Schedule" on the Dependency Dashboard, or edit the pins file in a PR yourself. Same procedure.
 
-4. Restart the stack.
+**1. Review** the [release notes](https://docs.docker.com/engine/release-notes/) of every package the PR moves:
 
-   **VPS:** the package upgrade restarts the Docker daemon -- no `live-restore` is configured, so every running container stops. All services are `restart: unless-stopped` and self-heal once the daemon is back; re-run deploy:
+- Networking, iptables/nftables and firewall entries first: published ports, ufw and WireGuard are where Engine releases change behaviour.
+- Compose: changes to when `compose up` recreates containers.
+- A fresh `.0` release: let it settle (skip it) unless a fix is needed now.
+- **`containerd.io` minor change** (e.g. 2.3 → 2.4): a one-way door. Upstream supports sequential minor upgrades only, never downgrades, and may migrate storage formats. Never skip a minor: if the PR jumps two, edit `containerd.io` on the PR branch to the last patch of the next minor first. A revert takes step 5c, not 5b.
 
-   ```bash
-   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
-   ```
+**2. Test on the VPS** once the PR's CI is green (it publishes the images):
 
-   **Dev workstation:** `docker compose up -d` (per [local-dev.md](local-dev.md)) -- no `deploy.sh`, no secrets file.
+```bash
+sudo /opt/projekt-manager/scripts/ops/docker-bump.sh test origin/renovate/docker-host
+```
 
-5. Update the pinned-version table above and in [ADR-0009](../adr/0009-pin-docker-versions-across-environments.md) (table + bump date).
+It records the Postgres `system_identifier` (once, in `/var/lib/projekt-manager/docker-bump-sysid`: it names the cluster, so a later test refuses on another one; after replacing the cluster on purpose, a restore or a reseed on a new volume, delete the file), runs one backup cycle as the restore point, then switches: `deploy.sh <ref>` checks out the PR's pins and refuses at the drift guard, `docker-converge.sh` installs them, `deploy.sh <sha>` deploys the SHA the first run checked out, even if Renovate rebased the branch meanwhile. It asks for the secrets passphrase and the key pastes.
+
+A converge that moves `docker-ce` or `containerd.io` restarts the Docker daemon (no `live-restore`): every container stops, `restart: unless-stopped` brings them back, and the binary/drill-key tmpfs is wiped. The app stays down until the second `deploy.sh` reloads the keys ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
+
+**3. Acceptance.** All four pass = the bump works. The script runs 1, 2 and 4 and ends with `PASS` (and records the tested SHA for step 4), or `FAIL` and the next step:
+
+1. The second `deploy.sh` exits 0 and the drill key is loaded: containers up, both keys loaded, `/api/health` inside the app (DB query + external object storage, i.e. container DNS and egress), and `https://$DOMAIN/api/health` through Caddy on the published WireGuard address.
+2. One backup cycle exits 0. Nothing else checks the backup container after a converge.
+3. **By hand**, from the workstation over WireGuard: `curl -fsS https://$DOMAIN/api/health` returns `"status":"ok"`. The host-side probe never traverses the forwarding rules a client's packets take.
+4. The `system_identifier` equals the recorded one: the data is the same Postgres cluster. A lost volume would come back empty, and the app would still report healthy.
+
+Not covered, accepted: ACME renewal (DNS-01 egress from Caddy, weeks later; Caddy retries), load-dependent limits, the next reboot.
+
+**4. Pass.** Merge the PR once `sudo /opt/projekt-manager/scripts/ops/docker-bump.sh merge-check origin/renovate/docker-host` says `unchanged`. It compares the PR's pins with those of the SHA the last passed test recorded: the PR rebases whenever `main` moves inside the window, which does not matter, but a newer Docker release does (repeat from step 2). Dev workstation: `git pull`, `sudo scripts/ops/docker-converge.sh`, `docker compose up -d` ([local-dev.md](local-dev.md)). Deploying the merged `main` to the VPS needs no converge.
+
+**5. Fail.** Revert, then close the PR after the schedule window (the first seven days of January, April, July and October). A grouped PR has no version in its title, so Renovate recreates one closed inside the window. Reverts, in order of preference, each followed by the same acceptance against the recorded `system_identifier`:
+
+- **a. Roll forward.** Docker fixes most regressions in the next patch. If one is out, edit the pins on the PR branch to it and repeat from step 2.
+- **b. Downgrade with apt** to `main`'s pins. Low risk when `containerd.io` stays within one minor; unsupported upstream across one (use c). Needs no healthy stack:
+
+  ```bash
+  sudo /opt/projekt-manager/scripts/ops/docker-bump.sh revert
+  ```
+
+- **c. Fresh Docker state, volumes kept** (after a containerd minor change, or when b leaves the daemon broken or without its images). In place of the converge, `scripts/ops/docker-fresh-state.sh` moves the state aside, installs `main`'s pins before any daemon starts, then starts Docker and checks it. Named volumes (Postgres data) stay in place; `deploy.sh` rebuilds the rest:
+
+  ```bash
+  sudo /opt/projekt-manager/scripts/ops/docker-bump.sh revert --fresh-state   # asks before it stops Docker
+  ```
+
+  After `PASS`, delete the old state with the `rm -rf` line the script printed.
+
+- **d. Restore from backup:** [backup/recovery.md](backup/recovery.md).
+
+Side effects of any converge or revert:
+
+- Each `docker-ce` or `containerd.io` change restarts the daemon: an outage until the key paste.
+- Firewall rules a newer Engine created can outlive a downgrade. A reboot clears Docker's chains (ufw restores its own), at the cost of one more key paste.
+- BuildKit cache errors while building Caddy: `sudo -u deploy docker builder prune -af`, then re-run `deploy.sh`.
+
+`scripts/ops/docker-converge.sh --check` reports drift without installing (no root needed).
 
 **Note:** Docker group membership = effective root. See ADR-0012 residual risks.
 
