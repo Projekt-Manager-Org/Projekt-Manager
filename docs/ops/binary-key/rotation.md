@@ -25,8 +25,9 @@ The workstation file `~/secrets/binary-identity.txt` is the keyring; custody cop
 
 ## After a compromise
 
-Rotating onto a compromised machine hands the attacker the new key too.
+The old key keeps opening everything written before the rotation; bucket access is the only guard left for that data. Rotating onto a compromised machine hands the attacker the new key too.
 
+- **Bucket access:** rotate every B2 key the compromised location held — the app key (VPS), the recovery and master keys (workstation, password manager) — per [object-storage-provisioning.md § Master-key handling](../object-storage-provisioning.md#master-key-handling).
 - **Workstation compromised:** mint and build the keyring (step 1) on a clean machine, and keep the new `~/secrets` there.
 - **VPS compromised:** rebuild it ([server-setup.md](../server-setup.md)) before the paste in step 2.
 - **Custody location compromised:** do not reuse it for the new copies.
