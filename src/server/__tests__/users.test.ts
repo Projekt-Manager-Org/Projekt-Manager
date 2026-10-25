@@ -222,7 +222,7 @@ describe('User Management Operations', () => {
       expect(res.json().email).toBe('updated@example.de');
     });
 
-    it('refuses a username change (immutable, AC-515)', async () => {
+    it('refuses a username change (immutable, AC-516)', async () => {
       const res = await authPatch(ownerToken, `/api/users/${createdUserId}`, {
         username: 'newusername',
       });

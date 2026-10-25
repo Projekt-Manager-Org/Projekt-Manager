@@ -3,7 +3,7 @@
  *
  * data-model.md §5.13 Ownership: `createdBy` is set from the session at
  * init, never from the request; a client-supplied identity block is
- * refused as an undefined field (AC-515). The only carve-out is the
+ * refused as an undefined field (AC-516). The only carve-out is the
  * server-side import job — there is no client-facing override of `id`,
  * `createdBy` or `createdAt`.
  *

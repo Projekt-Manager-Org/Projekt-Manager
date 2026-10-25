@@ -61,7 +61,7 @@ describe('Push subscription subscribe + unsubscribe (AC-196)', () => {
     }
   }
 
-  it('subscribe sets userId from session; client-supplied userId is rejected (AC-515)', async () => {
+  it('subscribe sets userId from session; client-supplied userId is rejected (AC-516)', async () => {
     const endpoint = `https://push.test.example/at104-sess-${Date.now().toString(36)}`;
     const res = await authPost(ownerToken, '/api/push-subscriptions', {
       endpoint,

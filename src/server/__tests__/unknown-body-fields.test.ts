@@ -1,5 +1,5 @@
 /**
- * Undefined request-body fields are refused (AC-515).
+ * Undefined request-body fields are refused (AC-516).
  *
  * The rule rests on three mechanisms, each pinned here:
  *   - the closed-schema gate: every body schema a route declares closes
@@ -119,7 +119,7 @@ function plantedPost(suffix: string, payload?: Record<string, unknown> | unknown
   return getApp().inject({ method: 'POST', url: `${PLANTED}${suffix}`, payload });
 }
 
-describe('AC-515: a request body field the operation does not define is refused', () => {
+describe('AC-516: a request body field the operation does not define is refused', () => {
   let routes: RouteOptions[];
   let ownerToken: string;
 

@@ -596,7 +596,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(res.json().code).toBe('VALIDATION_ERROR');
     });
 
-    it('rejects a client-supplied originalKey — the server owns the key (AC-515)', async () => {
+    it('rejects a client-supplied originalKey — the server owns the key (AC-516)', async () => {
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
         ...photoInit(),
         originalKey: 'attacker/controlled/path.jpg',

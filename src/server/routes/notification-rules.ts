@@ -12,7 +12,7 @@ import { requirePermission, requireSession } from '../middleware/auth.js';
 import { NotificationRuleService } from '../services/NotificationRuleService.js';
 
 /**
- * The rule body's shape, closed at every object level (AC-515). Value
+ * The rule body's shape, closed at every object level (AC-516). Value
  * checks stay in the service validator.
  */
 const RULE_BODY_SCHEMA = {
@@ -69,7 +69,7 @@ export function notificationRuleRoutes(db: Database) {
       {
         schema: {
           // Structural gate: a non-object body or an undefined field
-          // (AC-515) is refused before the service validator. Semantic
+          // (AC-516) is refused before the service validator. Semantic
           // validation (eventClass, recipientSpec, etc.) lives in
           // NotificationRuleService.
           body: RULE_BODY_SCHEMA,

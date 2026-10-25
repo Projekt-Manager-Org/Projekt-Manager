@@ -364,7 +364,7 @@ describe('Project CRUD Operations', () => {
   // number: data-model.md §5.1 "immutable")
   // ---------------------------------------------------------------
   describe('Update rejects status/number', () => {
-    it('refuses a status change via update (AC-515)', async () => {
+    it('refuses a status change via update (AC-516)', async () => {
       const res = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
         status: 'erledigt',
       });
@@ -374,7 +374,7 @@ describe('Project CRUD Operations', () => {
       expect(getRes.json().status).toBe('anfrage');
     });
 
-    it('refuses a number change via update (AC-515)', async () => {
+    it('refuses a number change via update (AC-516)', async () => {
       const res = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
         number: 'CHANGED-999',
       });

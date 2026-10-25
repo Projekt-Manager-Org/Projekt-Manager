@@ -146,7 +146,7 @@ describe('AC-247 — Global error handler 4xx pass-through', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it('unknown URL with a JSON body → 404 ROUTE_NOT_FOUND, not a body refusal (AC-515)', async () => {
+  it('unknown URL with a JSON body → 404 ROUTE_NOT_FOUND, not a body refusal (AC-516)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/this-route-does-not-exist',

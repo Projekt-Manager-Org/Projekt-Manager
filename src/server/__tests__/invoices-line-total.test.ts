@@ -3,7 +3,7 @@
  *
  * AC coverage in this file:
  *   - AC-384: create and PATCH reject a client-supplied
- *     `lineTotal` (AC-515); issue rejects a stored line that breaks
+ *     `lineTotal` (AC-516); issue rejects a stored line that breaks
  *     `lineTotal = round2(quantity × unitPrice)` before a number is
  *     allocated; create rejects a non-finite derived `lineTotal` and a
  *     `unitPrice` above 4 decimals and overflowing totals; `lineTotal`

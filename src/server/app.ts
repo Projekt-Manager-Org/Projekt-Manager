@@ -137,7 +137,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   const app = Fastify({
     logger,
     // Refuse a body field the route's schema does not define instead of
-    // stripping it, Fastify's default (AC-515, api.md §14.4.2). A stripped
+    // stripping it, Fastify's default (AC-516, api.md §14.4.2). A stripped
     // field answers 2xx for a write that never happened.
     ajv: { customOptions: { removeAdditional: false } },
     // Trust X-Forwarded-For only from the addresses that are actually the
@@ -169,7 +169,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // the SPA-vs-/api branch.
   installErrorHandler(app);
 
-  // AC-515 for routes without a body schema (see the module).
+  // AC-516 for routes without a body schema (see the module).
   installUndefinedBodyGuard(app);
 
   // Cookie parsing — registered before all other plugins so
