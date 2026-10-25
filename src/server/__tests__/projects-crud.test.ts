@@ -436,6 +436,27 @@ describe('Project CRUD Operations', () => {
       expect(after.title).toBe(before.title);
     });
 
+    it('refuses an assigned worker listed twice on create and update', async () => {
+      const workerId = (await authGet(workerToken, '/api/auth/me')).json().user.id as string;
+      const number = 'DUP-WORKER';
+      const created = await authPost(ownerToken, '/api/projects', {
+        number,
+        title: 'Doppelter Mitarbeiter',
+        customerId: seededCustomerId,
+        assignedWorkerIds: [workerId, workerId],
+      });
+      expectValidationError(created);
+      expect(await projectExists(number)).toBe(false);
+
+      const before = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      const updated = await authPatch(ownerToken, `/api/projects/${fixtureId}`, {
+        assignedWorkerIds: [workerId, workerId],
+      });
+      expectValidationError(updated);
+      const after = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      expect(after.assignedWorkers).toEqual(before.assignedWorkers);
+    });
+
     it('AC-475: refuses a status on create', async () => {
       const res = await authPost(ownerToken, '/api/projects', {
         number: 'BOUND-STATUS',

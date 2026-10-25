@@ -18,7 +18,7 @@ A job for one customer, moving through the workflow states. Behavior: [verificat
 | `customerId`                 | An existing customer ([§5.6](#56-customer-entity)); immutable after creation                                        |
 | `siteAddress`                | The work site (Baustelle): `street`, `zip`, `city`, all non-empty — or none, and the site is the customer's address |
 | `plannedStart`, `plannedEnd` | Calendar dates (ISO 8601, no time); one range per project; an end needs a start and is not before it                |
-| `assignedWorkers`            | Users with the worker role, active when assigned                                                                    |
+| `assignedWorkers`            | Distinct users with the worker role, active when assigned                                                           |
 | `estimatedValue`             | EUR net, two decimals, at most 10 integer digits                                                                    |
 | `notes`                      | Free text                                                                                                           |
 | `deleted`                    | Archived ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md))                                                  |
