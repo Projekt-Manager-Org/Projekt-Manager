@@ -152,6 +152,7 @@ Fields: [data-model.md §5.1](data-model.md#51-project-entity). What the screens
 - **AC-511** `[vis]`: When a user clears the planned start on the Project Detail Page while a planned end is set, the system clears both.
 - **AC-482** `[crit]`: If a date change would leave a planned end without a planned start, or before it, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) with a German message and changes nothing.
 - **AC-481** `[crit]`: When a user adds or removes an assigned worker on the Project Detail Page, the system stores the new assignment.
+- **AC-515** `[crit]`: If a project create or edit would assign a user who is not an active worker, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) with a German message and changes nothing. A worker already assigned stays assigned after deactivation.
 - **AC-483** `[crit]`: When a user saves the Baustelle group with "Identisch mit Kundenadresse" on, the system stores no site address for the project.
 - **AC-484** `[crit]`: When a user saves the Baustelle group with the toggle off, the system stores the entered street, zip and city as the project's site address.
 - **AC-485** `[crit]`: If a save would store a site address missing its street, zip or city, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) with a German message and changes nothing.
@@ -265,7 +266,7 @@ Fields: [data-model.md §5.1](data-model.md#51-project-entity). What the screens
 - **AC-96** `[crit]`: The database rejects a project row with a `status` value outside the valid workflow states (defense-in-depth CHECK constraint).
 - **AC-97** `[crit]`: The database rejects a project row where `plannedEnd < plannedStart` (defense-in-depth CHECK constraint).
 - **AC-98** `[crit]`: Deleting a user nullifies the audit references (`createdBy` / `updatedBy`) on any customer records that user created or last modified.
-- **AC-99** `[crit]`: Project creation (insert + worker assignment) is atomic. If worker assignment fails (e.g., invalid user ID), the project row is not persisted.
+- **AC-99** `[crit]`: Project creation (insert + worker assignment) is atomic. If worker assignment fails, the project row is not persisted.
 - **AC-127** `[crit]`: A create request carrying a client-supplied `id` that already identifies a row, but whose body differs from the stored row in any participating field, is rejected with the `IDEMPOTENCY_CONFLICT` error code and the German message `"Diese Anfrage-ID wurde bereits mit abweichenden Daten verwendet."` The stored row is unchanged. Applies to both customer and project creation.
 - **AC-515** `[crit]`: If a request body carries a field the operation does not define, at any depth, the system refuses it with `422 VALIDATION_ERROR` and changes nothing ([api.md §14.4.2](api.md#1442-error-principles)).
 - **AC-390** `[crit]`: After `seed(db, { force: true })` completes, the database contains exactly the users enumerated in `SEED_USERS`, 21 customers, 19 projects, and 7 `project_workers` rows. Row counts are the seed's observable contract — drift breaks downstream tests and demo state. See [data-model.md §7](data-model.md#7-seed-data-specification).

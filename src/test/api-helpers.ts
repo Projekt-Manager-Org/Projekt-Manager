@@ -266,6 +266,30 @@ export async function deactivateUser(userId: string): Promise<void> {
 }
 
 /**
+ * Make every `project_workers` insert for `userId` fail inside its
+ * transaction — after the project row and its audit row are written — so
+ * a rollback test has something to undo (AC-99, AC-177). The user must be
+ * an active worker to pass the assignability check (AC-515). Returns the
+ * cleanup. Safe here: each test file owns its database.
+ */
+export async function failProjectWorkerInsertsFor(userId: string): Promise<() => Promise<void>> {
+  // DDL takes no bind parameters; `userId` is a uuid this file minted.
+  await pool.query(`
+    CREATE FUNCTION test_fail_worker_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN RAISE EXCEPTION 'forced project_workers insert failure'; END $$;
+    CREATE TRIGGER test_fail_worker_insert BEFORE INSERT ON project_workers
+    FOR EACH ROW WHEN (NEW.user_id = '${userId}')
+    EXECUTE FUNCTION test_fail_worker_insert();
+  `);
+  return async () => {
+    await pool.query(`
+      DROP TRIGGER test_fail_worker_insert ON project_workers;
+      DROP FUNCTION test_fail_worker_insert();
+    `);
+  };
+}
+
+/**
  * Revoke a session by deleting its row directly. Mirrors what
  * `AuthService.logout` does on its own session row, what
  * `UserService.deactivateUser` does to every session of the affected

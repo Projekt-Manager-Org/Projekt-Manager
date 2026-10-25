@@ -138,7 +138,11 @@ export function projectRoutes(db: Database) {
               },
               plannedStart: { type: ['string', 'null'], format: 'date' },
               plannedEnd: { type: ['string', 'null'], format: 'date' },
-              assignedWorkerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+              assignedWorkerIds: {
+                type: 'array',
+                uniqueItems: true,
+                items: { type: 'string', format: 'uuid' },
+              },
               // numeric(12,2): at most 10 integer digits (data-model.md §5.1).
               estimatedValue: {
                 type: ['number', 'null'],
@@ -357,7 +361,11 @@ export function projectRoutes(db: Database) {
                   city: { type: 'string', pattern: '\\S' },
                 },
               },
-              assignedWorkerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+              assignedWorkerIds: {
+                type: 'array',
+                uniqueItems: true,
+                items: { type: 'string', format: 'uuid' },
+              },
               // numeric(12,2): at most 10 integer digits (data-model.md §5.1).
               estimatedValue: {
                 type: ['number', 'null'],

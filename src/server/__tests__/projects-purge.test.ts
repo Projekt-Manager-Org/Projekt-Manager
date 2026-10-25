@@ -20,7 +20,15 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'node:crypto';
-import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../test/api-helpers.js';
+import {
+  startApp,
+  stopApp,
+  login,
+  authGet,
+  authPost,
+  authDelete,
+  createTestUserSession,
+} from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 
 describe('Project Purge (hard-delete)', () => {
@@ -106,9 +114,9 @@ describe('Project Purge (hard-delete)', () => {
   describe('AC-502: Hard-delete an archived project', () => {
     it('removes the row; subsequent get returns 404 and list (includeArchived) omits it', async () => {
       // Pick two workers to exercise the project_workers cascade.
-      const ownerMe = await authGet(ownerToken, '/api/auth/me');
+      const { userId: secondWorkerId } = await createTestUserSession({ roles: ['worker'] });
       const workerMe = await authGet(workerToken, '/api/auth/me');
-      const assignedWorkerIds = [ownerMe.json().user.id, workerMe.json().user.id];
+      const assignedWorkerIds = [secondWorkerId, workerMe.json().user.id];
 
       const projectId = await createArchivedProject({ assignedWorkerIds });
 

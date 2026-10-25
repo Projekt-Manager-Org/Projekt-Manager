@@ -158,7 +158,7 @@ test.describe('AC-317: activity dock reflects a cross-session audit commit withi
     //
     // To drive a row office IS a recipient for, the owner context posts an
     // explicit `project.assignment_changed → userIds:[officeId]` rule, then
-    // creates a project and assigns office to it — the resulting
+    // creates a project and assigns a worker to it — the resulting
     // `project_worker.create` audit row resolves to office under that rule
     // (mirrors the userIds arm of e2e/.. audit-recipient-scope coverage).
     // All three writes originate from the owner session, distinct from the
@@ -166,6 +166,7 @@ test.describe('AC-317: activity dock reflects a cross-session audit commit withi
     const ownerContext = await browser.newContext({ storageState: STORAGE_STATES.owner });
     try {
       const officeId = await resolveUserId(ownerContext, SEED_USERS.office.username);
+      const workerId = await resolveUserId(ownerContext, SEED_USERS.worker2.username);
 
       const ruleRes = await ownerContext.request.post('/api/notification-rules', {
         data: {
@@ -199,7 +200,7 @@ test.describe('AC-317: activity dock reflects a cross-session audit commit withi
       // The assignment is the audit-row-producing mutation: a
       // `project_worker.create` row whose recipient set includes office.
       const assignRes = await ownerContext.request.patch(`/api/projects/${projectId}`, {
-        data: { assignedWorkerIds: [officeId] },
+        data: { assignedWorkerIds: [workerId] },
       });
       expect(
         assignRes.ok(),
@@ -343,6 +344,7 @@ test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', ()
     const ownerContext = await browser.newContext({ storageState: STORAGE_STATES.owner });
     try {
       const officeId = await resolveUserId(ownerContext, SEED_USERS.office.username);
+      const workerId = await resolveUserId(ownerContext, SEED_USERS.worker2.username);
 
       // Recipient-scoping is computed at READ time against the current
       // rule set, so this single rule admits office to EVERY
@@ -374,12 +376,10 @@ test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', ()
 
       // Each set-CHANGE of `assignedWorkerIds` writes one `project_worker`
       // create or delete row → one `assignment_changed` audit row. Starting
-      // from no workers, alternate [officeId] ↔ [] so every PATCH is a real
-      // change (a no-op PATCH writes nothing). Assigning office — a
-      // non-worker — is a bare FK insert, valid per the assigned-workers
-      // arm of `src/server/__tests__/audit-recipient-scope.test.ts`.
+      // from no workers, alternate [workerId] ↔ [] so every PATCH is a real
+      // change (a no-op PATCH writes nothing).
       for (let i = 0; i < AUDIT_ROWS_TO_GENERATE; i++) {
-        const assignedWorkerIds = i % 2 === 0 ? [officeId] : [];
+        const assignedWorkerIds = i % 2 === 0 ? [workerId] : [];
         const patchRes = await ownerContext.request.patch(`/api/projects/${projectId}`, {
           data: { assignedWorkerIds },
         });

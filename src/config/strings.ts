@@ -152,11 +152,12 @@ export const STRINGS = {
     endWithoutStart: 'Enddatum kann nicht ohne Startdatum gesetzt werden.',
     endBeforeStart: 'Das Enddatum darf nicht vor dem Startdatum liegen.',
     invalidEstimatedValue: 'estimatedValue muss ein gültiger numerischer Wert sein.',
+    workerNotAssignable: 'Nur aktive Mitarbeiter können zugewiesen werden.',
     unknownImportError: 'Unbekannter Fehler beim Import.',
     // Import error translations — never leak pg constraint names, table
     // names, column names, SQLSTATE codes, or English text. See C-5.
     duplicateNumber: (n: string) => `Projektnummer "${n}" ist bereits vergeben.`,
-    foreignKeyViolation: 'Verknüpfter Datensatz existiert nicht (z. B. zugeordnete Mitarbeiter).',
+    foreignKeyViolation: 'Verknüpfter Datensatz existiert nicht (z. B. Kunde).',
     dateConstraintViolation: 'Datumsangaben verletzen eine Integritätsregel.',
     concurrentModification:
       'Der Projektstatus wurde zwischenzeitlich geändert. Bitte Seite neu laden.',
