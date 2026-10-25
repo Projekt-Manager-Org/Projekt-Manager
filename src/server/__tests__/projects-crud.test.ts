@@ -28,6 +28,8 @@ import {
   authPost,
   authPatch,
   authDelete,
+  createTestUserSession,
+  deactivateUser,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 
@@ -282,6 +284,82 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
+  // AC-515: Assigning a user who is not an active worker is refused
+  // AC-515 [crit]
+  // ---------------------------------------------------------------
+  describe('AC-515: Only active workers can be assigned', () => {
+    const userIdOf = async (username: string): Promise<string> => {
+      const res = await authGet(ownerToken, '/api/users');
+      const users = res.json().users as { id: string; username: string }[];
+      return users.find((u) => u.username === username)!.id;
+    };
+    const storedWorkerIds = async (projectId: string): Promise<string[]> => {
+      const res = await authGet(ownerToken, `/api/projects/${projectId}`);
+      const workers = res.json().assignedWorkers as { userId: string }[] | null;
+      return (workers ?? []).map((w) => w.userId).sort();
+    };
+    const countWithTitle = async (title: string): Promise<number> => {
+      const res = await authGet(
+        ownerToken,
+        `/api/projects?search=${encodeURIComponent(title)}&includeArchived=true`,
+      );
+      return (res.json().data as { title: string }[]).filter((p) => p.title === title).length;
+    };
+
+    const notAssignable = async (): Promise<[string, string][]> => [
+      ['an office user', await userIdOf(SEED_USERS.office.username)],
+      ['a deactivated worker', await userIdOf(SEED_USERS.inactive.username)],
+      ['an unknown user', '00000000-0000-0000-0000-000000000000'],
+    ];
+
+    it('refuses a create naming a user who is not an active worker, and creates nothing', async () => {
+      for (const [label, userId] of await notAssignable()) {
+        const title = `AC-515 create ${label} ${Date.now()}`;
+        const res = await authPost(ownerToken, '/api/projects', {
+          number: `W-${Date.now()}`,
+          title,
+          customerId: seededCustomerId,
+          assignedWorkerIds: [userId],
+        });
+
+        expect(res.statusCode, label).toBe(422);
+        expect(res.json().code, label).toBe('VALIDATION_ERROR');
+        expect(await countWithTitle(title), label).toBe(0);
+      }
+    });
+
+    it('refuses an update adding a user who is not an active worker, and changes nothing', async () => {
+      const before = await storedWorkerIds(createdProjectId);
+      for (const [label, userId] of await notAssignable()) {
+        const res = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+          assignedWorkerIds: [...before, userId],
+        });
+
+        expect(res.statusCode, label).toBe(422);
+        expect(res.json().code, label).toBe('VALIDATION_ERROR');
+        expect(await storedWorkerIds(createdProjectId), label).toEqual(before);
+      }
+    });
+
+    it('keeps an assigned worker who was deactivated later', async () => {
+      const { userId: laterInactive } = await createTestUserSession({ roles: ['worker'] });
+      const worker1Id = await userIdOf(SEED_USERS.worker1.username);
+      const assigned = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        assignedWorkerIds: [laterInactive],
+      });
+      expect(assigned.statusCode).toBe(200);
+      await deactivateUser(laterInactive);
+
+      const res = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        assignedWorkerIds: [laterInactive, worker1Id],
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(await storedWorkerIds(createdProjectId)).toEqual([laterInactive, worker1Id].sort());
+    });
+  });
+
+  // ---------------------------------------------------------------
   // Update rejects status and number changes (status: AC-459;
   // number: data-model.md §5.1 "immutable")
   // ---------------------------------------------------------------
@@ -356,6 +434,27 @@ describe('Project CRUD Operations', () => {
       const after = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
       expect(after.customerId).toBe(before.customerId);
       expect(after.title).toBe(before.title);
+    });
+
+    it('refuses an assigned worker listed twice on create and update', async () => {
+      const workerId = (await authGet(workerToken, '/api/auth/me')).json().user.id as string;
+      const number = 'DUP-WORKER';
+      const created = await authPost(ownerToken, '/api/projects', {
+        number,
+        title: 'Doppelter Mitarbeiter',
+        customerId: seededCustomerId,
+        assignedWorkerIds: [workerId, workerId],
+      });
+      expectValidationError(created);
+      expect(await projectExists(number)).toBe(false);
+
+      const before = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      const updated = await authPatch(ownerToken, `/api/projects/${fixtureId}`, {
+        assignedWorkerIds: [workerId, workerId],
+      });
+      expectValidationError(updated);
+      const after = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+      expect(after.assignedWorkers).toEqual(before.assignedWorkers);
     });
 
     it('AC-475: refuses a status on create', async () => {

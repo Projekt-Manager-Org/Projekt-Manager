@@ -33,6 +33,7 @@ import {
   authPatch,
   authDelete,
   expectedVersion,
+  createTestUserSession,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
@@ -248,17 +249,18 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   //
   // The rule names no roles and no userIds — only `includeAssignedWorkers
   // = true`. The project_workers-join branch is the only path that can
-  // admit the caller. The caller for this arm is a user with `audit:read`
-  // (office) who is also added to `project_workers` for the fixture
+  // admit the caller. The caller for this arm holds `audit:read` (office)
+  // and the worker role, so it can be assigned (AC-515) to the fixture
   // project. The worker1 assignment rows for a DIFFERENT project must
-  // not appear (office is not on that project).
+  // not appear (the caller is not on that project).
   it('includes rows only for projects where the caller is on project_workers', async () => {
+    const caller = await createTestUserSession({ roles: ['office', 'worker'] });
     await createRule(ownerToken, {
       eventClass: 'project.assignment_changed',
       recipientSpec: { roles: [], includeAssignedWorkers: true, userIds: [] },
     });
 
-    // Project A — add office to project_workers.
+    // Project A — add the caller to project_workers.
     const projectARes = await authPost(ownerToken, '/api/projects', {
       number: `ARS-aw-A-${Date.now().toString(36)}`,
       title: 'Recipient-scope AW arm A',
@@ -270,11 +272,11 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
     // project_workers inserts under a `mutate()` transaction, producing
     // the audit row the recipient-scope filter should match.
     const assignARes = await authPatch(ownerToken, `/api/projects/${projectA}`, {
-      assignedWorkerIds: [officeId],
+      assignedWorkerIds: [caller.userId],
     });
     expect(assignARes.statusCode).toBe(200);
 
-    // Project B — assign worker1 only; office is NOT on project_workers.
+    // Project B — assign worker1 only; the caller is NOT on project_workers.
     const projectBRes = await authPost(ownerToken, '/api/projects', {
       number: `ARS-aw-B-${Date.now().toString(36)}`,
       title: 'Recipient-scope AW arm B',
@@ -287,7 +289,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
     });
     expect(assignBRes.statusCode).toBe(200);
 
-    const res = await authGet(officeToken, '/api/audit?recipientScope=true&limit=200');
+    const res = await authGet(caller.token, '/api/audit?recipientScope=true&limit=200');
     expect(res.statusCode).toBe(200);
     const entries = (res.json() as { data: AuditApiEntry[] }).data;
 

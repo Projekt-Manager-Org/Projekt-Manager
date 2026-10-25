@@ -26,6 +26,8 @@ import {
   authPost,
   authPatch,
   authDelete,
+  createTestUserSession,
+  failProjectWorkerInsertsFor,
 } from '../../test/api-helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -436,19 +438,25 @@ describe('AC-99: Atomic project creation', () => {
     await stopApp();
   });
 
-  it('AC-99: invalid worker ID rolls back entire project creation', async () => {
+  it('AC-99: a failed worker assignment rolls back entire project creation', async () => {
     const customerRes = await authGet(token, '/api/customers');
     const custId = customerRes.json().customers[0].id;
-    const fakeWorkerId = '00000000-0000-0000-0000-000000000099';
+    const { userId: workerId } = await createTestUserSession({ roles: ['worker'] });
+    const restore = await failProjectWorkerInsertsFor(workerId);
 
-    const res = await authPost(token, '/api/projects', {
-      number: 'ATOMIC-FAIL-01',
-      title: 'should not persist',
-      customerId: custId,
-      assignedWorkerIds: [fakeWorkerId],
-    });
+    let res;
+    try {
+      res = await authPost(token, '/api/projects', {
+        number: 'ATOMIC-FAIL-01',
+        title: 'should not persist',
+        customerId: custId,
+        assignedWorkerIds: [workerId],
+      });
+    } finally {
+      await restore();
+    }
 
-    // The request should fail (FK violation on workers)
+    // The request should fail (the worker insert raises mid-transaction)
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
 
     // The project should NOT exist in the database

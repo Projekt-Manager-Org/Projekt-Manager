@@ -10,7 +10,7 @@
  * live in ProjectDatesService.
  */
 
-import type { Database } from '../db/connection.js';
+import type { Database, TransactionalDatabase } from '../db/connection.js';
 import {
   listProjects as listProjectsRepo,
   getProject as getProjectRepo,
@@ -59,6 +59,7 @@ import {
   projectHasInvoices,
 } from '../errors.js';
 import { countIssuedOrCancelledForProject } from '../repositories/invoice-read.js';
+import { filterAssignableWorkerIds } from '../repositories/user.js';
 import { projectMatches, createIdempotent } from './idempotency.js';
 import type { ServiceLogger } from './Logger.js';
 import type { AuthUser } from '../middleware/auth.js';
@@ -91,6 +92,14 @@ function projectUpdatableDiff(row: {
     estimatedValue: row.estimatedValue ?? null,
     notes: row.notes ?? null,
   };
+}
+
+/** Refuses the whole request unless every id names an active worker (AC-515). */
+async function assertAssignableWorkers(db: TransactionalDatabase, ids: string[]): Promise<void> {
+  const assignable = await filterAssignableWorkerIds(db, ids);
+  if (ids.some((id) => !assignable.has(id))) {
+    throw validationError(STRINGS.projects.workerNotAssignable);
+  }
 }
 
 export interface ProjectCrudServiceDeps {
@@ -211,6 +220,7 @@ export class ProjectCrudService {
     const collected: AuditLogRow[] = [];
 
     const project = await this.db.transaction(async (tx) => {
+      await assertAssignableWorkers(tx, data.assignedWorkerIds);
       const { value: inserted, auditRow: createRow } = await mutateInTx(tx, ctx, {
         entityType: 'project',
         action: 'create',
@@ -538,6 +548,9 @@ export class ProjectCrudService {
         // `ui/workflow-views.md §8.4.1` and `describeAuditRow`).
         if (data.assignedWorkerIds !== undefined) {
           const { toAdd, toRemove } = await diffProjectWorkers(tx, id, data.assignedWorkerIds);
+          // Only new assignments are checked: a worker deactivated after
+          // assignment stays assigned (AC-515).
+          await assertAssignableWorkers(tx, toAdd);
           for (const workerId of toRemove) {
             const res = await mutateInTx(tx, ctx, {
               entityType: 'project_worker',
