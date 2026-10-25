@@ -31,7 +31,9 @@
 #   repo-level `<= 1.0.0-beta.19` is unbounded, so under semver it also
 #   covers 0.45.2 — which is the patched release on its own line. Judging
 #   on the repo-level range alone fails CI on a non-issue, and a gate that
-#   cries wolf gets muted.
+#   cries wolf gets muted. The same holds for the warning it prints: only
+#   an override the global review has not caught up with asks for a
+#   re-check.
 #
 #   "repo-level only, split release lines" is the same shape with the
 #   global record absent. The false positive stands, deliberately: the
@@ -115,16 +117,19 @@ repo_vuln() {
 }
 
 # A published repo-level advisory. $2 is the JSON array of `vulnerabilities`
-# entries; $3 the state; $4 the repo fixture basename; $5 the ghsa id.
+# entries; $3 the state; $4 the repo fixture basename; $5 the ghsa id; $6 the
+# publisher's last edit, defaulting to GHSA-gpj5-g38j-94v9's real one.
 write_repo_advisory() {
   local dir="$1" vulns="$2" state="${3:-published}"
   local base="${4:-drizzle-team__drizzle-orm}" ghsa="${5:-GHSA-gpj5-g38j-94v9}"
+  local updated="${6:-2026-04-06T22:10:57Z}"
   cat >"$dir/fixtures/repos/$base.json" <<JSON
 [
   {
     "ghsa_id": "$ghsa",
     "state": "$state",
     "withdrawn_at": null,
+    "updated_at": "$updated",
     "severity": "high",
     "summary": "Drizzle ORM has SQL injection via improperly escaped SQL identifiers",
     "vulnerabilities": [$vulns]
@@ -138,9 +143,11 @@ JSON
 REAL_REPO_VULNS="$(repo_vuln '<= 0.45.1' '0.45.2'),$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
 
 # The record /advisories?ghsa_id=GHSA-gpj5-g38j-94v9 returns, trimmed to the
-# fields the script reads. Its lower bound clears 0.45.2.
+# fields the script reads. Its lower bound clears 0.45.2, and its review
+# post-dates the publisher's last edit.
 REAL_GLOBAL_RECORD='{
   "ghsa_id": "GHSA-gpj5-g38j-94v9",
+  "github_reviewed_at": "2026-04-08T00:14:58Z",
   "vulnerabilities": [
     {
       "package": { "ecosystem": "npm", "name": "drizzle-orm" },
@@ -208,6 +215,22 @@ assert_output() {
   fi
 }
 
+# Exit code AND the ABSENCE of a substring. For output that must stop
+# appearing, which a positive match on its replacement cannot prove.
+refute_output() {
+  local expected="$1" label="$2" dir="$3" pattern="$4"
+  local out actual
+  out="$(run_check "$dir")"
+  actual=$?
+  if [[ "$actual" != "$expected" ]]; then
+    record no "$label" "expected exit $expected, got $actual"
+  elif grep -qF -- "$pattern" <<<"$out"; then
+    record no "$label" "output contains '$pattern'"
+  else
+    record yes "$label (exit $actual, no '$pattern')" ""
+  fi
+}
+
 echo "Case: no advisories published for the repo"
 # Fixture absent => 404 => advisories disabled or none filed. Must not fail.
 assert_case 0 "no advisories" "$(stage)"
@@ -229,11 +252,40 @@ echo "Case: global record narrows the range"
 # THE regression, in the real shape. Both records split the release lines;
 # only the global one bounds the 1.x range below, and that lower bound is
 # what shows 0.45.2 is the patched release on its own line. Global wins, so
-# this must pass — and must say the repo-level range still matched.
+# this must pass — and must say the global DB cleared it.
+#
+# The review post-dates the publisher's last edit, so the override is
+# settled: listed, not a call to re-check. Repeating that call on every run
+# taught people to skip it (#516).
 d="$(stage)"
 write_repo_advisory "$d" "$REAL_REPO_VULNS"
 write_global_answer "$d" "[$REAL_GLOBAL_RECORD]"
 assert_output 0 "global record narrows the range" "$d" "cleared by the global DB"
+refute_output 0 "settled override asks for no re-check" "$d" "check the advisory page"
+
+echo "Case: publisher edited after the global review"
+# The lag this line guards against: the curated range predates the
+# publisher's latest word. The pass stands, the call to re-check returns.
+d="$(stage)"
+write_repo_advisory "$d" "$REAL_REPO_VULNS" published drizzle-team__drizzle-orm \
+  GHSA-gpj5-g38j-94v9 2026-04-09T00:00:00Z
+write_global_answer "$d" "[$REAL_GLOBAL_RECORD]"
+assert_output 0 "edited after the global review" "$d" "check the advisory page"
+
+echo "Case: global record was never reviewed"
+# No review timestamp proves nothing about lag, so it is not settled.
+d="$(stage)"
+write_repo_advisory "$d" "$REAL_REPO_VULNS"
+write_global_answer "$d" "[${REAL_GLOBAL_RECORD/\"2026-04-08T00:14:58Z\"/null}]"
+assert_output 0 "global record never reviewed" "$d" "check the advisory page"
+
+echo "Case: repo-level advisory carries no edit timestamp"
+# Same on the publisher's side: nothing to compare against is not settled.
+d="$(stage)"
+write_repo_advisory "$d" "$REAL_REPO_VULNS"
+sed -i '/"updated_at"/d' "$d/fixtures/repos/drizzle-team__drizzle-orm.json"
+write_global_answer "$d" "[$REAL_GLOBAL_RECORD]"
+assert_output 0 "repo edit timestamp missing" "$d" "check the advisory page"
 
 echo "Case: global record still matches"
 # Same precedence, opposite outcome: when the curated range DOES cover the
