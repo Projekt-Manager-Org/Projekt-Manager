@@ -2,7 +2,7 @@
  * User repository — database operations for the users table.
  */
 
-import { eq, count, asc, and, sql } from 'drizzle-orm';
+import { eq, count, asc, and, inArray, sql } from 'drizzle-orm';
 import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
 import { users } from '../db/schema.js';
 import type { ThemePreference } from '../../config/themeStorage.js';
@@ -37,6 +37,9 @@ export function toUserResponse(row: UserRow) {
   };
 }
 
+/** Active users holding the `worker` role — the only users a project can be newly assigned. */
+const isAssignableWorker = and(eq(users.active, true), sql`'worker' = ANY(${users.roles})`);
+
 /**
  * Minimal projection used by the assignee-filter dropdown on the project
  * management page: active users that hold the `worker` role, ordered by
@@ -57,9 +60,25 @@ export async function listAssignableWorkers(
   const rows = await db
     .select({ userId: users.id, displayName: users.displayName })
     .from(users)
-    .where(and(eq(users.active, true), sql`'worker' = ANY(${users.roles})`))
+    .where(isAssignableWorker)
     .orderBy(asc(users.displayName));
   return rows;
+}
+
+/**
+ * The subset of `ids` that may be newly assigned to a project — the same
+ * pool as `listAssignableWorkers` (AC-515). Unknown ids are absent.
+ */
+export async function filterAssignableWorkerIds(
+  db: TransactionalDatabase,
+  ids: string[],
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, ids), isAssignableWorker));
+  return new Set(rows.map((r) => r.id));
 }
 
 export async function listUsers(

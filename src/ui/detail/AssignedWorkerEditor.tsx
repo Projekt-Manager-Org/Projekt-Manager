@@ -50,7 +50,7 @@ export function AssignedWorkerEditor({ projectId, archived = false }: AssignedWo
 
   const unassignedWorkers = useMemo(() => {
     const assignedIds = new Set(assigned.map((a) => a.userId));
-    return users.filter((u) => u.roles.includes('worker') && !assignedIds.has(u.id));
+    return users.filter((u) => u.active && u.roles.includes('worker') && !assignedIds.has(u.id));
   }, [users, assigned]);
 
   const commit = (nextIds: string[], optimistic: AssignedWorker[]) => {

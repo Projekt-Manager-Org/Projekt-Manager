@@ -114,9 +114,27 @@ beforeEach(() => {
   userListMock.mockResolvedValue(
     ok({
       users: [
-        { id: 'u-w1', username: 'anna', displayName: 'Anna Arbeiter', roles: ['worker'] } as User,
-        { id: 'u-w2', username: 'bernd', displayName: 'Bernd Bauer', roles: ['worker'] } as User,
-        { id: 'u-w3', username: 'carla', displayName: 'Carla Chef', roles: ['worker'] } as User,
+        {
+          id: 'u-w1',
+          username: 'anna',
+          displayName: 'Anna Arbeiter',
+          roles: ['worker'],
+          active: true,
+        } as User,
+        {
+          id: 'u-w2',
+          username: 'bernd',
+          displayName: 'Bernd Bauer',
+          roles: ['worker'],
+          active: true,
+        } as User,
+        {
+          id: 'u-w3',
+          username: 'carla',
+          displayName: 'Carla Chef',
+          roles: ['worker'],
+          active: true,
+        } as User,
       ],
       total: 3,
     }),
@@ -175,6 +193,47 @@ describe('AssignedWorkerEditor — add worker (AC-481)', () => {
     // The patch names the full new set — the Update project API takes a
     // replacement list, not a delta.
     expect(new Set(patch.assignedWorkerIds)).toEqual(new Set(['u-w1', 'u-w2', 'u-w3']));
+  });
+});
+
+describe('AssignedWorkerEditor — offers active workers only (ui/project-detail.md §8.15.3)', () => {
+  it('omits deactivated workers and users without the worker role', async () => {
+    setAuthUser(['owner']);
+    userListMock.mockResolvedValue(
+      ok({
+        users: [
+          {
+            id: 'u-w3',
+            username: 'carla',
+            displayName: 'Carla Chef',
+            roles: ['worker'],
+            active: true,
+          } as User,
+          {
+            id: 'u-w4',
+            username: 'dirk',
+            displayName: 'Dirk Draußen',
+            roles: ['worker'],
+            active: false,
+          } as User,
+          {
+            id: 'u-o1',
+            username: 'olga',
+            displayName: 'Olga Office',
+            roles: ['office'],
+            active: true,
+          } as User,
+        ],
+        total: 3,
+      }),
+    );
+
+    render(<AssignedWorkerEditor projectId="p-42" />);
+    await userEvent.click(await screen.findByTestId('worker-editor-add'));
+
+    expect(await screen.findByTestId('worker-editor-option-u-w3')).toBeInTheDocument();
+    expect(screen.queryByTestId('worker-editor-option-u-w4')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('worker-editor-option-u-o1')).not.toBeInTheDocument();
   });
 });
 
