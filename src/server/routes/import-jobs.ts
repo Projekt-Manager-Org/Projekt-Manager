@@ -101,7 +101,21 @@ export function importJobRoutes(db: Database) {
     // ---------------------------------------------------------------
     app.post(
       '/api/import-jobs',
-      { preHandler: requirePermission('data:restore') },
+      {
+        schema: {
+          // Closed (AC-515); `null` admits an absent body. The phrase's
+          // value is checked by the guard below.
+          body: {
+            type: ['object', 'null'],
+            additionalProperties: false,
+            properties: {
+              override: { type: 'boolean' },
+              confirmation_phrase: { type: ['string', 'null'] },
+            },
+          },
+        },
+        preHandler: requirePermission('data:restore'),
+      },
       async (request, reply) => {
         // One active per kind (AC-331) — checked before the destructive
         // guard so a colliding create returns 409 immediately.

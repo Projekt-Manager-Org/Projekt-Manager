@@ -39,6 +39,7 @@ import { WebPushDispatcher } from './services/WebPushDispatcher.js';
 import { getEnv } from './config/env.js';
 import { resolveVapidKeyMaterial, type VapidKeyMaterial } from './config/vapid.js';
 import { installErrorHandler } from './error-handler.js';
+import { installUndefinedBodyGuard } from './undefined-body-guard.js';
 
 /**
  * Header of the generated OpenAPI document (AC-351) — the version it
@@ -135,6 +136,10 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   const env = getEnv();
   const app = Fastify({
     logger,
+    // Refuse a body field the route's schema does not define instead of
+    // stripping it, Fastify's default (AC-515, api.md §14.4.2). A stripped
+    // field answers 2xx for a write that never happened.
+    ajv: { customOptions: { removeAdditional: false } },
     // Trust X-Forwarded-For only from the addresses that are actually the
     // reverse proxy: the pinned compose network subnet Caddy reaches the
     // app from (ADR-0008, docker-compose.yml `networks.default`). With
@@ -163,6 +168,9 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // second setNotFoundHandler on the same prefix and start.ts needs
   // the SPA-vs-/api branch.
   installErrorHandler(app);
+
+  // AC-515 for routes without a body schema (see the module).
+  installUndefinedBodyGuard(app);
 
   // Cookie parsing — registered before all other plugins so
   // request.cookies is available in every route and hook.

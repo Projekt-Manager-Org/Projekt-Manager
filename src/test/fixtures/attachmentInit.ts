@@ -64,20 +64,6 @@ export interface InitOverrides {
   ciphertextThumbSizeBytes?: number;
   /** RFC 1864 base64 MD5 of the thumbnail ciphertext bytes (photos only). */
   ciphertextThumbContentMd5?: string;
-  /**
-   * Pre-e2e plaintext thumbnail byte count. Retained as an accepted
-   * override key so legacy callers in `attachments-thumb-size.test.ts`
-   * still typecheck; the body builders intentionally do NOT forward it
-   * — the route's e2e contract has no plaintext-thumb-size field.
-   * Those tests need their own e2e migration in a separate task.
-   */
-  thumbSizeBytes?: number;
-  /**
-   * Pre-e2e plaintext-MD5 field, retained for the same reason as
-   * `thumbSizeBytes` above — typecheck compatibility for legacy tests
-   * that reference it.
-   */
-  contentMd5?: string;
 }
 
 /**

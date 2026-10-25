@@ -61,23 +61,25 @@ describe('Push subscription subscribe + unsubscribe (AC-196)', () => {
     }
   }
 
-  it('subscribe sets userId from session; client-supplied userId is ignored', async () => {
+  it('subscribe sets userId from session; client-supplied userId is rejected (AC-515)', async () => {
     const endpoint = `https://push.test.example/at104-sess-${Date.now().toString(36)}`;
-    // Fabricate a bogus userId in the body — the server must IGNORE it
-    // and derive userId from the session cookie, not the payload.
-    const bogusUserId = '00000000-0000-0000-0000-0000000fffff';
     const res = await authPost(ownerToken, '/api/push-subscriptions', {
       endpoint,
       keys: { p256dh: 'p', auth: 'a' },
-      userId: bogusUserId,
+      userId: '00000000-0000-0000-0000-0000000fffff',
     });
-    expect(res.statusCode).toBeLessThan(300);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().details).toContainEqual(
+      expect.objectContaining({ params: { additionalProperty: 'userId' } }),
+    );
+    expect(await subscriptionUserId(endpoint)).toBeNull();
 
-    // The persisted row's userId must match the authenticated caller
-    // (owner), not the body-supplied value.
-    const persistedUserId = await subscriptionUserId(endpoint);
-    expect(persistedUserId).toBe(ownerUserId);
-    expect(persistedUserId).not.toBe(bogusUserId);
+    const ok = await authPost(ownerToken, '/api/push-subscriptions', {
+      endpoint,
+      keys: { p256dh: 'p', auth: 'a' },
+    });
+    expect(ok.statusCode).toBeLessThan(300);
+    expect(await subscriptionUserId(endpoint)).toBe(ownerUserId);
   });
 
   it('re-subscribing an existing endpoint updates the row (no duplicate)', async () => {
@@ -260,21 +262,5 @@ describe('push-subscription POST body validation', () => {
       keys: { p256dh: 'validkey', auth: 'validauth' },
     });
     expect(res.statusCode).toBe(422);
-  });
-
-  it('extra body field (userId) is stripped before the handler — request succeeds (201)', async () => {
-    // Fastify's ajv compiler defaults to `removeAdditional: true`, which
-    // means `additionalProperties: false` causes unknown fields to be
-    // silently removed rather than triggering a 422. The security goal
-    // (userId never reaches the service) is still met. Getting a hard 422
-    // on extra fields would require changing the global ajv config to
-    // `removeAdditional: false` — tracked as tech debt.
-    const res = await authPost(ownerToken, '/api/push-subscriptions', {
-      endpoint: `https://push.example.com/strip-test-${Date.now().toString(36)}`,
-      keys: { p256dh: 'validkey', auth: 'validauth' },
-      userId: '00000000-0000-0000-0000-000000000001',
-    });
-    // 201: request accepted; userId was stripped before reaching the service.
-    expect(res.statusCode).toBe(201);
   });
 });

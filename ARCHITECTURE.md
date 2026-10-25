@@ -303,7 +303,7 @@ Backend changes are usually not needed — the store exposes the full project li
 **Pattern to copy**: `src/server/routes/projects.ts`, `src/server/services/ProjectCrudService.ts`, `docs/spec/api.md §14.2`.
 
 1. **Where**: extend an existing route file if it belongs to that entity/group; create a new one otherwise.
-2. **Validation**: Fastify JSON Schema on the route (see `projects.ts`). Don't validate inside the handler.
+2. **Validation**: Fastify JSON Schema on the route (see `projects.ts`). Don't validate inside the handler. Close every object level with `additionalProperties: false` — undefined fields are refused ([AC-515](docs/spec/verification.md#1517-data-integrity)), and `unknown-body-fields.test.ts` fails on an open one. A no-input route declares no body schema; a body with fields is refused there too.
 3. **Auth**: `requireSession(app, db)` once per plugin, `requirePermission('...')` per route; new keys go in `src/config/permissions.ts`. The endpoint table regenerates — no row to add by hand.
 4. **Delegate to service**. Never call repos from a route ([spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries)).
 5. **Errors**: factories from `src/server/errors.ts`, never a raw `Error`. Map DB constraint violations in the service against `src/server/db/constraints.ts` (pattern: `ProjectCrudService.createProjectWithClientId`).

@@ -2,7 +2,8 @@
  * Attachment init — identity fields come from the server (#565).
  *
  * data-model.md §5.13 Ownership: `createdBy` is set from the session at
- * init; a client-supplied value is ignored. The only carve-out is the
+ * init, never from the request; a client-supplied identity block is
+ * refused as an undefined field (AC-515). The only carve-out is the
  * server-side import job — there is no client-facing override of `id`,
  * `createdBy` or `createdAt`.
  *
@@ -44,7 +45,6 @@ async function rowById(
 
 describe('Attachment init — client-supplied identity is never persisted', () => {
   let ownerToken: string;
-  let ownerId: string;
   let officeId: string;
   let projectId: string;
 
@@ -52,7 +52,6 @@ describe('Attachment init — client-supplied identity is never persisted', () =
     await startApp();
     const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
-    ownerId = (await authGet(ownerToken, '/api/auth/me')).json().user.id as string;
     officeId = (await authGet(officeToken, '/api/auth/me')).json().user.id as string;
     projectId = await projectIdByNumber(ownerToken, `${year}-007`);
   });
@@ -61,24 +60,21 @@ describe('Attachment init — client-supplied identity is never persisted', () =
     await stopApp();
   });
 
-  it('a restore block from an owner (data:restore + attachment:write) sets no identity field', async () => {
+  it('a restore block from an owner (data:restore + attachment:write) is refused, writing no row', async () => {
     const forged = {
       id: '11111111-2222-4333-8444-555555555555',
       createdBy: officeId,
       createdAt: '2024-03-14T15:09:26.535Z',
     };
-    const before = Date.now();
     const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
       ...binaryInitBody({ fileName: 'forged.pdf', sizeBytes: 200, label: 'sonstiges' }),
       restore: forged,
     });
 
-    // §5.13: the supplied values are ignored — the upload proceeds with
-    // server-minted identity.
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().details).toContainEqual(
+      expect.objectContaining({ params: { additionalProperty: 'restore' } }),
+    );
     expect(await rowById(forged.id)).toBeUndefined();
-    const row = await rowById(res.json().attachment.id as string);
-    expect(row?.createdBy).toBe(ownerId);
-    expect(row!.createdAt.getTime()).toBeGreaterThanOrEqual(before - 5_000);
   });
 });

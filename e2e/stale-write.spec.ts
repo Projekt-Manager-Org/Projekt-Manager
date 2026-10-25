@@ -38,7 +38,6 @@ const LINE = {
   quantity: 1,
   unit: 'pauschal',
   unitPrice: 1500,
-  lineTotal: 1500,
   taxRate: 19,
 };
 
@@ -111,7 +110,7 @@ async function version(request: APIRequestContext, url: string): Promise<number>
 async function officeRepricesDraft(office: APIRequestContext, invoiceId: string): Promise<void> {
   const edit = await office.patch(`/api/invoices/${invoiceId}`, {
     data: {
-      lines: [{ ...LINE, unitPrice: 2000, lineTotal: 2000 }],
+      lines: [{ ...LINE, unitPrice: 2000 }],
       expectedVersion: await version(office, `/api/invoices/${invoiceId}`),
     },
   });

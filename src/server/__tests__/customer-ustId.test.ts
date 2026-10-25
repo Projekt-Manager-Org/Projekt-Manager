@@ -169,9 +169,7 @@ describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', (
       // POST a draft WITHOUT explicit recipient.ustId — must auto-fill.
       const draftRes = await authPost(ownerToken, '/api/invoices', {
         projectId,
-        lines: [
-          { description: 'T', quantity: 1, unit: 'p', unitPrice: 1, lineTotal: 1, taxRate: 19 },
-        ],
+        lines: [{ description: 'T', quantity: 1, unit: 'p', unitPrice: 1, taxRate: 19 }],
         performanceDate: '2026-04-10',
       });
       expect(draftRes.statusCode).toBe(201);

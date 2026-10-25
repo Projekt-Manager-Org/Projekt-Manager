@@ -35,6 +35,7 @@ export function pushSubscriptionRoutes(db: Database) {
               keys: {
                 type: 'object',
                 required: ['p256dh', 'auth'],
+                additionalProperties: false,
                 properties: {
                   p256dh: { type: 'string', minLength: 1, maxLength: 512 },
                   auth: { type: 'string', minLength: 1, maxLength: 512 },
