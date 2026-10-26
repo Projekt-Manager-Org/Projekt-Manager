@@ -74,7 +74,7 @@ function stripTestAttributes(): Plugin {
  */
 function buildServiceWorker(): Plugin {
   const esbuildOptions = {
-    entryPoints: [path.resolve(__dirname, 'src/sw/index.ts')],
+    entryPoints: [path.resolve(import.meta.dirname, 'src/sw/index.ts')],
     bundle: true,
     format: 'iife' as const,
     target: 'es2022' as const,
@@ -105,7 +105,7 @@ function buildServiceWorker(): Plugin {
             // separate `.js` and `.js.map` instead of inlining the
             // sourcemap as a data URI; the middleware can then serve
             // each on its own URL.
-            outfile: path.resolve(__dirname, 'dist/sw.js'),
+            outfile: path.resolve(import.meta.dirname, 'dist/sw.js'),
             write: false,
           });
           const file = wantMap
@@ -131,7 +131,7 @@ function buildServiceWorker(): Plugin {
     async closeBundle() {
       await esbuildBuild({
         ...esbuildOptions,
-        outfile: path.resolve(__dirname, 'dist/sw.js'),
+        outfile: path.resolve(import.meta.dirname, 'dist/sw.js'),
       });
     },
   };
@@ -148,7 +148,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': path.resolve(import.meta.dirname, 'src'),
     },
   },
   // Force Vite to resolve and bundle all dependencies when the dev server
