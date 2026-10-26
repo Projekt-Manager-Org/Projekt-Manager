@@ -55,8 +55,14 @@
 #     recipient before transfer (scripts/ops/rewrap-dek-envelopes.sh),
 #     so neither side's private key crosses SSH; only the VPS's public
 #     recipient string is fetched.
-#   - Older B2 versions of any object — `--remove` and `--overwrite` both
-#     create new versions / delete markers; nothing is destroyed.
+#   - Older B2 versions of any object — the restore writes new versions
+#     and delete markers only; nothing is destroyed.
+#
+# Object metadata (#627): the bucket dump is a plain directory, which
+# holds no S3 user metadata. The VPS side rebuilds each object's metadata
+# (re-wrapped envelope, invoice number) from its restored row while
+# writing it to B2 (scripts/ops/restore-bucket-objects.py), so synced
+# objects stay decryptable by the recovery tool (AC-439).
 
 set -euo pipefail
 
@@ -70,8 +76,7 @@ LOCAL_BUCKET="projekt-manager"
 COMPOSE_PROJECT="projekt-manager"
 # Must match docker/init-storage.sh. Keeping this in sync with the compose
 # file is a manual discipline; a tag drift here would mean a mirror against
-# an older client. The VPS pulls it anonymously from the org's public GHCR
-# mirror (ADR-0003 § Dep lifecycle health) — no credential.
+# an older client. Used for the local bucket dump only.
 MC_IMAGE="ghcr.io/projekt-manager-org/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -346,11 +351,11 @@ ssh "$SSH_TARGET" "mkdir -p $REMOTE_TMP"
 # a single file across CI, deploy, and sync — see
 # scripts/smoke-app-health.sh for why.
 cp "$REPO_DIR/scripts/smoke-app-health.sh" "$LOCAL_TMP/smoke-app-health.sh"
-# Ship the bucket-versionId repair helper. The VPS-side restore script
-# runs it after `mc mirror` to rewrite attachment.version_ids to
-# reference the freshly-PUT B2 versions, replacing the dev-side MinIO
-# UUIDs that B2 does not recognise.
-cp "$REPO_DIR/scripts/ops/repair-bucket-versionids.py" "$LOCAL_TMP/repair-bucket-versionids.py"
+# Ship the object-restore helper. The VPS-side restore script runs it to
+# write the dump to B2 with metadata rebuilt from the restored rows and
+# to point attachments.version_id at the new B2 versions.
+cp "$REPO_DIR/scripts/ops/restore-bucket-objects.py" "$LOCAL_TMP/restore-bucket-objects.py"
+cp "$REPO_DIR/scripts/ops/restore-bucket-objects.sql" "$LOCAL_TMP/restore-bucket-objects.sql"
 # -a preserves perms/times; -z compresses (SQL and metadata compress well).
 # No --delete — REMOTE_TMP is created fresh this run and cleaned up on exit.
 rsync -az "$LOCAL_TMP/" "$SSH_TARGET:$REMOTE_TMP/"
@@ -361,7 +366,7 @@ echo "[9/10] Restoring on VPS..."
 # copy and the committed version. Env vars pass configuration; `bash -s`
 # reads the script from stdin and runs it in a fresh login shell.
 ssh "$SSH_TARGET" \
-  "REMOTE_TMP='$REMOTE_TMP' MC_IMAGE='$MC_IMAGE' COMPOSE_PROJECT='$COMPOSE_PROJECT' bash -s" \
+  "REMOTE_TMP='$REMOTE_TMP' COMPOSE_PROJECT='$COMPOSE_PROJECT' bash -s" \
   < "$REMOTE_SCRIPT"
 
 echo "[10/10] Done — VPS synced at $(date -u -Iseconds)"

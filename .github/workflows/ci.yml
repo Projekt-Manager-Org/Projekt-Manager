@@ -729,6 +729,13 @@ jobs:
       # is not acceptable here.
       - uses: ./.github/actions/install-age
 
+      # boto3 — src/server/__tests__/sync-restore-objects.test.ts runs
+      # scripts/ops/restore-bucket-objects.py, which runs on the VPS host
+      # against Ubuntu's python3-boto3. Same version as the VPS only while
+      # ubuntu-latest and the VPS share a release (both 24.04 today).
+      - name: Install python3-boto3
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-boto3
+
       # Storage — MinIO + full bucket/IAM provisioning. Rationale, image
       # pins and readiness handling live in the action; see
       # .github/actions/start-minio/action.yml. The boot-time bucket-safety

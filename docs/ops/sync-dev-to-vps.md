@@ -15,7 +15,8 @@ operator workstation                              VPS (over SSH)
     │                           ssh bash -s ──► pause backup
     │                                           pg_terminate_backend (app pool)
     │                                           psql < db.sql
-    │                                           mc mirror → B2 bucket
+    │                                           PUT each object → B2,
+    │                                             metadata rebuilt from its row
     │                                           unpause backup
     │                                           /api/health probe
 ```
@@ -41,6 +42,7 @@ operator workstation                              VPS (over SSH)
 | Local dev stack running (`db`, `storage`)  | `docker compose ps db storage`                                                                                    |
 | Local DB populated (seeds ran)             | `docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -tAc 'SELECT COUNT(*) FROM users;'` — must be ≥ 1 |
 | VPS deployed at a schema-compatible commit | Hash-compared automatically (`0000_baseline.sql`)                                                                 |
+| `python3-boto3` on the VPS host            | `ssh hetzner 'python3 -c "import boto3"'` ([server-setup.md § Software](server-setup.md#software))                |
 
 The schema check is exact-match on `src/server/db/migrations/0000_baseline.sql`. If it fails, [deploy the matching commit](manual-deploy.md) first, then retry.
 
@@ -69,17 +71,19 @@ End-to-end typical timing on a small dataset: ~40 seconds. The app container sta
 3. `pg_dump --clean --if-exists --no-owner --no-acl` into `/tmp/pm-sync-<ts>/db.sql`.
 4. `mc mirror --overwrite --remove` local MinIO bucket into `/tmp/pm-sync-<ts>/bucket/`.
 5. `rsync -az` the temp directory to the VPS.
-6. On VPS: read STORAGE\_\* from the running `app` container's env → pause `backup` if running → `pg_terminate_backend` on the app's connections to `projekt_manager` → `psql -v ON_ERROR_STOP=1 < db.sql` → `mc mirror` onto the B2 bucket → unpause `backup` → poll `/api/health` for 60s.
+6. On VPS: read STORAGE\_\* from the running `app` container's env → pause `backup` if running → `pg_terminate_backend` on the app's connections to `projekt_manager` → `psql -v ON_ERROR_STOP=1 < db.sql` → write the dump to B2 (`scripts/ops/restore-bucket-objects.py`, below) and point `attachments.version_id` at the new versions → unpause `backup` → poll `/api/health` for 60s.
 7. Trap-based cleanup: unpauses `backup` even on failure; removes `/tmp/pm-sync-<ts>/` on both ends.
+
+A directory holds no S3 user metadata, so the dump carries none of the objects' self-describing metadata (wrapped DEK envelope, envelope version, invoice number — AC-439). The restore rebuilds it from the restored rows: the envelope re-wrapped to the VPS recipient, the number of the invoice rendering the PDF. Synced objects therefore decrypt with the VPS's binary identity alone, so the recovery tool works on them like on app-written ones. A dumped file without an `attachments` row is not shipped (WARN); the `__probe/` deploy-probe namespace is neither shipped nor removed.
 
 Credentials on both ends are read from the running containers' env: local MinIO via `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` on the `storage` container; VPS B2 via `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` (and the bucket name + endpoint) on the `app` container. Neither side needs `secrets.env.age` decrypted during the sync.
 
 ## What gets overwritten
 
 - Postgres database `projekt_manager` — every table is dropped and recreated from the dump, including `users`, `sessions`, `audit_log`, `customers`, `projects`, `attachments`, etc.
-- VPS object-storage bucket (configured as `STORAGE_BUCKET` in the app env — typically `prmng-object-storage` on B2) — keys absent locally get a delete-marker, keys present locally are written as new versions. Per ADR-0022's Compliance Object Lock + capability split, no underlying versions are destroyed; lifecycle reaps them after the configured retention + hide-to-delete window.
+- VPS object-storage bucket (configured as `STORAGE_BUCKET` in the app env — typically `prmng-object-storage` on B2) — keys absent locally get a delete-marker, keys with an `attachments` row are written as new versions. Per ADR-0022's Compliance Object Lock + capability split, no underlying versions are destroyed; lifecycle reaps them after the configured retention + hide-to-delete window.
 
-Untouched: VPS filesystem, `secrets.env.age`, Caddy config, VAPID private key under `data/.vapid/`, R2 backup archives, B2 bucket configuration (versioning, Object Lock, lifecycle, CORS — none of those are mc-writable with the bucket-scoped app key).
+Untouched: VPS filesystem, `secrets.env.age`, Caddy config, VAPID private key under `data/.vapid/`, R2 backup archives, B2 bucket configuration (versioning, Object Lock, lifecycle, CORS — none of those are writable with the bucket-scoped app key).
 
 ## Failure modes
 
