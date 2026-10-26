@@ -52,7 +52,7 @@ ERROR: the pasted keyring does not match BINARY_AGE_RECIPIENT + BINARY_AGE_RETIR
 ```
 
 - **`unlisted`** — the paste holds a key the deploy doesn't name. Most often the **backup drill identity** pasted into `load-binary-key` — same shape file, different keypair.
-- **`missing`** — a configured key is not in the paste. Missing the active one: the wrong file, or a copy from before the last rotation. Missing a retired one: `~/secrets/binary-identity.new.txt` pasted instead of the keyring, or a keyring not built per [rotation.md § 1](rotation.md#1-mint-the-new-key-and-build-the-keyring).
+- **`missing`** — a configured key is not in the paste. Missing the active one: the wrong file, or a copy from before the last rotation. Missing a retired one: the new key alone pasted instead of the keyring, or a keyring not built per [rotation.md § 1](rotation.md#1-mint-the-new-key-and-build-the-keyring).
 
 Compare the workstation against the deployed values:
 

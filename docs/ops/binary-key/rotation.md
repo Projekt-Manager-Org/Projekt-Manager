@@ -21,14 +21,14 @@ after:   active = K2, retired = K1   keyring file = {K2, K1}
 - **A retired key is needed as long as any row or object version from before the rotation exists.** Issued invoices cannot be deleted, so in practice that is forever. Never destroy a retired key.
 - The keyring grows by one key per rotation. Every reboot paste carries all of them.
 
-The workstation file `~/secrets/binary-identity.txt` is the keyring; custody copies are copies of that file.
+The keyring is one text file, one `AGE-SECRET-KEY-1...` line per key. Wherever it is kept — the password manager and every custody copy — it is kept whole.
 
 ## After a compromise
 
 The old key keeps opening everything written before the rotation; bucket access is the only guard left for that data. Rotating onto a compromised machine hands the attacker the new key too.
 
 - **Bucket access:** rotate every B2 key the compromised location held — the app key (VPS), the recovery and master keys (workstation, password manager) — per [object-storage-provisioning.md § Master-key handling](../object-storage-provisioning.md#master-key-handling).
-- **Workstation compromised:** mint and build the keyring (step 1) on a clean machine, and keep the new `~/secrets` there.
+- **Workstation compromised:** run step 1 on a clean machine.
 - **VPS compromised:** rebuild it ([server-setup.md](../server-setup.md)) before the paste in step 2.
 - **Custody location compromised:** do not reuse it for the new copies.
 
@@ -36,19 +36,20 @@ The old key keeps opening everything written before the rotation; bucket access 
 
 ### 1. Mint the new key and build the keyring
 
+The keys live in tmpfs only, never on disk:
+
 ```bash
-(
-  umask 077   # no window in which the keyring is readable by others
-  age-keygen -o ~/secrets/binary-identity.new.txt &&
-    cat ~/secrets/binary-identity.new.txt ~/secrets/binary-identity.txt > ~/secrets/binary-identity.next.txt
-)
-age-keygen -y ~/secrets/binary-identity.new.txt                  # BINARY_AGE_RECIPIENT
-age-keygen -y ~/secrets/binary-identity.txt | paste -sd, -      # BINARY_AGE_RETIRED_RECIPIENTS
+D="$XDG_RUNTIME_DIR/binary-rotation"
+install -d -m 700 "$D"
+(umask 077; cat > "$D/current.txt")   # paste the current keyring, then Ctrl-D
+(umask 077; age-keygen -o "$D/new.txt" && cat "$D/new.txt" "$D/current.txt" > "$D/next.txt")
+age-keygen -y "$D/new.txt"                         # BINARY_AGE_RECIPIENT
+age-keygen -y "$D/current.txt" | paste -sd, -      # BINARY_AGE_RETIRED_RECIPIENTS
 ```
 
-The second line covers every earlier retired recipient plus the previously active one.
+The last line covers every earlier retired recipient plus the previously active one.
 
-Make **two off-system custody copies of `~/secrets/binary-identity.next.txt`**, per [setup.md §2](setup.md#2-generate-the-age-key-pair).
+Store `$D/next.txt` — the new keyring — as a new password manager entry and in **two off-system custody copies**, per [setup.md §2](setup.md#2-generate-the-age-key-pair). Keep the current entry and copies until step 4.
 
 ### 2. Update both recipient variables and redeploy
 
@@ -59,7 +60,7 @@ BINARY_AGE_RECIPIENT='age1...'
 BINARY_AGE_RETIRED_RECIPIENTS='age1...,age1...'
 ```
 
-At the deploy's paste prompt ([load.md](load.md)), paste the full contents of `~/secrets/binary-identity.next.txt`. A missing or an extra key is rejected with its recipient named ([troubleshooting.md § Keyring mismatch](troubleshooting.md#keyring-mismatch)).
+At the deploy's paste prompt ([load.md](load.md)), paste the new keyring. A missing or an extra key is rejected with its recipient named ([troubleshooting.md § Keyring mismatch](troubleshooting.md#keyring-mismatch)).
 
 ### 3. Verify
 
@@ -70,12 +71,11 @@ At the deploy's paste prompt ([load.md](load.md)), paste the full contents of `~
 ### 4. Finalise
 
 ```bash
-mv ~/secrets/binary-identity.next.txt ~/secrets/binary-identity.txt
-rm ~/secrets/binary-identity.new.txt
+rm -rf "$D"
 ```
 
-Destroy the previous custody copies and keep the new ones in their place: each new copy holds every key the old ones did. Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
+Destroy the previous password manager entry and custody copies; the new ones hold every key the old ones did. Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
 
 ## Rollback
 
-If step 3 fails after the deploy, anything uploaded since is wrapped to the new key — so swap roles instead of restoring: the previous active recipient back in `BINARY_AGE_RECIPIENT`, the new one added to `BINARY_AGE_RETIRED_RECIPIENTS`, earlier retired ones kept. Redeploy, paste `~/secrets/binary-identity.next.txt`, and run step 4's `mv`/`rm` — the next reboot's paste needs the new key. Keep the previous custody copies until new ones pass step 3. Investigate before retrying.
+If step 3 fails after the deploy, anything uploaded since is wrapped to the new key — so swap roles instead of restoring: the previous active recipient back in `BINARY_AGE_RECIPIENT`, the new one added to `BINARY_AGE_RETIRED_RECIPIENTS`, earlier retired ones kept. Redeploy and paste the new keyring — the next reboot's paste needs the new key too. Keep the previous entry and custody copies until the new ones pass step 3. Investigate before retrying.
