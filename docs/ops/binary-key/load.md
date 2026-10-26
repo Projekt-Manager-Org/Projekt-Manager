@@ -32,7 +32,7 @@ You are about to write private key material into RAM on the VPS; this is cleared
    - Validates the pasted material parses as an `age` identity by round-tripping through `age-keygen -y`.
    - Compares the derived public recipient against `BINARY_AGE_RECIPIENT` from the container env. Mismatch = operator pasted the wrong key (probably the backup drill identity); the script wipes the partial write and exits non-zero.
    - Writes the identity to `/run/binary-key/identity` (tmpfs, mode 0400, owned by the in-container `app` user, UID 1001).
-   - Zeros its own buffer before exit.
+   - Unsets its own buffer before exit (no secure memory wipe).
 
 4. Verify the key is loaded without exposing it:
 

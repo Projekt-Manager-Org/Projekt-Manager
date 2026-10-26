@@ -25,9 +25,9 @@ You are about to write private key material into RAM on the VPS; this is cleared
    ```
 
 3. The script prompts with `read -s` ("Paste age identity, finish with Ctrl-D:"). Paste the clipboard contents, press Enter, then Ctrl-D. The script:
-   - Validates the first line is `# public key: age1...` and that it matches `AGE_RECIPIENT`.
+   - Validates the destination is a tmpfs mount, the paste parses as an `age` identity (`age-keygen -y` round-trip), and its recipient matches `AGE_RECIPIENT`.
    - Writes the identity to `/run/drill-key/identity` (tmpfs, mode 0400, owned by `postgres` UID 70).
-   - Zeros its own buffer before exit.
+   - Unsets its own buffer before exit (no secure memory wipe).
 
 4. Verify the key is loaded without exposing it:
 
