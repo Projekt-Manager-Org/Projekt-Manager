@@ -46,16 +46,17 @@ Escalation steps:
 
 1. **Test the other copies immediately.** Repeat [drills.md](drills.md) with each remaining custody copy — password-manager entry and off-system copies. If one passes, replace every failed copy from it.
 2. **If every custody copy fails**, you are down to whatever is in the `app` tmpfs on the VPS — and that copy is unreachable except by the running app. **Do not reboot.** Do not recreate the `app` container. Do not run `scripts/deploy.sh`. Any of those wipes the tmpfs.
-3. **Pull the identity out of tmpfs onto the workstation while the app is alive.** This is a one-time emergency procedure — the identity in tmpfs is not exfiltrated under normal operation. Justified here because the alternative is permanent loss. Into a [working file](../index.md#working-file) (its first two lines, no paste):
+3. **Pull the identity out of tmpfs while the app is alive.** This is a one-time emergency procedure — the identity in tmpfs is not exfiltrated under normal operation. Justified here because the alternative is permanent loss. Interactively — `sudo` needs a terminal for its password, so a one-shot `ssh host "sudo …"` fails and captures nothing:
 
    ```bash
-   ssh <admin-username>@<vps-hostname> \
-     "sudo -u deploy docker exec projekt-manager-app-1 cat /run/binary-key/identity" \
-     | (umask 077; cat > "$W/identity.txt")
-   age-keygen -y "$W/identity.txt"    # verify it parses
+   ssh <admin-username>@<vps-hostname>
+   sudo -u deploy docker exec projekt-manager-app-1 cat /run/binary-key/identity
+   clear
    ```
 
-4. **Restore custody from the recovered identity before any reboot:** a new password-manager entry plus fresh off-system copies, then tear down the working file. Treat the next 24 hours as a no-reboot window until custody is restored. Then run a workstation-side drill per [drills.md](drills.md) against the new entry.
+   Copy the printed text, comment lines included, into a new password-manager entry; `clear` before leaving the session, then clear the clipboard (in tmux, also `tmux clear-history`). Verify the entry with the [recipient check](../index.md#working-file) against `BINARY_AGE_RECIPIENT`.
+
+4. **Restore custody before any reboot:** mint fresh off-system copies from the new entry. Treat the next 24 hours as a no-reboot window until custody is restored. Then run a workstation-side drill per [drills.md](drills.md) against the new entry.
 
 If every custody copy has failed AND the VPS has been rebooted before step 3 completed, see § Burn-and-restart below.
 
