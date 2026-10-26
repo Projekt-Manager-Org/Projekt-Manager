@@ -20,7 +20,7 @@ The **deploy auto-prompt** in `scripts/deploy.sh` is the intended trigger in nor
 
 You are about to write private key material into RAM on the VPS; this is cleared on reboot or on container recreation, and can be overwritten by rerunning the script.
 
-1. Have `~/secrets/binary-identity.txt` open on the operator workstation. Copy its full contents (including the comment lines and the `AGE-SECRET-KEY-1...` body) to the clipboard.
+1. Copy the binary identity's password-manager entry ([Key custody](../index.md#key-custody)) to the clipboard — full text, comment lines and the `AGE-SECRET-KEY-1...` body.
 2. SSH to the VPS as the admin user. Use `docker exec` directly, not `docker compose exec` — the compose path re-parses `docker-compose.yml`, which requires the full set of interpolation vars in shell env; a bare sudo shell doesn't have them sourced, so parse aborts. Same class of problem fixed in `server-setup.md` Phase 8.1 (commit 5484903). `-it` allocates a pseudo-TTY so the script's `read -s` actually suppresses echo during the paste:
 
    ```bash

@@ -4,7 +4,7 @@ Rotate the binary `age` keypair. Per [ADR-0024 §Decision "Key rotation"](../../
 
 This is a planned operator procedure — not a routine cadence. Trigger it on:
 
-- Suspected compromise of the workstation copy or any custody copy.
+- Suspected compromise of the password-manager entry or any custody copy.
 - Operator handover.
 - A scheduled interval the operator chooses (no project-mandated cadence; the design treats the binary identity as long-lived).
 
@@ -31,15 +31,7 @@ Tell users to stop uploading new attachments for the rotation window. New upload
 
 ### 1. Mint a new keypair
 
-Re-run [setup.md §2](setup.md#2-generate-the-age-key-pair) with a different output filename so the old identity is preserved on the workstation for the recovery window:
-
-```bash
-age-keygen -o ~/secrets/binary-identity.new.txt
-chmod 600 ~/secrets/binary-identity.new.txt
-age-keygen -y ~/secrets/binary-identity.new.txt    # new public recipient
-```
-
-Mint **two off-system custody copies** of the new identity immediately, per the same multi-location discipline as setup. Mark the old custody copies "retired, read-only" — they decrypt historical envelopes during the recovery window but should not be used for new operations.
+Re-run [setup.md §2](setup.md#2-generate-the-age-key-pair) into a **new** password-manager entry and fresh off-system copies. Leave the old entry and copies untouched — they decrypt historical envelopes during the recovery window and serve rollback; step 6 retires them.
 
 ### 2. Update `BINARY_AGE_RECIPIENT`
 
@@ -57,15 +49,14 @@ A bulk re-upload UI does not exist; the re-upload is one file at a time through 
 
 ### 5. Verify with a drill
 
-Immediately run the workstation-side drill ([drills.md](drills.md)) against a freshly re-uploaded attachment, using the new identity custody copy. A passing drill confirms the rotation is end-to-end: new uploads wrap to the new recipient, the new custody copy decrypts them, and the off-system custody chain is alive.
+Immediately run the workstation-side drill ([drills.md](drills.md)) against a freshly re-uploaded attachment, using the new password-manager entry. A passing drill confirms the rotation is end-to-end: new uploads wrap to the new recipient and the new entry decrypts them. Later drills cycle through the new off-system copies.
 
 ### 6. Retire the old identity
 
 After all attachments are re-uploaded (or after the operator accepts that the un-re-uploaded ones are abandoned):
 
-1. Move the old custody copies to a "retired, read-only" vault. Keep them — historical audits, late discoveries that an old attachment was actually needed, etc. Do not destroy.
-2. Remove the old workstation working copy: `shred -u ~/secrets/binary-identity.txt` then `mv ~/secrets/binary-identity.new.txt ~/secrets/binary-identity.txt` so the canonical filename keeps pointing at the active identity.
-3. Record the rotation per [Operations record](../index.md#operations-record) — date, reason, attachment count re-uploaded, attachment count abandoned.
+1. Mark the old password-manager entry "retired, read-only" and move the old off-system copies to retired storage ([Key custody](../index.md#key-custody)). Keep them — historical audits, late discoveries that an old attachment was actually needed, etc. Do not destroy.
+2. Record the rotation per [Operations record](../index.md#operations-record) — date, reason, attachment count re-uploaded, attachment count abandoned.
 
 ## Rollback
 
@@ -73,6 +64,6 @@ If step 5's drill fails, the rotation has a problem. Rollback is "redeploy with 
 
 1. Restore the previous `secrets.env.age` from the password manager (or from the `secrets.env.age.bak` snapshot taken in [setup.md §3](setup.md#3-push-the-recipient-to-the-vps)).
 2. Redeploy per [setup.md §4](setup.md#4-first-deploy).
-3. Paste the **old** identity (from the workstation working copy preserved in step 1) into `load-binary-key`.
+3. Paste the **old** identity (the old password-manager entry, untouched since step 1) into `load-binary-key`.
 
 Rollback is fast as long as the old identity custody is still intact and the rotation has not yet involved data destruction. Investigate the drill failure before retrying the rotation.

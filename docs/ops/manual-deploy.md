@@ -20,7 +20,7 @@ operator (over WireGuard):                        v
 
 The merge-time `promote` job re-tags the dispatched artifact instead of rebuilding (~30s, no rescan, no smoke — the bytes were validated end-to-end during dispatch). It only fires when GHCR holds an image for the **final** PR tip, so **re-dispatch after the last commit lands**. Otherwise — dispatch skipped (Renovate auto-merge, direct push to main) or stale — `promote` falls through to a full rebuild via the same composite action: ~5 min, with a `::warning::` in the run log naming the failed guard. See ADR-0011 §"Build once, promote on merge" for the full topology.
 
-Have `~/secrets/age-backup.key` open on the operator workstation before invoking the deploy — when the backup container was recreated by the deploy, the script will prompt to paste the age private identity into the container's tmpfs (AC-175). See [backup/drills.md](backup/drills.md) for the threat model.
+Have the backup identity's password-manager entry at hand before invoking the deploy — when the backup container was recreated by the deploy, the script will prompt to paste the age private identity into the container's tmpfs (AC-175). See [backup/drills.md](backup/drills.md) for the threat model.
 
 ## Preconditions
 
@@ -132,7 +132,7 @@ Layer 2:
 - `R2_ENDPOINT` -- `https://<accountid>.r2.cloudflarestorage.com`
 - `R2_BUCKET` -- optional; defaults to `projekt-manager-backups` in `docker-compose.yml`
 - `R2_REGION` -- optional; defaults to `auto` in `docker-compose.yml`
-- `AGE_RECIPIENT` -- PUBLIC recipient only, for backup encryption at rest. The matching age identity lives on the operator workstation, never on the VPS.
+- `AGE_RECIPIENT` -- PUBLIC recipient only, for backup encryption at rest. The matching age identity is operator-held ([Key custody](index.md#key-custody)), never on the VPS.
 
 ### Rotate a secret
 
@@ -167,7 +167,7 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh
    - `CLOUDFLARE_API_TOKEN` -- Cloudflare dashboard, scope **DNS Write + Zone Read** on the managed zone (legacy names: `Zone:DNS:Edit` + `Zone:Zone:Read`). See [dns-setup.md § Cloudflare API token scope](dns-setup.md#cloudflare-api-token-scope).
    - `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` -- issue a new R2 API token in the Cloudflare dashboard; the endpoint URL is listed alongside. Revoke the old token after the rotation deploy.
    - `R2_BUCKET`, `R2_REGION` -- read off the R2 dashboard (or fall back to the compose defaults).
-   - `AGE_RECIPIENT` -- not affected by `secrets.env.age` passphrase loss. Derive from the existing identity on the operator workstation: `age-keygen -y ~/secrets/age-backup.key`.
+   - `AGE_RECIPIENT` -- not affected by `secrets.env.age` passphrase loss. Derive from the backup identity's password-manager entry per the [recipient check](index.md#working-file).
 2. Rebuild `secrets.env`, encrypt with `age -p`, upload (see [backup/setup.md §3](backup/setup.md#3-push-r2-credentials--recipient-to-the-vps)).
 3. Record new passphrase in password manager.
 

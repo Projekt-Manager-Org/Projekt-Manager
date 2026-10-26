@@ -1,7 +1,7 @@
 # ADR-0020: Layer 2 — encrypted R2 backups with operator-loaded drills
 
 - **Status:** Accepted
-- **Date:** 2026-04-17
+- **Date:** 2026-04-17 (custody: operator-held, not workstation-only 2026-10-26)
 - **Confidence:** Medium
 
 ## Context
@@ -15,14 +15,14 @@ Forces:
 - **Restore must be continuously verified.** A restore that has never succeeded on this data shape cannot be relied on under pressure.
 - **Compose is the source of truth** for deployment ([ADR-0012](0012-manual-pull-based-deploy-over-wireguard.md)). A host-managed scheduler splits that across two surfaces.
 - **No human at every backup.** A live operator per run defeats the schedule.
-- **Operator workstation is the one trusted enclave** for long-lived decrypt material — VPS and CI are not.
+- **Operator custody is the one trusted enclave** for long-lived decrypt material — VPS and CI are not. How the operator keeps it is the operating company's call ([Key custody](../ops/index.md#key-custody)).
 - **Scope is snapshots, not the backup concept.** Kickoff commits to automated DB backups at regular intervals ([§Done when](../project/kickoff.md#done-when-final-product)); a backup concept beyond that is out of scope ([§Not Doing](../project/kickoff.md#not-doing)). Copies, long-term retention and restore tests on them are the operating company's ([Betriebsverantwortung](../compliance/betriebsverantwortung.md)).
 
 ## Decision
 
 Add a dedicated **`backup` compose service** that runs on a configurable interval and produces, per successful run, two encrypted R2 objects in the `projekt-manager-backups` bucket: a `pg_dump -Fc` artifact at `daily/<iso-timestamp>.dump.age` and a per-table manifest sidecar at `daily/<iso-timestamp>.manifest.json.age` (row count + deterministic content checksum). Every run and drill rewrites an unencrypted `status/latest.json` mirror of the in-DB backup-status row.
 
-- **Encryption** uses **age asymmetric**: the public recipient ships in container env; the private identity lives only on the operator workstation. For drills, the operator loads the identity into a tmpfs mount on the VPS via a helper script; it never persists to disk and is lost on reboot.
+- **Encryption** uses **age asymmetric**: the public recipient ships in container env; the private identity is operator-held ([Key custody](../ops/index.md#key-custody)), never on the VPS disk. For drills, the operator loads the identity into a tmpfs mount on the VPS via a helper script; it never persists to disk and is lost on reboot.
 - **Storage** uses R2. A bucket lock scoped to the `daily/` prefix enforces immutability on historical artifacts; a bucket-wide lifecycle rule deletes objects after a total retention window (values in §Retention below). `status/latest.json` is intentionally outside the lock scope — it is a fixed key overwritten every cycle, and an immutability rule on it would permanently break the freshness badge after the first write. R2 object versioning is not used — each `daily/*` run writes a uniquely timestamped filename, no version chain to manage.
 - <a id="retention"></a>**Retention is linear.** Bucket lock (14 days on `daily/`) + lifecycle (delete at 90 days, bucket-wide) produce a 14–90 day rolling window of encrypted history — immutable for the first 14 days, deletable for the next 76. No in-container rotation, no weekly/monthly promotion. Deliberate scope call — see "GFS-style rotation" alternative. **These values are the canonical source**; every other doc (architecture, setup, overview, verification, etc.) cites this section rather than restating the numbers.
 - **Verification every backup**, two tiers:

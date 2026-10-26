@@ -29,3 +29,42 @@ Who does what in operations — the operating company's duties, the operator rol
 ## Operations record
 
 Drills, restores and rotations are recorded outside the systems they exercise — a file on the workstation dies with the workstation. Use the procedure's recurring calendar event (monthly drills) or a one-off event (restore, rotation), and name custody copies by label (copy A / copy B), never by location.
+
+## Key custody
+
+Applies to both operator-held `age` identities — binary ([binary-key/](binary-key/overview.md)) and backup ([backup/](backup/overview.md)). Custody copies = the working copy plus any off-system copies.
+
+| Copy              | Where                                                                                                 | Role                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Working copy      | One password-manager entry per identity: the full file text, in a multi-line field                    | Every routine paste and command reads from here. Not an off-system copy. |
+| Off-system copies | Offline: encrypted USB, paper written by hand (a print spooler writes it to disk), air-gapped KeePass | Survive loss of the password manager. Labelled copy A, copy B, …         |
+| Retired           | Entry and copies marked "retired, read-only"                                                          | Decrypt what the old keypair protected; kept, never destroyed            |
+
+The system's line: the identity is operator-held — never on the VPS disk, in CI, git, chat or a plain cloud drive, and no identity file persists on the workstation. The rest is the operating company's call, recommended but not enforced: how the password manager keeps and backs up its vault, how many off-system copies and where ([Betriebsverantwortung §4](../compliance/betriebsverantwortung.md#4-empfehlungen-an-den-betreiber)). Without an off-system copy, losing the password-manager entry is losing the identity. Keep the label → location map outside the password manager too — it is needed exactly when the password manager is gone.
+
+### Working file
+
+For a command that reads the identity from a file. tmpfs only (`$XDG_RUNTIME_DIR` is `/run/user/<uid>` on systemd), never through an editor — swap and backup files outlive the teardown. Echo stays off while the key is pasted:
+
+```bash
+W="$XDG_RUNTIME_DIR/age-work"
+install -d -m 700 "$W"
+stty -echo; (umask 077; cat > "$W/identity.txt"); stty echo   # paste the entry, Enter, Ctrl-D
+# … run the command with "$W/identity.txt" …
+rm -rf "$W"
+```
+
+Interrupted mid-paste? `stty echo; rm -rf "$W"`.
+
+A recipient check needs no file: `stty -echo; age-keygen -y; stty echo`, paste, Enter, Ctrl-D prints the `age1...` recipient.
+
+### New identity
+
+```bash
+W="$XDG_RUNTIME_DIR/age-work"
+install -d -m 700 "$W"
+age-keygen -o "$W/identity.txt"   # prints "Public key: age1..." — the recipient
+cat "$W/identity.txt"             # copy into a new password-manager entry
+```
+
+Mint the off-system copies the operating company keeps, then `rm -rf "$W"`.

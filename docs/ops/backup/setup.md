@@ -69,26 +69,9 @@ Must be created through the R2 dashboard — not Profile → API Tokens. Only th
 
 ## 2. Generate the age key pair
 
-The private identity is the root of the recovery chain — long-lived private key material, reversible only by discarding the ciphertext it protects. Generate it on the operator workstation and never let it leave.
-
-```bash
-mkdir -p ~/secrets
-age-keygen -o ~/secrets/age-backup.key
-chmod 600 ~/secrets/age-backup.key
-age-keygen -y ~/secrets/age-backup.key    # prints the public recipient (age1...)
-```
-
-The `age1...` line is what `AGE_RECIPIENT` takes in §3. The `AGE-SECRET-KEY-1...` inside the identity file is the private identity and stays on the workstation.
-
-**Back up the private identity off-system.** Options, pick one and document it in the password manager:
-
-- Encrypted USB kept in a physical safe.
-- Offline password manager vault (e.g., KeePass DB on an air-gapped device).
-- Paper printout in a sealed envelope, stored with other recovery material.
+The private identity is the root of the recovery chain — long-lived private key material, reversible only by discarding the ciphertext it protects. Generate it on the operator workstation per [Key custody § New identity](../index.md#new-identity). The `age1...` recipient it prints is what `AGE_RECIPIENT` takes in §3.
 
 Losing the private identity forfeits every Tier 2 drill and every DR restore from encrypted R2 objects ([ADR-0020 §Consequences](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#consequences)). A single compromise invalidates future-read secrecy — rotate via [rotation.md](rotation.md) if suspected.
-
-**Never** write the private identity to the project tree, `secrets.env.age`, the VPS filesystem persistently (see [drills.md](drills.md) for the tmpfs-only drill flow), or any location tracked by git, cloud sync, or chat history.
 
 ## 3. Push R2 credentials + recipient to the VPS
 
