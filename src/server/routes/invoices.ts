@@ -45,7 +45,7 @@ import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
  * Shared JSON-schema fragment for an `InvoiceLineInput`. No `lineTotal`:
  * the service derives it (AC-384), and the server re-derives `totals`
  * from `lines + taxMode` on every successful write (AC-286). A
- * client-sent `lineTotal` is stripped as an unknown property.
+ * client-sent `lineTotal` is refused as an undefined field (AC-516).
  */
 const lineSchema = {
   type: 'object',

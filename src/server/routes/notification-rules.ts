@@ -11,6 +11,25 @@ import type { Database } from '../db/connection.js';
 import { requirePermission, requireSession } from '../middleware/auth.js';
 import { NotificationRuleService } from '../services/NotificationRuleService.js';
 
+/**
+ * The rule body's shape, closed at every object level (AC-516). Value
+ * checks stay in the service validator.
+ */
+const RULE_BODY_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    eventClass: {},
+    stateFilter: {},
+    recipientSpec: {
+      type: 'object',
+      additionalProperties: false,
+      properties: { roles: {}, includeAssignedWorkers: {}, userIds: {} },
+    },
+    enabled: {},
+  },
+} as const;
+
 export function notificationRuleRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
     const service = new NotificationRuleService(db);
@@ -49,10 +68,11 @@ export function notificationRuleRoutes(db: Database) {
       '/api/notification-rules',
       {
         schema: {
-          // Structural gate: reject non-object bodies (null, arrays, primitives)
-          // before they reach the service validator. Semantic validation
-          // (eventClass, recipientSpec, etc.) lives in NotificationRuleService.
-          body: { type: 'object' },
+          // Structural gate: a non-object body or an undefined field
+          // (AC-516) is refused before the service validator. Semantic
+          // validation (eventClass, recipientSpec, etc.) lives in
+          // NotificationRuleService.
+          body: RULE_BODY_SCHEMA,
         },
         preHandler: requirePermission('notifications:manage'),
       },
@@ -75,7 +95,7 @@ export function notificationRuleRoutes(db: Database) {
             required: ['id'],
             properties: { id: { type: 'string', format: 'uuid' } },
           },
-          body: { type: 'object' },
+          body: RULE_BODY_SCHEMA,
         },
         preHandler: requirePermission('notifications:manage'),
       },

@@ -178,7 +178,6 @@ interface PhotoInitBody {
   sizeBytes: number;
   label: 'foto';
   hasThumbnail: true;
-  thumbSizeBytes: number;
   dekMaterial: string;
   ciphertextSizeBytes: number;
   ciphertextContentMd5: string;
@@ -194,7 +193,6 @@ function photoInit(): PhotoInitBody {
     sizeBytes: 4096,
     label: 'foto',
     hasThumbnail: true,
-    thumbSizeBytes: 256,
     dekMaterial: freshDekMaterial(),
     ciphertextSizeBytes: 4096 + GCM_OVERHEAD_BYTES,
     ciphertextContentMd5: STUB_MD5_BASE64,
