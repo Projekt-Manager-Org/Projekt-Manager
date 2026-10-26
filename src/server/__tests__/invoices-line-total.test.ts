@@ -2,8 +2,8 @@
  * API integration tests — server-derived invoice `lineTotal` (issue #525).
  *
  * AC coverage in this file:
- *   - AC-384: create and PATCH ignore a client-supplied
- *     `lineTotal`; issue rejects a stored line that breaks
+ *   - AC-384: create and PATCH reject a client-supplied
+ *     `lineTotal` (AC-516); issue rejects a stored line that breaks
  *     `lineTotal = round2(quantity × unitPrice)` before a number is
  *     allocated; create rejects a non-finite derived `lineTotal` and a
  *     `unitPrice` above 4 decimals and overflowing totals; `lineTotal`
@@ -30,15 +30,16 @@ import { createDatabase } from '../db/connection.js';
 
 const year = new Date().getFullYear();
 
-/** The #525 repro line: the client claims 1.00 for 10 × 100.00. */
-const TAMPERED_LINE = {
+const LINE = {
   description: 'Anstrich Fassade',
   quantity: 10,
   unit: 'h',
   unitPrice: 100,
-  lineTotal: 1,
   taxRate: 19,
 };
+
+/** The #525 repro line: the client claims 1.00 for 10 × 100.00. */
+const TAMPERED_LINE = { ...LINE, lineTotal: 1 };
 
 interface StoredLine {
   lineTotal: number;
@@ -62,6 +63,15 @@ async function readSequenceNextValue(): Promise<number | null> {
     );
     if (res.rows.length === 0) return null;
     return Number((res.rows[0] as { next_value: string | number }).next_value);
+  });
+}
+
+async function countInvoices(projectId: string): Promise<number> {
+  return withDb(async (db) => {
+    const res = await db.execute(
+      sql`SELECT COUNT(*)::int AS c FROM invoices WHERE project_id = ${projectId}`,
+    );
+    return (res.rows[0] as { c: number }).c;
   });
 }
 
@@ -93,27 +103,24 @@ describe('AC-384: lineTotal is server-derived', () => {
     await stopApp();
   });
 
-  function expectDerived(body: { lines: StoredLine[]; totals: Record<string, number> }): void {
-    expect(body.lines[0]!.lineTotal).toBe(1000);
-    expect(body.totals.netGrandTotal).toBe(1000);
-    expect(body.totals.grossGrandTotal).toBe(1190);
-  }
-
-  it('POST ignores a client-supplied lineTotal', async () => {
+  it('POST rejects a client-supplied lineTotal and creates nothing', async () => {
+    const before = await countInvoices(projectId);
     const res = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
       lines: [TAMPERED_LINE],
     });
-    expect(res.statusCode).toBe(201);
-    expectDerived(res.json());
-    expect((await readStoredLines(res.json().id))[0]!.lineTotal).toBe(1000);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().details).toContainEqual(
+      expect.objectContaining({ params: { additionalProperty: 'lineTotal' } }),
+    );
+    expect(await countInvoices(projectId)).toBe(before);
   });
 
   it('POST rejects a line whose derived lineTotal overflows', async () => {
     const res = await authPost(ownerToken, '/api/invoices', {
       projectId,
-      lines: [{ ...TAMPERED_LINE, quantity: 1e200, unitPrice: 1e200 }],
+      lines: [{ ...LINE, quantity: 1e200, unitPrice: 1e200 }],
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('VALIDATION_ERROR');
@@ -122,7 +129,7 @@ describe('AC-384: lineTotal is server-derived', () => {
   it('POST derives lineTotal from the decimal product', async () => {
     const res = await authPost(ownerToken, '/api/invoices', {
       projectId,
-      lines: [{ ...TAMPERED_LINE, quantity: 0.5, unitPrice: 2.01 }],
+      lines: [{ ...LINE, quantity: 0.5, unitPrice: 2.01 }],
     });
     expect(res.statusCode).toBe(201);
     expect((await readStoredLines(res.json().id))[0]!.lineTotal).toBe(1.01);
@@ -131,7 +138,7 @@ describe('AC-384: lineTotal is server-derived', () => {
   it('POST rejects a unitPrice with more than 4 decimals', async () => {
     const res = await authPost(ownerToken, '/api/invoices', {
       projectId,
-      lines: [{ ...TAMPERED_LINE, unitPrice: 1.00001 }],
+      lines: [{ ...LINE, unitPrice: 1.00001 }],
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('VALIDATION_ERROR');
@@ -142,7 +149,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const res = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [{ ...TAMPERED_LINE, quantity: 1.7e154, unitPrice: 1e154 }],
+      lines: [{ ...LINE, quantity: 1.7e154, unitPrice: 1e154 }],
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('VALIDATION_ERROR');
@@ -153,7 +160,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const res = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [{ ...TAMPERED_LINE, taxRate: 0 }],
+      lines: [{ ...LINE, taxRate: 0 }],
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('VALIDATION_ERROR');
@@ -163,7 +170,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const res = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'reverse_charge',
-      lines: [{ ...TAMPERED_LINE, taxRate: 0 }],
+      lines: [{ ...LINE, taxRate: 0 }],
     });
     expect(res.statusCode).toBe(201);
   });
@@ -172,7 +179,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const created = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'reverse_charge',
-      lines: [{ ...TAMPERED_LINE, taxRate: 0 }],
+      lines: [{ ...LINE, taxRate: 0 }],
     });
     expect(created.statusCode).toBe(201);
     const id = created.json().id as string;
@@ -196,7 +203,7 @@ describe('AC-384: lineTotal is server-derived', () => {
 
     const res = await authPatch(ownerToken, `/api/invoices/${id}`, {
       ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
-      lines: [{ ...TAMPERED_LINE, taxRate: 0 }],
+      lines: [{ ...LINE, taxRate: 0 }],
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('VALIDATION_ERROR');
@@ -206,7 +213,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const created = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [TAMPERED_LINE],
+      lines: [LINE],
     });
     expect(created.statusCode).toBe(201);
     const id = created.json().id as string;
@@ -228,7 +235,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const created = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [TAMPERED_LINE],
+      lines: [LINE],
       performanceDate: '2026-04-10',
     });
     expect(created.statusCode).toBe(201);
@@ -253,7 +260,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const created = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [TAMPERED_LINE],
+      lines: [LINE],
       performanceDate: '2026-04-10',
     });
     expect(created.statusCode).toBe(201);
@@ -277,14 +284,14 @@ describe('AC-384: lineTotal is server-derived', () => {
     const created = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [TAMPERED_LINE, TAMPERED_LINE],
+      lines: [LINE, LINE],
       performanceDate: '2026-04-10',
     });
     expect(created.statusCode).toBe(201);
     const id = created.json().id as string;
 
     // A restored draft: each line is consistent, their sum is not a double.
-    const huge = { ...TAMPERED_LINE, quantity: 1e154, unitPrice: 1e154, lineTotal: 1e308 };
+    const huge = { ...LINE, quantity: 1e154, unitPrice: 1e154, lineTotal: 1e308 };
     await withDb((db) =>
       db.execute(
         sql`UPDATE invoices SET lines = ${JSON.stringify([huge, huge])}::jsonb WHERE id = ${id}`,
@@ -302,7 +309,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const created = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [TAMPERED_LINE],
+      lines: [LINE],
       performanceDate: '2026-04-10',
     });
     expect(created.statusCode).toBe(201);
@@ -326,7 +333,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const created = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [TAMPERED_LINE],
+      lines: [LINE],
       performanceDate: '2026-04-10',
     });
     expect(created.statusCode).toBe(201);
@@ -345,7 +352,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     expect(res.json().details.invalidFields).toEqual(['lines[0].taxRate']);
   });
 
-  it('PATCH ignores a client-supplied lineTotal', async () => {
+  it('PATCH rejects a client-supplied lineTotal and changes nothing', async () => {
     const created = await authPost(ownerToken, '/api/invoices', { projectId, taxMode: 'standard' });
     expect(created.statusCode).toBe(201);
     const id = created.json().id as string;
@@ -354,9 +361,11 @@ describe('AC-384: lineTotal is server-derived', () => {
       ...(await expectedVersion(ownerToken, `/api/invoices/${id}`)),
       lines: [TAMPERED_LINE],
     });
-    expect(res.statusCode).toBe(200);
-    expectDerived(res.json());
-    expect((await readStoredLines(id))[0]!.lineTotal).toBe(1000);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().details).toContainEqual(
+      expect.objectContaining({ params: { additionalProperty: 'lineTotal' } }),
+    );
+    expect(await readStoredLines(id)).toEqual([]);
   });
 
   it('issue rejects a stored line whose lineTotal breaks the equality, allocating no number', async () => {
@@ -373,7 +382,7 @@ describe('AC-384: lineTotal is server-derived', () => {
     const created = await authPost(ownerToken, '/api/invoices', {
       projectId,
       taxMode: 'standard',
-      lines: [TAMPERED_LINE],
+      lines: [LINE],
       performanceDate: '2026-04-10',
     });
     expect(created.statusCode).toBe(201);

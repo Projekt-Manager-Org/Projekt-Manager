@@ -55,7 +55,6 @@ const LINE = {
   quantity: 1,
   unit: 'pauschal',
   unitPrice: 1500,
-  lineTotal: 1500,
   taxRate: 19,
 };
 

@@ -130,15 +130,13 @@ async function wrapFreshDek(): Promise<{ dek: Buffer; wrappedBase64: string }> {
  * what the client computes and the server signs is the *ciphertext*
  * MD5, not the plaintext one.
  */
-function photoInit(projectId: string) {
+function photoInit() {
   return {
-    projectId,
     fileName: `test-${crypto.randomUUID().slice(0, 8)}.jpg`,
     mimeType: 'image/jpeg',
     sizeBytes: 120_000, // plaintext — for the per-file cap + export envelope
     label: 'foto' as const,
     hasThumbnail: true,
-    thumbSizeBytes: 8_000, // plaintext thumb size
     // Ciphertext shape: the per-blob DEK + ciphertext size/MD5. The
     // server wraps the DEK and signs the PUT against the ciphertext
     // size / MD5 / sentinel content-type.
@@ -206,7 +204,7 @@ describe('Attachment routes — integration (issue #108)', () => {
   describe('init validation + presigned-PUT signature', () => {
     // AC-397
     it('returns 201 with a pending row and two presigned PUT descriptors for a photo', async () => {
-      const init = photoInit(projectId);
+      const init = photoInit();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, init);
       expect(res.statusCode).toBe(201);
       const body = res.json();
@@ -283,7 +281,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const res = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
+        photoInit(),
       );
       expect(res.statusCode).toBe(201);
       const body = res.json();
@@ -317,7 +315,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const res = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
+        photoInit(),
       );
       expect(res.statusCode).toBe(201);
       const attId = res.json().attachment.id as string;
@@ -355,7 +353,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const res = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
+        photoInit(),
       );
       expect(res.statusCode).toBe(201);
       const attId = res.json().attachment.id as string;
@@ -375,7 +373,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     it('rejects a missing/malformed ciphertextContentMd5 with 422 VALIDATION_ERROR (no row)', async () => {
       const before = await countAttachmentRows();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         ciphertextContentMd5: 'not-a-base64-md5',
       });
       // JSON-schema pattern fires before service-level checks; the gate
@@ -386,7 +384,7 @@ describe('Attachment routes — integration (issue #108)', () => {
 
     it('rejects hasThumbnail=true with no ciphertextThumbContentMd5 with 422 (no row)', async () => {
       const before = await countAttachmentRows();
-      const { ciphertextThumbContentMd5: _omit, ...payload } = photoInit(projectId);
+      const { ciphertextThumbContentMd5: _omit, ...payload } = photoInit();
       const res = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -399,7 +397,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     it('rejects ciphertextSizeBytes that is non-positive with 422 (no row)', async () => {
       const before = await countAttachmentRows();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         ciphertextSizeBytes: 0,
       });
       expect(res.statusCode).toBe(422);
@@ -412,7 +410,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // presigned PUT for an arbitrarily large object (#575).
       const before = await countAttachmentRows();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         sizeBytes: 1,
         ciphertextSizeBytes: 100 * 1024 * 1024,
       });
@@ -424,7 +422,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     it('rejects ciphertextThumbSizeBytes that is non-positive with 422 (no row)', async () => {
       const before = await countAttachmentRows();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         ciphertextThumbSizeBytes: 0,
       });
       expect(res.statusCode).toBe(422);
@@ -441,7 +439,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // size-cap copy without parsing the message.
       const before = await countAttachmentRows();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         ciphertextThumbSizeBytes: 1 * 1024 * 1024,
       });
       expect(res.statusCode).toBe(422);
@@ -457,7 +455,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // if the base64 padding character count varies.
       const before = await countAttachmentRows();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         dekMaterial: Buffer.alloc(16, 0x42).toString('base64'),
       });
       expect(res.statusCode).toBe(422);
@@ -468,7 +466,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     it('rejects dekMaterial that is not valid base64 with 422 (no row)', async () => {
       const before = await countAttachmentRows();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         dekMaterial: '@@@-not-base64-@@@',
       });
       expect(res.statusCode).toBe(422);
@@ -478,7 +476,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     it('rejects hasThumbnail=true with malformed thumbDekMaterial with 422 (no row)', async () => {
       const before = await countAttachmentRows();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         thumbDekMaterial: Buffer.alloc(16, 0x42).toString('base64'),
       });
       expect(res.statusCode).toBe(422);
@@ -487,7 +485,7 @@ describe('Attachment routes — integration (issue #108)', () => {
 
     it('rejects hasThumbnail=true with no thumbDekMaterial with 422 (no row)', async () => {
       const before = await countAttachmentRows();
-      const { thumbDekMaterial: _omit, ...payload } = photoInit(projectId);
+      const { thumbDekMaterial: _omit, ...payload } = photoInit();
       const res = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -598,22 +596,15 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(res.json().code).toBe('VALIDATION_ERROR');
     });
 
-    it('rejects a client-supplied originalKey — the server owns the key', async () => {
-      // A well-formed request carrying an extra `originalKey` field must
-      // not be honored. Either the server ignores the field (and issues
-      // its own key — asserted here by shape mismatch) or it rejects as
-      // 422. Either is acceptable; what must NOT happen is the client's
-      // key appearing on the row.
-      const injectedKey = 'attacker/controlled/path.jpg';
+    it('rejects a client-supplied originalKey — the server owns the key (AC-516)', async () => {
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
-        originalKey: injectedKey,
+        ...photoInit(),
+        originalKey: 'attacker/controlled/path.jpg',
       } as Record<string, unknown>);
-      if (res.statusCode === 201) {
-        expect(res.json().attachment.originalKey).not.toBe(injectedKey);
-      } else {
-        expect(res.statusCode).toBe(422);
-      }
+      expect(res.statusCode).toBe(422);
+      expect(res.json().details).toContainEqual(
+        expect.objectContaining({ params: { additionalProperty: 'originalKey' } }),
+      );
     });
   });
 
@@ -636,7 +627,7 @@ describe('Attachment routes — integration (issue #108)', () => {
      * but fail the content-type assertion at complete-time.
      */
     async function seedPendingWithBackingBytes(): Promise<string> {
-      const init = photoInit(projectId);
+      const init = photoInit();
       const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, init);
       expect(res.statusCode).toBe(201);
       const body = res.json();
@@ -698,7 +689,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
+        photoInit(),
       );
       expect(initRes.statusCode).toBe(201);
       const attId = initRes.json().attachment.id;
@@ -722,7 +713,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // — bytes under a key whose row claims 1KB but the actual stored
       // ciphertext is 2 MB — must land as 409.
       const initRes = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInit(projectId),
+        ...photoInit(),
         sizeBytes: 1024 - GCM_OVERHEAD_BYTES,
         ciphertextSizeBytes: 1024,
       });
@@ -816,7 +807,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // ANY non-sentinel value fails at HEAD. The pre-e2e
       // `startsWith('image/')` carve-out for thumbnails is GONE; both
       // blobs must be `application/octet-stream`.
-      const init = photoInit(projectId);
+      const init = photoInit();
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -856,7 +847,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // Pin the absence of the carve-out: thumbnail with image/webp
       // must fail at complete-time, just like the original-side arm
       // above.
-      const init = photoInit(projectId);
+      const init = photoInit();
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -911,7 +902,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
+        photoInit(),
       );
       expect(initRes.statusCode).toBe(201);
       const attId = initRes.json().attachment.id;
@@ -957,7 +948,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${raceProjectId}/attachments/init`,
-        photoInit(raceProjectId),
+        photoInit(),
       );
       expect(initRes.statusCode).toBe(201);
       const body = initRes.json();
@@ -968,7 +959,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       // gate fires). The actual bytes are irrelevant — the archive
       // gate kills the request before HEAD verification anyway.
       const s = storage();
-      const init = photoInit(raceProjectId); // re-derive the ciphertext sizes
+      const init = photoInit(); // re-derive the ciphertext sizes
       await s.upload(
         body.attachment.originalKey,
         ciphertextBuffer(init.ciphertextSizeBytes),
@@ -1067,7 +1058,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
+        photoInit(),
       );
       expect(initRes.statusCode).toBe(201);
       const pendingId = initRes.json().attachment.id;
@@ -1306,11 +1297,7 @@ describe('Attachment routes — integration (issue #108)', () => {
     it('unauthenticated init returns 401 UNAUTHENTICATED', async () => {
       // authPost with empty token omits the cookie; Fastify rejects at
       // the auth middleware before the route-level permission check.
-      const res = await authPost(
-        '',
-        `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
-      );
+      const res = await authPost('', `/api/projects/${projectId}/attachments/init`, photoInit());
       expect(res.statusCode).toBe(401);
       expect(res.json().code).toBe('UNAUTHENTICATED');
     });
@@ -1320,7 +1307,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const res = await authPost(
         workerToken,
         `/api/projects/${unassignedId}/attachments/init`,
-        photoInit(unassignedId),
+        photoInit(),
       );
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
@@ -1331,7 +1318,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const res = await authPost(
         ownerToken,
         `/api/projects/${missingId}/attachments/init`,
-        photoInit(missingId),
+        photoInit(),
       );
       expect(res.statusCode).toBe(404);
       expect(res.json().code).toBe('NOT_FOUND');
@@ -1365,7 +1352,7 @@ describe('Attachment routes — integration (issue #108)', () => {
   // -------------------------------------------------------------------
   describe('Papierkorb — soft-hide round-trip', () => {
     async function seedReadyAttachment(): Promise<string> {
-      const init = photoInit(projectId);
+      const init = photoInit();
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -1951,7 +1938,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const thumbDek = crypto.randomBytes(32);
 
       const initBody = {
-        ...photoInit(projectId),
+        ...photoInit(),
         dekMaterial: originalDek.toString('base64'),
         thumbDekMaterial: thumbDek.toString('base64'),
       };
@@ -2094,7 +2081,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
+        photoInit(),
       );
       expect(initRes.statusCode).toBe(201);
       const pendingId = initRes.json().attachment.id;
@@ -2111,7 +2098,7 @@ describe('Attachment routes — integration (issue #108)', () => {
       const initRes = await authPost(
         ownerToken,
         `/api/projects/${projectId}/attachments/init`,
-        photoInit(projectId),
+        photoInit(),
       );
       expect(initRes.statusCode).toBe(201);
       const pendingId = initRes.json().attachment.id;

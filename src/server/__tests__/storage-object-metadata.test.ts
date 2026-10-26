@@ -121,7 +121,6 @@ describe('AC-439: every written object carries its own wrapped envelope', () => 
       `/api/projects/${projectId}/attachments/init`,
       photoInitBody({
         sizeBytes: original.length - GCM_OVERHEAD_BYTES,
-        thumbSizeBytes: 80,
         ciphertextSizeBytes: original.length,
         ciphertextContentMd5: md5Base64(original),
         ciphertextThumbSizeBytes: thumb.length,
@@ -243,7 +242,6 @@ describe('AC-439: every written object carries its own wrapped envelope', () => 
           quantity: 1,
           unit: 'pauschal',
           unitPrice: 1500,
-          lineTotal: 1500,
           taxRate: 19,
         },
       ],
