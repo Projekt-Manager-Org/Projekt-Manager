@@ -140,11 +140,13 @@ Layer 2:
 
 ```bash
 # Workstation (age must be installed locally). Decrypt the current
-# file to recover the non-rotated values, edit in place, re-encrypt.
-age -d secrets.env.age > /tmp/secrets.env        # enter passphrase
-$EDITOR /tmp/secrets.env                         # change the one value
-age -p -o secrets.env.age.new /tmp/secrets.env   # enter passphrase
-shred -u /tmp/secrets.env
+# file into a working file (index.md § Working file) to recover the
+# non-rotated values, edit in place, re-encrypt.
+W="$XDG_RUNTIME_DIR/age-work"; install -d -m 700 "$W"
+(umask 077; age -d secrets.env.age > "$W/secrets.env")   # enter passphrase
+vim --clean -n "$W/secrets.env"                          # change the one value; no swap, viminfo or vimrc
+age -p -o secrets.env.age.new "$W/secrets.env"           # enter passphrase
+rm -rf "$W"
 mv secrets.env.age.new secrets.env.age
 
 # Workstation: upload to the VPS

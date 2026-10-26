@@ -50,18 +50,18 @@ You are about to replace the live `secrets.env.age`; this is reversible **only**
    ssh <admin-username>@<vps-hostname>
    ```
 
-2. On the operator workstation, decrypt the current envelope and add the new line. `age -d` prompts once for the passphrase already in the password manager:
+2. On the operator workstation, decrypt the current envelope into a [working file](../index.md#working-file) (its first two lines) and add the new line. `age -d` prompts once for the passphrase already in the password manager:
 
    ```bash
-   age -d ./secrets.env.age.bak > /tmp/secrets.env
-   echo "BINARY_AGE_RECIPIENT='age1...'" >> /tmp/secrets.env   # paste the recipient from §2
+   (umask 077; age -d ./secrets.env.age.bak > "$W/secrets.env")
+   echo "BINARY_AGE_RECIPIENT='age1...'" >> "$W/secrets.env"   # paste the recipient from §2
    ```
 
 3. Re-encrypt with the same passphrase. `age -p` prompts twice (enter + confirm) — reuse the existing passphrase so `scripts/deploy.sh` keeps working:
 
    ```bash
-   age -p -o secrets.env.age /tmp/secrets.env
-   shred -u /tmp/secrets.env
+   age -p -o secrets.env.age "$W/secrets.env"
+   rm -rf "$W"
    ```
 
 4. Upload and move into place. `scp` runs on the workstation; the `sudo mv`/`chown`/`chmod` run on the VPS in the ssh session opened in step 1:

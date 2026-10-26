@@ -87,10 +87,16 @@ You are about to replace the live backup credentials; this is reversible **only*
    ssh <admin-username>@<vps-hostname>
    ```
 
-2. On the operator workstation (not the VPS), assemble the new plaintext `secrets.env`:
+2. On the operator workstation (not the VPS), decrypt the step-1 snapshot into a [working file](../index.md#working-file) (its first two lines) and edit it in place — typed into the editor, the secrets stay out of shell history:
 
    ```bash
-   cat > /tmp/secrets.env <<'EOF'
+   (umask 077; age -d ./secrets.env.age.bak > "$W/secrets.env")
+   vim --clean -n "$W/secrets.env"
+   ```
+
+   Target content:
+
+   ```bash
    POSTGRES_PASSWORD='...'
    STORAGE_SECRET_KEY='...'
    CLOUDFLARE_API_TOKEN='...'
@@ -100,16 +106,15 @@ You are about to replace the live backup credentials; this is reversible **only*
    R2_BUCKET='projekt-manager-backups'
    R2_REGION='auto'
    AGE_RECIPIENT='age1xyz...'
-   EOF
    ```
 
-   The first three come from the current `secrets.env.age` — decrypt it locally first with `age -d secrets.env.age` if you don't have the plaintext handy. `STORAGE_SECRET_KEY` is the B2 app key's `applicationKey` per [object-storage-provisioning.md § App key](../object-storage-provisioning.md). The five new keys come from §1.4 (R2 token) and §2 (age recipient).
+   The first three are already in the snapshot. `STORAGE_SECRET_KEY` is the B2 app key's `applicationKey` per [object-storage-provisioning.md § App key](../object-storage-provisioning.md). The five new keys come from §1.4 (R2 token) and §2 (age recipient).
 
 3. Re-encrypt. `age -p` prompts twice for the passphrase (enter + confirm) — reuse the passphrase already stored in the password manager so the VPS decrypt in step 5 and in `scripts/deploy.sh` both keep working:
 
    ```bash
-   age -p -o secrets.env.age /tmp/secrets.env
-   shred -u /tmp/secrets.env
+   age -p -o secrets.env.age "$W/secrets.env"
+   rm -rf "$W"
    ```
 
 4. Upload and move into place. `scp` runs on the workstation; the `sudo mv`/`chown`/`chmod` run on the VPS in the ssh session opened in step 1:
