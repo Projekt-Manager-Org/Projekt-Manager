@@ -95,7 +95,6 @@ function photoInit() {
     sizeBytes: 4096,
     label: 'foto' as const,
     hasThumbnail: true as const,
-    thumbSizeBytes: 256,
     dekMaterial: freshDekMaterial(),
     ciphertextSizeBytes: 4096 + GCM_OVERHEAD_BYTES,
     ciphertextContentMd5: STUB_MD5_BASE64,

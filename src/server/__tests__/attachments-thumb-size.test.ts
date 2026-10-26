@@ -49,16 +49,6 @@ async function seededProjectIdForOwner(ownerToken: string): Promise<string> {
   return p.id;
 }
 
-async function countAttachmentRows(): Promise<number> {
-  const { db, pool } = createDatabase();
-  try {
-    const res = await db.execute(sql`SELECT COUNT(*)::int AS c FROM attachments`);
-    return (res.rows[0] as { c: number }).c;
-  } finally {
-    await pool.end();
-  }
-}
-
 async function fetchAttachmentStatus(id: string): Promise<string | null> {
   const { db, pool } = createDatabase();
   try {
@@ -112,9 +102,7 @@ describe('Attachment thumbnail-size cap + HEAD re-assertion', () => {
   // applies to the visible blob the user sees post-decrypt), not the
   // ciphertext figure — the ciphertext side is implementation-defined.
   //
-  // Under ADR-0024 the route fixture maps `thumbSizeBytes` overrides to
-  // the legacy plaintext slot only, but the per-thumb cap check no
-  // longer fires on the wire (the wire shape carries ciphertext bytes
+  // Under ADR-0024 the per-thumb cap check no longer fires on the wire (the wire shape carries ciphertext bytes
   // only). The cap-bypass guard moved to the upload pipeline (the
   // client knows the plaintext size before encrypt). The tests here
   // therefore pin the *ciphertext-side* persistence + HEAD-reassertion
@@ -142,23 +130,6 @@ describe('Attachment thumbnail-size cap + HEAD re-assertion', () => {
       // the SigV4 layer is the first defence; the persisted row + HEAD
       // re-assertion is the second.
       expect(body.thumbnailUpload.headers['Content-Length']).toBe('8000');
-    });
-
-    it('strips unknown body fields before the handler (Fastify ajv `removeAdditional` default)', async () => {
-      const before = await countAttachmentRows();
-      const res = await authPost(ownerToken, `/api/projects/${projectId}/attachments/init`, {
-        ...photoInitBody(),
-        nonsense: true,
-      });
-      // Fastify's ajv compiler defaults to `removeAdditional: true` —
-      // the unknown `nonsense` field is stripped before the handler
-      // sees it, so the request succeeds (201) on the canonical
-      // sanitized payload. `additionalProperties: false` in the schema
-      // is what tells ajv WHICH fields to strip; a regression that
-      // dropped that constraint would let the unknown field through
-      // to the handler.
-      expect(res.statusCode).toBe(201);
-      expect(await countAttachmentRows()).toBe(before + 1);
     });
   });
 

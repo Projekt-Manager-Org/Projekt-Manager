@@ -43,6 +43,8 @@ import {
   authPatch,
   authDelete,
   expectedVersion,
+  createTestUserSession,
+  failProjectWorkerInsertsFor,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { binaryInitBody } from '../../test/fixtures/attachmentInit.js';
@@ -368,16 +370,22 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
 
       const auditBefore = await countAuditRows(db);
 
-      // Force an FK violation on the audited transaction: referenced
-      // worker id does not exist. `data-integrity.test.ts:AC-99` pins
-      // this same failure path for atomic project creation.
-      const fakeWorkerId = '00000000-0000-0000-0000-000000000099';
-      const res = await authPost(ownerToken, '/api/projects', {
-        number: 'AC-177-ROLLBACK',
-        title: 'should never persist',
-        customerId: seededCustomerId,
-        assignedWorkerIds: [fakeWorkerId],
-      });
+      // Fail the worker insert, after the project row and its audit row
+      // are written. `data-integrity.test.ts:AC-99` pins this same
+      // failure path for atomic project creation.
+      const { userId: workerId } = await createTestUserSession({ roles: ['worker'] });
+      const restore = await failProjectWorkerInsertsFor(workerId);
+      let res;
+      try {
+        res = await authPost(ownerToken, '/api/projects', {
+          number: 'AC-177-ROLLBACK',
+          title: 'should never persist',
+          customerId: seededCustomerId,
+          assignedWorkerIds: [workerId],
+        });
+      } finally {
+        await restore();
+      }
       expect(res.statusCode).toBeGreaterThanOrEqual(400);
 
       // Neither the project nor its audit row persisted.

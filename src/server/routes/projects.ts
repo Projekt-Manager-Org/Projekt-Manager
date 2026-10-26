@@ -120,9 +120,6 @@ export function projectRoutes(db: Database) {
               number: { type: 'string', pattern: '\\S', maxLength: 20 },
               title: { type: 'string', pattern: '\\S', maxLength: 500 },
               customerId: { type: 'string', format: 'uuid' },
-              // A project starts in the first state (AC-475). Listed as `false`
-              // rather than omitted: Ajv strips unlisted properties silently.
-              status: false,
               // Baustellen-/Leistungsadresse — same JSON shape as customer.address.
               // Null means "site is at the customer's billing address" (data-model.md §5.1).
               // AC-485 backstop: partial triples (any blank component)
@@ -141,7 +138,11 @@ export function projectRoutes(db: Database) {
               },
               plannedStart: { type: ['string', 'null'], format: 'date' },
               plannedEnd: { type: ['string', 'null'], format: 'date' },
-              assignedWorkerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+              assignedWorkerIds: {
+                type: 'array',
+                uniqueItems: true,
+                items: { type: 'string', format: 'uuid' },
+              },
               // numeric(12,2): at most 10 integer digits (data-model.md §5.1).
               estimatedValue: {
                 type: ['number', 'null'],
@@ -345,9 +346,6 @@ export function projectRoutes(db: Database) {
             minProperties: 1,
             properties: {
               title: { type: 'string', pattern: '\\S', maxLength: 500 },
-              // Immutable (data-model.md §5.1). Listed as `false` rather than
-              // omitted: Ajv strips unlisted properties silently.
-              customerId: false,
               // PATCH semantics: omitted leaves the stored value unchanged;
               // null clears (= "site is at the customer's billing address");
               // a populated triple overwrites. Mirrors the customer-address
@@ -363,7 +361,11 @@ export function projectRoutes(db: Database) {
                   city: { type: 'string', pattern: '\\S' },
                 },
               },
-              assignedWorkerIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+              assignedWorkerIds: {
+                type: 'array',
+                uniqueItems: true,
+                items: { type: 'string', format: 'uuid' },
+              },
               // numeric(12,2): at most 10 integer digits (data-model.md §5.1).
               estimatedValue: {
                 type: ['number', 'null'],

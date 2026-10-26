@@ -146,6 +146,16 @@ describe('AC-247 — Global error handler 4xx pass-through', () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
+  it('unknown URL with a JSON body → 404 ROUTE_NOT_FOUND, not a body refusal (AC-516)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/this-route-does-not-exist',
+      payload: { a: 1 },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('ROUTE_NOT_FOUND');
+  });
+
   it('known URL under a verb it does not serve → 404 ROUTE_NOT_FOUND (api.md §14.4.1)', async () => {
     // An unserved verb is routed exactly like an unknown URL, so every
     // endpoint answers it the same way.
@@ -176,7 +186,6 @@ describe('AC-247 — Global error handler 4xx pass-through', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/test/throw-503',
-      payload: { ok: true },
     });
     expect(res.statusCode).toBe(500);
     expect(res.json().code).toBe('SERVER_ERROR');
@@ -188,7 +197,6 @@ describe('AC-247 — Global error handler 4xx pass-through', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/test/throw-no-status',
-      payload: { ok: true },
     });
     expect(res.statusCode).toBe(500);
     expect(res.json().code).toBe('SERVER_ERROR');

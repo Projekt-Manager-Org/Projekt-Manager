@@ -107,7 +107,6 @@ async function createDraft(ownerToken: string, projectId: string): Promise<strin
         quantity: 1,
         unit: 'p',
         unitPrice: 1000,
-        lineTotal: 1000,
         taxRate: 19,
       },
     ],

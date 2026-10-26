@@ -107,7 +107,6 @@ describe('Attachment presigned PUT — real upload against MinIO', () => {
         // Plaintext sizes on the row — the per-file cap and the export
         // envelope read these. Storage never sees them.
         sizeBytes: originalCiphertext.length - GCM_OVERHEAD_BYTES,
-        thumbSizeBytes: 80,
         // Ciphertext sizes drive the signed Content-Length.
         ciphertextSizeBytes: originalCiphertext.length,
         ciphertextContentMd5: originalCiphertextMd5,

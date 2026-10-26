@@ -254,7 +254,6 @@
                     "type": "string",
                     "format": "uuid"
                   },
-                  "status": false,
                   "siteAddress": {
                     "type": ["object", "null"],
                     "additionalProperties": false,
@@ -284,6 +283,7 @@
                   },
                   "assignedWorkerIds": {
                     "type": "array",
+                    "uniqueItems": true,
                     "items": {
                       "type": "string",
                       "format": "uuid"
@@ -343,7 +343,6 @@
                     "pattern": "\\S",
                     "maxLength": 500
                   },
-                  "customerId": false,
                   "siteAddress": {
                     "type": ["object", "null"],
                     "additionalProperties": false,
@@ -365,6 +364,7 @@
                   },
                   "assignedWorkerIds": {
                     "type": "array",
+                    "uniqueItems": true,
                     "items": {
                       "type": "string",
                       "format": "uuid"
@@ -1122,6 +1122,25 @@
     },
     "/api/import-jobs": {
       "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": ["object", "null"],
+                "additionalProperties": false,
+                "properties": {
+                  "override": {
+                    "type": "boolean"
+                  },
+                  "confirmation_phrase": {
+                    "type": ["string", "null"]
+                  }
+                }
+              }
+            }
+          }
+        },
         "security": [
           {
             "sessionCookie": []
@@ -1419,7 +1438,22 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "eventClass": {},
+                  "stateFilter": {},
+                  "recipientSpec": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "roles": {},
+                      "includeAssignedWorkers": {},
+                      "userIds": {}
+                    }
+                  },
+                  "enabled": {}
+                }
               }
             }
           }
@@ -1456,7 +1490,22 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "eventClass": {},
+                  "stateFilter": {},
+                  "recipientSpec": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "roles": {},
+                      "includeAssignedWorkers": {},
+                      "userIds": {}
+                    }
+                  },
+                  "enabled": {}
+                }
               }
             }
           }
@@ -1517,6 +1566,7 @@
                   "keys": {
                     "type": "object",
                     "required": ["p256dh", "auth"],
+                    "additionalProperties": false,
                     "properties": {
                       "p256dh": {
                         "type": "string",
