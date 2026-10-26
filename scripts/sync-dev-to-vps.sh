@@ -271,6 +271,17 @@ case "$VPS_AGE_RECIPIENT" in
     exit 1
     ;;
 esac
+# The restore locks each synced invoice PDF for the VPS app's
+# INVOICE_OBJECT_LOCK_DAYS, as on issuance (#627). A Compliance lock
+# cannot be shortened, so the consent below states it. Empty means 0, as
+# in the app; compose always defines the variable, so a failure here is
+# a failed read, not an unset value.
+if ! VPS_INVOICE_LOCK_DAYS=$(ssh "$SSH_TARGET" \
+  "docker exec ${COMPOSE_PROJECT}-app-1 printenv INVOICE_OBJECT_LOCK_DAYS"); then
+  echo "ERROR: could not read INVOICE_OBJECT_LOCK_DAYS from VPS app container." >&2
+  exit 1
+fi
+VPS_INVOICE_LOCK_DAYS="${VPS_INVOICE_LOCK_DAYS:-0}"
 # Local identity must be readable; without it the rewrap step in [6/10]
 # cannot unwrap the source envelopes. Sourced from the dev-side .env.
 LOCAL_AGE_IDENTITY_PATH=$(grep -E '^BINARY_AGE_IDENTITY_PATH=' "$REPO_DIR/.env" | cut -d= -f2- || true)
@@ -289,12 +300,16 @@ This command will DESTRUCTIVELY OVERWRITE on $SSH_TARGET:
                        the app container env. Keys absent locally get a
                        delete-marker on B2; older versions are preserved
                        by Compliance Object Lock per ADR-0022.
+                       Each invoice PDF is written under its own
+                       Compliance lock, nobody can shorten it:
+                       INVOICE_OBJECT_LOCK_DAYS=$VPS_INVOICE_LOCK_DAYS (VPS app).
 
 No VPS-side backup is taken by this script. If you need a separate one,
 run it through the Layer 2 backup before syncing
 (docs/ops/backup/overview.md). The B2 bucket itself is versioned and
 Compliance-locked, so this sync's writes are recoverable until R + L
-days pass per the bucket's retention configuration.
+days pass per the bucket's retention configuration; invoice PDFs stay
+stored for at least their $VPS_INVOICE_LOCK_DAYS-day lock.
 
 Re-run with --i-know to proceed.
 MSG

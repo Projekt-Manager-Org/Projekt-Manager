@@ -293,19 +293,22 @@ describe('sync restore: objects carry metadata rebuilt from their rows', () => {
 
   // The restricted test user cannot read retention back (no
   // s3:GetObjectRetention, parity with the B2 app key), so the lock is
-  // observed by behaviour: a Compliance lock cannot be shortened. Moving
-  // the retention to +2 days is refused under the invoice's 3-day lock and
-  // accepted (an extension) under the photo's 1-day bucket default.
+  // observed by behaviour: a Compliance lock cannot be shortened. The
+  // helper wrote after `cutoff`, so a lock of the full INVOICE_LOCK_DAYS
+  // ends after `cutoff` + 3 days: moving it to a minute before is refused
+  // (MinIO: InvalidRequest, "WORM protected"). The photo's 1-day bucket
+  // default accepts the same date as an extension.
   it("gives the invoice PDF the target's invoice lock and the photo only the bucket default", async () => {
+    const justShortOfLock = new Date(cutoff.getTime() + INVOICE_LOCK_DAYS * DAY_MS - 60_000);
     const retainUntil = (key: string) =>
       s3.send(
         new PutObjectRetentionCommand({
           Bucket: storage.bucket,
           Key: prefix + key,
-          Retention: { Mode: 'COMPLIANCE', RetainUntilDate: new Date(Date.now() + 2 * DAY_MS) },
+          Retention: { Mode: 'COMPLIANCE', RetainUntilDate: justShortOfLock },
         }),
       );
-    await expect(retainUntil(invoice.key)).rejects.toThrow();
+    await expect(retainUntil(invoice.key)).rejects.toMatchObject({ name: 'InvalidRequest' });
     await expect(retainUntil(photo.original)).resolves.toBeDefined();
   });
 

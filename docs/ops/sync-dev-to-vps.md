@@ -81,7 +81,7 @@ Credentials on both ends are read from the running containers' env: local MinIO 
 ## What gets overwritten
 
 - Postgres database `projekt_manager` — every table is dropped and recreated from the dump, including `users`, `sessions`, `audit_log`, `customers`, `projects`, `attachments`, etc.
-- VPS object-storage bucket (configured as `STORAGE_BUCKET` in the app env — typically `prmng-object-storage` on B2) — keys absent locally get a delete-marker, keys with an `attachments` row are written as new versions. Per ADR-0022's Compliance Object Lock + capability split, no underlying versions are destroyed; lifecycle reaps them after the configured retention + hide-to-delete window.
+- VPS object-storage bucket (configured as `STORAGE_BUCKET` in the app env — typically `prmng-object-storage` on B2) — keys absent locally get a delete-marker, keys with an `attachments` row are written as new versions. Per ADR-0022's Compliance Object Lock + capability split, no underlying versions are destroyed; lifecycle reaps them after the configured retention + hide-to-delete window — for an invoice PDF, no earlier than its `INVOICE_OBJECT_LOCK_DAYS` lock, which the preflight shows before `--i-know`.
 
 Untouched: VPS filesystem, `secrets.env.age`, Caddy config, VAPID private key under `data/.vapid/`, R2 backup archives, B2 bucket configuration (versioning, Object Lock, lifecycle, CORS — none of those are writable with the bucket-scoped app key).
 

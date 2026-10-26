@@ -67,8 +67,9 @@ B2_ENDPOINT=$(docker exec "$APP_CONTAINER" printenv STORAGE_ENDPOINT)
 B2_BUCKET=$(docker exec "$APP_CONTAINER" printenv STORAGE_BUCKET)
 B2_KEY=$(docker exec "$APP_CONTAINER" printenv STORAGE_ACCESS_KEY)
 B2_SECRET=$(docker exec "$APP_CONTAINER" printenv STORAGE_SECRET_KEY)
-# Optional in the app (unset means 0), hence `|| true`.
-INVOICE_OBJECT_LOCK_DAYS=$(docker exec "$APP_CONTAINER" printenv INVOICE_OBJECT_LOCK_DAYS || true)
+# Compose always defines it (empty means 0, as in the app), so a failed
+# read aborts here rather than writing invoice PDFs without their lock.
+INVOICE_OBJECT_LOCK_DAYS=$(docker exec "$APP_CONTAINER" printenv INVOICE_OBJECT_LOCK_DAYS)
 
 # Pause the backup container if active (profile-gated, may not exist) so
 # its in-process croner schedule can't fire a backup tick mid-restore —
