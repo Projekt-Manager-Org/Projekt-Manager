@@ -17,6 +17,12 @@ with metadata rebuilt from its row: the original under `wrapped_dek`, the
 thumbnail under `wrapped_thumb_dek`, the invoice PDF with the number of
 the invoice it renders.
 
+An invoice PDF also gets its own Compliance lock of the target's
+INVOICE_OBJECT_LOCK_DAYS from the write, as the app and the takeout
+import put on it (architecture.md §11.14); the rest keep the bucket
+default. The target's config decides: a few days on staging, years on a
+real deployment, none on dev.
+
 Mirror semantics (replaces `mc mirror --overwrite --remove`):
   * a file with a row → PUT as a new version;
   * a file without a row → not shipped, WARN (an orphan: no envelope to
@@ -42,6 +48,8 @@ Inputs (env):
   KEY_PREFIX (optional)                       key namespace, as the app's
                                               STORAGE_KEY_PREFIX; empty
                                               on the VPS, set by tests
+  INVOICE_OBJECT_LOCK_DAYS (optional)         the target app's value;
+                                              empty or 0 writes no lock
 
 Output: SQL UPDATE statements on stdout (caller pipes to psql);
         progress + summary counts on stderr. Exits non-zero before any
@@ -53,6 +61,7 @@ import csv
 import hashlib
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
 import boto3
 from botocore.config import Config
@@ -85,6 +94,13 @@ B2_SECRET = env("B2_SECRET")
 SOURCE_DIR = env("SOURCE_DIR")
 TSV_PATH = env("OBJECTS_TSV")
 KEY_PREFIX = os.environ.get("KEY_PREFIX", "")
+# Parsed like the app's INVOICE_OBJECT_LOCK_DAYS (src/server/config/env.ts):
+# empty means 0; an integer 0..36525, as a Compliance lock cannot be
+# shortened once written.
+_lock_days = os.environ.get("INVOICE_OBJECT_LOCK_DAYS", "") or "0"
+if not _lock_days.isdigit() or int(_lock_days) > 36525:
+    fail(f"INVOICE_OBJECT_LOCK_DAYS {_lock_days!r} is not an integer in 0..36525")
+INVOICE_LOCK_DAYS = int(_lock_days)
 
 # Path-style, like the app client (forcePathStyle).
 s3 = boto3.client(
@@ -105,6 +121,17 @@ def sql_quote(s: str) -> str:
 
 def is_reserved(key: str) -> bool:
     return key.startswith(RESERVED_KEY_PREFIXES)
+
+
+def lock_params(target: dict) -> dict:
+    """The invoice PDF's own Compliance lock, as objectLockParams in
+    src/server/storage/client.ts; nothing for other objects or 0 days."""
+    if META_INVOICE_NUMBER not in target["metadata"] or INVOICE_LOCK_DAYS <= 0:
+        return {}
+    return {
+        "ObjectLockMode": "COMPLIANCE",
+        "ObjectLockRetainUntilDate": datetime.now(timezone.utc) + timedelta(days=INVOICE_LOCK_DAYS),
+    }
 
 
 def read_targets() -> dict[str, dict]:
@@ -154,6 +181,7 @@ def main() -> int:
     written: set[str] = set()
     updates: dict[str, dict[str, str]] = {}
     orphans = 0
+    locked = 0
     for key in source_keys():
         if is_reserved(key):
             continue
@@ -164,6 +192,7 @@ def main() -> int:
             continue
         with open(os.path.join(SOURCE_DIR, key), "rb") as f:
             body = f.read()
+        lock = lock_params(target)
         res = s3.put_object(
             Bucket=B2_BUCKET,
             Key=KEY_PREFIX + key,
@@ -173,8 +202,11 @@ def main() -> int:
             # Content-MD5 or x-amz-checksum-* on every PutObject.
             ContentMD5=base64.b64encode(hashlib.md5(body).digest()).decode(),
             Metadata=target["metadata"],
+            **lock,
         )
         written.add(key)
+        if lock:
+            locked += 1
         version_id = res.get("VersionId")
         if target["had_version"]:
             if not version_id:
@@ -208,7 +240,7 @@ def main() -> int:
 
     sys.stderr.write(
         f"  objects: written={len(written)} removed={removed} orphans={orphans} "
-        f"rows updated={len(updates)}\n",
+        f"locked={locked} ({INVOICE_LOCK_DAYS}d) rows updated={len(updates)}\n",
     )
     return 0
 

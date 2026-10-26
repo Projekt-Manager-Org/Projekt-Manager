@@ -13,7 +13,9 @@
  * dumped to a directory, as the sync does, and restored by the script. The
  * proof: the rebuilt metadata equals what the app wrote, and the recovery
  * tool, with the binary identity alone and no database, reports every
- * synced version `recovered`, the invoice PDF with its number.
+ * synced version `recovered`, the invoice PDF with its number. The invoice
+ * PDF also carries the target's own invoice lock, the photo only the
+ * bucket default.
  *
  * Runs against this file's `STORAGE_KEY_PREFIX` namespace. Requires
  * `python3` with boto3 (`python3-boto3`, docs/ops/local-dev.md).
@@ -32,6 +34,7 @@ import {
   HeadObjectCommand,
   NotFound,
   PutObjectCommand,
+  PutObjectRetentionCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { eq, sql } from 'drizzle-orm';
@@ -57,6 +60,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const scriptPath = path.join(repoRoot, 'scripts/ops/restore-bucket-objects.py');
 const extractPath = path.join(repoRoot, 'scripts/ops/restore-bucket-objects.sql');
 const year = new Date().getFullYear();
+const DAY_MS = 86_400_000;
+// Above the test bucket's 1-day default retention (docker/init-storage.sh),
+// so the invoice lock is observable against it.
+const INVOICE_LOCK_DAYS = 3;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -242,6 +249,7 @@ describe('sync restore: objects carry metadata rebuilt from their rows', () => {
         SOURCE_DIR: dumpDir,
         OBJECTS_TSV: tsvPath,
         KEY_PREFIX: prefix,
+        INVOICE_OBJECT_LOCK_DAYS: String(INVOICE_LOCK_DAYS),
       },
     }));
   }, 120_000);
@@ -281,6 +289,24 @@ describe('sync restore: objects carry metadata rebuilt from their rows', () => {
         `UPDATE public.attachments SET version_id='${await currentVersion(invoice.key)}' WHERE id='${invoice.id}';`,
       ].sort(),
     );
+  });
+
+  // The restricted test user cannot read retention back (no
+  // s3:GetObjectRetention, parity with the B2 app key), so the lock is
+  // observed by behaviour: a Compliance lock cannot be shortened. Moving
+  // the retention to +2 days is refused under the invoice's 3-day lock and
+  // accepted (an extension) under the photo's 1-day bucket default.
+  it("gives the invoice PDF the target's invoice lock and the photo only the bucket default", async () => {
+    const retainUntil = (key: string) =>
+      s3.send(
+        new PutObjectRetentionCommand({
+          Bucket: storage.bucket,
+          Key: prefix + key,
+          Retention: { Mode: 'COMPLIANCE', RetainUntilDate: new Date(Date.now() + 2 * DAY_MS) },
+        }),
+      );
+    await expect(retainUntil(invoice.key)).rejects.toThrow();
+    await expect(retainUntil(photo.original)).resolves.toBeDefined();
   });
 
   it('mirrors the dump: a key absent from it is removed, a row-less file is not shipped, the probe namespace is left alone', async () => {

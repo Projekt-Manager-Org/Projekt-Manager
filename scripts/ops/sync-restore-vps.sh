@@ -67,6 +67,8 @@ B2_ENDPOINT=$(docker exec "$APP_CONTAINER" printenv STORAGE_ENDPOINT)
 B2_BUCKET=$(docker exec "$APP_CONTAINER" printenv STORAGE_BUCKET)
 B2_KEY=$(docker exec "$APP_CONTAINER" printenv STORAGE_ACCESS_KEY)
 B2_SECRET=$(docker exec "$APP_CONTAINER" printenv STORAGE_SECRET_KEY)
+# Optional in the app (unset means 0), hence `|| true`.
+INVOICE_OBJECT_LOCK_DAYS=$(docker exec "$APP_CONTAINER" printenv INVOICE_OBJECT_LOCK_DAYS || true)
 
 # Pause the backup container if active (profile-gated, may not exist) so
 # its in-process croner schedule can't fire a backup tick mid-restore —
@@ -135,10 +137,11 @@ docker exec "$DB_CONTAINER" \
 # wrapped envelope and invoice number — undecryptable by the recovery
 # tool (AC-439). The rows now carry the envelopes re-wrapped to this
 # host's recipient (rewrap-dek-envelopes.sh); the invoice number comes
-# from the invoice that renders the PDF. The helper writes new versions
-# for dumped keys that have a row and delete markers for the rest, nothing
-# destroyed (ADR-0022), and emits the UPDATEs pointing version_id /
-# thumb_version_id at the versions it wrote.
+# from the invoice that renders the PDF, which also gets this app's
+# INVOICE_OBJECT_LOCK_DAYS lock, as on issuance. The helper writes new
+# versions for dumped keys that have a row and delete markers for the
+# rest, nothing destroyed (ADR-0022), and emits the UPDATEs pointing
+# version_id / thumb_version_id at the versions it wrote.
 echo "  restoring object storage..."
 OBJECTS_TSV="$REMOTE_TMP/objects.tsv"
 docker exec -i "$DB_CONTAINER" \
@@ -150,6 +153,7 @@ B2_BUCKET="$B2_BUCKET" \
 B2_KEY="$B2_KEY" \
 B2_SECRET="$B2_SECRET" \
 SOURCE_DIR="$REMOTE_TMP/bucket" \
+INVOICE_OBJECT_LOCK_DAYS="$INVOICE_OBJECT_LOCK_DAYS" \
 OBJECTS_TSV="$OBJECTS_TSV" \
   python3 "$REMOTE_TMP/restore-bucket-objects.py" > "$VERSIONIDS_SQL"
 if [ -s "$VERSIONIDS_SQL" ]; then
