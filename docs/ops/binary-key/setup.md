@@ -9,7 +9,7 @@ End-to-end provisioning for a fresh VPS. Credential rotation reuses §1, §2, §
 - Shell with `age`, `age-keygen` ([CONTRIBUTING.md § Runtime Requirements](../../../CONTRIBUTING.md#runtime-requirements)), `ssh`, `wg-quick` (or `wg` + a platform-native WireGuard client), `docker` + `docker compose` plugin, `openssl`, `shred`. Debian/Ubuntu: `sudo apt install openssl`.
 - Repo checked out locally: `git clone git@github.com:Projekt-Manager-Org/Projekt-Manager.git`.
 - WireGuard peer config imported and active ([wireguard-setup.md](../wireguard-setup.md)).
-- Password manager entries for: the binary `age` private identity (backed up off-system in **at least two locations** — see §2), the `secrets.env.age` passphrase.
+- Password manager for the binary `age` private identity (created in §2) and the `secrets.env.age` passphrase.
 
 **VPS:**
 
@@ -34,26 +34,7 @@ Expected: a `tmpfs:` entry under `services.app` of the form `/run/binary-key:mod
 
 ## 2. Generate the age key pair
 
-The private identity is the root of the binary recovery chain. Lost private identity = unrecoverable customer deliverables (binaries are work-product, not recovery artifacts — [ADR-0024 §Consequences](../../adr/0024-binary-attachment-e2e-encryption.md#negative)). Generate it on the operator workstation and never let it leave.
-
-```bash
-mkdir -p ~/secrets
-age-keygen -o ~/secrets/binary-identity.txt
-chmod 600 ~/secrets/binary-identity.txt
-age-keygen -y ~/secrets/binary-identity.txt    # prints the public recipient (age1...)
-```
-
-The `age1...` line is what `BINARY_AGE_RECIPIENT` takes in §3. The `AGE-SECRET-KEY-1...` inside the file is the private identity and stays on the workstation.
-
-**Back up the private identity to at least two off-system locations.** The two-copy minimum is mandated by [ADR-0024 §Decision "Operator workflow"](../../adr/0024-binary-attachment-e2e-encryption.md#decision) — binaries are deliverables, not recovery artifacts, and identity loss is worse than backup-key loss. Pick **two** of the following; label them (copy A, copy B) and record the label → location map in the password manager:
-
-- Encrypted USB kept in a physical safe (owner site).
-- Paper printout in a sealed envelope, stored in a separate physical location.
-- Offline password manager vault (e.g., KeePass DB on an air-gapped device) at a second site.
-
-Do **not** rely on a single off-system copy. A safe fire, a corrupted USB, a missing envelope — any single point of failure cascades to "every customer binary on B2 is unreadable forever." Two independent custody locations are the minimum mitigation.
-
-**Never** write the private identity to the project tree, `secrets.env.age`, the VPS filesystem persistently (see [load.md](load.md) for the tmpfs-only flow), or any location tracked by git, cloud sync, or chat history. The binary identity has the same custody discipline as the backup drill identity, with worse business impact on loss.
+The private identity is the root of the binary recovery chain. Lost private identity = unrecoverable customer deliverables (binaries are work-product, not recovery artifacts — [ADR-0024 §Consequences](../../adr/0024-binary-attachment-e2e-encryption.md#negative)). Generate it on the operator workstation per [Key custody § New identity](../index.md#new-identity). The `age1...` recipient it prints is what `BINARY_AGE_RECIPIENT` takes in §3. Without an off-system copy, losing the password-manager entry makes every customer binary on B2 unreadable forever.
 
 ## 3. Push the recipient to the VPS
 
@@ -69,18 +50,18 @@ You are about to replace the live `secrets.env.age`; this is reversible **only**
    ssh <admin-username>@<vps-hostname>
    ```
 
-2. On the operator workstation, decrypt the current envelope and add the new line. `age -d` prompts once for the passphrase already in the password manager:
+2. On the operator workstation, decrypt the current envelope into a [working file](../index.md#working-file) (its first two lines) and add the new line. `age -d` prompts once for the passphrase already in the password manager:
 
    ```bash
-   age -d ./secrets.env.age.bak > /tmp/secrets.env
-   echo "BINARY_AGE_RECIPIENT='age1...'" >> /tmp/secrets.env   # paste the recipient from §2
+   (umask 077; age -d ./secrets.env.age.bak > "$W/secrets.env")
+   echo "BINARY_AGE_RECIPIENT='age1...'" >> "$W/secrets.env"   # paste the recipient from §2
    ```
 
 3. Re-encrypt with the same passphrase. `age -p` prompts twice (enter + confirm) — reuse the existing passphrase so `scripts/deploy.sh` keeps working:
 
    ```bash
-   age -p -o secrets.env.age /tmp/secrets.env
-   shred -u /tmp/secrets.env
+   age -p -o secrets.env.age "$W/secrets.env"
+   rm -rf "$W"
    ```
 
 4. Upload and move into place. `scp` runs on the workstation; the `sudo mv`/`chown`/`chmod` run on the VPS in the ssh session opened in step 1:

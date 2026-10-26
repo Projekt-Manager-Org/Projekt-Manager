@@ -48,16 +48,11 @@ If the log shows a different error class (e.g., `tmpfs not mounted`), see § Rec
 ERROR: the pasted identity's public recipient does not match BINARY_AGE_RECIPIENT.
 ```
 
-Cause: the operator pasted the **wrong** identity. The most common case is pasting the **backup drill identity** into `load-binary-key` (or the binary identity into `load-drill-key`) — same shape file, different keypair. Check the workstation:
+Cause: the operator pasted the **wrong** identity. The most common case is pasting the **backup drill identity** into `load-binary-key` (or the binary identity into `load-drill-key`) — same shape file, different keypair. Derive both recipients from the password-manager entries per the [recipient check](../index.md#working-file), once per entry: the binary entry should give `BINARY_AGE_RECIPIENT`, the backup entry `AGE_RECIPIENT`.
 
-```bash
-age-keygen -y ~/secrets/binary-identity.txt    # should match BINARY_AGE_RECIPIENT
-age-keygen -y ~/secrets/age-backup.key         # should match AGE_RECIPIENT
-```
+If the two derived recipients don't match the two `…_RECIPIENT` env vars on the VPS, an identity-mixup happened somewhere upstream — most likely a recent rotation didn't update one side. Resolve before retrying the paste.
 
-If the two recipients on the workstation don't match the two `…_RECIPIENT` env vars on the VPS, an identity-mixup happened somewhere upstream — most likely a recent rotation didn't update one side. Resolve before retrying the paste.
-
-If the two pairs match correctly on the workstation but the loader still rejects, the `secrets.env.age` `BINARY_AGE_RECIPIENT` value drifted from the workstation copy. Re-run [setup.md §3](setup.md#3-push-the-recipient-to-the-vps) with the current workstation recipient.
+If the two pairs match but the loader still rejects, the `secrets.env.age` `BINARY_AGE_RECIPIENT` value drifted from the password-manager entry. Re-run [setup.md §3](setup.md#3-push-the-recipient-to-the-vps) with the entry's recipient.
 
 ## Tmpfs not a mount
 
@@ -108,7 +103,7 @@ The monthly drill ([drills.md](drills.md)) exited non-zero; the index entry's `e
 `no identity matched any of the recipients` (unwrap):
 
 - The custody copy you loaded does not match the deployed `BINARY_AGE_RECIPIENT`. Either the custody copy is from a previous keypair (rotation gap — the custody copy predates the most recent rotation) or the custody copy is corrupted.
-- **Action:** test the _other_ off-system custody copy immediately per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation). If both copies fail, you are in a custody emergency — extract the in-tmpfs identity per recovery.md before any reboot.
+- **Action:** test the _other_ custody copies immediately per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation). If every copy fails, you are in a custody emergency — extract the in-tmpfs identity per recovery.md before any reboot.
 
 `object metadata carries no wrapped envelope`: the sample predates self-describing objects (#478) or was not written by the app. Pick a fresh upload.
 
@@ -118,12 +113,12 @@ The monthly drill ([drills.md](drills.md)) exited non-zero; the index entry's `e
 
 ## Escalation threshold
 
-If you cannot decrypt the most recent test upload using the current workstation identity copy, the binary domain is **broken**. Escalate immediately to the owner — this is the same severity class as Layer 2 escalation in [docs/ops/backup/troubleshooting.md § Escalation threshold](../backup/troubleshooting.md#escalation-threshold), with worse business impact (binaries are deliverables).
+If you cannot decrypt the most recent test upload with any custody copy, the binary domain is **broken**. Escalate immediately to the owner — this is the same severity class as Layer 2 escalation in [docs/ops/backup/troubleshooting.md § Escalation threshold](../backup/troubleshooting.md#escalation-threshold), with worse business impact (binaries are deliverables).
 
 Next steps depend on the failure surface:
 
-1. **If the workstation identity is gone but the VPS tmpfs has the correct identity** (i.e., the deployed app is still serving uploads/downloads correctly): see [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation) — extract the tmpfs identity to the workstation before any reboot.
-2. **If the deployed app is also broken** (uploads or downloads failing): the in-tmpfs identity may be wrong or the recipient drifted. Reload from the workstation working copy per [load.md](load.md). If the workstation copy doesn't match either, [recovery.md § Burn-and-restart](recovery.md#4-burn-and-restart-both-copies-lost-no-working-tmpfs) is the last-resort path.
+1. **If every custody copy is gone but the VPS tmpfs has the correct identity** (i.e., the deployed app is still serving uploads/downloads correctly): see [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation) — extract the tmpfs identity before any reboot.
+2. **If the deployed app is also broken** (uploads or downloads failing): the in-tmpfs identity may be wrong or the recipient drifted. Reload from the password-manager entry per [load.md](load.md). If no custody copy matches either, [recovery.md § Burn-and-restart](recovery.md#4-burn-and-restart-all-copies-lost-no-working-tmpfs) is the last-resort path.
 
 ## Owner / escalation contact
 

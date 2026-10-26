@@ -49,12 +49,15 @@ AWS_DEFAULT_REGION=auto \
 
 ## 3. Decrypt
 
+With the backup identity in a [working file](../index.md#working-file):
+
 ```bash
-age -d -i ~/secrets/age-backup.key "${TS}.dump.age"         > "${TS}.dump"
-age -d -i ~/secrets/age-backup.key "${TS}.manifest.json.age" > "${TS}.manifest.json"
+age -d -i "$W/identity.txt" "${TS}.dump.age"         > "${TS}.dump"
+age -d -i "$W/identity.txt" "${TS}.manifest.json.age" > "${TS}.manifest.json"
+rm -rf "$W"
 ```
 
-If either decrypt fails with `no identity matched any of the recipients`, the dump was encrypted to a different public key. You are either holding the wrong identity file, or the key was rotated (see [setup.md § Push R2 credentials + recipient to the VPS](setup.md#3-push-r2-credentials--recipient-to-the-vps)) and these objects predate the current pair.
+If either decrypt fails with `no identity matched any of the recipients`, the dump was encrypted to a different public key. You are either holding the wrong identity, or the key was rotated (see [setup.md § Push R2 credentials + recipient to the VPS](setup.md#3-push-r2-credentials--recipient-to-the-vps)) and these objects predate the current pair.
 
 ## 4. Restore into a scratch Postgres
 
@@ -160,7 +163,7 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
    ```
 5. Recover what the dump lost, then advance the invoice numbering ([AC-368](../../spec/verification.md#1522-backup-and-recovery)). Every object written after `TS` has no row now, but carries its own wrapped DEK — run this **before** the app serves again: the app's orphan sweep hides row-less objects, and the trash lifecycle (`L`) then destroys them.
 
-   **a. Recover objects** — on the workstation, with the binary identity and the read-only recovery key ([object-storage-provisioning.md § Recovery key](../object-storage-provisioning.md#recovery-key-read-only)). The cutoff sits one hour plus the attachment orphan-reaper TTL before `TS`: an object is written before its row commits, and a row still `pending` in the dump is reaped after the restore.
+   **a. Recover objects** — on the workstation, with the binary identity in a [working file](../index.md#working-file) and the read-only recovery key ([object-storage-provisioning.md § Recovery key](../object-storage-provisioning.md#recovery-key-read-only)). The cutoff sits one hour plus the attachment orphan-reaper TTL before `TS`: an object is written before its row commits, and a row still `pending` in the dump is reaped after the restore.
 
    ```bash
    TTL_MIN=15   # ATTACHMENT_ORPHAN_REAPER_TTL_MINUTES from the VPS .env (default 15)
@@ -169,8 +172,9 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
    STORAGE_ENDPOINT=<B2 S3 endpoint> STORAGE_BUCKET=<bucket> STORAGE_REGION=<region> \
    STORAGE_ACCESS_KEY=<recovery keyId> \
      npx tsx scripts/binary-key/recover-objects.ts \
-       --identity ~/secrets/binary-identity.txt --since "$CUTOFF" --out ~/restore/objects
+       --identity "$W/identity.txt" --since "$CUTOFF" --out ~/restore/objects
    unset STORAGE_SECRET_KEY
+   rm -rf "$W"
    ```
 
    `~/restore/objects/index.json` lists every version since the cutoff. Keys of non-`pending` rows in the restored DB need nothing. A `pending` row counts as lost: the orphan reaper deletes it and its objects once the app starts. List the rest:
