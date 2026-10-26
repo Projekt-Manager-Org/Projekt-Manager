@@ -92,7 +92,7 @@ describe('AC-438: binary-identity boot probe — pure validator', () => {
 
   it('fails when a listed retired key is missing from the keyring', () => {
     // Without it, everything written under that key is unreadable in the
-    // app (AC-515) — the probe must not let the deploy serve.
+    // app (AC-517) — the probe must not let the deploy serve.
     const verdict = evaluateBinaryIdentity({ ...CANONICAL, retiredRecipients: [RETIRED_1] });
     expect(verdict.ok).toBe(false);
     if (!verdict.ok) {

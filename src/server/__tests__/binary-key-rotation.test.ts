@@ -1,6 +1,6 @@
 /**
  * Binary key rotation — data written under a listed retired key stays
- * readable in the app (AC-515), new wraps use the active key only (AC-400).
+ * readable in the app (AC-517), new wraps use the active key only (AC-400).
  *
  * Phase 1 runs on the per-fork key from `integration-setup.ts` (key 1):
  * the seed issues its invoices, and one photo attachment with real
@@ -201,13 +201,13 @@ describe('Binary key rotation (#554)', () => {
     await stopApp();
   });
 
-  it('AC-515: an invoice PDF issued under the retired key downloads', async () => {
+  it('AC-517: an invoice PDF issued under the retired key downloads', async () => {
     const res = await get(`/api/invoices/${issuedInvoice.id}/pdf`);
     expect(res.statusCode).toBe(200);
     expect(res.rawPayload.subarray(0, 5).toString('utf-8')).toBe('%PDF-');
   });
 
-  it('AC-515: the invoice bulk export includes an invoice PDF issued under the retired key', async () => {
+  it('AC-517: the invoice bulk export includes an invoice PDF issued under the retired key', async () => {
     const res = await post('/api/invoices/export', { ids: [issuedInvoice.id] });
     expect(res.statusCode).toBe(200);
     const entries = unzipSync(new Uint8Array(res.rawPayload));
@@ -216,7 +216,7 @@ describe('Binary key rotation (#554)', () => {
     expect(Buffer.from(pdf!.subarray(0, 5)).toString('utf-8')).toBe('%PDF-');
   });
 
-  it('AC-515: an attachment written under the retired key opens and downloads', async () => {
+  it('AC-517: an attachment written under the retired key opens and downloads', async () => {
     const base = `/api/projects/${projectId}/attachments/${oldAttachment.id}/download-url`;
     for (const [url, dek] of [
       [base, oldAttachment.dek],
@@ -228,7 +228,7 @@ describe('Binary key rotation (#554)', () => {
     }
   });
 
-  it('AC-515: a ZIP selection fetches an attachment written under the retired key', async () => {
+  it('AC-517: a ZIP selection fetches an attachment written under the retired key', async () => {
     const res = await post(`/api/projects/${projectId}/attachments/bulk-fetch`, {
       attachmentIds: [oldAttachment.id],
     });
@@ -243,7 +243,7 @@ describe('Binary key rotation (#554)', () => {
   });
 
   it(
-    'AC-515: the full-account export includes binaries written under the retired key',
+    'AC-517: the full-account export includes binaries written under the retired key',
     { timeout: 15_000 },
     async () => {
       const created = await post('/api/export-jobs');

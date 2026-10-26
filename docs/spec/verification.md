@@ -463,7 +463,7 @@ Storage safety and recovery:
 - **AC-443** `[crit]`: The recovery tool's index lists every version it processed with its object key, version id, write time and outcome, plus the invoice number when the object names one.
 - **AC-444** `[crit]`: If a version does not decrypt and authenticate with the binary keyring alone, the recovery tool lists it as failed, writes no plaintext for it, continues, and exits non-zero.
 - **AC-445** `[infra]`: The binary keyring is never persisted to disk on the VPS; it is loaded only into tmpfs ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
-- **AC-515** `[crit]`: After a key rotation, every attachment written under a listed retired key still opens and downloads, singly and in a ZIP selection, and is included in the full-account export; every invoice PDF written under one still downloads and is included in the invoice bulk export and the full-account export ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
+- **AC-517** `[crit]`: After a key rotation, every attachment written under a listed retired key still opens and downloads, singly and in a ZIP selection, and is included in the full-account export; every invoice PDF written under one still downloads and is included in the invoice bulk export and the full-account export ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
 - **AC-374** `[infra]`: The recovery tool runs with a dedicated read-only storage credential — list and read, no write or hide.
 
 ### 15.27 Configuration and Feature Manifest
