@@ -309,7 +309,6 @@ describe('Attachment purge cascade', () => {
         await db.execute(sql`
           INSERT INTO attachments
             (id, project_id, status, kind, label, filename, mime_type, size_bytes,
-             thumb_size_bytes,
              ciphertext_size_bytes, ciphertext_thumb_size_bytes,
              original_key, thumb_key, has_thumbnail, hidden_at,
              wrapped_dek, wrapped_thumb_dek, wrapped_dek_version)
@@ -319,7 +318,6 @@ describe('Attachment purge cascade', () => {
                   ${'h-' + id.slice(0, 6)},
                   ${withThumb ? 'image/jpeg' : 'application/pdf'},
                   2048,
-                  ${withThumb ? 256 : null},
                   2112, ${withThumb ? 320 : null},
                   ${originalKey}, ${thumbKey}, ${withThumb}, now(),
                   ${wrappedDek}, ${wrappedThumbDek}, 1)

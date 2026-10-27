@@ -55,7 +55,6 @@ interface SeededRow {
   id: string;
   projectId: string;
   sizeBytes: number;
-  thumbSizeBytes: number | null;
   ciphertextSizeBytes: number;
   ciphertextThumbSizeBytes: number | null;
 }
@@ -68,7 +67,6 @@ async function seedPendingRow(
   projectId: string,
   opts: {
     sizeBytes: number;
-    thumbSizeBytes?: number | null;
     ciphertextSizeBytes: number;
     ciphertextThumbSizeBytes?: number | null;
     kind?: 'photo' | 'binary';
@@ -76,11 +74,10 @@ async function seedPendingRow(
 ): Promise<SeededRow> {
   const id = crypto.randomUUID();
   const isPhoto = (opts.kind ?? 'binary') === 'photo';
-  const hasThumb = opts.thumbSizeBytes != null;
+  const hasThumb = opts.ciphertextThumbSizeBytes != null;
   await db.execute(sql`
     INSERT INTO attachments
       (id, project_id, status, kind, label, filename, mime_type, size_bytes,
-       thumb_size_bytes,
        ciphertext_size_bytes, ciphertext_thumb_size_bytes,
        original_key, thumb_key, has_thumbnail,
        wrapped_dek, wrapped_thumb_dek, wrapped_dek_version)
@@ -90,7 +87,6 @@ async function seedPendingRow(
             ${'inv-' + id.slice(0, 6)},
             ${isPhoto ? 'image/jpeg' : 'application/pdf'},
             ${opts.sizeBytes},
-            ${opts.thumbSizeBytes ?? null},
             ${opts.ciphertextSizeBytes},
             ${opts.ciphertextThumbSizeBytes ?? null},
             ${`attachments/${projectId}/${id}.orig`},
@@ -102,7 +98,6 @@ async function seedPendingRow(
     id,
     projectId,
     sizeBytes: opts.sizeBytes,
-    thumbSizeBytes: opts.thumbSizeBytes ?? null,
     ciphertextSizeBytes: opts.ciphertextSizeBytes,
     ciphertextThumbSizeBytes: opts.ciphertextThumbSizeBytes ?? null,
   };
@@ -142,7 +137,7 @@ async function aggregateFromRows(db: Database, projectId: string): Promise<Usage
   const r = await db.execute(sql`
     SELECT
       status,
-      SUM(size_bytes + COALESCE(thumb_size_bytes, 0))::bigint AS plaintext,
+      SUM(size_bytes)::bigint AS plaintext,
       SUM(COALESCE(ciphertext_size_bytes, 0)
         + COALESCE(ciphertext_thumb_size_bytes, 0))::bigint AS ciphertext
     FROM attachments
@@ -266,7 +261,6 @@ describe('reconcilability invariant — view equals row aggregate', () => {
     // Project A: photo (with thumb) + binary; both pending.
     const aPhoto = await seedPendingRow(db, projectAId, {
       sizeBytes: 4096,
-      thumbSizeBytes: 256,
       ciphertextSizeBytes: 4160,
       ciphertextThumbSizeBytes: 320,
       kind: 'photo',
@@ -278,7 +272,6 @@ describe('reconcilability invariant — view equals row aggregate', () => {
     // Project B: photo (with thumb) only, pending.
     const bPhoto = await seedPendingRow(db, projectBId, {
       sizeBytes: 2048,
-      thumbSizeBytes: 128,
       ciphertextSizeBytes: 2112,
       ciphertextThumbSizeBytes: 192,
       kind: 'photo',
@@ -302,10 +295,10 @@ describe('reconcilability invariant — view equals row aggregate', () => {
     await assertInvariant('after-hide-aPhoto', projectIds);
     expect(await aggregateFromRows(db, projectAId)).toEqual({
       ready: { plaintext: 8192, ciphertext: 8256 },
-      hidden: { plaintext: 4096 + 256, ciphertext: 4160 + 320 },
+      hidden: { plaintext: 4096, ciphertext: 4160 + 320 },
     });
     expect(await aggregateFromRows(db, projectBId)).toEqual({
-      ready: { plaintext: 2048 + 128, ciphertext: 2112 + 192 },
+      ready: { plaintext: 2048, ciphertext: 2112 + 192 },
       hidden: { plaintext: 0, ciphertext: 0 },
     });
 
@@ -326,7 +319,7 @@ describe('reconcilability invariant — view equals row aggregate', () => {
     // bug that drives BOTH oracles to the same wrong value (e.g. the
     // aggregate query mis-grouping) cannot pass silently.
     expect(await aggregateFromRows(db, projectAId)).toEqual({
-      ready: { plaintext: 4096 + 256 + 8192, ciphertext: 4160 + 320 + 8256 },
+      ready: { plaintext: 4096 + 8192, ciphertext: 4160 + 320 + 8256 },
       hidden: { plaintext: 0, ciphertext: 0 },
     });
     expect(await aggregateFromRows(db, projectBId)).toEqual(ZERO_TOTALS);

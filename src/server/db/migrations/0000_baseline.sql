@@ -15,7 +15,6 @@ CREATE TABLE "attachments" (
 	"size_bytes" bigint NOT NULL,
 	"original_key" text NOT NULL,
 	"thumb_key" text,
-	"thumb_size_bytes" bigint,
 	"has_thumbnail" boolean DEFAULT false NOT NULL,
 	"ciphertext_size_bytes" bigint,
 	"ciphertext_thumb_size_bytes" bigint,
@@ -394,7 +393,7 @@ BEGIN
   -- contribute zero on every axis; only ready/hidden carry bytes.
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
     IF OLD.status IN ('ready', 'hidden') THEN
-      old_plain := OLD.size_bytes + COALESCE(OLD.thumb_size_bytes, 0);
+      old_plain := OLD.size_bytes;
       old_cipher := COALESCE(OLD.ciphertext_size_bytes, 0)
                   + COALESCE(OLD.ciphertext_thumb_size_bytes, 0);
       IF OLD.status = 'ready' THEN
@@ -411,7 +410,7 @@ BEGIN
   -- of pending rows as the OLD branch.
   IF TG_OP IN ('INSERT', 'UPDATE') THEN
     IF NEW.status IN ('ready', 'hidden') THEN
-      new_plain := NEW.size_bytes + COALESCE(NEW.thumb_size_bytes, 0);
+      new_plain := NEW.size_bytes;
       new_cipher := COALESCE(NEW.ciphertext_size_bytes, 0)
                   + COALESCE(NEW.ciphertext_thumb_size_bytes, 0);
       IF NEW.status = 'ready' THEN

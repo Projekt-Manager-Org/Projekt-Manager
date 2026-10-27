@@ -52,7 +52,6 @@ const ZERO_TOTALS: UsageTotals = {
 interface SeededRow {
   id: string;
   sizeBytes: number;
-  thumbSizeBytes: number | null;
   ciphertextSizeBytes: number;
   ciphertextThumbSizeBytes: number | null;
 }
@@ -75,7 +74,6 @@ async function seedPendingRow(
   projectId: string,
   opts: {
     sizeBytes: number;
-    thumbSizeBytes?: number | null;
     ciphertextSizeBytes: number;
     ciphertextThumbSizeBytes?: number | null;
     kind?: 'photo' | 'binary';
@@ -83,11 +81,10 @@ async function seedPendingRow(
 ): Promise<SeededRow> {
   const id = crypto.randomUUID();
   const isPhoto = (opts.kind ?? 'binary') === 'photo';
-  const hasThumb = opts.thumbSizeBytes != null;
+  const hasThumb = opts.ciphertextThumbSizeBytes != null;
   await db.execute(sql`
     INSERT INTO attachments
       (id, project_id, status, kind, label, filename, mime_type, size_bytes,
-       thumb_size_bytes,
        ciphertext_size_bytes, ciphertext_thumb_size_bytes,
        original_key, thumb_key, has_thumbnail,
        wrapped_dek, wrapped_thumb_dek, wrapped_dek_version)
@@ -97,7 +94,6 @@ async function seedPendingRow(
             ${'p-' + id.slice(0, 6)},
             ${isPhoto ? 'image/jpeg' : 'application/pdf'},
             ${opts.sizeBytes},
-            ${opts.thumbSizeBytes ?? null},
             ${opts.ciphertextSizeBytes},
             ${opts.ciphertextThumbSizeBytes ?? null},
             ${`attachments/${projectId}/${id}.orig`},
@@ -108,7 +104,6 @@ async function seedPendingRow(
   return {
     id,
     sizeBytes: opts.sizeBytes,
-    thumbSizeBytes: opts.thumbSizeBytes ?? null,
     ciphertextSizeBytes: opts.ciphertextSizeBytes,
     ciphertextThumbSizeBytes: opts.ciphertextThumbSizeBytes ?? null,
   };
@@ -273,16 +268,15 @@ describe('Project storage usage tracking', () => {
     it('complete (pending → ready) adds bytes to the ready bucket on both axes (photo with thumb)', async () => {
       const photo = await seedPendingRow(db, projectId, {
         sizeBytes: 4096,
-        thumbSizeBytes: 256,
         ciphertextSizeBytes: 4160,
         ciphertextThumbSizeBytes: 320,
         kind: 'photo',
       });
       await completeUpload(db, photo.id);
 
-      // Plaintext: 4096 + 256 (thumb included). Ciphertext: 4160 + 320.
+      // Plaintext: the original only (data-model.md §5.14). Ciphertext: 4160 + 320.
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 4352, ciphertext: 4480 },
+        ready: { plaintext: 4096, ciphertext: 4480 },
         hidden: { plaintext: 0, ciphertext: 0 },
       });
     });
@@ -304,7 +298,6 @@ describe('Project storage usage tracking', () => {
     it('user-DELETE (ready → hidden) moves bytes ready → hidden on both axes', async () => {
       const photo = await seedPendingRow(db, projectId, {
         sizeBytes: 4096,
-        thumbSizeBytes: 256,
         ciphertextSizeBytes: 4160,
         ciphertextThumbSizeBytes: 320,
         kind: 'photo',
@@ -314,14 +307,13 @@ describe('Project storage usage tracking', () => {
 
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: { plaintext: 0, ciphertext: 0 },
-        hidden: { plaintext: 4352, ciphertext: 4480 },
+        hidden: { plaintext: 4096, ciphertext: 4480 },
       });
     });
 
     it('restore (hidden → ready) moves bytes hidden → ready on both axes', async () => {
       const photo = await seedPendingRow(db, projectId, {
         sizeBytes: 4096,
-        thumbSizeBytes: 256,
         ciphertextSizeBytes: 4160,
         ciphertextThumbSizeBytes: 320,
         kind: 'photo',
@@ -331,7 +323,7 @@ describe('Project storage usage tracking', () => {
       await restoreRow(db, photo.id);
 
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 4352, ciphertext: 4480 },
+        ready: { plaintext: 4096, ciphertext: 4480 },
         hidden: { plaintext: 0, ciphertext: 0 },
       });
     });
@@ -373,7 +365,6 @@ describe('Project storage usage tracking', () => {
       // matching sign flip on `restore`).
       const photo = await seedPendingRow(db, projectId, {
         sizeBytes: 8192,
-        thumbSizeBytes: 512,
         ciphertextSizeBytes: 8256,
         ciphertextThumbSizeBytes: 576,
         kind: 'photo',
@@ -389,7 +380,7 @@ describe('Project storage usage tracking', () => {
       // Complete the photo.
       await completeUpload(db, photo.id);
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 8192 + 512, ciphertext: 8256 + 576 },
+        ready: { plaintext: 8192, ciphertext: 8256 + 576 },
         hidden: { plaintext: 0, ciphertext: 0 },
       });
 
@@ -397,7 +388,7 @@ describe('Project storage usage tracking', () => {
       await completeUpload(db, binary.id);
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: {
-          plaintext: 8192 + 512 + 16384,
+          plaintext: 8192 + 16384,
           ciphertext: 8256 + 576 + 16448,
         },
         hidden: { plaintext: 0, ciphertext: 0 },
@@ -407,14 +398,14 @@ describe('Project storage usage tracking', () => {
       await hideRow(db, photo.id);
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: { plaintext: 16384, ciphertext: 16448 },
-        hidden: { plaintext: 8192 + 512, ciphertext: 8256 + 576 },
+        hidden: { plaintext: 8192, ciphertext: 8256 + 576 },
       });
 
       // Restore the photo.
       await restoreRow(db, photo.id);
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: {
-          plaintext: 8192 + 512 + 16384,
+          plaintext: 8192 + 16384,
           ciphertext: 8256 + 576 + 16448,
         },
         hidden: { plaintext: 0, ciphertext: 0 },
@@ -423,14 +414,14 @@ describe('Project storage usage tracking', () => {
       // Hide the binary.
       await hideRow(db, binary.id);
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 8192 + 512, ciphertext: 8256 + 576 },
+        ready: { plaintext: 8192, ciphertext: 8256 + 576 },
         hidden: { plaintext: 16384, ciphertext: 16448 },
       });
 
       // Hidden reaper purges the hidden binary.
       await deleteRow(db, binary.id);
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 8192 + 512, ciphertext: 8256 + 576 },
+        ready: { plaintext: 8192, ciphertext: 8256 + 576 },
         hidden: { plaintext: 0, ciphertext: 0 },
       });
     });
@@ -583,8 +574,8 @@ describe('Project storage usage tracking', () => {
       // attachments still exist and count until purge cascades them away.
       // One archived project carries every bucket case: a ready binary, a
       // ready photo with its thumbnail, a hidden binary, and a pending row
-      // that must count toward nothing. Upload never records the plaintext
-      // thumbnail size, so the photo's thumbnail counts only as stored bytes.
+      // that must count toward nothing. Plaintext totals cover originals
+      // only (data-model.md §5.14), so the thumbnail counts only as stored bytes.
       await db.execute(sql`DELETE FROM attachments`);
       const archivedProjectId = await createProject(ownerToken);
       const readyBinary = await seedPendingRow(db, archivedProjectId, {
