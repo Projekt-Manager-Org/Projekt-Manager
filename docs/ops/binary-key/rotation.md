@@ -36,12 +36,12 @@ The old key keeps opening everything written before the rotation; bucket access 
 
 ### 1. Mint the new key and build the keyring
 
-In a [working file](../index.md#working-file) directory:
+In a [working file](../index.md#working-file) directory of its own — `$W` is created and removed by the steps below ([§ Rotate a secret](../manual-deploy.md#rotate-a-secret), the drill), and `$D` must survive until step 4:
 
 ```bash
-W="$XDG_RUNTIME_DIR/age-work"
-install -d -m 700 "$W"
-stty -echo; (umask 077; cat > "$W/current.txt"); stty echo   # paste the current entry, Enter, Ctrl-D
+D="$XDG_RUNTIME_DIR/binary-rotation"
+install -d -m 700 "$D"
+stty -echo; (umask 077; cat > "$D/current.txt"); stty echo   # paste the current entry, Enter, Ctrl-D
 ```
 
 Check the paste holds exactly the deployed keys — every later check derives from it, and step 4 destroys the entry it came from. Print the deployed values in an interactive SSH session (`sudo` needs a terminal for its password):
@@ -54,23 +54,23 @@ sudo -u deploy docker exec projekt-manager-app-1 printenv BINARY_AGE_RECIPIENT B
 Paste the printed lines on the workstation (public values, no echo suppression needed) and compare:
 
 ```bash
-cat > "$W/deployed.txt"   # paste, Enter, Ctrl-D
-diff <(age-keygen -y "$W/current.txt" | sort) \
-     <(tr ',' '\n' < "$W/deployed.txt" | tr -d ' \t\r' | sed '/^$/d' | sort) \
+cat > "$D/deployed.txt"   # paste, Enter, Ctrl-D
+diff <(age-keygen -y "$D/current.txt" | sort) \
+     <(tr ',' '\n' < "$D/deployed.txt" | tr -d ' \t\r' | sed '/^$/d' | sort) \
   && echo "paste = deployed keyring"
 ```
 
 Any diff output: stop — the paste or the entry is incomplete. Then:
 
 ```bash
-(umask 077; age-keygen -o "$W/new.txt" && cat "$W/new.txt" "$W/current.txt" > "$W/next.txt")
-age-keygen -y "$W/new.txt"                         # BINARY_AGE_RECIPIENT
-age-keygen -y "$W/current.txt" | paste -sd, -      # BINARY_AGE_RETIRED_RECIPIENTS
+(umask 077; age-keygen -o "$D/new.txt" && cat "$D/new.txt" "$D/current.txt" > "$D/next.txt")
+age-keygen -y "$D/new.txt"                         # BINARY_AGE_RECIPIENT
+age-keygen -y "$D/current.txt" | paste -sd, -      # BINARY_AGE_RETIRED_RECIPIENTS
 ```
 
 The last line covers every earlier retired recipient plus the previously active one.
 
-Copy `$W/next.txt` — the new keyring — into a **new** password-manager entry (clipboard hygiene per [Key custody § New identity](../index.md#new-identity)) and mint fresh off-system copies. Keep the current entry and copies until step 4.
+Copy `$D/next.txt` — the new keyring — into a **new** password-manager entry (clipboard hygiene per [Key custody § New identity](../index.md#new-identity)) and mint fresh off-system copies. Keep the current entry and copies until step 4.
 
 ### 2. Update both recipient variables and redeploy
 
@@ -92,7 +92,7 @@ At the deploy's paste prompt ([load.md](load.md)), paste the new keyring. A miss
 ### 4. Finalise
 
 ```bash
-rm -rf "$W"
+rm -rf "$D"
 ```
 
 Destroy the previous password-manager entry and custody copies; the new ones hold every key the old ones did (step 1's check, step 3.2). Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
