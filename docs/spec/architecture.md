@@ -273,12 +273,12 @@ The transaction shape and supporting topology for the invoice domain ([data-mode
 4. Render the PDF/A-3 with embedded `factur-x.xml` (ZUGFeRD EN 16931 Comfort profile) — the render happens inside the transaction so a render failure rolls back the sequence allocation.
 5. Write the rendered bytes through the binary descriptor pipeline ([ARCHITECTURE.md § Attachments Module](../../ARCHITECTURE.md#attachments-module)) using the e2e envelope ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)). The descriptor write is part of the same transaction; the object carries its own Object Lock per `INVOICE_OBJECT_LOCK_DAYS` (Object Lock retention below).
 6. Flip `Invoice.status` to `'issued'`, persist the snapshotted fields, persist `renderedPdfBinaryDescriptorId`.
-7. Update the parent `Project.status` to `abgerechnet` via the standard transition path; the transition's audit row is co-committed in the same transaction.
+7. Update the parent `Project.status` to `abgerechnet` via the standard transition path ([data-model.md §6.4](data-model.md#64-concurrency)); the transition's audit row is co-committed in the same transaction. A project no longer in `rechnung_faellig` at this step fails the transaction with `INVOICE_PROJECT_STATE`.
 8. Write the `audit_log` row through the single-write-path helper ([§11.3](#113-state-layer-behavioral-contract)) with `entityType = 'invoice'`, `action = 'invoice:issue'`, ancestor `('project', projectId)`.
 9. Commit.
 10. Post-commit, emit the `invoice_changed` and `project_changed` SSE events ([§11.13](#1113-realtime-invalidation-channel)) — the project status changed, so both consumer surfaces (invoice list, project list / kanban) invalidate.
 
-A failure at any step rolls back the entire transaction: the sequence increment never persists (gapless guarantee — [§6.13](data-model.md#613-gapless-sequence-allocation)), the descriptor row rolls back (the already-PUT object stays behind as a bucket orphan, its invoice number never issued), the project status stays at `rechnung_faellig`, and the draft remains editable.
+A failure at any step rolls back the entire transaction: the sequence increment never persists (gapless guarantee — [§6.13](data-model.md#613-gapless-sequence-allocation)), the descriptor row rolls back (the already-PUT object stays behind as a bucket orphan, its invoice number never issued), the issuance leaves the project status unchanged, and the draft remains editable.
 
 **Stornorechnung issuance transaction.** Cancellation of an issued invoice runs its own single transaction:
 
