@@ -51,6 +51,12 @@ No observable problem → no target → no work.
 
 The general rules on dropping speculative improvements make no convention obsolete (`review/conventions-*.md`) - it drops overengineering for corner cases with little real value and a lot of maintenance complexity. See step 12 of [CONTRIBUTING.md § Workflow](CONTRIBUTING.md#workflow).
 
+## Data
+
+Local dev data and the staging VPS hold seed data - wipe and reseed freely. Real users’ data lives on a separate deployment, deliberately unreachable from here and from the VPS.
+
+The VPS is where we rehearse what will run on the real deployment: integrity and security analysis, recovery drills, rotation. A wipe is a dev convenience, not a fix - every wipe should end in an analysis and an adjustment.
+
 ## Principles
 
 Data integrity and security defaults are the baseline, **not open questions.** When an established professional practice applies (HTTPS everywhere, input validation, auth on every mutation, CSRF protection, test isolation, ...), the default is to do it. The discussion — when there is one — is about _how_ to implement it cleanly in the current topology, not _whether_ to.

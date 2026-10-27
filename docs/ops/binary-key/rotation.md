@@ -4,7 +4,7 @@ Rotate the binary `age` keypair: a new key becomes active, the old one is retire
 
 Trigger it on:
 
-- Suspected compromise of the workstation, the VPS, or any custody copy — first see [§ After a compromise](#after-a-compromise).
+- Suspected compromise of the password-manager entry, the workstation, the VPS, or any custody copy — first see [§ After a compromise](#after-a-compromise).
 - Operator handover.
 - A scheduled interval the operator chooses (no project-mandated cadence).
 
@@ -36,20 +36,20 @@ The old key keeps opening everything written before the rotation; bucket access 
 
 ### 1. Mint the new key and build the keyring
 
-The keys live in tmpfs only, never on disk:
+In a [working file](../index.md#working-file) directory:
 
 ```bash
-D="$XDG_RUNTIME_DIR/binary-rotation"
-install -d -m 700 "$D"
-(umask 077; cat > "$D/current.txt")   # paste the current keyring, then Ctrl-D
-(umask 077; age-keygen -o "$D/new.txt" && cat "$D/new.txt" "$D/current.txt" > "$D/next.txt")
-age-keygen -y "$D/new.txt"                         # BINARY_AGE_RECIPIENT
-age-keygen -y "$D/current.txt" | paste -sd, -      # BINARY_AGE_RETIRED_RECIPIENTS
+W="$XDG_RUNTIME_DIR/age-work"
+install -d -m 700 "$W"
+stty -echo; (umask 077; cat > "$W/current.txt"); stty echo   # paste the current entry, Enter, Ctrl-D
+(umask 077; age-keygen -o "$W/new.txt" && cat "$W/new.txt" "$W/current.txt" > "$W/next.txt")
+age-keygen -y "$W/new.txt"                         # BINARY_AGE_RECIPIENT
+age-keygen -y "$W/current.txt" | paste -sd, -      # BINARY_AGE_RETIRED_RECIPIENTS
 ```
 
 The last line covers every earlier retired recipient plus the previously active one.
 
-Store `$D/next.txt` — the new keyring — as a new password manager entry and in **two off-system custody copies**, per [setup.md §2](setup.md#2-generate-the-age-key-pair). Keep the current entry and copies until step 4.
+Copy `$W/next.txt` — the new keyring — into a **new** password-manager entry (clipboard hygiene per [Key custody § New identity](../index.md#new-identity)) and mint fresh off-system copies. Keep the current entry and copies until step 4.
 
 ### 2. Update both recipient variables and redeploy
 
@@ -65,16 +65,16 @@ At the deploy's paste prompt ([load.md](load.md)), paste the new keyring. A miss
 ### 3. Verify
 
 1. In the app, open an invoice PDF and an attachment from before the rotation. Both must open.
-2. Check each new custody copy holds the whole keyring — `age-keygen -y <copy> | sort` lists exactly the recipients from step 1.
-3. Run the drill ([drills.md](drills.md)) with a new custody copy against a fresh upload.
+2. Check each new custody copy holds the whole keyring: its [recipient check](../index.md#working-file), piped through `sort`, lists exactly the recipients from step 1.
+3. Run the drill ([drills.md](drills.md)) with the new entry against a fresh upload. Later drills cycle through the new off-system copies.
 
 ### 4. Finalise
 
 ```bash
-rm -rf "$D"
+rm -rf "$W"
 ```
 
-Destroy the previous password manager entry and custody copies; the new ones hold every key the old ones did. Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
+Destroy the previous password-manager entry and custody copies; the new ones hold every key the old ones did. Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
 
 ## Rollback
 

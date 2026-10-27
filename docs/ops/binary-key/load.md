@@ -20,7 +20,7 @@ The **deploy auto-prompt** in `scripts/deploy.sh` is the intended trigger in nor
 
 You are about to write private key material into RAM on the VPS; this is cleared on reboot or on container recreation, and can be overwritten by rerunning the script.
 
-1. Have `~/secrets/binary-identity.txt` open on the operator workstation. Copy its full contents — every `AGE-SECRET-KEY-1...` line (one per key after a rotation) and the comment lines — to the clipboard.
+1. Copy the binary keyring's password-manager entry ([Key custody](../index.md#key-custody)) to the clipboard — full text: the comment lines and every `AGE-SECRET-KEY-1...` line (one per key after a rotation).
 2. SSH to the VPS as the admin user. Use `docker exec` directly, not `docker compose exec` — the compose path re-parses `docker-compose.yml`, which requires the full set of interpolation vars in shell env; a bare sudo shell doesn't have them sourced, so parse aborts. Same class of problem fixed in `server-setup.md` Phase 8.1 (commit 5484903). `-it` allocates a pseudo-TTY so the script's `read -s` actually suppresses echo during the paste:
 
    ```bash
@@ -32,7 +32,7 @@ You are about to write private key material into RAM on the VPS; this is cleared
    - Validates the pasted material parses as an `age` identity by round-tripping through `age-keygen -y`.
    - Compares the derived public recipients against `BINARY_AGE_RECIPIENT` plus `BINARY_AGE_RETIRED_RECIPIENTS` from the container env. A missing or an unlisted key (probably the backup drill identity) exits non-zero without writing, naming the offending recipients; a loaded keyring stays in place.
    - Writes the identity to `/run/binary-key/identity` (tmpfs, mode 0400, owned by the in-container `app` user, UID 1001).
-   - Unsets its own buffer before exit.
+   - Unsets its own buffer before exit (no secure memory wipe).
 
 4. Verify the key is loaded without exposing it:
 

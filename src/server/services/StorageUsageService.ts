@@ -1,29 +1,21 @@
 /**
- * Storage usage read service — projects + global roll-up.
+ * Storage usage read service — global roll-up.
  *
  * Surfaces the `project_storage_usage` side table maintained by the
  * two PL/pgSQL triggers (totals: data-model.md §5.14; design at
  * `projectStorageUsage` in schema.ts). Pure read path; no writes,
  * no audit boundary, no caching layer.
  *
- * Three responsibilities:
- *   - per-project read with three-way distinguishability
- *     (200 in-scope / 403 out-of-scope / 404 missing) per
- *     ADR-0019;
+ * Two responsibilities:
  *   - global roll-up summed across every project, including archived
  *     ones (AC-447);
  *   - shape coercion from the bigint columns (returned as strings on
  *     the default pg driver) into the API's `number` byte counts.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
-import { projects, projectStorageUsage } from '../db/schema.js';
-import { isProjectInScope } from '../repositories/scope.js';
-import { notFound, notPermitted } from '../errors.js';
-import { STRINGS } from '../../config/strings.js';
-import type { AuthUser } from '../middleware/auth.js';
 
 /**
  * API-facing shape (totals: data-model.md §5.14). Each
@@ -37,65 +29,6 @@ export interface StorageUsageDto {
 
 export class StorageUsageService {
   constructor(private readonly db: Database) {}
-
-  /**
-   * Per-project storage usage. Three-way distinguishability:
-   *   - missing project id → throws `notFound` (404 NOT_FOUND);
-   *   - existing-but-out-of-scope (worker on an unassigned project) →
-   *     throws `notPermitted` (403 NOT_PERMITTED);
-   *   - in-scope (or unscoped role) → returns the four-bucket totals.
-   *
-   * The existence check runs WITHOUT a `deleted = FALSE` filter, so an
-   * archived project still resolves — mirrors `getProject` in
-   * `project-read.ts` (read paths are intentionally permissive on
-   * archived rows; mutations close them via `*ForMutation` fetches).
-   */
-  async getProjectUsage(caller: AuthUser, projectId: string): Promise<StorageUsageDto> {
-    const projectRows = await this.db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (projectRows.length === 0) {
-      throw notFound(STRINGS.entities.project);
-    }
-    if (!(await isProjectInScope(this.db, caller, projectId))) {
-      throw notPermitted();
-    }
-    const usageRows = await this.db
-      .select({
-        spaceReadyBytes: projectStorageUsage.spaceReadyBytes,
-        spaceHiddenBytes: projectStorageUsage.spaceHiddenBytes,
-        ciphertextReadyBytes: projectStorageUsage.ciphertextReadyBytes,
-        ciphertextHiddenBytes: projectStorageUsage.ciphertextHiddenBytes,
-      })
-      .from(projectStorageUsage)
-      .where(eq(projectStorageUsage.projectId, projectId))
-      .limit(1);
-    const row = usageRows[0];
-    if (!row) {
-      // Trigger invariant: the projects-INSERT trigger seeds a zero
-      // row for every project. A missing
-      // row past the existence-check above is an out-of-band drift
-      // (direct SQL deletion, trigger disabled, baseline regenerated
-      // without the tail). Refuse to serve rather than fabricate
-      // zeros — silent zeros would mask drift that downstream UI
-      // relies on the totals being authoritative for.
-      throw new Error(
-        `project_storage_usage row missing for project ${projectId}; trigger invariant violated`,
-      );
-    }
-    return {
-      ready: {
-        plaintext: Number(row.spaceReadyBytes),
-        ciphertext: Number(row.ciphertextReadyBytes),
-      },
-      hidden: {
-        plaintext: Number(row.spaceHiddenBytes),
-        ciphertext: Number(row.ciphertextHiddenBytes),
-      },
-    };
-  }
 
   /**
    * Global usage summed across every project — including archived

@@ -65,6 +65,18 @@
  *   skipped, because OSV-Scanner replaced `npm audit` here and the two
  *   databases are not supersets of one another either.
  *
+ *   A global record that clears a repo-level match is printed, not hidden:
+ *   this layer exists because the global DB lags. The override is SETTLED,
+ *   and listed on one line, when the global `github_reviewed_at` is at or
+ *   after the repo-level `updated_at` — a curator saw the publisher's last
+ *   edit. Anything else asks for a re-check. Review, not age, decides: an
+ *   edit the curators never picked up does not become safe by getting old.
+ *
+ *   `github_reviewed_at` is the FIRST review and does not move on later
+ *   curation (measured, #516). So a publisher edit after it keeps the
+ *   re-check call for good, even once curators catch up — noisy, never
+ *   quiet. See ADR-0027's "does NOT cover" table.
+ *
  *   KNOWN FALSE POSITIVE, unmitigated on purpose. An unbounded `<= X` on a
  *   newer release line matches every older version. When the advisory is
  *   repo-level-only there is no curated record to correct it, so the gate
@@ -464,6 +476,7 @@ for (const slug of slugs) {
         severity: adv.severity,
         summary: adv.summary,
         repoRanges,
+        repoUpdatedAt: adv.updated_at,
       });
     }
   }
@@ -515,6 +528,15 @@ function firstMatch(version, ranges) {
   return null;
 }
 
+/**
+ * Whether the global review post-dates the publisher's last edit. See
+ * WHICH RANGE IS AUTHORITATIVE. A missing or unparseable timestamp parses
+ * to NaN and is not settled.
+ */
+function reviewedSinceEdit(global, repoUpdatedAt) {
+  return Date.parse(global.github_reviewed_at) >= Date.parse(repoUpdatedAt);
+}
+
 const findings = [];
 const allowlisted = [];
 const overriddenByGlobal = [];
@@ -552,8 +574,14 @@ for (const c of adjudicated) {
     // Repo says vulnerable, global says patched. Usually the curated record
     // adding the lower bound the publisher omitted — but the premise of this
     // whole layer is that the global DB lags, so a disagreement it resolves
-    // in favour of "clean" is exactly the thing not to swallow.
-    overriddenByGlobal.push({ ...c, repoRange: c.repoMatch.range });
+    // in favour of "clean" is exactly the thing not to swallow — until the
+    // global review post-dates the publisher's last edit.
+    overriddenByGlobal.push({
+      ...c,
+      repoRange: c.repoMatch.range,
+      reviewedAt: global.github_reviewed_at ?? null,
+      settled: reviewedSinceEdit(global, c.repoUpdatedAt),
+    });
     continue;
   }
 
@@ -588,12 +616,25 @@ if (advisoriesDisabled.length > 0) {
   console.log(`  NOT CHECKED — advisories disabled or repo moved (${advisoriesDisabled.length}):`);
   console.log(`    ${advisoriesDisabled.join(', ')}`);
 }
-if (overriddenByGlobal.length > 0) {
+// Settled overrides are listed, not flagged: a call to re-check that never
+// changes teaches people to skip the one that matters (#516).
+const settled = overriddenByGlobal.filter((o) => o.settled);
+const unsettled = overriddenByGlobal.filter((o) => !o.settled);
+if (settled.length > 0) {
+  const ids = settled.map((o) => `${o.ghsa}  ${o.name}@${o.version}`).join(', ');
   console.log(
-    `  cleared by the global DB, repo-level range still matches (${overriddenByGlobal.length}):`,
+    `  cleared by the global DB, reviewed since the last repo edit (${settled.length}): ${ids}`,
   );
-  for (const o of overriddenByGlobal) {
-    console.log(`    ${o.ghsa}  ${o.name}@${o.version}  repo range: ${o.repoRange}`);
+}
+if (unsettled.length > 0) {
+  console.log(
+    `  cleared by the global DB, global review predates the last repo edit (${unsettled.length}):`,
+  );
+  for (const o of unsettled) {
+    console.log(
+      `    ${o.ghsa}  ${o.name}@${o.version}  repo range: ${o.repoRange}  ` +
+        `repo edited: ${o.repoUpdatedAt ?? 'unknown'}  global reviewed: ${o.reviewedAt ?? 'never'}`,
+    );
   }
   console.log('    Global ranges won. If the global record is the stale one, this is a MISS —');
   console.log('    check the advisory page before trusting the pass.');

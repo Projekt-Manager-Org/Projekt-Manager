@@ -13,11 +13,11 @@ Tier 2 needs the private identity on the VPS. `load-drill-key.sh` writes it to a
 
 **Location:** `scripts/backup/load-drill-key.sh` in the repo. `Dockerfile.backup` copies it into the image at `/usr/local/bin/load-drill-key` (no `.sh`) — that is the only path the operator ever invokes, via `docker exec` into the running backup container. The tmpfs target inside the container is `/run/drill-key/identity` (file mode 0400, owned by the container's non-root `postgres` user (UID 70); the tmpfs mount itself is mode 0700 uid=70 gid=70).
 
-**Deploy auto-prompt:** `scripts/deploy.sh` checks `/run/drill-key/identity` after `docker compose --profile backup up -d` and invokes `load-drill-key` interactively when the tmpfs is empty (the common case after a deploy that recreated the backup container). Have `~/secrets/age-backup.key` ready on the operator workstation when running a deploy — that's the single intended trigger for the steps below in normal operation. The standalone invocation documented here remains the recovery path for ad-hoc reloads (operator-initiated rotation, post-VPS-reboot without a redeploy, container restart triggered outside the deploy flow).
+**Deploy auto-prompt:** `scripts/deploy.sh` checks `/run/drill-key/identity` after `docker compose --profile backup up -d` and invokes `load-drill-key` interactively when the tmpfs is empty (the common case after a deploy that recreated the backup container). Have the backup identity's password-manager entry at hand when running a deploy — that's the single intended trigger for the steps below in normal operation. The standalone invocation documented here remains the recovery path for ad-hoc reloads (operator-initiated rotation, post-VPS-reboot without a redeploy, container restart triggered outside the deploy flow).
 
 You are about to write private key material into RAM on the VPS; this is cleared on reboot or on container recreation, and can be overwritten by rerunning the script.
 
-1. Have `~/secrets/age-backup.key` open on the operator workstation. Copy its full contents (including the comment lines and the `AGE-SECRET-KEY-1...` body) to the clipboard.
+1. Copy the backup identity's password-manager entry ([Key custody](../index.md#key-custody)) to the clipboard — full text, comment lines and the `AGE-SECRET-KEY-1...` body.
 2. SSH to the VPS as the admin user. Use `docker exec` directly, not `docker compose exec`. The compose path re-parses `docker-compose.yml`, which requires the full set of interpolation vars (`POSTGRES_PASSWORD`, `CLOUDFLARE_API_TOKEN`, etc.) in shell env; a bare sudo shell doesn't have them sourced, so parse aborts with `CLOUDFLARE_API_TOKEN must be declared`. Same class of problem fixed in `server-setup.md` Phase 8.1 (commit 5484903). `-it` allocates a pseudo-TTY so the script's `read -s` actually suppresses echo during the paste:
 
    ```bash
@@ -25,9 +25,9 @@ You are about to write private key material into RAM on the VPS; this is cleared
    ```
 
 3. The script prompts with `read -s` ("Paste age identity, finish with Ctrl-D:"). Paste the clipboard contents, press Enter, then Ctrl-D. The script:
-   - Validates the first line is `# public key: age1...` and that it matches `AGE_RECIPIENT`.
+   - Validates the destination is a tmpfs mount, the paste parses as an `age` identity (`age-keygen -y` round-trip), and its recipient matches `AGE_RECIPIENT`.
    - Writes the identity to `/run/drill-key/identity` (tmpfs, mode 0400, owned by `postgres` UID 70).
-   - Zeros its own buffer before exit.
+   - Unsets its own buffer before exit (no secure memory wipe).
 
 4. Verify the key is loaded without exposing it:
 

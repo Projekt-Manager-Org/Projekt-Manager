@@ -529,13 +529,6 @@ export class AttachmentService {
         sizeBytes: input.sizeBytes,
         originalKey,
         thumbKey,
-        // Plaintext-thumb-size column kept for legacy tests that
-        // still seed it; the real defence in depth at complete-time
-        // is the ciphertext-side `ciphertextThumbSizeBytes`. Set
-        // null here so a non-thumb row stays clean and a photo
-        // row's thumb column reflects the ciphertext figure
-        // through `ciphertextThumbSizeBytes`.
-        thumbSizeBytes: null,
         hasThumbnail,
         ciphertextSizeBytes: input.ciphertextSizeBytes,
         ciphertextThumbSizeBytes: ciphertextThumbSizeBytes ?? null,
@@ -686,12 +679,6 @@ export class AttachmentService {
           row.ciphertextThumbSizeBytes !== null &&
           thumbHead.size !== row.ciphertextThumbSizeBytes
         ) {
-          throw conflict(STRINGS.errors.invalidInput);
-        }
-        // Plaintext-thumb-size column — kept for legacy seed paths
-        // that populated it; defence in depth against the per-thumb
-        // plaintext cap.
-        if (row.thumbSizeBytes !== null && row.thumbSizeBytes > caps.perThumbCapBytes) {
           throw conflict(STRINGS.errors.invalidInput);
         }
         // Sentinel content-type — no `startsWith('image/')` carve-out

@@ -55,8 +55,14 @@
 #     recipient before transfer (scripts/ops/rewrap-dek-envelopes.sh),
 #     so neither side's private key crosses SSH; only the VPS's public
 #     recipient string is fetched.
-#   - Older B2 versions of any object — `--remove` and `--overwrite` both
-#     create new versions / delete markers; nothing is destroyed.
+#   - Older B2 versions of any object — the restore writes new versions
+#     and delete markers only; nothing is destroyed.
+#
+# Object metadata (#627): the bucket dump is a plain directory, which
+# holds no S3 user metadata. The VPS side rebuilds each object's metadata
+# (re-wrapped envelope, invoice number) from its restored row while
+# writing it to B2 (scripts/ops/restore-bucket-objects.py), so synced
+# objects stay decryptable by the recovery tool (AC-439).
 
 set -euo pipefail
 
@@ -70,8 +76,7 @@ LOCAL_BUCKET="projekt-manager"
 COMPOSE_PROJECT="projekt-manager"
 # Must match docker/init-storage.sh. Keeping this in sync with the compose
 # file is a manual discipline; a tag drift here would mean a mirror against
-# an older client. The VPS pulls it anonymously from the org's public GHCR
-# mirror (ADR-0003 § Dep lifecycle health) — no credential.
+# an older client. Used for the local bucket dump only.
 MC_IMAGE="ghcr.io/projekt-manager-org/mc:RELEASE.2025-08-13T08-35-41Z@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -266,6 +271,17 @@ case "$VPS_AGE_RECIPIENT" in
     exit 1
     ;;
 esac
+# The restore locks each synced invoice PDF for the VPS app's
+# INVOICE_OBJECT_LOCK_DAYS, as on issuance (#627). A Compliance lock
+# cannot be shortened, so the consent below states it. Empty means 0, as
+# in the app; compose always defines the variable, so a failure here is
+# a failed read, not an unset value.
+if ! VPS_INVOICE_LOCK_DAYS=$(ssh "$SSH_TARGET" \
+  "docker exec ${COMPOSE_PROJECT}-app-1 printenv INVOICE_OBJECT_LOCK_DAYS"); then
+  echo "ERROR: could not read INVOICE_OBJECT_LOCK_DAYS from VPS app container." >&2
+  exit 1
+fi
+VPS_INVOICE_LOCK_DAYS="${VPS_INVOICE_LOCK_DAYS:-0}"
 # Local identity must be readable; without it the rewrap step in [6/10]
 # cannot unwrap the source envelopes. Sourced from the dev-side .env.
 LOCAL_AGE_IDENTITY_PATH=$(grep -E '^BINARY_AGE_IDENTITY_PATH=' "$REPO_DIR/.env" | cut -d= -f2- || true)
@@ -284,12 +300,16 @@ This command will DESTRUCTIVELY OVERWRITE on $SSH_TARGET:
                        the app container env. Keys absent locally get a
                        delete-marker on B2; older versions are preserved
                        by Compliance Object Lock per ADR-0022.
+                       Each invoice PDF is written under its own
+                       Compliance lock, nobody can shorten it:
+                       INVOICE_OBJECT_LOCK_DAYS=$VPS_INVOICE_LOCK_DAYS (VPS app).
 
 No VPS-side backup is taken by this script. If you need a separate one,
 run it through the Layer 2 backup before syncing
 (docs/ops/backup/overview.md). The B2 bucket itself is versioned and
 Compliance-locked, so this sync's writes are recoverable until R + L
-days pass per the bucket's retention configuration.
+days pass per the bucket's retention configuration; invoice PDFs stay
+stored for at least their $VPS_INVOICE_LOCK_DAYS-day lock.
 
 Re-run with --i-know to proceed.
 MSG
@@ -346,11 +366,11 @@ ssh "$SSH_TARGET" "mkdir -p $REMOTE_TMP"
 # a single file across CI, deploy, and sync — see
 # scripts/smoke-app-health.sh for why.
 cp "$REPO_DIR/scripts/smoke-app-health.sh" "$LOCAL_TMP/smoke-app-health.sh"
-# Ship the bucket-versionId repair helper. The VPS-side restore script
-# runs it after `mc mirror` to rewrite attachment.version_ids to
-# reference the freshly-PUT B2 versions, replacing the dev-side MinIO
-# UUIDs that B2 does not recognise.
-cp "$REPO_DIR/scripts/ops/repair-bucket-versionids.py" "$LOCAL_TMP/repair-bucket-versionids.py"
+# Ship the object-restore helper. The VPS-side restore script runs it to
+# write the dump to B2 with metadata rebuilt from the restored rows and
+# to point attachments.version_id at the new B2 versions.
+cp "$REPO_DIR/scripts/ops/restore-bucket-objects.py" "$LOCAL_TMP/restore-bucket-objects.py"
+cp "$REPO_DIR/scripts/ops/restore-bucket-objects.sql" "$LOCAL_TMP/restore-bucket-objects.sql"
 # -a preserves perms/times; -z compresses (SQL and metadata compress well).
 # No --delete — REMOTE_TMP is created fresh this run and cleaned up on exit.
 rsync -az "$LOCAL_TMP/" "$SSH_TARGET:$REMOTE_TMP/"
@@ -361,7 +381,7 @@ echo "[9/10] Restoring on VPS..."
 # copy and the committed version. Env vars pass configuration; `bash -s`
 # reads the script from stdin and runs it in a fresh login shell.
 ssh "$SSH_TARGET" \
-  "REMOTE_TMP='$REMOTE_TMP' MC_IMAGE='$MC_IMAGE' COMPOSE_PROJECT='$COMPOSE_PROJECT' bash -s" \
+  "REMOTE_TMP='$REMOTE_TMP' COMPOSE_PROJECT='$COMPOSE_PROJECT' bash -s" \
   < "$REMOTE_SCRIPT"
 
 echo "[10/10] Done — VPS synced at $(date -u -Iseconds)"

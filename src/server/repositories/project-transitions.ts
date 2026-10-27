@@ -40,31 +40,36 @@ export interface TransitionResult {
  * status still matches that value; a sequential double-advance (two clicks in
  * sequence, two tabs, etc.) deterministically resolves to CONFLICT on the
  * second attempt because its `expectedStatus` no longer matches the DB.
+ *
+ * `now` is the clock seam the invoice issuance passes through, so the
+ * project's `statusChangedAt` matches the invoice's `issueDate`.
  */
 export async function transitionForward(
   db: MutatingDatabase,
   id: string,
   userId: string,
   expectedStatus: WorkflowState,
+  now: Date,
 ): Promise<TransitionResult> {
   const currentIndex = WORKFLOW_ORDER.indexOf(expectedStatus);
   if (currentIndex === -1 || currentIndex === WORKFLOW_ORDER.length - 1) {
     throw new TransitionError(STRINGS.projects.cannotAdvanceTerminal);
   }
   const nextStatus = WORKFLOW_ORDER[currentIndex + 1]!;
-  return applyTransition(db, id, userId, expectedStatus, nextStatus);
+  return applyTransition(db, id, userId, expectedStatus, nextStatus, now);
 }
 
 /**
  * Transition a project backward by one state.
  *
- * Same `expectedStatus` contract as `transitionForward`.
+ * Same `expectedStatus` and `now` contract as `transitionForward`.
  */
 export async function transitionBackward(
   db: MutatingDatabase,
   id: string,
   userId: string,
   expectedStatus: WorkflowState,
+  now: Date,
 ): Promise<TransitionResult> {
   const currentIndex = WORKFLOW_ORDER.indexOf(expectedStatus);
   if (currentIndex === -1) {
@@ -77,7 +82,7 @@ export async function transitionBackward(
     throw new TransitionError(STRINGS.projects.cannotRevertTerminal);
   }
   const prevStatus = WORKFLOW_ORDER[currentIndex - 1]!;
-  return applyTransition(db, id, userId, expectedStatus, prevStatus);
+  return applyTransition(db, id, userId, expectedStatus, prevStatus, now);
 }
 
 async function applyTransition(
@@ -86,9 +91,8 @@ async function applyTransition(
   userId: string,
   expectedStatus: WorkflowState,
   nextStatus: WorkflowState,
+  now: Date,
 ): Promise<TransitionResult> {
-  const now = new Date();
-
   // Row-lock the target and capture its pre-transition status + timestamp
   // in one step. The caller is always inside `mutate()`/`mutateInTx()`
   // (the `MutatingDatabase` type enforces this — see db/connection.ts),
@@ -115,7 +119,11 @@ async function applyTransition(
     })
     .from(projects)
     .where(eq(projects.id, id))
-    .for('update');
+    // NO KEY UPDATE, the lock the UPDATE below takes anyway: transitions
+    // still serialize, but an open tx holding KEY SHARE through an FK
+    // insert (attachment, draft, Storno) does not stall the issuance
+    // atom, which reaches this lock holding the invoice sequence row.
+    .for('no key update');
   const priorRow = priorRows[0];
 
   if (!priorRow || priorRow.deleted) {

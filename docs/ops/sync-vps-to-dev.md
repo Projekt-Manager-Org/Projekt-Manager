@@ -9,14 +9,17 @@ VPS (over SSH)                                    operator workstation
   docker compose running                            docker compose running (dev overlay via .env COMPOSE_FILE)
     │                                                   │
     │  ssh bash -s ──► pg_dump              (on VPS)    │
-    │                  mc mirror B2 → dir   (on VPS)    │
+    │                  mc cp B2 → dir       (on VPS)    │
+    │                  /tmp/pm-rsync-<ts>/  ── rsync ──►│
     │                                                   │
-    │                  /tmp/pm-rsync-<ts>/              │
-    │                        ◄── rsync ──┤              │
+    │  ssh bash -s ──► re-wrap DEKs in the app container│
+    │    ◄── dev recipient (public)                     │
+    │                  UPDATEs ── stdout ──────────────►│ appended to db.sql
     │                                                   │
     │                                    terminate stray backends
-    │                                    psql < db.sql
-    │                                    mc mirror → MinIO bucket
+    │                                    psql < db.sql, drop hidden rows
+    │                                    restore-bucket-objects.py → MinIO
+    │                                      (metadata from rows, version-id UPDATEs)
 ```
 
 ## When to use
@@ -37,6 +40,9 @@ VPS (over SSH)                                    operator workstation
 | Local dev stack running (`db`, `storage`)  | `docker compose ps db storage`                                                                                                 |
 | VPS DB populated (users ≥ 1)               | Checked automatically — would be pointless to pull an empty DB over local                                                      |
 | VPS deployed at a schema-compatible commit | Hash-compared automatically (`0000_baseline.sql`)                                                                              |
+| VPS app has its binary identity loaded     | Checked automatically — [binary-key/load.md](binary-key/load.md)                                                               |
+| `BINARY_AGE_RECIPIENT` in dev `.env`       | Checked automatically                                                                                                          |
+| `python3-boto3` locally                    | Checked automatically — [local-dev.md](local-dev.md)                                                                           |
 | `npm run dev` stopped                      | The restore kicks lingering DB connections; the tsx watch process needs a manual restart afterwards to pick up refreshed state |
 
 ## Run
@@ -57,21 +63,30 @@ Overrides via env:
 
 ## What the script does
 
-1. Preflight — SSH, local stack, schema parity, non-empty VPS DB.
+1. Preflight — SSH, local stack, schema parity, non-empty VPS DB, VPS identity loaded, dev recipient, local boto3.
 2. Refuses without `--i-know`; prints exactly what will be overwritten.
 3. On VPS: `pg_dump --clean --if-exists --no-owner --no-acl` into `$REMOTE_TMP/db.sql`.
-4. On VPS: read STORAGE\_\* from the running `app` container's env, then `mc mirror --overwrite --remove` the B2 bucket into `$REMOTE_TMP/bucket/`.
+4. On VPS: read STORAGE\_\* from the running `app` container's env, then `mc cp --recursive` the B2 bucket's current objects into `$REMOTE_TMP/bucket/` (`mc mirror` needs a bucket-level stat the app key is denied).
 5. `rsync -az` the VPS temp directory down to local.
-6. Locally: `pg_terminate_backend` on every `projekt_manager` connection except our own, then `psql -v ON_ERROR_STOP=1 < db.sql`.
-7. Locally: `mc mirror` the pulled bucket into local MinIO (creds read from the local `storage` container's env).
-8. Trap-based cleanup: removes `/tmp/pm-rsync-<ts>/` on both ends regardless of outcome.
+6. On VPS: [`rewrap-dek-envelopes.sh`](../../scripts/ops/rewrap-dek-envelopes.sh) re-wraps every DEK envelope to the dev `BINARY_AGE_RECIPIENT`; the UPDATEs are appended to the dump. Aborts unless every envelope was re-wrapped.
+7. Locally: `pg_terminate_backend` on every `projekt_manager` connection except our own, `psql -v ON_ERROR_STOP=1 < db.sql`, then drop `hidden` rows.
+8. Locally: [`restore-bucket-objects.py`](../../scripts/ops/restore-bucket-objects.py) writes the pulled bucket into local MinIO (root creds from the local `storage` container) and repoints `version_id` / `thumb_version_id` at the new versions.
+9. Trap-based cleanup: removes `/tmp/pm-rsync-<ts>/` on both ends regardless of outcome.
 
-The VPS-side dump holds a consistent snapshot (pg_dump's default single-transaction mode) and doesn't stop the app — a live user hitting the VPS during sync won't corrupt the dump, they'll just be captured at the snapshot boundary. The B2 mirror is read-only on the VPS side (uses the bucket-scoped app key's `listFiles` + `readFiles` capabilities).
+### Binaries
+
+The re-wrap runs inside the VPS app container, against the operator-loaded identity: the plaintext DEK never leaves that container, and only the dev public recipient crosses SSH. Object metadata and the invoice lock are rebuilt as in the forward direction ([sync-dev-to-vps.md](sync-dev-to-vps.md#what-the-script-does)), with dev's own `INVOICE_OBJECT_LOCK_DAYS` from `.env`. Afterwards dev decrypts every synced staging binary — acceptable for staging seed data; real data is unreachable from here ([CLAUDE.md § Data](../../CLAUDE.md#data)).
+
+Hidden (Papierkorb) rows are dropped: the dump holds no bytes for them.
+
+### Consistency
+
+The VPS-side dump holds a consistent snapshot (pg_dump's default single-transaction mode) and doesn't stop the app — a live user hitting the VPS during sync won't corrupt the dump, they'll just be captured at the snapshot boundary. The B2 copy is read-only on the VPS side (the bucket-scoped app key's `listFiles` + `readFiles` capabilities). The re-wrap reads the live rows after that snapshot: a row deleted in between keeps its VPS envelope and fails to decrypt on dev.
 
 ## What gets overwritten
 
 - Local Postgres database `projekt_manager` — every table dropped and recreated.
-- Local MinIO bucket `projekt-manager` — objects absent on VPS are deleted.
+- Local MinIO bucket `projekt-manager` — every synced object written as a new version; objects absent on VPS get a delete marker.
 
 Untouched: local filesystem, `.env`, VAPID private key under `data/.vapid/`, any `npm run dev` process state (but its open connections are terminated).
 
@@ -82,6 +97,8 @@ Untouched: local filesystem, `.env`, VAPID private key under `data/.vapid/`, any
 | `schema hash mismatch`                              | Local is on a different commit than the VPS. Check out the matching commit locally, or deploy the matching commit to the VPS. |
 | `local service 'db' is not running`                 | Start the dev stack: `docker compose up -d`.                                                                                  |
 | `VPS users table is empty`                          | VPS hasn't been bootstrapped/seeded. Nothing to pull.                                                                         |
+| `the VPS app has no readable binary identity`       | The VPS app was restarted without the paste. Load it ([binary-key/load.md](binary-key/load.md)), retry.                       |
+| `re-wrapped N of M envelopes`                       | An upload on the VPS changed the row count between count and re-wrap. Retry.                                                  |
 | `ERROR: current transaction is aborted` mid-restore | A stray DB connection beat the `pg_terminate_backend` step. Stop `npm run dev`, retry.                                        |
 | Local dev server errors after sync                  | Expected — the connection pool now points at refreshed tables. Restart `npm run dev`.                                         |
 
@@ -89,7 +106,7 @@ Untouched: local filesystem, `.env`, VAPID private key under `data/.vapid/`, any
 
 - Restart `npm run dev` — tsx will reconnect against the refreshed DB.
 - Log in with any seed user (e.g. `inhaber` / `changeme`) — confirm your local browser session matches what you saw on the VPS.
-- Open a project with an attachment — confirm thumbnails render (proves bucket + DB are in sync).
+- Open a project with an attachment — confirm thumbnails render, download an invoice PDF (proves bucket, envelopes and version ids are in sync).
 
 ## Relationship to other workflows
 

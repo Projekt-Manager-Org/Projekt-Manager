@@ -51,19 +51,17 @@ ERROR: the pasted keyring does not match BINARY_AGE_RECIPIENT + BINARY_AGE_RETIR
        unlisted: age1...
 ```
 
-- **`unlisted`** — the paste holds a key the deploy doesn't name. Most often the **backup drill identity** pasted into `load-binary-key` — same shape file, different keypair.
-- **`missing`** — a configured key is not in the paste. Missing the active one: the wrong file, or a copy from before the last rotation. Missing a retired one: the new key alone pasted instead of the keyring, or a keyring not built per [rotation.md § 1](rotation.md#1-mint-the-new-key-and-build-the-keyring).
+- **`unlisted`** — the paste holds a key the deploy doesn't name. Most often the **backup drill identity** pasted into `load-binary-key` (or the binary keyring into `load-drill-key`) — same shape file, different keypair.
+- **`missing`** — a configured key is not in the paste. Missing the active one: the wrong entry, or a copy from before the last rotation. Missing a retired one: the new key alone pasted instead of the keyring, or a keyring not built per [rotation.md § 1](rotation.md#1-mint-the-new-key-and-build-the-keyring).
 
-Compare the workstation against the deployed values:
+Derive the recipients from the password-manager entries per the [recipient check](../index.md#working-file), once per entry: the binary entry should give `BINARY_AGE_RECIPIENT` plus every `BINARY_AGE_RETIRED_RECIPIENTS` entry (pipe it through `sort`), the backup entry `AGE_RECIPIENT`. The deployed values:
 
 ```bash
-age-keygen -y ~/secrets/binary-identity.txt | sort    # workstation keyring
-age-keygen -y ~/secrets/age-backup.key                # must be AGE_RECIPIENT
 sudo -u deploy docker exec projekt-manager-app-1 \
   printenv BINARY_AGE_RECIPIENT BINARY_AGE_RETIRED_RECIPIENTS    # on the VPS
 ```
 
-If the keyring holds the right keys but the deployed values differ, `secrets.env.age` drifted — most likely a rotation updated only one side. Fix it per [rotation.md § 2](rotation.md#2-update-both-recipient-variables-and-redeploy) and redeploy.
+If the entry holds the right keys but the deployed values differ, `secrets.env.age` drifted — most likely a rotation updated only one side. Fix it per [rotation.md § 2](rotation.md#2-update-both-recipient-variables-and-redeploy) and redeploy.
 
 ## Tmpfs not a mount
 
@@ -116,7 +114,7 @@ The monthly drill ([drills.md](drills.md)) exited non-zero; the index entry's `e
 `no identity matched any of the recipients` (unwrap):
 
 - The custody copy you loaded lacks the key the sample is wrapped to. Either it predates the most recent rotation (no active key) or it is corrupted.
-- **Action:** test the _other_ off-system custody copy immediately per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation). If both copies fail, you are in a custody emergency — extract the in-tmpfs identity per recovery.md before any reboot.
+- **Action:** test the _other_ custody copies immediately per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation). If every copy fails, you are in a custody emergency — extract the in-tmpfs identity per recovery.md before any reboot.
 
 `object metadata carries no wrapped envelope`: the sample predates self-describing objects (#478) or was not written by the app. Pick a fresh upload.
 
@@ -126,12 +124,12 @@ The monthly drill ([drills.md](drills.md)) exited non-zero; the index entry's `e
 
 ## Escalation threshold
 
-If you cannot decrypt the most recent test upload using the current workstation identity copy, the binary domain is **broken**. Escalate immediately to the owner — this is the same severity class as Layer 2 escalation in [docs/ops/backup/troubleshooting.md § Escalation threshold](../backup/troubleshooting.md#escalation-threshold), with worse business impact (binaries are deliverables).
+If you cannot decrypt the most recent test upload with any custody copy, the binary domain is **broken**. Escalate immediately to the owner — this is the same severity class as Layer 2 escalation in [docs/ops/backup/troubleshooting.md § Escalation threshold](../backup/troubleshooting.md#escalation-threshold), with worse business impact (binaries are deliverables).
 
 Next steps depend on the failure surface:
 
-1. **If the workstation identity is gone but the VPS tmpfs has the correct identity** (i.e., the deployed app is still serving uploads/downloads correctly): see [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation) — extract the tmpfs identity to the workstation before any reboot.
-2. **If the deployed app is also broken** (uploads or downloads failing): the in-tmpfs identity may be wrong or the recipient drifted. Reload from the workstation working copy per [load.md](load.md). If the workstation copy doesn't match either, [recovery.md § Burn-and-restart](recovery.md#4-burn-and-restart-both-copies-lost-no-working-tmpfs) is the last-resort path.
+1. **If every custody copy is gone but the VPS tmpfs has the correct identity** (i.e., the deployed app is still serving uploads/downloads correctly): see [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation) — extract the tmpfs identity before any reboot.
+2. **If the deployed app is also broken** (uploads or downloads failing): the in-tmpfs identity may be wrong or the recipient drifted. Reload from the password-manager entry per [load.md](load.md). If no custody copy matches either, [recovery.md § Burn-and-restart](recovery.md#4-burn-and-restart-all-copies-lost-no-working-tmpfs) is the last-resort path.
 
 ## Owner / escalation contact
 

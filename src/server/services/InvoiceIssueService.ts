@@ -2,8 +2,8 @@
  * Invoice issuance atom — split off `InvoiceService` per C-SIZE.
  *
  * The issuance transaction is the load-bearing primitive. One DB
- * transaction, inside `mutate()`; numbers match the step comments in
- * `runIssueInsideTx`:
+ * transaction, two audit rows (`mutateInTx()`); numbers match the step
+ * comments in `runIssueInsideTx`:
  *
  *   0.   Lock the draft row; state and version checks (data-model.md §6.4).
  *   1–3. Preconditions: lines, performance date and recipient complete,
@@ -18,9 +18,10 @@
  *        row except the cancel flip.
  *   7.   Persist the encrypted PDF (`InvoiceBinaryService.persistRendered`).
  *   8.   ONE UPDATE: draft → issued, snapshot and descriptor together.
- *   9.   Flip the parent project to `abgerechnet`.
- *   Then `mutate()` writes the `invoice:issue` audit row and commits.
- *   Post-commit: `emitInvoiceChanged()` and `emitProjectChanged()`
+ *   9.   Move the parent project to `abgerechnet` through the standard
+ *        transition path — its own `transition:forward` audit row.
+ *   Then the `invoice:issue` audit row, and commit. Post-commit: both
+ *   rows dispatched, `emitInvoiceChanged()` and `emitProjectChanged()`
  *   (AC-287).
  */
 
@@ -28,9 +29,12 @@ import { eq, and } from 'drizzle-orm';
 import type { Database, MutatingDatabase } from '../db/connection.js';
 import { projects } from '../db/schema.js';
 import type { ServiceLogger } from './Logger.js';
-import { mutate } from './mutate.js';
+import { mutateInTx, dispatchAuditRows, type MutateContext } from './mutate.js';
+import type { AuditLogRow } from './audit-publisher.js';
+import { transitionForwardInTx } from './ProjectTransitionService.js';
 import { projectAuditLabel } from '../../domain/audit.js';
-import { getProjectRowById } from '../repositories/project.js';
+import { ConcurrentModificationError, ProjectNotFoundError } from '../repositories/project.js';
+import type { TransitionResult } from '../repositories/project-transitions.js';
 import {
   computeInvoiceTotals,
   invalidStoredLineFields,
@@ -47,7 +51,6 @@ import {
   getInvoiceRowForMutation,
   allocateInvoiceNumber,
   applyIssuanceUpdate,
-  flipParentProjectStatusToAbgerechnet,
   type InvoiceRow,
 } from '../repositories/invoice-read.js';
 import { assertCompanyProfileComplete, toCompanyProfileResponse } from './CompanyProfileService.js';
@@ -102,15 +105,25 @@ export class InvoiceIssueService {
     // sequence).
     now: Date = new Date(),
   ): Promise<Invoice> {
-    const issued = await mutate(
-      this.db,
-      { actorKind: 'user', actorId: userId, correlationId: correlationId ?? null },
-      {
+    const ctx: MutateContext = {
+      actorKind: 'user',
+      actorId: userId,
+      correlationId: correlationId ?? null,
+    };
+    // Both audit rows — the project transition and `invoice:issue` —
+    // are collected here and dispatched once, after commit.
+    const collected: AuditLogRow[] = [];
+    const issued = await this.db.transaction(async (tx) => {
+      const { value, auditRow } = await mutateInTx(tx, ctx, {
         entityType: 'invoice',
         action: 'invoice:issue',
-        run: async (tx) => this.runIssueInsideTx(tx, id, expectedVersion, userId, now),
-      },
-    );
+        run: async (innerTx) =>
+          this.runIssueInsideTx(innerTx, ctx, collected, id, expectedVersion, userId, now),
+      });
+      collected.push(auditRow);
+      return value;
+    });
+    await dispatchAuditRows(collected);
     log.info({ invoiceId: id }, 'invoice_issued');
     emitInvoiceChanged();
     // AC-287: the issuance flipped `projects.status` to
@@ -123,13 +136,16 @@ export class InvoiceIssueService {
   }
 
   /**
-   * The body of the issuance atom. Lives inside `mutate()` so the audit
-   * row commits with every other change. Splitting it out keeps the
+   * The body of the issuance atom. Runs inside `mutateInTx()` so the
+   * audit rows commit with every other change; the project transition's
+   * row is pushed onto `collected`. Splitting it out keeps the
    * step list readable and lets `cancel()` reuse the snapshot/render
    * portion against the Storno's own sequence.
    */
   private async runIssueInsideTx(
     tx: MutatingDatabase,
+    ctx: MutateContext,
+    collected: AuditLogRow[],
     invoiceId: string,
     expectedVersion: number,
     userId: string,
@@ -328,22 +344,28 @@ export class InvoiceIssueService {
       updatedBy: userId,
     });
 
-    // 9. Flip the parent project's status to `abgerechnet` inside
-    //    this same tx (the project transition is part of the issue
-    //    atom — AC-287). The repo function holds the ADR-0026
-    //    rationale (side-effect of issuance, not its own audit event).
-    await flipParentProjectStatusToAbgerechnet(tx, before.projectId, userId, issueDate);
-
-    // Snapshot the parent project's audit label inside this tx so the
-    // audit row's `ancestorEntityLabel` matches the post-flip state.
-    // The FK from invoice→project guarantees existence; a missing row
-    // here is a programmer/integrity error and we refuse to write a
-    // half-formed audit entry.
-    const projectRow = await getProjectRowById(tx, before.projectId);
-    if (!projectRow) {
-      throw new Error(
-        `runIssueInsideTx: project ${before.projectId} missing for invoice ${invoiceId}`,
+    // 9. Move the parent project to `abgerechnet` through the standard
+    //    transition path (architecture.md §11.14 step 7): row lock,
+    //    status check, `transition:forward` audit row. Step 2 read the
+    //    status without a lock; a project moved out of
+    //    `rechnung_faellig` since then rejects the issue rather than
+    //    being overwritten (AC-287).
+    let transitioned: TransitionResult['project'];
+    try {
+      const transition = await transitionForwardInTx(
+        tx,
+        ctx,
+        before.projectId,
+        userId,
+        'rechnung_faellig',
+        issueDate,
       );
+      collected.push(transition.auditRow);
+      transitioned = transition.value.project;
+    } catch (err) {
+      if (err instanceof ConcurrentModificationError) throw invoiceProjectState();
+      if (err instanceof ProjectNotFoundError) throw notFound(STRINGS.entities.project);
+      throw err;
     }
 
     return {
@@ -369,7 +391,7 @@ export class InvoiceIssueService {
       },
       ancestorEntityType: 'project',
       ancestorEntityId: before.projectId,
-      ancestorEntityLabel: projectAuditLabel(projectRow),
+      ancestorEntityLabel: projectAuditLabel(transitioned),
     };
   }
 }

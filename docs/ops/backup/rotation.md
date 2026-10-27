@@ -18,13 +18,13 @@ sudo -u deploy docker stop projekt-manager-backup-1
 
 1. **Burn the R2 token.** Cloudflare dashboard → R2 Object Storage → **{ } API** → **Manage API tokens** → select the current token → **Delete**. Confirm. Every client using this token fails on its next call — the scheduler is already stopped, so the VPS side stays quiet.
 2. **Issue a fresh R2 token.** Re-run [setup.md §1.4](setup.md#14-create-the-api-token). Capture the new Access Key ID, Secret Access Key, Endpoint URL.
-3. **(Optional) Rotate the age key pair.** Do this if the private identity is suspected compromised, the operator workstation was lost, or on a slower cadence than the token rotation.
+3. **(Optional) Rotate the age key pair.** Do this if the password-manager entry or a custody copy is suspected compromised, the operator workstation was lost, or on a slower cadence than the token rotation.
 
    Cost: older R2 objects encrypted to the old recipient become unreadable by the new identity. Options:
    - **Accept the gap.** Old dumps age out under the lifecycle rule. During the immutable window ([ADR-0020 §Retention](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention)), any restore from locked artifacts must still use the old identity — keep it in the password manager, marked "retired, read-only".
-   - **Re-encrypt the lock window.** For each still-locked old object: download, `age -d -i ~/secrets/age-backup.key.old`, `age -r <new-recipient>`, re-upload under a new timestamped key. Labour-intensive; skip unless the old identity is confirmed compromised.
+   - **Re-encrypt the lock window.** For each still-locked old object: download, `age -d` with the retired identity in a [working file](../index.md#working-file), `age -r <new-recipient>`, re-upload under a new timestamped key. Labour-intensive; skip unless the old identity is confirmed compromised.
 
-   To rotate: rerun [setup.md §2](setup.md#2-generate-the-age-key-pair) with `~/secrets/age-backup.key.new`, update the password-manager entries, move the old identity to a "retired" vault.
+   To rotate: rerun [setup.md §2](setup.md#2-generate-the-age-key-pair) into a new password-manager entry; mark the old one "retired, read-only" ([Key custody](../index.md#key-custody)).
 
 4. **Push the new creds to the VPS.** Rerun [setup.md §3](setup.md#3-push-r2-credentials--recipient-to-the-vps) with the new R2 values and (if rotated) the new `AGE_RECIPIENT`.
 5. **Redeploy.** Rerun [setup.md §4](setup.md#4-first-deploy).

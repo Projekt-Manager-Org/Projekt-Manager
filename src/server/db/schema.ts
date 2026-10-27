@@ -542,18 +542,6 @@ export const attachments = pgTable(
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     originalKey: text('original_key').notNull(),
     thumbKey: text('thumb_key'),
-    /**
-     * Declared sizeBytes of the thumbnail blob, persisted at init-time.
-     * The presigned PUT pins this exact value into the SigV4 signature,
-     * but the persisted copy lets `completeUpload` re-assert size at
-     * HEAD-verify time — defence in depth against a signature bypass.
-     * Mirrors the original side's `sizeBytes` re-assertion.
-     *
-     * Null for binaries (no thumb) and for legacy pending rows that
-     * predate this column. Both make the value structurally absent
-     * rather than meaningless.
-     */
-    thumbSizeBytes: bigint('thumb_size_bytes', { mode: 'number' }),
     hasThumbnail: boolean('has_thumbnail').notNull().default(false),
     /**
      * Ciphertext size of the original blob — the byte count the server
@@ -701,7 +689,7 @@ export const attachments = pgTable(
  * concerns. The FK cascade hard-deletes the row alongside the parent
  * project on purge.
  *
- * Plaintext counters sum `size_bytes + COALESCE(thumb_size_bytes, 0)` —
+ * Plaintext counters sum `size_bytes` —
  * the user-facing "what I uploaded" view. Ciphertext counters sum the
  * `ciphertext_*` analogues — the operator-facing "what is on object
  * storage" view. Both axes track each row's contribution to the matching

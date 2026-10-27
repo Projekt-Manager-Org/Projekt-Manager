@@ -6,8 +6,8 @@
 # containing db.sql and bucket/ prepared by the orchestrator.
 #
 # Env contract:
-#   REMOTE_TMP       directory on VPS holding db.sql and bucket/
-#   MC_IMAGE         mc image ref, passed by scripts/sync-dev-to-vps.sh
+#   REMOTE_TMP       directory on VPS holding db.sql, bucket/ and the
+#                    helpers the orchestrator ships alongside
 #   COMPOSE_PROJECT  compose project name (projekt-manager) — used to find
 #                    the running containers. The bucket itself lives at
 #                    Backblaze B2 since the ddff944 topology switch (ADR-0022);
@@ -35,7 +35,6 @@
 set -euo pipefail
 
 : "${REMOTE_TMP:?REMOTE_TMP must be set}"
-: "${MC_IMAGE:?MC_IMAGE must be set}"
 : "${COMPOSE_PROJECT:?COMPOSE_PROJECT must be set}"
 
 DB_CONTAINER="${COMPOSE_PROJECT}-db-1"
@@ -68,6 +67,9 @@ B2_ENDPOINT=$(docker exec "$APP_CONTAINER" printenv STORAGE_ENDPOINT)
 B2_BUCKET=$(docker exec "$APP_CONTAINER" printenv STORAGE_BUCKET)
 B2_KEY=$(docker exec "$APP_CONTAINER" printenv STORAGE_ACCESS_KEY)
 B2_SECRET=$(docker exec "$APP_CONTAINER" printenv STORAGE_SECRET_KEY)
+# Compose always defines it (empty means 0, as in the app), so a failed
+# read aborts here rather than writing invoice PDFs without their lock.
+INVOICE_OBJECT_LOCK_DAYS=$(docker exec "$APP_CONTAINER" printenv INVOICE_OBJECT_LOCK_DAYS)
 
 # Pause the backup container if active (profile-gated, may not exist) so
 # its in-process croner schedule can't fire a backup tick mid-restore —
@@ -118,7 +120,7 @@ docker exec -i "$DB_CONTAINER" \
 # in sync-dev-to-vps.sh) is not version-aware: when the source's current
 # version is a delete marker, `mc mirror` writes nothing for that key.
 # Every dev-side `hidden` (Papierkorb) row therefore arrives with a DB row
-# but zero bytes on B2 after the mirror below — restore would surface 422
+# but zero bytes on B2 after the object restore below — restore would surface 422
 # restoreMissingVersionId. Project policy is that "deleted means gone,
 # even if takes some time to be truly gone": drop the rows so DB and
 # bucket agree. The `attachments_storage_usage_delta` trigger fires per
@@ -130,70 +132,35 @@ docker exec "$DB_CONTAINER" \
   "DELETE FROM attachments WHERE status = 'hidden';" \
   >/dev/null
 
-# Mirror local-dump → B2 bucket. `mc alias set` avoids URL-encoding
-# pitfalls of `MC_HOST_*=` when an applicationKey contains `+` or `/`.
-# `--overwrite` replaces objects whose keys match (creating a new B2
-# version, never destroying the previous one); `--remove` drops keys at the
-# destination that are absent in the source (issuing a version-less
-# DeleteObject, which on B2 creates a delete marker — safe under ADR-0022's
-# capability split: the app key has writeFiles but not deleteFiles, so no
-# version is destroyed). Together they make the VPS bucket an exact mirror
-# of the local dump, with no destructive writes.
-#
-# `--md5` is required: the bucket has Compliance Object Lock with a
-# bucket-default retention (ADR-0022), so every PutObject implicitly carries
-# Object Lock parameters. The S3 spec requires PutObject with Object Lock
-# parameters to include Content-MD5 or x-amz-checksum-* — B2 enforces this
-# and rejects bare PUTs with "Content-MD5 OR x-amz-checksum-* HTTP header
-# is required for Put Object requests with Object Lock parameters". Trades
-# one extra read pass per file for compliance with the lock contract.
+# Write the bucket dump to B2, each object with its metadata rebuilt
+# from the restored row (#627). The dump is a plain directory and holds
+# no S3 user metadata, so `mc mirror` would land every object without its
+# wrapped envelope and invoice number — undecryptable by the recovery
+# tool (AC-439). The rows now carry the envelopes re-wrapped to this
+# host's recipient (rewrap-dek-envelopes.sh); the invoice number comes
+# from the invoice that renders the PDF, which also gets this app's
+# INVOICE_OBJECT_LOCK_DAYS lock, as on issuance. The helper writes new
+# versions for dumped keys that have a row and delete markers for the
+# rest, nothing destroyed (ADR-0022), and emits the UPDATEs pointing
+# version_id / thumb_version_id at the versions it wrote.
 echo "  restoring object storage..."
-docker run --rm \
-  -v "$REMOTE_TMP/bucket:/data:ro" \
-  -e B2_ENDPOINT="$B2_ENDPOINT" \
-  -e B2_KEY="$B2_KEY" \
-  -e B2_SECRET="$B2_SECRET" \
-  -e B2_BUCKET="$B2_BUCKET" \
-  --entrypoint sh \
-  "$MC_IMAGE" \
-  -c '
-    mc alias set b2 "$B2_ENDPOINT" "$B2_KEY" "$B2_SECRET" --api S3v4 >/dev/null
-    mc mirror --overwrite --remove --md5 /data "b2/$B2_BUCKET"
-  ' >/dev/null
-
-# Repair attachments.{version_id,thumb_version_id} so they reference
-# the freshly-PUT B2 versions just produced by `mc mirror`. Without
-# this, every row arrives with a dev-side MinIO version_id (UUID-shaped)
-# that B2 does not recognise — gallery downloads would surface as
-# `S3ServiceException InternalError 500` from CopyObject (or now 410
-# GONE per the HEAD-probe in the storage layer, 961fa9c). The Python
-# helper walks list_object_versions once, joins against the attachments
-# table extracted via psql, and emits UPDATE statements; we pipe them
-# straight back into psql.
-#
-# Idempotent: re-running converges to the same state.
-echo "  repairing attachments version_ids..."
-ATTACHMENTS_TSV="$REMOTE_TMP/attachments.tsv"
-docker exec "$DB_CONTAINER" \
-  psql -U pm -d projekt_manager -tA -F $'\t' -c "
-    SELECT id,
-           original_key,
-           COALESCE(thumb_key, ''),
-           COALESCE(version_id, ''),
-           COALESCE(thumb_version_id, '')
-      FROM attachments
-  " > "$ATTACHMENTS_TSV"
-REPAIR_SQL="$REMOTE_TMP/repair-versionids.sql"
+OBJECTS_TSV="$REMOTE_TMP/objects.tsv"
+docker exec -i "$DB_CONTAINER" \
+  psql -U pm -d projekt_manager -v ON_ERROR_STOP=1 -tA -F $'\t' \
+  < "$REMOTE_TMP/restore-bucket-objects.sql" > "$OBJECTS_TSV"
+VERSIONIDS_SQL="$REMOTE_TMP/versionids.sql"
 B2_ENDPOINT="$B2_ENDPOINT" \
 B2_BUCKET="$B2_BUCKET" \
 B2_KEY="$B2_KEY" \
 B2_SECRET="$B2_SECRET" \
-ATTACHMENTS_TSV="$ATTACHMENTS_TSV" \
-  python3 "$REMOTE_TMP/repair-bucket-versionids.py" > "$REPAIR_SQL"
-if [ -s "$REPAIR_SQL" ]; then
+SOURCE_DIR="$REMOTE_TMP/bucket" \
+INVOICE_OBJECT_LOCK_DAYS="$INVOICE_OBJECT_LOCK_DAYS" \
+OBJECTS_TSV="$OBJECTS_TSV" \
+  python3 "$REMOTE_TMP/restore-bucket-objects.py" > "$VERSIONIDS_SQL"
+if [ -s "$VERSIONIDS_SQL" ]; then
   docker exec -i "$DB_CONTAINER" \
     psql -U pm -d projekt_manager -v ON_ERROR_STOP=1 --quiet \
-    < "$REPAIR_SQL" >/dev/null
+    < "$VERSIONIDS_SQL" >/dev/null
 fi
 
 # Unpause backup before the smoke probe so its croner schedule resumes

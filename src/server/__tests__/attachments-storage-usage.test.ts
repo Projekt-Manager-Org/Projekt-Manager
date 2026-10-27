@@ -1,7 +1,7 @@
 /**
  * API integration tests — storage usage (data-model.md §5.14).
  *
- * Pins three surfaces:
+ * Pins two surfaces:
  *
  *   - The per-project side table `project_storage_usage` (internal;
  *     design at `projectStorageUsage` in schema.ts) is maintained
@@ -13,12 +13,6 @@
  *     path issues the write. Project-purge cascade is pinned in
  *     `attachments-purge-cascade.test.ts`; the row aggregate ↔ view
  *     equality in `attachments-storage-usage-invariant.test.ts`.
- *
- *   - GET /api/projects/:id/storage-usage — payload shape; three-way
- *     result mirroring AC-410 / AC-147 (worker in scope → 200, worker
- *     out of scope → 403 NOT_PERMITTED, unknown id → 404 NOT_FOUND);
- *     401 / 422; all-zero buckets for a project with no attachments;
- *     no `audit_log` row.
  *
  *   - GET /api/storage-usage — `data:export` gate (api.md §14.3: owner
  *     / office → 200; worker / bookkeeper → 403; unauthed → 401), and
@@ -36,20 +30,10 @@ import { sql } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import type pg from 'pg';
 
-import {
-  startApp,
-  stopApp,
-  login,
-  authGet,
-  authPost,
-  authDelete,
-  createTestUserSession,
-} from '../../test/api-helpers.js';
+import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import type { Database } from '../db/connection.js';
-
-const year = new Date().getFullYear();
 
 // ---------------------------------------------------------------------
 // Shapes pinned by the spec.
@@ -68,7 +52,6 @@ const ZERO_TOTALS: UsageTotals = {
 interface SeededRow {
   id: string;
   sizeBytes: number;
-  thumbSizeBytes: number | null;
   ciphertextSizeBytes: number;
   ciphertextThumbSizeBytes: number | null;
 }
@@ -91,7 +74,6 @@ async function seedPendingRow(
   projectId: string,
   opts: {
     sizeBytes: number;
-    thumbSizeBytes?: number | null;
     ciphertextSizeBytes: number;
     ciphertextThumbSizeBytes?: number | null;
     kind?: 'photo' | 'binary';
@@ -99,11 +81,10 @@ async function seedPendingRow(
 ): Promise<SeededRow> {
   const id = crypto.randomUUID();
   const isPhoto = (opts.kind ?? 'binary') === 'photo';
-  const hasThumb = opts.thumbSizeBytes != null;
+  const hasThumb = opts.ciphertextThumbSizeBytes != null;
   await db.execute(sql`
     INSERT INTO attachments
       (id, project_id, status, kind, label, filename, mime_type, size_bytes,
-       thumb_size_bytes,
        ciphertext_size_bytes, ciphertext_thumb_size_bytes,
        original_key, thumb_key, has_thumbnail,
        wrapped_dek, wrapped_thumb_dek, wrapped_dek_version)
@@ -113,7 +94,6 @@ async function seedPendingRow(
             ${'p-' + id.slice(0, 6)},
             ${isPhoto ? 'image/jpeg' : 'application/pdf'},
             ${opts.sizeBytes},
-            ${opts.thumbSizeBytes ?? null},
             ${opts.ciphertextSizeBytes},
             ${opts.ciphertextThumbSizeBytes ?? null},
             ${`attachments/${projectId}/${id}.orig`},
@@ -124,7 +104,6 @@ async function seedPendingRow(
   return {
     id,
     sizeBytes: opts.sizeBytes,
-    thumbSizeBytes: opts.thumbSizeBytes ?? null,
     ciphertextSizeBytes: opts.ciphertextSizeBytes,
     ciphertextThumbSizeBytes: opts.ciphertextThumbSizeBytes ?? null,
   };
@@ -199,14 +178,6 @@ async function readUsageRow(db: Database, projectId: string): Promise<UsageTotal
   };
 }
 
-async function projectIdByNumber(ownerToken: string, number: string): Promise<string> {
-  const res = await authGet(ownerToken, '/api/projects?limit=200');
-  const rows = res.json().data as { id: string; number: string }[];
-  const p = rows.find((r) => r.number === number);
-  if (!p) throw new Error(`seed missing project ${number}`);
-  return p.id;
-}
-
 async function createProject(ownerToken: string): Promise<string> {
   const customersRes = await authGet(ownerToken, '/api/customers');
   const customers = customersRes.json().customers ?? customersRes.json().data;
@@ -242,7 +213,6 @@ describe('Project storage usage tracking', () => {
   let officeToken: string;
   let workerToken: string;
   let bookkeeperToken: string;
-  let noPermsToken: string;
 
   beforeAll(async () => {
     await startApp();
@@ -252,8 +222,6 @@ describe('Project storage usage tracking', () => {
       login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD),
       login(SEED_USERS.bookkeeper.username, SEED_DEFAULT_PASSWORD),
     ]);
-    const none = await createTestUserSession({ roles: [] });
-    noPermsToken = none.token;
 
     // Independent pool for raw-SQL fixtures and side-table reads.
     // `startApp()` keeps its own pool inside the helper module; tearing
@@ -300,16 +268,15 @@ describe('Project storage usage tracking', () => {
     it('complete (pending → ready) adds bytes to the ready bucket on both axes (photo with thumb)', async () => {
       const photo = await seedPendingRow(db, projectId, {
         sizeBytes: 4096,
-        thumbSizeBytes: 256,
         ciphertextSizeBytes: 4160,
         ciphertextThumbSizeBytes: 320,
         kind: 'photo',
       });
       await completeUpload(db, photo.id);
 
-      // Plaintext: 4096 + 256 (thumb included). Ciphertext: 4160 + 320.
+      // Plaintext: the original only (data-model.md §5.14). Ciphertext: 4160 + 320.
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 4352, ciphertext: 4480 },
+        ready: { plaintext: 4096, ciphertext: 4480 },
         hidden: { plaintext: 0, ciphertext: 0 },
       });
     });
@@ -331,7 +298,6 @@ describe('Project storage usage tracking', () => {
     it('user-DELETE (ready → hidden) moves bytes ready → hidden on both axes', async () => {
       const photo = await seedPendingRow(db, projectId, {
         sizeBytes: 4096,
-        thumbSizeBytes: 256,
         ciphertextSizeBytes: 4160,
         ciphertextThumbSizeBytes: 320,
         kind: 'photo',
@@ -341,14 +307,13 @@ describe('Project storage usage tracking', () => {
 
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: { plaintext: 0, ciphertext: 0 },
-        hidden: { plaintext: 4352, ciphertext: 4480 },
+        hidden: { plaintext: 4096, ciphertext: 4480 },
       });
     });
 
     it('restore (hidden → ready) moves bytes hidden → ready on both axes', async () => {
       const photo = await seedPendingRow(db, projectId, {
         sizeBytes: 4096,
-        thumbSizeBytes: 256,
         ciphertextSizeBytes: 4160,
         ciphertextThumbSizeBytes: 320,
         kind: 'photo',
@@ -358,7 +323,7 @@ describe('Project storage usage tracking', () => {
       await restoreRow(db, photo.id);
 
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 4352, ciphertext: 4480 },
+        ready: { plaintext: 4096, ciphertext: 4480 },
         hidden: { plaintext: 0, ciphertext: 0 },
       });
     });
@@ -400,7 +365,6 @@ describe('Project storage usage tracking', () => {
       // matching sign flip on `restore`).
       const photo = await seedPendingRow(db, projectId, {
         sizeBytes: 8192,
-        thumbSizeBytes: 512,
         ciphertextSizeBytes: 8256,
         ciphertextThumbSizeBytes: 576,
         kind: 'photo',
@@ -416,7 +380,7 @@ describe('Project storage usage tracking', () => {
       // Complete the photo.
       await completeUpload(db, photo.id);
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 8192 + 512, ciphertext: 8256 + 576 },
+        ready: { plaintext: 8192, ciphertext: 8256 + 576 },
         hidden: { plaintext: 0, ciphertext: 0 },
       });
 
@@ -424,7 +388,7 @@ describe('Project storage usage tracking', () => {
       await completeUpload(db, binary.id);
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: {
-          plaintext: 8192 + 512 + 16384,
+          plaintext: 8192 + 16384,
           ciphertext: 8256 + 576 + 16448,
         },
         hidden: { plaintext: 0, ciphertext: 0 },
@@ -434,14 +398,14 @@ describe('Project storage usage tracking', () => {
       await hideRow(db, photo.id);
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: { plaintext: 16384, ciphertext: 16448 },
-        hidden: { plaintext: 8192 + 512, ciphertext: 8256 + 576 },
+        hidden: { plaintext: 8192, ciphertext: 8256 + 576 },
       });
 
       // Restore the photo.
       await restoreRow(db, photo.id);
       expect(await readUsageRow(db, projectId)).toEqual({
         ready: {
-          plaintext: 8192 + 512 + 16384,
+          plaintext: 8192 + 16384,
           ciphertext: 8256 + 576 + 16448,
         },
         hidden: { plaintext: 0, ciphertext: 0 },
@@ -450,14 +414,14 @@ describe('Project storage usage tracking', () => {
       // Hide the binary.
       await hideRow(db, binary.id);
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 8192 + 512, ciphertext: 8256 + 576 },
+        ready: { plaintext: 8192, ciphertext: 8256 + 576 },
         hidden: { plaintext: 16384, ciphertext: 16448 },
       });
 
       // Hidden reaper purges the hidden binary.
       await deleteRow(db, binary.id);
       expect(await readUsageRow(db, projectId)).toEqual({
-        ready: { plaintext: 8192 + 512, ciphertext: 8256 + 576 },
+        ready: { plaintext: 8192, ciphertext: 8256 + 576 },
         hidden: { plaintext: 0, ciphertext: 0 },
       });
     });
@@ -545,98 +509,6 @@ describe('Project storage usage tracking', () => {
   });
 
   // -------------------------------------------------------------------
-  // GET /api/projects/:id/storage-usage contract.
-  // -------------------------------------------------------------------
-  describe('GET /api/projects/:id/storage-usage contract', () => {
-    let assignedProjectId: string;
-    let unassignedProjectId: string;
-
-    beforeAll(async () => {
-      // Worker1 is assigned to YYYY-007, -008, -009, -011 per
-      // src/server/seed/business.ts (mirrors attachments-scope.test.ts).
-      assignedProjectId = await projectIdByNumber(ownerToken, `${year}-007`);
-      unassignedProjectId = await projectIdByNumber(ownerToken, `${year}-001`);
-    });
-
-    it('returns 200 with the four-bucket payload for an authenticated owner', async () => {
-      const res = await authGet(ownerToken, `/api/projects/${assignedProjectId}/storage-usage`);
-      expect(res.statusCode).toBe(200);
-      const body = res.json();
-      expect(body).toEqual({
-        ready: { plaintext: expect.any(Number), ciphertext: expect.any(Number) },
-        hidden: { plaintext: expect.any(Number), ciphertext: expect.any(Number) },
-      });
-      // Each leaf is a non-negative integer byte count.
-      for (const bucket of ['ready', 'hidden'] as const) {
-        for (const axis of ['plaintext', 'ciphertext'] as const) {
-          const v = body[bucket][axis];
-          expect(Number.isInteger(v)).toBe(true);
-          expect(v).toBeGreaterThanOrEqual(0);
-        }
-      }
-    });
-
-    it('returns all-zero buckets for a project with no attachments (not 404, not omitted)', async () => {
-      const fresh = await createProject(ownerToken);
-      const res = await authGet(ownerToken, `/api/projects/${fresh}/storage-usage`);
-      expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual(ZERO_TOTALS);
-    });
-
-    it('returns 200 for a worker on an assigned project', async () => {
-      const res = await authGet(workerToken, `/api/projects/${assignedProjectId}/storage-usage`);
-      expect(res.statusCode).toBe(200);
-    });
-
-    it('returns 403 NOT_PERMITTED for a worker on a project they are not assigned to', async () => {
-      // Distinguishability mirrors AC-410 / AC-147: an existing project
-      // outside the caller's scope is 403, not 404.
-      const res = await authGet(workerToken, `/api/projects/${unassignedProjectId}/storage-usage`);
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('NOT_PERMITTED');
-    });
-
-    it('returns 404 NOT_FOUND for an unknown project id (distinguishable from 403)', async () => {
-      // Worker (the most-scoped role) — load-bearing case for the
-      // missing-vs-out-of-scope distinction. Mirrors attachments-scope
-      // test for AC-410: a worker on a real-but-out-of-scope project
-      // gets 403; a worker on an unknown id gets 404. Conflating the
-      // two would leak existence info through a differential response.
-      const missingId = '00000000-0000-0000-0000-000000000099';
-      const res = await authGet(workerToken, `/api/projects/${missingId}/storage-usage`);
-      expect(res.statusCode).toBe(404);
-      expect(res.json().code).toBe('NOT_FOUND');
-    });
-
-    it('returns 401 UNAUTHENTICATED for an unauthenticated request', async () => {
-      const res = await authGet('', `/api/projects/${assignedProjectId}/storage-usage`);
-      expect(res.statusCode).toBe(401);
-    });
-
-    it('returns 422 VALIDATION_ERROR for a syntactically invalid project id', async () => {
-      const res = await authGet(ownerToken, `/api/projects/not-a-uuid/storage-usage`);
-      expect(res.statusCode).toBe(422);
-      expect(res.json().code).toBe('VALIDATION_ERROR');
-    });
-
-    it('returns 403 NOT_PERMITTED for a user with no roles', async () => {
-      const res = await authGet(noPermsToken, `/api/projects/${assignedProjectId}/storage-usage`);
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('NOT_PERMITTED');
-    });
-
-    it('produces no audit_log row on a successful read', async () => {
-      // The endpoint is a read; the audit invariant (AC-177) applies
-      // only to mutations. Mirrors the audit-log read endpoints in
-      // §14.2.8.
-      const before = await countAuditRows(db);
-      const res = await authGet(ownerToken, `/api/projects/${assignedProjectId}/storage-usage`);
-      expect(res.statusCode).toBe(200);
-      expect(await countAuditRows(db)).toBe(before);
-    });
-  });
-
-  // -------------------------------------------------------------------
   // GET /api/storage-usage contract (data:export gate, api.md §14.3).
   // -------------------------------------------------------------------
   describe('GET /api/storage-usage contract', () => {
@@ -702,8 +574,8 @@ describe('Project storage usage tracking', () => {
       // attachments still exist and count until purge cascades them away.
       // One archived project carries every bucket case: a ready binary, a
       // ready photo with its thumbnail, a hidden binary, and a pending row
-      // that must count toward nothing. Upload never records the plaintext
-      // thumbnail size, so the photo's thumbnail counts only as stored bytes.
+      // that must count toward nothing. Plaintext totals cover originals
+      // only (data-model.md §5.14), so the thumbnail counts only as stored bytes.
       await db.execute(sql`DELETE FROM attachments`);
       const archivedProjectId = await createProject(ownerToken);
       const readyBinary = await seedPendingRow(db, archivedProjectId, {

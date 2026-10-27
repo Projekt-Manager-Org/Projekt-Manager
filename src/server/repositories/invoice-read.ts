@@ -594,30 +594,6 @@ export async function applyIssuanceUpdate(
 }
 
 /**
- * Flip the parent project's status to `'abgerechnet'` inside the
- * issuance transaction. NO separate `mutate()` call: per ADR-0026 the
- * project status flip is a side-effect of the issuance, not its own
- * audit event. The invoice audit row's ancestor pair surfaces the
- * change under the project's activity feed.
- */
-export async function flipParentProjectStatusToAbgerechnet(
-  tx: MutatingDatabase,
-  projectId: string,
-  userId: string,
-  when: Date,
-): Promise<void> {
-  await tx
-    .update(projects)
-    .set({
-      status: 'abgerechnet',
-      statusChangedAt: when,
-      updatedAt: when,
-      updatedBy: userId,
-    })
-    .where(eq(projects.id, projectId));
-}
-
-/**
  * Fields for inserting a Storno (cancellation) sibling row. The service
  * snapshots issuer/recipient/taxMode/profile/performanceDate from the
  * original byte-for-byte (AC-290), negates the lines and the totals,

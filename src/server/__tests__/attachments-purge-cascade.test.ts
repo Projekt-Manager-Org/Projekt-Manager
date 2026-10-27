@@ -244,31 +244,51 @@ describe('Attachment purge cascade', () => {
   // ON DELETE CASCADE` in schema.ts) — not an
   // orchestrated cleanup step.
   //
-  // Two assertions:
-  //   - GET /api/projects/:id/storage-usage on the purged id → 404
-  //     NOT_FOUND (the per-project surface treats a missing usage row
-  //     as a missing resource).
-  //   - GET /api/storage-usage no longer counts the purged project's
-  //     prior totals — the global sum drops by exactly the bytes that
-  //     were carried by the purged project at purge time.
-  //
-  // The trigger short-circuit (`pg_trigger_depth() > 1` in the
-  // baseline migration) is what keeps the cascade from re-firing the
-  // delta trigger while the row is being removed; this test verifies
-  // the externally-visible result, not the internals.
+  // GET /api/storage-usage no longer counts the purged project's prior
+  // totals — the global sum drops by exactly the bytes the purged
+  // project carried at purge time. A usage row surviving the purge would
+  // keep its totals: the trigger short-circuit (`pg_trigger_depth() > 1`
+  // in the baseline migration) skips the cascaded attachment deletes.
   // -------------------------------------------------------------------
   describe('project purge removes the storage-usage view', () => {
-    interface GlobalUsage {
+    interface UsageTotals {
       ready: { plaintext: number; ciphertext: number };
       hidden: { plaintext: number; ciphertext: number };
     }
 
-    async function readGlobalUsage(): Promise<GlobalUsage> {
+    async function readGlobalUsage(): Promise<UsageTotals> {
       const res = await authGet(ownerToken, '/api/storage-usage');
       if (res.statusCode !== 200) {
         throw new Error(`global usage read failed ${res.statusCode} ${res.body}`);
       }
-      return res.json() as GlobalUsage;
+      return res.json() as UsageTotals;
+    }
+
+    /** The project's `project_storage_usage` row, or null when absent. */
+    async function readProjectUsage(projectId: string): Promise<UsageTotals | null> {
+      const { db, pool } = createDatabase();
+      try {
+        const r = await db.execute(sql`
+          SELECT space_ready_bytes, space_hidden_bytes,
+                 ciphertext_ready_bytes, ciphertext_hidden_bytes
+          FROM project_storage_usage
+          WHERE project_id = ${projectId}
+        `);
+        const row = r.rows[0] as Record<string, string | number> | undefined;
+        if (!row) return null;
+        return {
+          ready: {
+            plaintext: Number(row.space_ready_bytes),
+            ciphertext: Number(row.ciphertext_ready_bytes),
+          },
+          hidden: {
+            plaintext: Number(row.space_hidden_bytes),
+            ciphertext: Number(row.ciphertext_hidden_bytes),
+          },
+        };
+      } finally {
+        await pool.end();
+      }
     }
 
     /** Direct-insert a hidden attachment so the purge covers both buckets. */
@@ -289,7 +309,6 @@ describe('Attachment purge cascade', () => {
         await db.execute(sql`
           INSERT INTO attachments
             (id, project_id, status, kind, label, filename, mime_type, size_bytes,
-             thumb_size_bytes,
              ciphertext_size_bytes, ciphertext_thumb_size_bytes,
              original_key, thumb_key, has_thumbnail, hidden_at,
              wrapped_dek, wrapped_thumb_dek, wrapped_dek_version)
@@ -299,7 +318,6 @@ describe('Attachment purge cascade', () => {
                   ${'h-' + id.slice(0, 6)},
                   ${withThumb ? 'image/jpeg' : 'application/pdf'},
                   2048,
-                  ${withThumb ? 256 : null},
                   2112, ${withThumb ? 320 : null},
                   ${originalKey}, ${thumbKey}, ${withThumb}, now(),
                   ${wrappedDek}, ${wrappedThumbDek}, 1)
@@ -310,31 +328,6 @@ describe('Attachment purge cascade', () => {
       return { id, originalKey, thumbKey };
     }
 
-    it('removes the per-project usage row (subsequent read → 404 NOT_FOUND)', async () => {
-      const projectId = await createProject(ownerToken, customerId);
-      // One ready, one hidden — the cascade must clear the usage row
-      // regardless of which buckets carried bytes.
-      await seedReadyAttachment(projectId, storage, true);
-      await seedHiddenAttachment(projectId, false);
-
-      // Pre-condition: the usage endpoint resolves while the project
-      // still exists.
-      const beforeRes = await authGet(ownerToken, `/api/projects/${projectId}/storage-usage`);
-      expect(beforeRes.statusCode).toBe(200);
-
-      await archiveProject(ownerToken, projectId);
-      const purgeRes = await authDelete(ownerToken, `/api/projects/${projectId}/purge`);
-      expect(purgeRes.statusCode).toBe(204);
-
-      // Per-project endpoint now resolves to 404 NOT_FOUND — the
-      // project no longer exists, so the storage-usage view does not
-      // either. Same shape as a never-existed id (the 404
-      // path; the absence of the parent row drives the response).
-      const afterRes = await authGet(ownerToken, `/api/projects/${projectId}/storage-usage`);
-      expect(afterRes.statusCode).toBe(404);
-      expect(afterRes.json().code).toBe('NOT_FOUND');
-    });
-
     it("excludes the purged project's prior totals from the global roll-up (AC-447)", async () => {
       const projectId = await createProject(ownerToken, customerId);
       await seedReadyAttachment(projectId, storage, true);
@@ -344,9 +337,8 @@ describe('Attachment purge cascade', () => {
       // global sum. After purge, the global sum drops by exactly the
       // per-project totals — this is the cascade made externally
       // observable.
-      const projectUsageRes = await authGet(ownerToken, `/api/projects/${projectId}/storage-usage`);
-      expect(projectUsageRes.statusCode).toBe(200);
-      const projectUsage = projectUsageRes.json() as GlobalUsage;
+      const projectUsage = await readProjectUsage(projectId);
+      if (!projectUsage) throw new Error('usage row missing before purge');
 
       const globalBefore = await readGlobalUsage();
 

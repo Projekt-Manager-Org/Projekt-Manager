@@ -49,15 +49,18 @@ B2_BUCKET=$(docker exec "$APP_CONTAINER" printenv STORAGE_BUCKET)
 B2_KEY=$(docker exec "$APP_CONTAINER" printenv STORAGE_ACCESS_KEY)
 B2_SECRET=$(docker exec "$APP_CONTAINER" printenv STORAGE_SECRET_KEY)
 
-# Mirror the bucket into a filesystem directory. `mc alias set` avoids the
-# URL-encoding pitfalls of `MC_HOST_*=` when an applicationKey contains `+`
-# or `/` (B2 keys are base64-shaped). `--overwrite --remove` keeps the dump
-# directory an exact mirror of the bucket across repeated runs, matching the
-# forward path's semantics. On B2 with versioning + Compliance Object Lock,
-# `--remove` issues version-less DeleteObject which creates delete markers
-# rather than destroying versions — safe under ADR-0022's capability split
-# (the app key has writeFiles but not deleteFiles).
+# Copy the bucket's current objects into a filesystem directory. `mc alias
+# set` avoids the URL-encoding pitfalls of `MC_HOST_*=` when an
+# applicationKey contains `+` or `/` (B2 keys are base64-shaped).
+# `cp --recursive`, not `mirror`: the bucket-scoped app key is denied the
+# bucket-level stat `mirror` starts with (#632), while `cp` only lists and
+# reads objects. $REMOTE_TMP is fresh per run, so a copy is a mirror. A key
+# whose current version is a delete marker yields no file.
+# Runs as the deploy uid so the orchestrator's cleanup can delete the dump
+# (as root it left the files behind); $HOME is then unwritable, hence the
+# explicit --config-dir.
 docker run --rm \
+  --user "$(id -u):$(id -g)" \
   -v "$REMOTE_TMP/bucket:/data" \
   -e B2_ENDPOINT="$B2_ENDPOINT" \
   -e B2_KEY="$B2_KEY" \
@@ -66,6 +69,6 @@ docker run --rm \
   --entrypoint sh \
   "$MC_IMAGE" \
   -c '
-    mc alias set b2 "$B2_ENDPOINT" "$B2_KEY" "$B2_SECRET" --api S3v4 >/dev/null
-    mc mirror --overwrite --remove "b2/$B2_BUCKET" /data
+    mc --config-dir /tmp/.mc alias set b2 "$B2_ENDPOINT" "$B2_KEY" "$B2_SECRET" --api S3v4 >/dev/null
+    mc --config-dir /tmp/.mc cp --recursive "b2/$B2_BUCKET/" /data/
   ' >/dev/null

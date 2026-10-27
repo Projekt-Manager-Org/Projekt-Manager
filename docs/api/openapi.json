@@ -1921,26 +1921,6 @@
         ]
       }
     },
-    "/api/projects/{id}/storage-usage": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ]
-      }
-    },
     "/api/storage-usage": {
       "get": {
         "security": [
