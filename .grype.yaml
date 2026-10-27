@@ -1,0 +1,8 @@
+# Grype allowlist — read by the nightly inventory scan.
+#
+# Schema and examples: docs/ops/dep-management.md § Allowlist; enforced
+# by scripts/check-allowlist-schema.sh. This file is also Grype's config:
+# it may hold `ignore:` only, so no scanner setting can slip in as an
+# exception.
+
+ignore: []

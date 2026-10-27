@@ -2,7 +2,7 @@
 #
 # Scenario tests for scripts/check-allowlist-schema.sh.
 #
-# Each case stages an osv-scanner.toml + .trivyignore pair in a fresh
+# Each case stages osv-scanner.toml, .trivyignore.yaml and/or .grype.yaml in a fresh
 # temp dir and runs the real check against it via $ALLOWLIST_REPO_ROOT.
 # Exits 0 when every case matches its expected exit code; 1 otherwise.
 #
@@ -43,10 +43,9 @@ mktmp() {
   local d
   d="$(mktemp -d)"
   TMP_DIRS+=("$d")
-  # Empty defaults so a case can stage just the file it cares about
-  # without the other file's contents changing the outcome.
+  # An empty osv-scanner.toml and no YAML allowlists, so a case stages
+  # just the file it cares about.
   : > "$d/osv-scanner.toml"
-  : > "$d/.trivyignore"
   echo "$d"
 }
 
@@ -73,7 +72,7 @@ assert_case() {
 # OK: empty files (current repo baseline) → exit 0
 # -------------------------------------------------------------
 dir="$(mktmp)"
-assert_case 0 "OK: empty osv-scanner.toml + empty .trivyignore" "$dir"
+assert_case 0 "OK: empty osv-scanner.toml, no YAML allowlists" "$dir"
 
 # -------------------------------------------------------------
 # FAIL-osv-missing-reason
@@ -145,47 +144,6 @@ ignoreUntil = $PLUS_30
 reason = "@vlzware: dead code path — function bundled but never reached at runtime"
 EOF
 assert_case 0 "OK-osv-real-entry" "$dir"
-
-# -------------------------------------------------------------
-# FAIL-trivy-no-comment-block — bare entry, no preceding comments
-# -------------------------------------------------------------
-dir="$(mktmp)"
-cat > "$dir/.trivyignore" <<EOF
-CVE-2026-12345 exp:$PLUS_30
-EOF
-assert_case 1 "FAIL-trivy-no-comment-block" "$dir"
-
-# -------------------------------------------------------------
-# FAIL-trivy-missing-owner — has `# reason:` but no `# owner:`
-# -------------------------------------------------------------
-dir="$(mktmp)"
-cat > "$dir/.trivyignore" <<EOF
-# reason: only inbound TCP 9000 is affected; our image binds 8080
-CVE-2026-12345 exp:$PLUS_30
-EOF
-assert_case 1 "FAIL-trivy-missing-owner" "$dir"
-
-# -------------------------------------------------------------
-# FAIL-trivy-no-exp — block complete, entry has no exp:
-# -------------------------------------------------------------
-dir="$(mktmp)"
-cat > "$dir/.trivyignore" <<EOF
-# owner: @vlzware
-# reason: only inbound TCP 9000 is affected; our image binds 8080
-CVE-2026-12345
-EOF
-assert_case 1 "FAIL-trivy-no-exp" "$dir"
-
-# -------------------------------------------------------------
-# OK-trivy-real-entry — full valid entry
-# -------------------------------------------------------------
-dir="$(mktmp)"
-cat > "$dir/.trivyignore" <<EOF
-# owner: @vlzware
-# reason: only inbound TCP 9000 is affected; our image binds 8080
-CVE-2026-12345 exp:$PLUS_30
-EOF
-assert_case 0 "OK-trivy-real-entry" "$dir"
 
 # -------------------------------------------------------------
 # Boundary cases — exact window edges
@@ -297,45 +255,146 @@ EOF
 assert_case 1 "FAIL-osv-handle-consecutive-hyphens" "$dir"
 
 # -------------------------------------------------------------
-# Trivy ID acceptance — script no longer enforces the ID's shape;
-# hyphenless KSV*, AVD-style with extra hyphens, and lowercase secret
-# rule IDs (`aws-access-token`) must all pass IF metadata is correct.
+# YAML allowlists — .trivyignore.yaml and .grype.yaml. One contract
+# (owner, reason, expiry within [today, today+90d], an id on every entry,
+# no unknown keys), spelt in each scanner's native key names so the
+# scanner itself reads the same fields:
+#
+#   file               id key         reason key  expiry key  scope key
+#   .trivyignore.yaml  id             statement   expired_at  paths
+#   .grype.yaml        vulnerability  reason      expires     package
+#
+# Both scanners silently accept unknown keys (measured: Trivy v0.70.0,
+# Grype v0.120.1). A misspelt scope key (`path:`, `packge:`) therefore
+# loads without error and widens a gosu-only ignore to every package;
+# a missing id leaves a scope-only rule — on Grype measured to suppress
+# every finding of that package type. Grype also honours no expiry.
+# The schema check is the only thing standing between a typo and a
+# blanket ignore.
 # -------------------------------------------------------------
 
-dir="$(mktmp)"
-cat > "$dir/.trivyignore" <<EOF
-# owner: @vlzware
-# reason: container scan finds KSV001 in IaC; manifest is dev-only
-KSV001 exp:$PLUS_30
+# Valid entries; failure cases derive from them by editing one line.
+# shellcheck disable=SC2317  # invoked indirectly via yaml_cases "$entry"
+trivy_entry() {
+  cat <<EOF
+vulnerabilities:
+  - id: CVE-2026-12345
+    paths:
+      - usr/local/bin/gosu
+    owner: '@vlzware'
+    statement: Go stdlib CVE in gosu; gosu runs once at container start to drop privileges
+    expired_at: $PLUS_30
 EOF
-assert_case 0 "OK-trivy-hyphenless-id" "$dir"
+}
+grype_entry() {
+  cat <<EOF
+ignore:
+  - vulnerability: CVE-2026-12345
+    package:
+      name: gosu
+    owner: '@vlzware'
+    reason: Go stdlib CVE in gosu; gosu runs once at container start to drop privileges
+    expires: $PLUS_30
+EOF
+}
+
+# $1 file, $2 entry fn, $3 id key, $4 reason key, $5 expiry key, $6 scope key
+yaml_cases() {
+  local file="$1" entry="$2" id="$3" reason="$4" exp="$5" scope="$6" dir
+
+  dir="$(mktmp)"; "$entry" > "$dir/$file"
+  assert_case 0 "OK-$file-valid-entry" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed "/^  - $id:/d; s/^    $scope:/  - $scope:/" > "$dir/$file"
+  assert_case 1 "FAIL-$file-missing-id (scope-only blanket rule)" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed "s/^  - $id: .*/  - $id: ''/" > "$dir/$file"
+  assert_case 1 "FAIL-$file-empty-id" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed "s/^    $scope:/    ${scope:0:3}${scope:4}:/" > "$dir/$file"
+  assert_case 1 "FAIL-$file-misspelt-scope-key" "$dir"
+
+  # Scope is mandatory: an entry without one is ignored in every image.
+  dir="$(mktmp)"; "$entry" | sed "/^    $scope:/,+1d" > "$dir/$file"
+  assert_case 1 "FAIL-$file-missing-scope" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed '/^    owner:/d' > "$dir/$file"
+  assert_case 1 "FAIL-$file-missing-owner" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed "s/'@vlzware'/'@-vlzware'/" > "$dir/$file"
+  assert_case 1 "FAIL-$file-owner-invalid-handle" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed "/^    $reason:/d" > "$dir/$file"
+  assert_case 1 "FAIL-$file-missing-reason" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed "/^    $exp:/d" > "$dir/$file"
+  assert_case 1 "FAIL-$file-missing-expiry" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed "s/^    $exp: .*/    $exp: $YESTERDAY/" > "$dir/$file"
+  assert_case 1 "FAIL-$file-expired" "$dir"
+
+  dir="$(mktmp)"; "$entry" | sed "s/^    $exp: .*/    $exp: $PLUS_91/" > "$dir/$file"
+  assert_case 1 "FAIL-$file-too-far" "$dir"
+
+  dir="$(mktmp)"; printf '%s\n' "x: [unclosed" > "$dir/$file"
+  assert_case 1 "FAIL-$file-unparseable" "$dir"
+
+  # The file is also the scanner's config: Grype reads every top-level
+  # key of .grype.yaml (`exclude:`, `only-fixed:`), and one such key
+  # silenced all nine node findings (measured, v0.120.1). Only the
+  # allowlist sections are allowed.
+  dir="$(mktmp)"; { "$entry"; echo "exclude: [/usr/local/bin/node]"; } > "$dir/$file"
+  assert_case 1 "FAIL-$file-unknown-top-level-key" "$dir"
+}
+
+yaml_cases .trivyignore.yaml trivy_entry id statement expired_at paths
+yaml_cases .grype.yaml grype_entry vulnerability reason expires package
+
+# An empty scope is no scope: both scanners read `paths: []` / `package: {}`
+# as "everywhere", the same widening a misspelt key causes.
+dir="$(mktmp)"
+trivy_entry | sed '/^      - usr\/local\/bin\/gosu/d; s/^    paths:$/    paths: []/' > "$dir/.trivyignore.yaml"
+assert_case 1 "FAIL-.trivyignore.yaml-empty-scope" "$dir"
 
 dir="$(mktmp)"
-cat > "$dir/.trivyignore" <<EOF
-# owner: @vlzware
-# reason: secret scan rule on dev fixture key
-aws-access-token exp:$PLUS_30
-EOF
-assert_case 0 "OK-trivy-lowercase-id" "$dir"
+grype_entry | sed '/^      name: gosu/d; s/^    package:$/    package: {}/' > "$dir/.grype.yaml"
+assert_case 1 "FAIL-.grype.yaml-empty-scope" "$dir"
 
-# -------------------------------------------------------------
-# Trivy owner-comment validation — `@` with no body, leading hyphen
-# -------------------------------------------------------------
+# Grype's package selector is itself a map; a misspelt key inside it is
+# dropped the same way and widens the rule just as far.
 dir="$(mktmp)"
-cat > "$dir/.trivyignore" <<EOF
-# owner: @
-# reason: bare @, no handle
-CVE-2026-12345 exp:$PLUS_30
+grype_entry | sed 's/^      name: gosu/      nmae: gosu/' > "$dir/.grype.yaml"
+assert_case 1 "FAIL-.grype.yaml-misspelt-package-key" "$dir"
+
+# Trivy still reads a plaintext .trivyignore by default. One left over or
+# re-added would be a global, unscoped, unvalidated allowlist — the thing
+# the YAML migration removed.
+dir="$(mktmp)"
+printf '%s\n' "CVE-2026-12345" > "$dir/.trivyignore"
+assert_case 1 "FAIL-plaintext-.trivyignore-present" "$dir"
+
+# Trivy's other sections feed the PR gate's secret and IaC scans and
+# carry the same accountability.
+dir="$(mktmp)"
+cat > "$dir/.trivyignore.yaml" <<EOF
+misconfigurations:
+  - id: DS-0002
+    statement: no owner on this one
+    expired_at: $PLUS_30
 EOF
-assert_case 1 "FAIL-trivy-owner-empty" "$dir"
+assert_case 1 "FAIL-.trivyignore.yaml-misconfiguration-missing-owner" "$dir"
 
 dir="$(mktmp)"
-cat > "$dir/.trivyignore" <<EOF
-# owner: @-vlzware
-# reason: leading hyphen is not a valid GitHub handle
-CVE-2026-12345 exp:$PLUS_30
+cat > "$dir/.trivyignore.yaml" <<EOF
+secrets:
+  - id: aws-access-token
+    paths:
+      - fixtures/dev.env
+    owner: '@vlzware'
+    statement: dev fixture key, not a credential
+    expired_at: $PLUS_30
 EOF
-assert_case 1 "FAIL-trivy-owner-leading-hyphen" "$dir"
+assert_case 0 "OK-.trivyignore.yaml-secret-entry" "$dir"
 
 echo ""
 echo "-------------------------------------------------------------"
