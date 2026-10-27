@@ -9,8 +9,8 @@ For lists of category-specific conventions (spec, docs, code, tests, ARCHITECTUR
 - Node.js (pinned in `.nvmrc`) — use `nvm install`.
 - npm (use the version bundled with that Node release — do not upgrade independently)
 - `age` / `age-keygen` — `sudo apt install age`. Required from the first `npm run dev`, by integration/Playwright tests, and by every operator workflow.
-- `python3-boto3` — `sudo apt install python3-boto3`. Required by the integration suite and the sync scripts.
-- `shellcheck` — `sudo apt install shellcheck`. Required by CI's `lint` job and `.husky/pre-push`.
+- `python3-boto3` — `sudo apt install python3-boto3`. Required by the integration suite and `scripts/sync-vps-to-dev.sh`.
+- `shellcheck` — `sudo apt install shellcheck`. Required by CI's `lint` job; `.husky/pre-push` warns if missing.
 
 ## Tech Stack
 
