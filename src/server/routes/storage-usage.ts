@@ -1,21 +1,12 @@
 /**
- * Storage usage read routes (totals: data-model.md §5.14; permissions: api.md §14.3).
+ * Storage usage read route (totals: data-model.md §5.14; permissions: api.md §14.3).
  *
- *   - GET  /api/projects/:id/storage-usage — per-project read.
- *     Permission and reachability mirror Get project (AC-147):
- *     a known, in-scope project returns 200 with the four-bucket
- *     payload; an existing project outside the caller's scope returns
- *     403 NOT_PERMITTED; an unknown project id returns 404 NOT_FOUND.
- *     The 403/404 distinguishability mirrors the attachment policy
- *     (AC-410) and the project policy (AC-147) — resource existence is
- *     not a secret at the role boundary under the project's threat
- *     model (ADR-0019).
  *   - GET  /api/storage-usage — deployment-wide roll-up. Gated by the
  *     same `data:export` scope as the unified Export operation
  *     (api.md §14.2.4), so worker / bookkeeper see 403; owner / office
  *     see 200.
  *
- * Both surfaces are pure reads; no `audit_log` row, no `Cache-Control`
+ * A pure read; no `audit_log` row, no `Cache-Control`
  * header (the maintained-aggregate pattern keeps reads constant-time
  * already, and a stale cache serves no purpose).
  */
@@ -30,28 +21,6 @@ export function storageUsageRoutes(db: Database) {
     const service = new StorageUsageService(db);
 
     requireSession(app, db);
-
-    // ---------------------------------------------------------------
-    // GET /api/projects/:id/storage-usage
-    // ---------------------------------------------------------------
-    app.get(
-      '/api/projects/:id/storage-usage',
-      {
-        schema: {
-          params: {
-            type: 'object',
-            required: ['id'],
-            properties: { id: { type: 'string', format: 'uuid' } },
-          },
-        },
-        preHandler: requirePermission('project:read'),
-      },
-      async (request, reply) => {
-        const { id } = request.params as { id: string };
-        const usage = await service.getProjectUsage(request.user!, id);
-        return reply.code(200).send(usage);
-      },
-    );
 
     // ---------------------------------------------------------------
     // GET /api/storage-usage — data:export gate (api.md §14.3)
