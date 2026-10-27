@@ -1,6 +1,6 @@
 # Binary Attachment Key — Setup
 
-End-to-end provisioning for a fresh VPS. Credential rotation reuses §1, §2, §3 — the dedicated walkthrough lives at [rotation.md](rotation.md). Design rationale: [ADR-0024](../../adr/0024-binary-attachment-e2e-encryption.md). Concept map: [overview.md](overview.md).
+End-to-end provisioning for a fresh VPS. Rotation has its own walkthrough: [rotation.md](rotation.md). Design rationale: [ADR-0024](../../adr/0024-binary-attachment-e2e-encryption.md). Concept map: [overview.md](overview.md).
 
 ## Prerequisites
 

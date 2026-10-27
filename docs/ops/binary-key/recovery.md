@@ -54,7 +54,7 @@ Escalation steps:
    clear
    ```
 
-   Copy the printed text, comment lines included, into a new password-manager entry; `clear` before leaving the session, then clear the clipboard (in tmux, also `tmux clear-history`). Verify the entry with the [recipient check](../index.md#working-file) against `BINARY_AGE_RECIPIENT`.
+   Copy the printed text, comment lines included, into a new password-manager entry; `clear` before leaving the session, then clear the clipboard (in tmux, also `tmux clear-history`). Verify the entry with the [recipient check](../index.md#working-file), piped through `sort`: it must list `BINARY_AGE_RECIPIENT` plus every `BINARY_AGE_RETIRED_RECIPIENTS` entry. A missed line here is a key lost for good once tmpfs is wiped.
 
 4. **Restore custody before any reboot:** mint fresh off-system copies from the new entry. Treat the next 24 hours as a no-reboot window until custody is restored. Then run a workstation-side drill per [drills.md](drills.md) against the new entry.
 
