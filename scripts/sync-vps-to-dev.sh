@@ -90,9 +90,14 @@ for arg in "$@"; do
   esac
 done
 
+# Set once the VPS dump starts; before that there is nothing to remove there.
+REMOTE_DUMP_STARTED=0
 cleanup() {
   rm -rf "$LOCAL_TMP" 2>/dev/null || true
-  ssh -o BatchMode=yes "$SSH_TARGET" "rm -rf $REMOTE_TMP" 2>/dev/null || true
+  [ "$REMOTE_DUMP_STARTED" = 1 ] || return 0
+  # Loud on failure: a dump left behind is staging data outside the app.
+  ssh -o BatchMode=yes "$SSH_TARGET" "rm -rf $REMOTE_TMP" \
+    || echo "WARN: could not remove $SSH_TARGET:$REMOTE_TMP — remove it by hand." >&2
 }
 trap cleanup EXIT
 
@@ -214,6 +219,7 @@ echo "[5/10] Dumping VPS state..."
 # Stream the remote dump script over SSH — same pattern as the forward
 # script's restore helper. Env vars pass configuration. The script writes
 # db.sql and bucket/ under $REMOTE_TMP on the VPS.
+REMOTE_DUMP_STARTED=1
 ssh "$SSH_TARGET" \
   "REMOTE_TMP='$REMOTE_TMP' MC_IMAGE='$MC_IMAGE' COMPOSE_PROJECT='$COMPOSE_PROJECT' bash -s" \
   < "$REMOTE_SCRIPT"
