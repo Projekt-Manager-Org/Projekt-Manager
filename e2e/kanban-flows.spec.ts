@@ -120,10 +120,10 @@ test.describe('Kanban board flows', () => {
       // aging threshold (seed/invoices.ts finalStatusChangedAtDaysFromNow
       // -34/-41), so the column must surface the aged-buffer warning. At
       // 1920px every column is expanded, so the badge renders as the
-      // `⚠ N× seit >D Tagen` span rather than the collapsed dot.
+      // `⚠ N× seit mind. D Tagen` span rather than the collapsed dot.
       const badge = page.getByTestId('column-aged-abgerechnet');
       await expect(badge).toBeVisible();
-      await expect(badge).toContainText('2× seit >30 Tagen');
+      await expect(badge).toContainText('2× seit mind. 30 Tagen');
     });
 
     test('clicking an expanded column header collapses it, and again expands it', async ({

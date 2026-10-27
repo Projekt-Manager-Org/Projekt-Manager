@@ -8,7 +8,7 @@ interface KanbanColumnProps {
   config: StateConfig;
   projects: Project[];
   collapsed?: boolean;
-  /** Aged-buffer summary for THIS column, or null when no rows exceed the threshold. */
+  /** Aged-buffer summary for THIS column, or null when no rows are at or past the threshold. */
   agedBuffer?: { state: WorkflowState; count: number; thresholdDays: number } | null;
   onToggleExpand?: () => void;
 }

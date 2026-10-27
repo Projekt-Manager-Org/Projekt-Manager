@@ -708,10 +708,8 @@ export const STRINGS = {
 
   aging: {
     sinceNDays: (n: number) => `seit ${n} Tagen`,
-    agedBuffer: (count: number, label: string, days: number) =>
-      `${count} ${label} seit >${days} Tagen`,
     /** Short form for use inside a column header where the state label is redundant. */
-    agedBufferShort: (count: number, days: number) => `${count}× seit >${days} Tagen`,
+    agedBufferShort: (count: number, days: number) => `${count}× seit mind. ${days} Tagen`,
   },
 
   /**

@@ -236,7 +236,7 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
     ],
     finalProjectStatus: 'abgerechnet',
     // Second aged buffer so the Abgerechnet column badge reads "2× seit
-    // >30 Tagen" — a slightly older overdue invoice than RE-0001's.
+    // mind. 30 Tagen" — a slightly older overdue invoice than RE-0001's.
     finalStatusChangedAtDaysFromNow: -41,
   },
 
