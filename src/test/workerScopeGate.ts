@@ -81,7 +81,6 @@ export type RouteScope =
 export const WORKER_ROUTE_SCOPE: Record<string, RouteScope> = {
   'GET /api/projects': { probe: 'leak' },
   'GET /api/projects/:id': { probe: 'by-id' },
-  'GET /api/projects/:id/storage-usage': { probe: 'by-id' },
   'GET /api/customers': { probe: 'leak' },
   'GET /api/customers/:id': { probe: 'by-id' },
   'GET /api/workers': { probe: 'leak' },

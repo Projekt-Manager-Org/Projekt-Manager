@@ -1,5 +1,5 @@
 /**
- * API integration tests — thumbnail size cap + complete-side HEAD
+ * API integration tests — thumbnail ciphertext-size persistence + complete-side HEAD
  * re-assertion under ADR-0024 (AC-399 / AC-402 thumb defence in depth).
  *
  * Two regression surfaces are pinned here:
@@ -63,10 +63,9 @@ async function fetchAttachmentStatus(id: string): Promise<string | null> {
 async function fetchPersistedThumbSize(id: string): Promise<number | null> {
   const { db, pool } = createDatabase();
   try {
-    // ADR-0024: the column the route persists from the init payload is
-    // `ciphertext_thumb_size_bytes`. Plaintext `thumb_size_bytes` no
-    // longer rides the init wire — this assertion targets the
-    // ciphertext-thumb column the HEAD-time check re-asserts against.
+    // ADR-0024: the route persists the init payload's thumb size as
+    // `ciphertext_thumb_size_bytes` — the column the HEAD-time check
+    // re-asserts against.
     const res = await db.execute(
       sql`SELECT ciphertext_thumb_size_bytes FROM attachments WHERE id = ${id} LIMIT 1`,
     );
@@ -81,7 +80,7 @@ async function fetchPersistedThumbSize(id: string): Promise<number | null> {
   }
 }
 
-describe('Attachment thumbnail-size cap + HEAD re-assertion', () => {
+describe('Attachment thumbnail-size persistence + HEAD re-assertion', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -97,17 +96,9 @@ describe('Attachment thumbnail-size cap + HEAD re-assertion', () => {
 
   // -------------------------------------------------------------------
   // Init validation — `ciphertextThumbSizeBytes` is the on-the-wire
-  // value the server signs into the PUT's Content-Length. The cap is
-  // enforced against the *plaintext* `thumbSizeBytes` (per-thumb cap
-  // applies to the visible blob the user sees post-decrypt), not the
-  // ciphertext figure — the ciphertext side is implementation-defined.
-  //
-  // Under ADR-0024 the per-thumb cap check no longer fires on the wire (the wire shape carries ciphertext bytes
-  // only). The cap-bypass guard moved to the upload pipeline (the
-  // client knows the plaintext size before encrypt). The tests here
-  // therefore pin the *ciphertext-side* persistence + HEAD-reassertion
-  // contract — the two surfaces still in scope for the route layer
-  // under e2e.
+  // value the server signs into the PUT's Content-Length; init rejects
+  // it above the per-thumb cap (AC-398). The tests here pin its
+  // persistence and the complete-side HEAD re-assertion.
   // -------------------------------------------------------------------
   describe('init: thumbnail ciphertext-size persistence', () => {
     it('persists ciphertextThumbSizeBytes on the row + signs Content-Length on the presigned PUT', async () => {

@@ -127,7 +127,7 @@ Entries are cited by partial path (`routes/auth.ts`), so the citation check (AC-
 - `routes/push.ts` — VAPID public key
 - `routes/health.ts` — `GET /api/health`
 - `routes/attachments.ts` — init / complete / delete / list / download-url / bulk-fetch
-- `routes/storage-usage.ts` — per-project and global storage usage
+- `routes/storage-usage.ts` — global storage usage
 - `routes/events.ts` — `GET /api/events`, the SSE channel (ADR-0025)
 - `routes/export-jobs.ts` / `routes/import-jobs.ts` — server-side takeout jobs (ADR-0018/0024)
 

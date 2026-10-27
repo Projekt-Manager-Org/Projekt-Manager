@@ -74,7 +74,6 @@ Both read the routes through `scripts/lib/route-introspection.ts`. An access gat
 | POST    | `/api/projects/:id/attachments/:attId/restore`      | session | `attachment:trash`     | none          |
 | GET     | `/api/projects/:id/attachments/:attId/download-url` | session | `attachment:read`      | none          |
 | POST    | `/api/projects/:id/attachments/bulk-fetch`          | session | `attachment:read`      | none          |
-| GET     | `/api/projects/:id/storage-usage`                   | session | `project:read`         | none          |
 | GET     | `/api/storage-usage`                                | session | `data:export`          | none          |
 | GET     | `/api/invoices`                                     | session | —                      | none          |
 | GET     | `/api/invoices/years`                               | session | —                      | none          |
