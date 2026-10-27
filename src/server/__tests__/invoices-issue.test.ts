@@ -8,19 +8,24 @@
  *   POST /api/invoices/:id/issue
  *
  *   - Allocates `number` from `invoice_sequence` via an atomic
- *     `UPDATE … RETURNING next_value` on `(year, 'invoice')` within the
+ *     `INSERT … ON CONFLICT … DO UPDATE … RETURNING next_value` on `(year, 'invoice')` within the
  *     issuance transaction (row-exclusive lock equivalent to FOR UPDATE).
  *   - Snapshots `issuer` / `recipient` / `lines` / `taxMode` / `profile`
  *     onto the row; computes `totals` server-side.
  *   - Renders the PDF/A-3 + factur-x.xml ZUGFeRD EN 16931 payload, writes
  *     it through the binary descriptor flow.
- *   - Flips the parent project's `status` to `abgerechnet`.
- *   - Writes one `audit_log` row (`entityType='invoice'`,
- *     `action='invoice:issue'`, ancestor `('project', projectId)`).
- *   - Emits one `invoice_changed` SSE event post-commit.
+ *   - Moves the parent project to `abgerechnet` through the transition
+ *     path: its own `transition:forward` audit row; a concurrent move
+ *     rejects the issue.
+ *   - Writes one `invoice:issue` audit row (`entityType='invoice'`,
+ *     ancestor `('project', projectId)`).
+ *   - Emits one `invoice_changed` and one `project_changed` SSE event
+ *     post-commit.
  *
  * AC coverage in this file:
- *   - AC-287: happy path with all the above shape assertions.
+ *   - AC-287: happy path with all the above shape assertions; the
+ *                      project transition row and its dispatch; a
+ *                      concurrent project move rejecting the issue.
  *   - AC-288: gapless sequence under rollback — fault injected
  *                      between allocation and commit; the rolled-back
  *                      value is returned to the sequence.
@@ -63,6 +68,7 @@ import { createDatabase, type Database } from '../db/connection.js';
 import { InvoiceRenderer, type RenderedInvoice } from '../services/InvoiceRenderer.js';
 import { validateFacturXml } from '../services/invoice/xsdValidator.js';
 import { InvoiceIssueService } from '../services/InvoiceIssueService.js';
+import { ProjectTransitionService } from '../services/ProjectTransitionService.js';
 import { InvoiceBinaryService, type InvoiceBinaryDeps } from '../services/InvoiceBinaryService.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
@@ -122,6 +128,21 @@ function countInvoiceChanged(conn: SubscribedFake): number {
 function countProjectChanged(conn: SubscribedFake): number {
   const matches = conn.chunks.join('').match(/event: project_changed\n/g);
   return matches ? matches.length : 0;
+}
+
+/** Notification publisher observation surface — see `notification-publisher.test.ts`. */
+interface DispatchObservation {
+  auditEntryId: string;
+  recipients: string[];
+}
+
+interface Publisher {
+  onEventDispatched: (h: (entry: DispatchObservation) => void) => () => void;
+}
+
+async function loadPublisher(): Promise<Publisher> {
+  const path = '../services/notification-publisher.js';
+  return (await import(/* @vite-ignore */ path)) as unknown as Publisher;
 }
 
 /**
@@ -488,6 +509,65 @@ describe('Invoice issuance — happy path (AC-287)', () => {
       bus.unsubscribe(conn);
     }
   });
+
+  it('moves the project through the transition path: one transition:forward row, dispatched to a matching rule', async () => {
+    const otherProjectId = await rechnungFaelligProjectId(ownerToken, issuedProjectIds);
+    issuedProjectIds.add(otherProjectId);
+    const draftId = await createDraft(ownerToken, otherProjectId);
+
+    // A rule watching forward transitions into `abgerechnet` — the
+    // notification a manual move fires (data-model.md §5.11 event
+    // source mapping). Office is the only recipient source.
+    const ruleRes = await authPost(ownerToken, '/api/notification-rules', {
+      eventClass: 'project.transition_forward',
+      stateFilter: 'abgerechnet',
+      recipientSpec: { roles: ['office'], includeAssignedWorkers: false, userIds: [] },
+      enabled: true,
+    });
+    expect(ruleRes.statusCode).toBe(201);
+    const ruleId = ruleRes.json().id as string;
+
+    const pub = await loadPublisher();
+    const observations: DispatchObservation[] = [];
+    const unsubscribe = pub.onEventDispatched((entry) => observations.push(entry));
+    const { db, pool } = createDatabase();
+    try {
+      const res = await authPost(
+        ownerToken,
+        `/api/invoices/${draftId}/issue`,
+        await expectedVersion(ownerToken, `/api/invoices/${draftId}`),
+      );
+      expect(res.statusCode).toBe(200);
+
+      const rows = await db.execute(sql`
+        SELECT id,
+               payload -> 'before' ->> 'status' AS before_status
+        FROM audit_log
+        WHERE entity_type = 'project' AND entity_id = ${otherProjectId}
+          AND action = 'transition:forward'
+          AND payload -> 'after' ->> 'status' = 'abgerechnet'
+      `);
+      expect(rows.rows).toHaveLength(1);
+      const row = rows.rows[0] as {
+        id: string;
+        before_status: string;
+      };
+      expect(row.before_status).toBe('rechnung_faellig');
+
+      const officeRows = await db.execute(
+        sql`SELECT id FROM users WHERE username = ${SEED_USERS.office.username} LIMIT 1`,
+      );
+      const officeId = (officeRows.rows[0] as { id: string }).id;
+      await waitFor(() => observations.some((o) => o.auditEntryId === row.id));
+      const matching = observations.filter((o) => o.auditEntryId === row.id);
+      expect(matching).toHaveLength(1);
+      expect(matching[0]!.recipients).toContain(officeId);
+    } finally {
+      unsubscribe();
+      await db.execute(sql`DELETE FROM notification_rule WHERE id = ${ruleId}`);
+      await pool.end();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------
@@ -781,12 +861,9 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
   it('happy-path race — both succeed; numbers form a consecutive gapless pair', async () => {
     // Two FRESH rechnung_faellig projects so the test exercises the
     // sequence-row contention without dragging the project-status
-    // pre-condition into the picture. Two drafts on the SAME project
-    // would also work under READ COMMITTED (both txs read the pre-flip
-    // status before either commits), but distinct projects keep the
-    // post-conditions cleaner — each draft's issuance flips its OWN
-    // project to `abgerechnet`, and the test asserts both end-states
-    // independently.
+    // pre-condition into the picture: on the SAME project the second
+    // issue would find `abgerechnet` at the project flip and reject
+    // (AC-287).
     const projectAId = await mintRechnungFaelligProject();
     const projectBId = await mintRechnungFaelligProject();
 
@@ -931,6 +1008,39 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
     // …) surfaces here rather than silently passing on the
     // post-conditions alone.
     expect(String(resB.reason)).toContain('test-injected-render-fault');
+  });
+
+  it('AC-287 — a project transition committed during the render rejects the issue; the moved status stands', async () => {
+    const projectId = await mintRechnungFaelligProject();
+    const draftId = await createDraft(ownerToken, projectId);
+
+    // Commits a backward move on connB while the issuance tx on connA is
+    // between its project-state check and the flip.
+    class ConcurrentMoveRenderer extends InvoiceRenderer {
+      async render(input: Parameters<InvoiceRenderer['render']>[0]): Promise<RenderedInvoice> {
+        await new ProjectTransitionService(connB.db).transitionBackward(
+          projectId,
+          ownerId,
+          'rechnung_faellig',
+          noopLog,
+          null,
+        );
+        return super.render(input);
+      }
+    }
+
+    const sequenceBefore = await readInvoiceSequenceNextValue();
+    const service = buildIssueServiceFor(connA.db, new ConcurrentMoveRenderer());
+    await expect(
+      service.issueDraft(draftId, FRESH_DRAFT_VERSION, ownerId, noopLog, null),
+    ).rejects.toMatchObject({ code: 'INVOICE_PROJECT_STATE', statusCode: 409 });
+
+    const proj = await authGet(ownerToken, `/api/projects/${projectId}`);
+    expect(proj.json().status).toBe('abnahme');
+    const draft = await authGet(ownerToken, `/api/invoices/${draftId}`);
+    expect(draft.json().status).toBe('draft');
+    expect(await countAuditRowsForInvoice(draftId, 'invoice:issue')).toBe(0);
+    expect(await readInvoiceSequenceNextValue()).toBe(sequenceBefore);
   });
 });
 
