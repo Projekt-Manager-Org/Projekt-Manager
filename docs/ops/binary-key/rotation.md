@@ -42,6 +42,27 @@ In a [working file](../index.md#working-file) directory:
 W="$XDG_RUNTIME_DIR/age-work"
 install -d -m 700 "$W"
 stty -echo; (umask 077; cat > "$W/current.txt"); stty echo   # paste the current entry, Enter, Ctrl-D
+```
+
+Check the paste holds exactly the deployed keys — every later check derives from it, and step 4 destroys the entry it came from. Print the deployed values in an interactive SSH session (`sudo` needs a terminal for its password):
+
+```bash
+# VPS
+sudo -u deploy docker exec projekt-manager-app-1 printenv BINARY_AGE_RECIPIENT BINARY_AGE_RETIRED_RECIPIENTS
+```
+
+Paste the printed lines on the workstation (public values, no echo suppression needed) and compare:
+
+```bash
+cat > "$W/deployed.txt"   # paste, Enter, Ctrl-D
+diff <(age-keygen -y "$W/current.txt" | sort) \
+     <(tr ',' '\n' < "$W/deployed.txt" | tr -d ' \t\r' | sed '/^$/d' | sort) \
+  && echo "paste = deployed keyring"
+```
+
+Any diff output: stop — the paste or the entry is incomplete. Then:
+
+```bash
 (umask 077; age-keygen -o "$W/new.txt" && cat "$W/new.txt" "$W/current.txt" > "$W/next.txt")
 age-keygen -y "$W/new.txt"                         # BINARY_AGE_RECIPIENT
 age-keygen -y "$W/current.txt" | paste -sd, -      # BINARY_AGE_RETIRED_RECIPIENTS
@@ -74,7 +95,7 @@ At the deploy's paste prompt ([load.md](load.md)), paste the new keyring. A miss
 rm -rf "$W"
 ```
 
-Destroy the previous password-manager entry and custody copies; the new ones hold every key the old ones did. Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
+Destroy the previous password-manager entry and custody copies; the new ones hold every key the old ones did (step 1's check, step 3.2). Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
 
 ## Rollback
 
