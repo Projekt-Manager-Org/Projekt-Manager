@@ -55,7 +55,7 @@ assert_case 0 "src/spec/ is not docs/spec/" $'src/spec/x.ts\n' ""
 
 echo "Case: spec touched, valid declaration"
 for label in wrong silent scope; do
-  assert_case 0 "label '$label' with em dash" "$SPEC" "Spec change: $label — AC-397 contradicts ADR-0024"
+  assert_case 0 "label '$label' with em dash" "$SPEC" "Spec change: $label — the upload AC contradicts ADR-0024"
 done
 assert_case 0 "hyphen separator" "$SPEC" "Spec change: scope - #486"
 assert_case 0 "declaration amid other body text" "$SPEC" $'## Summary\n\nDoes things.\n\nSpec change: silent — export never stated the order\n\nCloses #1'
@@ -64,12 +64,12 @@ assert_case 0 "nested spec file" $'docs/spec/ui/index.md\n' "Spec change: scope 
 echo "Case: CRLF line endings"
 # Bodies edited in the GitHub web UI arrive with \r\n. A trailing \r must
 # not turn a valid declaration into a failure.
-assert_case 0 "valid declaration with CRLF" "$SPEC" $'Intro\r\nSpec change: wrong — typo in AC-7\r\nmore\r\n'
+assert_case 0 "valid declaration with CRLF" "$SPEC" $'Intro\r\nSpec change: wrong — typo in an AC\r\nmore\r\n'
 
 echo "Case: spec touched, declaration missing or malformed"
 assert_case 1 "empty body" "$SPEC" ""
 assert_case 1 "body without declaration" "$SPEC" "Fixes the attachment upload."
-assert_case 1 "retired label 'cleanup'" "$SPEC" "Spec change: cleanup — dedupe AC-397"
+assert_case 1 "retired label 'cleanup'" "$SPEC" "Spec change: cleanup — dedupe two ACs"
 assert_case 1 "unknown label" "$SPEC" "Spec change: minor — small tweak"
 assert_case 1 "label without reason" "$SPEC" "Spec change: scope"
 assert_case 1 "label with empty reason" "$SPEC" "Spec change: scope — "
