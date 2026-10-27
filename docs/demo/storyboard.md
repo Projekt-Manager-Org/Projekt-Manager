@@ -148,7 +148,7 @@ decisions that belong to _this film_.
   demo seeds a healthy `meta_backup_status` (see demo-recordings.md). Clicking it fires a
   status toast.
 - **Aged-buffer badge (live-board beats)** — left ON, not hidden: "make inaction visible" is
-  the product's headline, so the Abgerechnet column carries its `⚠ N× seit >30 Tagen` warning.
+  the product's headline, so the Abgerechnet column carries its `⚠ N× seit mind. 30 Tagen` warning.
   The seed parks two invoiced-but-unpaid projects a little past the 30-day threshold
   (`seed/invoices.ts` `finalStatusChangedAtDaysFromNow`) for realistic ages.
 - **Continuity is narrative, not DB threading** — segments record against the shared seed,

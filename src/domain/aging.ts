@@ -13,8 +13,8 @@ export function getDaysInState(statusChangedAt: string, now: Date = new Date()):
 
 /**
  * Returns whether the entry date should be bold for this state.
- * Action states: bold after agingBoldDays.
- * Buffer states: bold after agingBoldDays (same as threshold).
+ * Action states: bold from agingBoldDays on.
+ * Buffer states: bold from agingBoldDays on (same as threshold).
  * Active/Done: never bold.
  */
 export function isAgingBold(
@@ -30,7 +30,7 @@ export function isAgingBold(
 }
 
 /**
- * Returns "seit X Tagen" text for buffer states exceeding threshold, or null.
+ * Returns "seit X Tagen" text for buffer states at or past threshold, or null.
  */
 export function getAgingText(
   state: WorkflowState,
@@ -46,7 +46,7 @@ export function getAgingText(
 }
 
 /**
- * Check if a buffer project has exceeded its aging threshold.
+ * Check if a buffer project is at or past its aging threshold.
  */
 export function isBufferAged(
   state: WorkflowState,
