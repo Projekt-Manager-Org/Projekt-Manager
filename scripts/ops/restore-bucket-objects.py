@@ -10,12 +10,12 @@ Every object the app writes is self-describing (AC-439, data-model.md
 §5.13): its S3 user metadata carries the wrapped envelope of its DEK, the
 envelope version and, on an invoice PDF, the invoice number. The bucket
 dump crosses SSH as a plain directory, which holds none of that — and the
-dev-side metadata would be useless anyway, its envelope is wrapped to the
-dev key. The restored row already carries the envelope re-wrapped to this
-host's recipient (rewrap-dek-envelopes.sh), so this script PUTs each file
-with metadata rebuilt from its row: the original under `wrapped_dek`, the
-thumbnail under `wrapped_thumb_dek`, the invoice PDF with the number of
-the invoice it renders.
+source-side metadata would be useless anyway, its envelope is wrapped to
+the source key. The restored row already carries the envelope re-wrapped
+to the target's recipient (rewrap-dek-envelopes.sh), so this script PUTs
+each file with metadata rebuilt from its row: the original under
+`wrapped_dek`, the thumbnail under `wrapped_thumb_dek`, the invoice PDF
+with the number of the invoice it renders.
 
 An invoice PDF also gets its own Compliance lock of the target's
 INVOICE_OBJECT_LOCK_DAYS from the write, as the app and the takeout
