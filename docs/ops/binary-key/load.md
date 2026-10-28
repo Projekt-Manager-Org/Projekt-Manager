@@ -27,7 +27,7 @@ You are about to write private key material into RAM on the VPS; this is cleared
    sudo -u deploy docker exec -it projekt-manager-app-1 load-binary-key
    ```
 
-3. The script prompts with `read -s` ("Paste the binary keyring (active + retired identities), finish with Ctrl-D:"). Paste the clipboard contents, press Enter, then Ctrl-D. The script:
+3. The script prompts with `read -s` ("Paste the binary keyring (active + retired identities), finish with Ctrl-D:"). Paste the clipboard contents (keys kept in separate fields: each in turn, per [Key custody](../index.md#key-custody)), press Enter, then Ctrl-D. The script:
    - Validates the destination is a tmpfs mount (refuses to write otherwise — protects against a docker-compose regression that drops the `tmpfs:` directive).
    - Validates the pasted material parses as an `age` identity by round-tripping through `age-keygen -y`.
    - Compares the derived public recipients against `BINARY_AGE_RECIPIENT` plus `BINARY_AGE_RETIRED_RECIPIENTS` from the container env. A missing or an unlisted key (probably the backup drill identity) exits non-zero without writing, naming the offending recipients; a loaded keyring stays in place.
