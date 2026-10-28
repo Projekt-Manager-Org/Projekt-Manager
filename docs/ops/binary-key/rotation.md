@@ -45,7 +45,7 @@ stty -echo; (umask 077; cat > "$D/current.txt"); stty echo   # paste the binary 
 age-keygen -y "$D/current.txt"   # what landed: one public recipient per key
 ```
 
-Check the paste holds exactly the deployed keys — every later check derives from it, and step 4 destroys the entry it came from. Print the deployed values in an interactive SSH session (`sudo` needs a terminal for its password):
+Check the paste holds exactly the deployed keys — every later check derives from it, and step 4 may destroy the entry it came from. Print the deployed values in an interactive SSH session (`sudo` needs a terminal for its password):
 
 ```bash
 # VPS
@@ -96,7 +96,7 @@ At the deploy's paste prompt ([load.md](load.md)), paste the new keyring. A miss
 rm -rf "$D"
 ```
 
-Destroy the previous password-manager entry and custody copies; the new ones hold every key the old ones did (step 1's check, step 3.2). Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
+Destroying the previous password-manager entry and custody copies is recommended — fewer copies of keys that still decrypt old data — and safe: the new ones hold every key the old ones did (step 1's check, step 3.2). Custody is the operating company's call ([Key custody](../index.md#key-custody)). Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
 
 ## Rollback
 
