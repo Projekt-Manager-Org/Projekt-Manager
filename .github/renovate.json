@@ -157,10 +157,12 @@
     },
     {
       "customType": "regex",
-      "description": "golang.org/x/net pinned above Caddy's own requirement via `xcaddy build … --with golang.org/x/net/http2@vX` in docker/caddy/Dockerfile (the `/http2` package path is only there because xcaddy blank-imports each --with path; the version is the module's). Without it, x/net advisories in the edge proxy wait for a Caddy release (#637). Same lane as the other Caddy inputs: auto-merged on green CI, which does not build Caddy (ci.yml `docker`, accepted gap); the nightly inventory scan does, so a bump that does not compile turns it red within a day, unless a deploy's own `docker compose build caddy` hits it first — loudly, before anything is recreated.",
+      "description": "Go modules pinned above Caddy's own requirement via `xcaddy build … --with <module>[/<pkg>]@vX` in docker/caddy/Dockerfile — golang.org/x/net (named through its `/http2` package, because xcaddy blank-imports each --with path and the module root has none) and github.com/go-jose/go-jose/v4. Without them, advisories in the edge proxy's dependencies wait for a Caddy release (#637). Same lane as the other Caddy inputs: auto-merged on green CI, which does not build Caddy (ci.yml `docker`, accepted gap); the nightly inventory scan does, so a bump that does not compile turns it red within a day, unless a deploy's own `docker compose build caddy` hits it first — loudly, before anything is recreated.",
       "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
-      "matchStrings": ["--with golang\\.org/x/net/http2@(?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
-      "depNameTemplate": "golang.org/x/net",
+      "matchStrings": [
+        "--with (?<depName>golang\\.org/x/net)/http2@(?<currentValue>v\\d+\\.\\d+\\.\\d+)",
+        "--with (?<depName>github\\.com/go-jose/go-jose/v4)@(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
       "datasourceTemplate": "go",
       "versioningTemplate": "semver"
     },

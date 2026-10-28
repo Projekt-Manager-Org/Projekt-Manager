@@ -205,14 +205,15 @@ Detection cannot be the answer for runtimes on its own: binary matching waits on
 
 Day-one findings:
 
-| Finding                                    | Found by     | Disposition                                                                                                  |
-| ------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------ |
-| Node 24.16.0 (app, backup)                 | Grype        | Held red until control 1 brings it current — the proof that the system remediates without a hand bump        |
-| `postgres:17-alpine` unpinned              | pin gate     | Held red, same reason                                                                                        |
-| `caddy:2-alpine` (HTTP-evaluation overlay) | pin gate     | The Dependency Dashboard lists no dependencies for that file: no update path yet, closed with control 1      |
-| gosu: 26 Go stdlib CVEs (`db`)             | Trivy        | Unreachable on its privilege-drop path; allowlisted, path-scoped                                             |
-| Caddy: brotli-libs, curl                   | Trivy, Grype | Runtime moved to `scratch` (binary, CA bundle, state dirs): no OS packages to patch or to go stale on a host |
-| Caddy: `golang.org/x/net` v0.59.0          | Trivy, Grype | Raised above Caddy's own requirement, Renovate-tracked                                                       |
+| Finding                                                                       | Found by     | Disposition                                                                                                                                                       |
+| ----------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node 24.16.0 (app, backup)                                                    | Grype        | Held red until control 1 brings it current — the proof that the system remediates without a hand bump                                                             |
+| `postgres:17-alpine` unpinned                                                 | pin gate     | Held red, same reason                                                                                                                                             |
+| `caddy:2-alpine` (HTTP-evaluation overlay)                                    | pin gate     | The Dependency Dashboard lists no dependencies for that file: no update path yet, closed with control 1                                                           |
+| gosu: 26 Go stdlib CVEs (`db`)                                                | Trivy        | Unreachable on its privilege-drop path; allowlisted, path-scoped                                                                                                  |
+| Caddy: brotli-libs, curl                                                      | Trivy, Grype | Runtime moved to `scratch` (binary, CA bundle, state dirs): no OS packages to patch or to go stale on a host                                                      |
+| Caddy: `golang.org/x/net` v0.59.0                                             | Trivy, Grype | Raised above Caddy's own requirement, Renovate-tracked                                                                                                            |
+| Caddy: go-jose v4.1.5 / v3.0.5 (GHSA-mgcc-cww5-fp2q, published the day after) | Trivy, Grype | v4 raised to 4.1.6, Renovate-tracked; v3 has no fix — JWK-parsing DoS on ACME-server/PKI paths our Caddyfile does not enable, allowlisted scoped to the v3 module |
 
 #637 assumed Caddy's CI build differs from the host's. Measured, the binary is byte-identical across a cached and a no-cache build, so the nightly scans what a host builds from the same inputs. Building Caddy in CI (a declared digest for control 4) is weighed with control 4.
 

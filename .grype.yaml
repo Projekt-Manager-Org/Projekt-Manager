@@ -5,4 +5,13 @@
 # it may hold `ignore:` only, so no scanner setting can slip in as an
 # exception.
 
-ignore: []
+ignore:
+  # Same finding as .trivyignore.yaml's go-jose v3 entry — see its
+  # comment. Scoped to the v3 module inside the Caddy binary.
+  - vulnerability: GHSA-mgcc-cww5-fp2q
+    package:
+      name: github.com/go-jose/go-jose/v3
+      location: /usr/bin/caddy
+    owner: '@vlzware'
+    reason: JWK-parsing DoS on ACME-server/PKI paths our Caddyfile does not enable; no v3 fix
+    expires: 2027-01-26

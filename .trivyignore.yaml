@@ -72,3 +72,16 @@ vulnerabilities:
     id: CVE-2026-78669
   - <<: *gosu
     id: CVE-2026-97031
+
+  # go-jose v3 in Caddy (via smallstep): GHSA-mgcc-cww5-fp2q, CPU DoS
+  # when parsing a crafted RSA JWK; no v3 fix exists (v4 is raised to
+  # 4.1.6 in docker/caddy/Dockerfile). Our Caddyfile is a reverse proxy
+  # plus an ACME client (DNS-01) — JWK parsing is on the ACME-server/PKI
+  # paths it does not enable. Scoped to the v3 module, not the binary, so
+  # a v4 regression still fails. Drop when Caddy stops linking v3.
+  - id: CVE-2026-116587
+    purls:
+      - pkg:golang/github.com/go-jose/go-jose/v3
+    owner: '@vlzware'
+    statement: JWK-parsing DoS on ACME-server/PKI paths our Caddyfile does not enable; no v3 fix (see comment above)
+    expired_at: 2027-01-26

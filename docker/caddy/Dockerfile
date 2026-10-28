@@ -8,29 +8,31 @@
 # - Both base images digest-pinned to defeat retag-under-known-good-label attacks.
 # - The caddy-dns/cloudflare plugin pinned to a specific git SHA, so each build is
 #   reproducible from source.
-# - golang.org/x/net pinned above Caddy's own requirement (see the build step).
+# - golang.org/x/net and go-jose/v4 pinned above Caddy's own requirement (see the build step).
 #
 # Renovate tracks all four (Caddy releases, base-image digests, plugin master SHA,
-# the x/net pin) and
+# the Go module pins) and
 # auto-merges patch/minor/digest bumps on green CI; majors get a manual-review PR.
 # See ADR-0027 + docs/ops/dep-management.md.
 
 FROM caddy:2.11.7-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9227460374d46097d5 AS builder
 
-# `--with golang.org/x/net/http2@…` raises x/net above what Caddy's go.mod
-# requires. Caddy 2.11.7 (latest on 2026-10-27) requires v0.59.0, which
-# carries five HIGH advisories fixed in v0.60.0; without this only a Caddy
-# release would move it. xcaddy blank-imports each `--with` path, so it
-# names a package Caddy already links (the module root has none). xcaddy
-# runs one `go get <module> caddy@<version>` per `--with`, in order: here
-# a later Caddy requiring a newer x/net fails the build rather than
-# downgrade, and listing it first lets the plugin's own `go get` raise
-# x/net instead of being downgraded to fit it. Renovate bumps it (go
-# datasource, customManager in renovate.json).
+# The first two `--with` lines raise Go modules above what Caddy 2.11.7
+# (latest on 2026-10-27) requires, because only a Caddy release would
+# otherwise move them: golang.org/x/net v0.59.0 → v0.60.0 (five HIGH
+# advisories) and go-jose/v4 v4.1.5 → v4.1.6 (GHSA-mgcc-cww5-fp2q).
+# xcaddy blank-imports each `--with` path, so it names a package Caddy
+# already links (x/net's module root has none). xcaddy runs one
+# `go get <module> caddy@<version>` per `--with`, in order: a later Caddy
+# requiring a newer version fails the build rather than downgrade, and
+# listing them before the plugin lets its own `go get` raise them instead
+# of being downgraded to fit. Renovate bumps both (go datasource,
+# customManager in renovate.json).
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     xcaddy build v2.11.7 \
         --with golang.org/x/net/http2@v0.60.0 \
+        --with github.com/go-jose/go-jose/v4@v4.1.6 \
         --with github.com/caddy-dns/cloudflare@a8737d095ad5a48ca031cea6ab704057dbc2d250
 
 # Source of the runtime's few files, not the runtime itself. Kept as a
