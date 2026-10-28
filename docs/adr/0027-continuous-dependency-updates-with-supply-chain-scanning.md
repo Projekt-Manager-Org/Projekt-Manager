@@ -78,6 +78,7 @@ Overlap between the two bots is intentional belt-and-braces.
 - **OSV-Scanner** (CLI v2.3.8 pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`, but **not a superset of it** — both key on `(ecosystem, name, version)` and each carries records the other lacks (see the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers)). **Blocks merge on any vuln**: the v2.3.8 CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
 - **Repo-level GitHub advisories** (`scripts/check-repo-advisories.mjs`) — reads each direct dep's `/security-advisories` endpoint, where advisories that were never promoted to the global database do exist. Covers what neither lockfile scanner structurally can. **Blocks merge on a match**; fails closed on API errors. Added by the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers), which also states what all three layers leave uncovered.
 - **Trivy** (`aquasecurity/trivy-action`) — scans the built Docker image, including OS packages (`apk`, `apt`) that OSV-Scanner can't see; plus filesystem secret scan and IaC misconfig scan. **Blocks merge on `HIGH` / `CRITICAL`** (Trivy supports `--severity` and the noisier surfaces it scans benefit from the filter). Runs on every PR in the `docker` job, before anything is published.
+- **Nightly inventory scan** (`inventory-scan.yml`) — Trivy **and Grype** over every image the deployment runs, derived from the deploy's compose file, plus a pin gate (every image reference in compose files, Dockerfiles and workflow/action `image:` keys carries a digest). Grype matches binaries Trivy cannot see (`node`, `postgres`); Trivy sees what Grype misses. **Red on `HIGH` / `CRITICAL` from either.** Added by the [2026-10-27 amendment](#2026-10-27--security-releases-outside-npm-starved-and-invisible-to-the-scanner).
 
 Exceptions to blocking go in a documented allowlist with a review trigger (the pattern from the superseded [ADR-0007](0007-suppress-esbuild-dev-server-advisory.md) is the right shape).
 
@@ -125,16 +126,15 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
 - **PR queue volume.** A weekly window with grouping should land 3–8 PRs/week in steady state. The "weekly wrangler" hat is ~30 min/week.
 - **Auto-merge runs with no E2E signal.** Playwright is not in the PR gate, so an auto-merged patch/minor lands on unit + integration evidence alone; a browser-level regression reaches `main` and surfaces only at the next manual E2E run. Mitigations today: auto-merge stays off for majors (the highest-risk class), and § Weekly wrangler step 4 makes the manual E2E run mandatory for them — both leave the patch/minor stream uncovered. **Open gap, not a settled trade:** the real fix is Playwright in the PR gate, blocked on the runtime + flake-surface argument recorded in `e2e.yml`'s header, which in turn is blocked on a flake-quarantine practice that does not exist yet.
 - **Renovate config drift.** A `.github/renovate.json` that goes stale (new dep types, ecosystem changes) silently degrades coverage. Mitigated by the quarterly review explicitly checking the config.
-- **OSV-Scanner / Trivy false positives** for advisories on dead code paths (cf. the original ADR-0007 case). Mitigated by a structured allowlist — never a blanket `--omit=dev`. The two scanners use different file formats but the same review-contract fields; both are enforced in CI by `scripts/check-allowlist-schema.sh` (~100ms; runs before the scanner gates so a sloppy entry fails fast). Required fields per entry:
-  - **`id`** — the advisory or rule identifier (any non-empty string; Trivy and OSV-Scanner validate the ID shape themselves).
-  - **`reason`** — why the advisory doesn't apply here. The GitHub handle of the entry's owner is mandatory. The handle must be a real GitHub username (1-39 alnum chars + non-leading/trailing/consecutive hyphens) — `@`, `@-`, `@a--b` and similar are rejected:
-    - `osv-scanner.toml` has no dedicated `owner` field. The `reason` string MUST start with `@<handle>:` so the handle is encoded.
-    - `.trivyignore` has no `reason` field at all. A `# owner: @<handle>` comment AND a `# reason: <free text>` comment in the contiguous comment block immediately preceding the entry are required.
-  - **`expiry`** — at most **90 days from creation**, forces a re-review:
-    - `osv-scanner.toml`: `ignoreUntil = YYYY-MM-DD` as a bare TOML date literal (the script rejects both quoted strings and offset datetimes — only the bare date is accepted).
-    - `.trivyignore`: `exp:YYYY-MM-DD` as a suffix on the entry line itself (not in the comment block).
+- **Scanner false positives** for advisories on dead code paths (cf. the original ADR-0007 case). Mitigated by a structured allowlist — never a blanket `--omit=dev`. Every entry in `osv-scanner.toml`, `.trivyignore.yaml` and `.grype.yaml` carries:
+  - **id** — the advisory or rule id; a Grype rule without one ignores everything its package selector matches.
+  - **owner** — a real GitHub handle.
+  - **reason** — why the advisory does not apply here.
+  - **expiry** — at most **90 days** out; forces a re-review.
+  - **scope** (YAML files) — the package or path it is about; mandatory and non-empty, since either scanner ignores an unscoped id everywhere.
+  - **nothing else** — Trivy and Grype silently accept unknown keys, so a misspelt scope key widens an entry to global.
 
-  See [docs/ops/dep-management.md § Allowlist (OSV-Scanner + Trivy)](../ops/dep-management.md#allowlist-osv-scanner--trivy) for copy-pasteable examples that pass the CI gate.
+  `scripts/check-allowlist-schema.sh` enforces this before OSV-Scanner and, nightly, before Grype — which does not read the expiry. Per-format key names and examples: [docs/ops/dep-management.md § Allowlist](../ops/dep-management.md#allowlist).
 
 ### Operational
 
@@ -147,7 +147,7 @@ Implementation ships in this ADR's PR:
   - **`publish` job** (`needs: [check, lint, docker]`): pushes only what the `docker` job already scanned and smoked, and re-scans each image immediately before pushing it. The re-scan is not redundant — `publish` runs on a different runner and rebuilds from the shared gha cache, whose export is best-effort, so a cold start would otherwise re-resolve the `apk` layers unscanned. A failed scan never publishes the tag, so `scripts/deploy.sh` cannot resolve a bad SHA.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `osv-scanner.toml` (repo root) — allowlist file; empty on landing, schema documented in `docs/ops/dep-management.md`.
-- `.trivyignore` (repo root) — allowlist file for Trivy; empty on landing, same schema discipline.
+- `.trivyignore` (repo root) — allowlist file for Trivy; empty on landing, same schema discipline. Replaced by `.trivyignore.yaml` (§2026-10-27).
 - [docs/ops/dep-management.md](../ops/dep-management.md) — runbook (first-run setup, weekly wrangler, quarterly review, allowlist schema).
 - `scripts/check-allowlist-schema.sh` + `scripts/__tests__/check-allowlist-schema.test.sh` — wired into the `lint` job; rejects allowlist entries missing owner/reason/expiry per §Negative.
 
@@ -161,12 +161,62 @@ The same aliasing is what lets the whole build → scan → smoke sequence run a
 
 Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of most PRs skipping it. That is the price of the gate being a gate; the ~5 min post-merge rebuild it replaces makes it roughly neutral per merged PR.
 
-`ignore-unfixed` is NOT set on any image scan: a no-fix-yet CVE is still a finding, and an operationally-tolerable case goes in `.trivyignore` with owner/reason/exp ≤90d. This makes the failure mode visible — when an unfixable upstream CVE lands, the deploy pipeline halts until either the upstream fixes it or an operator writes a deliberate, time-bounded allowlist entry; the `ignore-unfixed: true` shortcut would have suppressed it silently forever. The runbook's [§CVE handling](../ops/dep-management.md#cve-handling) covers the operator procedure.
+`ignore-unfixed` is NOT set on any image scan: a no-fix-yet CVE is still a finding, and an operationally-tolerable case goes in `.trivyignore.yaml` with owner/statement/expiry ≤90d. This makes the failure mode visible — when an unfixable upstream CVE lands, the deploy pipeline halts until either the upstream fixes it or an operator writes a deliberate, time-bounded allowlist entry; the `ignore-unfixed: true` shortcut would have suppressed it silently forever. The runbook's [§CVE handling](../ops/dep-management.md#cve-handling) covers the operator procedure.
 
 - The `vv-adr` skill template is updated; retrofits to the existing ADRs in the included set land in the same change as this ADR.
 - No env-var or schema impact.
 
 ## Amendments
+
+### 2026-10-27 — Security releases outside npm: starved, and invisible to the scanner
+
+Raised in [#637](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/637). `main` and the VPS ran Node 24.16.0 through three Node security releases, and PostgreSQL 17.9 through two minor releases fixing 35 CVEs. Every layer stayed green:
+
+| Layer                         | Why it missed                                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Renovate vulnerability PRs    | OSV/GitHub ecosystems only. Runtimes, base images and CLI binaries (`docker`, `node-version`) can never get one.                                                  |
+| Renovate routine queue        | Starved: ~1 non-lockfile PR/week, behind a pin branch that fails every run and an open lockfile PR holding the limit of 1. The only update path left for non-npm. |
+| Floating `postgres:17-alpine` | `up -d` keeps a tag already present, so `db` ran whatever was first pulled.                                                                                       |
+| Trivy image scan              | Matches package-manager records only. The tarball-installed `node` and source-built `postgres` binaries are invisible to it.                                      |
+| Scan scope                    | Hand-picked: app + backup, at PR time. `caddy` and `postgres` never scanned; nothing re-scanned after merge.                                                      |
+
+**Corrected premises.** §2026-08-06 called the routine backlog "a throughput question, not a security one": for everything without vulnerability alerts, throughput _is_ the security path. §2026-08-28 listed non-npm ecosystems as uncovered with no compensating control, and made non-npm cooldown a non-goal; daily auto-merge of non-npm digests is the threat-profile change its revisit trigger names.
+
+**Decision.** No per-component checks: each control covers everything deployed and fails closed.
+
+```
+1 current by default  Renovate: non-majors any time, auto-merged, aged  ─▶ fixes land in days, CVE indexed or not
+2 alarm on staleness  nightly: non-major update pending > 7 days         ─▶ red  (catches a broken 1)
+3 known vulns         nightly: Trivy ∪ Grype over the deployed inventory ─▶ red
+                      + pin gate: image reference without a digest       ─▶ red
+                      + coverage gate: ELF no scanner attributes         ─▶ red
+4 runs = declared     deploy.sh: running digest ≠ declared digest        ─▶ deploy refused
+```
+
+Detection cannot be the answer for runtimes on its own: binary matching waits on NVD enrichment (≥ 7 days measured for Node 24.22.1). Control 1 closes that window; 2 and 3 prove it is working.
+
+**Landed: control 3, minus the coverage gate.**
+
+- `inventory-scan.yml`: nightly, one job per image `scripts/ci/deploy-inventory.sh` derives from the deploy's own compose file and profiles (`scripts/lib/deploy-compose.sh`, shared with `deploy.sh`). Same floor as the PR gate. First-party images are scanned at `main`.
+- Pin gate `scripts/check-image-pins.sh`: compose, `FROM`, `# syntax=`, workflow and action `image:`. Exempt: refs tagged `${APP_IMAGE_TAG}` (first-party, per-commit), stage names, `scratch`.
+- `deploy.sh` refuses `COMPOSE_FILE` / `COMPOSE_PROFILES` and compose override or alternate files, so a deploy cannot add files or profiles beyond `docker-compose.yml` + `DEPLOY_PROFILES`.
+- `scripts/check-notify-coverage.sh`: every scheduled workflow is in `notify.yml`'s list, or the PR fails.
+- Allowlists: `.trivyignore` → Trivy-native `.trivyignore.yaml`, plus `.grype.yaml`, both under §Negative's contract. Plaintext could only ignore an id everywhere — a gosu Go-stdlib entry would have hidden the same CVE in Caddy.
+
+Day-one findings:
+
+| Finding                                    | Found by     | Disposition                                                                                                  |
+| ------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------ |
+| Node 24.16.0 (app, backup)                 | Grype        | Held red until control 1 brings it current — the proof that the system remediates without a hand bump        |
+| `postgres:17-alpine` unpinned              | pin gate     | Held red, same reason                                                                                        |
+| `caddy:2-alpine` (HTTP-evaluation overlay) | pin gate     | The Dependency Dashboard lists no dependencies for that file: no update path yet, closed with control 1      |
+| gosu: 26 Go stdlib CVEs (`db`)             | Trivy        | Unreachable on its privilege-drop path; allowlisted, path-scoped                                             |
+| Caddy: brotli-libs, curl                   | Trivy, Grype | Runtime moved to `scratch` (binary, CA bundle, state dirs): no OS packages to patch or to go stale on a host |
+| Caddy: `golang.org/x/net` v0.59.0          | Trivy, Grype | Raised above Caddy's own requirement, Renovate-tracked                                                       |
+
+#637 assumed Caddy's CI build differs from the host's. Measured, the binary is byte-identical across a cached and a no-cache build, so the nightly scans what a host builds from the same inputs. Building Caddy in CI (a declared digest for control 4) is weighed with control 4.
+
+**Pending in follow-ups:** controls 1, 2, 4 and the coverage gate. Status is tracked in #637.
 
 ### 2026-09-17 — A release-age gate on the lockfile, complementing the resolver cutoff
 
@@ -225,7 +275,7 @@ The corollary is a false positive with no mitigation: when a split-line advisory
 | A stale **global** record overriding a repo match   | Global ranges win, so a global record that has not caught up silently clears a repo-level match. The run prints every such disagreement rather than passing in silence; nothing auto-fails it. One whose global review post-dates the publisher's last edit is listed as settled; only the rest ask for a re-check ([#516](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/516)). The review timestamp is the first review only: a publisher edit after it asks for a re-check on every run, even once curators catch up. Residual: a curator narrowing a range wrongly _after_ that edit also reads as settled. |
 | A global range **wider** than the publisher's       | The global record is probed only to correct a repo-level match, never to find one — detection against the global DB is OSV-Scanner's job, in the same CI job. A curated range widened before OSV ingests it falls between the two. Keeps the probe at 1 request/run instead of 24.                                                                                                                                                                                                                                                                                                                                             |
 | Advisories upstream never files anywhere            | A silently-patched bug is invisible to all three layers. Nothing in CI can close this.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Non-npm ecosystems                                  | Docker images, pinned Actions and CLI binaries have no equivalent gate. Trivy covers published OS/image CVEs only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Non-npm ecosystems                                  | Docker images, pinned Actions and CLI binaries have no advisory gate. Deployed images are scanned nightly since §2026-10-27, but binary matching lags NVD enrichment; currency, not detection, is the control there.                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Malicious publishes with no advisory at all         | Different threat, different control — the release-age cooldown below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 **The CI token cannot express "not in the global database" on the single-record endpoint.** Measured — `github.token` in CI run [38276599149](https://github.com/Projekt-Manager-Org/Projekt-Manager/actions/runs/38276599149), anonymous and OAuth locally:
@@ -254,7 +304,7 @@ Raised in [#345](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/3
 
 **Rejected: adding `minimumReleaseAge` to a local `packageRule` matching `lockFileMaintenance`** (the fix #345 proposed). Local `packageRules` sort after preset rules, so it overrides the carve-out rather than complementing it; with `minimumReleaseAgeBehaviour=timestamp-required` (default since Renovate 42) an absent timestamp counts as not-yet-passed, and `internalChecksFilter: strict` then suppresses branch creation entirely. The likely outcome is lockfile maintenance silently stopping — reopening the exact gap §2026-08-06 was written to close. `.github/renovate.json`'s top-level `description` carries this warning at the config itself.
 
-**Documented non-goal: non-npm cooldown.** `docker`, `github-tags`, `github-release-attachments` and `git-refs` pins carry no release-age delay. Docker Hub and `github-tags` do expose timestamps, so extending is technically possible, but GHCR and Quay do not — and under `timestamp-required` an un-ageable digest is held _indefinitely_ rather than raised, which turns a hardening step into a stalled update path. Revisit if a pin's threat profile changes; do not extend blindly.
+**Documented non-goal: non-npm cooldown.** `docker`, `github-tags`, `github-release-attachments` and `git-refs` pins carry no release-age delay. Docker Hub and `github-tags` do expose timestamps, so extending is technically possible, but GHCR and Quay do not — and under `timestamp-required` an un-ageable digest is held _indefinitely_ rather than raised, which turns a hardening step into a stalled update path. Revisit if a pin's threat profile changes; do not extend blindly. **Triggered** by §2026-10-27: daily auto-merge of non-npm digests is that change.
 
 **Accepted cost: the security-update bypass only exists on the Renovate half.** Renovate skips `minimumReleaseAge` for vulnerability PRs by design. npm has no equivalent — `min-release-age` flattens to `before = now - 3 days` with no exclusion list below npm 11.17.0, and is `exclusive` with `--before`. So a fix published inside the window still resolves against the cutoff:
 
@@ -285,7 +335,7 @@ Cause, in two parts:
 
 Changed: Dependabot **security updates** enabled at the repo (Alerts alone only notify — they fired correctly on all seven and nothing acted on them); `lockFileMaintenance` moved to a daily schedule with its own unlimited PR budget, the same per-branch exemption `vulnerabilityAlerts` uses. §Decision.1 and §Consequences.Positive corrected in-place. The nightly OSV scan is unchanged and remains the backstop — it detected all three incidents.
 
-Global `prConcurrentLimit` deliberately stays at 1. Raising it is a documented merge-queue revisit trigger ([dep-management.md § First-run setup step 6](../ops/dep-management.md#first-run-setup)), and the routine-update backlog it throttles is a throughput question, not a security one. Tracked as open, not closed.
+Global `prConcurrentLimit` deliberately stays at 1. Raising it is a documented merge-queue revisit trigger ([dep-management.md § First-run setup step 6](../ops/dep-management.md#first-run-setup)), and the routine-update backlog it throttles is a throughput question, not a security one. Tracked as open, not closed. **Wrong** — for everything without vulnerability alerts the routine queue is the only update path ([§2026-10-27](#2026-10-27--security-releases-outside-npm-starved-and-invisible-to-the-scanner)).
 
 ### 2026-07-25 — E2E is not a PR gate
 
@@ -293,14 +343,15 @@ Global `prConcurrentLimit` deliberately stays at 1. Raising it is a documented m
 
 ## Dep lifecycle health (as of 2026-07-27)
 
-Renovate, OSV-Scanner, Trivy and actionlint are the adopted _tooling_; the choice is reversible (move to Dependabot-only or to commercial SCA later). Concrete tool-version pinning lives in `.github/workflows/*.yml`, `.github/actions/*/`, and `.github/renovate.json`, and every pin is now on a Renovate update path (customManager 4 above closed the last gap) except the MinIO mirror, frozen by decision ([ADR-0003](0003-deployment-infrastructure-vps-docker-compose-github-actions.md#dep-lifecycle-health-as-of-2026-05-15)). `scripts/check-renovate-annotations.mjs` scans both roots and fails the build on a pin no manager claims, so the "update path" is enforced rather than asserted.
+Renovate, OSV-Scanner, Trivy, Grype and actionlint are the adopted _tooling_; the choice is reversible (move to Dependabot-only or to commercial SCA later). Concrete tool-version pinning lives in `.github/workflows/*.yml`, `.github/actions/*/`, and `.github/renovate.json`, and every pin is now on a Renovate update path (customManager 4 above closed the last gap) except the MinIO mirror, frozen by decision ([ADR-0003](0003-deployment-infrastructure-vps-docker-compose-github-actions.md#dep-lifecycle-health-as-of-2026-05-15)). `scripts/check-renovate-annotations.mjs` scans both roots and fails the build on a pin no manager claims, so the "update path" is enforced rather than asserted.
 
-| Dep                                | Last release        | License    | Maintainership                   | Notes                                                                                                                                                                                                                                                                             |
-| ---------------------------------- | ------------------- | ---------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Renovate (`renovatebot/renovate`)  | active, weekly      | AGPL-3.0   | Mend, very active                | [deps.dev](https://deps.dev/npm/renovate) — industry default; self-hosted optional                                                                                                                                                                                                |
-| OSV-Scanner (`google/osv-scanner`) | v2.4.0, 2026-06-18  | Apache-2.0 | Google OSS Security Team, active | [OSV-Scanner repo](https://github.com/google/osv-scanner) — backed by OSV.dev DB                                                                                                                                                                                                  |
-| Trivy (`aquasecurity/trivy`)       | active, frequent    | Apache-2.0 | Aqua Security, very active       | [Trivy repo](https://github.com/aquasecurity/trivy) — de-facto OSS container scanner                                                                                                                                                                                              |
-| actionlint (`rhysd/actionlint`)    | v1.7.12, 2026-03-30 | MIT        | **single maintainer** (`rhysd`)  | 4.1k stars, repo active (pushed 2026-07-16). Bus factor is the risk, not abandonment: next human contributor is 19 commits to rhysd's 2030. Exit ramp is cheap — it gates workflow files only, so dropping the step costs no runtime behaviour. Re-check at the quarterly review. |
+| Dep                                | Last release         | License    | Maintainership                   | Notes                                                                                                                                                                                                                                                                             |
+| ---------------------------------- | -------------------- | ---------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Renovate (`renovatebot/renovate`)  | active, weekly       | AGPL-3.0   | Mend, very active                | [deps.dev](https://deps.dev/npm/renovate) — industry default; self-hosted optional                                                                                                                                                                                                |
+| OSV-Scanner (`google/osv-scanner`) | v2.4.0, 2026-06-18   | Apache-2.0 | Google OSS Security Team, active | [OSV-Scanner repo](https://github.com/google/osv-scanner) — backed by OSV.dev DB                                                                                                                                                                                                  |
+| Trivy (`aquasecurity/trivy`)       | active, frequent     | Apache-2.0 | Aqua Security, very active       | [Trivy repo](https://github.com/aquasecurity/trivy) — de-facto OSS container scanner                                                                                                                                                                                              |
+| Grype (`anchore/grype`)            | v0.121.0, 2026-10-19 | Apache-2.0 | Anchore, very active             | [Grype repo](https://github.com/anchore/grype) — added 2026-10-27 for binary matching Trivy lacks; nightly only                                                                                                                                                                   |
+| actionlint (`rhysd/actionlint`)    | v1.7.12, 2026-03-30  | MIT        | **single maintainer** (`rhysd`)  | 4.1k stars, repo active (pushed 2026-07-16). Bus factor is the risk, not abandonment: next human contributor is 19 commits to rhysd's 2030. Exit ramp is cheap — it gates workflow files only, so dropping the step costs no runtime behaviour. Re-check at the quarterly review. |
 
 ## References
 
@@ -313,4 +364,5 @@ Renovate, OSV-Scanner, Trivy and actionlint are the adopted _tooling_; the choic
 - [Renovate docs](https://docs.renovatebot.com/) — configuration reference.
 - [OSV-Scanner](https://google.github.io/osv-scanner/) — scanner + database.
 - [Trivy](https://trivy.dev/) — container/image scanner.
+- [Grype](https://github.com/anchore/grype) — container/image scanner; binary classifiers for runtimes.
 - [deps.dev](https://deps.dev/) — Google's dep metadata aggregator (the canonical "is this package alive" lookup).

@@ -27,7 +27,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
    1. From [github.com/apps/renovate](https://github.com/apps/renovate) → **Install** → **Only select repositories** → pick `Projekt-Manager-Org/Projekt-Manager` only. GitHub redirects to [developer.mend.io/install](https://developer.mend.io/install).
    2. Sign up to Mend (one-time; org pre-fills from the GitHub handle).
    3. Mend asks two questions:
-      - **Product:** **Renovate only**. The bundled SAST/SCA options are Mend's paid tier and not used — OSV-Scanner + Trivy in CI cover the SCA surface per ADR-0027.
+      - **Product:** **Renovate only**. The bundled SAST/SCA options are Mend's paid tier and not used — OSV-Scanner + Trivy in CI and the nightly Trivy + Grype inventory scan cover the SCA surface per ADR-0027.
       - **Mode:** **Scan and Alert**, NOT "Scan Only". "Scan Only" runs Renovate in silent mode (no PRs/issues/checks; telemetry-only) and would defeat the whole point. The Mend dashboard later labels "Scan and Alert" as **"Interactive"** under _Default Engine Settings → Dependency Updates_. The repo also pins `"mode": "full"` in `.github/renovate.json` so Interactive is enforced from the config, independent of the Mend UI: an org-level "All repositories" install (and org transfers that re-onboard under it) defaults repos to **Silent**, which suppresses all PRs. The in-repo pin survives that. If the Mend dashboard still shows Silent after the config lands, flip the repo to Interactive in the UI and trigger one manual run — a UI-level Silent setting can override repo config.
    4. Mend drops you on the org dashboard. Confirm the repo shows **Renovate: Enabled** and **Renovate Status: onboarded** within a few minutes (first scan). The Mend dashboard is informational — the actual control surface is the repo (config + PRs + Dependency Dashboard issue); we do not operate from the Mend UI.
 
@@ -121,6 +121,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 | OSV-Scanner / Trivy CI fail                      | PR merge blocked                           | Per-PR                 |
 | Repo-level advisory match (direct dep)           | PR merge blocked; nightly run goes red     | Per-PR, else ≤24h      |
 | Nightly full-tree OSV scan                       | Schedule goes red → manual bump (backstop) | ≤24h from publication  |
+| Nightly inventory scan (deployed images)         | Schedule goes red → see § CVE handling     | ≤24h from indexing     |
 | Quarterly review                                 | Walk strategic-dep list (below)            | ~1 hour, 4×/year       |
 | Any npm release (direct or transitive)           | Held from resolution until 3 days old      | +3 days (see below)    |
 
@@ -145,7 +146,7 @@ GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs
 
 Runs also print **`cleared by the global DB`** — the reverse: the publisher says vulnerable, the curated record says patched, and the curated one won. When GitHub's review of the global record is at or after the publisher's last edit, the line says `reviewed since the last repo edit` and needs nothing. When it says **`global review predates the last repo edit`**, the global DB may be lagging — the risk this layer exists for — so check the advisory page before trusting the pass. The review timestamp is the first review only, so once that line appears for an advisory, it stays.
 
-No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason + `ignoreUntil` (≤90 days) per [§ Allowlist](#allowlist-osv-scanner--trivy). Do not weaken the check.
+No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason + `ignoreUntil` (≤90 days) per [§ Allowlist](#allowlist). Do not weaken the check.
 
 **Read the "NOT CHECKED" lines.** Every run prints the direct deps with no GitHub repository and the repos whose advisories endpoint 404s. Those are live coverage gaps, not noise. The amendment above carries the full list of what no layer covers — transitive deps most notably.
 
@@ -163,7 +164,7 @@ Three layers, because none covers the others' path:
 
 The gate **complements** the `.npmrc` cutoff, it does not replace it. The cutoff prevents — young versions never enter the lockfile, which is what lets a daily regeneration converge. The gate reports — it names the package and can be overruled. Dropping the cutoff was measured and rejected: a cooldown-free regeneration introduces 70 new versions, 33 under 3 days, a fresh crop daily, which would leave the auto-merged branch permanently red ([ADR-0027 § 2026-09-17](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff)).
 
-Waive a finding by adding `{ package, version, reason, ignoreUntil }` to `release-age-allowlist.json` — same `reason`/`ignoreUntil` rules and 90-day ceiling as the [scanner allowlist](#allowlist-osv-scanner--trivy), validated by the gate itself rather than by `check-allowlist-schema.sh`, which exists for files third-party scanners read. `security`-labelled PRs waive age findings automatically, matching Renovate's own vulnerability carve-out.
+Waive a finding by adding `{ package, version, reason, ignoreUntil }` to `release-age-allowlist.json` — same `reason`/`ignoreUntil` rules and 90-day ceiling as the [scanner allowlist](#allowlist), validated by the gate itself rather than by `check-allowlist-schema.sh`, which exists for files third-party scanners read. `security`-labelled PRs waive age findings automatically, matching Renovate's own vulnerability carve-out.
 
 Renovate cannot enforce its half on `lockFileMaintenance` (or `pin`, `bump`, `rollback`, `lockfileUpdate`, `replacement`): those update types are [documented as unsupported](https://docs.renovatebot.com/key-concepts/minimum-release-age/) because it delegates the resolution to the package manager. `lockFileMaintenance` runs daily here, is exempt from the PR limits, and auto-merges — so it is precisely the path that needs the npm-side half.
 
@@ -235,44 +236,66 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   ```
 
 - **False-positive on dead code** (cf. the original [ADR-0007](../adr/0007-suppress-esbuild-dev-server-advisory.md) case): add the advisory to the OSV-Scanner allowlist with a documented review trigger. Never `--omit=dev` blanket-suppress.
-- **No-fix-yet OS-package CVE in a base image** (Alpine `node:22-alpine`, `postgresql17-alpine`, etc., where the upstream distro hasn't shipped a patched build yet): Trivy blocks the `docker` job's image scans on every run because `ignore-unfixed: true` is deliberately not set (per [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational); see also [§Allowlist](#allowlist-osv-scanner--trivy) for the schema). The deploy pipeline halts until either Alpine ships the fix or an operator writes a deliberate, time-bounded allowlist entry:
-
-  ```text
-  # owner: @<handle>
-  # reason: <CVE-ID> — no upstream Alpine fix yet; exposure analysis at <link to triage>
-  <CVE-ID> exp:<today+90d>
-  ```
+- **No-fix-yet OS-package CVE in a base image** (Alpine `node:22-alpine`, `postgresql17-alpine`, etc., where the upstream distro hasn't shipped a patched build yet): Trivy blocks the `docker` job's image scans on every run because `ignore-unfixed: true` is deliberately not set (per [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational); see also [§Allowlist](#allowlist) for the schema). The deploy pipeline halts until either Alpine ships the fix or an operator writes a deliberate, time-bounded allowlist entry in `.trivyignore.yaml` (and `.grype.yaml` if Grype reports it too), scoped to the package.
 
   90 days is the maximum permitted window; pick a shorter date if upstream has a target ship-date. The expiry forces a re-review and the entry stops suppressing automatically — there is no silent-forever suppression path. Track the upstream CVE in the Renovate dashboard so the entry gets removed (not renewed) when the fix lands.
 
-### Allowlist (OSV-Scanner + Trivy)
+- **`Inventory scan is red on main`** (ci-red issue from `inventory-scan.yml`). Known reds until Renovate's throughput fix lands: [ADR-0027 § 2026-10-27](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-27--security-releases-outside-npm-starved-and-invisible-to-the-scanner).
+  - **`inventory` job** — an allowlist entry expired or is malformed, or the inventory cannot be derived (an image holding a variable other than `APP_IMAGE_TAG`, a build with args/target). No image is scanned until it is fixed.
+  - **`scan (<service>)` finding with a fix upstream** — the Renovate update that carries it is the fix; do not bump by hand. If none is pending, Renovate does not track that dependency: open an issue to add it to `.github/renovate.json`.
+  - **`pin-gate`** — Renovate's `pin` update adds the digest; a reference no manager extracts needs one first (same issue).
+  - **Unreachable or no fix** — allowlist entry, scoped to the package or path ([§Allowlist](#allowlist)).
 
-Allowlist files: `osv-scanner.toml` (npm + git deps) and `.trivyignore` (container image scan), both at the repo root.
+### Allowlist
 
-Per [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative), every entry MUST carry **id + owner (GitHub handle) + reason + expiry**, expressed in the format each scanner accepts. Both files are gated in CI by `scripts/check-allowlist-schema.sh` — entries that miss a field, encode an invalid handle, drift past 90 days, or use the wrong shape are rejected before the scanner step runs.
+The contract — id, owner, reason, expiry ≤ 90 days, scope, nothing else — is [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative); this section is its single home for formats. `scripts/check-allowlist-schema.sh` enforces it in `lint` (before OSV-Scanner) and in the nightly inventory scan (before Grype).
+
+| Field  | `osv-scanner.toml` (npm, git)   | `.trivyignore.yaml` (all Trivy scans) | `.grype.yaml` (nightly)         |
+| ------ | ------------------------------- | ------------------------------------- | ------------------------------- |
+| id     | `id`                            | `id`                                  | `vulnerability`                 |
+| owner  | `@<handle>:` prefix on `reason` | `owner: '@<handle>'`                  | `owner: '@<handle>'`            |
+| reason | `reason`                        | `statement`                           | `reason`                        |
+| expiry | `ignoreUntil`                   | `expired_at` (Trivy honours it)       | `expires` (Grype ignores it)    |
+| scope  | —                               | `paths` (no leading `/`) / `purls`    | `package` (`location` absolute) |
+
+Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). A plaintext `.trivyignore` is rejected: a local `trivy` run would read it as a global allowlist.
 
 Per [CLAUDE.md "refuse to serve" principle](../../CLAUDE.md#principles), the correct response to a finding without a justified allowlist entry is to fix the underlying issue, not to write a suppression "for now." Allowlist entries are a structured exception, not a default.
 
-**`osv-scanner.toml` example entry:**
-
-OSV-Scanner has no dedicated `owner` field, so the handle is encoded as a `@<handle>:` prefix on `reason`. `ignoreUntil` MUST be a bare TOML date literal — a quoted `"YYYY-MM-DD"` parses as a string and is rejected, as is an offset datetime (`YYYY-MM-DDTHH:MM:SSZ`).
-
 ```toml
+# osv-scanner.toml
 [[IgnoredVulns]]
 id = "GHSA-67mh-4wv8-2f99"
-ignoreUntil = 2026-08-16  # <= 90 days from add date 2026-05-18
+ignoreUntil = <today+≤90d>
 reason = "@vlzware: esbuild dev-server only; prod build invokes the bundler API, not the server. Tracking upstream fix at <link>."
 ```
 
-**`.trivyignore` example entry:**
-
-`.trivyignore` has no `reason` field. Both fields go in the contiguous comment block immediately preceding the entry; the expiry goes as `exp:YYYY-MM-DD` SUFFIX on the entry line itself (not in the block).
-
-```text
-# owner: @vlzware
-# reason: CVE on libfoo (image base layer) — exploit requires inbound TCP on 9000; our image binds only 8080.
-CVE-2026-12345 exp:2026-08-16
+```yaml
+# .trivyignore.yaml — sections: vulnerabilities, misconfigurations, secrets, licenses
+vulnerabilities:
+  - id: CVE-2026-12345
+    paths:
+      - usr/local/bin/gosu
+    owner: '@vlzware'
+    statement: Go stdlib CVE in gosu, unreachable on its privilege-drop path
+    expired_at: <today+≤90d>
 ```
+
+A run of entries sharing scope, owner and reason uses a YAML anchor and merge keys (`- <<: *gosu` + `id:`); see the file.
+
+```yaml
+# .grype.yaml — `ignore:` only; the file is also Grype's config
+ignore:
+  - vulnerability: CVE-2026-12345
+    package:
+      name: libxml2
+      type: apk
+    owner: '@vlzware'
+    reason: <why it does not apply here; link to the triage>
+    expires: <today+≤90d>
+```
+
+Go binaries are reported by Grype as the synthetic package `stdlib`; scope those by `location` (the binary's absolute path), not by the binary's name.
 
 Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing — the same script gates the CI `lint` job.
 
@@ -326,7 +349,7 @@ For each strategic dep below, check (≤5 min each):
 
 After the per-dep walk, do the **allowlist sweep** — same review, distinct surface:
 
-- Open `osv-scanner.toml` and `.trivyignore`. For every active entry: is the original justification still true? Has the upstream landed a fix that makes the suppression obsolete? Is the owner still the right person? Drop entries that no longer hold.
+- Open `osv-scanner.toml`, `.trivyignore.yaml` and `.grype.yaml`. For every active entry: is the original justification still true? Has the upstream landed a fix that makes the suppression obsolete? Is the owner still the right person? Drop entries that no longer hold.
 - The script's `ignoreUntil` ≤90d window means stale entries auto-expire and fail CI — the sweep is the in-band check that catches entries that were merely renewed without re-justification.
 
 Then the **abandonment-verdict sweep** — same review, distinct surface:
@@ -372,7 +395,7 @@ Renovate's `dockerfile` manager tracks base-image tags, not the individual packa
 | ------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Dockerfile`              | `age`, `findmnt`, `bash`                                                                | `age` = FiloSottile/age (active); `findmnt` from util-linux (kernel.org, very active); `bash` from GNU (very active).                                |
 | `Dockerfile.backup`       | `postgresql17`, `postgresql17-client`, `postgresql17-contrib`, `age`, `bash`, `findmnt` | `postgresql17*` from postgres.org (active). Scheduler moved in-process to `croner` in #199; `dcron`, `tzdata`, `su-exec`, `jq`, `coreutils` dropped. |
-| `docker/caddy/Dockerfile` | _(none — uses upstream `caddy:*-alpine` as-is)_                                         | n/a                                                                                                                                                  |
+| `docker/caddy/Dockerfile` | _(none — `scratch` runtime: static binary + CA bundle)_                                 | n/a                                                                                                                                                  |
 
 Per package, the same ≤5-min check as npm strategic deps: archived flag, last release date, CVE filing cadence (for niche projects, "no CVEs ever" can mean "no one filing them" more than "no vulnerabilities"). When introducing a new `apk add` line, add the package here in the same PR — same discipline as the per-ADR lifecycle-health entry.
 
@@ -389,7 +412,8 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 - `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin; `lockFileMaintenance` runs daily and exempt from the PR limits), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 4. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
+- `.github/workflows/inventory-scan.yml` — nightly Trivy + Grype scan of every deployed image, and the pin gate (`scripts/check-image-pins.sh`). The image set comes from `scripts/ci/deploy-inventory.sh`, which reads the deploy's compose file and profiles (`scripts/lib/deploy-compose.sh`, shared with `deploy.sh`). Grype is installed by URL + SHA256 under the same `# renovate:` annotation rules as the `ci.yml` binaries above.
 - `.npmrc` — `min-release-age=3`, the npm-side half of the release-age cooldown. See [§ Release-age cooldown](#release-age-cooldown).
 - `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` + nightly). See [§ Repo-level advisories](#repo-level-advisories).
-- `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist-osv-scanner--trivy) above.
-- `.trivyignore` — allowlist for Trivy (container image scan). Same schema discipline; comments carry the owner handle.
+- `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist) above.
+- `.trivyignore.yaml`, `.grype.yaml` — allowlists for Trivy and Grype. Schema in [§Allowlist](#allowlist).

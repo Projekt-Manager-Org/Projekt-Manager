@@ -12,7 +12,8 @@ operator (over WireGuard):                        v
     -> git fetch + checkout SHA
     -> refuse on Docker pin drift (scripts/ops/docker-converge.sh --check)
     -> decrypt secrets.env.age (age passphrase prompt)
-    -> docker compose pull app + up -d
+    -> refuse compose overrides (COMPOSE_FILE/PROFILES, override or compose.yaml files)
+    -> docker compose pull app backup + up -d (deploy profiles)
     -> smoke test /api/health (60s timeout)
     -> health through Caddy from the host (120s timeout)
     -> drill-key reload prompt (when /run/drill-key/identity is empty)
@@ -49,7 +50,7 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/fix/some-slug
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <sha>
 ```
 
-The script: fetches origin, checks out the exact SHA, refuses if the host drifted from the Docker pins (`scripts/ops/docker-converge.sh --check`), decrypts `secrets.env.age` into the shell env (capture-then-`eval`; no plaintext file — Docker still keeps the values in the container config, [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)), sets `APP_IMAGE_TAG=sha-<sha>`, runs `docker compose pull app && docker compose up -d`, polls `/api/health` for 60s, reloads Caddy, polls `https://$DOMAIN/api/health` through Caddy from the host for 120s (`scripts/smoke-caddy-health.sh`), and — when the backup container's tmpfs is empty — prompts the operator to paste the age private identity into `/run/drill-key/identity` via the existing `load-drill-key` tool (no key persisted to disk). A failed or skipped paste warns but does not abort the deploy; reload manually with `docker exec -it projekt-manager-backup-1 load-drill-key`.
+The script: fetches origin, checks out the exact SHA, refuses if the host drifted from the Docker pins (`scripts/ops/docker-converge.sh --check`), decrypts `secrets.env.age` into the shell env (capture-then-`eval`; no plaintext file — Docker still keeps the values in the container config, [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)), sets `APP_IMAGE_TAG=sha-<sha>`, refuses anything that would make compose load more than `docker-compose.yml` with the profiles in `scripts/lib/deploy-compose.sh` — `COMPOSE_FILE` / `COMPOSE_PROFILES` from the shell, `.env` or the secrets, an override or alternate compose file — so a deploy runs the file and profile set the nightly inventory scan covers, runs `docker compose pull app backup && docker compose up -d` under those profiles, polls `/api/health` for 60s, reloads Caddy, polls `https://$DOMAIN/api/health` through Caddy from the host for 120s (`scripts/smoke-caddy-health.sh`), and — when the backup container's tmpfs is empty — prompts the operator to paste the age private identity into `/run/drill-key/identity` via the existing `load-drill-key` tool (no key persisted to disk). A failed or skipped paste warns but does not abort the deploy; reload manually with `docker exec -it projekt-manager-backup-1 load-drill-key`.
 
 Finally — only after the stack is verified healthy — it garbage-collects superseded images. App/backup layers are `node_modules`-heavy (thousands of tiny files) and accumulate one image-set per deploy, exhausting inodes long before disk bytes if left unbounded. Retention is count-based: it keeps the most-recent `DEPLOY_IMAGE_RETENTION` (default `3`) tags per repo image — current + 2 rollback targets — and prunes BuildKit cache older than `DEPLOY_BUILD_CACHE_MAX_AGE` (default `168h`). GC runs last and is failure-tolerant; a reclaim hiccup never fails an already-successful deploy.
 
@@ -57,12 +58,12 @@ Finally — only after the stack is verified healthy — it garbage-collects sup
 
 `deploy.sh` covers everything except the Docker engine itself.
 
-| Layer                                 | How                                                                                                                                               |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App / backup (npm, app code, Node)    | CI builds + pushes to GHCR per commit SHA → `deploy.sh` pulls + recreates containers                                                              |
-| Caddy (`docker/caddy/Dockerfile`)     | `deploy.sh` runs `docker compose build caddy` — Docker's layer cache makes it near-free when nothing changed                                      |
-| Postgres / MinIO (pinned tags)        | `deploy.sh`'s `up -d` pulls on tag change. Same-tag-new-digest (rare) requires explicit `compose pull <service>` before deploy.                   |
-| Docker engine + Compose plugin (host) | Manual converge per host; `deploy.sh` refuses on drift → [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions) |
+| Layer                                 | How                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App / backup (npm, app code, Node)    | CI builds + pushes to GHCR per commit SHA → `deploy.sh` pulls + recreates containers                                                                                                                                                                                                                                        |
+| Caddy (`docker/caddy/Dockerfile`)     | `deploy.sh` runs `docker compose build caddy` — Docker's layer cache makes it near-free when nothing changed. The runtime is the static binary on `scratch`, so the cache cannot hold stale OS packages                                                                                                                     |
+| Postgres (`db`)                       | `deploy.sh`'s `up -d` pulls a reference not present locally — a new digest once the reference is digest-pinned. `postgres:17-alpine` is still a floating tag, which `up -d` never re-pulls; the nightly pin gate is red until Renovate pins it ([#637](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/637)). |
+| Docker engine + Compose plugin (host) | Manual converge per host; `deploy.sh` refuses on drift → [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions)                                                                                                                                                                           |
 
 ## Rollback
 
