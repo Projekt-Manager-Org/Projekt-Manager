@@ -1,0 +1,140 @@
+# Nightly inventory scan (ADR-0027 § 2026-10-27 amendment, control 3).
+#
+# Scans every image a deploy runs, with two scanners, and fails red on
+# any HIGH/CRITICAL finding from either. #637 showed what the PR gate
+# misses: it scans only the two first-party images, only at PR time, and
+# only with Trivy — which cannot see a runtime installed from a tarball
+# (the `node` binary) or compiled from source (`postgres`). Grype matches
+# those binaries; Trivy sees what Grype misses (Go stdlib in `gosu`).
+#
+#   pin-gate   every image reference carries a digest, so what this scans
+#              is what a deploy pulls (scripts/check-image-pins.sh)
+#   inventory  the image set, derived from the deploy's own compose file
+#              and profiles (scripts/ci/deploy-inventory.sh) — a new
+#              service is scanned with no change here
+#   scan       one job per image: Trivy ∪ Grype, same floor as the PR
+#              gate (HIGH/CRITICAL, no ignore-unfixed; tolerable findings
+#              go in .trivyignore.yaml / .grype.yaml, path-scoped)
+#
+# First-party images are scanned at the `main` tag, which only `promote`
+# writes: the state of main, independent of what any host has deployed
+# (deploy.sh owns that). Dispatching this on a branch scans the branch's
+# files (pin gate, inventory, allowlists) against main's images.
+#
+# A red run reaches a human through notify.yml (scheduled runs have no
+# PR and no triggering human); scripts/check-notify-coverage.sh fails the
+# PR that drops or renames this workflow out of that list.
+
+name: Inventory scan
+
+on:
+  schedule:
+    # 02:00 UTC, before security-scheduled (03:00), e2e (03:30) and GHCR
+    # retention (04:00).
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pin-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Image pin gate
+        run: bash scripts/check-image-pins.sh
+
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      images: ${{ steps.derive.outputs.images }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # Before any scan: Grype does not read the expiry, so a lapsed
+      # .grype.yaml entry would suppress its finding forever without this.
+      - name: Check allowlist schema (osv-scanner.toml, .trivyignore.yaml, .grype.yaml)
+        run: bash scripts/check-allowlist-schema.sh
+
+      - name: Derive inventory
+        id: derive
+        env:
+          APP_IMAGE_TAG: main
+        run: |
+          set -euo pipefail
+          images=$(bash scripts/ci/deploy-inventory.sh)
+          echo "$images" | jq .
+          echo "images=$images" >> "$GITHUB_OUTPUT"
+
+  scan:
+    needs: inventory
+    name: scan (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      # Each image is its own verdict; one red image must not hide another.
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.inventory.outputs.images) }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Build image
+        if: matrix.build
+        env:
+          IMAGE: ${{ matrix.image }}
+          CONTEXT: ${{ matrix.context }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: docker build -t "$IMAGE" -f "$CONTEXT/$DOCKERFILE" "$CONTEXT"
+
+      - name: Pull image
+        if: ${{ !matrix.build }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker pull "$IMAGE"
+
+      - name: Trivy
+        uses: ./.github/actions/trivy-image
+        with:
+          image_ref: ${{ matrix.image }}
+
+      # Runs even when Trivy is red: the two scanners see different
+      # things, and the run should show both verdicts.
+      - name: Install Grype
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # renovate: datasource=github-release-attachments depName=anchore/grype
+          version="v0.120.1"
+          expected_sha="0a9ee97ef5ae2ee953b0a80098105052e846cdbe319a57d808b519c33cd1343d"
+          asset="grype_${version#v}_linux_amd64.tar.gz"
+          url="https://github.com/anchore/grype/releases/download/${version}/${asset}"
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/grype.tar.gz "$url"
+          actual_sha=$(sha256sum /tmp/grype.tar.gz | awk '{print $1}')
+          if [ "$actual_sha" != "$expected_sha" ]; then
+            echo "::error::Grype tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
+            exit 1
+          fi
+          tar -xzf /tmp/grype.tar.gz -C /tmp grype
+          sudo mv /tmp/grype /usr/local/bin/grype
+          grype version
+
+      # Same floor as the Trivy step: HIGH and above, unfixed included.
+      # Grype refuses a vulnerability DB older than its max age by default,
+      # so a stale DB fails the run instead of scanning against old data.
+      - name: Grype
+        if: ${{ !cancelled() }}
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: grype "docker:$IMAGE" -c .grype.yaml --fail-on high -o table

@@ -78,16 +78,18 @@ name: Notify
 
 on:
   workflow_run:
-    # Matched by workflow NAME, not file path. Renaming `CI`,
-    # `Security (scheduled)` or `E2E` silently unhooks this — actionlint
-    # does not catch it, because it cannot know which names are real.
+    # Matched by workflow NAME, not file path. Renaming a listed workflow
+    # silently unhooks it — actionlint cannot know which names are real.
+    # scripts/check-notify-coverage.sh (ci.yml `lint`) fails the PR when a
+    # SCHEDULED workflow is missing here; `CI` has no schedule, so a rename
+    # of it is still caught only by review.
     #
     # `E2E` was excluded until #377 as flaky and `workflow_dispatch`-only,
     # where monitoring manufactures alert fatigue. On a nightly schedule
     # the failure mode inverts to silence — it sat red ~3.5 weeks with
     # nothing to say so. `route='main'` already covers the `schedule`
     # event, and one-issue-per-incident below is what bounds the fatigue.
-    workflows: [CI, 'Security (scheduled)', E2E, 'GHCR retention']
+    workflows: [CI, 'Security (scheduled)', E2E, 'GHCR retention', 'Inventory scan']
     types: [completed]
 
 # An explicit block zeroes every scope not listed. `contents: read`

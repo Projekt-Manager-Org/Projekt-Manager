@@ -548,6 +548,25 @@ jobs:
       - name: Image ref derivation — self-test
         run: bash scripts/__tests__/image-refs.test.sh
 
+      # notify.yml hooks workflows by name; a scheduled one it misses
+      # fails red with nobody told (ADR-0027 § 2026-10-27). Static, so it
+      # belongs on the PR that adds or renames the workflow.
+      - name: Notify coverage (every scheduled workflow is hooked)
+        run: bash scripts/check-notify-coverage.sh
+
+      - name: Notify coverage — self-test
+        run: bash scripts/__tests__/check-notify-coverage.test.sh
+
+      # The nightly inventory scan (inventory-scan.yml) runs the pin gate
+      # and scans what deploy-inventory.sh derives. Both gates run there,
+      # against main; their self-tests run here so a broken gate is caught
+      # on the PR that breaks it, not by a silently green night.
+      - name: Image pin gate — self-test
+        run: bash scripts/__tests__/check-image-pins.test.sh
+
+      - name: Deploy inventory — self-test
+        run: bash scripts/__tests__/deploy-inventory.test.sh
+
       # Truth table for notify.yml's `Classify run` step, executed
       # against the step's real shell body extracted out of the
       # workflow. `workflow_run` only fires from the default-branch
