@@ -1,69 +1,103 @@
 # Binary Attachment Key — Rotation
 
-Rotate the binary `age` keypair. Per [ADR-0024 §Decision "Key rotation"](../../adr/0024-binary-attachment-e2e-encryption.md#decision), automated in-place rotation is **out of scope** — there is no "rotate-and-rewrap-every-envelope" path in the application. Rotation is operator-driven and works by minting a new keypair, redeploying, and re-uploading all attachments through the app so the new uploads wrap to the new recipient.
+Rotate the binary `age` keypair: a new key becomes active, the old one is retired but stays in the **keyring** ([ADR-0024 §Decision "Key rotation"](../../adr/0024-binary-attachment-e2e-encryption.md#decision)). New wraps use only the active key; everything written before keeps opening in the app. Nothing is re-uploaded.
 
-This is a planned operator procedure — not a routine cadence. Trigger it on:
+Trigger it on:
 
-- Suspected compromise of the password-manager entry or any custody copy.
+- Suspected compromise of the password-manager entry, the workstation, the VPS, or any custody copy — first see [§ After a compromise](#after-a-compromise).
 - Operator handover.
-- A scheduled interval the operator chooses (no project-mandated cadence; the design treats the binary identity as long-lived).
+- A scheduled interval the operator chooses (no project-mandated cadence).
 
 Concept map: [overview.md](overview.md). Recovery from key loss (different problem, different procedure): [recovery.md](recovery.md).
 
-## What rotation costs
+## What rotation does — and does not do
 
-The cost is **proportional to the attachment count**. Every existing attachment was wrapped to the **old** recipient; the new identity cannot decrypt those wrapped envelopes. Two paths exist:
+```
+before:  active = K1                 keyring file = {K1}
+after:   active = K2, retired = K1   keyring file = {K2, K1}
+```
 
-1. **Re-upload through the app.** The attachment owner re-uploads each file; the new init wraps to the new recipient; the old row is marked obsolete. Labour-intensive but correct — the new attachment carries the same plaintext through a fresh encrypt path.
-2. **Keep the old identity around indefinitely.** The old wrapped envelopes still decrypt with the old identity. The deployed app reads `BINARY_AGE_RECIPIENT` (the **new** recipient) for new uploads, but historical decrypts via the SW DEK-fetch endpoint use whichever identity is loaded in tmpfs. Loading the old identity post-rotation breaks the "one identity per deploy" invariant the boot probe relies on — **this path is not supported** without further design work and is documented only to explain why option 1 is the supported path.
+- **Protects only data written after it.** Old envelopes stay on their rows and in Object-Locked versions and DB backups. Everything written before the rotation stays readable to whoever holds K1 and bucket access — rotation cannot change that.
+- **A retired key is needed as long as any row or object version from before the rotation exists.** Issued invoices cannot be deleted, so in practice that is forever. Never destroy a retired key.
+- The keyring grows by one key per rotation. Every reboot paste carries all of them.
 
-The supported path is **option 1**. Plan the rotation around an attachment-count budget the operator can re-upload.
+The keyring is one text file, one `AGE-SECRET-KEY-1...` line per key. Wherever it is kept — the password manager and every custody copy — it is kept whole.
 
-**Invoice PDFs cannot be re-uploaded.** After rotation the app returns `DEK_UNWRAP_FAILED` for every existing invoice; each PDF stays readable offline with the retired identity (self-describing objects, [ADR-0024](../../adr/0024-binary-attachment-e2e-encryption.md)). Never destroy the retired identity.
+## After a compromise
+
+The old key keeps opening everything written before the rotation; bucket access is the only guard left for that data. Rotating onto a compromised machine hands the attacker the new key too.
+
+- **Bucket access:** rotate every B2 key the compromised location held — the app key (VPS), the recovery and master keys (workstation, password manager) — per [object-storage-provisioning.md § Master-key handling](../object-storage-provisioning.md#master-key-handling).
+- **Workstation compromised:** run step 1 on a clean machine.
+- **VPS compromised:** rebuild it ([server-setup.md](../server-setup.md)) before the paste in step 2.
+- **Custody location compromised:** do not reuse it for the new copies.
 
 ## Procedure
 
-You are about to mint a new keypair, deploy it, and accept that every existing attachment renders as the [AC-244](../../spec/verification.md#1526-attachments) "Schlüssel nicht verfügbar" placeholder (the wrapped envelope on each historical row was made for the old recipient; the new app cannot unwrap it) until re-uploaded. The placeholder is distinct from [AC-436](../../spec/verification.md#1526-attachments) "Datei fehlt" (which fires when the storage object is absent). Communicate this to users before starting.
+### 1. Mint the new key and build the keyring
 
-### Before — quiesce uploads
+In a [working file](../index.md#working-file) directory of its own — `$W` is created and removed by the steps below ([§ Rotate a secret](../manual-deploy.md#rotate-a-secret), the drill), and `$D` must survive until step 4:
 
-Tell users to stop uploading new attachments for the rotation window. New uploads against the old recipient produce wrapped envelopes that the post-rotation app cannot unwrap — same outcome as historical attachments, but avoidable by quiescing.
+```bash
+D="$XDG_RUNTIME_DIR/binary-rotation"
+install -d -m 700 "$D"
+stty -echo; (umask 077; cat > "$D/current.txt"); stty echo   # paste the binary keyring's password-manager entry, Enter, Ctrl-D
+age-keygen -y "$D/current.txt"   # what landed: one public recipient per key
+```
 
-### 1. Mint a new keypair
+Check the paste holds exactly the deployed keys — every later check derives from it, and step 4 may destroy the entry it came from. Print the deployed values in an interactive SSH session (`sudo` needs a terminal for its password):
 
-Re-run [setup.md §2](setup.md#2-generate-the-age-key-pair) into a **new** password-manager entry and fresh off-system copies. Leave the old entry and copies untouched — they decrypt historical envelopes during the recovery window and serve rollback; step 6 retires them.
+```bash
+# VPS
+sudo -u deploy docker exec projekt-manager-app-1 printenv BINARY_AGE_RECIPIENT BINARY_AGE_RETIRED_RECIPIENTS
+```
 
-### 2. Update `BINARY_AGE_RECIPIENT`
+Paste the printed lines on the workstation (public values, no echo suppression needed) and compare:
 
-Re-run [setup.md §3](setup.md#3-push-the-recipient-to-the-vps) with the new `age1...` from step 1. The old recipient line is replaced; the new line goes into `secrets.env.age`.
+```bash
+cat > "$D/deployed.txt"   # paste, Enter, Ctrl-D
+diff <(age-keygen -y "$D/current.txt" | sort) \
+     <(tr ',' '\n' < "$D/deployed.txt" | tr -d ' \t\r' | sed '/^$/d' | sort) \
+  && echo "paste = deployed keyring"
+```
 
-### 3. Redeploy
+Any diff output: stop — the paste or the entry is incomplete. Then:
 
-Re-run [setup.md §4](setup.md#4-first-deploy). The `app` container restarts, the boot probe waits for the **new** identity, the operator pastes per [load.md](load.md). Until that paste, the app is down — same gating as a fresh setup.
+```bash
+(umask 077; age-keygen -o "$D/new.txt" && cat "$D/new.txt" "$D/current.txt" > "$D/next.txt")
+age-keygen -y "$D/new.txt"                         # BINARY_AGE_RECIPIENT
+age-keygen -y "$D/current.txt" | paste -sd, -      # BINARY_AGE_RETIRED_RECIPIENTS
+```
 
-### 4. Re-upload attachments
+The last line covers every earlier retired recipient plus the previously active one.
 
-Walk users through re-uploading each existing attachment they still need. The app's upload flow now wraps to the new recipient. The old rows can be hidden (soft-delete) once re-uploaded; the old B2 ciphertext sits under bucket retention until lifecycle reaps it.
+Copy `$D/next.txt` — the new keyring — into a **new** password-manager entry (clipboard hygiene per [Key custody § New identity](../index.md#new-identity)) and mint fresh off-system copies. Keep the current entry and copies until step 4.
 
-A bulk re-upload UI does not exist; the re-upload is one file at a time through the existing upload affordances.
+### 2. Update both recipient variables and redeploy
 
-### 5. Verify with a drill
+Change both values in `secrets.env.age` and redeploy per [manual-deploy.md § Rotate a secret](../manual-deploy.md#rotate-a-secret), using the two outputs from step 1:
 
-Immediately run the workstation-side drill ([drills.md](drills.md)) against a freshly re-uploaded attachment, using the new password-manager entry. A passing drill confirms the rotation is end-to-end: new uploads wrap to the new recipient and the new entry decrypts them. Later drills cycle through the new off-system copies.
+```bash
+BINARY_AGE_RECIPIENT='age1...'
+BINARY_AGE_RETIRED_RECIPIENTS='age1...,age1...'
+```
 
-### 6. Retire the old identity
+At the deploy's paste prompt ([load.md](load.md)), paste the new keyring. A missing or an extra key is rejected with its recipient named ([troubleshooting.md § Keyring mismatch](troubleshooting.md#keyring-mismatch)).
 
-After all attachments are re-uploaded (or after the operator accepts that the un-re-uploaded ones are abandoned):
+### 3. Verify
 
-1. Mark the old password-manager entry "retired, read-only" and move the old off-system copies to retired storage ([Key custody](../index.md#key-custody)). Keep them — historical audits, late discoveries that an old attachment was actually needed, etc. Do not destroy.
-2. Record the rotation per [Operations record](../index.md#operations-record) — date, reason, attachment count re-uploaded, attachment count abandoned.
+1. In the app, open an invoice PDF and an attachment from before the rotation. Both must open.
+2. Check each new custody copy holds the whole keyring: its [recipient check](../index.md#working-file), piped through `sort`, lists exactly the recipients from step 1.
+3. Run the drill ([drills.md](drills.md)) with the new entry against a fresh upload. Later drills cycle through the new off-system copies.
+
+### 4. Finalise
+
+```bash
+rm -rf "$D"
+```
+
+Destroying the previous password-manager entry and custody copies is recommended — fewer copies of keys that still decrypt old data — and safe: the new ones hold every key the old ones did (step 1's check, step 3.2). Custody is the operating company's call ([Key custody](../index.md#key-custody)). Record the rotation per [Operations record](../index.md#operations-record): date, reason, new and retired recipients.
 
 ## Rollback
 
-If step 5's drill fails, the rotation has a problem. Rollback is "redeploy with the old `BINARY_AGE_RECIPIENT`":
-
-1. Restore the previous `secrets.env.age` from the password manager (or from the `secrets.env.age.bak` snapshot taken in [setup.md §3](setup.md#3-push-the-recipient-to-the-vps)).
-2. Redeploy per [setup.md §4](setup.md#4-first-deploy).
-3. Paste the **old** identity (the old password-manager entry, untouched since step 1) into `load-binary-key`.
-
-Rollback is fast as long as the old identity custody is still intact and the rotation has not yet involved data destruction. Investigate the drill failure before retrying the rotation.
+If step 3 fails after the deploy, anything uploaded since is wrapped to the new key — so swap roles instead of restoring: the previous active recipient back in `BINARY_AGE_RECIPIENT`, the new one added to `BINARY_AGE_RETIRED_RECIPIENTS`, earlier retired ones kept. Redeploy and paste the new keyring — the next reboot's paste needs the new key too. Keep the previous entry and custody copies until the new ones pass step 3. Investigate before retrying.

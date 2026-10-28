@@ -34,11 +34,13 @@ Drills, restores and rotations are recorded outside the systems they exercise �
 
 Applies to both operator-held `age` identities — binary ([binary-key/](binary-key/overview.md)) and backup ([backup/](backup/overview.md)). Custody copies = the working copy plus any off-system copies.
 
-| Copy              | Where                                                                                                 | Role                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Working copy      | One password-manager entry per identity: the full file text, in a multi-line field                    | Every routine paste and command reads from here. Not an off-system copy. |
-| Off-system copies | Offline: encrypted USB, paper written by hand (a print spooler writes it to disk), air-gapped KeePass | Survive loss of the password manager. Labelled copy A, copy B, …         |
-| Retired           | Entry and copies marked "retired, read-only"                                                          | Decrypt what the old keypair protected; kept, never destroyed            |
+| Copy              | Where                                                                                                 | Role                                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Working copy      | One password-manager entry per identity: the full file text, in a multi-line field                    | Every routine paste and command reads from here. Not an off-system copy.                                                                            |
+| Off-system copies | Offline: encrypted USB, paper written by hand (a print spooler writes it to disk), air-gapped KeePass | Survive loss of the password manager. Labelled copy A, copy B, …                                                                                    |
+| Retired           | Entry and copies marked "retired, read-only"                                                          | Decrypt what the old keypair protected; kept, never destroyed. Binary: none — retired keys stay in the keyring ([rotation](binary-key/rotation.md)) |
+
+A password field holds one line — keep the text in the entry's notes field. If the password manager has none, one field per key works too: paste them in turn, each followed by Enter, before Ctrl-D.
 
 The system's line: the identity is operator-held — never on the VPS disk, in CI, git, chat or a plain cloud drive, and no identity file persists on the workstation. The rest is the operating company's call, recommended but not enforced: how the password manager keeps and backs up its vault, how many off-system copies and where ([Betriebsverantwortung §4](../compliance/betriebsverantwortung.md#4-empfehlungen-an-den-betreiber)). Without an off-system copy, losing the password-manager entry is losing the identity. Keep the label → location map outside the password manager too — it is needed exactly when the password manager is gone.
 

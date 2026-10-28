@@ -8,12 +8,13 @@ Concept map: [overview.md](overview.md). Setup / rotation: [setup.md](setup.md),
 
 Symptoms that appear during or right after [setup.md §4](setup.md#4-first-deploy):
 
-| Symptom                                                           | Likely cause                                                            | Fix                                                                                                                                              |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `app` container exits with `BINARY_AGE_RECIPIENT not set`         | Missing env var in `secrets.env.age`                                    | Re-run [setup.md §3](setup.md#3-push-the-recipient-to-the-vps), redeploy.                                                                        |
-| `app` container exits with `binary identity not loaded`           | Boot probe hit; tmpfs at `/run/binary-key/identity` is empty            | Run the loader per [load.md § The paste](load.md#the-paste).                                                                                     |
-| `BINARY_AGE_RECIPIENT` reads as the private identity, not `age1…` | Operator pasted the wrong half of the keypair into `secrets.env.age`    | Rerun [setup.md §2](setup.md#2-generate-the-age-key-pair) extraction with `age-keygen -y`, rerun [§3](setup.md#3-push-the-recipient-to-the-vps). |
-| compose parse aborts with `BINARY_AGE_RECIPIENT must be declared` | The compose file's `:?` gate fires; secrets file did not source the var | Check `secrets.env.age` for typos / missing line; re-run `scripts/deploy.sh` so it re-sources the env.                                           |
+| Symptom                                                                         | Likely cause                                                                                                                                                                    | Fix                                                                                                                                              |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| deploy pre-flight: `App server requires these env vars: … BINARY_AGE_RECIPIENT` | Missing env var in `secrets.env.age`                                                                                                                                            | Re-run [setup.md §3](setup.md#3-push-the-recipient-to-the-vps), redeploy.                                                                        |
+| `app` container exits with ``binary `age` identity not loaded``                 | Boot probe hit; tmpfs at `/run/binary-key/identity` is empty                                                                                                                    | Run the loader per [load.md § The paste](load.md#the-paste).                                                                                     |
+| pre-flight rejects `BINARY_AGE_RECIPIENT`                                       | Not a public `age1…` recipient — often the private half of the keypair                                                                                                          | Rerun [setup.md §2](setup.md#2-generate-the-age-key-pair) extraction with `age-keygen -y`, rerun [§3](setup.md#3-push-the-recipient-to-the-vps). |
+| `secrets.env.age is missing keys …: BINARY_AGE_RETIRED_RECIPIENTS`              | `secrets.env.age` predates key rotation support                                                                                                                                 | Add `BINARY_AGE_RETIRED_RECIPIENTS=''` per [setup.md §3](setup.md#3-push-the-recipient-to-the-vps), redeploy.                                    |
+| pre-flight rejects `BINARY_AGE_RETIRED_RECIPIENTS`                              | An entry that is not a public `age1…` recipient (private key, truncated paste) or a stray comma. A typo that keeps the shape passes here and surfaces as `missing` at the paste | Fix the list ([rotation.md § 2](rotation.md#2-update-both-recipient-variables-and-redeploy)), redeploy.                                          |
 
 ## App refuses to start
 
@@ -30,7 +31,7 @@ binary-identity probe: waiting up to 300s for /run/binary-key/identity (paste vi
 binary-identity probe: still waiting for /run/binary-key/identity (30s elapsed, 270s remaining)
 ```
 
-Expected log line after the timeout (or on a hard failure — perms drift, malformed paste, recipient mismatch):
+Expected log line after the timeout (or on a hard failure — perms drift, malformed paste, keyring mismatch):
 
 ```
 Refusing to start: binary-identity probe failed (ADR-0024) — binary `age` identity not loaded: file at BINARY_AGE_IDENTITY_PATH is absent. ... (probe waited 300s for the file to appear)
@@ -38,21 +39,29 @@ Refusing to start: binary-identity probe failed (ADR-0024) — binary `age` iden
 
 **Fix:** load the identity per [load.md](load.md). The next poll tick (≤2s) picks it up and the boot continues.
 
-If the log shows a different error class (e.g., `tmpfs not mounted`), see § Recipient mismatch / tmpfs missing below.
+If the log shows a different error class (e.g., `is not a tmpfs mount`), see § Keyring mismatch / tmpfs missing below.
 
-## Recipient mismatch
+## Keyring mismatch
 
-`load-binary-key` rejects the paste with:
+`load-binary-key` rejects the paste (the boot probe logs ``binary `age` keyring mismatch: missing the active key / missing a retired key / unlisted key``):
 
 ```
-ERROR: the pasted identity's public recipient does not match BINARY_AGE_RECIPIENT.
+ERROR: the pasted keyring does not match BINARY_AGE_RECIPIENT + BINARY_AGE_RETIRED_RECIPIENTS.
+       missing:  age1...
+       unlisted: age1...
 ```
 
-Cause: the operator pasted the **wrong** identity. The most common case is pasting the **backup drill identity** into `load-binary-key` (or the binary identity into `load-drill-key`) — same shape file, different keypair. Derive both recipients from the password-manager entries per the [recipient check](../index.md#working-file), once per entry: the binary entry should give `BINARY_AGE_RECIPIENT`, the backup entry `AGE_RECIPIENT`.
+- **`unlisted`** — the paste holds a key the deploy doesn't name. Most often the **backup drill identity** pasted into `load-binary-key` (or the binary keyring into `load-drill-key`) — same shape file, different keypair.
+- **`missing`** — a configured key is not in the paste. Missing the active one: the wrong entry, or a copy from before the last rotation. Missing a retired one: the new key alone pasted instead of the keyring, or a keyring not built per [rotation.md § 1](rotation.md#1-mint-the-new-key-and-build-the-keyring).
 
-If the two derived recipients don't match the two `…_RECIPIENT` env vars on the VPS, an identity-mixup happened somewhere upstream — most likely a recent rotation didn't update one side. Resolve before retrying the paste.
+Derive the recipients from the password-manager entries per the [recipient check](../index.md#working-file), once per entry: the binary entry should give `BINARY_AGE_RECIPIENT` plus every `BINARY_AGE_RETIRED_RECIPIENTS` entry (pipe it through `sort`), the backup entry `AGE_RECIPIENT`. The deployed values:
 
-If the two pairs match but the loader still rejects, the `secrets.env.age` `BINARY_AGE_RECIPIENT` value drifted from the password-manager entry. Re-run [setup.md §3](setup.md#3-push-the-recipient-to-the-vps) with the entry's recipient.
+```bash
+sudo -u deploy docker exec projekt-manager-app-1 \
+  printenv BINARY_AGE_RECIPIENT BINARY_AGE_RETIRED_RECIPIENTS    # on the VPS
+```
+
+If the entry holds the right keys but the deployed values differ, `secrets.env.age` drifted — most likely a rotation updated only one side. Fix it per [rotation.md § 2](rotation.md#2-update-both-recipient-variables-and-redeploy) and redeploy.
 
 ## Tmpfs not a mount
 
@@ -81,7 +90,7 @@ After the edit, redeploy and retry the paste. If the directive is intact in the 
 
 A specific attachment renders as the [AC-244](../../spec/verification.md#1526-attachments) "Schlüssel nicht verfügbar" placeholder in the gallery / binary list while others render fine. (Distinct from the [AC-436](../../spec/verification.md#1526-attachments) "Datei fehlt" placeholder which fires when the storage object is absent.)
 
-Two distinct causes, with different remediations:
+Three distinct causes, with different remediations:
 
 1. **Wrapped envelope corrupted on the row.** The DB row's `wrappedDek` is malformed or no longer a valid age envelope (e.g., partial DB corruption, an aborted migration that dropped bytes). Rare but recoverable from a Layer 2 backup if the corruption post-dates the most recent good backup. Cross-check the row's `wrappedDek` length against a known-good attachment of similar age:
 
@@ -92,7 +101,9 @@ Two distinct causes, with different remediations:
 
    A drastic outlier in `octet_length` is the smoking gun. The object carries its own copy of the envelope — `scripts/binary-key/recover-objects.ts --key <originalKey>` ([drills.md § 3](drills.md#3-run-the-recovery-tool)) decrypts the bytes regardless. Restore the row from Layer 2 backup ([docs/ops/backup/recovery.md](../backup/recovery.md)) — surgical row restore is out of scope, so this is a full-DB restore decision the owner approves.
 
-2. **Storage object replaced or missing.** The B2 object at `originalKey` is no longer the ciphertext that was uploaded — overwritten (rare, since the bucket is versioned + lock-protected per [ADR-0022](../../adr/0022-binary-storage-b2-compliance-object-lock.md)), or the key drifted from the row. Indicates a separate incident — investigate via [docs/ops/backup/troubleshooting.md](../backup/troubleshooting.md) escalation patterns and B2 audit logs. Not a binary-identity problem.
+2. **Wrapped to a key no longer in the keyring.** A retired recipient was dropped from `BINARY_AGE_RETIRED_RECIPIENTS` and the keyring ([rotation.md](rotation.md#what-rotation-does--and-does-not-do): never). Restore it to both and redeploy.
+
+3. **Storage object replaced or missing.** The B2 object at `originalKey` is no longer the ciphertext that was uploaded — overwritten (rare, since the bucket is versioned + lock-protected per [ADR-0022](../../adr/0022-binary-storage-b2-compliance-object-lock.md)), or the key drifted from the row. Indicates a separate incident — investigate via [docs/ops/backup/troubleshooting.md](../backup/troubleshooting.md) escalation patterns and B2 audit logs. Not a binary-identity problem.
 
 If decryption fails for **all** attachments and not just one, see § Drill failure on the workstation below.
 
@@ -102,7 +113,7 @@ The monthly drill ([drills.md](drills.md)) exited non-zero; the index entry's `e
 
 `no identity matched any of the recipients` (unwrap):
 
-- The custody copy you loaded does not match the deployed `BINARY_AGE_RECIPIENT`. Either the custody copy is from a previous keypair (rotation gap — the custody copy predates the most recent rotation) or the custody copy is corrupted.
+- The custody copy you loaded lacks the key the sample is wrapped to. Either it predates the most recent rotation (no active key) or it is corrupted.
 - **Action:** test the _other_ custody copies immediately per [recovery.md § Drill-failure escalation](recovery.md#3-drill-failure-escalation). If every copy fails, you are in a custody emergency — extract the in-tmpfs identity per recovery.md before any reboot.
 
 `object metadata carries no wrapped envelope`: the sample predates self-describing objects (#478) or was not written by the app. Pick a fresh upload.

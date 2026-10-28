@@ -46,7 +46,7 @@ A single **"Import"** action restores a takeout archive via a server-side **impo
 
 **A picked file always starts a new import.** `GET /api/import-jobs` keeps returning the last finished job, so a prior _terminal_ job must never take over a dialog opened with a picked archive — it would render that old summary instead of the confirmation gate, making the restore usable exactly once per deployment. Re-attach (no picked file) still resumes onto a terminal job, per the paragraph above.
 
-Permission: `data:restore`. Users without it do not see the action; the server remains authoritative ([AC-134](../verification.md#1514-data-exchange), [AC-329](../verification.md#1514-data-exchange)). The job re-encrypts attachments server-side under its own loaded identity, so `attachment:write` is not a UI prerequisite.
+Permission: `data:restore`. Users without it do not see the action; the server remains authoritative ([AC-134](../verification.md#1514-data-exchange), [AC-329](../verification.md#1514-data-exchange)). The job re-encrypts attachments server-side, wrapped to the active binary recipient, so `attachment:write` is not a UI prerequisite.
 
 ### 8.11.3 Speichernutzung
 

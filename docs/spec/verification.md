@@ -399,7 +399,7 @@ Upload:
 - **AC-397** `[crit]`: When a user uploads a file to a project, the system records one attachment with its file name, type, size, label, uploader and upload time.
 - **AC-398** `[crit]`: If an upload violates an attachment field constraint ([data-model.md §5.13](data-model.md#513-attachment)), the system rejects it as a validation error and records nothing.
 - **AC-399** `[crit]`: If an upload's stored object differs from what the system issued or the client declared — storage key, size, content digest or object metadata — object storage rejects it.
-- **AC-400** `[crit]`: The system persists each of an attachment's encryption keys only wrapped for the operator's binary recipient ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
+- **AC-400** `[crit]`: The system persists each of an attachment's encryption keys only wrapped for the active binary recipient, never for a retired one ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
 - **AC-401** `[crit]`: Object storage receives attachment content only encrypted, each object with its own encryption key ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
 - **AC-402** `[crit]`: If, at completion, a declared object is missing from storage or differs from its declared size, the system rejects the completion as a conflict and the upload stays incomplete.
 - **AC-403** `[crit]`: If a completed upload is completed again, the system rejects it as a conflict and changes nothing.
@@ -455,14 +455,15 @@ Storage safety and recovery:
 
 - **AC-236** `[crit]`: If the bucket is not exactly the [ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md) shape — versioning on; Compliance lock with default retention `R` ≥ 1 day **[C]**; exactly one lifecycle rule, bucket-wide, whose only action deletes hidden versions after `L` days **[C]**; `R ≤ L` — the system refuses to start.
 - **AC-237** `[crit]`: If the storage credential can destroy object versions, or the provider's answer doesn't prove it can't, the system refuses to start ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)).
-- **AC-438** `[crit]`: If the binary identity is absent, unreadable, malformed or doesn't match the configured recipient, the system refuses to start and logs which check failed ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
-- **AC-439** `[crit]`: Every object the system writes outside the deploy-probe namespace ([data-model.md §5.13](data-model.md#513-attachment)) decrypts with the binary identity alone, without its database row ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
+- **AC-438** `[crit]`: If the binary keyring is absent, unreadable, malformed, or its identities don't match the configured recipients — the active one plus each listed retired one, none missing, none extra — the system refuses to start and logs which check failed ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
+- **AC-439** `[crit]`: Every object the system writes outside the deploy-probe namespace ([data-model.md §5.13](data-model.md#513-attachment)) decrypts with the binary keyring alone, without its database row ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
 - **AC-440** `[crit]`: Every rendered invoice PDF object names its invoice number, readable without the database ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
-- **AC-441** `[crit]`: When the operator runs the recovery tool with only the binary identity, storage credentials and a cutoff time — no database — it writes the plaintext of every object version written since the cutoff outside the deploy-probe namespace, hidden versions and objects no attachment refers to included, and reads no older version.
+- **AC-441** `[crit]`: When the operator runs the recovery tool with only the binary keyring, storage credentials and a cutoff time — no database — it writes the plaintext of every object version written since the cutoff outside the deploy-probe namespace, hidden versions and objects no attachment refers to included, and reads no older version.
 - **AC-442** `[crit]`: When given an object key, the recovery tool processes only that key's versions, still bounded by the cutoff.
 - **AC-443** `[crit]`: The recovery tool's index lists every version it processed with its object key, version id, write time and outcome, plus the invoice number when the object names one.
-- **AC-444** `[crit]`: If a version does not decrypt and authenticate with the binary identity alone, the recovery tool lists it as failed, writes no plaintext for it, continues, and exits non-zero.
-- **AC-445** `[infra]`: The binary identity is never persisted to disk on the VPS; it is loaded only into tmpfs ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
+- **AC-444** `[crit]`: If a version does not decrypt and authenticate with the binary keyring alone, the recovery tool lists it as failed, writes no plaintext for it, continues, and exits non-zero.
+- **AC-445** `[infra]`: The binary keyring is never persisted to disk on the VPS; it is loaded only into tmpfs ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
+- **AC-517** `[crit]`: After a key rotation, every attachment written under a listed retired key still opens and downloads, singly and in a ZIP selection, and is included in the full-account export; every invoice PDF written under one still downloads and is included in the invoice bulk export and the full-account export ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)).
 - **AC-374** `[infra]`: The recovery tool runs with a dedicated read-only storage credential — list and read, no write or hide.
 
 ### 15.27 Configuration and Feature Manifest

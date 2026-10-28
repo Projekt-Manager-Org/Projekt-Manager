@@ -1,6 +1,6 @@
 /**
  * Key envelope service — the server-side seam between the operator-loaded
- * binary `age` identity and the per-blob 32-byte AES-256-GCM DEK that the
+ * binary `age` keyring and the per-blob 32-byte AES-256-GCM DEK that the
  * browser supplies at init / receives at download (ADR-0024).
  *
  * Wraps the DEK once at init under the operator's binary `age` X25519
@@ -17,7 +17,7 @@
  * paste's during boot (mirroring `scripts/backup/load-drill-key.sh`).
  *
  * Failure shape: `KeyEnvelopeUnwrapError` is thrown for every
- * unwrap-side fault — wrong recipient (partial rotation), corrupted
+ * unwrap-side fault — a key not in the loaded keyring, corrupted
  * envelope bytes (AEAD verify), structurally-invalid input (header
  * parse). The caller need not distinguish these — the route layer
  * surfaces `DEK_UNWRAP_FAILED` 422 on download-url and the SW renders the AC-244 "Schlüssel

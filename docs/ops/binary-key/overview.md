@@ -4,7 +4,9 @@ Operator navigation page for the binary-attachment end-to-end-encryption identit
 
 ## What the binary identity is
 
-A long-lived `age` X25519 key pair whose public recipient (`BINARY_AGE_RECIPIENT`) is embedded in the `app` container env, and whose private identity is operator-held ([Key custody](../index.md#key-custody)). Every binary uploaded through the app is encrypted in the browser with a fresh per-blob AES-256-GCM data-encryption key (DEK); the server wraps that DEK with the public recipient and stores the wrapped envelope (`wrappedDek`) on the `attachment` row **and** on the object as metadata — so the identity alone decrypts any object, even one whose row is lost ([drills.md](drills.md) exercises that path monthly). B2 sees only ciphertext — the bytes plus a per-blob nonce, opaque to the provider — and the wrapped envelopes, useless without the identity.
+A long-lived `age` X25519 key pair whose public recipient (`BINARY_AGE_RECIPIENT`) is embedded in the `app` container env, and whose private identity is operator-held ([Key custody](../index.md#key-custody)). Every binary uploaded through the app is encrypted in the browser with a fresh per-blob AES-256-GCM data-encryption key (DEK); the server wraps that DEK with the public recipient and stores the wrapped envelope (`wrappedDek`) on the `attachment` row **and** on the object as metadata — so the keyring alone decrypts any object, even one whose row is lost ([drills.md](drills.md) exercises that path monthly). B2 sees only ciphertext — the bytes plus a per-blob nonce, opaque to the provider — and the wrapped envelopes, useless without the identity.
+
+After a [rotation](rotation.md) the loaded file is a **keyring**: the active identity (new wraps) plus every retired one (`BINARY_AGE_RETIRED_RECIPIENTS`, unwrap only).
 
 ```
 ┌──────────────────────┐    presigned PUT (ciphertext)   ┌──────────────────────────┐
@@ -53,7 +55,7 @@ Two pastes after every reboot is the canonical post-restart workflow. See [load.
 | Reload the identity into VPS tmpfs after a reboot or container recreate | [load.md](load.md)                       |
 | Run the monthly workstation-side decrypt drill                          | [drills.md](drills.md)                   |
 | Lost identity, lost custody copy, recovery from key drift               | [recovery.md](recovery.md)               |
-| Plan a key rotation (new keypair, re-upload all attachments)            | [rotation.md](rotation.md)               |
+| Plan a key rotation (new active keypair, old one retired)               | [rotation.md](rotation.md)               |
 | App refuses to start, load script rejects the paste, drill fails        | [troubleshooting.md](troubleshooting.md) |
 
 ## References

@@ -97,6 +97,9 @@ if (!process.env.PM_E2E_BINARY_GENERATED) {
   // / BINARY_AGE_IDENTITY_PATH are required" without this assignment.
   process.env.BINARY_AGE_RECIPIENT = E2E_BINARY_RECIPIENT;
   process.env.BINARY_AGE_IDENTITY_PATH = E2E_BINARY_IDENTITY_PATH;
+  // The generated identity is the whole keyring; a developer `.env`'s
+  // retired list would make the boot probe refuse it.
+  process.env.BINARY_AGE_RETIRED_RECIPIENTS = '';
   process.env.PM_E2E_BINARY_GENERATED = '1';
 }
 const E2E_BINARY_RECIPIENT = process.env.BINARY_AGE_RECIPIENT!;
@@ -366,6 +369,7 @@ export default defineConfig({
       STORAGE_BUCKET: E2E_STORAGE_BUCKET,
       BINARY_AGE_RECIPIENT: E2E_BINARY_RECIPIENT,
       BINARY_AGE_IDENTITY_PATH: E2E_BINARY_IDENTITY_PATH,
+      BINARY_AGE_RETIRED_RECIPIENTS: '',
       TAKEOUT_STAGING_DIR: E2E_TAKEOUT_STAGING_DIR,
     },
   },

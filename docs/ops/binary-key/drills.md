@@ -34,7 +34,7 @@ Then delete the attachment in the app. The drill now reads a version behind a de
 
 ### 2. Load a custody copy
 
-This month's copy per [§ Cycle the custody copies](#cycle-the-custody-copies) — the load-bearing step. Paste it into a [working file](../index.md#working-file) (`$W/identity.txt`); the teardown in step 5 removes it.
+After a rotation the custody copy is the keyring; the recovery tool tries every key in it. The sample proves only the active key — check the retired ones are present: the copy's [recipient check](../index.md#working-file), piped through `sort`, lists `BINARY_AGE_RECIPIENT` plus every `BINARY_AGE_RETIRED_RECIPIENTS` entry (deployed values per [troubleshooting.md § Keyring mismatch](troubleshooting.md#keyring-mismatch)). This month's copy per [§ Cycle the custody copies](#cycle-the-custody-copies) — the load-bearing step. Paste it into a [working file](../index.md#working-file) (`$W/identity.txt`); the teardown in step 5 removes it.
 
 ### 3. Run the recovery tool
 
