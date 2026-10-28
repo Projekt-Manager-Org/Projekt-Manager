@@ -582,6 +582,9 @@ jobs:
       - name: Caddy health probe — self-test
         run: bash scripts/__tests__/smoke-caddy-health.test.sh
 
+      - name: Sync scripts schema parity gate — self-test
+        run: bash scripts/__tests__/sync-schema-parity.test.sh
+
       # Static check: every raw INSERT/UPDATE/DELETE on an audited
       # table (project, customer, user, project_worker) must be
       # authored inside the service-layer `mutate()` helper or on the

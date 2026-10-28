@@ -31,7 +31,8 @@
 #   - ssh hetzner is reachable as the deploy user
 #   - local docker compose stack has `db` and `storage` running (the
 #     `storage` service is the dev MinIO mirror)
-#   - the baseline migration hash matches between local and VPS
+#   - the baseline migration hash matches between local and VPS, and the
+#     VPS DB's baseline ledger entry matches it
 #   - the VPS DB has at least one user (would be pointless to pull an
 #     empty/uninitialised DB over the top of local)
 #   - the VPS app has its binary identity loaded; .env carries the dev
@@ -79,7 +80,7 @@ for arg in "$@"; do
   case "$arg" in
     --i-know) I_KNOW=1 ;;
     -h|--help)
-      sed -n '3,43p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,45p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -139,6 +140,23 @@ vps_users=$(ssh "$SSH_TARGET" \
   "docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -tAc 'SELECT COUNT(*) FROM users;' 2>/dev/null || echo 0")
 if [ -z "$vps_users" ] || [ "$vps_users" -lt 1 ]; then
   echo "ERROR: VPS users table is empty or DB is not initialised — nothing to pull." >&2
+  exit 1
+fi
+
+# Mirror of the forward script's ledger guard (#644): a VPS DB built on an
+# older baseline would overwrite dev, ledger row included, and dev would
+# learn only at its next boot.
+vps_ledger=$(ssh "$SSH_TARGET" \
+  "docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -tAc 'SELECT hash FROM drizzle.__drizzle_migrations ORDER BY id ASC LIMIT 1;' 2>/dev/null" \
+  | tr -d '[:space:]' || true)
+if [ "$vps_ledger" != "$local_hash" ]; then
+  cat <<ERR >&2
+ERROR: baseline schema mismatch — VPS DB ledger does not match 0000_baseline.sql.
+  expected (file): $local_hash
+  recorded (db):   ${vps_ledger:-<empty or unreadable>}
+The VPS DB was built on another baseline. Recover it first:
+see docs/ops/recover-from-schema-change.md.
+ERR
   exit 1
 fi
 

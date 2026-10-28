@@ -30,6 +30,8 @@
 #   - the baseline migration hash matches between local and VPS — i.e. the
 #     VPS is deployed at a commit with a compatible schema. If not, deploy
 #     the matching commit first (docs/ops/manual-deploy.md) and retry.
+#   - the local DB's baseline ledger entry matches that hash, i.e. the DB
+#     was built from it (docs/ops/recover-from-schema-change.md)
 #
 # What gets overwritten on the VPS:
 #   - Postgres database `projekt_manager` (all tables DROPped and recreated
@@ -89,7 +91,7 @@ for arg in "$@"; do
   case "$arg" in
     --i-know) I_KNOW=1 ;;
     -h|--help)
-      sed -n '3,32p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '3,34p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -164,6 +166,26 @@ local_users=$(docker exec "${COMPOSE_PROJECT}-db-1" \
   psql -U pm -d projekt_manager -tAc "SELECT COUNT(*) FROM users;")
 if [ "$local_users" -lt 1 ]; then
   echo "ERROR: local users table is empty — nothing to sync. Seed the DB (SEED=force in .env, then restart the app) and retry." >&2
+  exit 1
+fi
+
+# Matching files say nothing about the DB being synced (#644): one built on
+# an older baseline would land on the VPS as is, ledger row included. The
+# restore does not restart the app, so its boot guard never sees it; the
+# next deploy aborts. Same comparison as deploy.sh's baseline schema-state
+# guard, except an empty ledger refuses too.
+local_ledger=$(docker exec "${COMPOSE_PROJECT}-db-1" \
+  psql -U pm -d projekt_manager -tAc \
+  "SELECT hash FROM drizzle.__drizzle_migrations ORDER BY id ASC LIMIT 1;" \
+  2>/dev/null | tr -d '[:space:]' || true)
+if [ "$local_ledger" != "$local_hash" ]; then
+  cat <<ERR >&2
+ERROR: baseline schema mismatch — local DB ledger does not match 0000_baseline.sql.
+  expected (file): $local_hash
+  recorded (db):   ${local_ledger:-<empty or unreadable>}
+The local DB was built on another baseline. Reset it, then retry:
+see docs/ops/recover-from-schema-change.md.
+ERR
   exit 1
 fi
 
