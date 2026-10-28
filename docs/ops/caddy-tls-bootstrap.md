@@ -85,9 +85,12 @@ curl -v --resolve "<domain>:443:10.213.17.1" "https://<domain>/api/health"
 
 If a cert is broken or compromised:
 
+The Caddy image has no shell or `rm` (scratch runtime), so the delete runs in a throwaway container with Caddy's volumes attached, borrowing the `db` image already on the host:
+
 ```bash
-sudo -u deploy docker exec projekt-manager-caddy-1 \
-  rm -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/<domain>
+img=$(sudo -u deploy docker inspect -f '{{.Image}}' projekt-manager-db-1)
+sudo -u deploy docker run --rm --volumes-from projekt-manager-caddy-1 --entrypoint rm "$img" \
+  -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/<domain>
 
 sudo -u deploy docker exec projekt-manager-caddy-1 caddy reload --config /etc/caddy/Caddyfile
 ```
