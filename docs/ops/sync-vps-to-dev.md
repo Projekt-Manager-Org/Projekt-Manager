@@ -40,6 +40,7 @@ VPS (over SSH)                                    operator workstation
 | Local dev stack running (`db`, `storage`)  | `docker compose ps db storage`                                                                                                 |
 | VPS DB populated (users ≥ 1)               | Checked automatically — would be pointless to pull an empty DB over local                                                      |
 | VPS deployed at a schema-compatible commit | Hash-compared automatically (`0000_baseline.sql`)                                                                              |
+| VPS DB built from that baseline            | Checked automatically — the DB ledger's baseline hash must match the file                                                      |
 | VPS app has its binary identity loaded     | Checked automatically — [binary-key/load.md](binary-key/load.md)                                                               |
 | `BINARY_AGE_RECIPIENT` in dev `.env`       | Checked automatically                                                                                                          |
 | `python3-boto3` locally                    | Checked automatically — [local-dev.md](local-dev.md)                                                                           |
@@ -63,7 +64,7 @@ Overrides via env:
 
 ## What the script does
 
-1. Preflight — SSH, local stack, schema parity, non-empty VPS DB, VPS identity loaded, dev recipient, local boto3.
+1. Preflight — SSH, local stack, schema parity (files and VPS DB ledger), non-empty VPS DB, VPS identity loaded, dev recipient, local boto3.
 2. Refuses without `--i-know`; prints exactly what will be overwritten.
 3. On VPS: `pg_dump --clean --if-exists --no-owner --no-acl` into `$REMOTE_TMP/db.sql`.
 4. On VPS: read STORAGE\_\* from the running `app` container's env, then `mc cp --recursive` the B2 bucket's current objects into `$REMOTE_TMP/bucket/` (`mc mirror` needs a bucket-level stat the app key is denied).
@@ -92,15 +93,16 @@ Untouched: local filesystem, `.env`, VAPID private key under `data/.vapid/`, any
 
 ## Failure modes
 
-| Symptom                                             | Cause / Fix                                                                                                                   |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `schema hash mismatch`                              | Local is on a different commit than the VPS. Check out the matching commit locally, or deploy the matching commit to the VPS. |
-| `local service 'db' is not running`                 | Start the dev stack: `docker compose up -d`.                                                                                  |
-| `VPS users table is empty`                          | VPS hasn't been bootstrapped/seeded. Nothing to pull.                                                                         |
-| `the VPS app has no readable binary identity`       | The VPS app was restarted without the paste. Load it ([binary-key/load.md](binary-key/load.md)), retry.                       |
-| `re-wrapped N of M envelopes`                       | An upload on the VPS changed the row count between count and re-wrap. Retry.                                                  |
-| `ERROR: current transaction is aborted` mid-restore | A stray DB connection beat the `pg_terminate_backend` step. Stop `npm run dev`, retry.                                        |
-| Local dev server errors after sync                  | Expected — the connection pool now points at refreshed tables. Restart `npm run dev`.                                         |
+| Symptom                                             | Cause / Fix                                                                                                                                           |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema hash mismatch`                              | Local is on a different commit than the VPS. Check out the matching commit locally, or deploy the matching commit to the VPS.                         |
+| `VPS DB ledger does not match`                      | VPS DB was built on another baseline. Recover it ([recover-from-schema-change.md § 1](recover-from-schema-change.md#1-wipe-and-redeploy-vps)), retry. |
+| `local service 'db' is not running`                 | Start the dev stack: `docker compose up -d`.                                                                                                          |
+| `VPS users table is empty`                          | VPS hasn't been bootstrapped/seeded. Nothing to pull.                                                                                                 |
+| `the VPS app has no readable binary identity`       | The VPS app was restarted without the paste. Load it ([binary-key/load.md](binary-key/load.md)), retry.                                               |
+| `re-wrapped N of M envelopes`                       | An upload on the VPS changed the row count between count and re-wrap. Retry.                                                                          |
+| `ERROR: current transaction is aborted` mid-restore | A stray DB connection beat the `pg_terminate_backend` step. Stop `npm run dev`, retry.                                                                |
+| Local dev server errors after sync                  | Expected — the connection pool now points at refreshed tables. Restart `npm run dev`.                                                                 |
 
 ## Post-sync checklist
 

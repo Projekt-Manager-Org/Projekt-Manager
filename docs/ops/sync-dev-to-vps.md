@@ -42,6 +42,7 @@ operator workstation                              VPS (over SSH)
 | Local dev stack running (`db`, `storage`)  | `docker compose ps db storage`                                                                                    |
 | Local DB populated (seeds ran)             | `docker exec projekt-manager-db-1 psql -U pm -d projekt_manager -tAc 'SELECT COUNT(*) FROM users;'` — must be ≥ 1 |
 | VPS deployed at a schema-compatible commit | Hash-compared automatically (`0000_baseline.sql`)                                                                 |
+| Local DB built from that baseline          | Checked automatically — the DB ledger's baseline hash must match the file                                         |
 | `python3-boto3` on the VPS host            | `ssh hetzner 'python3 -c "import boto3"'` ([server-setup.md § Software](server-setup.md#software))                |
 
 The schema check is exact-match on `src/server/db/migrations/0000_baseline.sql`. If it fails, [deploy the matching commit](manual-deploy.md) first, then retry.
@@ -66,7 +67,7 @@ End-to-end typical timing on a small dataset: ~40 seconds. The app container sta
 
 ## What the script does
 
-1. Preflight — SSH, local stack, schema parity, non-empty local DB.
+1. Preflight — SSH, local stack, schema parity (files and local DB ledger), non-empty local DB.
 2. Refuses without `--i-know`; prints exactly what will be overwritten.
 3. `pg_dump --clean --if-exists --no-owner --no-acl` into `/tmp/pm-sync-<ts>/db.sql`.
 4. `mc mirror --overwrite --remove` local MinIO bucket into `/tmp/pm-sync-<ts>/bucket/`.
@@ -90,6 +91,7 @@ Untouched: VPS filesystem, `secrets.env.age`, Caddy config, VAPID private key un
 | Symptom                                    | Cause / Fix                                                                                                                                                                                                                                                         |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `schema hash mismatch`                     | VPS is on a different commit's schema. Deploy the matching commit first.                                                                                                                                                                                            |
+| `local DB ledger does not match`           | Local DB was built on another baseline. Reset it ([recover-from-schema-change.md § 2](recover-from-schema-change.md#2-reset-local-stack-and-reseed)), retry.                                                                                                        |
 | `local service 'db' is not running`        | Start the dev stack: `docker compose up -d`.                                                                                                                                                                                                                        |
 | `local users table is empty`               | Start the app once (`npm run dev`) so migrations + seed run, then retry.                                                                                                                                                                                            |
 | `health check failed after 60s`            | Check `ssh hetzner 'docker logs --tail=80 projekt-manager-app-1'`. DB restore may have partially applied — inspect tables and re-run.                                                                                                                               |

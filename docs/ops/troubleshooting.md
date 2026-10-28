@@ -110,6 +110,6 @@ unset SECRETS_PLAINTEXT
 
 **Root cause:** `migrate()` skips an edited `0000_baseline.sql` — it compares the journal `when`, not the hash ([recover-from-schema-change.md](recover-from-schema-change.md)). The live DB stays on the previous schema while `schema.ts` describes the new one. Same trap exists locally on `projekt-manager_pgdata`.
 
-**Detection:** Both `scripts/deploy.sh` (pre-flight) and `npm run dev` / production boot (via `src/server/db/baseline-guard.ts`) compare the on-disk baseline's sha256 to the ledger entry and abort with `Baseline schema mismatch …` before serving traffic. Hitting this section means a guard was bypassed (e.g. a stale image), the message was missed, or the trap recurred between the guard and the next request.
+**Detection:** Deploy, boot and both sync scripts compare the on-disk baseline's sha256 to the ledger entry and abort before serving traffic ([recover-from-schema-change.md § Symptom](recover-from-schema-change.md#symptom)). Hitting this section means a guard was bypassed (e.g. a stale image), the message was missed, or the trap recurred between the guard and the next request.
 
 **Workaround:** Wipe and reseed both VPS and local DBs, then sync. Full procedure: [recover-from-schema-change.md](recover-from-schema-change.md).
