@@ -41,7 +41,8 @@ In a [working file](../index.md#working-file) directory of its own — `$W` is c
 ```bash
 D="$XDG_RUNTIME_DIR/binary-rotation"
 install -d -m 700 "$D"
-stty -echo; (umask 077; cat > "$D/current.txt"); stty echo   # paste the current entry, Enter, Ctrl-D
+stty -echo; (umask 077; cat > "$D/current.txt"); stty echo   # paste the binary keyring's password-manager entry, Enter, Ctrl-D
+age-keygen -y "$D/current.txt"   # what landed: one public recipient per key
 ```
 
 Check the paste holds exactly the deployed keys — every later check derives from it, and step 4 destroys the entry it came from. Print the deployed values in an interactive SSH session (`sudo` needs a terminal for its password):
