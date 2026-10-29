@@ -105,6 +105,11 @@ fi
 # timeout instead of a clean pre-flight abort.
 export APP_IMAGE_TAG="sha-$EXPECTED_SHA"
 
+# The profiles every pull/up/logs below runs with. Shared with the nightly
+# inventory scan, which scans exactly this set (#637).
+# shellcheck source=scripts/lib/deploy-compose.sh
+. "$REPO_DIR/scripts/lib/deploy-compose.sh"
+
 # Decrypt secrets into the shell env.
 #
 # Two changes vs. the previous `source <(age -d …)` form:
@@ -251,13 +256,14 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx db; then
   fi
 fi
 
-# `docker compose pull` only pulls services that declare an `image:`
-# — `db` and `storage` use pinned registry images (unchanged); `app`
-# and `backup` resolve via APP_IMAGE_TAG (exported in Phase 2 setup
-# above). --profile backup is needed on BOTH `pull` and `up` — without
-# it on pull, the backup service is filtered out of the active set and
-# its image is never fetched ahead of `up -d` (which would then block
-# on a registry round-trip while starting).
+# Only `app` and `backup` are pulled here: they resolve via APP_IMAGE_TAG
+# (exported in Phase 2 setup above). `db` is left to `up -d`, which pulls
+# a missing image — and with a digest-pinned reference (#637) a new
+# digest is always a missing image. The deploy profiles are needed on
+# BOTH `pull` and `up` — without them on pull, the backup service is
+# filtered out of the active set and its image is never fetched ahead of
+# `up -d` (which would then block on a registry round-trip while
+# starting).
 #
 # `--policy missing` is what makes the local cache below a real rollback
 # store rather than decoration. `app`/`backup` tags are immutable
@@ -270,7 +276,7 @@ fi
 # Same reasoning as Kubernetes' `imagePullPolicy: IfNotPresent` for
 # non-moving tags: the registry is the cold path, the host cache is the
 # warm one.
-docker compose --profile backup pull --policy missing app backup
+docker compose "${DEPLOY_COMPOSE_PROFILES[@]}" pull --policy missing app backup
 
 # Caddy uses `build: ./docker/caddy` (locally built, not a registry
 # pull), so `compose up -d` below does NOT auto-rebuild on Dockerfile
@@ -332,7 +338,7 @@ docker compose run --rm --no-deps -T app node /app/dist/server/deploy-preflight-
 # The backup service is behind a profile so local dev (no R2 creds)
 # doesn't spin up a cron loop that will log AccessDenied on every
 # scheduled tick. See docs/ops/backup/setup.md §4 and ADR-0020.
-docker compose --profile backup up -d
+docker compose "${DEPLOY_COMPOSE_PROFILES[@]}" up -d
 
 # --- Binary-key reload (operator-loaded; ADR-0024 boot probe) --------
 # Container recreation wipes the tmpfs at /run/binary-key. The app boot
@@ -388,7 +394,7 @@ if ! ./scripts/smoke-app-health.sh projekt-manager-app-1 60; then
   # Include the backup container in the failure dump — its profile
   # must match `up -d` above, otherwise compose filters it out of
   # the active service set and the logs command silently skips it.
-  docker compose --profile backup logs --tail=50
+  docker compose "${DEPLOY_COMPOSE_PROFILES[@]}" logs --tail=50
   exit 1
 fi
 

@@ -76,7 +76,7 @@ jobs:
       # osv-scan job above needs no equivalent; this one does. Without it a
       # lapsed entry suppresses a match indefinitely, in the steady-state
       # backstop, which is the exact place a stale allowlist matters.
-      - name: Check allowlist schema (osv-scanner.toml + .trivyignore)
+      - name: Check allowlist schema (osv-scanner.toml, .trivyignore.yaml, .grype.yaml)
         run: bash scripts/check-allowlist-schema.sh
 
       - name: Repo-level advisory check

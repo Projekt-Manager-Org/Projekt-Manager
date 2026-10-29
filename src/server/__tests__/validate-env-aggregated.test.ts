@@ -149,7 +149,10 @@ describe('AC-231: scripts/deploy.sh runs env validation before docker compose up
 
   it('the preflight invocation precedes the `docker compose up` step', () => {
     const preflightIdx = code.search(PREFLIGHT_INVOCATION);
-    const composeUpIdx = code.search(/docker\s+compose\s+(?:--profile\s+\S+\s+)?up\b/);
+    // Profiles come inline (`--profile x`) or from scripts/lib/deploy-compose.sh.
+    const composeUpIdx = code.search(
+      /docker\s+compose\s+(?:(?:--profile\s+\S+|"\$\{DEPLOY_COMPOSE_PROFILES\[@\]\}")\s+)?up\b/,
+    );
     expect(preflightIdx, 'preflight invocation not found in deploy.sh').toBeGreaterThanOrEqual(0);
     expect(composeUpIdx, '`docker compose up` not found in deploy.sh').toBeGreaterThanOrEqual(0);
     expect(

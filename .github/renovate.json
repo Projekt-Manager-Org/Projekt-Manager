@@ -157,6 +157,17 @@
     },
     {
       "customType": "regex",
+      "description": "Go modules pinned above Caddy's own requirement via `xcaddy build … --with <module>[/<pkg>]@vX` in docker/caddy/Dockerfile — golang.org/x/net (named through its `/http2` package, because xcaddy blank-imports each --with path and the module root has none) and github.com/go-jose/go-jose/v4. Without them, advisories in the edge proxy's dependencies wait for a Caddy release (#637). Same lane as the other Caddy inputs: auto-merged on green CI, which does not build Caddy (ci.yml `docker`, accepted gap); the nightly inventory scan does, so a bump that does not compile turns it red within a day, unless a deploy's own `docker compose build caddy` hits it first — loudly, before anything is recreated.",
+      "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
+      "matchStrings": [
+        "--with (?<depName>golang\\.org/x/net)/http2@(?<currentValue>v\\d+\\.\\d+\\.\\d+)",
+        "--with (?<depName>github\\.com/go-jose/go-jose/v4)@(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "go",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "description": "PostgreSQL major in Alpine apk pins (`postgresqlN`, `postgresqlN-client`, `postgresqlN-contrib`) inside Dockerfile.backup. Renovate's Docker manager bumps the `db` image tag in docker-compose/CI but does not see apk package names. Without this regex a server bump leaves the backup client major behind — pg_dump/pg_restore older→newer is the unsupported direction. extractVersion filters Docker tags to integer-only so we track the major line, matching what the apk package name encodes.",
       "managerFilePatterns": ["/^Dockerfile\\.backup$/"],
       "matchStrings": ["postgresql(?<currentValue>\\d+)(?:-client|-contrib)?"],

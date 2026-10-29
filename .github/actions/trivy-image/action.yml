@@ -21,8 +21,9 @@ runs:
     #
     #   No `ignore-unfixed` — per the project's refuse-or-block-never-
     #   downgrade principle a no-fix-yet CVE is still a finding. When one
-    #   becomes operationally tolerable the entry goes in .trivyignore with
-    #   owner + reason + expiry ≤90d, gated by check-allowlist-schema.sh.
+    #   becomes operationally tolerable the entry goes in .trivyignore.yaml,
+    #   path-scoped, with owner + statement + expiry ≤90d, gated by
+    #   check-allowlist-schema.sh.
     #
     #   cache-dir is moved OUT of the workspace. The action defaults it to
     #   `${{ github.workspace }}/.cache/trivy`, which is inside the Docker
@@ -39,5 +40,5 @@ runs:
         image-ref: ${{ inputs.image_ref }}
         severity: HIGH,CRITICAL
         exit-code: '1'
-        trivyignores: .trivyignore
+        trivyignores: .trivyignore.yaml
         cache-dir: ${{ runner.temp }}/trivy-cache
