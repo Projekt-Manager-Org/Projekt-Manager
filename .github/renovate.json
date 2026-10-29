@@ -21,7 +21,8 @@
     "prHourlyLimit": 0
   },
   "vulnerabilityAlerts": {
-    "labels": ["security", "dependencies"],
+    "description": "deploy-asap: what runs is exposed until deployed; merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29).",
+    "labels": ["security", "dependencies", "deploy-asap"],
     "schedule": ["at any time"],
     "prConcurrentLimit": 0,
     "prHourlyLimit": 0
@@ -102,6 +103,19 @@
       "matchUpdateTypes": ["patch", "minor", "digest", "pin", "lockFileMaintenance"],
       "automerge": true,
       "platformAutomerge": true
+    },
+    {
+      "description": "deploy-asap on updates of the runtime images production builds or runs: the fixes they carry reach a host only on deploy, so merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29). Pins are excluded: they change no bytes. A group gets the label when any of its updates matches (labels are combined per branch). docker-compose.http.yml is evaluation-only, and CI's service images never ship.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["node", "postgres", "caddy"],
+      "matchFileNames": [
+        "Dockerfile",
+        "Dockerfile.backup",
+        "docker-compose.yml",
+        "docker/caddy/Dockerfile"
+      ],
+      "matchUpdateTypes": ["patch", "minor", "digest"],
+      "addLabels": ["deploy-asap"]
     },
     {
       "description": "Docker host packages (docker/host-versions.txt, ADR-0009): one grouped PR, never auto-merged. The operator tests the PR branch on the VPS and merges only once it passes acceptance (server-setup.md § Upgrading pinned versions); deploy.sh refuses to deploy until a host matches the file, so an auto-merge would block deploys at a time nobody chose. Sorted after the auto-merge rule above so it overrides it. Quarterly, in the first week of January, April, July and October: Docker ships a release almost every week, and every bump costs a daemon restart and a key paste per host. updateNotScheduled=false freezes the PR outside the window; inside it, the PR rebases whenever main moves, so the operator merges once the pins file is unchanged since the tested SHA. A closed PR inside the window is recreated: the group has no single version, so its title is not ignorable. prConcurrentLimit=0 and prHourlyLimit=0 exempt its own creation, as for lockFileMaintenance: otherwise any open PR inside the window (a stuck lockfile PR, say) would skip the quarter unnoticed (the Dependency Dashboard lists it as rate-limited, but nothing notifies). While open, it still counts against every other rule's limit of 1 (the open-PR count is repository-wide): merge it or close it to skip the round. No minimumReleaseAge: the deb datasource reports no release timestamps, and with timestamp-required a missing timestamp never ages, so the PR would never be created.",
