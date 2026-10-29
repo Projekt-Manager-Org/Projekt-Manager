@@ -7,4 +7,68 @@
 # ignored in every image. Merge keys (`<<: *anchor`) share fields across
 # a run of entries; Trivy and the schema check both resolve them.
 
-vulnerabilities: []
+vulnerabilities:
+  # gosu 1.19 in postgres:17-alpine (the `db` service), built with Go
+  # 1.24.6; upstream does not rebuild gosu for stdlib CVEs. gosu runs once,
+  # as root, at container start: it reads /etc/passwd and /etc/group,
+  # calls setgroups/setgid/setuid and execs postgres. None of the affected
+  # packages (net/http, crypto/tls, crypto/x509, archive/*, encoding/*,
+  # ...) is on that path, and it takes no input but its argv. Renew while
+  # the image ships this gosu; drop when it ships one built with a fixed Go.
+  - &gosu
+    id: CVE-2025-61726
+    paths:
+      - usr/local/bin/gosu
+    owner: '@vlzware'
+    statement: Go stdlib CVE in gosu, unreachable on its privilege-drop-and-exec path (see comment above)
+    expired_at: 2027-01-25
+  - <<: *gosu
+    id: CVE-2025-61729
+  - <<: *gosu
+    id: CVE-2025-68121
+  - <<: *gosu
+    id: CVE-2026-111943
+  - <<: *gosu
+    id: CVE-2026-25679
+  - <<: *gosu
+    id: CVE-2026-27145
+  - <<: *gosu
+    id: CVE-2026-32280
+  - <<: *gosu
+    id: CVE-2026-32281
+  - <<: *gosu
+    id: CVE-2026-32283
+  - <<: *gosu
+    id: CVE-2026-33811
+  - <<: *gosu
+    id: CVE-2026-33814
+  - <<: *gosu
+    id: CVE-2026-33818
+  - <<: *gosu
+    id: CVE-2026-39820
+  - <<: *gosu
+    id: CVE-2026-39821
+  - <<: *gosu
+    id: CVE-2026-39822
+  - <<: *gosu
+    id: CVE-2026-39836
+  - <<: *gosu
+    id: CVE-2026-42499
+  - <<: *gosu
+    id: CVE-2026-42504
+  - <<: *gosu
+    id: CVE-2026-56853
+  - <<: *gosu
+    id: CVE-2026-56858
+  - <<: *gosu
+    id: CVE-2026-56859
+  - <<: *gosu
+    id: CVE-2026-56860
+  - <<: *gosu
+    id: CVE-2026-56862
+  - <<: *gosu
+    id: CVE-2026-78667
+  - <<: *gosu
+    id: CVE-2026-78669
+  - <<: *gosu
+    id: CVE-2026-97031
