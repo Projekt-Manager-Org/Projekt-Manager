@@ -251,13 +251,14 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx db; then
   fi
 fi
 
-# `docker compose pull` only pulls services that declare an `image:`
-# — `db` and `storage` use pinned registry images (unchanged); `app`
-# and `backup` resolve via APP_IMAGE_TAG (exported in Phase 2 setup
-# above). --profile backup is needed on BOTH `pull` and `up` — without
-# it on pull, the backup service is filtered out of the active set and
-# its image is never fetched ahead of `up -d` (which would then block
-# on a registry round-trip while starting).
+# Only `app` and `backup` are pulled here: they resolve via APP_IMAGE_TAG
+# (exported in Phase 2 setup above). `db` is left to `up -d`, which pulls
+# a missing image — and with a digest-pinned reference (#637) a new
+# digest is always a missing image. The deploy profiles are needed on
+# BOTH `pull` and `up` — without them on pull, the backup service is
+# filtered out of the active set and its image is never fetched ahead of
+# `up -d` (which would then block on a registry round-trip while
+# starting).
 #
 # `--policy missing` is what makes the local cache below a real rollback
 # store rather than decoration. `app`/`backup` tags are immutable

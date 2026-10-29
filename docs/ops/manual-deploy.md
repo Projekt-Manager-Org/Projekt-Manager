@@ -57,12 +57,12 @@ Finally — only after the stack is verified healthy — it garbage-collects sup
 
 `deploy.sh` covers everything except the Docker engine itself.
 
-| Layer                                 | How                                                                                                                                               |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App / backup (npm, app code, Node)    | CI builds + pushes to GHCR per commit SHA → `deploy.sh` pulls + recreates containers                                                              |
-| Caddy (`docker/caddy/Dockerfile`)     | `deploy.sh` runs `docker compose build caddy` — Docker's layer cache makes it near-free when nothing changed                                      |
-| Postgres / MinIO (pinned tags)        | `deploy.sh`'s `up -d` pulls on tag change. Same-tag-new-digest (rare) requires explicit `compose pull <service>` before deploy.                   |
-| Docker engine + Compose plugin (host) | Manual converge per host; `deploy.sh` refuses on drift → [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions) |
+| Layer                                 | How                                                                                                                                                                                                                              |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App / backup (npm, app code, Node)    | CI builds + pushes to GHCR per commit SHA → `deploy.sh` pulls + recreates containers                                                                                                                                             |
+| Caddy (`docker/caddy/Dockerfile`)     | `deploy.sh` runs `docker compose build caddy` — Docker's layer cache makes it near-free when nothing changed                                                                                                                     |
+| Postgres (`db`)                       | Digest-pinned in `docker-compose.yml`; Renovate bumps the pin. `deploy.sh`'s `up -d` pulls a digest not present locally and recreates the container ([#637](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/637)). |
+| Docker engine + Compose plugin (host) | Manual converge per host; `deploy.sh` refuses on drift → [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions)                                                                                |
 
 ## Rollback
 
