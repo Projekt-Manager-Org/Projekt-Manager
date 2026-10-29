@@ -81,8 +81,7 @@ on:
     # Matched by workflow NAME, not file path. Renaming a listed workflow
     # silently unhooks it — actionlint cannot know which names are real.
     # scripts/check-notify-coverage.sh (ci.yml `lint`) fails the PR when a
-    # SCHEDULED workflow is missing here; `CI` has no schedule, so a rename
-    # of it is still caught only by review.
+    # scheduled or push-to-main workflow is missing here.
     #
     # `E2E` was excluded until #377 as flaky and `workflow_dispatch`-only,
     # where monitoring manufactures alert fatigue. On a nightly schedule

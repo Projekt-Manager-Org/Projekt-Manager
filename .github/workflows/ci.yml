@@ -548,10 +548,10 @@ jobs:
       - name: Image ref derivation — self-test
         run: bash scripts/__tests__/image-refs.test.sh
 
-      # notify.yml hooks workflows by name; a scheduled one it misses
-      # fails red with nobody told (ADR-0027 § 2026-10-29). Static, so it
-      # belongs on the PR that adds or renames the workflow.
-      - name: Notify coverage (every scheduled workflow is hooked)
+      # notify.yml hooks workflows by name; a scheduled or push-to-main one
+      # it misses fails red with nobody told (ADR-0027 § 2026-10-29).
+      # Static, so it belongs on the PR that adds or renames the workflow.
+      - name: Notify coverage (every unattended workflow is hooked)
         run: bash scripts/check-notify-coverage.sh
 
       - name: Notify coverage — self-test

@@ -2,9 +2,10 @@
 #
 # Scenario tests for scripts/check-notify-coverage.sh.
 #
-# notify.yml hooks workflows by NAME. A scheduled workflow missing from
-# its `workflows:` list fails red with nobody told — and a scheduled run
-# has no PR to sit red on, so nothing else ever surfaces it. #637 adds
+# notify.yml hooks workflows by NAME. A scheduled or push-to-main workflow
+# missing from its `workflows:` list fails red with nobody told — such a
+# run has no PR to sit red on and, after a bot's merge, no human actor,
+# so nothing else ever surfaces it. #637 adds
 # nightly controls whose whole job is to go red; each must reach a human.
 #
 # Exits 0 when every case matches; 1 otherwise.
@@ -67,6 +68,13 @@ PR_ONLY="  # not on a schedule: — runs when a PR closes
   pull_request:
     types: [closed]"
 
+# Runs on every merge, Renovate's included: nobody watches those pushes.
+PUSH_MAIN="  push:
+    branches: [main]"
+PUSH_ANY="  push:"
+PUSH_OTHER="  push:
+    branches: [release]"
+
 pass=0
 fail=0
 failures=()
@@ -104,6 +112,19 @@ assert_case 1 "scheduled workflow not listed fails, naming it" "$dir" "Inventory
 dir="$(mktmp "[CI]")"
 add_workflow "$dir" cache-cleanup.yml "Cache cleanup" "$PR_ONLY"
 assert_case 0 "unscheduled workflow need not be listed" "$dir"
+
+dir="$(mktmp "[CI]")"
+add_workflow "$dir" deploy-pending.yml "Deploy pending" "$PUSH_MAIN"
+assert_case 1 "push-to-main workflow not listed fails, naming it" "$dir" "Deploy pending"
+
+dir="$(mktmp "[CI]")"
+add_workflow "$dir" any.yml "On any push" "$PUSH_ANY"
+assert_case 1 "unfiltered push includes main" "$dir" "On any push"
+
+dir="$(mktmp "[CI, Deploy pending]")"
+add_workflow "$dir" deploy-pending.yml "Deploy pending" "$PUSH_MAIN"
+add_workflow "$dir" release.yml "Release" "$PUSH_OTHER"
+assert_case 0 "push-to-main listed; push to another branch need not be" "$dir"
 
 # A prefix is not a match: `Inventory` listed does not hook `Inventory scan`.
 dir="$(mktmp "[Inventory]")"
