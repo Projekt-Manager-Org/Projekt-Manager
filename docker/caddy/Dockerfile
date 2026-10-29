@@ -31,7 +31,7 @@ FROM caddy:2.11.7-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     xcaddy build v2.11.7 \
-        --with golang.org/x/net/http2@v0.60.0 \
+        --with golang.org/x/net/http2@v0.62.0 \
         --with github.com/go-jose/go-jose/v4@v4.1.6 \
         --with github.com/caddy-dns/cloudflare@a8737d095ad5a48ca031cea6ab704057dbc2d250
 
