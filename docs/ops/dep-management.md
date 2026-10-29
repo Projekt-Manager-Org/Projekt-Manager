@@ -145,7 +145,7 @@ GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs
 
 Runs also print **`cleared by the global DB`** — the reverse: the publisher says vulnerable, the curated record says patched, and the curated one won. When GitHub's review of the global record is at or after the publisher's last edit, the line says `reviewed since the last repo edit` and needs nothing. When it says **`global review predates the last repo edit`**, the global DB may be lagging — the risk this layer exists for — so check the advisory page before trusting the pass. The review timestamp is the first review only, so once that line appears for an advisory, it stays.
 
-No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason + `ignoreUntil` (≤90 days) per [§ Allowlist](#allowlist-osv-scanner--trivy). Do not weaken the check.
+No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason + `ignoreUntil` (≤90 days) per [§ Allowlist](#allowlist). Do not weaken the check.
 
 **Read the "NOT CHECKED" lines.** Every run prints the direct deps with no GitHub repository and the repos whose advisories endpoint 404s. Those are live coverage gaps, not noise. The amendment above carries the full list of what no layer covers — transitive deps most notably.
 
@@ -163,7 +163,7 @@ Three layers, because none covers the others' path:
 
 The gate **complements** the `.npmrc` cutoff, it does not replace it. The cutoff prevents — young versions never enter the lockfile, which is what lets a daily regeneration converge. The gate reports — it names the package and can be overruled. Dropping the cutoff was measured and rejected: a cooldown-free regeneration introduces 70 new versions, 33 under 3 days, a fresh crop daily, which would leave the auto-merged branch permanently red ([ADR-0027 § 2026-09-17](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff)).
 
-Waive a finding by adding `{ package, version, reason, ignoreUntil }` to `release-age-allowlist.json` — same `reason`/`ignoreUntil` rules and 90-day ceiling as the [scanner allowlist](#allowlist-osv-scanner--trivy), validated by the gate itself rather than by `check-allowlist-schema.sh`, which exists for files third-party scanners read. `security`-labelled PRs waive age findings automatically, matching Renovate's own vulnerability carve-out.
+Waive a finding by adding `{ package, version, reason, ignoreUntil }` to `release-age-allowlist.json` — same `reason`/`ignoreUntil` rules and 90-day ceiling as the [scanner allowlist](#allowlist), validated by the gate itself rather than by `check-allowlist-schema.sh`, which exists for files third-party scanners read. `security`-labelled PRs waive age findings automatically, matching Renovate's own vulnerability carve-out.
 
 Renovate cannot enforce its half on `lockFileMaintenance` (or `pin`, `bump`, `rollback`, `lockfileUpdate`, `replacement`): those update types are [documented as unsupported](https://docs.renovatebot.com/key-concepts/minimum-release-age/) because it delegates the resolution to the package manager. `lockFileMaintenance` runs daily here, is exempt from the PR limits, and auto-merges — so it is precisely the path that needs the npm-side half.
 
@@ -235,44 +235,60 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   ```
 
 - **False-positive on dead code** (cf. the original [ADR-0007](../adr/0007-suppress-esbuild-dev-server-advisory.md) case): add the advisory to the OSV-Scanner allowlist with a documented review trigger. Never `--omit=dev` blanket-suppress.
-- **No-fix-yet OS-package CVE in a base image** (Alpine `node:22-alpine`, `postgresql17-alpine`, etc., where the upstream distro hasn't shipped a patched build yet): Trivy blocks the `docker` job's image scans on every run because `ignore-unfixed: true` is deliberately not set (per [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational); see also [§Allowlist](#allowlist-osv-scanner--trivy) for the schema). The deploy pipeline halts until either Alpine ships the fix or an operator writes a deliberate, time-bounded allowlist entry:
-
-  ```text
-  # owner: @<handle>
-  # reason: <CVE-ID> — no upstream Alpine fix yet; exposure analysis at <link to triage>
-  <CVE-ID> exp:<today+90d>
-  ```
+- **No-fix-yet OS-package CVE in a base image** (Alpine `node:22-alpine`, `postgresql17-alpine`, etc., where the upstream distro hasn't shipped a patched build yet): Trivy blocks the `docker` job's image scans on every run because `ignore-unfixed: true` is deliberately not set (per [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational); see also [§Allowlist](#allowlist) for the schema). The deploy pipeline halts until either Alpine ships the fix or an operator writes a deliberate, time-bounded allowlist entry in `.trivyignore.yaml` (and `.grype.yaml` if Grype reports it too), scoped to the package.
 
   90 days is the maximum permitted window; pick a shorter date if upstream has a target ship-date. The expiry forces a re-review and the entry stops suppressing automatically — there is no silent-forever suppression path. Track the upstream CVE in the Renovate dashboard so the entry gets removed (not renewed) when the fix lands.
 
-### Allowlist (OSV-Scanner + Trivy)
+### Allowlist
 
-Allowlist files: `osv-scanner.toml` (npm + git deps) and `.trivyignore` (container image scan), both at the repo root.
+The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (YAML files) — is [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative); this section is its single home for formats. `scripts/check-allowlist-schema.sh` enforces it in `lint` (before OSV-Scanner) and in the nightly inventory scan (before Grype).
 
-Per [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative), every entry MUST carry **id + owner (GitHub handle) + reason + expiry**, expressed in the format each scanner accepts. Both files are gated in CI by `scripts/check-allowlist-schema.sh` — entries that miss a field, encode an invalid handle, drift past 90 days, or use the wrong shape are rejected before the scanner step runs.
+| Field  | `osv-scanner.toml` (npm, git)   | `.trivyignore.yaml` (all Trivy scans)                     | `.grype.yaml` (nightly)         |
+| ------ | ------------------------------- | --------------------------------------------------------- | ------------------------------- |
+| id     | `id`                            | `id`                                                      | `vulnerability`                 |
+| owner  | `@<handle>:` prefix on `reason` | `owner: '@<handle>'`                                      | `owner: '@<handle>'`            |
+| reason | `reason`                        | `statement`                                               | `reason`                        |
+| expiry | `ignoreUntil`                   | `expired_at` (Trivy honours it)                           | `expires` (Grype ignores it)    |
+| scope  | —                               | `paths` (no leading `/`) / `purls` (vulnerabilities only) | `package` (`location` absolute) |
+
+Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). Scopes are literal: the scanners read `paths` and `location` as globs and Grype's `name` / `upstream-name` as a regex, so a wildcard would ignore everywhere. A name containing `+` (e.g. `libstdc++`) is a regex to Grype; scope such a package by `location`.
 
 Per [CLAUDE.md "refuse to serve" principle](../../CLAUDE.md#principles), the correct response to a finding without a justified allowlist entry is to fix the underlying issue, not to write a suppression "for now." Allowlist entries are a structured exception, not a default.
 
-**`osv-scanner.toml` example entry:**
-
-OSV-Scanner has no dedicated `owner` field, so the handle is encoded as a `@<handle>:` prefix on `reason`. `ignoreUntil` MUST be a bare TOML date literal — a quoted `"YYYY-MM-DD"` parses as a string and is rejected, as is an offset datetime (`YYYY-MM-DDTHH:MM:SSZ`).
-
 ```toml
+# osv-scanner.toml
 [[IgnoredVulns]]
 id = "GHSA-67mh-4wv8-2f99"
-ignoreUntil = 2026-08-16  # <= 90 days from add date 2026-05-18
+ignoreUntil = <today+≤90d>
 reason = "@vlzware: esbuild dev-server only; prod build invokes the bundler API, not the server. Tracking upstream fix at <link>."
 ```
 
-**`.trivyignore` example entry:**
-
-`.trivyignore` has no `reason` field. Both fields go in the contiguous comment block immediately preceding the entry; the expiry goes as `exp:YYYY-MM-DD` SUFFIX on the entry line itself (not in the block).
-
-```text
-# owner: @vlzware
-# reason: CVE on libfoo (image base layer) — exploit requires inbound TCP on 9000; our image binds only 8080.
-CVE-2026-12345 exp:2026-08-16
+```yaml
+# .trivyignore.yaml — sections: vulnerabilities, misconfigurations, secrets, licenses
+vulnerabilities:
+  - id: CVE-2026-12345
+    paths:
+      - usr/local/bin/gosu
+    owner: '@vlzware'
+    statement: Go stdlib CVE in gosu, unreachable on its privilege-drop path
+    expired_at: <today+≤90d>
 ```
+
+A run of entries sharing scope, owner and reason uses a YAML anchor and merge keys (`- <<: *gosu` + `id:`); see the file.
+
+```yaml
+# .grype.yaml — `ignore:` only; the file is also Grype's config
+ignore:
+  - vulnerability: CVE-2026-12345
+    package:
+      name: libxml2
+      type: apk
+    owner: '@vlzware'
+    reason: <why it does not apply here; link to the triage>
+    expires: <today+≤90d>
+```
+
+Go binaries are reported by Grype as the synthetic package `stdlib`; scope those by `location` (the binary's absolute path), not by the binary's name.
 
 Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing — the same script gates the CI `lint` job.
 
@@ -326,8 +342,8 @@ For each strategic dep below, check (≤5 min each):
 
 After the per-dep walk, do the **allowlist sweep** — same review, distinct surface:
 
-- Open `osv-scanner.toml` and `.trivyignore`. For every active entry: is the original justification still true? Has the upstream landed a fix that makes the suppression obsolete? Is the owner still the right person? Drop entries that no longer hold.
-- The script's `ignoreUntil` ≤90d window means stale entries auto-expire and fail CI — the sweep is the in-band check that catches entries that were merely renewed without re-justification.
+- Open `osv-scanner.toml`, `.trivyignore.yaml` and `.grype.yaml`. For every active entry: is the original justification still true? Has the upstream landed a fix that makes the suppression obsolete? Is the owner still the right person? Drop entries that no longer hold.
+- The script's ≤90d expiry window means stale entries auto-expire and fail CI — the sweep is the in-band check that catches entries that were merely renewed without re-justification.
 
 Then the **abandonment-verdict sweep** — same review, distinct surface:
 
@@ -391,5 +407,5 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `.npmrc` — `min-release-age=3`, the npm-side half of the release-age cooldown. See [§ Release-age cooldown](#release-age-cooldown).
 - `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` + nightly). See [§ Repo-level advisories](#repo-level-advisories).
-- `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist-osv-scanner--trivy) above.
-- `.trivyignore` — allowlist for Trivy (container image scan). Same schema discipline; comments carry the owner handle.
+- `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist) above.
+- `.trivyignore.yaml`, `.grype.yaml` — allowlists for Trivy and Grype. Schema in [§Allowlist](#allowlist).

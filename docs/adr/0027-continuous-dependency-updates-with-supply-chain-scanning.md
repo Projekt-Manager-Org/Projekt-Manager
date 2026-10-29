@@ -125,16 +125,15 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
 - **PR queue volume.** A weekly window with grouping should land 3–8 PRs/week in steady state. The "weekly wrangler" hat is ~30 min/week.
 - **Auto-merge runs with no E2E signal.** Playwright is not in the PR gate, so an auto-merged patch/minor lands on unit + integration evidence alone; a browser-level regression reaches `main` and surfaces only at the next manual E2E run. Mitigations today: auto-merge stays off for majors (the highest-risk class), and § Weekly wrangler step 4 makes the manual E2E run mandatory for them — both leave the patch/minor stream uncovered. **Open gap, not a settled trade:** the real fix is Playwright in the PR gate, blocked on the runtime + flake-surface argument recorded in `e2e.yml`'s header, which in turn is blocked on a flake-quarantine practice that does not exist yet.
 - **Renovate config drift.** A `.github/renovate.json` that goes stale (new dep types, ecosystem changes) silently degrades coverage. Mitigated by the quarterly review explicitly checking the config.
-- **OSV-Scanner / Trivy false positives** for advisories on dead code paths (cf. the original ADR-0007 case). Mitigated by a structured allowlist — never a blanket `--omit=dev`. The two scanners use different file formats but the same review-contract fields; both are enforced in CI by `scripts/check-allowlist-schema.sh` (~100ms; runs before the scanner gates so a sloppy entry fails fast). Required fields per entry:
-  - **`id`** — the advisory or rule identifier (any non-empty string; Trivy and OSV-Scanner validate the ID shape themselves).
-  - **`reason`** — why the advisory doesn't apply here. The GitHub handle of the entry's owner is mandatory. The handle must be a real GitHub username (1-39 alnum chars + non-leading/trailing/consecutive hyphens) — `@`, `@-`, `@a--b` and similar are rejected:
-    - `osv-scanner.toml` has no dedicated `owner` field. The `reason` string MUST start with `@<handle>:` so the handle is encoded.
-    - `.trivyignore` has no `reason` field at all. A `# owner: @<handle>` comment AND a `# reason: <free text>` comment in the contiguous comment block immediately preceding the entry are required.
-  - **`expiry`** — at most **90 days from creation**, forces a re-review:
-    - `osv-scanner.toml`: `ignoreUntil = YYYY-MM-DD` as a bare TOML date literal (the script rejects both quoted strings and offset datetimes — only the bare date is accepted).
-    - `.trivyignore`: `exp:YYYY-MM-DD` as a suffix on the entry line itself (not in the comment block).
+- **Scanner false positives** for advisories on dead code paths (cf. the original ADR-0007 case). Mitigated by a structured allowlist — never a blanket `--omit=dev`. Every entry in `osv-scanner.toml`, `.trivyignore.yaml` and `.grype.yaml` carries:
+  - **id** — the advisory or rule id; a Grype rule without one ignores everything its package selector matches.
+  - **owner** — a valid GitHub handle.
+  - **reason** — why the advisory does not apply here.
+  - **expiry** — at most **90 days** out; forces a re-review.
+  - **scope** (YAML files) — the package or path it is about; mandatory, non-empty and literal (no globs or regexes), since either scanner ignores an unscoped id everywhere.
+  - **nothing else** (YAML files) — Trivy and Grype silently accept unknown keys, so a misspelt scope key widens an entry to global.
 
-  See [docs/ops/dep-management.md § Allowlist (OSV-Scanner + Trivy)](../ops/dep-management.md#allowlist-osv-scanner--trivy) for copy-pasteable examples that pass the CI gate.
+  `scripts/check-allowlist-schema.sh` enforces this before OSV-Scanner and, nightly, before Grype — which does not read the expiry. Per-format key names and examples: [docs/ops/dep-management.md § Allowlist](../ops/dep-management.md#allowlist).
 
 ### Operational
 
@@ -147,9 +146,9 @@ Implementation ships in this ADR's PR:
   - **`publish` job** (`needs: [check, lint, docker]`): pushes only what the `docker` job already scanned and smoked, and re-scans each image immediately before pushing it. The re-scan is not redundant — `publish` runs on a different runner and rebuilds from the shared gha cache, whose export is best-effort, so a cold start would otherwise re-resolve the `apk` layers unscanned. A failed scan never publishes the tag, so `scripts/deploy.sh` cannot resolve a bad SHA.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `osv-scanner.toml` (repo root) — allowlist file; empty on landing, schema documented in `docs/ops/dep-management.md`.
-- `.trivyignore` (repo root) — allowlist file for Trivy; empty on landing, same schema discipline.
+- `.trivyignore` (repo root) — allowlist file for Trivy; empty on landing, same schema discipline. Replaced by `.trivyignore.yaml` (§2026-10-29).
 - [docs/ops/dep-management.md](../ops/dep-management.md) — runbook (first-run setup, weekly wrangler, quarterly review, allowlist schema).
-- `scripts/check-allowlist-schema.sh` + `scripts/__tests__/check-allowlist-schema.test.sh` — wired into the `lint` job; rejects allowlist entries missing owner/reason/expiry per §Negative.
+- `scripts/check-allowlist-schema.sh` + `scripts/__tests__/check-allowlist-schema.test.sh` — wired into the `lint` job; rejects allowlist entries violating §Negative.
 
 **Gating model rationale.** Trivy fs-secret + IaC scans live in `lint` rather than `docker` because they need no built image and `lint` is the cheaper job to reach. Image-vuln scanning lives in `docker`, which needs the built image. Branch protection requires `lint`, `check`, and `docker`, and all three now run on every PR.
 
@@ -161,7 +160,7 @@ The same aliasing is what lets the whole build → scan → smoke sequence run a
 
 Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of most PRs skipping it. That is the price of the gate being a gate; the ~5 min post-merge rebuild it replaces makes it roughly neutral per merged PR.
 
-`ignore-unfixed` is NOT set on any image scan: a no-fix-yet CVE is still a finding, and an operationally-tolerable case goes in `.trivyignore` with owner/reason/exp ≤90d. This makes the failure mode visible — when an unfixable upstream CVE lands, the deploy pipeline halts until either the upstream fixes it or an operator writes a deliberate, time-bounded allowlist entry; the `ignore-unfixed: true` shortcut would have suppressed it silently forever. The runbook's [§CVE handling](../ops/dep-management.md#cve-handling) covers the operator procedure.
+`ignore-unfixed` is NOT set on any image scan: a no-fix-yet CVE is still a finding, and an operationally-tolerable case goes in `.trivyignore.yaml` with owner/reason/expiry ≤90d. This makes the failure mode visible — when an unfixable upstream CVE lands, the deploy pipeline halts until either the upstream fixes it or an operator writes a deliberate, time-bounded allowlist entry; the `ignore-unfixed: true` shortcut would have suppressed it silently forever. The runbook's [§CVE handling](../ops/dep-management.md#cve-handling) covers the operator procedure.
 
 - The `vv-adr` skill template is updated; retrofits to the existing ADRs in the included set land in the same change as this ADR.
 - No env-var or schema impact.

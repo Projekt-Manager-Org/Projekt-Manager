@@ -163,7 +163,7 @@ jobs:
       # convention. This gate makes the convention machine-enforced so a
       # sloppy entry cannot land. ~100ms; runs before OSV-Scanner so the
       # cheap check fails fast.
-      - name: Check allowlist schema (osv-scanner.toml + .trivyignore)
+      - name: Check allowlist schema (osv-scanner.toml, .trivyignore.yaml, .grype.yaml)
         run: bash scripts/check-allowlist-schema.sh
 
       - name: Check allowlist schema — self-test
@@ -283,8 +283,8 @@ jobs:
       # than blocking. Branch protection requires `lint`; `docker`
       # provides only the image-vuln scan + compose validation.
       #
-      # Allowlist: .trivyignore (entries gated by check-allowlist-schema
-      # above; empty baseline).
+      # Allowlist: .trivyignore.yaml (path-scoped; entries gated by
+      # check-allowlist-schema above).
       - name: Trivy — filesystem secret scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -306,7 +306,7 @@ jobs:
           # a complementary scanner (gitleaks/trufflehog) if that gap
           # matters operationally.
           exit-code: '1'
-          trivyignores: .trivyignore
+          trivyignores: .trivyignore.yaml
           # Out of the workspace: the action's default cache dir is
           # `$GITHUB_WORKSPACE/.cache/trivy`, which this very scan would
           # then walk. Same redirect as .github/actions/trivy-image.
@@ -321,7 +321,7 @@ jobs:
           # the HIGH/CRITICAL filter keeps the signal-to-noise workable.
           severity: HIGH,CRITICAL
           exit-code: '1'
-          trivyignores: .trivyignore
+          trivyignores: .trivyignore.yaml
           cache-dir: ${{ runner.temp }}/trivy-cache
 
       # `docker compose config --quiet` exits 0 even when a

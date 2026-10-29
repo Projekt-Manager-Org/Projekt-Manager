@@ -64,7 +64,7 @@ COPY --from=build /app/src/server/services/invoice/xsd ./dist/server/xsd
 # has the patched 3.5.8-r0 (CVE-2026-14456, HIGH), which fails the
 # Trivy gate on every PR until upstream rebuilds. Upgrading at build
 # time takes the fix from the branch the base image already pins, so a
-# base-image CVE stops blocking merges without an .trivyignore waiver.
+# base-image CVE stops blocking merges without a .trivyignore.yaml waiver.
 #
 # Scope is bounded by that pinned branch (v3.24), not the internet: the
 # delta today is 4 packages (libcrypto3, libssl3 + apk-tools, libapk).

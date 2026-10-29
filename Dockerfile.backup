@@ -165,7 +165,7 @@ RUN mkdir -p /run/drill-key \
 
 # Run as the `postgres` system user (UID 70, created by the
 # postgresql17 apk package). Resolves Trivy IaC DS-0002 at the
-# architectural layer — no `.trivyignore` entry needed.
+# architectural layer — no allowlist entry needed.
 #
 # Why this is now possible (#199):
 #   - The scheduler moved from `dcron` (which historically ran as

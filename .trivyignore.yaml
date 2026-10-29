@@ -1,0 +1,10 @@
+# Trivy allowlist — read by every Trivy scan: the PR gate's secret, IaC
+# and image scans and the nightly inventory scan.
+#
+# Schema and examples: docs/ops/dep-management.md § Allowlist; enforced
+# by scripts/check-allowlist-schema.sh. Scope every entry (`paths:`,
+# image-relative without the leading `/`, or `purls:`): an unscoped id is
+# ignored in every image. Merge keys (`<<: *anchor`) share fields across
+# a run of entries; Trivy and the schema check both resolve them.
+
+vulnerabilities: []
