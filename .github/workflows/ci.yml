@@ -564,6 +564,11 @@ jobs:
       - name: Deploy inventory — self-test
         run: bash scripts/__tests__/deploy-inventory.test.sh
 
+      # renovate-health.yml runs nightly, never on a PR; this is its only
+      # pre-merge evidence.
+      - name: Renovate health — self-test
+        run: bash scripts/__tests__/renovate-health.test.sh
+
       # Truth table for notify.yml's `Classify run` step, executed
       # against the step's real shell body extracted out of the
       # workflow. `workflow_run` only fires from the default-branch

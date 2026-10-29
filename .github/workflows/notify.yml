@@ -89,7 +89,8 @@ on:
     # the failure mode inverts to silence — it sat red ~3.5 weeks with
     # nothing to say so. `route='main'` already covers the `schedule`
     # event, and one-issue-per-incident below is what bounds the fatigue.
-    workflows: [CI, 'Security (scheduled)', E2E, 'GHCR retention', 'Inventory scan']
+    workflows:
+      [CI, 'Security (scheduled)', E2E, 'GHCR retention', 'Inventory scan', 'Renovate health']
     types: [completed]
 
 # An explicit block zeroes every scope not listed. `contents: read`
