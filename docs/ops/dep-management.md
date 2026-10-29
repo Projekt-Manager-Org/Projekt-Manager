@@ -122,6 +122,8 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 | Repo-level advisory match (direct dep)           | PR merge blocked; nightly run goes red     | Per-PR, else ≤24h      |
 | Nightly full-tree OSV scan                       | Schedule goes red → manual bump (backstop) | ≤24h from publication  |
 | Nightly inventory scan (deployed images)         | Schedule goes red → see § CVE handling     | ≤24h from indexing     |
+| Nightly Renovate health (dashboard, open PRs)    | Schedule goes red → see § CVE handling     | ≤24h; liveness ≤48h    |
+| Merge of a `deploy-asap` PR                      | "Deploy pending" issue for the operator    | Minutes                |
 | Quarterly review                                 | Walk strategic-dep list (below)            | ~1 hour, 4×/year       |
 | Any npm release (direct or transitive)           | Held from resolution until 3 days old      | +3 days (see below)    |
 
@@ -244,6 +246,19 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   - **`inventory` job** — an allowlist entry expired or is malformed, or the inventory cannot be derived (an image holding a variable other than `APP_IMAGE_TAG`, a build with args/target). No image is scanned until it is fixed.
   - **`scan (<service>)` finding with a fix upstream** — the Renovate update that carries it is the fix; do not bump by hand. Check the Dependency Dashboard, including Awaiting Schedule, for the image or module that carries it. Only a component no manager claims needs a `renovate.json` change.
   - **Unreachable or no fix** — allowlist entry, scoped to the package or path ([§Allowlist](#allowlist)).
+
+- **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding). Known red until control 1 lands: the starved Awaiting Schedule queue.
+  - **Awaiting Schedule: `<branch>`** — an update held by schedule or PR limits. The config is the fix, not a manual bump.
+  - **Dashboard section `"<title>"`** — any heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
+  - **Dependency lookup failed / no or several dashboards / no "manual job" box** — a Renovate config or Mend app problem: read the Mend job log.
+  - **"manual job" box still ticked** — no Renovate job ran since the last check. Check the repo's status and job log on the Mend portal. A manual re-run shortly after the nightly reports this too, until Renovate's job lands.
+  - **Renovate PR `#n` open since …** — merge, fix or close it; a stuck PR also holds a PR-limit slot.
+
+- **`Deploy pending is red on main`** — a merge could not be resolved to a PR, or an API call failed. Check the merged PR for `deploy-asap` by hand, then close the issue: a later green run does not close it.
+
+### Deploy urgency
+
+`deploy-asap` means _what runs is exposed until this is deployed_. Renovate sets it ([ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm)); **add it by hand, before merging, to any other security fix — a Dependabot security update or a hand-written one** (the run at merge time reads the labels once). Merging opens, or comments on, the **Deploy pending** issue, assigned to the operator: deploy ([manual-deploy.md](manual-deploy.md)), then close it. A lockfile-maintenance fix carries no label: the close of the nightly OSV ci-red issue is the cue to deploy. Everything else rides along with the next deploy.
 
 ### Allowlist
 
@@ -411,6 +426,8 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 - `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin; `lockFileMaintenance` runs daily and exempt from the PR limits), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 4. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
+- `.github/workflows/renovate-health.yml` — nightly updater health; logic and probe in `scripts/ci/renovate-health.mjs`. See [§ CVE handling](#cve-handling).
+- `.github/workflows/deploy-pending.yml` — the Deploy pending issue on `deploy-asap` merges (`scripts/ci/deploy-pending.sh`). See [§ Deploy urgency](#deploy-urgency).
 - `.github/workflows/inventory-scan.yml` — nightly Trivy + Grype scan of every deployed image. The image set comes from `scripts/ci/deploy-inventory.sh`, which reads the deploy's compose file and profiles (`scripts/lib/deploy-compose.sh`, shared with `deploy.sh`). Grype is installed by URL + SHA256 under the same `# renovate:` annotation rules as the `ci.yml` binaries above.
 - `.npmrc` — `min-release-age=3`, the npm-side half of the release-age cooldown. See [§ Release-age cooldown](#release-age-cooldown).
 - `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` + nightly). See [§ Repo-level advisories](#repo-level-advisories).
