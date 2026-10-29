@@ -83,13 +83,14 @@ curl -v --resolve "<domain>:443:10.213.17.1" "https://<domain>/api/health"
 
 ## Force re-issuance
 
-If a cert is broken or compromised:
+If a cert is broken or compromised (the scratch image has no `rm`, so the delete runs in a throwaway container on the `db` image with Caddy's volumes attached; the restart drops Caddy's in-memory cert cache, which a reload keeps):
 
 ```bash
-sudo -u deploy docker exec projekt-manager-caddy-1 \
-  rm -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/<domain>
+img=$(sudo -u deploy docker inspect -f '{{.Image}}' projekt-manager-db-1)
+sudo -u deploy docker run --rm --volumes-from projekt-manager-caddy-1 --entrypoint rm "$img" \
+  -rf /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/<domain>
 
-sudo -u deploy docker exec projekt-manager-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+sudo -u deploy docker restart projekt-manager-caddy-1
 ```
 
 **Beware rate limits** -- 5 failed validations per identifier per account per hour.
