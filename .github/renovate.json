@@ -75,7 +75,7 @@
       "enabled": false
     },
     {
-      "description": "Caddy version appears in three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX), all tracked against the `caddy` Docker image — the two FROM tags via the built-in dockerfile manager, the xcaddy build version via the customManager below — plus docker-compose.http.yml's stock caddy:X-alpine (its own customManager). Group them so one PR advances all of them to the same version together; sharing one datasource is what makes that lockstep hold. The caddy-dns/cloudflare plugin SHA tracks separately (git-refs).",
+      "description": "Caddy version appears in three places in docker/caddy/Dockerfile (FROM caddy:X-builder, FROM caddy:X, xcaddy build vX), all tracked against the `caddy` Docker image — the two FROM tags via the built-in dockerfile manager, the xcaddy build version via the customManager below — plus docker-compose.http.yml's stock caddy:X-alpine (its own customManager). Group them so one PR advances all of them to the same version together; sharing one datasource is what makes that lockstep hold. The caddy-dns/cloudflare plugin tracks separately (go).",
       "groupName": "caddy",
       "matchPackageNames": ["caddy"]
     },
@@ -187,21 +187,12 @@
     },
     {
       "customType": "regex",
-      "description": "caddy-dns/cloudflare plugin pinned to a git SHA — track master and bump the SHA",
-      "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
-      "matchStrings": ["github\\.com/caddy-dns/cloudflare@(?<currentDigest>[a-f0-9]{40})"],
-      "currentValueTemplate": "master",
-      "depNameTemplate": "caddy-dns/cloudflare",
-      "packageNameTemplate": "https://github.com/caddy-dns/cloudflare",
-      "datasourceTemplate": "git-refs"
-    },
-    {
-      "customType": "regex",
-      "description": "Go modules pinned above Caddy's own requirement via `xcaddy build … --with <module>[/<pkg>]@vX` in docker/caddy/Dockerfile — golang.org/x/net (named through its `/http2` package, because xcaddy blank-imports each --with path and the module root has none) and github.com/go-jose/go-jose/v4. Without them, advisories in the edge proxy's dependencies wait for a Caddy release (#637). Same lane as the other Caddy inputs: auto-merged on green CI, which does not build Caddy (ci.yml `docker`, accepted gap); the nightly inventory scan does, so a bump that does not compile turns it red within a day, unless a deploy's own `docker compose build caddy` hits it first — loudly, before anything is recreated.",
+      "description": "Go modules in `xcaddy build … --with <module>[/<pkg>]@vX` in docker/caddy/Dockerfile: the caddy-dns/cloudflare plugin, and two modules pinned above Caddy's own requirement — golang.org/x/net (named through its `/http2` package, because xcaddy blank-imports each --with path and the module root has none) and github.com/go-jose/go-jose/v4. Without those two, advisories in the edge proxy's dependencies wait for a Caddy release (#637). The plugin tracks release tags, not master: the go datasource carries a release timestamp, so the 3-day cooldown applies to the code that holds the Cloudflare token (git-refs has none). Same lane as the other Caddy inputs: auto-merged on green CI, which does not build Caddy (ci.yml `docker`, accepted gap); the nightly inventory scan does, so a bump that does not compile turns it red within a day, unless a deploy's own `docker compose build caddy` hits it first — loudly, before anything is recreated.",
       "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
       "matchStrings": [
         "--with (?<depName>golang\\.org/x/net)/http2@(?<currentValue>v\\d+\\.\\d+\\.\\d+)",
-        "--with (?<depName>github\\.com/go-jose/go-jose/v4)@(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+        "--with (?<depName>github\\.com/go-jose/go-jose/v4)@(?<currentValue>v\\d+\\.\\d+\\.\\d+)",
+        "--with (?<depName>github\\.com/caddy-dns/cloudflare)@(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
       ],
       "datasourceTemplate": "go",
       "versioningTemplate": "semver"

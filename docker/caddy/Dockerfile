@@ -6,13 +6,13 @@
 # Pinning policy:
 # - Caddy version pinned to a specific tag (xcaddy build vN.N.N).
 # - Both base images digest-pinned to defeat retag-under-known-good-label attacks.
-# - The caddy-dns/cloudflare plugin pinned to a specific git SHA, so each build is
-#   reproducible from source.
+# - The caddy-dns/cloudflare plugin pinned to a release tag (Go module proxy +
+#   checksum database), so each build is reproducible from source.
 # - golang.org/x/net and go-jose/v4 pinned above Caddy's own requirement (see the build step).
 #
-# Renovate tracks all four (Caddy releases, base-image digests, plugin master SHA,
-# the Go module pins) and
-# auto-merges patch/minor/digest bumps on green CI; majors get a manual-review PR.
+# Renovate tracks all four (Caddy releases, base-image digests, the plugin and
+# the other Go module pins) and auto-merges patch/minor/digest bumps on green
+# CI; majors wait for approval.
 # See ADR-0027 + docs/ops/dep-management.md.
 
 FROM caddy:2.11.7-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9227460374d46097d5 AS builder
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     xcaddy build v2.11.7 \
         --with golang.org/x/net/http2@v0.62.0 \
         --with github.com/go-jose/go-jose/v4@v4.1.6 \
-        --with github.com/caddy-dns/cloudflare@a8737d095ad5a48ca031cea6ab704057dbc2d250
+        --with github.com/caddy-dns/cloudflare@v0.2.4
 
 # Source of the runtime's few files, not the runtime itself. Kept as a
 # digest-pinned stage so Renovate's `caddy` group still moves it in
