@@ -722,7 +722,9 @@ jobs:
     # fails the build when they diverge. Edit both blocks together.
     services:
       postgres:
-        image: postgres:17-alpine
+        # docker-compose.yml's `db` image: Renovate bumps both in one PR,
+        # so an auto-merged `db` update is tested here first (#637).
+        image: postgres:17.9-alpine@sha256:6f30057d31f5861b66f3545d4821f987aacf1dd920765f0acadea0c58ff975b1
         env:
           # POSTGRES_DB defaults to POSTGRES_USER, so omitting it yields
           # a `pm` database. Vitest integration tests don't use it
