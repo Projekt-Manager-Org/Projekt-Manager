@@ -96,6 +96,7 @@ section() {
 AWAITING_EXEMPT=(
   '- [ ] <!-- unschedule-branch=renovate/docker-host -->chore(deps): update docker-host (`containerd.io`, `docker-ce`)'
   '- [ ] <!-- unschedule-branch=renovate/lock-file-maintenance -->chore(deps): lock file maintenance'
+  '- [ ] <!-- unschedule-branch=renovate/renovate-config-validator -->chore(deps): update renovate-config-validator to v44.199.0'
 )
 AWAITING_BULK='- [ ] <!-- create-all-awaiting-schedule-prs -->🔐 **Create all awaiting schedule PRs at once** 🔐'
 # Extra Awaiting Schedule items for one case; reset by new_case.
@@ -251,7 +252,7 @@ expect_no_tick() {
 }
 
 # --- healthy --------------------------------------------------------
-# Every benign section present at once, the two exempt Awaiting Schedule
+# Every benign section present at once, the exempt Awaiting Schedule
 # branches, an exempt old docker-host PR and an old human PR. Green, and
 # the probe is armed for the next night.
 new_case
@@ -299,6 +300,7 @@ run_check 'starved branch in Awaiting Schedule is red' 1
 expect_output 'starved branch: named' 'renovate/node-24.x'
 expect_no_output 'starved branch: exempt branch not reported' 'renovate/docker-host'
 expect_no_output 'starved branch: exempt branch not reported' 'renovate/lock-file-maintenance'
+expect_no_output 'starved branch: exempt branch not reported' 'renovate/renovate-config-validator'
 expect_tick 'starved branch: probe still ticked'
 
 # --- problem and unknown sections -----------------------------------
