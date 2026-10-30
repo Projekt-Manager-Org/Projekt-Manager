@@ -6,22 +6,23 @@ How the project tracks, updates, and audits external deps. Rationale: [ADR-0027]
 
 Renovate is a GitHub App. Until installed and onboarded, the `.github/renovate.json` in the repo does nothing.
 
-**Optional pre-install validation:** to dry-run the config against the current repo state without going live, use Renovate's local platform:
+**Validation and dry-run.** `lint` runs the validator on every PR. Locally, use the image `ci.yml`'s _Validate Renovate config_ step pins:
 
 ```bash
-# Verifies JSON syntax + cross-references against the schema.
-npx --yes -p renovate renovate-config-validator --strict --no-global .github/renovate.json
+IMG=$(grep -oP 'docker://\K\S+' .github/workflows/ci.yml)
 
-# Optional fuller dry-run: lists what Renovate WOULD do if installed.
-# Runs against the local checkout — pass NO repository argument (with
-# platform=local a repo list errors out). Export a GitHub token so the
-# github-hosted datasources (release notes, git-refs) resolve. LOG_LEVEL=info
-# keeps output manageable; use debug to see per-dependency datasource lookups.
-GITHUB_COM_TOKEN="$(gh auth token)" LOG_LEVEL=info npx --yes -p renovate renovate \
-  --platform=local --dry-run=full
+# Schema and cross-references; the same check as in `lint`.
+docker run --rm -v "$PWD:/w:ro" -w /w --entrypoint renovate-config-validator "$IMG" \
+  --strict --no-global .github/renovate.json
+
+# Dry-run against the local checkout: what Renovate extracts and which
+# updates it finds. The token resolves github-hosted datasources;
+# LOG_LEVEL=debug shows per-dependency lookups.
+docker run --rm -v "$PWD:/usr/src/app:ro" -e GITHUB_COM_TOKEN="$(gh auth token)" \
+  -e LOG_LEVEL=info -e RENOVATE_PLATFORM=local -e RENOVATE_DRY_RUN=lookup "$IMG"
 ```
 
-The dry-run is most useful after editing `customManagers` regex patterns — Renovate logs which files matched, which deps it would have proposed, and which regexes returned zero matches (a silent regex typo otherwise lands invisibly).
+The dry-run is most useful after editing `customManagers` regex patterns — Renovate logs which files matched, which deps it would have proposed, and which regexes returned zero matches (a silent regex typo otherwise lands invisibly). The local platform stops after lookup: schedule, approval and release-age decisions show only on the Dependency Dashboard after Mend's next run. Images with over 1,000 Docker Hub tags (`node`, `postgres`) get no release timestamp: anonymous paging stops there.
 
 1. **Install via Mend.** Renovate is operated by Mend; the GitHub App install funnels through Mend's onboarding.
    1. From [github.com/apps/renovate](https://github.com/apps/renovate) → **Install** → **Only select repositories** → pick `Projekt-Manager-Org/Projekt-Manager` only. GitHub redirects to [developer.mend.io/install](https://developer.mend.io/install).
@@ -38,10 +39,10 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 4. **Create the labels the config references, with colors.** `.github/renovate.json` applies `dependencies` (`labels`) and `security` (`vulnerabilityAlerts.labels`). GitHub's add-labels endpoint **auto-creates** an unknown label as grey `#ededed` with no description, so a missing one is cosmetic, not a failure — Renovate PRs still land. Creating them up front just gives them a real color and description:
 
    ```bash
-   gh label create security --color D93F0B --description "Vulnerability fix — out-of-band, bypasses the weekly dep batch"
+   gh label create security --color D93F0B --description "Vulnerability fix — out-of-band"
    ```
 
-   `security` is what makes out-of-band vuln PRs filterable apart from the routine weekly batch. Note the `gh` CLI is stricter than the API: `gh pr create --label <unknown>` aborts without creating the PR.
+   `security` is what makes out-of-band vuln PRs filterable apart from routine updates. Note the `gh` CLI is stricter than the API: `gh pr create --label <unknown>` aborts without creating the PR.
 
 5. **Configure branch protection on `main` via a Ruleset.** Classic branch protection is on GitHub's deprecation path — the banner at the top of Settings → Branches points at the replacement. Rulesets are now the single source of truth: Settings → **Rules → Rulesets → New branch ruleset**.
    - **Name:** `main protection`. **Enforcement:** Active. **Bypass list:** empty (admins included). **Target:** `Default branch`.
@@ -50,7 +51,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
      - **Require linear history** — repo policy is squash-merge only.
      - **Require a pull request before merging** — required approvals: 0 (solo dev; raise when a second human joins).
      - **Require status checks to pass:** add `lint`, `check`, `docker`, and `publish` (job names — Rulesets match job-level checks, same as classic).
-       - **`lint`** is the static-analysis pillar: lockfile-pin drift, allowlist schema, OSV-Scanner (lockfile vulns), Trivy filesystem-secret + IaC scans, compose-reference validation, lint, shellcheck, format, theme-token hygiene, type-check, env-drift, audit-write-path check, build. No DB, no MinIO — runs in parallel with the test pillar.
+       - **`lint`** is the static-analysis pillar: Renovate config validation, lockfile-pin drift, allowlist schema, OSV-Scanner (lockfile vulns), Trivy filesystem-secret + IaC scans, compose-reference validation, lint, shellcheck, format, theme-token hygiene, type-check, env-drift, audit-write-path check, build. No DB, no MinIO — runs in parallel with the test pillar.
        - **`check`** is a 5-line aggregator that gates on the sharded `check-shard` matrix (`needs: check-shard`, fails if any shard failed). Stable required-check name across shard-count changes — only the matrix array in `ci.yml` moves when shards are added/removed; the Ruleset never has to be re-edited. The actual tests live in `check-shard` (postgres service + MinIO + integration tests, partitioned by `--shard=N/M`).
        - **`docker`** is the image gate: compose validation, both images built and Trivy-scanned (HIGH/CRITICAL blocks merge), the runtime smoke, and the Tier 1 backup round-trip. It runs on **every** PR and publishes nothing. It used to be path-filtered, which made it report **skipped** on non-image PRs — and a skipped job [counts as a successful required check](https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution), so requiring it gated nothing for the majority of PRs (#355).
        - Do **NOT** add `check-shard`: matrix jobs surface as `check-shard (1)` / `check-shard (2)`, names that change when shard count changes — the aggregator `check` exists precisely so the Ruleset isn't entangled with the matrix shape.
@@ -83,8 +84,8 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
    - PR volume rises above ~5 PRs/day for two consecutive weeks
    - A second human contributor joins the project
    - Parallel-agent workflows on this repo become routine
-   - Renovate's `prConcurrentLimit` is raised above 1
-   - The rebase tax observed during the [weekly wrangler pass](#weekly-wrangler) becomes the dominant cost on Renovate Mondays
+   - Renovate's `prConcurrentLimit` is raised above 1 — **fired 2026-10-30** (10, [ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm)); re-measure once the backlog has drained (#637)
+   - The rebase tax observed during the [weekly wrangler pass](#weekly-wrangler) becomes the dominant cost after a Renovate burst
 
    **If/when re-enabling**, the known-good config from the 2026-05-19 deployment was:
    - Rule: `merge_queue` on the same `main protection` Ruleset.
@@ -112,20 +113,21 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 ## Cadence
 
-| Trigger                                          | Result                                     | Latency                |
-| ------------------------------------------------ | ------------------------------------------ | ---------------------- |
-| Renovate weekly window (Mon 09:00 Europe/Berlin) | Routine bumps as individual PRs            | ~30 min/week wrangler  |
-| Advisory on a **direct** dep                     | Renovate opens a vuln PR out-of-band       | Hours from publication |
-| Advisory on a **transitive** dep                 | Dependabot security-update PR              | Hours from publication |
-| `lockFileMaintenance` (daily, before 9am)        | Transitive drift refreshed wholesale       | ≤24h                   |
-| OSV-Scanner / Trivy CI fail                      | PR merge blocked                           | Per-PR                 |
-| Repo-level advisory match (direct dep)           | PR merge blocked; nightly run goes red     | Per-PR, else ≤24h      |
-| Nightly full-tree OSV scan                       | Schedule goes red → manual bump (backstop) | ≤24h from publication  |
-| Nightly inventory scan (deployed images)         | Schedule goes red → see § CVE handling     | ≤24h from indexing     |
-| Nightly Renovate health (dashboard, open PRs)    | Schedule goes red → see § CVE handling     | ≤24h; liveness ≤48h    |
-| Merge of a `deploy-asap` PR                      | "Deploy pending" issue for the operator    | Minutes                |
-| Quarterly review                                 | Walk strategic-dep list (below)            | ~1 hour, 4×/year       |
-| Any npm release (direct or transitive)           | Held from resolution until 3 days old      | +3 days (see below)    |
+| Trigger                                       | Result                                       | Latency                                    |
+| --------------------------------------------- | -------------------------------------------- | ------------------------------------------ |
+| Renovate, any time (non-majors)               | PR, auto-merged on green CI                  | 3 days (release age); Docker images: hours |
+| Renovate major                                | Pending Approval on the Dependency Dashboard | ~30 min/week wrangler                      |
+| Advisory on a **direct** dep                  | Renovate opens a vuln PR out-of-band         | Hours from publication                     |
+| Advisory on a **transitive** dep              | Dependabot security-update PR                | Hours from publication                     |
+| `lockFileMaintenance` (daily, before 9am)     | Transitive drift refreshed wholesale         | ≤24h                                       |
+| OSV-Scanner / Trivy CI fail                   | PR merge blocked                             | Per-PR                                     |
+| Repo-level advisory match (direct dep)        | PR merge blocked; nightly run goes red       | Per-PR, else ≤24h                          |
+| Nightly full-tree OSV scan                    | Schedule goes red → manual bump (backstop)   | ≤24h from publication                      |
+| Nightly inventory scan (deployed images)      | Schedule goes red → see § CVE handling       | ≤24h from indexing                         |
+| Nightly Renovate health (dashboard, open PRs) | Schedule goes red → see § CVE handling       | ≤24h; liveness ≤48h                        |
+| Merge of a `deploy-asap` PR                   | "Deploy pending" issue for the operator      | Minutes                                    |
+| Quarterly review                              | Walk strategic-dep list (below)              | ~1 hour, 4×/year                           |
+| Any npm release (direct or transitive)        | Held from resolution until 3 days old        | +3 days (see below)                        |
 
 **Renovate does not cover transitive deps.** Its vulnerability PRs are [direct-dependency-only by design](https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts) — a package that exists only in `package-lock.json` is invisible to it. That class is covered by Dependabot security updates and daily lockfile maintenance instead ([ADR-0027 § 2026-08-06 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-06--renovate-does-not-remediate-transitive-deps)).
 
@@ -168,7 +170,7 @@ The gate **complements** the `.npmrc` cutoff, it does not replace it. The cutoff
 
 Waive a finding by adding `{ package, version, reason, ignoreUntil }` to `release-age-allowlist.json` — same `reason`/`ignoreUntil` rules and 90-day ceiling as the [scanner allowlist](#allowlist), validated by the gate itself rather than by `check-allowlist-schema.sh`, which exists for files third-party scanners read. `security`-labelled PRs waive age findings automatically, matching Renovate's own vulnerability carve-out.
 
-Renovate cannot enforce its half on `lockFileMaintenance` (or `pin`, `bump`, `rollback`, `lockfileUpdate`, `replacement`): those update types are [documented as unsupported](https://docs.renovatebot.com/key-concepts/minimum-release-age/) because it delegates the resolution to the package manager. `lockFileMaintenance` runs daily here, is exempt from the PR limits, and auto-merges — so it is precisely the path that needs the npm-side half.
+Renovate cannot enforce its half on `lockFileMaintenance` (or `pin`, `bump`, `rollback`, `lockfileUpdate`, `replacement`): those update types are [documented as unsupported](https://docs.renovatebot.com/key-concepts/minimum-release-age/) because it delegates the resolution to the package manager. `lockFileMaintenance` runs daily here and auto-merges — so it is precisely the path that needs the npm-side half.
 
 Editing rules:
 
@@ -212,14 +214,14 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
 [#514](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/514) is the worked example of the checks — no provenance, so the tag match. [#413](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/413) is the worked example of row 2 — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
 
-**Not covered:** the cooldown is npm-only. Docker base images, Docker host packages, digest-pinned Actions, and the checksum-pinned CLI binaries have no release-age delay — see [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits).
+**Outside npm:** Renovate also holds digest-pinned Actions, the checksum-pinned CLI binaries and Go modules for 3 days (`.github/renovate.json`). Docker images and Docker host packages have no delay: no release timestamp reaches Renovate for them — see [ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm).
 
 ## Weekly wrangler
 
 1. Open the Renovate dashboard issue — queue state at a glance.
 2. **Abandonment flags**: scan the dashboard's "Abandoned Dependencies" list for new entries. Verify each per [§ Abandonment-flag verdicts](#abandonment-flag-verdicts); record a verdict + (for false positives) add the package to `.github/renovate.json` `packageRules` in the same commit.
 3. **Auto-merged PRs** (patch/minor/digest + green CI — grouped clusters and lockfile maintenance included) need no action; spot-check for surprises.
-4. **Major PRs**: read upstream migration guide, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
+4. **Majors** wait under Pending Approval on the dashboard: read the upstream migration guide, tick to create the PR, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
 5. Red CI: triage the failure, patch or revert. `.github/workflows/notify.yml` raises the signal — a red PR assigns itself to the maintainer and clears the assignment once green, so **assigned to you = red right now**, not "was red at some point"; a red `main` (post-merge `push` or the nightly scan) opens a `ci-red` issue instead, closed automatically on the next green run. The wrangler pass is the backstop, not the discovery mechanism — its remaining job is the one case that emits no event at all: a run that never queued. Do not rely on GitHub's Actions email here: it reaches only the run's triggering actor, which on a bot-merged PR is the bot, on the post-merge push too.
 
 **Pinned CLI binaries** (OSV-Scanner, actionlint, ripgrep, age) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing: a new OSV-Scanner build reporting a fresh advisory, or a new actionlint check firing on an existing workflow. Fix the finding, don't pin back.
@@ -228,8 +230,8 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
 ## CVE handling
 
-- **High/Critical** — bypass schedule; merge on green CI even off-hours.
-- **Medium/Low** — roll into the weekly batch.
+- **High/Critical** — non-majors auto-merge; merge a major on green CI, even off-hours.
+- **Medium/Low** — majors at the next wrangler pass.
 - **Transitive-only npm dep** (vulnerable package is in `package-lock.json`, absent from `package.json`) — Renovate will never file this PR. Expect Dependabot's; if it hasn't appeared by the time the nightly OSV scan goes red, bump by hand — `npm update <pkg>…`, which touches the lockfile only. Confirm the new version is clean before opening the PR:
 
   ```bash
@@ -242,13 +244,13 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
   90 days is the maximum permitted window; pick a shorter date if upstream has a target ship-date. The expiry forces a re-review and the entry stops suppressing automatically — there is no silent-forever suppression path. Track the upstream CVE in the Renovate dashboard so the entry gets removed (not renewed) when the fix lands.
 
-- **`Inventory scan is red on main`** (ci-red issue from `inventory-scan.yml`). Known reds until Renovate's throughput fix lands: [ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm).
+- **`Inventory scan is red on main`** (ci-red issue from `inventory-scan.yml`). Red on Node 24.16.0 and PostgreSQL 17.9 until Renovate's updates for them are deployed: [ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm).
   - **`inventory` job** — an allowlist entry expired or is malformed, or the inventory cannot be derived (an image holding a variable other than `APP_IMAGE_TAG`, a build with args/target). No image is scanned until it is fixed.
-  - **`scan (<service>)` finding with a fix upstream** — the Renovate update that carries it is the fix; do not bump by hand. Check the Dependency Dashboard, including Awaiting Schedule, for the image or module that carries it. Only a component no manager claims needs a `renovate.json` change.
+  - **`scan (<service>)` finding with a fix upstream** — the Renovate update that carries it is the fix; do not bump by hand. Check the Dependency Dashboard, including Pending Approval, for the image or module that carries it. Only a component no manager claims needs a `renovate.json` change.
   - **Unreachable or no fix** — allowlist entry, scoped to the package or path ([§Allowlist](#allowlist)).
 
-- **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding). Known red until control 1 lands: the starved Awaiting Schedule queue.
-  - **Awaiting Schedule: `<branch>`** — an update held by schedule or PR limits. The config is the fix, not a manual bump.
+- **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding). Expected for a few nights after control 1 landed (2026-10-30): Rate-Limited while the backlog drains, 10 PRs at a time. Delete this sentence once it is green.
+  - **Awaiting Schedule: `<branch>`** — a scheduled branch outside `AWAITING_EXEMPT`: exempt a deliberate new schedule there, else fix the config. Never a manual bump.
   - **Dashboard section `"<title>"`** — any heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
   - **Dependency lookup failed / no or several dashboards / no "manual job" box** — a Renovate config or Mend app problem: read the Mend job log.
   - **"manual job" box still ticked** — no Renovate job ran since the last check. Check the repo's status and job log on the Mend portal. A manual re-run shortly after the nightly reports this too, until Renovate's job lands.
@@ -423,7 +425,7 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 
 ## Files
 
-- `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin; `lockFileMaintenance` runs daily and exempt from the PR limits), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
+- `.github/renovate.json` — Renovate config; behaviour in [§ Cadence](#cadence), rationale in its `description` fields.
 - `.github/dependabot.yml` — security updates only (version updates off); labels them `deploy-asap`. See [§ Deploy urgency](#deploy-urgency).
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 4. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.

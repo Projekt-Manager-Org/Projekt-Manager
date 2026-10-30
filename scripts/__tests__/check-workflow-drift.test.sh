@@ -90,7 +90,7 @@ echo "Case: image major bumped in one file only"
 # mismatch between the two jobs means one suite validates against a
 # server the other never sees.
 d="$(stage)"
-sed -i 's/postgres:17-alpine/postgres:16-alpine/' "$d/e2e.yml"
+sed -i 's/image: postgres:[^[:space:]]*/image: postgres:16-alpine/' "$d/e2e.yml"
 assert_case 1 "drifted image tag" "$d"
 
 echo "Case: comments differ, configuration does not"

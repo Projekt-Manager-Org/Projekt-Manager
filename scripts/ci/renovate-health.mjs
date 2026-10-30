@@ -70,8 +70,13 @@ const BENIGN_SECTIONS = new Set([
 const AWAITING_SCHEDULE = 'Awaiting Schedule';
 // Branches whose schedule is deliberate (.github/renovate.json): docker-host
 // is quarterly; lock-file-maintenance runs daily before 9am, so it is listed
-// for the rest of the day.
-const AWAITING_EXEMPT = new Set(['renovate/docker-host', 'renovate/lock-file-maintenance']);
+// for the rest of the day; renovate-config-validator is weekly (Renovate
+// releases several times a day).
+const AWAITING_EXEMPT = new Set([
+  'renovate/docker-host',
+  'renovate/lock-file-maintenance',
+  'renovate/renovate-config-validator',
+]);
 // docker-host is merged by hand after acceptance on the VPS.
 const STALE_PR_EXEMPT = new Set(['renovate/docker-host']);
 

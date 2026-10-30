@@ -84,6 +84,20 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
+      # Mend applies .github/renovate.json with no check on the PR, and an
+      # invalid config stops Renovate, which the nightly Renovate health
+      # check sees only after merge (#637). The image is
+      # digest-pinned and Renovate-tracked (weekly, `renovate-config-validator`
+      # group), not `npx renovate`, whose transitive deps are unpinned.
+      # Skipped on push: the PR run validated the same config, and the image
+      # (GHCR, no release-age cooldown) never runs with main's cache scope.
+      - name: Validate Renovate config
+        if: github.event_name != 'push'
+        uses: docker://ghcr.io/renovatebot/renovate:44.186.4@sha256:2bae955368b05fa2da61d4c813b92251fde0abc59b3e488f2f2cb3672da76cc2
+        with:
+          entrypoint: renovate-config-validator
+          args: --strict --no-global .github/renovate.json
+
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: '.nvmrc'
@@ -708,7 +722,9 @@ jobs:
     # fails the build when they diverge. Edit both blocks together.
     services:
       postgres:
-        image: postgres:17-alpine
+        # docker-compose.yml's `db` image: Renovate bumps both in one PR,
+        # so an auto-merged `db` update is tested here first (#637).
+        image: postgres:17.9-alpine@sha256:6f30057d31f5861b66f3545d4821f987aacf1dd920765f0acadea0c58ff975b1
         env:
           # POSTGRES_DB defaults to POSTGRES_USER, so omitting it yields
           # a `pm` database. Vitest integration tests don't use it

@@ -232,7 +232,7 @@ jobs:
           set -euo pipefail
           # Assigning an already-assigned user returns 200 but writes no
           # `assigned` timeline event, so it raises no second
-          # notification. That absorbs Renovate's weekly force-push
+          # notification. That absorbs Renovate's force-pushes
           # without spamming — and is exactly why the clear-on-green
           # step below is load-bearing rather than cosmetic.
           gh api -X POST \
