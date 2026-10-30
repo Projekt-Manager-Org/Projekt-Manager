@@ -1,31 +1,27 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": [
-    "Release-age cooldown is inherited, not configured here: config:best-practices extends security:minimumReleaseAgeNpm, which sets minimumReleaseAge=3 days + internalChecksFilter=strict for the npm datasource.",
+    "Release-age cooldown: npm's is inherited (config:best-practices extends security:minimumReleaseAgeNpm: minimumReleaseAge=3 days + internalChecksFilter=strict for the npm datasource); non-npm's is the cooldown packageRule below, which lists its datasources and why Docker is not one.",
     "DO NOT restate minimumReleaseAge on a packageRule that matches lockFileMaintenance or pin. That preset deliberately sets it to null for those update types because Renovate cannot age them; a rule here sorts AFTER the preset and would override the carve-out. With minimumReleaseAgeBehaviour=timestamp-required (default since Renovate 42) a missing timestamp counts as not-yet-passed, so the branch is never created — silently stopping the daily lockFileMaintenance run that is this repo's only transitive-dep refresh path (ADR-0027 § 2026-08-06 amendment).",
-    "The npm-side cooldown for those paths lives in .npmrc (min-release-age=3). Non-npm datasources — docker, github-tags, github-release-attachments, git-refs — carry NO cooldown; see ADR-0027 § 2026-08-28 amendment for why that is a documented non-goal rather than an oversight."
+    "The npm-side cooldown for those paths lives in .npmrc (min-release-age=3). Never add minimumReleaseAge where no release timestamp exists: under timestamp-required the update is held forever, listed as Pending Status Checks, which the nightly health check treats as benign.",
+    "Current by default (ADR-0027 § 2026-10-29, control 1): no global schedule, non-majors auto-merge on green CI, majors wait for approval on the Dependency Dashboard. prHourlyLimit=0, because a burst held back by the hourly limit is listed as Rate-Limited, which the nightly health check (scripts/ci/renovate-health.mjs) reports as red; prConcurrentLimit stays at Renovate's default, so Rate-Limited means 10 open PRs: a real backlog."
   ],
   "extends": ["config:best-practices", ":dependencyDashboard", ":semanticCommits"],
   "mode": "full",
   "timezone": "Europe/Berlin",
-  "schedule": ["before 9am on monday"],
-  "prHourlyLimit": 4,
-  "prConcurrentLimit": 1,
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 10,
   "rebaseWhen": "behind-base-branch",
   "labels": ["dependencies"],
   "lockFileMaintenance": {
-    "description": "Daily, and exempt from the global PR limits. This is the ONLY Renovate mechanism that refreshes transitive npm deps — vulnerability PRs cover direct deps only (https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts). On the weekly window behind prConcurrentLimit=1 it was starved for 9 weeks while transitive advisories sat open; the per-branch limit calc (calcLimit in lib/workers/global/limits.ts) treats 0 as 'no limit', same exemption vulnerabilityAlerts uses.",
+    "description": "Daily. This is the ONLY Renovate mechanism that refreshes transitive npm deps — vulnerability PRs cover direct deps only (https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts). Its branch is listed as Awaiting Schedule outside the window, which the nightly health check exempts by name.",
     "enabled": true,
-    "schedule": ["before 9am"],
-    "prConcurrentLimit": 0,
-    "prHourlyLimit": 0
+    "schedule": ["before 9am"]
   },
   "vulnerabilityAlerts": {
     "description": "deploy-asap: what runs is exposed until deployed; merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29).",
     "labels": ["security", "dependencies", "deploy-asap"],
-    "schedule": ["at any time"],
-    "prConcurrentLimit": 0,
-    "prHourlyLimit": 0
+    "schedule": ["at any time"]
   },
   "osvVulnerabilityAlerts": true,
   "packageRules": [
@@ -105,6 +101,12 @@
       "platformAutomerge": true
     },
     {
+      "description": "Majors wait for approval on the Dependency Dashboard (Pending Approval) and are never auto-merged: a major needs its migration guide read. The rule above opts in only non-major types, so automerge=false restates the exclusion and survives edits to it. Pending Approval is benign to the nightly health check; an approved major PR left open more than 7 days turns it red.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
       "description": "deploy-asap on updates of the runtime images production builds or runs: the fixes they carry reach a host only on deploy, so merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29). Pins are excluded: they change no bytes. A group gets the label when any of its updates matches (labels are combined per branch). docker-compose.http.yml is evaluation-only, and CI's service images never ship.",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["node", "postgres", "caddy"],
@@ -118,6 +120,18 @@
       "addLabels": ["deploy-asap"]
     },
     {
+      "description": "No digest pins for docker deps a customManager extracts: the regex captures no digest (the `postgresqlN` apk names in Dockerfile.backup, `xcaddy build vX` in docker/caddy/Dockerfile), so config:best-practices' docker:pinDigests has nowhere to write one, and the failed pin errored the whole grouped pin branch every run (#637). A regex that captures a digest (docker-compose.http.yml) still gets digest updates.",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["docker"],
+      "pinDigests": false
+    },
+    {
+      "description": "Release-age cooldown outside npm, the same 3 days security:minimumReleaseAgeNpm sets for npm: the malicious-publish window. Only datasources whose release timestamps were verified (dry-run 2026-10-30; ADR-0027 § 2026-10-29): github-tags (Actions, digest updates age against the tag's release), github-release-attachments (CLI binaries) and go (the proxy's `Time`). Not docker, not node-version: Docker Hub refuses anonymous tag paging past 1000 tags, so node and postgres carry no timestamp and timestamp-required would hold them forever; .nvmrc shares the node branch with the image, so a cooldown on it alone splits their versions. Never pin or lockFileMaintenance (see the top-level description). Vulnerability PRs skip the cooldown.",
+      "matchDatasources": ["github-tags", "github-release-attachments", "go"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
       "description": "The renovate-config-validator image `lint` runs (ci.yml). Weekly: Renovate releases several times a day, and a PR plus a CI run per release buys nothing for a validator. Its branch is listed as Awaiting Schedule between windows, which scripts/ci/renovate-health.mjs exempts by name: keep the groupName in step with AWAITING_EXEMPT there.",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["ghcr.io/renovatebot/renovate"],
@@ -125,23 +139,18 @@
       "schedule": ["before 9am on monday"]
     },
     {
-      "description": "Docker host packages (docker/host-versions.txt, ADR-0009): one grouped PR, never auto-merged. The operator tests the PR branch on the VPS and merges only once it passes acceptance (server-setup.md § Upgrading pinned versions); deploy.sh refuses to deploy until a host matches the file, so an auto-merge would block deploys at a time nobody chose. Sorted after the auto-merge rule above so it overrides it. Quarterly, in the first week of January, April, July and October: Docker ships a release almost every week, and every bump costs a daemon restart and a key paste per host. updateNotScheduled=false freezes the PR outside the window; inside it, the PR rebases whenever main moves, so the operator merges once the pins file is unchanged since the tested SHA. A closed PR inside the window is recreated: the group has no single version, so its title is not ignorable. prConcurrentLimit=0 and prHourlyLimit=0 exempt its own creation, as for lockFileMaintenance: otherwise any open PR inside the window (a stuck lockfile PR, say) would skip the quarter unnoticed (the Dependency Dashboard lists it as rate-limited, but nothing notifies). While open, it still counts against every other rule's limit of 1 (the open-PR count is repository-wide): merge it or close it to skip the round. No minimumReleaseAge: the deb datasource reports no release timestamps, and with timestamp-required a missing timestamp never ages, so the PR would never be created.",
+      "description": "Docker host packages (docker/host-versions.txt, ADR-0009): one grouped PR, never auto-merged. The operator tests the PR branch on the VPS and merges only once it passes acceptance (server-setup.md § Upgrading pinned versions); deploy.sh refuses to deploy until a host matches the file, so an auto-merge would block deploys at a time nobody chose. Sorted after the auto-merge and major rules above so it overrides both. Quarterly, in the first week of January, April, July and October: Docker ships a release almost every week, and every bump costs a daemon restart and a key paste per host. updateNotScheduled=false freezes the PR outside the window; inside it, the PR rebases whenever main moves, so the operator merges once the pins file is unchanged since the tested SHA. A closed PR inside the window is recreated: the group has no single version, so its title is not ignorable. prConcurrentLimit=0 exempts its own creation: a full PR limit inside the one-week window would otherwise skip the quarter (the nightly health check reports Rate-Limited, but the window may close before the backlog clears). While open, it still counts against every other rule's limit (the open-PR count is repository-wide): merge it or close it to skip the round. No dashboard approval: acceptance on the VPS is the approval. No minimumReleaseAge: the deb datasource reports no release timestamps, and with timestamp-required a missing timestamp never ages, so the PR would never be created.",
       "groupName": "docker-host",
       "matchFileNames": ["docker/host-versions.txt"],
       "schedule": ["* 0-8 1-7 1,4,7,10 *"],
       "updateNotScheduled": false,
       "prConcurrentLimit": 0,
-      "prHourlyLimit": 0,
       "prBodyNotes": [
         "**Merge only after acceptance on the VPS:** `sudo /opt/projekt-manager/scripts/ops/docker-bump.sh test origin/renovate/docker-host`, then `merge-check` before merging. Procedure, review checklist and revert: [server-setup.md § Upgrading pinned versions](https://github.com/Projekt-Manager-Org/Projekt-Manager/blob/main/docs/ops/server-setup.md#upgrading-pinned-versions). A `containerd.io` minor change is a one-way door: never skip a minor, and a revert takes step 5c."
       ],
       "separateMajorMinor": false,
       "separateMultipleMajor": false,
-      "automerge": false
-    },
-    {
-      "description": "Belt-and-braces: never auto-merge major bumps. The rule above opts in only non-major types, so majors already fall through to no auto-merge — this states the exclusion explicitly and survives edits to the rule above",
-      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": false,
       "automerge": false
     }
   ],
