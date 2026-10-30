@@ -230,7 +230,7 @@ services:
     # Digest-pinned: `up -d` pulls a digest it does not have and recreates
     # the container, so what runs is what this line declares. A floating
     # tag already present is never re-pulled (#637). Renovate bumps both.
-    image: postgres:17.9-alpine@sha256:6f30057d31f5861b66f3545d4821f987aacf1dd920765f0acadea0c58ff975b1
+    image: postgres:17.9-alpine@sha256:c7526c0f6c3f30260a563d7bcf8ad778effac59a44f8ffa86678c35418338609
     mem_limit: 512m
     cpus: 1.0
     volumes:
