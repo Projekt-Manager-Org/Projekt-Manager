@@ -272,7 +272,7 @@ The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (
 | expiry | `ignoreUntil`                   | `expired_at` (Trivy honours it)                           | `expires` (Grype ignores it)    |
 | scope  | —                               | `paths` (no leading `/`) / `purls` (vulnerabilities only) | `package` (`location` absolute) |
 
-Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). Scopes are literal: the scanners read `paths` and `location` as globs and Grype's `name` / `upstream-name` as a regex, so a wildcard would ignore everywhere. A name containing `+` (e.g. `libstdc++`) is a regex to Grype; scope such a package by `location`.
+Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). Scopes are literal: the scanners read `paths` and `location` as globs and Grype's `name` / `upstream-name` as a regex, so a wildcard would ignore everywhere. A name containing `+` (e.g. `libstdc++`) is a regex to Grype; scope such a package by `location`. A Grype `package` holds a `name`, `upstream-name` or `location`: type and version alone match many packages.
 
 Per [CLAUDE.md "refuse to serve" principle](../../CLAUDE.md#principles), the correct response to a finding without a justified allowlist entry is to fix the underlying issue, not to write a suppression "for now." Allowlist entries are a structured exception, not a default.
 
@@ -309,7 +309,7 @@ ignore:
     expires: <today+≤90d>
 ```
 
-Go binaries are reported by Grype as the synthetic package `stdlib`; scope those by `location` (the binary's absolute path), not by the binary's name.
+Go's stdlib is compiled into every Go binary (gosu, Caddy), so a waiver scoped by package would hide the CVE in all of them. Grype reports it as the synthetic package `stdlib`, Trivy as `pkg:golang/stdlib@…`; scope it by the binary's path (Grype `location`, Trivy `paths`). The schema check rejects a `stdlib` scope without one.
 
 Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing — the same script gates the CI `lint` job.
 

@@ -159,6 +159,7 @@ GRYPE_PACKAGE_KEYS = {"name", "version", "type", "location", "upstream-name"}
 # literal. `purls` are exempt: `?` starts a purl's qualifiers.
 GLOB_CHARS = set("*?[]{}")
 REGEX_CHARS = set("^$*+?[](){}|\\")
+GO_STDLIB_PURL = "pkg:golang/stdlib"
 
 out = []
 
@@ -244,6 +245,13 @@ for name, spec in SPECS.items():
                     out.append(f"{label}: {spec['expiry']}: expired ({d} < {today})")
                 elif d > max_d:
                     out.append(f"{label}: {spec['expiry']}: too far ({d} > today+90d {max_d})")
+            # Go's stdlib is compiled into every Go binary (gosu, Caddy), so
+            # by name or purl alone a waiver for one hides the CVE in all.
+            purls = e.get("purls")
+            if name == ".trivyignore.yaml" and "paths" not in e and isinstance(purls, list) and any(
+                isinstance(p, str) and p.startswith(GO_STDLIB_PURL) for p in purls
+            ):
+                out.append(f"{label}: purls: Go stdlib must be scoped by `paths` (the binary); a purl matches every Go binary built with that Go")
             pkg = e.get("package")
             if name == ".grype.yaml" and pkg is not None:
                 if not isinstance(pkg, dict):
@@ -251,6 +259,13 @@ for name, spec in SPECS.items():
                 else:
                     for k in sorted(set(pkg) - GRYPE_PACKAGE_KEYS, key=str):
                         out.append(f"{label}: package.{k}: unknown key")
+                    # Type and version are shared by many packages: `{type:
+                    # go-module, version: go1.24.6}` is the stdlib of every
+                    # binary built with that Go.
+                    if not {"name", "upstream-name", "location"} & set(pkg):
+                        out.append(f"{label}: package: needs name, upstream-name or location; type and version alone match many packages")
+                    elif "stdlib" in (pkg.get("name"), pkg.get("upstream-name")) and "location" not in pkg:
+                        out.append(f"{label}: package: Go stdlib needs `location` (the binary); by name it matches every Go binary")
 
 for line in out:
     print(line)
