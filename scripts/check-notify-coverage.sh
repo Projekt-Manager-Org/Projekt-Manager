@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 #
-# Every scheduled workflow is hooked into notify.yml.
+# Every scheduled or push-to-main workflow is hooked into notify.yml.
 #
-# notify.yml subscribes to `workflow_run` by workflow NAME. A scheduled
-# workflow missing from its `workflows:` list fails red with nobody told:
-# the run has no PR to sit on and no triggering human to email, so the
-# nightly controls of ADR-0027 § 2026-10-29 — whose whole job is to go
-# red — would be inert. Renaming a workflow unhooks it the same way.
+# notify.yml subscribes to `workflow_run` by workflow NAME. A workflow
+# missing from its `workflows:` list fails red with nobody told when its
+# run has no PR to sit on and no human to email: a schedule, or a push to
+# main from a bot's merge. The controls of ADR-0027 § 2026-10-29 — whose
+# whole job is to go red — would be inert. Renaming a workflow unhooks it
+# the same way.
 #
-# Unscheduled workflows are not required: their failures land on a PR or
-# a push someone is watching.
+# Other workflows are not required: their failures land on a PR or on a
+# push the pusher is watching. A `push` without a `branches` filter
+# includes main (`branches-ignore` is read conservatively as including it).
 #
 # Exit codes:
-#   0  every scheduled workflow is listed
+#   0  every such workflow is listed
 #   1  at least one is not; one line per workflow on stdout
 #   2  notify.yml has no `on.workflow_run.workflows` list — the check
 #      cannot run, which must not read as a pass
@@ -43,14 +45,22 @@ if not isinstance(listed, list):
     print(f"ERROR: {wf_dir / 'notify.yml'}: no on.workflow_run.workflows list", file=sys.stderr)
     sys.exit(2)
 
+def pushes_main(on):
+    if "push" not in on:
+        return False
+    branches = (on["push"] or {}).get("branches")
+    return branches is None or "main" in branches
+
+
 missing = []
 for path in sorted([*wf_dir.glob("*.yml"), *wf_dir.glob("*.yaml")]):
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if "schedule" in triggers(doc):
+    on = triggers(doc)
+    if "schedule" in on or pushes_main(on):
         # GitHub falls back to the file path when a workflow has no name.
         name = doc.get("name") or str(path.relative_to(wf_dir.parent.parent))
         if name not in listed:
-            missing.append(f"{path.name}: scheduled workflow '{name}' is not in notify.yml's workflows: list")
+            missing.append(f"{path.name}: workflow '{name}' runs unattended but is not in notify.yml's workflows: list")
 
 for line in missing:
     print(line)

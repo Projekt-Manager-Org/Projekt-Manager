@@ -434,6 +434,36 @@ dir="$(mktmp)"
 grype_entry | sed "s|^      name: gosu|      upstream-name: '.*'|" > "$dir/.grype.yaml"
 assert_case 1 "FAIL-.grype.yaml-regex-upstream-name" "$dir"
 
+# Go's stdlib is linked into every Go binary: scoped by name or purl, a
+# gosu waiver would hide the same CVE in Caddy. Only the binary's path
+# tells them apart.
+dir="$(mktmp)"
+grype_entry | sed "s|^      name: gosu|      name: stdlib|" > "$dir/.grype.yaml"
+assert_case 1 "FAIL-.grype.yaml-stdlib-without-location" "$dir"
+
+dir="$(mktmp)"
+grype_entry | sed "s|^      name: gosu|      upstream-name: stdlib|" > "$dir/.grype.yaml"
+assert_case 1 "FAIL-.grype.yaml-stdlib-upstream-name-without-location" "$dir"
+
+dir="$(mktmp)"
+grype_entry | sed "s|^      name: gosu|      name: stdlib\n      location: /usr/local/bin/gosu|" > "$dir/.grype.yaml"
+assert_case 0 "OK-.grype.yaml-stdlib-with-location" "$dir"
+
+dir="$(mktmp)"
+trivy_entry | sed "s|^    paths:|    purls:|; s|^      - usr/local/bin/gosu|      - pkg:golang/stdlib@v1.24.6|" > "$dir/.trivyignore.yaml"
+assert_case 1 "FAIL-.trivyignore.yaml-stdlib-purl" "$dir"
+
+# Trivy ANDs `paths` and `purls`: beside a path, the purl only narrows.
+dir="$(mktmp)"
+trivy_entry | sed "s|^    paths:|    purls:\n      - pkg:golang/stdlib@v1.24.6\n    paths:|" > "$dir/.trivyignore.yaml"
+assert_case 0 "OK-.trivyignore.yaml-stdlib-purl-with-paths" "$dir"
+
+# Type and version identify no package: this is the stdlib of every
+# binary built with Go 1.24.6.
+dir="$(mktmp)"
+grype_entry | sed "s|^      name: gosu|      type: go-module\n      version: go1.24.6|" > "$dir/.grype.yaml"
+assert_case 1 "FAIL-.grype.yaml-type-and-version-only" "$dir"
+
 # Dots do not trigger regex mode: a Go module path stays an exact match.
 dir="$(mktmp)"
 grype_entry | sed "s|^      name: gosu|      name: github.com/go-jose/go-jose/v3|" > "$dir/.grype.yaml"

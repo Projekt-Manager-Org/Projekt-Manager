@@ -81,15 +81,23 @@ on:
     # Matched by workflow NAME, not file path. Renaming a listed workflow
     # silently unhooks it — actionlint cannot know which names are real.
     # scripts/check-notify-coverage.sh (ci.yml `lint`) fails the PR when a
-    # SCHEDULED workflow is missing here; `CI` has no schedule, so a rename
-    # of it is still caught only by review.
+    # scheduled or push-to-main workflow is missing here.
     #
     # `E2E` was excluded until #377 as flaky and `workflow_dispatch`-only,
     # where monitoring manufactures alert fatigue. On a nightly schedule
     # the failure mode inverts to silence — it sat red ~3.5 weeks with
     # nothing to say so. `route='main'` already covers the `schedule`
     # event, and one-issue-per-incident below is what bounds the fatigue.
-    workflows: [CI, 'Security (scheduled)', E2E, 'GHCR retention', 'Inventory scan']
+    workflows:
+      [
+        CI,
+        'Security (scheduled)',
+        E2E,
+        'GHCR retention',
+        'Inventory scan',
+        'Renovate health',
+        'Deploy pending',
+      ]
     types: [completed]
 
 # An explicit block zeroes every scope not listed. `contents: read`
@@ -112,6 +120,10 @@ env:
   # Hardcoded, not derived: `github.repository_owner` is the ORG
   # (Projekt-Manager-Org) and assigning an org 422s.
   MAINTAINER: vlzware
+  # Reports one EVENT per run (a merge), not a state: a later green run
+  # proves nothing about an earlier red one, so its red issue is never
+  # auto-closed — the operator closes it after checking that merge.
+  EVENT_SCOPED: Deploy pending
   # Marks the issues this workflow owns, so the "is one already open"
   # lookup is an exact, bounded query instead of a scan of every open
   # issue in the repo.
@@ -298,11 +310,22 @@ jobs:
           if [ -n "$existing" ]; then
             # Still red on a later run. A comment re-notifies the
             # assignee, which is wanted — each failure is a fresh
-            # occurrence — while keeping one issue per incident.
+            # occurrence — while keeping one issue per incident. For an
+            # event-scoped workflow it is another merge, not the same one.
+            if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
+              comment="Also red (another merge, \`${HEAD_SHA}\`) — ${RUN_URL}"
+            else
+              comment="Still red — ${RUN_URL}"
+            fi
             gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${existing}/comments" \
-              -f "body=Still red — ${RUN_URL}" > /dev/null
+              -f "body=${comment}" > /dev/null
             echo "::notice::${WORKFLOW_NAME} still red on main — commented on #${existing}"
           else
+            if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
+              closing='Raised by `.github/workflows/notify.yml`. A later green run does not cover this commit: check the run, then close this issue by hand.'
+            else
+              closing='Raised by `.github/workflows/notify.yml`; it closes itself on the next green run of this workflow.'
+            fi
             # Built with printf rather than a multi-line string literal:
             # a quoted literal inside this indented `run:` block would
             # carry the YAML indentation into the rendered issue body.
@@ -312,7 +335,7 @@ jobs:
               "- Run: ${RUN_URL}" \
               "- Commit: \`${HEAD_SHA}\`" \
               '' \
-              'Raised by `.github/workflows/notify.yml`; it closes itself on the next green run of this workflow.')
+              "$closing")
 
             number=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/issues" \
               -f "title=${title}" -f "body=${body}" \
@@ -322,7 +345,9 @@ jobs:
           fi
 
       - name: Close the red-main issue
-        if: steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'green'
+        if: >-
+          steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'green' &&
+          github.event.workflow_run.name != env.EVENT_SCOPED
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}

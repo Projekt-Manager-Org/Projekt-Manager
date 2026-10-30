@@ -1,0 +1,41 @@
+# Nightly updater health (ADR-0027 § 2026-10-29, control 2).
+#
+# Red when Renovate stops running or its queue stops moving — the failure
+# #637 found behind months-old Node and PostgreSQL with every check green.
+# What counts as red, and the liveness probe this run arms for the next
+# one, are in scripts/ci/renovate-health.mjs.
+#
+# A red run reaches a human through notify.yml (scheduled runs have no PR
+# and no triggering human); scripts/check-notify-coverage.sh fails the PR
+# that drops or renames this workflow out of that list.
+
+name: Renovate health
+
+on:
+  schedule:
+    # 01:30 UTC: a probe armed here has a full day for Renovate's next
+    # job to clear it.
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The liveness probe ticks the dashboard's "manual job" box.
+  issues: write
+  pull-requests: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Check Renovate health
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/renovate-health.mjs

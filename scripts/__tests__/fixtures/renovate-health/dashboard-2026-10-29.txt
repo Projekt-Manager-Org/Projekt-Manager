@@ -1,0 +1,391 @@
+This issue lists Renovate updates and detected dependencies. Read the [Dependency Dashboard](https://docs.renovatebot.com/key-concepts/dashboard/) docs to learn more.<br>[View this repository on the Mend.io Web Portal](https://developer.mend.io/github/Projekt-Manager-Org/Projekt-Manager).
+
+## Abandoned Dependencies
+
+The following dependencies have not received updates for an extended period and may be unmaintained.
+
+> [!NOTE]
+> Packages are marked as abandoned when they exceed the [`abandonmentThreshold`](https://docs.renovatebot.com/configuration-options/#abandonmentthreshold) since their last release. Unlike deprecated packages with official notices, abandonment is detected by release inactivity.
+> 
+<details>
+<summary>View abandoned dependencies (7)</summary>
+
+| Datasource | Package | Last Updated |
+|------------|------|-------------|
+| npm | [big.js](https://redirect.github.com/MikeMcl/big.js) | `2025-04-21` |
+| npm | [date-fns-tz](https://redirect.github.com/marnusw/date-fns-tz) | `2024-09-30` |
+| npm | [eruda](https://redirect.github.com/liriliri/eruda) | `2025-06-15` |
+| npm | [husky](https://redirect.github.com/typicode/husky) | `2024-11-18` |
+| npm | `saxon-js` | `2024-10-17` |
+| npm | [web-push](https://redirect.github.com/web-push-libs/web-push) | `2024-01-16` |
+| npm | `xslt3` | `2024-10-17` |
+
+</details>
+
+
+## Awaiting Schedule
+
+The following updates are awaiting their schedule. To get an update now, click on a checkbox below.
+
+ - [ ] <!-- unschedule-branch=renovate/caddy -->chore(deps): pin dependencies
+ - [ ] <!-- unschedule-branch=renovate/pin-dependencies -->chore(deps): pin dependencies (`@playwright/test`, `@seriousme/openapi-schema-validator`, `@testing-library/jest-dom`, `@testing-library/react`, `@testing-library/user-event`, `@types/big.js`, `@types/pg`, `@types/web-push`, `@vitejs/plugin-react`, `concurrently`, `husky`, `jsdom`, `lint-staged`, `postgres`, `tsx`, `typescript`, `unpdf`, `vite`)
+ - [ ] <!-- unschedule-branch=renovate/postgres-17.9-alpine -->chore(deps): update postgres:17.9-alpine docker digest to c7526c0
+ - [ ] <!-- unschedule-branch=renovate/actions-setup-node-6.x -->chore(deps): update actions/setup-node action to v6.5.0
+ - [ ] <!-- unschedule-branch=renovate/fastify -->chore(deps): update dependency @fastify/swagger to v9.9.2
+ - [ ] <!-- unschedule-branch=renovate/anchore-grype-0.x -->chore(deps): update dependency anchore/grype to v0.121.0
+ - [ ] <!-- unschedule-branch=renovate/google-osv-scanner-2.x -->chore(deps): update dependency google/osv-scanner to v2.7.0
+ - [ ] <!-- unschedule-branch=renovate/docker-host -->chore(deps): update docker-host (`containerd.io`, `docker-buildx-plugin`, `docker-ce`, `docker-ce-cli`, `docker-compose-plugin`)
+ - [ ] <!-- unschedule-branch=renovate/docker-build-push-action-7.x -->chore(deps): update docker/build-push-action action to v7.4.0
+ - [ ] <!-- unschedule-branch=renovate/docker-dockerfile-1.x -->chore(deps): update docker/dockerfile docker tag to v1.28
+ - [ ] <!-- unschedule-branch=renovate/docker-login-action-4.x -->chore(deps): update docker/login-action action to v4.7.0
+ - [ ] <!-- unschedule-branch=renovate/docker-setup-buildx-action-4.x -->chore(deps): update docker/setup-buildx-action action to v4.4.1
+ - [ ] <!-- unschedule-branch=renovate/eslint -->chore(deps): update eslint (`eslint`, `eslint-plugin-react-refresh`, `globals`, `typescript-eslint`)
+ - [ ] <!-- unschedule-branch=renovate/google-osv-scanner-action-2.x -->chore(deps): update google/osv-scanner-action action to v2.7.0
+ - [ ] <!-- unschedule-branch=renovate/node-24.x -->chore(deps): update node.js to v24.22.2
+ - [ ] <!-- unschedule-branch=renovate/postgres-17.x -->chore(deps): update postgres docker tag to v17.11
+ - [ ] <!-- unschedule-branch=renovate/react -->chore(deps): update react to v19.3.0 (`@types/react`, `@types/react-dom`)
+ - [ ] <!-- unschedule-branch=renovate/actions-checkout-7.x -->chore(deps): update actions/checkout action to v7
+ - [ ] <!-- unschedule-branch=renovate/actions-setup-node-7.x -->chore(deps): update actions/setup-node action to v7
+ - [ ] <!-- unschedule-branch=renovate/major-testing-library-monorepo -->chore(deps): update dependency @testing-library/jest-dom to v7
+ - [ ] <!-- unschedule-branch=renovate/jsdom-30.x -->chore(deps): update dependency jsdom to v30
+ - [ ] <!-- unschedule-branch=renovate/typescript-7.x -->chore(deps): update dependency typescript to v7
+ - [ ] <!-- unschedule-branch=renovate/node-26.x -->chore(deps): update node.js to v26
+ - [ ] <!-- unschedule-branch=renovate/major-vitest -->chore(deps): update vitest to v5 (`@vitest/coverage-v8`, `vitest`)
+ - [ ] <!-- unschedule-branch=renovate/lock-file-maintenance -->chore(deps): lock file maintenance
+ - [ ] <!-- create-all-awaiting-schedule-prs -->🔐 **Create all awaiting schedule PRs at once** 🔐
+
+## Pending Status Checks
+
+The following updates await pending status checks. To force their creation now, click on a checkbox below.
+
+ - [ ] <!-- unpend-branch=renovate/react-router-monorepo -->chore(deps): update dependency react-router to v8.5.1
+ - [ ] <!-- unpend-branch=renovate/aws-sdk -->chore(deps): update aws-sdk to v3.1159.0 (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`)
+ - [ ] <!-- unpend-branch=renovate/uploadcare-image-shrink-6.x-lockfile -->chore(deps): update dependency @uploadcare/image-shrink to v6.25.0
+ - [ ] <!-- unpend-branch=renovate/unpdf-2.x -->chore(deps): update dependency unpdf to v2
+ - [ ] <!-- unpend-branch=renovate/croner-11.x -->fix(deps): update dependency croner to v11
+
+## Open
+
+The following updates have all been created. To force a retry/rebase of any, click on a checkbox below.
+
+ - [ ] <!-- rebase-branch=renovate/go-golang.org-x-net-vulnerability -->[chore(deps): update module golang.org/x/net to v0.62.0 [security]](../pull/648)
+
+## PR Closed (Blocked)
+
+The following updates are blocked by an existing closed PR. To recreate the PR, click on a checkbox below.
+
+ - [ ] <!-- recreate-branch=renovate/postgres-18.x -->[chore(deps): update postgres docker tag to v18](../pull/211)
+
+## Detected Dependencies
+
+<details><summary>docker-compose (4)</summary>
+<blockquote>
+
+<details><summary>docker-compose.dev.yml</summary>
+
+
+</details>
+
+<details><summary>docker-compose.http.yml</summary>
+
+
+</details>
+
+<details><summary>docker-compose.minio.yml</summary>
+
+
+</details>
+
+<details><summary>docker-compose.yml (1)</summary>
+
+ - `postgres 17.9-alpine@sha256:6f30057d31f5861b66f3545d4821f987aacf1dd920765f0acadea0c58ff975b1` → [Updates: `17.11-alpine`, `18.6-alpine`, `17.9-alpine`]
+
+</details>
+
+</blockquote>
+</details>
+
+<details><summary>dockerfile (3)</summary>
+<blockquote>
+
+<details><summary>docker/caddy/Dockerfile (3)</summary>
+
+ - `docker/dockerfile 1.24@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89` → [Updates: `1.28`]
+ - `caddy 2.11.7-builder@sha256:c2fc374fd352439d76e1777b28d97d9f6d9c1dd86116db9227460374d46097d5` → [Updates: `2.11.7-builder`]
+ - `caddy 2.11.7@sha256:504a44d7d74bd2bc28a66afc4774912fc21223ca8a67734af1c54ab2f999b489` → [Updates: `2.11.7`]
+
+</details>
+
+<details><summary>Dockerfile (2)</summary>
+
+ - `node 24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd225f31f2bc59b5c9a` → [Updates: `24.22.2-alpine`, `26.13.0-alpine`]
+ - `node 24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd225f31f2bc59b5c9a` → [Updates: `24.22.2-alpine`, `26.13.0-alpine`]
+
+</details>
+
+<details><summary>Dockerfile.backup (1)</summary>
+
+ - `node 24.16.0-alpine@sha256:21f403ab171f2dc89bad4dd69d7721bfd15f084ccb46cdd225f31f2bc59b5c9a` → [Updates: `24.22.2-alpine`, `26.13.0-alpine`]
+
+</details>
+
+</blockquote>
+</details>
+
+<details><summary>github-actions (11)</summary>
+<blockquote>
+
+<details><summary>.github/actions/build-scan-smoke/action.yml (4)</summary>
+
+ - `docker/setup-buildx-action v4.1.0@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5` → [Updates: `v4.4.1`]
+ - `docker/login-action v4.2.0@650006c6eb7dba73a995cc03b0b2d7f5ca915bee` → [Updates: `v4.7.0`]
+ - `docker/build-push-action v7.2.0@f9f3042f7e2789586610d6e8b85c8f03e5195baf` → [Updates: `v7.4.0`]
+ - `docker/build-push-action v7.2.0@f9f3042f7e2789586610d6e8b85c8f03e5195baf` → [Updates: `v7.4.0`]
+
+</details>
+
+<details><summary>.github/actions/tag-images/action.yml (2)</summary>
+
+ - `docker/login-action v4.2.0@650006c6eb7dba73a995cc03b0b2d7f5ca915bee` → [Updates: `v4.7.0`]
+ - `docker/setup-buildx-action v4.1.0@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5` → [Updates: `v4.4.1`]
+
+</details>
+
+<details><summary>.github/actions/trivy-image/action.yml (1)</summary>
+
+ - `aquasecurity/trivy-action v0.36.0@ed142fd0673e97e23eac54620cfb913e5ce36c25`
+
+</details>
+
+<details><summary>.github/workflows/cache-cleanup.yml</summary>
+
+
+</details>
+
+<details><summary>.github/workflows/ci.yml (11)</summary>
+
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+ - `actions/setup-node v6.4.0@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e` → [Updates: `v6.5.0`, `v7.1.0`]
+ - `aquasecurity/trivy-action v0.36.0@ed142fd0673e97e23eac54620cfb913e5ce36c25`
+ - `aquasecurity/trivy-action v0.36.0@ed142fd0673e97e23eac54620cfb913e5ce36c25`
+ - `lycheeverse/lychee-action v2.9.0@e7477775783ea5526144ba13e8db5eec57747ce8`
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+ - `actions/setup-node v6.4.0@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e` → [Updates: `v6.5.0`, `v7.1.0`]
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+ - `postgres 17-alpine` → [Updates: `18-alpine`, `17-alpine`]
+
+</details>
+
+<details><summary>.github/workflows/e2e.yml (4)</summary>
+
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+ - `actions/setup-node v6.4.0@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e` → [Updates: `v6.5.0`, `v7.1.0`]
+ - `actions/upload-artifact v7.0.2@cf430e030ddbb5b0abf93d22962f4752f3646cd9`
+ - `postgres 17-alpine` → [Updates: `18-alpine`, `17-alpine`]
+
+</details>
+
+<details><summary>.github/workflows/ghcr-retention.yml (1)</summary>
+
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+
+</details>
+
+<details><summary>.github/workflows/inventory-scan.yml (2)</summary>
+
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+
+</details>
+
+<details><summary>.github/workflows/notify.yml</summary>
+
+
+</details>
+
+<details><summary>.github/workflows/security-scheduled.yml (3)</summary>
+
+ - `google/osv-scanner-action v2.3.8@9a498708959aeaef5ef730655706c5a1df1edbc2` → [Updates: `v2.7.0`]
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+ - `actions/setup-node v6.4.0@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e` → [Updates: `v6.5.0`, `v7.1.0`]
+
+</details>
+
+<details><summary>.github/workflows/spec-change.yml (1)</summary>
+
+ - `actions/checkout v6.1.0@d23441a48e516b6c34aea4fa41551a30e30af803` → [Updates: `v7.0.1`]
+
+</details>
+
+</blockquote>
+</details>
+
+<details><summary>npm (1)</summary>
+<blockquote>
+
+<details><summary>package.json (66)</summary>
+
+ - `@aws-sdk/client-s3 ^3.1047.0` → [Updates: `^3.1047.0`]
+ - `@aws-sdk/s3-request-presigner ^3.1047.0` → [Updates: `^3.1047.0`]
+ - `@cantoo/pdf-lib ^2.6.5 <2.11.0 || ^2.11.1`
+ - `@fastify/cookie ^11.0.2` → [Updates: `^11.0.2`]
+ - `@fastify/cors ^11.2.0`
+ - `@fastify/helmet ^13.0.2`
+ - `@fastify/rate-limit ^11.2.0`
+ - `@fastify/static ^10.1.4` → [Updates: `^10.1.4`]
+ - `@noble/hashes ^2.2.0`
+ - `@uploadcare/image-shrink ^6.18.4` → [Updates: `^6.18.4`]
+ - `archiver ^8.0.0`
+ - `bcryptjs ^3.0.3`
+ - `big.js ^7.0.1`
+ - `client-zip ^2.5.0`
+ - `croner ^10.0.1` → [Updates: `^11.0.0`]
+ - `date-fns ^4.1.0`
+ - `date-fns-tz ^3.2.0`
+ - `drizzle-orm ^0.45.2`
+ - `eruda ^3.4.3`
+ - `fastify ^5.12.6`
+ - `fflate ^0.8.2`
+ - `pg ^8.20.0`
+ - `react ^19.2.7`
+ - `react-dom ^19.2.7`
+ - `react-router ^8.3.0` → [Updates: `^8.3.0`]
+ - `sharp ^0.35.5`
+ - `web-push ^3.6.7`
+ - `xmllint-wasm ^5.2.0`
+ - `zod ^4.4.3`
+ - `zustand ^5.0.13`
+ - `@eslint/js 10.0.1`
+ - `@fastify/swagger 9.8.1` → [Updates: `9.9.2`]
+ - `@playwright/test ^1.60.0` → [Updates: `1.64.1`]
+ - `@seriousme/openapi-schema-validator ^2.9.1` → [Updates: `2.11.0`]
+ - `@testing-library/jest-dom ^6.9.1` → [Updates: `6.9.1`, `^7.0.0`]
+ - `@testing-library/react ^16.3.2` → [Updates: `16.3.3`]
+ - `@testing-library/user-event ^14.6.6` → [Updates: `14.6.8`]
+ - `@types/big.js ^7.0.0` → [Updates: `7.0.0`]
+ - `@types/pg ^8.20.0` → [Updates: `8.23.1`]
+ - `@types/react 19.2.18` → [Updates: `19.3.0`]
+ - `@types/react-dom 19.2.4` → [Updates: `19.3.0`]
+ - `@types/web-push ^3.6.4` → [Updates: `3.6.4`]
+ - `@vitejs/plugin-react ^6.0.2` → [Updates: `6.1.2`]
+ - `@vitest/coverage-v8 4.1.12` → [Updates: `5.0.5`]
+ - `concurrently ^10.0.0` → [Updates: `10.0.6`]
+ - `drizzle-kit 0.31.11`
+ - `eslint 10.4.1` → [Updates: `10.13.0`]
+ - `eslint-plugin-react-hooks 7.1.1`
+ - `eslint-plugin-react-refresh 0.5.2` → [Updates: `0.5.7`]
+ - `globals 17.6.0` → [Updates: `17.13.0`]
+ - `husky ^9.1.7` → [Updates: `9.1.7`]
+ - `jsdom ^29.1.1` → [Updates: `29.1.1`, `^30.0.0`]
+ - `lint-staged ^17.0.5` → [Updates: `17.6.0`]
+ - `prettier 3.9.10`
+ - `saxon-js 2.7.0`
+ - `semver 7.8.5`
+ - `tsx ^4.22.0` → [Updates: `4.23.15`]
+ - `typescript ^6.0.3` → [Updates: `6.0.3`, `^7.0.0`]
+ - `typescript-eslint 8.60.0` → [Updates: `8.72.0`]
+ - `unpdf ^1.6.2` → [Updates: `1.9.1`, `^2.0.0`]
+ - `vite ^8.3.3` → [Updates: `8.3.5`]
+ - `vitest 4.1.12` → [Updates: `5.0.5`]
+ - `xslt3 2.7.0`
+ - `node >=22.22.0`
+ - `shell-quote ^1.9.0`
+ - `esbuild ^0.25.0`
+
+</details>
+
+</blockquote>
+</details>
+
+<details><summary>nvm (1)</summary>
+<blockquote>
+
+<details><summary>.nvmrc (1)</summary>
+
+ - `node 24.16.0` → [Updates: `24.22.2`, `26.13.0`]
+
+</details>
+
+</blockquote>
+</details>
+
+<details><summary>regex (8)</summary>
+<blockquote>
+
+<details><summary>.github/actions/install-age/install-age.sh (1)</summary>
+
+ - `FiloSottile/age v1.3.2@cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10`
+
+</details>
+
+<details><summary>.github/workflows/ci.yml (3)</summary>
+
+ - `BurntSushi/ripgrep 15.2.0@33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c`
+ - `google/osv-scanner v2.3.8@bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc` → [Updates: `v2.7.0`]
+ - `rhysd/actionlint v1.7.12@8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`
+
+</details>
+
+<details><summary>.github/workflows/inventory-scan.yml (1)</summary>
+
+ - `anchore/grype v0.120.1@0a9ee97ef5ae2ee953b0a80098105052e846cdbe319a57d808b519c33cd1343d` → [Updates: `v0.121.0`]
+
+</details>
+
+<details><summary>docker/caddy/Dockerfile (1)</summary>
+
+ - `caddy 2.11.7` → [Updates: `2.11.7`]
+
+</details>
+
+<details><summary>docker/caddy/Dockerfile (1)</summary>
+
+ - `caddy-dns/cloudflare master@a8737d095ad5a48ca031cea6ab704057dbc2d250`
+
+</details>
+
+<details><summary>docker/caddy/Dockerfile (2)</summary>
+
+ - `golang.org/x/net v0.60.0` → [Updates: `v0.62.0`]
+ - `github.com/go-jose/go-jose/v4 v4.1.6`
+
+</details>
+
+<details><summary>docker/host-versions.txt (5)</summary>
+
+ - `docker-ce 5:29.8.2-1~ubuntu.24.04~noble` → [Updates: `5:29.9.2-1~ubuntu.24.04~noble`]
+ - `docker-ce-cli 5:29.8.2-1~ubuntu.24.04~noble` → [Updates: `5:29.9.2-1~ubuntu.24.04~noble`]
+ - `containerd.io 2.3.6-1~ubuntu.24.04~noble` → [Updates: `2.4.2-3~ubuntu.24.04~noble`]
+ - `docker-buildx-plugin 0.35.0-1~ubuntu.24.04~noble` → [Updates: `0.38.1-1~ubuntu.24.04~noble`]
+ - `docker-compose-plugin 5.3.1-1~ubuntu.24.04~noble` → [Updates: `5.6.1-1~ubuntu.24.04~noble`]
+
+</details>
+
+<details><summary>Dockerfile.backup (13)</summary>
+
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+ - `postgres 17` → [Updates: `18`, `17`]
+
+</details>
+
+</blockquote>
+</details>
+
+---
+
+- [ ] <!-- manual job -->Check this box to trigger a request for Renovate to run again on this repository
+
+

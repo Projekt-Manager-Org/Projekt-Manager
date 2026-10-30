@@ -64,6 +64,8 @@ Finally — only after the stack is verified healthy — it garbage-collects sup
 | Postgres (`db`)                       | Digest-pinned in `docker-compose.yml`; Renovate bumps the pin. `deploy.sh`'s `up -d` pulls a digest not present locally and recreates the container ([#637](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/637)). |
 | Docker engine + Compose plugin (host) | Manual converge per host; `deploy.sh` refuses on drift → [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions)                                                                                |
 
+**When:** an open **Deploy pending** issue means a merged `deploy-asap` change is not running yet: deploy, [verify](#verify-a-deploy), close it ([dep-management.md § Deploy urgency](dep-management.md#deploy-urgency)).
+
 ## Rollback
 
 Same as forward-deploy with an older SHA:

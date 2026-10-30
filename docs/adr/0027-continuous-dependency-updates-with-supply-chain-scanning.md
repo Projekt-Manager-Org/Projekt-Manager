@@ -213,7 +213,14 @@ Day-one findings:
 
 Caddy is built on the host; measured, its binary is byte-identical across a cached and a no-cache build, so the nightly scans what a host builds from the same inputs.
 
-**Pending:** controls 1, 2 and 4, tracked in #637.
+**Landed: controls 2 and 4.**
+
+- `renovate-health.yml` (`scripts/ci/renovate-health.mjs`): nightly, red on an unknown or problem dashboard section, an Awaiting Schedule branch other than `docker-host` / `lock-file-maintenance`, a dependency lookup failure, or a Renovate PR open > 7 days (`docker-host` excepted); a missing or duplicate dashboard is red. The section list is an allowlist, so a format change is red.
+- Liveness is a probe, not `updated_at`: Renovate edits the dashboard only when its body changes (29 h without an edit measured with Renovate healthy). Each run ticks the Mend app's _manual job_ box; Renovate's next job unticks it. Still ticked the next night → red.
+- `deploy-asap`: Renovate adds it to vulnerability PRs and to patch, minor and digest updates of `node`, `postgres` and `caddy` in the files that build or run production; Dependabot to its security updates (`.github/dependabot.yml`, version updates off); humans to hand-written security fixes. `deploy-pending.yml` runs on every push to `main`; a `deploy-asap` merge opens, or comments on, one _Deploy pending_ issue assigned to the operator. It runs on `main` so `notify.yml` catches its failures; a merge it cannot resolve to a PR is red, and that red issue is closed by hand, not by the next green run.
+- `scripts/check-notify-coverage.sh` now also covers push-to-main workflows.
+
+**Pending:** control 1, tracked in #637.
 
 ### 2026-09-17 — A release-age gate on the lockfile, complementing the resolver cutoff
 

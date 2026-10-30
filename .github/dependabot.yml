@@ -1,0 +1,16 @@
+# Dependabot security updates only: Renovate owns version updates
+# (ADR-0027). Security updates read this file for their labels, so a
+# merged fix opens the Deploy pending issue without a human labelling it
+# (ADR-0027 § 2026-10-29, control 4; docs/ops/dep-management.md § Deploy
+# urgency).
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    # Required by the schema; inert with the limit below.
+    schedule:
+      interval: weekly
+    # 0 disables version updates; security updates are not limited by it.
+    open-pull-requests-limit: 0
+    labels: [security, dependencies, deploy-asap]

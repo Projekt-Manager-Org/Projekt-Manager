@@ -1,0 +1,41 @@
+# Deploy urgency (ADR-0027 § 2026-10-29, control 4).
+#
+# A merged `deploy-asap` PR opens, or comments on, one "Deploy pending"
+# issue assigned to the operator; logic in scripts/ci/deploy-pending.sh.
+#
+# On `push` to main rather than `pull_request` closed: the run sits on
+# main, so notify.yml's red-main issue catches a failure — a run from a
+# bot's merge would otherwise reach nobody — and the code that runs is
+# main's own, never a PR's.
+
+name: Deploy pending
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+# No concurrency group: a group keeps one pending run and cancels the one
+# before it, so a burst of merges would drop a deploy-asap signal. Two
+# runs racing the "is one already open" read open two issues instead —
+# loud, not lost.
+
+jobs:
+  notify-operator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Open or extend the Deploy pending issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          # The operator; hardcoded for the same reason as notify.yml's
+          # MAINTAINER (assigning the org 422s).
+          MAINTAINER: vlzware
+        run: bash scripts/ci/deploy-pending.sh

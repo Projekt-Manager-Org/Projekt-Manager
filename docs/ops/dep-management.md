@@ -122,6 +122,8 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 | Repo-level advisory match (direct dep)           | PR merge blocked; nightly run goes red     | Per-PR, else ≤24h      |
 | Nightly full-tree OSV scan                       | Schedule goes red → manual bump (backstop) | ≤24h from publication  |
 | Nightly inventory scan (deployed images)         | Schedule goes red → see § CVE handling     | ≤24h from indexing     |
+| Nightly Renovate health (dashboard, open PRs)    | Schedule goes red → see § CVE handling     | ≤24h; liveness ≤48h    |
+| Merge of a `deploy-asap` PR                      | "Deploy pending" issue for the operator    | Minutes                |
 | Quarterly review                                 | Walk strategic-dep list (below)            | ~1 hour, 4×/year       |
 | Any npm release (direct or transitive)           | Held from resolution until 3 days old      | +3 days (see below)    |
 
@@ -245,6 +247,19 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   - **`scan (<service>)` finding with a fix upstream** — the Renovate update that carries it is the fix; do not bump by hand. Check the Dependency Dashboard, including Awaiting Schedule, for the image or module that carries it. Only a component no manager claims needs a `renovate.json` change.
   - **Unreachable or no fix** — allowlist entry, scoped to the package or path ([§Allowlist](#allowlist)).
 
+- **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding). Known red until control 1 lands: the starved Awaiting Schedule queue.
+  - **Awaiting Schedule: `<branch>`** — an update held by schedule or PR limits. The config is the fix, not a manual bump.
+  - **Dashboard section `"<title>"`** — any heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
+  - **Dependency lookup failed / no or several dashboards / no "manual job" box** — a Renovate config or Mend app problem: read the Mend job log.
+  - **"manual job" box still ticked** — no Renovate job ran since the last check. Check the repo's status and job log on the Mend portal. A manual re-run shortly after the nightly reports this too, until Renovate's job lands.
+  - **Renovate PR `#n` open since …** — merge, fix or close it; a stuck PR also holds a PR-limit slot.
+
+- **`Deploy pending is red on main`** — a merge could not be resolved to a PR, or an API call failed. Check the merged PR for `deploy-asap` by hand, then close the issue: a later green run does not close it.
+
+### Deploy urgency
+
+`deploy-asap` means _what runs is exposed until this is deployed_. Renovate sets it ([ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm)), and so does Dependabot on its security updates (`.github/dependabot.yml`); **add it by hand, before merging, to a hand-written security fix** (the run at merge time reads the labels once). Merging opens, or comments on, the **Deploy pending** issue, assigned to the operator: deploy ([manual-deploy.md](manual-deploy.md)), then close it. A lockfile-maintenance fix carries no label: the close of the nightly OSV ci-red issue is the cue to deploy. Everything else rides along with the next deploy.
+
 ### Allowlist
 
 The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (YAML files) — is [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative); this section is its single home for formats. `scripts/check-allowlist-schema.sh` enforces it in `lint` (before OSV-Scanner) and in the nightly inventory scan (before Grype).
@@ -257,7 +272,7 @@ The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (
 | expiry | `ignoreUntil`                   | `expired_at` (Trivy honours it)                           | `expires` (Grype ignores it)    |
 | scope  | —                               | `paths` (no leading `/`) / `purls` (vulnerabilities only) | `package` (`location` absolute) |
 
-Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). Scopes are literal: the scanners read `paths` and `location` as globs and Grype's `name` / `upstream-name` as a regex, so a wildcard would ignore everywhere. A name containing `+` (e.g. `libstdc++`) is a regex to Grype; scope such a package by `location`.
+Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). Scopes are literal: the scanners read `paths` and `location` as globs and Grype's `name` / `upstream-name` as a regex, so a wildcard would ignore everywhere. A name containing `+` (e.g. `libstdc++`) is a regex to Grype; scope such a package by `location`. A Grype `package` holds a `name`, `upstream-name` or `location`: type and version alone match many packages.
 
 Per [CLAUDE.md "refuse to serve" principle](../../CLAUDE.md#principles), the correct response to a finding without a justified allowlist entry is to fix the underlying issue, not to write a suppression "for now." Allowlist entries are a structured exception, not a default.
 
@@ -294,7 +309,7 @@ ignore:
     expires: <today+≤90d>
 ```
 
-Go binaries are reported by Grype as the synthetic package `stdlib`; scope those by `location` (the binary's absolute path), not by the binary's name.
+Go's stdlib is compiled into every Go binary (gosu, Caddy), so a waiver scoped by package would hide the CVE in all of them. Grype reports it as the synthetic package `stdlib`, Trivy as `pkg:golang/stdlib@…`; scope it by the binary's path (Grype `location`, Trivy `paths`). The schema check rejects a `stdlib` scope without one.
 
 Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing — the same script gates the CI `lint` job.
 
@@ -409,8 +424,11 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 ## Files
 
 - `.github/renovate.json` — Renovate config: schedule (`before 9am on monday` Europe/Berlin; `lockFileMaintenance` runs daily and exempt from the PR limits), grouping clusters, auto-merge rules, manager set (`npm` + `dockerfile` + `docker-compose` + `github-actions` + `regex`).
+- `.github/dependabot.yml` — security updates only (version updates off); labels them `deploy-asap`. See [§ Deploy urgency](#deploy-urgency).
 - `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 4. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
+- `.github/workflows/renovate-health.yml` — nightly updater health; logic and probe in `scripts/ci/renovate-health.mjs`. See [§ CVE handling](#cve-handling).
+- `.github/workflows/deploy-pending.yml` — the Deploy pending issue on `deploy-asap` merges (`scripts/ci/deploy-pending.sh`). See [§ Deploy urgency](#deploy-urgency).
 - `.github/workflows/inventory-scan.yml` — nightly Trivy + Grype scan of every deployed image. The image set comes from `scripts/ci/deploy-inventory.sh`, which reads the deploy's compose file and profiles (`scripts/lib/deploy-compose.sh`, shared with `deploy.sh`). Grype is installed by URL + SHA256 under the same `# renovate:` annotation rules as the `ci.yml` binaries above.
 - `.npmrc` — `min-release-age=3`, the npm-side half of the release-age cooldown. See [§ Release-age cooldown](#release-age-cooldown).
 - `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` + nightly). See [§ Repo-level advisories](#repo-level-advisories).
