@@ -39,7 +39,6 @@
     "prepare": "husky || true"
   },
   "overrides": {
-    "shell-quote": "^1.9.0",
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.0"
     }
