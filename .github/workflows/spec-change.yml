@@ -6,9 +6,9 @@ name: Spec change
 # Its own workflow, not a ci.yml job: `edited` fires on every body edit,
 # and fixing a missing declaration must re-run this check, not the whole
 # pipeline. Not path-filtered: a required check that never starts blocks
-# the merge box (see ci.yml `check`). The merge queue has no PR body; the
-# job is skipped there, which a required check counts as passing (see
-# ci.yml `merge_group` for why the listener must exist).
+# the merge box (see ci.yml `check`). The merge queue has no PR body, so
+# on `merge_group` the job runs but skips its steps: the queue does not
+# count a skipped required job as passing (#214, ci.yml `publish`).
 
 on:
   pull_request:
@@ -27,11 +27,11 @@ concurrency:
 jobs:
   declaration:
     name: Spec-change declaration
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        if: github.event_name == 'pull_request'
         with:
           persist-credentials: false
 
@@ -39,6 +39,7 @@ jobs:
       # never through `${{ }}` interpolation into the shell. A rename out
       # of docs/spec/ is a spec change too, hence `previous_filename`.
       - name: Check spec-change declaration
+        if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
