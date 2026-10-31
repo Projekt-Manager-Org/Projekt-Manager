@@ -6,8 +6,8 @@ description: >
   published — an identity, not an argument about cache equivalence.
 
   A digest-only manifest carries no tag, so nothing can pull, deploy or
-  promote it: `scripts/deploy.sh` cannot name it and `promote`'s guard 3
-  cannot find it. `tag-images` is what makes an image reachable by name,
+  promote it: `scripts/deploy.sh` cannot name it and `promote` cannot
+  find it. `tag-images` is what makes an image reachable by name,
   and it runs only after every other gate has passed. That naming boundary
   — not the push boundary — is what lets the push sit ahead of `check`,
   `lint` and the smoke without weakening the invariant.

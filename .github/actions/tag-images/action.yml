@@ -17,7 +17,8 @@ inputs:
     description: >
       Complete existing reference to copy the app image from — either
       `<repo>@sha256:…` (the digest `build-scan-smoke` pushed) or
-      `<repo>:<tag>` (`promote` re-tagging the PR-tip artifact).
+      `<repo>:<tag>` (`promote` moving `main` onto the queue's
+      `sha-<commit>`).
     required: true
   backup_source:
     description: Complete existing reference to copy the backup image from.
@@ -26,8 +27,11 @@ inputs:
     description: Immutable per-commit tag (e.g. `sha-<commit>`). Written first.
     required: true
   branch_slug_tag:
-    description: Moving branch pointer (e.g. `main`, `233-live-activity-dock`).
-    required: true
+    description: >
+      Moving branch pointer (e.g. `main`, `233-live-activity-dock`). Empty
+      skips it: `merge_group`'s ref is not a branch anyone deploys.
+    required: false
+    default: ''
   github_token:
     description: GHCR auth token. Pass `secrets.GITHUB_TOKEN`.
     required: true
@@ -51,11 +55,10 @@ runs:
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
     # Both immutable tags before either moving one. A run killed partway
-    # then leaves `promote`'s guard 3 satisfiable (it requires both
-    # `sha-<tip>` halves) and at worst a stale `<branch-slug>`, which the
-    # next run overwrites. The reverse order would leave the slug pair
-    # split across two commits with nothing to repair it — the failure
-    # that made PR runs uncancellable in the first place (#355 §5).
+    # then leaves at worst a stale `<branch-slug>`, which the next run
+    # overwrites. The reverse order would leave the slug pair split across
+    # two commits with nothing to repair it — the failure that made PR
+    # runs uncancellable in the first place (#355 §5).
     #
     # `docker buildx imagetools create` copies the manifest at the registry
     # level. It preserves the OCI image-index wrapper and the buildx
@@ -86,4 +89,6 @@ runs:
           echo "::endgroup::"
         }
         tag_pair "$SHA_TAG"
-        tag_pair "$BRANCH_SLUG_TAG"
+        if [ -n "$BRANCH_SLUG_TAG" ]; then
+          tag_pair "$BRANCH_SLUG_TAG"
+        fi

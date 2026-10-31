@@ -36,26 +36,20 @@ on:
 # pushes by DIGEST, and a digest-only manifest has no tag, so killing that
 # is a no-op nothing can observe. `tag-images` then writes both immutable
 # `sha-<tip>` tags before either moving `<branch-slug>` tag, so a kill
-# leaves `promote`'s guard 3 satisfiable (it requires both halves) and at
-# worst a stale slug the next run overwrites.
+# leaves at worst a stale slug the next run overwrites.
 #
-# `push: main` stays exempt: `promote` is the ONLY producer of that
-# commit's artifact, and a kill between the `sha-<merge>` and `main` tag
-# writes leaves production's pointer behind with nothing to repair it
-# (observed on 1fc8dd79, 6814d500 and b844cf75, #355 §5). A
-# `workflow_dispatch` is an operator explicitly asking for a deployable
-# image and should not lose to anything.
+# `push: main` stays exempt: for a commit no queue run named, `promote`'s
+# fallback is the only producer of its `sha-<commit>` pair, and a
+# kill between the `sha-<commit>` and `main` writes leaves production's
+# pointer behind with nothing to repair it (observed on 1fc8dd79,
+# 6814d500 and b844cf75, #355 §5). A `workflow_dispatch` is an operator
+# explicitly asking for a deployable image and should not lose to anything.
 #
-# Accepted gap (#375.1): exemption stops a run being *cancelled in
-# flight*, not *evicted while pending*. The group defaults to
-# `queue: single` — "any existing pending job or workflow run in the same
-# group is canceled and replaced" — so three merges inside one push run
-# (~4.5 min) drop the middle commit's `sha-<merge>` pair. `main` and the
-# newest commit are unaffected, and rollback reads the host image cache
-# first (#394), so the cost is one commit that cannot be deployed by SHA.
-# Never observed. The fix, if it ever is: `queue: max` — which cannot be
-# combined with `cancel-in-progress: true`, so the push group has to be
-# separated from the cancelling one first.
+# Eviction while pending is harmless (#683; it closed gap #375.1). The
+# group defaults to `queue: single`, which cancels a pending run when a
+# newer one queues. Every queued commit already has its `sha-` pair from
+# its `merge_group` run, so a push run only moves `main`, and the newer run
+# moves it further.
 concurrency:
   group: ci-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
@@ -368,8 +362,8 @@ jobs:
       #
       # In `lint`, not `docker`: `docker` is `if: github.event_name !=
       # 'push'`, so on the one path where compose validation matters
-      # most — `promote`'s fallback, taken when the merged tree diverged
-      # from the PR tip — nothing would have validated those bytes.
+      # most — `promote`'s fallback, taken for a commit no queue run
+      # named — nothing would have validated those bytes.
       # `lint` runs on every event. Same argument that put the Trivy
       # filesystem-secret and IaC scans here rather than in the image
       # job: it needs no image and costs seconds.
@@ -894,12 +888,13 @@ jobs:
   # into correctness — `src/**` changes image bytes, and excluding it
   # was the entire point of the filter (#301) — so it is gone.
   #
-  # No `push` arm: pushes fire only on `main`, where `promote` re-tags
-  # the already-validated PR-tip artifact (or rebuilds through the same
-  # composite in its fallback). `merge_group` and `workflow_dispatch`
-  # run unconditionally: the queue's commit is what lands on `main`, so
-  # the image gate judges it, and the operator's feature-branch dispatch
-  # should see exactly the signal a real PR would.
+  # No `push` arm: pushes fire only on `main`, where `promote` moves
+  # `main` onto the pair the commit's `merge_group` run built (or
+  # rebuilds through the same composite in its fallback). `merge_group`
+  # and `workflow_dispatch` run unconditionally: the queue's commit is
+  # what lands on `main`, so the image gate judges it, and the
+  # operator's feature-branch dispatch should see exactly the signal a
+  # real PR would.
   # ---------------------------------------------------------------
   docker:
     if: github.event_name != 'push'
@@ -940,9 +935,9 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       # The SHA tag is the immutable rollback target used by
-      # scripts/deploy.sh and the tag `promote`'s guard 3 looks for at
-      # merge time; the branch-slug tag is the moving "latest on this
-      # branch" pointer kept as a human-friendly fallback. See ADR-0012.
+      # scripts/deploy.sh and, from a `merge_group` run, the tag `promote`
+      # moves `main` onto; the branch-slug tag is the moving "latest on
+      # this branch" pointer kept as a human-friendly fallback. See ADR-0012.
       # Derivation — slugification, the `main` guard, owner lowercasing —
       # lives in scripts/ci/image-refs.sh so `promote` cannot compute a
       # different answer from the same inputs.
@@ -952,9 +947,10 @@ jobs:
           # GITHUB_REF_NAME is `<pr-number>/merge` on pull_request events,
           # which is not a branch anyone can deploy — take the head ref
           # there. GITHUB_SHA is likewise the synthetic merge commit; both
-          # the SHA tag and the version chip want the PR tip, so that
-          # `promote` can find the artifact and the chip identifies the
-          # bytes the contributor is iterating on.
+          # the SHA tag and the version chip want the PR tip, the name the
+          # contributor knows (the bytes are that tip merged onto `main`).
+          # On `merge_group` both fall through to the queue's commit, which
+          # is the commit `main` fast-forwards to.
           BRANCH_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash scripts/ci/image-refs.sh >> "$GITHUB_OUTPUT"
@@ -974,10 +970,9 @@ jobs:
       # the alternative, a second non-pushing build shape, is the
       # build-twice topology this PR exists to delete.
       #
-      # A merge_group train pushes too. Its digests are named by nothing:
-      # `publish` skips its only step on merge_group, and `promote` builds
-      # its own on the push that follows. Untagged garbage that
-      # `ghcr-retention.yml` sweeps. Cheaper than a branch.
+      # A merge_group run pushes too, and its digests are the ones `main`
+      # ends up on: `publish` names them `sha-<commit>`, and `promote`
+      # points `main` at them on the push that lands the commit.
       #
       # Caddy has its own build context (./docker/caddy) with a custom
       # xcaddy + pinned plugin SHA that adds ~60s of Go compile and
@@ -1021,11 +1016,10 @@ jobs:
         run: bash scripts/backup/verify-roundtrip.sh
 
   # ---------------------------------------------------------------
-  # Point `sha-<pr-tip>` + `<branch-slug>` at the digests `docker`
-  # pushed. This is the producer `promote`'s guard 3 looks for at merge
-  # time — it used to be a `workflow_dispatch`-only job, i.e. an operator
-  # remembering to type `gh workflow run`. Nobody ever did, so guard 3
-  # failed on 100% of merges and every merge paid a full rebuild (#355).
+  # Point `sha-<commit>` + `<branch-slug>` at the digests `docker`
+  # pushed. On a PR that is the tip an operator can deploy; on
+  # `merge_group` it is the commit `main` fast-forwards to, and the pair
+  # `promote` moves `main` onto (#683).
   #
   # `needs` is the whole safety story. Naming waits on every gate:
   # `check` + `lint` (tests, type-check, static analysis) and `docker`
@@ -1051,14 +1045,20 @@ jobs:
   # load-bearing guard it was before #355 — it states the boundary at the
   # job that would do the naming, where a reader looks for it.
   #
-  # `merge_group` runs the job but skips its only real step: it names
-  # nothing there; `promote` names `main`'s images on the push that
-  # follows. A job-level skip would satisfy the queue as well
-  # (dep-management.md § First-run setup, step 6).
+  # On `merge_group` it writes `sha-<commit>` only. The slug would be
+  # `gh-readonly-queue-…`, which nobody deploys, and `main` stays
+  # `promote`'s, because a group can still fail to land. Being required
+  # (with the queue's "only merge non-failing pull requests") is what
+  # gives every commit of a batch its pair: none lands before its own
+  # run's `publish` is green.
+  #
+  # A dispatch on `main` names nothing: every `main` commit already has
+  # its pair, and a rebuild would overwrite it and could move `main` back
+  # behind a newer `promote`.
   # ---------------------------------------------------------------
   publish:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main') ||
       github.event_name == 'merge_group' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository)
@@ -1073,42 +1073,31 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        if: github.event_name != 'merge_group'
 
       - uses: ./.github/actions/tag-images
-        if: github.event_name != 'merge_group'
         with:
           app_repo: ${{ needs.docker.outputs.app_repo }}
           backup_repo: ${{ needs.docker.outputs.backup_repo }}
           app_source: ${{ needs.docker.outputs.app_repo }}@${{ needs.docker.outputs.app_digest }}
           backup_source: ${{ needs.docker.outputs.backup_repo }}@${{ needs.docker.outputs.backup_digest }}
           sha_tag: ${{ needs.docker.outputs.sha_tag }}
-          branch_slug_tag: ${{ needs.docker.outputs.branch_slug }}
+          branch_slug_tag: ${{ github.event_name != 'merge_group' && needs.docker.outputs.branch_slug || '' }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
 
   # ---------------------------------------------------------------
-  # Promote on merge to main: re-tag the `sha-<pr-tip>` images that
-  # `publish` named on the PR as `sha-<merge-sha>` + `main`. No
-  # rebuild, no rescan, no smoke — the bytes are identical to what
-  # `docker` validated before the merge.
+  # Promote on merge to main: point `main` at the `sha-<commit>` pair
+  # the commit's `merge_group` run built, scanned, smoked and named. The
+  # queue fast-forwards `main` to the exact commit that run tested, and
+  # `publish` is required there, so the pair exists before this push
+  # fires. No rebuild, no rescan, no smoke.
   #
-  # Three guards gate the happy path; any failure falls through to a
-  # full rebuild through the same composite the PR ran:
-  #   1. Merge SHA must trace back to a merged PR (gh api). Direct
-  #      pushes to main return an empty array.
-  #   2. tree(merge-sha) must equal tree(pr-tip). Squash is the only
-  #      merge method this repo permits (`allow_merge_commit` and
-  #      `allow_rebase_merge` are both off, and the `main protection`
-  #      Ruleset pins `allowed_merge_methods: ["squash"]`), and squash
-  #      preserves the tree — but the merge queue merges a PR that is
-  #      behind `main` without rebasing it, which diverges the trees and
-  #      makes the PR-tip bytes wrong for HEAD.
-  #   3. `sha-<pr-tip>` image must exist on GHCR — force-push after
-  #      the last green run, or a direct push that never had a PR
-  #      run at all.
+  # One guard: both halves of `sha-<commit>` on GHCR. A commit no queue
+  # run named (a ruleset bypass) falls through to a full rebuild through
+  # the same composite `docker` runs.
   #
-  # See ADR-0011 §"Build once, promote on merge", #221 and #355.
+  # See ADR-0011 §"Build once, promote on merge" and § Amendments
+  # 2026-10-31, #355 and #683.
   # ---------------------------------------------------------------
   promote:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -1124,15 +1113,11 @@ jobs:
     permissions:
       contents: read
       packages: write
-      # gh api repos/.../commits/<sha>/pulls needs this scope on
-      # private repos. Read-only — the promote path never writes
-      # to PR data.
-      pull-requests: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      # Same derivation `docker` runs, against the merge commit: the
-      # destination tags for the happy path and the build tags for the
+      # Same derivation `docker` runs, against the pushed commit: the
+      # source tags for the happy path and the build tags for the
       # fallback are the same triple, so they are computed once.
       # GITHUB_REF_NAME on push:main is `main`, which needs no
       # slugification — the shared script is used anyway so a future
@@ -1144,89 +1129,58 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: bash scripts/ci/image-refs.sh >> "$GITHUB_OUTPUT"
 
-      - name: Resolve PR-tip + verify guards
+      # `docker manifest inspect` is a lightweight HEAD-equivalent — no
+      # pull. Only "manifest unknown" means absent. Any other error (outage,
+      # rate limit, auth) fails the run: a rebuild would overwrite the
+      # queue's validated pair with different bytes, and a re-run is the
+      # fix. Credentials come through the environment, never interpolated
+      # into the script body — GH_TOKEN is in this step's `env:` and
+      # GITHUB_ACTOR is a default Actions variable.
+      - name: Find the queue's sha-<commit> pair
         id: resolve
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APP_REPO: ${{ steps.tags.outputs.app_repo }}
-          BACKUP_REPO: ${{ steps.tags.outputs.backup_repo }}
+          APP_REF: ${{ steps.tags.outputs.app_ref }}
+          BACKUP_REF: ${{ steps.tags.outputs.backup_ref }}
         run: |
           set -euo pipefail
-          merge_sha="${GITHUB_SHA}"
-          echo "merge SHA: $merge_sha"
-
-          # Guard 1: merge SHA must be a PR merge. Direct pushes to
-          # main (hot-fix, manual force-push) return an empty array.
-          pr_head=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${merge_sha}/pulls" \
-                    --jq '.[0].head.sha // empty')
-          if [ -z "$pr_head" ]; then
-            echo "::warning::No PR found for merge SHA ${merge_sha} — falling back to rebuild"
-            echo "fallback=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "PR-tip SHA: $pr_head"
-
-          # Guard 2: tree equality. Squash is the only merge method
-          # enabled here and it preserves the tree — but `main` can
-          # still advance between the PR's last green run and the
-          # merge, and the squash then folds those commits in. The
-          # `sha-<pr-tip>` image bytes would not match what HEAD
-          # contains.
-          merge_tree=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${merge_sha}" --jq '.commit.tree.sha')
-          pr_tree=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${pr_head}" --jq '.commit.tree.sha')
-          echo "merge tree:  $merge_tree"
-          echo "PR-tip tree: $pr_tree"
-          if [ "$merge_tree" != "$pr_tree" ]; then
-            echo "::warning::Tree mismatch (non-squash merge or main divergence) — falling back to rebuild"
-            echo "fallback=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Guard 3: source tag must exist on GHCR. A force-push after
-          # the last green run orphans the tag that was built from the
-          # previous tip, and a direct push never had a PR run at all.
-          # `docker manifest inspect` is a lightweight HEAD-equivalent
-          # — no pull.
-          # Credentials come through the environment, never interpolated
-          # into the script body — GH_TOKEN is already in this step's
-          # `env:` and GITHUB_ACTOR is a default Actions variable.
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          for repo in "$APP_REPO" "$BACKUP_REPO"; do
-            ref="${repo}:sha-${pr_head}"
-            if ! docker manifest inspect "$ref" > /dev/null 2>&1; then
-              echo "::warning::Source image ${ref} not found on GHCR — falling back to rebuild"
+          for ref in "$APP_REF" "$BACKUP_REF"; do
+            if err=$(docker manifest inspect "$ref" 2>&1 > /dev/null); then
+              continue
+            fi
+            if grep -qiE 'manifest unknown|no such manifest' <<< "$err"; then
+              echo "::warning::${ref} not on GHCR (no queue run named this commit) — falling back to rebuild"
               echo "fallback=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            echo "::error::Cannot read ${ref} from GHCR: ${err}"
+            exit 1
           done
+          echo "fallback=false" >> "$GITHUB_OUTPUT"
 
-          # All three guards passed.
-          {
-            echo "fallback=false"
-            echo "pr_tip=${pr_head}"
-          } >> "$GITHUB_OUTPUT"
-
-      # Happy path: copy the PR-tip manifests onto the merge commit's
-      # tags. Registry-side, no rebuild, no rescan, no smoke — the bytes
-      # are the ones `docker` validated before the merge.
-      - name: Promote — re-tag the PR-tip artifact
+      # Happy path: copy the pair onto `main`. Registry-side, no rebuild,
+      # no rescan, no smoke — the bytes are the ones `docker` validated in
+      # the queue. `sha_tag` is rewritten from itself, a no-op copy that
+      # keeps the composite to one shape.
+      - name: Promote — point main at the queue's images
         if: steps.resolve.outputs.fallback == 'false'
         uses: ./.github/actions/tag-images
         with:
           app_repo: ${{ steps.tags.outputs.app_repo }}
           backup_repo: ${{ steps.tags.outputs.backup_repo }}
-          app_source: ${{ steps.tags.outputs.app_repo }}:sha-${{ steps.resolve.outputs.pr_tip }}
-          backup_source: ${{ steps.tags.outputs.backup_repo }}:sha-${{ steps.resolve.outputs.pr_tip }}
+          app_source: ${{ steps.tags.outputs.app_ref }}
+          backup_source: ${{ steps.tags.outputs.backup_ref }}
           sha_tag: ${{ steps.tags.outputs.sha_tag }}
           branch_slug_tag: ${{ steps.tags.outputs.branch_slug }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
 
-      # Fallback path: any guard failure flips fallback=true. Runs the
-      # same composite the PR ran, against the merge SHA — build, scan,
-      # smoke, and push by digest — then names the result. Cache scope is
-      # main's (cold relative to the PR branch's scope), so expect
-      # wall-clock comparable to a fresh main build.
+      # Fallback path: no `sha-<commit>` pair. Runs the same composite
+      # `docker` runs, against the pushed commit — build, scan, smoke,
+      # and push by digest — then names the result. Cache scope is main's
+      # (cold relative to the PR branch's scope), so expect wall-clock
+      # comparable to a fresh main build.
       - name: Fallback — build + scan + smoke + push by digest
         if: steps.resolve.outputs.fallback == 'true'
         id: fallback_images
