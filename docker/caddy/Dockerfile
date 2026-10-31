@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+# syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
 
 # Custom Caddy build with the caddy-dns/cloudflare DNS provider plugin.
 # Required for DNS-01 ACME challenges per ADR-0008 §Network topology.
