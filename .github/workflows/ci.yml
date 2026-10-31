@@ -897,9 +897,8 @@ jobs:
   # No `push` arm: pushes fire only on `main`, where `promote` re-tags
   # the already-validated PR-tip artifact (or rebuilds through the same
   # composite in its fallback). `merge_group` and `workflow_dispatch`
-  # run unconditionally — the merge queue treats a skipped required
-  # check as "not yet met" and times out after 60 min with no
-  # actionable signal, and the operator's feature-branch dispatch
+  # run unconditionally: the queue's commit is what lands on `main`, so
+  # the image gate judges it, and the operator's feature-branch dispatch
   # should see exactly the signal a real PR would.
   # ---------------------------------------------------------------
   docker:
@@ -975,10 +974,10 @@ jobs:
       # the alternative, a second non-pushing build shape, is the
       # build-twice topology this PR exists to delete.
       #
-      # A merge_group train pushes too. Its digests are named by nothing
-      # (`publish` skips its only step on merge_group) and the train SHA
-      # is not a commit anything deploys, so they are untagged garbage
-      # that `ghcr-retention.yml` sweeps. Cheaper than a branch.
+      # A merge_group train pushes too. Its digests are named by nothing:
+      # `publish` skips its only step on merge_group, and `promote` builds
+      # its own on the push that follows. Untagged garbage that
+      # `ghcr-retention.yml` sweeps. Cheaper than a branch.
       #
       # Caddy has its own build context (./docker/caddy) with a custom
       # xcaddy + pinned plugin SHA that adds ~60s of Go compile and
@@ -1052,13 +1051,10 @@ jobs:
   # load-bearing guard it was before #355 — it states the boundary at the
   # job that would do the naming, where a reader looks for it.
   #
-  # `merge_group` runs the job but skips its only real step. `publish`
-  # is a REQUIRED status check (ADR-0011), and the merge queue treats a
-  # skipped required check as "not yet met" — it would sit `CLEAN` for
-  # the 60-min response timeout and then be rejected with no actionable
-  # signal (#214). So the job must report, but it must not publish: the
-  # queue's train SHA is not a commit anything deploys, and `promote`
-  # promotes the PR-tip artifact this job already pushed from the PR run.
+  # `merge_group` runs the job but skips its only real step: it names
+  # nothing there; `promote` names `main`'s images on the push that
+  # follows. A job-level skip would satisfy the queue as well
+  # (dep-management.md § First-run setup, step 6).
   # ---------------------------------------------------------------
   publish:
     if: >-

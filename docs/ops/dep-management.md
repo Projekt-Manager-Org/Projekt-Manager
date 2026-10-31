@@ -87,7 +87,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
    gh api repos/{owner}/{repo}/rulesets/{id} --jq '.rules[] | select(.type=="merge_queue" or .type=="required_status_checks") | {type, merge_method: .parameters.merge_method, strict: .parameters.strict_required_status_checks_policy}'
    ```
 
-   **Workflows:** every required check's workflow listens on `merge_group` (`ci.yml`, `spec-change.yml`). Without the trigger the check never reports and the queue times out.
+   **Workflows:** every required check's workflow listens on `merge_group` (`ci.yml`, `spec-change.yml`). Without the trigger the check never reports and the queue times out. A job skipped by its `if:` reports success, in the queue as in the merge box: #666 merged on 2026-10-31 with `Spec-change declaration` skipped (#214 had reported the opposite).
 
    **Operating it:** "Merge when ready" or `gh pr merge` queues a PR; Renovate's auto-merge requests enter on their own. An admin puts a PR first with the GraphQL `enqueuePullRequest` mutation (`jump: true`), after `dequeuePullRequest` if it is already queued.
 
