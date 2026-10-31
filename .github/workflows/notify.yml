@@ -175,8 +175,7 @@ jobs:
             # who clicked it IS the triggering actor, so GitHub's own
             # email already reaches them. `merge_group` runs sit on a
             # synthetic `gh-readonly-queue/...` branch and land there
-            # too — the queue is off, and a train failure is not
-            # `main` being red.
+            # too: a train failure is not `main` being red.
             route='main'
           else
             route='none'

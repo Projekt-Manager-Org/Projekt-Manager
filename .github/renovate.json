@@ -4,14 +4,15 @@
     "Release-age cooldown: npm's is inherited (config:best-practices extends security:minimumReleaseAgeNpm: minimumReleaseAge=3 days + internalChecksFilter=strict for the npm datasource); non-npm's is the cooldown packageRule below, which lists its datasources and why Docker is not one.",
     "DO NOT restate minimumReleaseAge on a packageRule that matches lockFileMaintenance or pin. That preset deliberately sets it to null for those update types because Renovate cannot age them; a rule here sorts AFTER the preset and would override the carve-out. With minimumReleaseAgeBehaviour=timestamp-required (default since Renovate 42) a missing timestamp counts as not-yet-passed, so the branch is never created — silently stopping the daily lockFileMaintenance run that is this repo's only transitive-dep refresh path (ADR-0027 § 2026-08-06 amendment).",
     "The npm-side cooldown for those paths lives in .npmrc (min-release-age=3). Never add minimumReleaseAge where no release timestamp exists: under timestamp-required the update is held forever, listed as Pending Status Checks, which the nightly health check treats as benign.",
-    "Current by default (ADR-0027 § 2026-10-29, control 1): no global schedule, non-majors auto-merge on green CI, majors wait for approval on the Dependency Dashboard. prHourlyLimit=0, because a burst held back by the hourly limit is listed as Rate-Limited, which the nightly health check (scripts/ci/renovate-health.mjs) reports as red; prConcurrentLimit stays at Renovate's default, so Rate-Limited means 10 open PRs: a real backlog."
+    "Current by default (ADR-0027 § 2026-10-29, control 1): no global schedule, non-majors auto-merge on green CI, majors wait for approval on the Dependency Dashboard. prHourlyLimit=0, because a burst held back by the hourly limit is listed as Rate-Limited, which the nightly health check (scripts/ci/renovate-health.mjs) reports as red; prConcurrentLimit stays at Renovate's default, so Rate-Limited means 10 open PRs: a real backlog.",
+    "rebaseWhen=conflicted: `main` merges through the merge queue, which tests every PR against main's head (docs/ops/dep-management.md § First-run setup, step 6), so rebasing a PR that is only behind re-runs CI and buys nothing. Explicit: `auto` resolves to the same under a merge queue, but this does not depend on Renovate detecting one at runtime."
   ],
   "extends": ["config:best-practices", ":dependencyDashboard", ":semanticCommits"],
   "mode": "full",
   "timezone": "Europe/Berlin",
   "prHourlyLimit": 0,
   "prConcurrentLimit": 10,
-  "rebaseWhen": "behind-base-branch",
+  "rebaseWhen": "conflicted",
   "labels": ["dependencies"],
   "lockFileMaintenance": {
     "description": "Daily. This is the ONLY Renovate mechanism that refreshes transitive npm deps — vulnerability PRs cover direct deps only (https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts). Its branch is listed as Awaiting Schedule outside the window, which the nightly health check exempts by name.",
@@ -107,7 +108,7 @@
       "automerge": false
     },
     {
-      "description": "deploy-asap on updates of the runtime images production builds or runs: the fixes they carry reach a host only on deploy, so merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29). Pins are excluded: they change no bytes. A group gets the label when any of its updates matches (labels are combined per branch). docker-compose.http.yml is evaluation-only, and CI's service images never ship.",
+      "description": "deploy-asap on updates of the runtime images production builds or runs: the fixes they carry reach a host only on deploy, so merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29). Pins are excluded: they change no bytes. A group gets the label when any of its updates matches (labels are combined per branch). docker-compose.http.yml is evaluation-only, and CI's service images never ship. prPriority=1: these take the next free PR slot first (#668).",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["node", "postgres", "caddy"],
       "matchFileNames": [
@@ -117,7 +118,13 @@
         "docker/caddy/Dockerfile"
       ],
       "matchUpdateTypes": ["patch", "minor", "digest"],
-      "addLabels": ["deploy-asap"]
+      "addLabels": ["deploy-asap"],
+      "prPriority": 1
+    },
+    {
+      "description": "prPriority=1: lockFileMaintenance, the only transitive-dep refresh, takes the next free PR slot first (#668). Renovate sorts it last by default. A packageRule, not the lockFileMaintenance object: prPriority is valid only in packageRules.",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "prPriority": 1
     },
     {
       "description": "No digest pins for docker deps a customManager extracts: the regex captures no digest (the `postgresqlN` apk names in Dockerfile.backup, `xcaddy build vX` in docker/caddy/Dockerfile), so config:best-practices' docker:pinDigests has nowhere to write one, and the failed pin errored the whole grouped pin branch every run (#637). A regex that captures a digest (docker-compose.http.yml) still gets digest updates.",

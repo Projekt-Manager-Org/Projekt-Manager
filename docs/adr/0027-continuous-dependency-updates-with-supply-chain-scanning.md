@@ -124,7 +124,7 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
 
 ### Negative
 
-- **PR queue volume.** Non-majors arrive as released and auto-merge; the weekly wrangler reviews majors and spot-checks the rest, ~30 min/week. More CI minutes than a weekly window: concurrent PRs rebase on each other under strict up-to-date.
+- **PR queue volume.** Non-majors arrive as released and auto-merge; the weekly wrangler reviews majors and spot-checks the rest, ~30 min/week. More CI minutes than a weekly window: every PR pays ~5 min of merge-queue CI ([§2026-10-31](#2026-10-31--merge-queue-replaces-strict-up-to-date)).
 - **Auto-merge runs with no E2E signal.** Playwright is not in the PR gate, so an auto-merged patch/minor lands on unit + integration evidence alone; a browser-level regression reaches `main` and surfaces only at the next manual E2E run. Mitigations today: auto-merge stays off for majors (the highest-risk class), and § Weekly wrangler step 4 makes the manual E2E run mandatory for them — both leave the patch/minor stream uncovered. **Open gap, not a settled trade:** the real fix is Playwright in the PR gate, blocked on the runtime + flake-surface argument recorded in `e2e.yml`'s header, which in turn is blocked on a flake-quarantine practice that does not exist yet.
 - **Renovate config drift.** A `.github/renovate.json` that goes stale (new dep types, ecosystem changes) silently degrades coverage. Mitigated by the quarterly review explicitly checking the config.
 - **Scanner false positives** for advisories on dead code paths (cf. the original ADR-0007 case). Mitigated by a structured allowlist — never a blanket `--omit=dev`. Every entry in `osv-scanner.toml`, `.trivyignore.yaml` and `.grype.yaml` carries:
@@ -168,6 +168,18 @@ Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of
 - No env-var or schema impact.
 
 ## Amendments
+
+### 2026-10-31 — Merge queue replaces strict up-to-date
+
+Raised in [#668](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/668), flaw 2. Under strict, GitHub auto-merge never updates a branch and Renovate auto-merges one PR per base branch per run, so each merge sent every other open PR back to wait for the next run: ≥ 4 h, 17 h observed, 10 PRs stalled. With `prConcurrentLimit` at 10 (§2026-10-29), the runtime-image updates and lockfile maintenance this ADR depends on sat _Rate-Limited_ behind them.
+
+**Decision.**
+
+- `merge_queue` on `main protection`, strict off. The queue tests each PR against `main`'s head, so throughput is CI time. Settings and operation: [dep-management.md § First-run setup](../ops/dep-management.md#first-run-setup), step 6.
+- `rebaseWhen: conflicted`: a PR that is only behind needs no rebase.
+- `prPriority: 1` for runtime-image updates and `lockFileMaintenance`: they take the next free PR slot first.
+
+Resolves the `prConcurrentLimit` revisit trigger (§2026-10-29). **Accepted:** ~5 min of queue CI per PR, human PRs included. `main` fast-forwards to the commit the queue tested, yet `promote` rebuilds a PR merged behind `main` (ADR-0011 guard 2): correct, slower.
 
 ### 2026-10-31 — PR gates judge the change, not `main`
 
@@ -253,7 +265,7 @@ Caddy is built on the host; measured, its binary is byte-identical across a cach
 - CI and e2e run against the `db` image (same tag@digest, same Renovate PR), so an auto-merged `db` bump is tested first.
 - The `caddy-dns/cloudflare` plugin tracks release tags through the `go` datasource instead of `master` through `git-refs`, which has no timestamp: the plugin runs in the proxy that holds the Cloudflare token, and unthrottled auto-merge would otherwise take any push to `master` within hours.
 - `docker-compose.http.yml`'s Caddy is pinned and tracked by a regex manager: Renovate's YAML parser reads `build: !reset null` as the string `"null"`, so its compose manager treats the service as built locally and skips it.
-- Raising `prConcurrentLimit` above 1 is a merge-queue revisit trigger ([dep-management.md § First-run setup](../ops/dep-management.md#first-run-setup) step 6). Strict up-to-date stays until the trade is re-measured on the drained queue (#637).
+- Raising `prConcurrentLimit` above 1 is a merge-queue revisit trigger ([dep-management.md § First-run setup](../ops/dep-management.md#first-run-setup) step 6). Strict up-to-date stays until the trade is re-measured on the drained queue (#637). **Superseded** before the queue drained: strict stalled it ([§2026-10-31](#2026-10-31--merge-queue-replaces-strict-up-to-date)).
 
 ### 2026-09-17 — A release-age gate on the lockfile, complementing the resolver cutoff
 
@@ -372,7 +384,7 @@ Cause, in two parts:
 
 Changed: Dependabot **security updates** enabled at the repo (Alerts alone only notify — they fired correctly on all seven and nothing acted on them); `lockFileMaintenance` moved to a daily schedule with its own unlimited PR budget, the same per-branch exemption `vulnerabilityAlerts` uses. §Decision.1 and §Consequences.Positive corrected in-place. The nightly OSV scan is unchanged and remains the backstop — it detected all three incidents.
 
-Global `prConcurrentLimit` deliberately stays at 1. Raising it is a documented merge-queue revisit trigger ([dep-management.md § First-run setup step 6](../ops/dep-management.md#first-run-setup)), and the routine-update backlog it throttles is a throughput question, not a security one. Tracked as open, not closed. **Wrong** — for everything without vulnerability alerts the routine queue is the only update path ([§2026-10-29](#2026-10-29--security-releases-outside-npm)).
+Global `prConcurrentLimit` deliberately stays at 1. Raising it is a documented merge-queue revisit trigger (since resolved, [§2026-10-31](#2026-10-31--merge-queue-replaces-strict-up-to-date)), and the routine-update backlog it throttles is a throughput question, not a security one. Tracked as open, not closed. **Wrong** — for everything without vulnerability alerts the routine queue is the only update path ([§2026-10-29](#2026-10-29--security-releases-outside-npm)).
 
 ### 2026-07-25 — E2E is not a PR gate
 
