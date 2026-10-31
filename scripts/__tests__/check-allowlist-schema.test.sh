@@ -72,6 +72,23 @@ assert_case() {
   fi
 }
 
+# Exit code 1 plus the finding: an exit code alone cannot tell which
+# rule fired.
+assert_finding() {
+  local label="$1" dir="$2" needle="$3"
+  local out rc
+  out="$(ALLOWLIST_REPO_ROOT="$dir" bash "$CHECK_SCRIPT" 2>/dev/null)"
+  rc=$?
+  if [[ "$rc" == 1 && "$out" == *"$needle"* ]]; then
+    pass=$((pass + 1))
+    echo "  PASS — $label (exit 1, '$needle')"
+  else
+    fail=$((fail + 1))
+    failures+=("$label: expected exit 1 with '$needle', got $rc: $out")
+    echo "  FAIL — $label (expected exit 1 with '$needle', got $rc)"
+  fi
+}
+
 # -------------------------------------------------------------
 # OK: empty files (current repo baseline) → exit 0
 # -------------------------------------------------------------
@@ -216,6 +233,17 @@ ignoreUntil = $PLUS_30
 reason = "@vlzware: dead code"
 EOF
 assert_case 1 "FAIL-osv-id-nonstring" "$dir"
+
+# PackageOverrides (`ignore = true` per package) and every other top-level
+# key would suppress with no owner or expiry: IgnoredVulns only.
+dir="$(mktmp)"
+cat > "$dir/osv-scanner.toml" <<EOF
+[[PackageOverrides]]
+name = "left-pad"
+ecosystem = "npm"
+ignore = true
+EOF
+assert_finding "FAIL-osv-package-overrides" "$dir" "PackageOverrides: top-level key not allowed"
 
 # -------------------------------------------------------------
 # GitHub handle validation — `@` with no body, hyphen edges, double
