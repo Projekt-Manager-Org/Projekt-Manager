@@ -199,11 +199,13 @@ dir="$(mktmp)"
 renovate "$dir" <<'EOF'
 { "lockFileMaintenance": { "enabled": false, "schedule": ["before 9am"] },
   "ignorePaths": ["docker/**"],
-  "enabledManagers": ["npm"] }
+  "enabledManagers": ["npm"],
+  "includePaths": ["src/**"] }
 EOF
 assert_finding "FAIL-renovate-setting-disabled" "$dir" "renovate-disabled:/lockFileMaintenance: unregistered"
 assert_finding "FAIL-renovate-ignorePaths" "$dir" "renovate-disabled:/ignorePaths/docker/**: unregistered"
 assert_finding "FAIL-renovate-enabledManagers" "$dir" "renovate-disabled:/enabledManagers: unregistered"
+assert_finding "FAIL-renovate-includePaths" "$dir" "renovate-disabled:/includePaths: unregistered"
 
 dir="$(mktmp)"
 renovate "$dir" <<'EOF'

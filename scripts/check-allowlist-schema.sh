@@ -79,8 +79,8 @@ except tomllib.TOMLDecodeError as e:
     print(f"{path}:0: parse: TOML decode error: {e}")
     sys.exit(1)
 
-# `[[PackageOverrides]]` (`ignore = true` per package) and the scanner's
-# other keys would suppress with no owner or expiry.
+# The file is an allowlist only: `[[PackageOverrides]]` (`ignore = true`
+# per package) would suppress with no owner or expiry.
 for k in sorted(set(data) - {"IgnoredVulns"}):
     out.append(f"{path}:0: {k}: top-level key not allowed (IgnoredVulns only)")
 

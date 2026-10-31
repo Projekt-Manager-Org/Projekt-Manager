@@ -105,8 +105,9 @@ def npm_overrides(tree, path):
 
 def renovate_disabled(node, path):
     # A package rule is keyed on the packages it names. A setting is keyed
-    # on its path, which starts with `/` where a package name cannot:
-    # `/lockFileMaintenance`, `/` for the whole config.
+    # on its path: `/lockFileMaintenance`, `/` for the whole config.
+    # `enabledManagers` and `includePaths` skip everything they leave out.
+    # Presets in `extends` (`docker:disable`) are not expanded.
     if isinstance(node, list):
         for i, v in enumerate(node):
             yield from renovate_disabled(v, f"{path}/{i}")
@@ -117,8 +118,9 @@ def renovate_disabled(node, path):
         yield name, f"{path}/ignoreDeps"
     for glob in node.get("ignorePaths") or []:
         yield f"{path}/ignorePaths/{glob}", f"{path}/ignorePaths"
-    if "enabledManagers" in node:
-        yield f"{path}/enabledManagers", f"{path}/enabledManagers"
+    for k in ("enabledManagers", "includePaths"):
+        if k in node:
+            yield f"{path}/{k}", f"{path}/{k}"
     if node.get("enabled") is False:
         if RULE_RE.search(path):
             names = node.get("matchPackageNames") or []
