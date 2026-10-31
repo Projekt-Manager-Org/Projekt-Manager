@@ -18,5 +18,5 @@
 #
 [[IgnoredVulns]]
 id = "GHSA-4cm8-f57v-mqm6"
-ignoreUntil = 2026-11-10  # <= 90 days from add date 2026-10-11
-reason = "@vlzware: prettier pinned to 3.9.10, the advisory's patched release. Repo-level range '>=3.9.0, <=3.9.9; 3.9.9 tested' carries free text, so check-repo-advisories.mjs reports it unevaluated. Drop once the global DB carries the advisory."
+ignoreUntil = 2027-01-29  # <= 90 days from renewal 2026-10-31
+reason = "@vlzware: prettier pinned to 3.9.10, the advisory's patched release. Repo-level range '>=3.9.0, <=3.9.9; 3.9.9 tested' carries free text, so check-repo-advisories.mjs reports it unevaluated. Drop once the global DB carries the advisory (still repo-level only on 2026-10-31)."
