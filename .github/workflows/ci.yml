@@ -310,7 +310,7 @@ jobs:
       # + IaC scans there would skip them on every TS-only / docs / e2e
       # PR (the majority class), making the gate informational rather
       # than blocking. Branch protection requires `lint`; `docker`
-      # provides only the image-vuln scan + compose validation.
+      # provides only the image-vuln scans + smoke.
       #
       # Allowlist: .trivyignore.yaml (path-scoped; entries gated by
       # check-allowlist-schema above).
