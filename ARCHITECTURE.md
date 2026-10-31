@@ -378,8 +378,8 @@ flowchart LR
   pr([PR]) --> lint & shard["check-shard ×2"] & docker["docker<br/>build, push by digest,<br/>scan, smoke"]
   shard --> check
   lint & check & docker --> publish["publish<br/>tag digests"]
-  publish --> queue["merge queue<br/>CI on main + PR"] --> merge([squash merge])
-  merge -->|"push: lint + check"| promote["promote<br/>re-tag as main SHA"]
+  publish --> queue["merge queue<br/>same jobs on main + PR,<br/>publish names sha-commit"] --> merge([fast-forward main])
+  merge -->|"push: lint + check"| promote["promote<br/>point main at sha-commit"]
   promote -.-> deploy["scripts/deploy.sh<br/>manual, on the VPS"]
 ```
 

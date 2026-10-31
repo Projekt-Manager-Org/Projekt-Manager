@@ -179,7 +179,7 @@ Raised in [#668](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/6
 - `rebaseWhen: conflicted`: a PR that is only behind needs no rebase.
 - `prPriority: 1` for runtime-image updates and `lockFileMaintenance`: they take the next free PR slot first.
 
-Resolves the `prConcurrentLimit` revisit trigger (§2026-10-29). **Accepted:** ~5 min of queue CI per PR, human PRs included. `main` fast-forwards to the commit the queue tested, yet `promote` rebuilds a PR merged behind `main` (ADR-0011 guard 2): correct, slower.
+Resolves the `prConcurrentLimit` revisit trigger (§2026-10-29). **Accepted:** ~5 min of queue CI per PR, human PRs included. `main` fast-forwards to the commit the queue tested, and since [#683](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/683) `main`'s image is the one that run built ([ADR-0011 § 2026-10-31](0011-build-images-in-ci-distribute-via-ghcr.md#2026-10-31--build-once-in-the-queue-name-on-land)).
 
 ### 2026-10-31 — PR gates judge the change, not `main`
 
