@@ -88,6 +88,7 @@
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.8",
+    "@types/archiver": "8.0.0",
     "@types/big.js": "7.0.0",
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
