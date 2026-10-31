@@ -14,8 +14,34 @@
 #       today+90d (max 90-day window per ADR-0027 §Negative).
 #   1 — at least one violation; one line per finding on stdout
 #       formatted as `<file>:<line>: <field>: <description>`.
+#   2 — bad arguments.
+#
+# --base-dir <dir> (the PR gate in `lint`, #668): an expired entry that is
+# unchanged from the base's copy of its file in <dir> is a warning, not a
+# violation. Expiry is `main`'s state, not the change's: the nightlies run
+# without the flag and turn red on it (ADR-0027 § 2026-10-31). An entry a
+# change adds or edits is held to the full contract, expiry included.
 
 set -euo pipefail
+
+BASE_DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base-dir)
+      BASE_DIR="${2:-}"
+      if [[ -z "$BASE_DIR" ]]; then
+        echo "ERROR: --base-dir needs a directory" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+export BASE_DIR
 
 # Repo root: parent of this script's directory. ALLOWLIST_REPO_ROOT
 # override lets the test harness point at a fixture tree.
@@ -35,6 +61,7 @@ import os, re, sys, tomllib
 from datetime import date, datetime, timedelta
 
 path = os.environ["OSV_FILE_PATH"]
+base_dir = os.environ.get("BASE_DIR", "")
 today = date.today()
 max_d = today + timedelta(days=90)
 out = []
@@ -51,6 +78,17 @@ try:
 except tomllib.TOMLDecodeError as e:
     print(f"{path}:0: parse: TOML decode error: {e}")
     sys.exit(1)
+
+# Entries exactly as the base has them (see --base-dir). An unreadable base
+# copy counts as none: every expired entry then stays a violation.
+base_entries = []
+base_path = os.path.join(base_dir, "osv-scanner.toml") if base_dir else ""
+if base_path and os.path.isfile(base_path):
+    try:
+        with open(base_path, "rb") as f:
+            base_entries = tomllib.load(f).get("IgnoredVulns", [])
+    except tomllib.TOMLDecodeError:
+        pass
 
 for i, entry in enumerate(data.get("IgnoredVulns", []), start=1):
     label = f"{path}:0: [[IgnoredVulns]]#{i}"
@@ -86,6 +124,8 @@ for i, entry in enumerate(data.get("IgnoredVulns", []), start=1):
                 f"{label}: ignoreUntil: must be a bare TOML date "
                 f"(YYYY-MM-DD without quotes), got {type(v).__name__}"
             )
+        elif v < today and entry in base_entries:
+            print(f"warning: {label}: ignoreUntil: expired ({v} < {today}), unchanged from the base", file=sys.stderr)
         elif v < today:
             out.append(f"{label}: ignoreUntil: expired ({v} < {today})")
         elif v > max_d:
@@ -131,6 +171,7 @@ from pathlib import Path
 import yaml
 
 root = Path(os.environ["REPO_ROOT"])
+base_dir = os.environ.get("BASE_DIR", "")
 today = date.today()
 max_d = today + timedelta(days=90)
 handle_re = re.compile(r"^@[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
@@ -173,6 +214,20 @@ def as_date(v):
     # shape Trivy's own `expired_at` parser is guaranteed to accept. Same
     # rule as OSV's ignoreUntil above; a timestamp is rejected too.
     return v if isinstance(v, date) and not isinstance(v, datetime) else None
+
+
+def base_entries(name, section):
+    # Entries exactly as the base has them (see --base-dir); merge keys are
+    # resolved on both sides. An unreadable base copy counts as none.
+    p = Path(base_dir) / name if base_dir else None
+    if p is None or not p.is_file():
+        return []
+    try:
+        doc = yaml.safe_load(p.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return []
+    entries = doc.get(section) if isinstance(doc, dict) else None
+    return entries if isinstance(entries, list) else []
 
 
 for name, spec in SPECS.items():
@@ -241,6 +296,8 @@ for name, spec in SPECS.items():
                 d = as_date(e[spec["expiry"]])
                 if d is None:
                     out.append(f"{label}: {spec['expiry']}: must be a bare YYYY-MM-DD date")
+                elif d < today and e in base_entries(name, section):
+                    print(f"warning: {label}: {spec['expiry']}: expired ({d} < {today}), unchanged from the base", file=sys.stderr)
                 elif d < today:
                     out.append(f"{label}: {spec['expiry']}: expired ({d} < {today})")
                 elif d > max_d:

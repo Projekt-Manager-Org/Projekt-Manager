@@ -120,8 +120,9 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 | Advisory on a **direct** dep                  | Renovate opens a vuln PR out-of-band         | Hours from publication                     |
 | Advisory on a **transitive** dep              | Dependabot security-update PR                | Hours from publication                     |
 | `lockFileMaintenance` (daily, before 9am)     | Transitive drift refreshed wholesale         | ≤24h                                       |
-| OSV-Scanner / Trivy CI fail                   | PR merge blocked                             | Per-PR                                     |
-| Repo-level advisory match (direct dep)        | PR merge blocked; nightly run goes red       | Per-PR, else ≤24h                          |
+| OSV / repo-level advisory a PR introduces     | PR merge blocked                             | Per-PR                                     |
+| Advisory against what `main` already ships    | Nightly goes red (ci-red issue); PRs pass    | ≤24h from publication                      |
+| Trivy image finding                           | PR merge blocked                             | Per-PR                                     |
 | Nightly full-tree OSV scan                    | Schedule goes red → manual bump (backstop)   | ≤24h from publication                      |
 | Nightly inventory scan (deployed images)      | Schedule goes red → see § CVE handling       | ≤24h from indexing                         |
 | Nightly Renovate health (dashboard, open PRs) | Schedule goes red → see § CVE handling       | ≤24h; liveness ≤48h                        |
@@ -133,7 +134,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 ## Repo-level advisories
 
-`scripts/check-repo-advisories.mjs` reads each direct dep's `GET /repos/{owner}/{repo}/security-advisories` and blocks the PR on a published advisory whose vulnerable range the installed version satisfies. It runs in `lint` and nightly in `security-scheduled.yml`.
+`scripts/check-repo-advisories.mjs` reads each direct dep's `GET /repos/{owner}/{repo}/security-advisories` and matches published advisories against the installed versions. In `lint` it blocks the PR on a match the change introduces (`--base-lockfile`, [ADR-0027 § 2026-10-31](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--pr-gates-judge-the-change-not-main)); nightly in `security-scheduled.yml` it fails on any match.
 
 It exists because OSV-Scanner and `npm audit` both key on `(ecosystem, name, version)`, so an advisory with no npm-ecosystem record is invisible to both — [ADR-0027 § 2026-08-28 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--repo-level-advisories-and-what-no-layer-covers) has the fastify worked example.
 
@@ -141,6 +142,9 @@ Run it locally:
 
 ```bash
 GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs
+# As the PR gate judges it, against main:
+git show origin/main:package-lock.json > /tmp/base-lock.json
+GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs --base-lockfile /tmp/base-lock.json
 ```
 
 **Triage.** Bump past the patched version — that is nearly always the fix. Two wrinkles show up more often than with the global-DB scanners:
@@ -222,14 +226,16 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 2. **Abandonment flags**: scan the dashboard's "Abandoned Dependencies" list for new entries. Verify each per [§ Abandonment-flag verdicts](#abandonment-flag-verdicts); record a verdict + (for false positives) add the package to `.github/renovate.json` `packageRules` in the same commit.
 3. **Auto-merged PRs** (patch/minor/digest + green CI — grouped clusters and lockfile maintenance included) need no action; spot-check for surprises.
 4. **Majors** wait under Pending Approval on the dashboard: read the upstream migration guide, tick to create the PR, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
-5. Red CI: triage the failure, patch or revert. `.github/workflows/notify.yml` raises the signal — a red PR assigns itself to the maintainer and clears the assignment once green, so **assigned to you = red right now**, not "was red at some point"; a red `main` (post-merge `push` or the nightly scan) opens a `ci-red` issue instead, closed automatically on the next green run. The wrangler pass is the backstop, not the discovery mechanism — its remaining job is the one case that emits no event at all: a run that never queued. Do not rely on GitHub's Actions email here: it reaches only the run's triggering actor, which on a bot-merged PR is the bot, on the post-merge push too.
+5. **Exception register** ([#669](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/669)): act on rows whose review date falls before the next pass, and on any exception missing from it ([§ Allowlist](#allowlist)).
+6. Red CI: triage the failure, patch or revert. `.github/workflows/notify.yml` raises the signal — a red PR assigns itself to the maintainer and clears the assignment once green, so **assigned to you = red right now**, not "was red at some point"; a red `main` (post-merge `push` or the nightly scan) opens a `ci-red` issue instead, closed automatically on the next green run. The wrangler pass is the backstop, not the discovery mechanism — its remaining job is the one case that emits no event at all: a run that never queued. Do not rely on GitHub's Actions email here: it reaches only the run's triggering actor, which on a bot-merged PR is the bot, on the post-merge push too.
 
-**Pinned CLI binaries** (OSV-Scanner, actionlint, ripgrep, age) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing: a new OSV-Scanner build reporting a fresh advisory, or a new actionlint check firing on an existing workflow. Fix the finding, don't pin back.
+**Pinned CLI binaries** (OSV-Scanner, actionlint, ripgrep, age) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing, e.g. a new actionlint check firing on an existing workflow. Fix the finding, don't pin back. A new OSV-Scanner build that reports a fresh advisory does not red its own PR (both scans use it, so the finding is on the base too); the nightly does.
 
 `age` has **one** pin, in the composite action `.github/actions/install-age`, called from `ci.yml`'s `check-shard`, from `e2e.yml` and from the `build-scan-smoke` composite (the smoke test's throwaway identity — an unpinned `apt-get install age` until #374). It used to be two hand-synced copies plus that apt install, guarded by a drift check over the first two; the objection to deduplicating them — Renovate's customManager scanned `.github/workflows/**` only, so a composite would have hidden the pin — was removed by extending manager 4 and `scripts/check-renovate-annotations.mjs` to `.github/actions/*/*.{yml,yaml,sh}`. The pin sits in the `.sh` half: a composite's procedure goes in a sibling script (`install-age.sh`, `start-minio.sh`) so CI's shellcheck gate covers it — actionlint does not read `action.yml`, so an inline `run:` body is linted by nothing. `action.yml` stays in scope regardless, since a composite may still hold one. **Any new checksum-pinned binary in a composite action is tracked and gated the same way.**
 
 ## CVE handling
 
+- **New advisory against what `main` already ships** — PRs stay green: the PR gates fail only on findings a change introduces ([ADR-0027 § 2026-10-31](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--pr-gates-judge-the-change-not-main)). The nightly `Security (scheduled)` run goes red; triage per the bullets below — fix, or allowlist when unreachable or unfixed.
 - **High/Critical** — non-majors auto-merge; merge a major on green CI, even off-hours.
 - **Medium/Low** — majors at the next wrangler pass.
 - **Transitive-only npm dep** (vulnerable package is in `package-lock.json`, absent from `package.json`) — Renovate will never file this PR. Expect Dependabot's; if it hasn't appeared by the time the nightly OSV scan goes red, bump by hand — `npm update <pkg>…`, which touches the lockfile only. Confirm the new version is clean before opening the PR:
@@ -264,7 +270,7 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
 ### Allowlist
 
-The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (YAML files) — is [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative); this section is its single home for formats. `scripts/check-allowlist-schema.sh` enforces it in `lint` (before OSV-Scanner) and in the nightly inventory scan (before Grype).
+The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (YAML files) — is [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative); this section is its single home for formats. `scripts/check-allowlist-schema.sh` enforces it in `lint` (before OSV-Scanner) and in the nightlies (before the repo-level check and Grype). In `lint` an expired entry the PR does not touch only warns: the nightlies fail on it, so a lapse opens a ci-red issue instead of blocking every merge.
 
 | Field  | `osv-scanner.toml` (npm, git)   | `.trivyignore.yaml` (all Trivy scans)                     | `.grype.yaml` (nightly)         |
 | ------ | ------------------------------- | --------------------------------------------------------- | ------------------------------- |
@@ -275,6 +281,8 @@ The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (
 | scope  | —                               | `paths` (no leading `/`) / `purls` (vulnerabilities only) | `package` (`location` absolute) |
 
 Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). Scopes are literal: the scanners read `paths` and `location` as globs and Grype's `name` / `upstream-name` as a regex, so a wildcard would ignore everywhere. A name containing `+` (e.g. `libstdc++`) is a regex to Grype; scope such a package by `location`. A Grype `package` holds a `name`, `upstream-name` or `location`: type and version alone match many packages.
+
+**Exception register.** Every exception — allowlist entry, npm `overrides` entry, accepted risk without an entry (e.g. ADR-0003's frozen MinIO) — has a row in [#669](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/669): where it lives, scope, review date, drop condition. The PR that adds, renews or removes an exception updates its row. The files stay the source of truth; the register is the index the weekly wrangler reads.
 
 Per [CLAUDE.md "refuse to serve" principle](../../CLAUDE.md#principles), the correct response to a finding without a justified allowlist entry is to fix the underlying issue, not to write a suppression "for now." Allowlist entries are a structured exception, not a default.
 
@@ -366,7 +374,7 @@ For each strategic dep below, check (≤5 min each):
 After the per-dep walk, do the **allowlist sweep** — same review, distinct surface:
 
 - Open `osv-scanner.toml`, `.trivyignore.yaml` and `.grype.yaml`. For every active entry: is the original justification still true? Has the upstream landed a fix that makes the suppression obsolete? Is the owner still the right person? Drop entries that no longer hold.
-- The script's ≤90d expiry window means stale entries auto-expire and fail CI — the sweep is the in-band check that catches entries that were merely renewed without re-justification.
+- The script's ≤90d expiry window means stale entries auto-expire and turn the nightlies red — the sweep is the in-band check that catches entries that were merely renewed without re-justification.
 
 Then the **abandonment-verdict sweep** — same review, distinct surface:
 
@@ -427,12 +435,13 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 
 - `.github/renovate.json` — Renovate config; behaviour in [§ Cadence](#cadence), rationale in its `description` fields.
 - `.github/dependabot.yml` — security updates only (version updates off); labels them `deploy-asap`. See [§ Deploy urgency](#deploy-urgency).
-- `.github/workflows/ci.yml` — adds OSV-Scanner step (every PR; blocks on any vuln, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 4. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
+- `.github/workflows/ci.yml` — adds OSV-Scanner step (`scripts/check-osv-introduced.mjs`; every PR; blocks on vulns the change introduces, no severity flag in CLI v2.3.8), Trivy steps (image vuln + filesystem secret + IaC misconfig on PRs touching image-affecting paths; blocks on HIGH/CRITICAL), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 4. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `.github/workflows/renovate-health.yml` — nightly updater health; logic and probe in `scripts/ci/renovate-health.mjs`. See [§ CVE handling](#cve-handling).
 - `.github/workflows/deploy-pending.yml` — the Deploy pending issue on `deploy-asap` merges (`scripts/ci/deploy-pending.sh`). See [§ Deploy urgency](#deploy-urgency).
 - `.github/workflows/inventory-scan.yml` — nightly Trivy + Grype scan of every deployed image. The image set comes from `scripts/ci/deploy-inventory.sh`, which reads the deploy's compose file and profiles (`scripts/lib/deploy-compose.sh`, shared with `deploy.sh`). Grype is installed by URL + SHA256 under the same `# renovate:` annotation rules as the `ci.yml` binaries above.
 - `.npmrc` — `min-release-age=3`, the npm-side half of the release-age cooldown. See [§ Release-age cooldown](#release-age-cooldown).
-- `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` + nightly). See [§ Repo-level advisories](#repo-level-advisories).
+- `scripts/check-osv-introduced.mjs` — OSV-Scanner PR gate: fails on findings absent from the base. Comparison and fail-closed rules in its header.
+- `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` judged against the base + nightly absolute). See [§ Repo-level advisories](#repo-level-advisories).
 - `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist) above.
 - `.trivyignore.yaml`, `.grype.yaml` — allowlists for Trivy and Grype. Schema in [§Allowlist](#allowlist).

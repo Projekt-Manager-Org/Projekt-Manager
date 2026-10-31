@@ -76,8 +76,8 @@ Overlap between the two bots is intentional belt-and-braces.
 
 ### 2. Supply-chain scanning in CI (blocking)
 
-- **OSV-Scanner** (CLI v2.3.8 pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`, but **not a superset of it** — both key on `(ecosystem, name, version)` and each carries records the other lacks (see the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers)). **Blocks merge on any vuln**: the v2.3.8 CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
-- **Repo-level GitHub advisories** (`scripts/check-repo-advisories.mjs`) — reads each direct dep's `/security-advisories` endpoint, where advisories that were never promoted to the global database do exist. Covers what neither lockfile scanner structurally can. **Blocks merge on a match**; fails closed on API errors. Added by the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers), which also states what all three layers leave uncovered.
+- **OSV-Scanner** (CLI v2.3.8 pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`, but **not a superset of it** — both key on `(ecosystem, name, version)` and each carries records the other lacks (see the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers)). **Blocks merge on any vuln the change introduces** ([2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main)); the nightly run fails on any vuln on `main`. The v2.3.8 CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
+- **Repo-level GitHub advisories** (`scripts/check-repo-advisories.mjs`) — reads each direct dep's `/security-advisories` endpoint, where advisories that were never promoted to the global database do exist. Covers what neither lockfile scanner structurally can. **Blocks merge on a match the change introduces** ([2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main)); fails closed on API errors. Added by the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers), which also states what all three layers leave uncovered.
 - **Trivy** (`aquasecurity/trivy-action`) — scans the built Docker image, including OS packages (`apk`, `apt`) that OSV-Scanner can't see; plus filesystem secret scan and IaC misconfig scan. **Blocks merge on `HIGH` / `CRITICAL`** (Trivy supports `--severity` and the noisier surfaces it scans benefit from the filter). Runs on every PR in the `docker` job, before anything is published.
 - **Nightly inventory scan** (`inventory-scan.yml`; nightly, non-blocking) — Trivy **and Grype** over every image the deployment runs, derived from the deploy's compose file. Grype matches binaries Trivy cannot see (`node`, `postgres`); Trivy sees what Grype misses. **Red on `HIGH` / `CRITICAL` from either.** Added by the [2026-10-29 amendment](#2026-10-29--security-releases-outside-npm).
 
@@ -135,14 +135,14 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
   - **scope** (YAML files) — the package or path it is about; mandatory, non-empty and literal (no globs or regexes), since either scanner ignores an unscoped id everywhere.
   - **nothing else** (YAML files) — Trivy and Grype silently accept unknown keys, so a misspelt scope key widens an entry to global.
 
-  `scripts/check-allowlist-schema.sh` enforces this before OSV-Scanner and, nightly, before Grype — which does not read the expiry. Per-format key names and examples: [docs/ops/dep-management.md § Allowlist](../ops/dep-management.md#allowlist).
+  `scripts/check-allowlist-schema.sh` enforces this before OSV-Scanner and, nightly, before the repo-level check and Grype — which does not read the expiry. In `lint` an expired entry unchanged from the base only warns ([2026-10-31](#2026-10-31--pr-gates-judge-the-change-not-main)). Per-format key names and examples: [docs/ops/dep-management.md § Allowlist](../ops/dep-management.md#allowlist).
 
 ### Operational
 
 Implementation ships in this ADR's PR:
 
 - `.github/renovate.json` — schedule, grouping, auto-merge rules, manager set.
-- `.github/workflows/ci.yml` — OSV-Scanner step (blocks on any vuln; CLI has no severity flag) + Trivy steps placed by gating role:
+- `.github/workflows/ci.yml` — OSV-Scanner step (blocks on any vuln the change introduces, [2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main); CLI has no severity flag) + Trivy steps placed by gating role:
   - **`check` job** (always runs, required by branch protection): Trivy filesystem-secret scan (no `severity:` filter — many of Trivy's built-in secret rules, e.g. `jwt-token`, `age-secret-key`, `slack-web-hook`, ship at MEDIUM and would be silently dropped by HIGH/CRITICAL; within scanned files any rule match blocks the PR) and Trivy IaC-misconfig scan (HIGH/CRITICAL — IaC has the noisiest baseline of the three Trivy scans, the filter keeps the signal-to-noise workable). Trivy's built-in skip list (`node_modules`, `.git`, lockfiles, binary extensions, paths matching test/example/vendor/`.md`) applies; it is a known residual coverage gap.
   - **`docker` job** (every PR, required by branch protection): compose validation + app image build + Trivy app-image-vuln scan (HIGH/CRITICAL) + OCI-layout export + backup image build (FROM aliased to the exported layout via buildx `build-contexts`) + Trivy backup-image-vuln scan + runtime smoke. Publishes nothing.
   - **`publish` job** (`needs: [check, lint, docker]`): pushes only what the `docker` job already scanned and smoked, and re-scans each image immediately before pushing it. The re-scan is not redundant — `publish` runs on a different runner and rebuilds from the shared gha cache, whose export is best-effort, so a cold start would otherwise re-resolve the `apk` layers unscanned. A failed scan never publishes the tag, so `scripts/deploy.sh` cannot resolve a bad SHA.
@@ -168,6 +168,29 @@ Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of
 - No env-var or schema impact.
 
 ## Amendments
+
+### 2026-10-31 — PR gates judge the change, not `main`
+
+Raised in [#668](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/668). Right after control 1 (§2026-10-29) landed, two Medium advisories with no in-range fix were published against what `main` ships (`glob`, `minimatch`; both unreachable). OSV-Scanner in `lint` turned every PR red, the Node and Postgres updates #637 exists for included, and `promote`, which needs `lint`, stopped naming images for `main`. Blocking those merges removed no exposure: the code was already on `main`. It blocked remediation, and made an allowlist entry the price of any merge.
+
+**Corrected premise.** §Decision.2's "blocks merge on any vuln" conflated two questions: does this change make `main` worse (the PR gate), and is `main` vulnerable (the nightly). Corrected in place.
+
+**Decision.**
+
+```
+lint  (pull_request, merge_group, push)  head − base findings  ─▶ red blocks the merge
+security-scheduled.yml (nightly)         main, absolute        ─▶ ci-red issue ─▶ fix, or allowlist (§Negative)
+```
+
+- Base (`scripts/ci/gate-base.sh`): the test merge commit's first parent (`pull_request`; HEAD must be that merge), the queue's base (`merge_group`), the previous `main` (`push`), the default branch's tip (`workflow_dispatch`, a branch deployed by hand). Anything else, or a base that cannot be resolved or read, fails the job.
+- OSV-Scanner (`scripts/check-osv-introduced.mjs`) keys a finding on (advisory id, ecosystem, package name). Not on version or location: any new instance of a package the base already has under the same advisory (a bump that stays vulnerable, a second copy) introduces nothing; no worse than the per-id allowlist. Not `osv-reporter`: it keys on source path and version. The verdict is read from the results, so their shape and their agreement with the CLI's exit code are checked.
+- Repo-level advisories (`check-repo-advisories.mjs --base-lockfile`): the base version is judged on the same ranges as the head's, global when it exists, so the coarser repo-level range cannot pass an introduced finding as pre-existing.
+- Allowlists apply to both sides. An expired entry the change did not touch turns the nightlies red, not every PR: `lint`'s schema check only warns on it (`--base-dir`), and `check-repo-advisories.mjs` honours `ignoreUntil` itself, like OSV-Scanner. An entry a change adds or edits is held to the full contract.
+- Every exception, allowlisted or not, is indexed in the [exception register](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/669) ([dep-management.md § Allowlist](../ops/dep-management.md#allowlist)).
+
+**Not yet.** Trivy scans stay absolute until #668 B: a new unfixed HIGH/CRITICAL in a base image, or a lapsed `.trivyignore.yaml` entry (Trivy honours `expired_at`), still blocks every PR.
+
+**Accepted.** A new advisory on `main` shows as a ci-red issue instead of red PRs. Exposure is unchanged.
 
 ### 2026-10-29 — Security releases outside npm
 
@@ -266,7 +289,7 @@ Not a fluke: the same fastify release fixed a second repo-level-only advisory, `
 
 Resolving "whose upstream is on GitHub" is the load-bearing step, and three of npm's four `repository` shapes omit the host because GitHub is npm's default (`eslint/eslint`, `github:ds300/patch-package`). Matching the literal `github.com` alone silently skips them.
 
-Allowlisting reuses `osv-scanner.toml`'s `[[IgnoredVulns]]` ids rather than adding a third allowlist file — same advisory namespace, same owner/reason/`ignoreUntil` contract, already gated by `scripts/check-allowlist-schema.sh`. That script owns the expiry: unlike OSV-Scanner, this gate does not read `ignoreUntil`, so **every caller must run it first** or a lapsed entry suppresses a match forever. Both callers do.
+Allowlisting reuses `osv-scanner.toml`'s `[[IgnoredVulns]]` ids rather than adding a third allowlist file — same advisory namespace, same owner/reason/`ignoreUntil` contract, already gated by `scripts/check-allowlist-schema.sh`. That script owns the schema; this gate honours `ignoreUntil` itself, like OSV-Scanner ([2026-10-31](#2026-10-31--pr-gates-judge-the-change-not-main): `lint`'s schema check no longer fails on an expired entry unchanged from the base).
 
 **Range precedence.** Repo-level ranges are publisher-written; global ones are curated on promotion. Usually the same split, written differently — and the difference decides the verdict. `GHSA-gpj5-g38j-94v9` on `drizzle-orm` splits the two release lines in **both** records; only the global one bounds them:
 

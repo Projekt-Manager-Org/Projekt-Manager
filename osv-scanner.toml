@@ -11,7 +11,7 @@
 #   ignoreUntil  — bare TOML date literal (YYYY-MM-DD, NOT quoted), at most
 #                  90 days from the day the entry was added. The expiry
 #                  forces a re-review; OSV-Scanner stops honoring the entry
-#                  past this date and CI starts failing again.
+#                  past this date and the nightlies turn red.
 #   reason       — TOML string. MUST start with `@<github-handle>:` so the
 #                  owner is encoded (OSV-Scanner has no dedicated owner
 #                  field). Brief explanation follows the prefix.
