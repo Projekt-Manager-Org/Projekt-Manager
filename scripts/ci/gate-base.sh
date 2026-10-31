@@ -31,8 +31,9 @@
 #     anything else      exit 1: no event goes unjudged by accident.
 #
 #   Writes into OUT_DIR the base's package-lock.json (required) and those of
-#   osv-scanner.toml, .trivyignore.yaml, .grype.yaml it has. On stdout, for
-#   `>> "$GITHUB_OUTPUT"`: `sha=<base>` and `dir=<OUT_DIR>`.
+#   osv-scanner.toml, .trivyignore.yaml, .grype.yaml, exception-register.yaml
+#   it has. On stdout, for `>> "$GITHUB_OUTPUT"`: `sha=<base>` and
+#   `dir=<OUT_DIR>`.
 #
 # EXIT CODES
 #   0  base resolved, files written
@@ -95,7 +96,7 @@ git fetch --no-tags --depth=1 origin "$base" >&2 || die "cannot fetch base $base
 
 mkdir -p "$OUT_DIR"
 git cat-file -e "$base:package-lock.json" 2>/dev/null || die "base $base has no package-lock.json"
-for f in package-lock.json osv-scanner.toml .trivyignore.yaml .grype.yaml; do
+for f in package-lock.json osv-scanner.toml .trivyignore.yaml .grype.yaml exception-register.yaml; do
   if git cat-file -e "$base:$f" 2>/dev/null; then
     git show "$base:$f" >"$OUT_DIR/$f"
   fi

@@ -1,0 +1,37 @@
+# Exception register — exceptions with no expiry of their own.
+#
+# Contract and scope: docs/ops/dep-management.md § Exception register;
+# enforced by scripts/check-exception-register.sh. The check discovers
+# exceptions from their sources, so an exception without a row fails, and
+# so does a row whose exception is gone: add, renew or drop the row in the
+# PR that changes the exception.
+#
+#   covers     `<kind>:<name>` keys: npm-override, type-shim, renovate-disabled
+#   owner      '@<github-handle>'
+#   reason     why the exception exists
+#   drop_when  the external event that makes it removable
+#   review_by  bare YYYY-MM-DD, at most 90 days out: re-check drop_when, then
+#              drop the exception or renew the date
+
+exceptions:
+  - covers:
+      - npm-override:@esbuild-kit/core-utils>esbuild
+    owner: '@vlzware'
+    reason: >-
+      Lifts drizzle-kit's nested esbuild (via the deprecated @esbuild-kit
+      loader) out of GHSA-67mh-4wv8-2f99's range. Dev tooling only; drizzle-kit
+      never imports the chain (ADR-0007).
+    drop_when: drizzle-kit drops its @esbuild-kit/esm-loader dependency (still present in 0.31.11 on 2026-10-31).
+    review_by: 2027-01-29
+
+  - covers:
+      - renovate-disabled:ghcr.io/projekt-manager-org/minio
+      - renovate-disabled:ghcr.io/projekt-manager-org/mc
+    owner: '@vlzware'
+    reason: >-
+      Frozen self-hosted mirror of the last community MinIO images, the dev and
+      CI storage emulator. Unpatchable HIGH CVEs at that pin (CVE-2026-40344,
+      CVE-2026-41145, CVE-2025-62506), mitigated by scope: dev box and CI only,
+      no real data, loopback ports (ADR-0003 § Dep lifecycle health).
+    drop_when: The storage emulator is replaced; #191 lists the reopen triggers (last checked 2026-09-25).
+    review_by: 2026-12-24

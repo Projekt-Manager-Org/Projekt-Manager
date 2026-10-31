@@ -48,6 +48,7 @@ echo readme >README && git add README && git commit -qm c0
 C0="$(git rev-parse HEAD)"
 echo '{"base":1}' >package-lock.json
 echo '# base toml' >osv-scanner.toml
+echo 'exceptions: []' >exception-register.yaml
 git add . && git commit -qm c1
 C1="$(git rev-parse HEAD)"
 git push -q origin main
@@ -87,7 +88,7 @@ OUT="OUT_DIR=$TMP/out"
 
 echo "Case: pull_request on the test merge"
 assert_case "pull_request" 0 "$C1" EVENT=pull_request PR_HEAD_SHA="$C2" "$OUT"
-if [[ "$(cat "$TMP/out/package-lock.json")" == '{"base":1}' && -f "$TMP/out/osv-scanner.toml" && ! -e "$TMP/out/.grype.yaml" ]]; then
+if [[ "$(cat "$TMP/out/package-lock.json")" == '{"base":1}' && -f "$TMP/out/osv-scanner.toml" && -f "$TMP/out/exception-register.yaml" && ! -e "$TMP/out/.grype.yaml" ]]; then
   pass=$((pass + 1))
   echo "  PASS — base files written, absent ones skipped"
 else

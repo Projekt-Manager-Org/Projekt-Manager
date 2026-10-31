@@ -223,7 +223,7 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 2. **Abandonment flags**: scan the dashboard's "Abandoned Dependencies" list for new entries. Verify each per [§ Abandonment-flag verdicts](#abandonment-flag-verdicts); record a verdict + (for false positives) add the package to `.github/renovate.json` `packageRules` in the same commit.
 3. **Auto-merged PRs** (patch/minor/digest + green CI — grouped clusters and lockfile maintenance included) need no action; spot-check for surprises.
 4. **Majors** wait under Pending Approval on the dashboard: read the upstream migration guide, tick to create the PR, run `npm test` + `npm run test:e2e` locally on the bump branch, merge.
-5. **Exception register** ([#669](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/669)): act on rows whose review date falls before the next pass, and on any exception missing from it ([§ Allowlist](#allowlist)).
+5. **Exception register** ([§ Exception register](#exception-register)): act on rows whose `review_by` falls before the next pass; the nightlies turn red the day after.
 6. Red CI: triage the failure, patch or revert. `.github/workflows/notify.yml` raises the signal — a red PR assigns itself to the maintainer and clears the assignment once green, so **assigned to you = red right now**, not "was red at some point"; a red `main` (post-merge `push` or the nightly scan) opens a `ci-red` issue instead, closed automatically on the next green run. The wrangler pass is the backstop, not the discovery mechanism — its remaining job is the one case that emits no event at all: a run that never queued. Do not rely on GitHub's Actions email here: it reaches only the run's triggering actor, which on a bot-merged PR is the bot, on the post-merge push too.
 
 **Pinned CLI binaries** (OSV-Scanner, actionlint, ripgrep, age) bump version _and_ SHA256 in one PR — never hand-edit a checksum. A red PR from one is usually correct and load-bearing, e.g. a new actionlint check firing on an existing workflow. Fix the finding, don't pin back. A new OSV-Scanner build that reports a fresh advisory does not red its own PR (both scans use it, so the finding is on the base too); the nightly does.
@@ -279,8 +279,6 @@ The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (
 
 Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). Scopes are literal: the scanners read `paths` and `location` as globs and Grype's `name` / `upstream-name` as a regex, so a wildcard would ignore everywhere. A name containing `+` (e.g. `libstdc++`) is a regex to Grype; scope such a package by `location`. A Grype `package` holds a `name`, `upstream-name` or `location`: type and version alone match many packages.
 
-**Exception register.** Every exception — allowlist entry, npm `overrides` entry, accepted risk without an entry (e.g. ADR-0003's frozen MinIO) — has a row in [#669](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/669): where it lives, scope, review date, drop condition. The PR that adds, renews or removes an exception updates its row. The files stay the source of truth; the register is the index the weekly wrangler reads.
-
 Per [CLAUDE.md "refuse to serve" principle](../../CLAUDE.md#principles), the correct response to a finding without a justified allowlist entry is to fix the underlying issue, not to write a suppression "for now." Allowlist entries are a structured exception, not a default.
 
 ```toml
@@ -319,6 +317,21 @@ ignore:
 Go's stdlib is compiled into every Go binary (gosu, Caddy), so a waiver scoped by package would hide the CVE in all of them. Grype reports it as the synthetic package `stdlib`, Trivy as `pkg:golang/stdlib@…`; scope it by the binary's path (Grype `location`, Trivy `paths`). The schema check rejects a `stdlib` scope without one.
 
 Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing — the same script gates the CI `lint` job.
+
+### Exception register
+
+`exception-register.yaml` lists every exception with no expiry of its own. Allowlist entries ([§ Allowlist](#allowlist)) and `release-age-allowlist.json` carry owner, reason and expiry themselves and are not repeated there.
+
+| `covers` key                   | Discovered from                                                                                                                  |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `npm-override:<path>`          | each leaf of `package.json` `overrides`, nested keys joined by `>` (`@esbuild-kit/core-utils>esbuild`); `.` is the parent itself |
+| `type-shim:<module>`           | ambient `declare module '<module>'` in a `.d.ts` with no top-level import/export                                                 |
+| `renovate-disabled:<pkg>`      | `.github/renovate.json` `ignoreDeps`; a `packageRules` entry with `enabled: false` (must list `matchPackageNames`)               |
+| `renovate-disabled:/<setting>` | any other `enabled: false` (`/lockFileMaintenance`; `/` is Renovate off), `ignorePaths` entries, `enabledManagers`               |
+
+A row holds `covers`, `owner`, `reason`, `drop_when` (the external event that makes it removable) and `review_by` (≤ 90 days). `scripts/check-exception-register.sh` reads the sources, so an exception without a row fails, and so does a row whose exception is gone: the PR that adds or removes an exception edits its row. It runs in `lint` against the base, like the allowlist check, and in the nightly security scan, where a lapsed `review_by` turns red. To review a row: check `drop_when`, then drop the exception or renew the date.
+
+Not registered, being policy or bounded on their own: `allowedVersions` for `@cantoo/pdf-lib` (a broken release stays broken); `abandonmentThreshold` (3 years still flags real abandonment; [§ Abandonment-flag verdicts](#abandonment-flag-verdicts)); the `xcaddy --with` raises in `docker/caddy/Dockerfile` (Renovate-tracked; a Caddy needing newer fails the build); the `AWAITING_EXEMPT` schedules in `scripts/ci/renovate-health.mjs`. In-code suppressions (`eslint-disable`, `shellcheck disable`) are reviewed with the code around them.
 
 ## Abandonment-flag verdicts
 
@@ -442,3 +455,4 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 - `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` judged against the base + nightly absolute). See [§ Repo-level advisories](#repo-level-advisories).
 - `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist) above.
 - `.trivyignore.yaml`, `.grype.yaml` — allowlists for Trivy and Grype. Schema in [§Allowlist](#allowlist).
+- `exception-register.yaml`, `scripts/check-exception-register.sh` — exceptions with no expiry of their own and their gate. See [§ Exception register](#exception-register).

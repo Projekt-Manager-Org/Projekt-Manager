@@ -86,3 +86,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/check-repo-advisories.mjs
+
+      # Where a lapsed register row turns red (`lint` lets one unchanged
+      # from its base through). Last, and on any outcome: a register row
+      # suppresses no scanner, so it neither blinds a scan nor waits on one.
+      - name: Check exception register
+        if: ${{ !cancelled() }}
+        run: bash scripts/check-exception-register.sh

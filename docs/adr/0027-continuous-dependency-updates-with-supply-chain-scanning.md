@@ -197,7 +197,7 @@ security-scheduled.yml (nightly)         main, absolute        ─▶ ci-red iss
 - OSV-Scanner (`scripts/check-osv-introduced.mjs`) keys a finding on (advisory id, ecosystem, package name). Not on version or location: any new instance of a package the base already has under the same advisory (a bump that stays vulnerable, a second copy) introduces nothing; no worse than the per-id allowlist. Not `osv-reporter`: it keys on source path and version. The verdict is read from the results, so their shape and their agreement with the CLI's exit code are checked.
 - Repo-level advisories (`check-repo-advisories.mjs --base-lockfile`): the base version is judged on the same ranges as the head's, global when it exists, so the coarser repo-level range cannot pass an introduced finding as pre-existing.
 - Allowlists apply to both sides. An expired entry the change did not touch turns the nightlies red, not every PR: `lint`'s schema check only warns on it (`--base-dir`), and `check-repo-advisories.mjs` honours `ignoreUntil` itself, like OSV-Scanner. An entry a change adds or edits is held to the full contract.
-- Every exception, allowlisted or not, is indexed in the [exception register](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/669) ([dep-management.md § Allowlist](../ops/dep-management.md#allowlist)).
+- Every exception with no expiry of its own has a row in `exception-register.yaml`, gated like the allowlists in `lint` and the nightly security scan ([dep-management.md § Exception register](../ops/dep-management.md#exception-register)).
 
 **Not yet.** Trivy scans stay absolute until #668 B: a new unfixed HIGH/CRITICAL in a base image, or a lapsed `.trivyignore.yaml` entry (Trivy honours `expired_at`), still blocks every PR.
 
