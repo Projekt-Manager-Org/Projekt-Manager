@@ -194,6 +194,18 @@ jobs:
       - name: Check allowlist schema — self-test
         run: bash scripts/__tests__/check-allowlist-schema.test.sh
 
+      # Exception register (runbook § Exception register): an exception with
+      # no row, or a row whose exception is gone, fails here. Against the
+      # base, like the allowlists: a lapsed row the change did not touch
+      # only warns; the nightly security scan fails on it.
+      - name: Check exception register
+        env:
+          BASE_DIR: ${{ steps.base.outputs.dir }}
+        run: bash scripts/check-exception-register.sh --base-dir "$BASE_DIR"
+
+      - name: Check exception register — self-test
+        run: bash scripts/__tests__/check-exception-register.test.sh
+
       # Release-age gate (ADR-0027 § 2026-09-17). Judges age on the finished
       # lockfile instead of during resolution, where the same rule could only
       # ETARGET — no lockfile, no diagnosis, no override, and a stall that
