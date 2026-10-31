@@ -22,9 +22,8 @@ import { brandAppShell } from './src/build/brandAppShell.ts';
  * here.
  *
  * Note (ADR-0011 build-once-promote): this is the build-time commit
- * SHA. Under build-once-promote it identifies the PR-tip bytes that
- * were built and scanned, not the merge-commit SHA — that is the
- * correct identity for the immutable image artifact.
+ * SHA. The image `main` points at is built in the merge queue, so it
+ * is the `main` commit itself; a PR run's image carries the PR tip.
  */
 function resolveGitSha(): string {
   const fromEnv = process.env.GIT_SHA;

@@ -5,7 +5,8 @@ Pull-based deploy over WireGuard per ADR-0012. CI builds and pushes the image to
 ```
 PR opened -> CI docker (build+scan+smoke) -> publish -> GHCR (sha-<pr-tip>, <branch-slug>)
                                                   |
-PR merge to main         -> CI promote        -> GHCR (sha-<merge-sha>, main)
+merge queue (commit C)   -> CI docker + publish -> GHCR (sha-<C>)
+C lands on main          -> CI promote        -> GHCR (main -> sha-<C>)
                                                   |
 operator (over WireGuard):                        v
   ssh vps -> sudo -u deploy /opt/projekt-manager/scripts/deploy.sh [ref]
@@ -18,7 +19,7 @@ operator (over WireGuard):                        v
     -> drill-key reload prompt (when /run/drill-key/identity is empty)
 ```
 
-The merge-time `promote` job re-tags the dispatched artifact instead of rebuilding (~30s, no rescan, no smoke — the bytes were validated end-to-end during dispatch). It only fires when GHCR holds an image for the **final** PR tip, so **re-dispatch after the last commit lands**. Otherwise — dispatch skipped (Renovate auto-merge, direct push to main) or stale — `promote` falls through to a full rebuild via the same composite action: ~5 min, with a `::warning::` in the run log naming the failed guard. See ADR-0011 §"Build once, promote on merge" for the full topology.
+Every commit the merge queue lands has `sha-<commit>` from its queue run, and `promote` only moves `main` onto it (~30s, no rebuild). A commit no queue run named has none; `promote` then rebuilds through the same composite action: ~5 min, with a `::warning::` in the run log. A PR run's `sha-<pr-tip>` (or a dispatch's) is for deploying a branch; nothing promotes it. See ADR-0011 §"Build once, promote on merge" for the full topology.
 
 Have the backup identity's password-manager entry at hand before invoking the deploy — when the backup container was recreated by the deploy, the script will prompt to paste the age private identity into the container's tmpfs (AC-175). See [backup/drills.md](backup/drills.md) for the threat model.
 

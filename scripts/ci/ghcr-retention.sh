@@ -17,8 +17,8 @@
 # POLICY — keep, delete everything else:
 #   1. `main`, and `sha-<c>` for the newest KEEP_MAIN commits on main:
 #      the running deploy plus its rollback window (ADR-0012).
-#   2. `sha-<head>` of every open PR: the artifact `promote`'s guard 3
-#      looks for at merge time, and the one the operator deploys to test.
+#   2. `sha-<head>` of every open PR: the one the operator deploys to
+#      test. (`promote` reads the queue's `sha-<commit>`, never this.)
 #   3. Anything younger than MIN_AGE_HOURS: a build whose PR is not open
 #      yet, and the window between a push and this job's next run.
 #   4. Every child manifest of anything kept by 1-3.
@@ -142,9 +142,9 @@ reap_package() {
 
   # Rules 1 and 2: a version is kept if ANY of its tags is a keep tag.
   # Deleting a version deletes all of its tags at once, so one match is
-  # enough — and is why `promote`'s re-tagging (which puts `main`,
-  # `sha-<pr-tip>` and `sha-<merge-sha>` on a single digest) collapses
-  # into one kept version rather than three.
+  # enough — and is why `promote`'s re-tagging (which puts `main` and
+  # `sha-<commit>` on a single digest) collapses into one kept version
+  # rather than two.
   while read -r digest; do
     [ -n "$digest" ] && keep["$digest"]=tagged
   done < <(jq -r --argjson kt "$keep_tags_json" \
