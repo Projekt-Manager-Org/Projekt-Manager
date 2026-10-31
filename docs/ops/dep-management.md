@@ -50,7 +50,9 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
      - **Restrict deletions** + **Block force pushes** — prevent `main` loss / history rewrite.
      - **Require linear history** — repo policy is squash-merge only.
      - **Require a pull request before merging** — required approvals: 0 (solo dev; raise when a second human joins).
-     - **Require status checks to pass:** add `lint`, `check`, `docker`, and `publish` (job names — Rulesets match job-level checks, same as classic).
+     - **Require merge queue** — settings in step 6.
+     - **Require status checks to pass:** add `lint`, `check`, `docker`, `publish` and `Spec-change declaration` (job names — Rulesets match job-level checks, same as classic).
+       - **`Spec-change declaration`** (`spec-change.yml`): a PR touching `docs/spec/**` declares why in its body ([CONTRIBUTING.md § Workflow](../../CONTRIBUTING.md#workflow) step 1).
        - **`lint`** is the static-analysis pillar: Renovate config validation, lockfile-pin drift, allowlist schema, OSV-Scanner (lockfile vulns), Trivy filesystem-secret + IaC scans, compose-reference validation, lint, shellcheck, format, theme-token hygiene, type-check, env-drift, audit-write-path check, build. No DB, no MinIO — runs in parallel with the test pillar.
        - **`check`** is a 5-line aggregator that gates on the sharded `check-shard` matrix (`needs: check-shard`, fails if any shard failed). Stable required-check name across shard-count changes — only the matrix array in `ci.yml` moves when shards are added/removed; the Ruleset never has to be re-edited. The actual tests live in `check-shard` (postgres service + MinIO + integration tests, partitioned by `--shard=N/M`).
        - **`docker`** is the image gate: compose validation, both images built and Trivy-scanned (HIGH/CRITICAL blocks merge), the runtime smoke, and the Tier 1 backup round-trip. It runs on **every** PR and publishes nothing. It used to be path-filtered, which made it report **skipped** on non-image PRs — and a skipped job [counts as a successful required check](https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution), so requiring it gated nothing for the majority of PRs (#355).
@@ -59,40 +61,35 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
          This reverses the earlier "do NOT add `publish`" note, whose reasoning ("a required check that is legitimately skipped for a whole class of PRs cannot gate anything") contradicted the load-bearing fact one bullet up: [a skipped job reports success](https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution) and satisfies a required check. Requiring `publish` therefore gates non-fork PRs — the only population guard 3 cares about — and is a no-op for forks, where its `if:` skips it. The real cost is coupling merge to GHCR availability, which is the honest behaviour: if GHCR is down, `promote` cannot publish either.
 
-       - **Tick the sub-option "Require branches to be up to date before merging"** — the `strict_required_status_checks_policy` flag. This is the active safety net against semantic merge conflicts (two PRs that pass their own CI but break main when both land). Without it, a `package-lock.json` collision between a human PR and a concurrent Renovate PR can ship a stale lockfile to `main`. The trade is a rebase + re-CI cycle on any PR that lands behind a just-merged peer; per step 6 below, at this repo's volume that tax is acceptable.
-       - **Renovate must perform that rebase, not a human** — which is why `renovate.json` sets `rebaseWhen: "behind-base-branch"` _explicitly_. The default `auto` upgrades to `behind-base-branch` only when it detects "require branches up to date" via **classic** branch protection; it is blind to this repo's **Ruleset**, so it falls back to `conflicted` and leaves merely-behind PRs untouched. They then sit `BEHIND` until someone clicks "Update branch" — which stamps a non-`renovate[bot]` author on the branch and trips Renovate's edited-PR guard ("does not recognize the last commit author"), permanently disabling auto-rebase for that PR. Explicit `behind-base-branch` keeps the rebase on the bot and the serial tax automatic and hands-off.
+       - **Leave "Require branches to be up to date before merging" unticked** (`strict_required_status_checks_policy: false`). The merge queue (step 6) is the safety net against semantic merge conflicts, e.g. a `package-lock.json` collision between two PRs that each pass their own CI: it tests every PR against `main`'s head. Strict on top only adds a rebase per merge.
+       - **`renovate.json` sets `rebaseWhen: "conflicted"` _explicitly_.** A PR that is only behind needs no rebase; the queue tests it against `main`'s head. Renovate's `auto` [resolves to the same](https://docs.renovatebot.com/configuration-options/#rebasewhen) under a merge queue; explicit, so it does not depend on Renovate detecting the queue at runtime. Never click "Update branch" on a Renovate PR: it stamps a non-`renovate[bot]` author and trips Renovate's edited-PR guard ("does not recognize the last commit author"), which stops Renovate managing that PR. To refresh one, tick the rebase box in its body.
 
    Without `lint`, `check`, `docker` and `publish` all as required contexts, Renovate's auto-merge bypasses the safety net this ADR adds. `docker` runs on every PR and publishes nothing, so it is a real gate rather than an advisory scan — that was not true while it was path-filtered (#355). `publish` is the ordering constraint, not a gate: it is what stops the merge landing before the artifact `promote` will look for exists. The full gating rationale is in [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational).
 
    **After saving the Ruleset**, delete the classic branch protection rule for `main` (Settings → Branches → ⋯ → Delete on the classic rule). Two protection layers are avoidable maintenance burden; the Ruleset is the supported path forward.
 
-6. **Merge queue: evaluated, off at this scale.** GitHub's merge queue (`merge_queue` Ruleset rule) was enabled 2026-05-19 and turned back off 2026-05-20 after measuring per-PR cost against repo volume.
+6. **Merge queue: on** (since 2026-10-31, [#668](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/668)). A `merge_queue` rule on `main protection`; strict off (step 5).
 
-   **Decision:** strict `required_status_checks_policy` (step 5) is the active safety net; no `merge_queue` rule on the Ruleset.
+   Why, and the cost accepted: [ADR-0027 § 2026-10-31](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--merge-queue-replaces-strict-up-to-date).
 
-   **Why:** the queue's value is "test on the synthetic post-merge state before merging" — equivalent to strict's "rebase + re-CI before merging", paid at different times.
+   ```
+   PR green ─▶ queue: CI on main + group (merge_group event) ─▶ green: main fast-forwards to that commit
+                                                             └▶ red:   PR leaves the queue
+   ```
 
-   |                          | Strict (active)                            | Queue                                        |
-   | ------------------------ | ------------------------------------------ | -------------------------------------------- |
-   | Per-PR floor cost        | ~10s (when up-to-date)                     | ~5 min (CI on synthetic train, always paid)  |
-   | Behind-main cost         | ~5 min (rebase + re-CI)                    | ~5 min (same)                                |
-   | Lockfile-conflict safety | ✅ rebase forces re-CI on post-merge state | ✅ synthetic train re-CI on post-merge state |
+   **Settings:**
+   - `merge_method: SQUASH`. The default `MERGE` conflicts with `required_linear_history`: PRs sit `CLEAN` forever and no `merge_group` runs appear.
+   - `grouping_strategy: ALLGREEN`, `min_entries_to_merge: 1`, `max_entries_to_merge: 5`, `max_entries_to_build: 5`, `min_entries_to_merge_wait_minutes: 5`, `check_response_timeout_minutes: 60`.
 
-   Measured PR cadence at decision time (last 7 weeks, 71 merged PRs): mean 2.4 PRs/day on active days, median PR-to-merge 0.5h, one human + throttled Renovate (`prConcurrentLimit: 1`). 7-week extrapolation: strict ~3h of merge-wait; queue ~7h. Queue wins on Renovate-Monday outliers (~35 min saved on the one 13-PR day in the window) at a steady-state cost of ~4 min/day every other day. Below the published break-even for queue adoption (≥10 PRs/day sustained, multiple concurrent contributors).
+   Verify:
 
-   **Revisit triggers** — re-evaluate the queue when any of these become sustained:
-   - PR volume rises above ~5 PRs/day for two consecutive weeks
-   - A second human contributor joins the project
-   - Parallel-agent workflows on this repo become routine
-   - Renovate's `prConcurrentLimit` is raised above 1 — **fired 2026-10-30** (10, [ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm)); re-measure once the backlog has drained (#637)
-   - The rebase tax observed during the [weekly wrangler pass](#weekly-wrangler) becomes the dominant cost after a Renovate burst
+   ```bash
+   gh api repos/{owner}/{repo}/rulesets/{id} --jq '.rules[] | select(.type=="merge_queue" or .type=="required_status_checks") | {type, merge_method: .parameters.merge_method, strict: .parameters.strict_required_status_checks_policy}'
+   ```
 
-   **If/when re-enabling**, the known-good config from the 2026-05-19 deployment was:
-   - Rule: `merge_queue` on the same `main protection` Ruleset.
-   - `merge_method: SQUASH` (the default `MERGE` conflicts with `required_linear_history` — PRs sit `CLEAN` forever, no `merge_group` workflow runs appear; verify with `gh api repos/{owner}/{repo}/rulesets/{id} --jq '.rules[] | select(.type=="merge_queue") | .parameters.merge_method'`).
-   - `min_entries_to_merge: 1`, `max_entries_to_merge: 5`, `max_entries_to_build: 5`, `min_entries_to_merge_wait_minutes: 5`, `check_response_timeout_minutes: 60`.
-   - Turn `strict_required_status_checks_policy` OFF at the same time — queue and strict are alternatives; running both reintroduces the per-PR rebase tax that the queue is meant to eliminate.
-   - Workflow already supports it: `.github/workflows/ci.yml` listens on `merge_group` and the `docker` job's `if:` reports SUCCESS on `merge_group` events (required — branch protection treats skipped as success, the queue does not). No `ci.yml` change needed on re-enable.
+   **Workflows:** every required check's workflow listens on `merge_group` (`ci.yml`, `spec-change.yml`). Without the trigger the check never reports and the queue times out.
+
+   **Operating it:** "Merge when ready" or `gh pr merge` queues a PR; Renovate's auto-merge requests enter on their own. An admin puts a PR first with the GraphQL `enqueuePullRequest` mutation (`jump: true`), after `dequeuePullRequest` if it is already queued.
 
 7. **Pin the Dependency Dashboard issue.** Renovate auto-creates an issue titled "Dependency Dashboard" listing queue state; pin it so the weekly wrangler can find it without searching.
 

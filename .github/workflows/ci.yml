@@ -5,15 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # GitHub merge queue fires `merge_group` events on a synthetic train
-  # branch built from `main` + queued PRs. The queue is currently OFF
-  # (see docs/ops/dep-management.md §5 for the evaluation + cost
-  # model); this listener is a no-op until/unless the `merge_queue`
-  # rule is re-added to the `main protection` Ruleset. Kept in place
-  # because removing it would mean a future re-enable also needs a
-  # workflow edit, and forgetting that edit makes the queue silently
-  # time out (PRs sit `CLEAN` for 60 min then get rejected with no
-  # actionable signal — see #214 history).
+  # The merge queue (on since #668; docs/ops/dep-management.md
+  # § First-run setup, step 6) fires `merge_group` on a synthetic branch
+  # built from `main` + the queued PRs. Without this trigger the required
+  # checks never report, and the queue times out after 60 min.
   merge_group:
   # Manual escape hatch for building/publishing images on a feature
   # branch so it can be deployed to the VPS via scripts/deploy.sh
@@ -1110,10 +1105,9 @@ jobs:
   #      merge method this repo permits (`allow_merge_commit` and
   #      `allow_rebase_merge` are both off, and the `main protection`
   #      Ruleset pins `allowed_merge_methods: ["squash"]`), and squash
-  #      preserves the tree — but `strict_required_status_checks_policy`
-  #      still allows `main` to advance between the last status check
-  #      and the merge, which diverges the trees and makes the PR-tip
-  #      bytes wrong for HEAD.
+  #      preserves the tree — but the merge queue merges a PR that is
+  #      behind `main` without rebasing it, which diverges the trees and
+  #      makes the PR-tip bytes wrong for HEAD.
   #   3. `sha-<pr-tip>` image must exist on GHCR — force-push after
   #      the last green run, or a direct push that never had a PR
   #      run at all.

@@ -88,7 +88,7 @@ merge ──► promote  guard 1,2,3 ✓ ──► imagetools create ──► s
 
 2. PR merges to `main` (squash — the only method enabled). `promote` fires on `push: main`. Three guards:
    - **PR discovery** — `gh api repos/.../commits/${GITHUB_SHA}/pulls` must return the PR's head SHA. Direct pushes to `main` (hot-fix) return empty → fallback.
-   - **Tree equality** — `tree(merge-sha) == tree(pr-tip)`. Squash preserves the tree, but `strict_required_status_checks_policy` still permits `main` advancing between the last green run and the merge, folding those commits into the squash → fallback.
+   - **Tree equality** — `tree(merge-sha) == tree(pr-tip)`. Squash preserves the tree, but the merge queue merges a PR that is behind `main` without rebasing it, folding the newer commits into the squash → fallback.
    - **Source image present on GHCR** — `docker manifest inspect ghcr.io/.../sha-<pr-tip>` must succeed. Fork PR, or a force-push after the last green run → fallback.
 3. Happy path: `docker buildx imagetools create -t <new-tag> <src-tag>` for both images, creating `sha-<merge-sha>` + `main` from `sha-<pr-tip>`. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke — the artifact is bit-for-bit identical to what `docker` validated before the merge.
 4. Fallback: `build-scan-smoke` (which ends in the digest push) then `tag-images`, against the merge SHA. ~4 min on main's (cold-ish) cache scope. Operators see a `::warning::` in the run log explaining which guard failed.
