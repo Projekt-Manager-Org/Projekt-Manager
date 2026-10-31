@@ -48,7 +48,7 @@ runs:
     # `imagetools create` resolves and pushes manifests through the buildx
     # client, so the builder has to exist even though nothing is built.
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
     # Both immutable tags before either moving one. A run killed partway
     # then leaves `promote`'s guard 3 satisfiable (it requires both
