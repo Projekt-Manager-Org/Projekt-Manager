@@ -258,8 +258,8 @@ jobs:
         run: |
           set -euo pipefail
           # renovate: datasource=github-release-attachments depName=google/osv-scanner
-          version="v2.3.8"
-          expected_sha="bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc"
+          version="v2.7.0"
+          expected_sha="160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b"
           url="https://github.com/google/osv-scanner/releases/download/${version}/osv-scanner_linux_amd64"
           curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/osv-scanner "$url"
           actual_sha=$(sha256sum /tmp/osv-scanner | awk '{print $1}')
