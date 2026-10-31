@@ -91,14 +91,15 @@
  *   Reuses `osv-scanner.toml`'s `[[IgnoredVulns]]` ids rather than
  *   introducing a third allowlist file — same advisory namespace, same
  *   owner/reason/ignoreUntil contract, already gated by
- *   scripts/check-allowlist-schema.sh. This script only scrapes the ids;
- *   that script owns schema validation, including expiry.
+ *   scripts/check-allowlist-schema.sh. That script owns schema validation;
+ *   this one reads each entry's id and `ignoreUntil`, with the same parser
+ *   (tomllib), so the two cannot see different entries.
  *
- *   That split only holds where both run. Every caller MUST run
- *   check-allowlist-schema.sh first, or an expired `ignoreUntil` suppresses
- *   a match forever — unlike OSV-Scanner, which honours the date itself.
- *   Enforced in ci.yml (`lint`) and security-scheduled.yml
- *   (`repo-advisories`).
+ *   It honours the date itself, like OSV-Scanner: an entry past it, or
+ *   without a readable one, suppresses nothing. The schema check cannot
+ *   guarantee that alone any more: in `lint` it lets an expired entry
+ *   through when it is unchanged from the base (#668), so the nightly owns
+ *   it rather than every PR.
  *
  * GLOBAL PROBES
  *   `GET /advisories?ghsa_id={id}` with the token. Measured (#511):
@@ -131,19 +132,33 @@
  *   and a 200 whose body is not an array exits 2. Both are cases where a
  *   truncated read would have printed the same "OK" as a complete one.
  *
+ * JUDGED AGAINST A BASE (#668)
+ *   With `--base-lockfile <path>` (the PR gate in `lint`), only findings the
+ *   change introduces fail. A finding is pre-existing when the same
+ *   advisory, judged on the same ranges (global when it exists, else
+ *   repo-level), also matches the base's version of the package. Those are
+ *   listed and pass: main already ships them, and blocking unrelated merges
+ *   removes no exposure while it blocks the fix. The nightly run
+ *   (security-scheduled.yml) omits the flag and owns them.
+ *
+ *   The base's versions come from its lockfile (`packages["node_modules/<name>"]`),
+ *   since its tree is not installed. A dep absent there is new, so every
+ *   finding on it is introduced.
+ *
  * EXIT CODES
- *   0  no matching advisory
+ *   0  no matching advisory (with a base: none the change introduces)
  *   1  a matching advisory (or one whose range could not be evaluated)
  *   2  structural problem — no token, network failure, unreadable input
  *
  * Usage:
- *   GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs
+ *   GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs [--base-lockfile <path>]
  *
  * PROJECT_ROOT and ADVISORY_FIXTURE_DIR are overridable so the self-test
  * (scripts/__tests__/check-repo-advisories.test.sh) can stage a fake tree
  * and canned API responses without touching the network.
  */
 
+import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -339,6 +354,32 @@ async function mapPool(items, worker) {
 
 // --- inputs -----------------------------------------------------------------
 
+const argv = process.argv.slice(2);
+let baseLockfile = null;
+for (let i = 0; i < argv.length; i += 1) {
+  if (argv[i] !== '--base-lockfile') fail(`unknown argument: ${argv[i]}`, 2);
+  baseLockfile = argv[i + 1];
+  if (!baseLockfile) fail('--base-lockfile needs a path', 2);
+  i += 1;
+}
+
+// Name → version in the base, or null when the base does not have the dep.
+// A lockfile without a `packages` map (v1) cannot answer that, and guessing
+// either way would misjudge every finding, so it is a structural failure.
+let baseVersionOf = null;
+if (baseLockfile) {
+  let lock;
+  try {
+    lock = readJson(baseLockfile);
+  } catch (err) {
+    fail(`cannot read the base lockfile: ${err.message}`, 2);
+  }
+  if (lock?.packages === null || typeof lock?.packages !== 'object') {
+    fail(`the base lockfile ${baseLockfile} has no \`packages\` map`, 2);
+  }
+  baseVersionOf = (name) => lock.packages[`node_modules/${name}`]?.version ?? null;
+}
+
 const token = process.env.GITHUB_TOKEN?.trim();
 if (!token && !fixtureDir) {
   fail(
@@ -415,17 +456,40 @@ const advisoriesDisabled = slugs.filter((s) => advisoriesBySlug.get(s).status ==
 
 // --- allowlist --------------------------------------------------------------
 
-// Deliberately a dumb scan for `id = "..."`. scripts/check-allowlist-schema.sh
-// owns the real parse and rejects anything missing owner/reason/ignoreUntil,
-// so restating that logic here would only create a second thing to drift.
+// Parsed by Python's tomllib, the parser scripts/check-allowlist-schema.sh
+// validates with: two parsers could disagree on what the file holds, and a
+// line scan did — an entry inside a multi-line `reason` string suppressed a
+// finding the schema check never saw. That script owns owner/reason/scope;
+// this one reads `id` and `ignoreUntil` and honours the date (see ALLOWLIST),
+// valid through its day as the schema check reads it. An entry without a
+// bare date suppresses nothing.
 const allowlistPath = path.join(projectRoot, 'osv-scanner.toml');
 const allowlist = new Set();
 if (existsSync(allowlistPath)) {
-  const toml = readFileSync(allowlistPath, 'utf8');
-  for (const line of toml.split('\n')) {
-    if (/^\s*#/.test(line)) continue;
-    const m = /^\s*id\s*=\s*"([^"]+)"/.exec(line);
-    if (m) allowlist.add(m[1]);
+  const res = spawnSync(
+    'python3',
+    [
+      '-c',
+      'import json, sys, tomllib\n' +
+        'with open(sys.argv[1], "rb") as f:\n' +
+        '    print(json.dumps(tomllib.load(f).get("IgnoredVulns", []), default=str))',
+      allowlistPath,
+    ],
+    { encoding: 'utf8' },
+  );
+  if (res.status !== 0) {
+    fail(`cannot parse ${allowlistPath}: ${res.error?.message ?? res.stderr.trim()}`, 2);
+  }
+  const entries = JSON.parse(res.stdout);
+  if (!Array.isArray(entries)) fail(`${allowlistPath}: IgnoredVulns is not a list`, 2);
+  const today = new Date().toISOString().slice(0, 10);
+  for (const e of entries) {
+    // A TOML date serialises as `YYYY-MM-DD`; a datetime carries a time and
+    // is rejected, as the schema check rejects it.
+    const until = typeof e?.ignoreUntil === 'string' ? e.ignoreUntil : '';
+    if (typeof e?.id === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(until) && until >= today) {
+      allowlist.add(e.id);
+    }
   }
 }
 
@@ -539,6 +603,7 @@ function reviewedSinceEdit(global, repoUpdatedAt) {
 
 const findings = [];
 const allowlisted = [];
+const onBase = [];
 const overriddenByGlobal = [];
 
 // Every entry here already matched its repo-level range; the loop decides
@@ -597,7 +662,15 @@ for (const c of adjudicated) {
     // version. Flagged, not auto-narrowed — see the header.
     splitLines: !useGlobal && c.repoRanges.length > 1,
   };
+  // The base is judged on the same ranges as the head: the coarser
+  // repo-level range would call a base version the curated record clears
+  // vulnerable, and pass an introduced finding as pre-existing.
+  const baseVersion = baseVersionOf?.(c.name) ?? null;
+  const matchesBase =
+    baseVersion !== null && firstMatch(baseVersion, useGlobal ? globalRanges : c.repoRanges);
+
   if (allowlist.has(c.ghsa)) allowlisted.push(finding);
+  else if (matchesBase) onBase.push({ ...finding, baseVersion });
   else findings.push(finding);
 }
 
@@ -643,9 +716,22 @@ if (allowlisted.length > 0) {
   console.log(`  allowlisted via osv-scanner.toml (${allowlisted.length}):`);
   for (const f of allowlisted) console.log(`    ${f.ghsa}  ${f.name}@${f.version}`);
 }
+if (onBase.length > 0) {
+  console.log(
+    `  already on the base, not introduced by this change (${onBase.length}); ` +
+      'Security (scheduled) owns these:',
+  );
+  for (const f of onBase) {
+    console.log(`    ${f.ghsa}  ${f.name}@${f.version}  base: ${f.name}@${f.baseVersion}`);
+  }
+}
 
 if (findings.length === 0) {
-  console.log('OK: no repo-level advisory matches an installed direct dependency');
+  console.log(
+    baseVersionOf
+      ? 'OK: this change introduces no repo-level advisory match'
+      : 'OK: no repo-level advisory matches an installed direct dependency',
+  );
   process.exit(0);
 }
 

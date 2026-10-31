@@ -494,6 +494,83 @@ secrets:
 EOF
 assert_case 0 "OK-.trivyignore.yaml-secret-entry" "$dir"
 
+# -------------------------------------------------------------
+# --base-dir (#668): an expired entry unchanged from the base is main's
+# state, owned by the nightlies, and passes the PR gate. One the change
+# adds or edits is held to the full contract. Without the flag (the
+# nightlies) every expired entry fails.
+# -------------------------------------------------------------
+assert_base_case() {
+  local expected="$1" label="$2" dir="$3"
+  local actual
+  ALLOWLIST_REPO_ROOT="$dir" bash "$CHECK_SCRIPT" --base-dir "$dir/base" >/dev/null 2>&1
+  actual=$?
+  if [[ "$actual" == "$expected" ]]; then
+    pass=$((pass + 1))
+    echo "  PASS — $label (exit $actual)"
+  else
+    fail=$((fail + 1))
+    failures+=("$label: expected $expected, got $actual")
+    echo "  FAIL — $label (expected $expected, got $actual)"
+  fi
+}
+
+osv_expired() {
+  cat <<EOF
+[[IgnoredVulns]]
+id = "GHSA-xxxx-xxxx-xxxx"
+ignoreUntil = ${1:-$YESTERDAY}
+reason = "@vlzware: dead code"
+EOF
+}
+
+dir="$(mktmp)"
+mkdir -p "$dir/base"
+osv_expired > "$dir/osv-scanner.toml"
+osv_expired > "$dir/base/osv-scanner.toml"
+assert_base_case 0 "OK-base-osv-expired-unchanged" "$dir"
+assert_case 1 "FAIL-osv-expired-unchanged-without-base" "$dir"
+
+dir="$(mktmp)"
+mkdir -p "$dir/base"
+osv_expired > "$dir/osv-scanner.toml"
+assert_base_case 1 "FAIL-base-osv-expired-added" "$dir"
+
+dir="$(mktmp)"
+mkdir -p "$dir/base"
+osv_expired > "$dir/osv-scanner.toml"
+osv_expired "$(date -u -d "$TODAY -2 days" +%F)" > "$dir/base/osv-scanner.toml"
+assert_base_case 1 "FAIL-base-osv-expired-edited" "$dir"
+
+dir="$(mktmp)"
+mkdir -p "$dir/base"
+trivy_entry | sed "s/expired_at: .*/expired_at: $YESTERDAY/" > "$dir/.trivyignore.yaml"
+cp "$dir/.trivyignore.yaml" "$dir/base/.trivyignore.yaml"
+grype_entry | sed "s/expires: .*/expires: $YESTERDAY/" > "$dir/.grype.yaml"
+cp "$dir/.grype.yaml" "$dir/base/.grype.yaml"
+assert_base_case 0 "OK-base-yaml-expired-unchanged" "$dir"
+
+dir="$(mktmp)"
+mkdir -p "$dir/base"
+trivy_entry | sed "s/expired_at: .*/expired_at: $YESTERDAY/" > "$dir/.trivyignore.yaml"
+trivy_entry | sed -e "s/expired_at: .*/expired_at: $YESTERDAY/" -e "s#usr/local/bin/gosu#usr/bin/caddy#" > "$dir/base/.trivyignore.yaml"
+assert_base_case 1 "FAIL-base-trivy-expired-rescoped" "$dir"
+
+dir="$(mktmp)"
+mkdir -p "$dir/base"
+osv_expired > "$dir/osv-scanner.toml"
+printf 'not = [valid\n' > "$dir/base/osv-scanner.toml"
+assert_base_case 1 "FAIL-base-unreadable-base-copy" "$dir"
+
+dir="$(mktmp)"
+ALLOWLIST_REPO_ROOT="$dir" bash "$CHECK_SCRIPT" --base-dir >/dev/null 2>&1
+rc=$?
+if [[ "$rc" == 2 ]]; then
+  pass=$((pass + 1)); echo "  PASS — --base-dir without a directory (exit 2)"
+else
+  fail=$((fail + 1)); failures+=("--base-dir without a directory: expected 2, got $rc")
+fi
+
 echo ""
 echo "-------------------------------------------------------------"
 echo "  Passed: $pass"

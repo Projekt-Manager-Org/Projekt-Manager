@@ -183,8 +183,29 @@ record() {
   fi
 }
 
+# A staged base lockfile ($1/base/package-lock.json) switches the check to
+# judge against it, as `lint` does on every event that has a base.
 run_check() {
-  PROJECT_ROOT="$1" ADVISORY_FIXTURE_DIR="$1/fixtures" node "$CHECK" 2>&1
+  local args=()
+  [[ -f "$1/base/package-lock.json" ]] && args=(--base-lockfile "$1/base/package-lock.json")
+  PROJECT_ROOT="$1" ADVISORY_FIXTURE_DIR="$1/fixtures" node "$CHECK" "${args[@]}" 2>&1
+}
+
+# Stage the base's lockfile: name/version pairs as `node_modules/<name>`
+# entries, the only part of it the check reads.
+base_lock() {
+  local dir="$1"
+  shift
+  mkdir -p "$dir/base"
+  node -e '
+    const fs = require("fs");
+    const [file, ...pairs] = process.argv.slice(1);
+    const packages = { "": { name: "fixture" } };
+    for (let i = 0; i < pairs.length; i += 2) {
+      packages[`node_modules/${pairs[i]}`] = { version: pairs[i + 1] };
+    }
+    fs.writeFileSync(file, JSON.stringify({ lockfileVersion: 3, packages }));
+  ' "$dir/base/package-lock.json" "$@"
 }
 
 assert_case() {
@@ -463,13 +484,54 @@ assert_case 2 "non-list listing body" "$d"
 echo "Case: matching advisory is allowlisted"
 d="$(stage)"
 write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+allow_entry() {
+  printf '[[IgnoredVulns]]\nid = "GHSA-gpj5-g38j-94v9"\n%sreason = "@vlzware: fixture entry"\n' "$1"
+}
+allow_entry "ignoreUntil = $(date -u -d '+30 days' +%F)  # trailing comment"$'\n' >"$d/osv-scanner.toml"
+assert_case 0 "allowlisted" "$d"
+
+echo "Case: allowlist entry valid through today"
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+allow_entry "ignoreUntil = $(date -u +%F)"$'\n' >"$d/osv-scanner.toml"
+assert_case 0 "allowlisted until today" "$d"
+
+echo "Case: allowlist entry has expired"
+# Honoured here, not only by the schema check: in `lint` that check lets an
+# expired entry unchanged from the base through (#668), and it must still
+# not suppress a finding.
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+allow_entry "ignoreUntil = $(date -u -d '-1 day' +%F)"$'\n' >"$d/osv-scanner.toml"
+assert_case 1 "expired allowlist entry" "$d"
+
+echo "Case: allowlist entry without ignoreUntil"
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+allow_entry "" >"$d/osv-scanner.toml"
+assert_case 1 "allowlist entry without a date" "$d"
+
+echo "Case: allowlist entry smuggled inside a multi-line string"
+# A line scan read this as a second entry, valid until 2099, that the schema
+# check (tomllib) never saw. One parser for both: it is only a reason string.
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
 cat >"$d/osv-scanner.toml" <<'TOML'
 [[IgnoredVulns]]
+id = "GHSA-real-real-real"
+ignoreUntil = 2099-01-01
+reason = """@vlzware: looks innocent
+[[IgnoredVulns]]
 id = "GHSA-gpj5-g38j-94v9"
-ignoreUntil = 2026-11-26
-reason = "@vlzware: fixture entry"
+ignoreUntil = 2099-01-01
+"""
 TOML
-assert_case 0 "allowlisted" "$d"
+assert_case 1 "entry inside a multi-line string" "$d"
+
+echo "Case: allowlist is not valid TOML"
+d="$(stage)"
+printf 'not = [valid\n' >"$d/osv-scanner.toml"
+assert_case 2 "unparseable allowlist" "$d"
 
 echo "Case: allowlist id inside a comment does not count"
 # The allowlist scan is deliberately dumb; it must at least not honour a
@@ -501,6 +563,76 @@ echo "Case: a direct dep is not installed"
 d="$(stage)"
 rm -rf "$d/node_modules/drizzle-orm"
 assert_case 2 "dependency not installed" "$d"
+
+# --- judged against a base (#668) ---------------------------------------------
+#
+# With --base-lockfile the check fails only on findings the change
+# introduces. A finding that the same advisory, judged on the same ranges,
+# also makes against the base's version is listed and passes: main already
+# ships it, and the nightly `Security (scheduled)` run owns it.
+
+echo "Case: base — advisory already matches the base version"
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+base_lock "$d" drizzle-orm 0.45.2
+assert_output 0 "base — pre-existing finding" "$d" "already on the base"
+
+echo "Case: base — the change bumps into the vulnerable range"
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '>= 0.45.0, <= 0.45.2' '0.45.3')"
+base_lock "$d" drizzle-orm 0.44.0
+assert_output 1 "base — introduced by a bump" "$d" "GHSA-gpj5-g38j-94v9"
+
+echo "Case: base — the change adds the dependency"
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+base_lock "$d" other 1.0.0
+assert_output 1 "base — introduced by a new dep" "$d" "GHSA-gpj5-g38j-94v9"
+
+echo "Case: base — the global record judges the base version too"
+# Repo-level range matches both versions; the curated global range matches
+# head only. The base was not vulnerable, so the change introduces it. Judging
+# the base on the coarser repo-level range would call it pre-existing: a
+# false negative.
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+write_global_answer "$d" '[{
+  "ghsa_id": "GHSA-gpj5-g38j-94v9",
+  "github_reviewed_at": "2026-04-08T00:14:58Z",
+  "vulnerabilities": [
+    {
+      "package": { "ecosystem": "npm", "name": "drizzle-orm" },
+      "vulnerable_version_range": ">= 0.45.0, < 0.46.0",
+      "first_patched_version": "0.46.0"
+    }
+  ]
+}]'
+base_lock "$d" drizzle-orm 0.44.0
+assert_output 1 "base — global range decides the base" "$d" "GHSA-gpj5-g38j-94v9"
+
+echo "Case: base — lockfile unreadable"
+d="$(stage)"
+mkdir -p "$d/base"
+printf 'not json\n' >"$d/base/package-lock.json"
+assert_case 2 "base — unreadable lockfile" "$d"
+
+echo "Case: base — lockfile has no packages map"
+# lockfileVersion 1 has no `packages`; reading it as "dep absent" would call
+# every finding introduced. The base cannot be read, so the check fails.
+d="$(stage)"
+mkdir -p "$d/base"
+printf '{ "lockfileVersion": 1, "dependencies": {} }\n' >"$d/base/package-lock.json"
+assert_case 2 "base — no packages map" "$d"
+
+echo "Case: base — flag without a path"
+d="$(stage)"
+out="$(PROJECT_ROOT="$d" ADVISORY_FIXTURE_DIR="$d/fixtures" node "$CHECK" --base-lockfile 2>&1)"
+rc=$?
+if [[ "$rc" == 2 ]]; then
+  record yes "base — flag without a path (exit 2)" ""
+else
+  record no "base — flag without a path" "expected exit 2, got $rc: $out"
+fi
 
 echo ""
 echo "passed: $pass   failed: $fail"

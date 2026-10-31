@@ -172,13 +172,35 @@ jobs:
           sudo mv "/tmp/${asset}/rg" /usr/local/bin/rg
           rg --version
 
+      # The base this job's vulnerability gates judge the change against
+      # (#668, ADR-0027 § 2026-10-31): they fail on what the change
+      # introduces, not on what `main` already ships — that blocks no merge
+      # and no `promote`, and turns the nightlies red instead. Base per
+      # event and fail-closed rules: the script's header.
+      - name: Gate base
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          OUT_DIR: ${{ runner.temp }}/gate-base
+        run: bash scripts/ci/gate-base.sh >> "$GITHUB_OUTPUT"
+
+      - name: Gate base — self-test
+        run: bash scripts/__tests__/gate-base.test.sh
+
       # Allowlist schema gate (ADR-0027 §Negative; runbook §Allowlist).
       # Scanners enforce only the advisory ID; owner/reason/expiry are
       # convention. This gate makes the convention machine-enforced so a
       # sloppy entry cannot land. ~100ms; runs before OSV-Scanner so the
-      # cheap check fails fast.
+      # cheap check fails fast. Against the base: an expired entry the
+      # change did not touch is a warning here; the nightlies fail on it.
       - name: Check allowlist schema (osv-scanner.toml, .trivyignore.yaml, .grype.yaml)
-        run: bash scripts/check-allowlist-schema.sh
+        env:
+          BASE_DIR: ${{ steps.base.outputs.dir }}
+        run: bash scripts/check-allowlist-schema.sh --base-dir "$BASE_DIR"
 
       - name: Check allowlist schema — self-test
         run: bash scripts/__tests__/check-allowlist-schema.test.sh
@@ -230,8 +252,8 @@ jobs:
       #
       # Scans the lockfile only (PR-time gate). Full-tree scheduled scan
       # lives in .github/workflows/security-scheduled.yml.
-      # Allowlist: osv-scanner.toml (empty baseline; entries require owner +
-      # reason + ignoreUntil ≤90d per ADR-0027 §Negative).
+      # Allowlist: osv-scanner.toml (entries require owner + reason +
+      # ignoreUntil ≤90d per ADR-0027 §Negative).
       - name: Install OSV-Scanner CLI
         run: |
           set -euo pipefail
@@ -249,19 +271,21 @@ jobs:
           sudo mv /tmp/osv-scanner /usr/local/bin/osv-scanner
           osv-scanner --version
 
-      - name: OSV-Scanner (lockfile, fail on any vuln)
-        # `scan source` is the subcommand for source-tree scans (lockfiles,
-        # SBOMs, manifests). --lockfile pins the input to package-lock.json.
-        # --config points at the repo allowlist. Default exit code on
-        # vuln-found is non-zero, which fails the step and blocks the PR.
-        #
+      - name: OSV-Scanner (lockfile, fail on introduced vulns)
         # NOTE on severity: osv-scanner v2.3.8 has no --severity flag. The
-        # gate fails on ANY vuln OSV.dev knows about, regardless of CVSS.
-        # This is stricter than ADR-0027's original "HIGH/CRITICAL" wording
-        # and aligns with the project's "refuse-or-block, never downgrade"
-        # principle (CLAUDE.md). False positives go through
-        # osv-scanner.toml with the documented owner/reason/expiry schema.
-        run: osv-scanner scan source --lockfile=./package-lock.json --config=./osv-scanner.toml
+        # gate fails on ANY vuln OSV.dev knows about that the change
+        # introduces, regardless of CVSS. This is stricter than ADR-0027's
+        # original "HIGH/CRITICAL" wording and aligns with the project's
+        # "refuse-or-block, never downgrade" principle (CLAUDE.md). False
+        # positives go through osv-scanner.toml with the documented
+        # owner/reason/expiry schema. The scans, the comparison and why not
+        # osv-reporter: the script's header.
+        env:
+          BASE_DIR: ${{ steps.base.outputs.dir }}
+        run: node scripts/check-osv-introduced.mjs --base-lockfile "$BASE_DIR/package-lock.json"
+
+      - name: OSV-Scanner gate — self-test
+        run: bash scripts/__tests__/check-osv-introduced.test.sh
 
       # Repo-level advisory layer (ADR-0027 § 2026-08-28 amendment).
       # OSV-Scanner and npm audit both key on (ecosystem, name, version),
@@ -281,10 +305,12 @@ jobs:
       # repo-level-only advisories. See the script's GLOBAL PROBES header.
       #
       # Fails closed — a network error exits 2 rather than reporting clean.
+      # Judged against the base like OSV above.
       - name: Repo-level advisory check
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/check-repo-advisories.mjs
+          BASE_DIR: ${{ steps.base.outputs.dir }}
+        run: node scripts/check-repo-advisories.mjs --base-lockfile "$BASE_DIR/package-lock.json"
 
       - name: Repo-level advisory check — self-test
         run: bash scripts/__tests__/check-repo-advisories.test.sh
