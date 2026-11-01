@@ -34,6 +34,9 @@ jobs:
       - name: Open or extend the Deploy pending issue
         env:
           GH_TOKEN: ${{ github.token }}
+          # The whole push, not only its head: the merge queue lands a
+          # batch of PRs at once.
+          BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
           # The operator; hardcoded for the same reason as notify.yml's
           # MAINTAINER (assigning the org 422s).
