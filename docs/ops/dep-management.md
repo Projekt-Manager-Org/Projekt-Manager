@@ -199,15 +199,15 @@ rm package-lock.json && npm install …         # re-resolves the whole tree    
 
 The second shape is what `lockFileMaintenance` does, so the recovery differs by which branch is broken:
 
-| Broken branch         | Cause                                                           | Do                                                                                                                                                                                                                                                 |
-| --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Vulnerability         | The PR's own range floor sits inside the window                 | **Verify the release** (below), then `npm install <pkg>@<patched> --min-release-age=0` and commit the lockfile onto the branch. `<patched>` is the advisory's version — the newest in range may be a later same-day release it does not vouch for. |
-| `lockFileMaintenance` | A same-day bump landed on `main`; the rebase inherits its floor | **Wait it out.** This path discards the lockfile, so the bypass would re-resolve _every_ transitive at zero cooldown — the exposure the setting exists to prevent. Never do it here.                                                               |
+| Broken branch         | Cause                                                           | Do                                                                                                                                                                                                                                                             |
+| --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vulnerability         | The PR's own range floor sits inside the window                 | **Verify the release** (below), then `npm install <pkg>@<patched> --min-release-age-exclude=<pkg>` and commit the lockfile onto the branch. `<patched>` is the advisory's version — the newest in range may be a later same-day release it does not vouch for. |
+| `lockFileMaintenance` | A same-day bump landed on `main`; the rebase inherits its floor | **Wait it out.** Never `--min-release-age=0` here: this path discards the lockfile, so it would re-resolve _every_ transitive at zero cooldown — the exposure the setting exists to prevent.                                                                   |
 
-**Before bypassing** — otherwise wait. The bypass is where a malicious "fix" would aim.
+**Before bypassing** — otherwise wait. The bypass is where a malicious "fix" would aim. `--min-release-age-exclude` exempts only the names it lists; everything else keeps the cutoff. If the ETARGET moves to a dependency of `<pkg>@<patched>` (monorepo releases: `@aws-sdk/*` needs `@smithy/*`), exclude that too and verify it like `<pkg>`. The flag repeats and takes globs. It needs the npm bundled with `.nvmrc`'s Node; older npm warns `Unknown cli config` and still ETARGETs.
 
-1. **Only `<pkg>` moved** in `git diff package-lock.json` — a new transitive enters at zero cooldown.
-2. **The tarball is upstream's build**: npm provenance naming the upstream repo at the release-tag commit, or `npm pack <pkg>@<patched> --min-release-age=0` matches the tag checkout (`diff -r`, no `Only in package/`; unbuilt packages only).
+1. **Only excluded names are younger than the cutoff** in `git diff package-lock.json`. `security` PRs waive the release-age gate, so this check is the one left.
+2. **Each excluded tarball is upstream's build**: npm provenance naming the upstream repo at the release-tag commit, or `npm pack <name>@<version> --min-release-age-exclude=<name>` matches the tag checkout (`diff -r`, no `Only in package/`; unbuilt packages only).
 
 The window clears 3 days after the blocking version's publish, not 3 days after the failure.
 
