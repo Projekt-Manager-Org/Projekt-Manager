@@ -6,7 +6,7 @@ For lists of category-specific conventions (spec, docs, code, tests, ARCHITECTUR
 
 ## Runtime Requirements
 
-- Node.js (pinned in `.nvmrc`) — use `nvm install`.
+- Node.js (pinned in `.nvmrc`, enforced by `devEngines`) — use `nvm install`; after a bump see [local-dev.md § Common pitfalls](docs/ops/local-dev.md#common-pitfalls).
 - npm (use the version bundled with that Node release — do not upgrade independently)
 - `age` / `age-keygen` — `sudo apt install age`. Required from the first `npm run dev`, by integration/Playwright tests, and by every operator workflow.
 - `python3-boto3` — `sudo apt install python3-boto3`. Required by the integration suite and `scripts/sync-vps-to-dev.sh`.

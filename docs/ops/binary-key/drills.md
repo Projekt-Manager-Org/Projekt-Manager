@@ -14,7 +14,7 @@ A failed drill is a custody emergency — escalate per [recovery.md § Drill-fai
 
 The recovery tool runs on the operator workstation, read-only: no database, no VPS, nothing written to B2.
 
-**Prerequisites:** repo checkout with `npm ci` done, Node per `package.json` `engines`, `age` + `age-keygen` at `/usr/bin/`, and the read-only recovery key from the password manager ([object-storage-provisioning.md § Recovery key](../object-storage-provisioning.md#recovery-key-read-only)).
+**Prerequisites:** repo checkout with `npm ci` done, Node per `.nvmrc`, `age` + `age-keygen` at `/usr/bin/`, and the read-only recovery key from the password manager ([object-storage-provisioning.md § Recovery key](../object-storage-provisioning.md#recovery-key-read-only)).
 
 **One-time setup:** a dedicated drill customer and project in the app (e.g. the operating company as customer, project `Betrieb – Schlüsselprobe`). Samples never go under a real customer: each upload is visible to the project's members and leaves permanent audit entries in that customer's record.
 
