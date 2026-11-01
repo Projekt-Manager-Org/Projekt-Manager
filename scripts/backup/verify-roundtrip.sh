@@ -76,8 +76,8 @@ fi
 # (see the header). Without this check the first `docker run` below reaches
 # for a registry and reports "pull access denied", which reads as a
 # credentials problem rather than "you have not built the image yet". CI is
-# unaffected: the `docker` job pulls the backup image back from GHCR and
-# names it in the local store one step up.
+# unaffected: `build-scan-smoke` pulls the backup image back from GHCR and
+# names it in the local store before calling this.
 if ! docker image inspect "$BACKUP_IMAGE" >/dev/null 2>&1; then
   echo "ERROR: image '$BACKUP_IMAGE' is not in the local Docker image store." >&2
   echo "       This script builds nothing. Build it first — order matters," >&2

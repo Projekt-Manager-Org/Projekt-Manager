@@ -884,11 +884,12 @@ jobs:
           fi
 
   # ---------------------------------------------------------------
-  # The pre-merge image gate: build both images ONCE, scan both, boot the
-  # stack, run the Tier 1 round-trip, and push the validated bytes to
-  # GHCR by digest. Publishes nothing a name resolves to — `tag-images`,
-  # run by `publish` after every other gate, is what does that. See
-  # ADR-0011 §"Build once, promote on merge".
+  # The pre-merge image gate: build both images ONCE, push them to GHCR by
+  # digest, scan both, boot the stack and run the Tier 1 round-trip — all
+  # inside `build-scan-smoke`, which `promote`'s fallback runs too.
+  # Publishes nothing a name resolves to — `tag-images`, run by `publish`
+  # after every other gate, is what does that. See ADR-0011 §"Build once,
+  # promote on merge".
   #
   # Runs on EVERY pull_request. It used to be path-filtered, which made
   # it skip on any PR that did not touch `Dockerfile*` / compose /
@@ -1001,32 +1002,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
 
-      # Tier 1 round-trip against the real initdb / pg_dump / pg_restore
-      # (#301 scope C). This job is the only place those binaries exist:
-      # they ship in the backup image and on no runner, so the host suite
-      # can pin their argv but never execute them. Reads the backup image
-      # out of the local store, where the composite above named the
-      # manifest it pulled back from GHCR — so this exercises the
-      # published bytes, not a separate local build.
-      #
-      # Here rather than in `check`, and as a script rather than a vitest
-      # case, for the reasons in the script header — `check-shard` has no
-      # compose stack, and this needs the image the composite just built.
-      #
-      # No postgres/MinIO service containers and no start-minio call: the
-      # script owns its own on a private network with no published ports,
-      # which is what lets the identical command run on a dev machine.
-      # ~10s, entirely container-to-container.
-      # Bounded because every wait *inside* the script is (60s readiness,
-      # 30s bucket provisioning, SUBPROCESS_TIMEOUT_MS per binary) but the
-      # `docker run` calls themselves are not — a wedged daemon would
-      # otherwise burn the job's 360-minute default before reporting.
-      - name: Tier 1 round-trip (real Postgres binaries)
-        timeout-minutes: 10
-        env:
-          BACKUP_IMAGE: ${{ steps.tags.outputs.backup_repo }}:${{ steps.tags.outputs.sha_tag }}
-        run: bash scripts/backup/verify-roundtrip.sh
-
   # ---------------------------------------------------------------
   # Point `sha-<commit>` + `<branch-slug>` at the digests `docker`
   # pushed. On a PR that is the tip an operator can deploy; on
@@ -1104,9 +1079,13 @@ jobs:
   # `publish` is required there, so the pair exists before this push
   # fires. No rebuild, no rescan, no smoke.
   #
-  # One guard: both halves of `sha-<commit>` on GHCR. A commit no queue
-  # run named (a ruleset bypass) falls through to a full rebuild through
-  # the same composite `docker` runs.
+  # Two guards:
+  #   - Both halves of `sha-<commit>` on GHCR. A commit with no pair falls
+  #     through to a full rebuild through the same composite `docker`
+  #     runs. No queue run named it (a ruleset bypass), or retention
+  #     reaped it (`KEEP_MAIN`) and this is a re-run of an old push run.
+  #   - The commit is still the head of `main`. Otherwise `main` is left
+  #     alone, so a re-run of an older run cannot move it back (#691).
   #
   # See ADR-0011 §"Build once, promote on merge" and § Amendments
   # 2026-10-31, #355 and #683.
@@ -1162,7 +1141,7 @@ jobs:
               continue
             fi
             if grep -qiE 'manifest unknown|no such manifest' <<< "$err"; then
-              echo "::warning::${ref} not on GHCR (no queue run named this commit) — falling back to rebuild"
+              echo "::warning::${ref} not on GHCR (retention reaped it, or no queue run named this commit) — falling back to rebuild"
               echo "fallback=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -1171,29 +1150,12 @@ jobs:
           done
           echo "fallback=false" >> "$GITHUB_OUTPUT"
 
-      # Happy path: copy the pair onto `main`. Registry-side, no rebuild,
-      # no rescan, no smoke — the bytes are the ones `docker` validated in
-      # the queue. `sha_tag` is rewritten from itself, a no-op copy that
-      # keeps the composite to one shape.
-      - name: Promote — point main at the queue's images
-        if: steps.resolve.outputs.fallback == 'false'
-        uses: ./.github/actions/tag-images
-        with:
-          app_repo: ${{ steps.tags.outputs.app_repo }}
-          backup_repo: ${{ steps.tags.outputs.backup_repo }}
-          app_source: ${{ steps.tags.outputs.app_ref }}
-          backup_source: ${{ steps.tags.outputs.backup_ref }}
-          sha_tag: ${{ steps.tags.outputs.sha_tag }}
-          branch_slug_tag: ${{ steps.tags.outputs.branch_slug }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          github_actor: ${{ github.actor }}
-
       # Fallback path: no `sha-<commit>` pair. Runs the same composite
-      # `docker` runs, against the pushed commit — build, scan, smoke,
-      # and push by digest — then names the result. Cache scope is main's
-      # (cold relative to the PR branch's scope), so expect wall-clock
-      # comparable to a fresh main build.
-      - name: Fallback — build + scan + smoke + push by digest
+      # `docker` runs, against the pushed commit — build, push by digest,
+      # scan, smoke, Tier 1 round-trip — and the tag step below names the
+      # result. Cache scope is main's (cold relative to the PR branch's
+      # scope), so expect wall-clock comparable to a fresh main build.
+      - name: Fallback — build + push by digest + scan + smoke + round-trip
         if: steps.resolve.outputs.fallback == 'true'
         id: fallback_images
         uses: ./.github/actions/build-scan-smoke
@@ -1205,6 +1167,51 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
 
+      # `main` follows the head of `refs/heads/main`, never an older
+      # commit. A re-run of an older push run would otherwise find its own
+      # `sha-<old>` pair and point `main` back at it — and the nightly
+      # inventory scan reads `main` (#691). Right before the writes, so it
+      # sees the latest head the run can.
+      #
+      # A newer commit landing after this check is harmless: push runs are
+      # serialised by the concurrency group, so that commit's run is
+      # pending behind this one and moves `main` forward afterwards.
+      #
+      # A failed lookup fails the run: guessing "not head" hides an outage
+      # behind a notice, guessing "head" reopens the bug.
+      - name: Is this commit still main's head?
+        id: head
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          main_head=$(git ls-remote --exit-code origin refs/heads/main | cut -f1)
+          if [ "$main_head" = "$SHA" ]; then
+            echo "is_head=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::main is at ${main_head}, not ${SHA} — leaving the main tag alone"
+            echo "is_head=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Happy path: copy the pair onto `main`. Registry-side, no rebuild,
+      # no rescan, no smoke — the bytes are the ones `docker` validated in
+      # the queue. `sha_tag` is rewritten from itself, a no-op copy that
+      # keeps the composite to one shape. Not head: nothing to write, the
+      # pair already exists.
+      - name: Promote — point main at the queue's images
+        if: steps.resolve.outputs.fallback == 'false' && steps.head.outputs.is_head == 'true'
+        uses: ./.github/actions/tag-images
+        with:
+          app_repo: ${{ steps.tags.outputs.app_repo }}
+          backup_repo: ${{ steps.tags.outputs.backup_repo }}
+          app_source: ${{ steps.tags.outputs.app_ref }}
+          backup_source: ${{ steps.tags.outputs.backup_ref }}
+          sha_tag: ${{ steps.tags.outputs.sha_tag }}
+          branch_slug_tag: ${{ steps.tags.outputs.branch_slug }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_actor: ${{ github.actor }}
+
+      # Not head: `sha-<commit>` only, the commit's rollback target.
       - name: Fallback — tag the rebuilt digests
         if: steps.resolve.outputs.fallback == 'true'
         uses: ./.github/actions/tag-images
@@ -1214,6 +1221,6 @@ jobs:
           app_source: ${{ steps.tags.outputs.app_repo }}@${{ steps.fallback_images.outputs.app_digest }}
           backup_source: ${{ steps.tags.outputs.backup_repo }}@${{ steps.fallback_images.outputs.backup_digest }}
           sha_tag: ${{ steps.tags.outputs.sha_tag }}
-          branch_slug_tag: ${{ steps.tags.outputs.branch_slug }}
+          branch_slug_tag: ${{ steps.head.outputs.is_head == 'true' && steps.tags.outputs.branch_slug || '' }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}

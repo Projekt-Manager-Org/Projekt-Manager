@@ -41,7 +41,7 @@ Build the production `app` image in GitHub Actions, push to GitHub Container Reg
 
 Three composite actions in `.github/actions/`, split at the **naming** boundary rather than the push boundary. The distinction is the whole design: bytes reach GHCR as an untagged digest, and a separate action — gated on every other check — is what gives them a name.
 
-- **`build-scan-smoke`** — builds each image **once**, pushing it straight to GHCR with `push-by-digest=true`, then pulls the manifest back to Trivy-scan it, boot the stack and run the smoke against those exact bytes. A digest-only manifest carries no tag: nothing can `docker pull` it by name, `scripts/deploy.sh` cannot deploy it, and `promote` cannot find it. Publishing, in the sense that matters, has not happened — which is what lets the push come first and makes "the scanned bytes are the published bytes" an identity rather than an argument about two builds.
+- **`build-scan-smoke`** — builds each image **once**, pushing it straight to GHCR with `push-by-digest=true`, then pulls the manifest back to Trivy-scan it, boot the stack, run the smoke and the Tier 1 backup round-trip against those exact bytes. Every gate on the bytes lives here, so `docker` and `promote`'s fallback cannot drift apart (#691: the round-trip once sat in `docker` only). A digest-only manifest carries no tag: nothing can `docker pull` it by name, `scripts/deploy.sh` cannot deploy it, and `promote` cannot find it. Publishing, in the sense that matters, has not happened — which is what lets the push come first and makes "the scanned bytes are the published bytes" an identity rather than an argument about two builds.
 - **`trivy-image`** — the image-scan policy (severity floor, unfixed handling, allowlist, cache location) stated once instead of once per call site.
 - **`tag-images`** — points `sha-<commit>` and, when given, `<branch-slug>` at an existing GHCR digest via `docker buildx imagetools create`. Registry-side manifest copy: no pull, no build, no daemon. Both immutable `sha-` tags are written before either moving `<branch-slug>` tag, so an interrupted run leaves at worst a stale slug the next run overwrites.
 
@@ -49,7 +49,7 @@ Callers in `.github/workflows/ci.yml`:
 
 | Job       | Event                                                                                        | Runs                                                                               |
 | --------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `docker`  | every PR, `merge_group`, `workflow_dispatch`                                                 | computes the tag triple → `build-scan-smoke` → Tier 1 round-trip                   |
+| `docker`  | every PR, `merge_group`, `workflow_dispatch`                                                 | computes the tag triple → `build-scan-smoke`                                       |
 | `publish` | PR (non-fork), `merge_group`, `workflow_dispatch` off `main`, `needs: [check, lint, docker]` | `tag-images` → `sha-<commit>` + `<branch-slug>` (no slug on `merge_group`)         |
 | `promote` | `push: main`                                                                                 | `tag-images` → `main` (see next section); fallback rebuilds then names the digests |
 
@@ -74,27 +74,26 @@ Industry pattern (Vercel, Netlify, Cloudflare Pages, AWS CodePipeline, Heroku): 
 Flow:
 
 ```
-PR ──► docker    build ─► scan ─► smoke ─► push by digest   (required check, every PR)
-                                           └─ untagged: unpullable, undeployable
-       publish   tag sha-<pr-tip> + <branch-slug>           (for deploying a branch)
+PR ──► docker    build ─► push by digest ─► scan ─► smoke ─► round-trip   (required check, every PR)
+                          └─ untagged: unpullable, undeployable
+       publish   tag sha-<pr-tip> + <branch-slug>                         (for deploying a branch)
 
 queue ─► docker  same, on commit C = main + queued PRs
-         publish tag sha-<C>                                (required: C lands only after)
+         publish tag sha-<C>                                              (required: C lands only after)
 
-land ──► promote sha-<C> pair ✓ ──► imagetools create ──► main                  ~30s
-                              ✗ ──► build ─► scan ─► smoke ─► push ─► tag    ~5 min
+land ──► promote sha-<C> pair ✓ ──► imagetools create ──► main                          ~30s
+                              ✗ ──► build ─► push ─► scan ─► smoke ─► round-trip ─► tag   ~5 min
+                 main moves only while C is still the head of refs/heads/main
 ```
 
-1. PR opens. `docker` builds both images once, scans both, smokes them, and pushes them by digest. `publish` waits on `check`, `lint` **and** `docker`, then names those exact digests `sha-<pr-tip>` + `<branch-slug>`. No _name_ resolves to bytes that have not passed every gate — and because the names are applied to a digest rather than to the output of a second build, the named bytes are the scanned bytes by identity rather than by assumption. These images are for deploying a branch; nothing promotes them.
+1. PR opens. `docker` builds both images once, pushes them by digest, scans both, smokes them and runs the Tier 1 round-trip. `publish` waits on `check`, `lint` **and** `docker`, then names those exact digests `sha-<pr-tip>` + `<branch-slug>`. No _name_ resolves to bytes that have not passed every gate — and because the names are applied to a digest rather than to the output of a second build, the named bytes are the scanned bytes by identity rather than by assumption. These images are for deploying a branch; nothing promotes them.
 2. The queue builds commit C (`main` + the PRs ahead + this one) and runs the same jobs on it. `publish` names C's digests `sha-<C>`. The queue lands C only once that is green, by fast-forwarding `main` to C — the exact commit the run tested.
-3. `promote` fires on `push: main` with one guard: `docker manifest inspect …:sha-<C>` must succeed for both packages. Happy path: `docker buildx imagetools create` points `main` at that pair. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke.
-4. Fallback: a commit no queue run named (a ruleset bypass) has no `sha-<C>` → `build-scan-smoke` (which ends in the digest push) then `tag-images`, against the pushed commit. ~4 min on main's (cold-ish) cache scope, with a `::warning::` in the run log. Any registry error other than "manifest unknown" fails the run instead: a rebuild would overwrite the validated pair.
+3. `promote` fires on `push: main`. First guard: `docker manifest inspect …:sha-<C>` must succeed for both packages. Happy path: `docker buildx imagetools create` points `main` at that pair. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke. Second guard, right before the write: `git ls-remote origin refs/heads/main` must still equal C. Otherwise a newer commit has landed, and `main` stays where it is with a `::notice::` — without it, a re-run of an older push run points `main` back at its own pair (#691). A newer commit landing after the check is harmless: push runs share one concurrency group, so its run is pending behind this one and moves `main` forward. A failed lookup fails the run.
+4. Fallback: no `sha-<C>` (a commit no queue run named — a ruleset bypass — or a re-run of a push run whose pair retention reaped) → `build-scan-smoke` (build, digest push, scan, smoke, Tier 1 round-trip) then `tag-images`, against the pushed commit. It names `sha-<C>` always and `main` only under step 3's head check. ~4 min on main's (cold-ish) cache scope, with a `::warning::` in the run log. Any registry error other than "manifest unknown" fails the run instead: a rebuild would overwrite the validated pair.
 
 Promotion is exact-artifact only. `GIT_SHA` is baked into the client bundle for the footer version chip, so every commit yields distinct image bytes — there is no "close enough" ancestor to promote, and the exact-SHA lookup is the only sound key.
 
 **Fork PRs do not publish.** `publish` carries a job-level `if:` requiring `head.repo.full_name == github.repository`. **That condition, not token scope, is what skips the job.** GitHub never skips a job over permissions — it hands a fork PR a read-only `GITHUB_TOKEN` regardless of the job's `permissions:` block ("The `GITHUB_TOKEN` has read-only permissions in pull requests from forked repositories") and lets the run fail. Delete the `if:` as redundant and every fork PR gets a red `publish` dying on `denied: permission_denied` at push time. `docker` still runs, and fails at its digest push, so a fork PR's merge is blocked at the image gate. Deliberate, not a gap.
-
-**Publishing follows validation, never precedes it.** `build-scan-smoke` aliases the locally-built images to their GHCR refs (`docker tag`) before `compose up`. No compose file sets `pull_policy`, so compose defaults to `missing` and resolves both services from the local store — the smoke exercises the real compose config against the exact bytes just scanned, with nothing pushed. The digest push runs only after the smoke passes, and even then produces nothing pullable by name. The earlier ordering pushed a _tagged_ image first so the smoke could exercise the `compose pull` path; that bought a registry round-trip at the price of publishing an unvalidated image, and a smoke failure left a pullable `sha-<commit>` behind (#355 §1). The round-trip is exercised by the next `scripts/deploy.sh` run regardless.
 
 Trade-offs accepted:
 
