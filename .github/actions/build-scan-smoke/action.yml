@@ -1,9 +1,10 @@
-name: Build, push by digest, scan, and smoke
+name: Build, push by digest, scan, smoke, and round-trip
 description: >
   Builds the app + backup images ONCE each, pushing each straight to GHCR
-  by digest, then pulls the published manifests back and scans and smokes
-  those exact bytes. What Trivy scans and what the stack boots IS what was
-  published — an identity, not an argument about cache equivalence.
+  by digest, then pulls the published manifests back and scans, smokes and
+  backup-round-trips those exact bytes. What Trivy scans and what the stack
+  boots IS what was published — an identity, not an argument about cache
+  equivalence.
 
   A digest-only manifest carries no tag, so nothing can pull, deploy or
   promote it: `scripts/deploy.sh` cannot name it and `promote` cannot
@@ -13,7 +14,10 @@ description: >
   `lint` and the smoke without weakening the invariant.
 
   Called from the `docker` job (every PR) and from `promote`'s fallback.
-  Both hold `packages: write`; there is no non-pushing caller.
+  Both hold `packages: write`; there is no non-pushing caller. Every gate
+  on the image bytes lives here, so the two callers cannot drift apart —
+  the fallback once named backup bytes that never ran the round-trip,
+  because that step sat in `docker` only (#691).
 
 inputs:
   app_repo:
@@ -123,8 +127,8 @@ runs:
     #     compose defaults to `missing` and resolves them from the local
     #     store — the smoke exercises the real compose config against the
     #     bytes that are on GHCR, while no name resolves to them there.
-    #   - the `docker` job's Tier 1 round-trip runs the backup image out
-    #     of the same store.
+    #   - the Tier 1 round-trip at the end of this action runs the backup
+    #     image out of the same store.
     #
     # A local tag is not a registry tag: nothing outside this runner can
     # see it, so the naming boundary is intact.
@@ -503,3 +507,26 @@ runs:
         fi
         echo "  drill-key tmpfs path is reachable — smoke OK"
         echo "::endgroup::"
+
+    # Tier 1 round-trip against the real initdb / pg_dump / pg_restore
+    # (#301 scope C). These binaries ship in the backup image and on no
+    # runner, so the host suite can pin their argv but never execute them.
+    # Reads the backup image out of the local store, where the pull-back
+    # above named it — so this exercises the published bytes, not a
+    # separate local build. Why a script and not a vitest case: its header.
+    #
+    # It owns its own Postgres and MinIO on a private network with no
+    # published ports, so it needs nothing from the smoke, whose teardown
+    # has already run. ~10s, entirely container-to-container.
+    #
+    # Bounded because every wait *inside* the script is (60s readiness,
+    # 30s bucket provisioning, SUBPROCESS_TIMEOUT_MS per binary) but the
+    # `docker run` calls themselves are not. Composite steps take no
+    # `timeout-minutes`, hence `timeout`. `-k`: a wedged daemon can make
+    # the script ignore SIGTERM's cleanup too, so escalate to SIGKILL. The
+    # callers' 30-min job bound still holds above it.
+    - name: Tier 1 round-trip (real Postgres binaries)
+      shell: bash
+      env:
+        BACKUP_IMAGE: ${{ inputs.backup_repo }}:${{ inputs.sha_tag }}
+      run: timeout -k 30s 10m bash scripts/backup/verify-roundtrip.sh

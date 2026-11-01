@@ -74,7 +74,8 @@ Four consequences that change how the status row reads:
 `scripts/backup/verify-roundtrip.sh` runs one full cycle against the real
 `initdb` / `pg_dump` / `pg_restore` — the binaries that ship in the backup
 image and nowhere else, which is why this is not part of `npm run test`. CI
-runs it in the `docker` job; locally it needs a prebuilt image:
+runs it in the `build-scan-smoke` action, on every image it names; locally it
+needs a prebuilt image:
 
 ```bash
 docker compose build app && docker compose --profile backup build backup

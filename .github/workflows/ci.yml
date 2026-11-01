@@ -884,11 +884,12 @@ jobs:
           fi
 
   # ---------------------------------------------------------------
-  # The pre-merge image gate: build both images ONCE, scan both, boot the
-  # stack, run the Tier 1 round-trip, and push the validated bytes to
-  # GHCR by digest. Publishes nothing a name resolves to — `tag-images`,
-  # run by `publish` after every other gate, is what does that. See
-  # ADR-0011 §"Build once, promote on merge".
+  # The pre-merge image gate: build both images ONCE, push them to GHCR by
+  # digest, scan both, boot the stack and run the Tier 1 round-trip — all
+  # inside `build-scan-smoke`, which `promote`'s fallback runs too.
+  # Publishes nothing a name resolves to — `tag-images`, run by `publish`
+  # after every other gate, is what does that. See ADR-0011 §"Build once,
+  # promote on merge".
   #
   # Runs on EVERY pull_request. It used to be path-filtered, which made
   # it skip on any PR that did not touch `Dockerfile*` / compose /
@@ -1000,32 +1001,6 @@ jobs:
           git_sha: ${{ steps.tags.outputs.git_sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
-
-      # Tier 1 round-trip against the real initdb / pg_dump / pg_restore
-      # (#301 scope C). This job is the only place those binaries exist:
-      # they ship in the backup image and on no runner, so the host suite
-      # can pin their argv but never execute them. Reads the backup image
-      # out of the local store, where the composite above named the
-      # manifest it pulled back from GHCR — so this exercises the
-      # published bytes, not a separate local build.
-      #
-      # Here rather than in `check`, and as a script rather than a vitest
-      # case, for the reasons in the script header — `check-shard` has no
-      # compose stack, and this needs the image the composite just built.
-      #
-      # No postgres/MinIO service containers and no start-minio call: the
-      # script owns its own on a private network with no published ports,
-      # which is what lets the identical command run on a dev machine.
-      # ~10s, entirely container-to-container.
-      # Bounded because every wait *inside* the script is (60s readiness,
-      # 30s bucket provisioning, SUBPROCESS_TIMEOUT_MS per binary) but the
-      # `docker run` calls themselves are not — a wedged daemon would
-      # otherwise burn the job's 360-minute default before reporting.
-      - name: Tier 1 round-trip (real Postgres binaries)
-        timeout-minutes: 10
-        env:
-          BACKUP_IMAGE: ${{ steps.tags.outputs.backup_repo }}:${{ steps.tags.outputs.sha_tag }}
-        run: bash scripts/backup/verify-roundtrip.sh
 
   # ---------------------------------------------------------------
   # Point `sha-<commit>` + `<branch-slug>` at the digests `docker`
@@ -1189,11 +1164,11 @@ jobs:
           github_actor: ${{ github.actor }}
 
       # Fallback path: no `sha-<commit>` pair. Runs the same composite
-      # `docker` runs, against the pushed commit — build, scan, smoke,
-      # and push by digest — then names the result. Cache scope is main's
-      # (cold relative to the PR branch's scope), so expect wall-clock
-      # comparable to a fresh main build.
-      - name: Fallback — build + scan + smoke + push by digest
+      # `docker` runs, against the pushed commit — build, push by digest,
+      # scan, smoke, Tier 1 round-trip — and the tag step below names the
+      # result. Cache scope is main's (cold relative to the PR branch's
+      # scope), so expect wall-clock comparable to a fresh main build.
+      - name: Fallback — build + push by digest + scan + smoke + round-trip
         if: steps.resolve.outputs.fallback == 'true'
         id: fallback_images
         uses: ./.github/actions/build-scan-smoke
