@@ -385,7 +385,7 @@ flowchart LR
 
 - **Build once, promote on merge** ([ADR-0011](docs/adr/0011-build-images-in-ci-distribute-via-ghcr.md)): the scanned and smoked image is the deployed one; later stages only re-tag.
 - **Deploy is manual and pull-based** ([ADR-0012](docs/adr/0012-manual-pull-based-deploy-over-wireguard.md), [manual-deploy.md](docs/ops/manual-deploy.md)).
-- **Outside the merge gate:** `e2e.yml` (Playwright, nightly — a green PR does not imply green E2E), `security-scheduled.yml` (nightly OSV sweep), `inventory-scan.yml` (nightly Trivy + Grype over every deployed image), `renovate-health.yml` (nightly: Renovate running, queue moving), `deploy-pending.yml` (a `deploy-asap` merge opens or extends a _Deploy pending_ issue), `notify.yml` (assigns on red; a `ci-red` issue for `main`), `cache-cleanup.yml`, `ghcr-retention.yml`.
+- **Outside the merge gate:** `e2e.yml` (Playwright, nightly — a green PR does not imply green E2E), `security-scheduled.yml` (nightly OSV sweep), `inventory-scan.yml` (nightly Trivy + Grype over every deployed image), `renovate-health.yml` (nightly: Renovate running, queue moving), `deploy-pending.yml` (a `deploy-asap` merge opens or extends a _Deploy pending_ issue), `docker-host-advisories.yml` (nightly: an issue per upstream advisory above MEDIUM/LOW for a pinned Docker host package), `notify.yml` (assigns on red; a `ci-red` issue for `main`), `cache-cleanup.yml`, `ghcr-retention.yml`.
 - Per-job rationale lives in the comments of each workflow under `.github/workflows/`.
 
 ---

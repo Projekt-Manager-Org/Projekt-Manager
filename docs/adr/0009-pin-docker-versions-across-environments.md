@@ -59,18 +59,34 @@ docker/host-versions.txt ──▶ Renovate PR (grouped, quarterly, manual merge
 - Testing a bump is operator-run: one command on the VPS plus a check from a WireGuard client. Each converge restarts the daemon: an outage until the key paste.
 - While open, the `docker-host` PR holds Renovate's single PR slot.
 - No release-age cooldown: the `deb` datasource reports no release timestamps. Review judges a release's age.
-- Renovate surfaces releases, not advisories: advisory tracking stays an operator duty ([Betriebsverantwortung §3](../compliance/betriebsverantwortung.md#3-operator)).
+- Renovate surfaces releases, not advisories: tracking and acting on them stay an operator duty ([Betriebsverantwortung §3](../compliance/betriebsverantwortung.md#3-operator)), supported by a nightly upstream-advisory feed (§2026-11-01).
 - CI validates Compose files with the runner's Compose, not the pinned one.
 
-## Dep lifecycle health (as of 2026-10-23)
+## Dep lifecycle health (as of 2026-11-01)
 
 The version surface is `docker/host-versions.txt`. Upstream metadata:
 
-| Dep                                                                                            | License    | Maintainership           | Notes                                                                                                                                                                                                                                                                       |
-| ---------------------------------------------------------------------------------------------- | ---------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin` | Apache-2.0 | Docker Inc., very active | CVE channel: [Docker Engine release notes](https://docs.docker.com/engine/release-notes/) + GHSA. Tracked by Renovate ([ADR-0027](0027-continuous-dependency-updates-with-supply-chain-scanning.md)), `deb` datasource. containerd supports sequential minor upgrades only. |
+| Dep                                                                                            | License    | Maintainership           | Notes                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------- | ---------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin` | Apache-2.0 | Docker Inc., very active | CVE channel: [Docker Engine release notes](https://docs.docker.com/engine/release-notes/) + upstream repo GHSAs (§2026-11-01). Tracked by Renovate ([ADR-0027](0027-continuous-dependency-updates-with-supply-chain-scanning.md)), `deb` datasource. containerd supports sequential minor upgrades only. |
 
 ## Amendments
+
+### 2026-11-01 — Advisories reach the operator
+
+[GHSA-7cfq-22r6-qp73](https://github.com/moby/moby/security/advisories/GHSA-7cfq-22r6-qp73) (HIGH) was found by hand 8 days after publishing ([#495](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/495)): nothing watched the host packages' advisories ([#699](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/699)). The quarterly window stays — each bump costs a daemon restart and a key paste — so the signal comes from upstream:
+
+```
+nightly ─▶ repo security advisories of each pinned package's upstream (docker/host-advisory-repos.txt)
+        ─▶ not MEDIUM/LOW, updated in the last 7 days, not yet reported
+        ─▶ one issue per advisory, assigned to the operator ─▶ triage, out-of-schedule bump if it applies
+```
+
+Triage: [server-setup.md § Triaging a Docker host advisory](../ops/server-setup.md#triaging-a-docker-host-advisory). Code: `scripts/ci/docker-host-advisories.sh`.
+
+Accepted: no version check (upstream ranges are free text without an ecosystem); coverage is what the mapped repos publish (vendored Go libraries and the Go stdlib only via their own advisories); a fix ships when Docker's apt repo has it.
+
+Rejected: scanning the pinned `.deb`s (blind to Engine and CLI, red monthly on Go stdlib); Ubuntu's `docker.io-app` packages (lagging evaluation, unattended daemon restarts wipe the keys); a monthly or current-by-default window (a key paste per bump, 2–3 Engine releases a month).
 
 ### 2026-10-23 — Pins in one file, bumps proposed by Renovate, accepted on the VPS
 
