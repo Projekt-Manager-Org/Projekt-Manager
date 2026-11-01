@@ -13,18 +13,18 @@
 #      `dist/server/backup-runner.js` (and its friends) into the final
 #      image. APP_IMAGE_TAG must match the tag deployed on the same
 #      commit (scripts/deploy.sh exports it before `docker compose up`).
-#   2. final stage — node:24.16.0-alpine with postgresql17 (server +
+#   2. final stage — node:<.nvmrc>-alpine with postgresql17 (server +
 #      client) and the rest of the operational toolchain layered on top,
 #      plus the backend bundle from stage 1.
 #
-# BASE IMAGE CHOICE (F1): node:24.16.0-alpine instead of
+# BASE IMAGE CHOICE (F1): node:<.nvmrc>-alpine instead of
 # postgres:17-alpine. Reason: the backup service runs the EXACT same
 # compiled backend bundle as the app image (see COPY --from=appsrc
 # below), so its node line must match the app image's — both track
-# node 24.16.0 (.nvmrc). postgres:17-alpine would give us Postgres but
-# pull `nodejs` at whatever Alpine's package happens to resolve to,
-# silently diverging from that pinned line. node:24.16.0-alpine is on
-# Alpine 3.24, which ships postgresql17 server + client packages
+# .nvmrc (scripts/check-node-pin.sh). postgres:17-alpine would give us
+# Postgres but pull `nodejs` at whatever Alpine's package happens to
+# resolve to, silently diverging from that pinned line. The node image's
+# Alpine base ships postgresql17 server + client packages
 # directly, so initdb / postgres / pg_restore / pg_isready / pg_dump /
 # psql are all available for the Tier 1 verify-on-create path
 # (ADR-0020 §Decision, docs/spec/architecture.md §11.10) without
@@ -86,12 +86,12 @@ FROM node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee
 #   - dcron / tzdata / su-exec — the schedule moved to in-process
 #     `croner` inside the backend bundle (see backup-runner.ts).
 #     croner reads timezones via the JS runtime's IANA `Intl` API;
-#     node:24-alpine bundles full ICU + tzdata so Europe/Berlin works
-#     without an OS package. If the base image ever switches to a slim
-#     runtime without ICU, croner silently falls back to UTC and the
-#     schedule drifts by an hour twice a year — verify ICU presence
-#     before any such switch. su-exec is gone because the container
-#     now runs as the `postgres` user directly (USER directive below);
+#     the node:<.nvmrc>-alpine image bundles full ICU + tzdata so
+#     Europe/Berlin works without an OS package. If the base image ever
+#     switches to a slim runtime without ICU, croner silently falls back
+#     to UTC and the schedule drifts by an hour twice a year — verify
+#     ICU presence before any such switch. su-exec is gone because the
+#     container now runs as the `postgres` user directly (USER directive below);
 #     ephemeralPg.ts no longer demotes.
 #   - jq / coreutils / dcron-only utilities — the scripts that needed
 #     them (run-backup.sh / run-drill.sh / crontab) collapsed into the
