@@ -614,13 +614,17 @@ jobs:
       - name: Deploy inventory — self-test
         run: bash scripts/__tests__/deploy-inventory.test.sh
 
-      # renovate-health.yml (nightly) and deploy-pending.yml (push to
-      # main) never run on a PR; these are their only pre-merge evidence.
+      # renovate-health.yml and docker-host-advisories.yml (nightly) and
+      # deploy-pending.yml (push to main) never run on a PR; these are
+      # their only pre-merge evidence.
       - name: Renovate health — self-test
         run: bash scripts/__tests__/renovate-health.test.sh
 
       - name: Deploy pending — self-test
         run: bash scripts/__tests__/deploy-pending.test.sh
+
+      - name: Docker host advisories — self-test
+        run: bash scripts/__tests__/docker-host-advisories.test.sh
 
       # Truth table for notify.yml's `Classify run` step, executed
       # against the step's real shell body extracted out of the
