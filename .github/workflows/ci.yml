@@ -582,6 +582,15 @@ jobs:
       - name: Workflow drift check — self-test
         run: bash scripts/__tests__/check-workflow-drift.test.sh
 
+      # Static check: .nvmrc, package.json devEngines and every `FROM node:`
+      # stage name one Node version, so dev, CI and the images the VPS runs
+      # cannot drift apart (#700).
+      - name: Node pin drift check (.nvmrc ↔ devEngines ↔ Dockerfiles)
+        run: bash scripts/check-node-pin.sh
+
+      - name: Node pin drift check — self-test
+        run: bash scripts/__tests__/check-node-pin.test.sh
+
       # scripts/ci/image-refs.sh decides what every image in the pipeline
       # is called, from `docker` and `promote` alike. Its `main` guard is
       # the one rule whose failure mode is publishing over production's
