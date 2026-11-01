@@ -1,0 +1,11 @@
+# Upstream repos whose GitHub security advisories cover each package in
+# host-versions.txt (#699). scripts/ci/docker-host-advisories.sh reads
+# them nightly; a pinned package without a row fails that run and its
+# self-test in CI.
+#
+# One <package> <owner/repo>... per line.
+docker-ce moby/moby moby/buildkit
+docker-ce-cli docker/cli
+containerd.io containerd/containerd opencontainers/runc
+docker-buildx-plugin docker/buildx moby/buildkit
+docker-compose-plugin docker/compose

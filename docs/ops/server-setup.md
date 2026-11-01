@@ -182,7 +182,7 @@ Renovate PR ─▶ 1. review ─▶ 2. test on the VPS ─▶ 3. acceptance ─�
                                                                   └─ fail ─▶ 5. revert, close the PR
 ```
 
-Out of schedule (a security advisory): tick `docker-host` under "Awaiting Schedule" on the Dependency Dashboard, or edit the pins file in a PR yourself. Same procedure.
+Out of schedule (a security advisory, [§ Triaging a Docker host advisory](#triaging-a-docker-host-advisory)): tick `docker-host` under "Awaiting Schedule" on the Dependency Dashboard, or edit the pins file in a PR yourself. Same procedure.
 
 **1. Review** the [release notes](https://docs.docker.com/engine/release-notes/) of every package the PR moves:
 
@@ -242,6 +242,30 @@ Side effects of any converge or revert:
 **Note:** Docker group membership = effective root. See ADR-0012 residual risks.
 
 **Dev workstation:** same versions, different account -- see [local-dev.md § Installing Docker](local-dev.md#installing-docker).
+
+#### Triaging a Docker host advisory
+
+`docker-host-advisories.yml` opens one issue, assigned to the operator, per upstream advisory for a pinned package that is not MEDIUM/LOW. Source repos per package: [`docker/host-advisory-repos.txt`](../../docker/host-advisory-repos.txt). It does not check versions: you do.
+
+```
+issue ─▶ applies? ─┬─ no  ─▶ close, reason in the closing comment
+                   └─ yes ─▶ fix in Docker's apt repo? ─┬─ no  ─▶ leave open (weekly wrangler re-checks)
+                                                         └─ yes ─▶ out-of-schedule bump (above); label the PR deploy-asap before merging
+```
+
+**Not applicable** when the advisory needs any of these. Check the host facts on the host, at every triage — they can drift:
+
+| Needs                                                     | Our hosts                                                                                                                                                     | Check                                                                                                                                |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| containerd's CRI API (kubelet, `crictl`)                  | not served: the `cri` gRPC service is disabled; the `io.containerd.cri.v1` images/runtime plugins still load, so a flaw in them that needs no CRI API applies | `sudo ctr plugins ls \| grep -i cri` → no `io.containerd.grpc.v1` row                                                                |
+| the daemon API over TCP                                   | unix socket only                                                                                                                                              | `systemctl show docker.socket -p Listen` → only `/run/docker.sock (Stream)`; `sudo ss -ltnp \| grep dockerd` → nothing               |
+| Swarm / encrypted overlay, rootless mode, an authz plugin | none                                                                                                                                                          | `docker info --format '{{.Swarm.LocalNodeState}} {{.SecurityOptions}} {{.Plugins.Authorization}}'` → `inactive`, no `rootless`, `[]` |
+| Windows                                                   | Ubuntu                                                                                                                                                        | —                                                                                                                                    |
+| a version we do not run                                   | `docker/host-versions.txt`                                                                                                                                    | `docker version` (Engine, containerd, runc); `docker buildx inspect \| grep BuildKit`                                                |
+
+Otherwise it applies. The fix may reach Docker's apt repo late, or only in a new minor; a `containerd.io` minor bump follows step 1's never-skip-a-minor rule. The `deploy-asap` label makes the merge open a _Deploy pending_ issue. On the real deployment, `deploy.sh` then refuses until the host is converged: a daemon restart and a key paste ([manual-deploy.md § Failure modes](manual-deploy.md#failure-modes), `Docker host does not match the pins`).
+
+Upstream edits an advisory after its closed issue was last updated → the issue reopens with a comment: triage again. A red run: [dep-management.md](dep-management.md#cve-handling).
 
 ### Phase 5 -- Host firewall & brute-force protection
 

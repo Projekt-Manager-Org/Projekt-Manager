@@ -97,6 +97,7 @@ on:
         'Inventory scan',
         'Renovate health',
         'Deploy pending',
+        'Docker host advisories',
       ]
     types: [completed]
 

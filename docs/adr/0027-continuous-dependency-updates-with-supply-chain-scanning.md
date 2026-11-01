@@ -168,6 +168,10 @@ Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of
 
 ## Amendments
 
+### 2026-11-01 — Docker host advisories: the per-component exception
+
+§2026-10-29 rules out per-component checks, because control 1 keeps everything current. The Docker host packages are the exception: ADR-0009 bumps them once a quarter, so control 1 does not reach them, and neither do controls 2 (`docker-host` exempt) or 3 (images only). A nightly feed of their upstream repos' advisories fills the gap: [ADR-0009 § 2026-11-01](0009-pin-docker-versions-across-environments.md#2026-11-01--advisories-reach-the-operator).
+
 ### 2026-10-31 — Merge queue replaces strict up-to-date
 
 Raised in [#668](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/668), flaw 2. Under strict, GitHub auto-merge never updates a branch and Renovate auto-merges one PR per base branch per run, so each merge sent every other open PR back to wait for the next run: ≥ 4 h, 17 h observed, 10 PRs stalled. With `prConcurrentLimit` at 10 (§2026-10-29), the runtime-image updates and lockfile maintenance this ADR depends on sat _Rate-Limited_ behind them.
@@ -217,7 +221,7 @@ Raised in [#637](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/6
 
 **Corrected premise.** §2026-08-06 called the routine backlog "a throughput question, not a security one": for everything without vulnerability alerts, throughput _is_ the security path.
 
-**Decision.** The apt model — stay current on maintained stable lines by default, make a broken updater loud, scan what ships as a second line. No per-component checks, no custom scanner machinery.
+**Decision.** The apt model — stay current on maintained stable lines by default, make a broken updater loud, scan what ships as a second line. No per-component checks, no custom scanner machinery (one exception: §2026-11-01).
 
 ```
 1 current by default  Renovate: non-majors any time, auto-merged, some aged    ─▶ fixes land in days, CVE indexed or not

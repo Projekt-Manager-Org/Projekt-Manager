@@ -1,0 +1,48 @@
+# Nightly Docker host advisory feed (#699; ADR-0009).
+#
+# Opens one issue, assigned to the operator, per upstream advisory not
+# MEDIUM/LOW for a pinned Docker host package; logic in
+# scripts/ci/docker-host-advisories.sh. The issue is the notification;
+# triage: docs/ops/server-setup.md § Triaging a Docker host advisory.
+#
+# A red run reaches a human through notify.yml (scheduled runs have no PR
+# and no triggering human); scripts/check-notify-coverage.sh fails the PR
+# that drops or renames this workflow out of that list.
+
+name: Docker host advisories
+
+on:
+  schedule:
+    - cron: '15 2 * * *'
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: 'Days back to read (default 7). Widen after an outage longer than that.'
+        type: number
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+# No concurrency group: a group keeps one pending run and cancels the one
+# before it, so a nightly could drop a pending dispatch's wider lookback.
+# Two runs racing the "already reported" read open a duplicate issue
+# instead — loud, not lost.
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Report new Docker host advisories
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Empty on a scheduled run: the script defaults it.
+          LOOKBACK_DAYS: ${{ inputs.lookback_days }}
+          # The operator; hardcoded for the same reason as notify.yml's
+          # MAINTAINER (assigning the org 422s).
+          MAINTAINER: vlzware
+        run: bash scripts/ci/docker-host-advisories.sh
