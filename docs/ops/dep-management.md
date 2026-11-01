@@ -259,7 +259,7 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   - **"manual job" box still ticked** — no Renovate job ran since the last check. Check the repo's status and job log on the Mend portal. A manual re-run shortly after the nightly reports this too, until Renovate's job lands.
   - **Renovate PR `#n` open since …** — merge, fix or close it; a stuck PR also holds a PR-limit slot.
 
-- **`Deploy pending is red on main`** — a merge could not be resolved to a PR, or an API call failed. Check the merged PR for `deploy-asap` by hand, then close the issue: a later green run does not close it.
+- **`Deploy pending is red on main`** — a pushed commit could not be resolved to a PR, or an API call failed. One push can carry several merge-queue PRs: check every PR the run's `::error::` lines name (or, if the commit list failed, every PR of that push) for `deploy-asap` by hand, then close the issue: a later green run does not close it.
 
 ### Deploy urgency
 
