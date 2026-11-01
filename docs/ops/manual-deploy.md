@@ -19,7 +19,7 @@ operator (over WireGuard):                        v
     -> drill-key reload prompt (when /run/drill-key/identity is empty)
 ```
 
-Every commit the merge queue lands has `sha-<commit>` from its queue run, and `promote` only moves `main` onto it (~30s, no rebuild). A commit no queue run named has none; `promote` then rebuilds through the same composite action: ~5 min, with a `::warning::` in the run log. A PR run's `sha-<pr-tip>` (or a dispatch's) is for deploying a branch; nothing promotes it. See ADR-0011 §"Build once, promote on merge" for the full topology.
+Every commit the merge queue lands has `sha-<commit>` from its queue run, and `promote` only moves `main` onto it (~30s, no rebuild), and only while that commit is still the head of `main`. A commit no queue run named, or one whose pair retention reaped, has none; `promote` then rebuilds through the same composite action: ~5 min, with a `::warning::` in the run log. A PR run's `sha-<pr-tip>` (or a dispatch's) is for deploying a branch; nothing promotes it. See ADR-0011 §"Build once, promote on merge" for the full topology.
 
 Have the backup identity's password-manager entry at hand before invoking the deploy — when the backup container was recreated by the deploy, the script will prompt to paste the age private identity into the container's tmpfs (AC-175). See [backup/drills.md](backup/drills.md) for the threat model.
 
