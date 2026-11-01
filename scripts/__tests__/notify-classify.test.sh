@@ -16,13 +16,14 @@
 #   shell body is EXTRACTED FROM THE REAL notify.yml and executed, so
 #   the test cannot drift away from what ships: editing the step
 #   without editing the table fails here, and deleting the step fails
-#   the extractor. Only the one API call is stubbed (see below).
+#   the extractor. Only the two API calls are stubbed (see below).
 #
 # WHAT IS AND IS NOT COVERED
 #   Covered: the conclusion -> state mapping, the event/branch -> route
 #   mapping, the `jq` filter that picks an open PR out of the
-#   commits/{sha}/pulls response, and the demotion to `route=none` when
-#   no open PR resolves.
+#   commits/{sha}/pulls response, the demotion to `route=none` when
+#   no open PR resolves, and the promotion of a `cancelled` run on
+#   `main` to red when a job ran (a timeout, #703).
 #
 #   Not covered: that GitHub delivers the event at all, that
 #   `workflow_run` fires on `startup_failure`, and the four acting
@@ -117,7 +118,8 @@ done
 
 # ---------------------------------------------------------------------
 # `gh` stub. Prints $GH_FIXTURE, which each case sets to a response
-# shaped like GET /repos/{owner}/{repo}/commits/{sha}/pulls.
+# shaped like GET /repos/{owner}/{repo}/commits/{sha}/pulls or, for a
+# `cancelled` run on main, GET /repos/{owner}/{repo}/actions/runs/{id}/jobs.
 # ---------------------------------------------------------------------
 STUB_BIN="$TMP_ROOT/bin"
 mkdir -p "$STUB_BIN"
@@ -125,6 +127,8 @@ cat > "$STUB_BIN/gh" <<'STUB'
 #!/usr/bin/env bash
 # Records the call so a case can assert the API was (not) reached.
 echo "$*" >> "${GH_CALL_LOG:-/dev/null}"
+# GH_FAIL simulates an API error: no output, non-zero exit, like gh.
+if [[ -n "${GH_FAIL:-}" ]]; then exit 1; fi
 printf '%s' "${GH_FIXTURE:-[]}"
 STUB
 chmod +x "$STUB_BIN/gh"
@@ -154,6 +158,7 @@ run_case() {
     export RUN_EVENT="$event"
     export HEAD_BRANCH="$branch"
     export HEAD_SHA='0123456789abcdef0123456789abcdef01234567'
+    export RUN_ID='41322238778'
     bash "$SCRIPT"
   ) > "$dir/stdout" 2>&1
   rc=$?
@@ -220,7 +225,25 @@ run_case 'closed+open: picks the open one'     failure pull_request feature "$SQ
 # the main-is-red issue, never assign the PR it came from.
 run_case 'squashed main commit stays on main'  failure push main "$SQUASHED" red main ''
 
-# The `main` route must never call the endpoint at all.
+# --- cancelled on main: timeout vs eviction (#703) ------------------
+# Shapes trimmed from GET /repos/{owner}/{repo}/actions/runs/{id}/jobs,
+# measured on #703's probe. A job that hits `timeout-minutes` concludes
+# the run `cancelled`, with the job having run on a runner. A pending run
+# evicted by its concurrency group (`queue: single`) has no jobs at all.
+TIMED_OUT='{"total_count":1,"jobs":[{"name":"hang","conclusion":"cancelled","runner_name":"GitHub Actions 1000008540"}]}'
+EVICTED='{"total_count":0,"jobs":[]}'
+ONLY_SKIPPED='{"total_count":1,"jobs":[{"name":"docker","conclusion":"skipped","runner_name":null}]}'
+
+run_case 'timed-out push to main is red'       cancelled push     main "$TIMED_OUT"    red    main ''
+run_case 'timed-out nightly is red'            cancelled schedule main "$TIMED_OUT"    red    main ''
+run_case 'evicted pending run on main is inert' cancelled push    main "$EVICTED"      ignore main ''
+run_case 'no job ran on a runner: inert'       cancelled push     main "$ONLY_SKIPPED" ignore main ''
+# Unknown is not proof of an eviction: fail toward the alert. The
+# EVICTED fixture makes the case fail if GH_FAIL never reaches the stub.
+GH_FAIL=1 run_case 'jobs lookup fails: red'    cancelled schedule main "$EVICTED"      red    main ''
+run_case 'cancelled dispatch off main: inert'  cancelled workflow_dispatch feature "$TIMED_OUT" ignore none ''
+
+# The `main` route must never call commits/{sha}/pulls at all.
 API_CASE="$TMP_ROOT/api-case"
 mkdir -p "$API_CASE"
 (
@@ -235,6 +258,24 @@ if [[ -s "$API_CASE/log" ]]; then
   FAIL=$((FAIL + 1))
 else
   PASS=$((PASS + 1))
+fi
+
+# The jobs lookup must ask about THIS run: the stub answers any URL, so
+# a wrong id (say, the SHA) would pass every state case above.
+JOBS_CASE="$TMP_ROOT/jobs-case"
+mkdir -p "$JOBS_CASE"
+(
+  PATH="$STUB_BIN:$PATH"; export PATH
+  export GITHUB_OUTPUT="$JOBS_CASE/out" GH_CALL_LOG="$JOBS_CASE/log" GH_FIXTURE="$TIMED_OUT"
+  export GITHUB_REPOSITORY='Projekt-Manager-Org/Projekt-Manager'
+  export CONCLUSION=cancelled RUN_EVENT=schedule HEAD_BRANCH=main HEAD_SHA=deadbeef RUN_ID=41322238778
+  bash "$SCRIPT"
+) > /dev/null 2>&1
+if grep -q 'repos/Projekt-Manager-Org/Projekt-Manager/actions/runs/41322238778/jobs' "$JOBS_CASE/log"; then
+  PASS=$((PASS + 1))
+else
+  printf 'FAIL  %s\n      gh calls: %s\n' 'jobs lookup targets the run id' "$(cat "$JOBS_CASE/log")"
+  FAIL=$((FAIL + 1))
 fi
 
 echo ""

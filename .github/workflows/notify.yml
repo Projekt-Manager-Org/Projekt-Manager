@@ -55,6 +55,11 @@
 #     `lint`/`check`/`docker`. A PR whose ci.yml does not parse reports
 #     NO checks at all — verified on #349, which sat `BLOCKED` with an
 #     empty check list — so it can never merge.
+#   - **A PR run that hits `timeout-minutes`.** It concludes
+#     `cancelled`, like a superseded run, and both have jobs that ran;
+#     only the check-run annotation text differs, and that wording is
+#     undocumented. On `main` a timeout IS caught (see `Classify run`).
+#     A stuck Renovate PR surfaces after 7 days via `Renovate health`.
 #
 # DELIBERATELY NOT MONITORED
 #   - `Cache cleanup` — housekeeping. A failure costs disk, not
@@ -102,10 +107,13 @@ on:
     types: [completed]
 
 # An explicit block zeroes every scope not listed. `contents: read`
-# is needed for the commit→PR lookup; the two write scopes serve the
-# assignees endpoint, which is documented in terms of the target type
-# (issue vs PR) — grant both rather than bet on which is checked.
+# is needed for the commit→PR lookup and `actions: read` for the jobs
+# lookup that tells a timeout from an eviction; the two write scopes
+# serve the assignees endpoint, which is documented in terms of the
+# target type (issue vs PR) — grant both rather than bet on which is
+# checked.
 permissions:
+  actions: read
   contents: read
   issues: write
   pull-requests: write
@@ -146,6 +154,7 @@ jobs:
           RUN_EVENT: ${{ github.event.workflow_run.event }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
 
@@ -155,7 +164,8 @@ jobs:
           # every rebased PR. It is not green either — a cancelled run
           # proves nothing, so it must not clear a live assignment.
           # `skipped`/`neutral`/`stale`/`action_required` are inert for
-          # the same reason.
+          # the same reason. The exception, a started run cancelled on
+          # `main` (a timeout), is promoted after routing below.
           case "$CONCLUSION" in
             success)                          state='green' ;;
             failure|timed_out|startup_failure) state='red' ;;
@@ -180,6 +190,27 @@ jobs:
             route='main'
           else
             route='none'
+          fi
+
+          # A job that hits `timeout-minutes` concludes the run
+          # `cancelled`, never `timed_out` (measured on #703), so a hung
+          # nightly would read as inert. On `main` nothing cancels a
+          # RUNNING run — no group there has `cancel-in-progress` — so
+          # `cancelled` with a job that ran on a runner is a timeout or
+          # an operator's cancel; both mean the work did not happen. The
+          # inert `cancelled` on `main` is a pending run evicted by its
+          # concurrency group (`queue: single`), which has no jobs.
+          # Not applied to PRs: a superseded PR run has run jobs too.
+          if [ "$CONCLUSION" = 'cancelled' ] && [ "$route" = 'main' ]; then
+            # A failed lookup is not proof of an eviction: alert.
+            ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" \
+              | jq -r '[.jobs[] | select((.runner_name // "") != "")] | length > 0') || {
+              echo "::warning::Jobs lookup for run ${RUN_ID} failed — treating it as a timeout."
+              ran='true'
+            }
+            if [ "$ran" = 'true' ]; then
+              state='red'
+            fi
           fi
 
           pr=''
