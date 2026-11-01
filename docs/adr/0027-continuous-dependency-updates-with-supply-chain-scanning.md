@@ -246,6 +246,8 @@ Day-one findings:
 | Caddy: `golang.org/x/net` v0.59.0                    | Trivy, Grype | Raised above Caddy's own requirement, Renovate-tracked                                                                                                              |
 | Caddy: go-jose v4.1.5 / v3.0.5 (GHSA-mgcc-cww5-fp2q) | Trivy, Grype | v4 raised to 4.1.6, Renovate-tracked; v3 has no fix — JWK-parsing DoS on ACME-server/PKI paths our Caddyfile does not enable, allowlisted scoped to the v3 module   |
 
+**Outcome:** both held findings cleared without a hand bump — Renovate's [#677](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/677) (Node 24.22.2) and [#680](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/680) (PostgreSQL 17.11), merged 2026-10-31; the next nightly inventory scan (2026-11-01) is green.
+
 Caddy is built on the host; measured, its binary is byte-identical across a cached and a no-cache build, so the nightly scans what a host builds from the same inputs.
 
 **Landed: controls 2 and 4.**

@@ -247,12 +247,12 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
   90 days is the maximum permitted window; pick a shorter date if upstream has a target ship-date. The expiry forces a re-review and the entry stops suppressing automatically — there is no silent-forever suppression path. Track the upstream CVE in the Renovate dashboard so the entry gets removed (not renewed) when the fix lands.
 
-- **`Inventory scan is red on main`** (ci-red issue from `inventory-scan.yml`). Red on Node 24.16.0 and PostgreSQL 17.9 until Renovate's updates for them are deployed: [ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm).
+- **`Inventory scan is red on main`** (ci-red issue from `inventory-scan.yml`).
   - **`inventory` job** — an allowlist entry expired or is malformed, or the inventory cannot be derived (an image holding a variable other than `APP_IMAGE_TAG`, a build with args/target). No image is scanned until it is fixed.
   - **`scan (<service>)` finding with a fix upstream** — the Renovate update that carries it is the fix; do not bump by hand. Check the Dependency Dashboard, including Pending Approval, for the image or module that carries it. Only a component no manager claims needs a `renovate.json` change.
   - **Unreachable or no fix** — allowlist entry, scoped to the package or path ([§Allowlist](#allowlist)).
 
-- **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding). Expected for a few nights after control 1 landed (2026-10-30): Rate-Limited while the backlog drains, 10 PRs at a time. Delete this sentence once it is green.
+- **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding).
   - **Awaiting Schedule: `<branch>`** — a scheduled branch outside `AWAITING_EXEMPT`: exempt a deliberate new schedule there, else fix the config. Never a manual bump.
   - **Dashboard section `"<title>"`** — any heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
   - **Dependency lookup failed / no or several dashboards / no "manual job" box** — a Renovate config or Mend app problem: read the Mend job log.
