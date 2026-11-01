@@ -199,15 +199,15 @@ rm package-lock.json && npm install …         # re-resolves the whole tree    
 
 The second shape is what `lockFileMaintenance` does, so the recovery differs by which branch is broken:
 
-| Broken branch         | Cause                                                           | Do                                                                                                                                                                                                                                                 |
-| --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Vulnerability         | The PR's own range floor sits inside the window                 | **Verify the release** (below), then `npm install <pkg>@<patched> --min-release-age=0` and commit the lockfile onto the branch. `<patched>` is the advisory's version — the newest in range may be a later same-day release it does not vouch for. |
-| `lockFileMaintenance` | A same-day bump landed on `main`; the rebase inherits its floor | **Wait it out.** This path discards the lockfile, so the bypass would re-resolve _every_ transitive at zero cooldown — the exposure the setting exists to prevent. Never do it here.                                                               |
+| Broken branch         | Cause                                                           | Do                                                                                                                                                                                                                                                             |
+| --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vulnerability         | The PR's own range floor sits inside the window                 | **Verify the release** (below), then `npm install <pkg>@<patched> --min-release-age-exclude=<pkg>` and commit the lockfile onto the branch. `<patched>` is the advisory's version — the newest in range may be a later same-day release it does not vouch for. |
+| `lockFileMaintenance` | A same-day bump landed on `main`; the rebase inherits its floor | **Wait it out.** Never `--min-release-age=0` here: this path discards the lockfile, so it would re-resolve _every_ transitive at zero cooldown — the exposure the setting exists to prevent.                                                                   |
 
-**Before bypassing** — otherwise wait. The bypass is where a malicious "fix" would aim.
+**Before bypassing** — otherwise wait. The bypass is where a malicious "fix" would aim. `--min-release-age-exclude` exempts only the names it lists; everything else keeps the cutoff. If the ETARGET moves to a dependency of `<pkg>@<patched>` (monorepo releases: `@aws-sdk/*` needs `@smithy/*`), exclude that too and verify it like `<pkg>`. The flag repeats and takes globs. It needs the npm bundled with `.nvmrc`'s Node; older npm warns `Unknown cli config` and still ETARGETs.
 
-1. **Only `<pkg>` moved** in `git diff package-lock.json` — a new transitive enters at zero cooldown.
-2. **The tarball is upstream's build**: npm provenance naming the upstream repo at the release-tag commit, or `npm pack <pkg>@<patched> --min-release-age=0` matches the tag checkout (`diff -r`, no `Only in package/`; unbuilt packages only).
+1. **Only excluded names are younger than the cutoff** in `git diff package-lock.json`. `security` PRs waive the release-age gate, so this check is the one left.
+2. **Each excluded tarball is upstream's build**: npm provenance naming the upstream repo at the release-tag commit, or `npm pack <name>@<version> --min-release-age-exclude=<name>` matches the tag checkout (`diff -r`, no `Only in package/`; unbuilt packages only).
 
 The window clears 3 days after the blocking version's publish, not 3 days after the failure.
 
@@ -247,12 +247,12 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
   90 days is the maximum permitted window; pick a shorter date if upstream has a target ship-date. The expiry forces a re-review and the entry stops suppressing automatically — there is no silent-forever suppression path. Track the upstream CVE in the Renovate dashboard so the entry gets removed (not renewed) when the fix lands.
 
-- **`Inventory scan is red on main`** (ci-red issue from `inventory-scan.yml`). Red on Node 24.16.0 and PostgreSQL 17.9 until Renovate's updates for them are deployed: [ADR-0027 § 2026-10-29](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm).
+- **`Inventory scan is red on main`** (ci-red issue from `inventory-scan.yml`).
   - **`inventory` job** — an allowlist entry expired or is malformed, or the inventory cannot be derived (an image holding a variable other than `APP_IMAGE_TAG`, a build with args/target). No image is scanned until it is fixed.
   - **`scan (<service>)` finding with a fix upstream** — the Renovate update that carries it is the fix; do not bump by hand. Check the Dependency Dashboard, including Pending Approval, for the image or module that carries it. Only a component no manager claims needs a `renovate.json` change.
   - **Unreachable or no fix** — allowlist entry, scoped to the package or path ([§Allowlist](#allowlist)).
 
-- **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding). Expected for a few nights after control 1 landed (2026-10-30): Rate-Limited while the backlog drains, 10 PRs at a time. Delete this sentence once it is green.
+- **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding).
   - **Awaiting Schedule: `<branch>`** — a scheduled branch outside `AWAITING_EXEMPT`: exempt a deliberate new schedule there, else fix the config. Never a manual bump.
   - **Dashboard section `"<title>"`** — any heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
   - **Dependency lookup failed / no or several dashboards / no "manual job" box** — a Renovate config or Mend app problem: read the Mend job log.

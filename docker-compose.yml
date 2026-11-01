@@ -358,9 +358,9 @@ services:
       # not load-bearing on this env var — it is informational for
       # `new Date().toLocaleString()` calls and for human-readable
       # `console.log` timestamps in `docker compose logs backup`.
-      # node:22-alpine bundles full ICU + tzdata so no OS `tzdata`
-      # package is required (was dropped from Dockerfile.backup with
-      # the croner rearchitecture).
+      # The node:<.nvmrc>-alpine base bundles full ICU + tzdata so no OS
+      # `tzdata` package is required (was dropped from Dockerfile.backup
+      # with the croner rearchitecture).
       TZ: Europe/Berlin
       NODE_ENV: production
     depends_on:

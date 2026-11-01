@@ -3,12 +3,13 @@
  * Release-age gate: nothing younger than N days enters the lockfile.
  *
  * WHY THIS EXISTS
- *   The 3-day cooldown used to live in `.npmrc` as `min-release-age`,
+ *   The 3-day cooldown also lives in `.npmrc` as `min-release-age`,
  *   enforced during npm resolution. Three properties follow from that
  *   enforcement point, none of them from the policy itself:
  *
- *     - it cannot be overridden — npm < 11.17.0 has no exclusion list,
- *       and the key is `exclusive` with `--before`;
+ *     - it cannot be overridden on the record — only per invocation,
+ *       by `--min-release-age-exclude` (npm >= 11.17.0); the key is
+ *       `exclusive` with `--before`;
  *     - it cannot explain itself — `ETARGET` names a package, not a
  *       policy;
  *     - it fails by producing nothing, so `lockFileMaintenance` stalls

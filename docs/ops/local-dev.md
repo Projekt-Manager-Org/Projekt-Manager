@@ -4,7 +4,7 @@ No Caddy, no TLS, plain HTTP on loopback. `http://localhost` is a W3C secure con
 
 ## Prerequisites
 
-- **Node** (version pinned in `.nvmrc`) -- `nvm install` reads it
+- **Node** (version pinned in `.nvmrc`) -- `nvm install` reads it. npm refuses to run on any other version (`devEngines` in `package.json`) -- see [§ Common pitfalls](#common-pitfalls) when a bump lands
 - **Docker Engine + Compose plugin**, pinned version ([ADR-0009](../adr/0009-pin-docker-versions-across-environments.md)) -- see [Installing Docker](#installing-docker) below
 - **`age`** -- see [CONTRIBUTING.md § Runtime Requirements](../../CONTRIBUTING.md#runtime-requirements). Required before the first `npm run dev` boots (`scripts/binary-key/init-local-key.sh`, ADR-0024).
 - **`shellcheck`** -- see [CONTRIBUTING.md § Runtime Requirements](../../CONTRIBUTING.md#runtime-requirements). Checked by `.husky/pre-push` (local, warns if missing) and CI's `lint` job (hard fail).
@@ -31,7 +31,7 @@ On any other platform (macOS, Windows, non-Debian Linux), install Docker Engine 
 ## First-time setup
 
 ```bash
-nvm install
+nvm install && nvm alias default "$(cat .nvmrc)"
 npm install
 cp .env.example .env
 scripts/binary-key/init-local-key.sh  # generates the dev age identity, writes it into .env
@@ -103,6 +103,7 @@ Integration tests wipe and re-seed per file -- do not run against a database you
 | `getaddrinfo EAI_AGAIN storage`                                     | Verify `.env` has `STORAGE_ENDPOINT=http://localhost:9000` (the default in `.env.example`). If you copied from `.env.production.example`, this var is missing — use `.env.example` for dev.                                                                                                                                      |
 | Login fails on fresh DB                                             | Check `npm run dev` output for seed errors; try `SEED=force`                                                                                                                                                                                                                                                                     |
 | Do NOT run `docker-compose.yml` with `DOMAIN=<prod-domain>` locally | Caddy will mint a real LE cert, burning rate-limit slots uselessly                                                                                                                                                                                                                                                               |
+| `npm error EBADDEVENGINES` … `does not match` for `"runtime"`       | `.nvmrc` moved (a Renovate Node bump) and this shell runs another Node. `nvm install && nvm alias default "$(cat .nvmrc)"` — the alias, because `nvm install` switches only the current shell and new ones (IDE, hooks, agent tooling) start on the default. Restart already-running tools.                                      |
 | `git push` fails with `.husky/pre-push: npm: not found` (nvm users) | Hooks run under non-interactive `sh`, which reads neither `~/.bashrc` (guarded to interactive shells) nor `~/.zshrc`. Put the nvm block in `~/.config/husky/init.sh` — husky sources it before every hook ([husky docs](https://typicode.github.io/husky/how-to.html)). Per-workstation, not in this repo.                       |
 | `node`/`npm`/`npx` missing in IDE terminals, cron, or agent tooling | Same root cause, different shell: non-interactive zsh reads only `~/.zshenv`, never `~/.zshrc`. Put the nvm block there too (~60ms per spawn; re-sourcing it in `~/.zshrc` is harmless — nvm does not duplicate PATH entries). Already-running shells and tools keep their old environment — restart them after adding the file. |
 
