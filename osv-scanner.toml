@@ -20,3 +20,13 @@
 id = "GHSA-4cm8-f57v-mqm6"
 ignoreUntil = 2027-01-29  # <= 90 days from renewal 2026-10-31
 reason = "@vlzware: prettier pinned to 3.9.10, the advisory's patched release. Repo-level range '>=3.9.0, <=3.9.9; 3.9.9 tested' carries free text, so check-repo-advisories.mjs reports it unevaluated. Drop once the global DB carries the advisory (still repo-level only on 2026-10-31)."
+
+[[IgnoredVulns]]
+id = "GHSA-3g3m-2fjr-6pw4"
+ignoreUntil = 2026-12-01  # <= 90 days from 2026-11-01
+reason = "@vlzware: glob 13.0.6 via @fastify/static (^13); fixed only in 14.0.2. Needs an aborted `signal`; @fastify/static globs a fixed '**/**' once at registration (wildcard: false, src/server/staticCache.ts) with no signal. Unreachable (#668). Drop when @fastify/static allows glob >=14.0.2 or 13.x gets a backport."
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+ignoreUntil = 2026-12-01  # <= 90 days from 2026-11-01
+reason = "@vlzware: minimatch 10.2.6 via glob, eslint, archiver>readdir-glob (^10); fixed only in 11.0.1. Needs an attacker-supplied pattern; all patterns are repo-controlled (the static root's '**/**', eslint config), archiver's glob()/directory() are never called. Unreachable (#668). Drop when the dependents allow minimatch >=11.0.1 or 10.x gets a backport."
