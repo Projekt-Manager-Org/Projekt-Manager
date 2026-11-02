@@ -24,6 +24,12 @@
 #   commit); for a commit on the default branch, commits/{sha}/pulls lists
 #   exactly that PR. All labelled PRs of the push go into one write.
 #
+#   GitHub appears to link the commit to its PR asynchronously: a lookup
+#   ~9 s after the merge found none, the same call resolved minutes later
+#   (#716). An empty or failed lookup is retried after each of RETRY_DELAYS
+#   seconds before it counts as missing; a resolved retry logs what the
+#   first try saw, to size the delays.
+#
 #   The pending issue is matched by exact title among issues opened by this
 #   workflow's token, so a human's look-alike is never commented on.
 #
@@ -40,6 +46,9 @@ set -euo pipefail
 LABEL='deploy-asap'
 TITLE='Deploy pending'
 BOT_LOGIN='github-actions[bot]'
+# 35 s of waits per commit; a merge-queue push of 5 stays inside the job's
+# 5-minute timeout even if none resolves.
+RETRY_DELAYS=(5 10 20)
 
 : "${GITHUB_REPOSITORY:?}" "${BEFORE_SHA:?}" "${HEAD_SHA:?}" "${MAINTAINER:?}"
 api="repos/${GITHUB_REPOSITORY}"
@@ -53,19 +62,38 @@ fi
 entries=()
 missing=0
 for sha in $shas; do
-  if ! pr=$(gh api "${api}/commits/${sha}/pulls" \
-    | jq -c --arg sha "$sha" \
-      'map(select(.merged_at != null and .merge_commit_sha == $sha)) | first // empty'); then
-    echo "::error::PR lookup failed for ${sha}. Check its PR for ${LABEL} by hand."
+  pr='' pulls='' failed=0 tries=0 first=''
+  for delay in 0 "${RETRY_DELAYS[@]}"; do
+    [ "$delay" -eq 0 ] || sleep "$delay"
+    tries=$((tries + 1))
+    if pulls=$(gh api "${api}/commits/${sha}/pulls") \
+      && pr=$(jq -c --arg sha "$sha" \
+        'map(select(.merged_at != null and .merge_commit_sha == $sha)) | first // empty' <<< "$pulls"); then
+      failed=0
+      [ -z "$pr" ] || break
+    else
+      failed=1
+    fi
+    # An unlinked commit (empty) reads differently from a PR not yet merged.
+    if [ "$tries" -eq 1 ]; then
+      if [ "$failed" -eq 1 ]; then first='lookup failed'
+      else first=$(jq -c 'map({number, merged_at, merge_commit_sha})' <<< "$pulls"); fi
+    fi
+  done
+
+  if [ "$failed" -eq 1 ]; then
+    echo "::error::PR lookup failed for ${sha} (${tries} tries). Check its PR for ${LABEL} by hand."
     missing=1
     continue
   fi
 
   if [ -z "$pr" ]; then
-    echo "::error::No merged PR produced ${sha}. If it was a merge, check its labels for ${LABEL} by hand."
+    echo "::error::No merged PR produced ${sha} (${tries} tries). If it was a merge, check its labels for ${LABEL} by hand."
+    echo "Last answer: $(jq -c 'map({number, merged_at, merge_commit_sha})' <<< "$pulls")"
     missing=1
     continue
   fi
+  [ "$tries" -eq 1 ] || echo "::notice::${sha} resolved on try ${tries}; try 1 saw: ${first}"
 
   number=$(jq -r '.number' <<< "$pr")
   if ! jq -e --arg l "$LABEL" 'any(.labels[]; .name == $l)' <<< "$pr" > /dev/null; then

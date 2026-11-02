@@ -44,8 +44,11 @@ REPO='Projekt-Manager-Org/Projekt-Manager'
 # `gh` stub. Reads the case directory from $GH_CASE_DIR:
 #   compare.json      served for GET .../compare/...           (missing → error)
 #   pulls-<sha>.json  served for GET .../commits/<sha>/pulls   (missing → error)
+#   pulls-<sha>.<n>.json  served instead on the n-th lookup of <sha>, if
+#                     present (`missing` in it → error)
 #   issues.json       served for GET .../issues?...            (missing → error)
 #   calls        every invocation, one argument per line, `--` between
+#   sleeps       every `sleep` argument, one per line (the stub returns at once)
 # Writes (-X POST) answer with a created issue/comment.
 # ---------------------------------------------------------------------
 STUB_BIN="$TMP_ROOT/bin"
@@ -59,13 +62,22 @@ case " $* " in
   *' -X POST '*)  echo '{"number":99,"html_url":"https://example.invalid/99"}' ;;
   *"/compare/${GH_BEFORE}..."*) serve compare.json ;;
   *'/commits/'*'/pulls'*)
-    sha="$*"; sha="${sha#*/commits/}"
-    serve "pulls-${sha%%/pulls*}.json" ;;
+    sha="$*"; sha="${sha#*/commits/}"; sha="${sha%%/pulls*}"
+    n=$(( $(cat "$dir/n-$sha" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$dir/n-$sha"
+    if [[ -f "$dir/pulls-$sha.$n.json" ]]; then
+      grep -qx missing "$dir/pulls-$sha.$n.json" && { echo "gh: HTTP 502" >&2; exit 1; }
+      cat "$dir/pulls-$sha.$n.json"
+    else serve "pulls-$sha.json"; fi ;;
   *'/issues?'*)   serve issues.json ;;
   *)              echo "gh stub: unexpected call: $*" >&2; exit 1 ;;
 esac
 STUB
 chmod +x "$STUB_BIN/gh"
+cat > "$STUB_BIN/sleep" <<'STUB'
+#!/usr/bin/env bash
+echo "$1" >> "$GH_CASE_DIR/sleeps"
+STUB
+chmod +x "$STUB_BIN/sleep"
 
 # merged_pr <number> <merge_commit_sha> <label>...
 merged_pr() {
@@ -94,6 +106,7 @@ FAIL=0
 new_case() {
   CASE="$(mktemp -d "$TMP_ROOT/case.XXXXXX")"
   : > "$CASE/calls"
+  : > "$CASE/sleeps"
   echo '[]' > "$CASE/issues.json"
   pushed "$SHA"
 }
@@ -126,6 +139,14 @@ expect_no_output() {
   if grep -qF -- "$2" "$CASE/out"; then
     printf 'FAIL  %s\n      output unexpectedly has: %s\n' "$1" "$2"; FAIL=$((FAIL + 1))
   else PASS=$((PASS + 1)); fi
+}
+
+# expect_sleeps <desc> <count>: waits on the last run.
+expect_sleeps() {
+  local got
+  got="$(grep -c . "$CASE/sleeps" || true)"
+  if [[ "$got" -eq "$2" ]]; then PASS=$((PASS + 1)); else
+    printf 'FAIL  %s\n      want %d wait(s), got %d\n' "$1" "$2" "$got"; FAIL=$((FAIL + 1)); fi
 }
 
 # writes: the -X POST calls, each joined onto one line.
@@ -199,6 +220,44 @@ echo '[]' > "$CASE/pulls-$SHA.json"
 run_case 'no PR behind the commit is red' 1
 expect_output 'no PR behind the commit: says so' 'No merged PR produced'
 expect_writes 'no PR behind the commit: no write' 0
+
+# --- the PR link lags the merge (#716) -------------------------------
+new_case
+echo '[]' > "$CASE/pulls-$SHA.1.json"
+jq -s . <(merged_pr 530 "$SHA" deploy-asap) > "$CASE/pulls-$SHA.json"
+run_case 'PR linked only on the 2nd lookup: reported' 0
+expect_write 'PR linked only on the 2nd lookup: names it' 'body=.*#530'
+expect_sleeps 'PR linked only on the 2nd lookup: one wait' 1
+expect_output 'PR linked only on the 2nd lookup: logs what try 1 saw' 'resolved on try 2; try 1 saw: []'
+
+# The PR is listed before GitHub marks it merged.
+new_case
+jq -s . <(merged_pr 531 "$SHA" deploy-asap | jq '.merged_at = null | .merge_commit_sha = null') > "$CASE/pulls-$SHA.1.json"
+jq -s . <(merged_pr 531 "$SHA" deploy-asap) > "$CASE/pulls-$SHA.json"
+run_case 'PR not yet merged on the 1st lookup: reported' 0
+expect_write 'PR not yet merged on the 1st lookup: names it' 'body=.*#531'
+
+# A transient API failure is retried too.
+new_case
+echo missing > "$CASE/pulls-$SHA.1.json"
+jq -s . <(merged_pr 532 "$SHA" deploy-asap) > "$CASE/pulls-$SHA.json"
+run_case 'PR lookup fails once: reported' 0
+expect_write 'PR lookup fails once: names it' 'body=.*#532'
+expect_output 'PR lookup fails once: logs it' 'try 1 saw: lookup failed'
+
+# Found at once: no wait.
+new_case
+jq -s . <(merged_pr 533 "$SHA" dependencies) > "$CASE/pulls-$SHA.json"
+run_case 'PR found at once' 0
+expect_sleeps 'PR found at once: no wait' 0
+
+# Never linked: red after a bounded number of waits, with the last answer
+# in the log (an empty list and an unmerged PR read differently).
+new_case
+jq -s . <(merged_pr 534 "$SHA" deploy-asap | jq '.merged_at = null | .merge_commit_sha = null') > "$CASE/pulls-$SHA.json"
+run_case 'PR never linked: red' 1
+expect_sleeps 'PR never linked: bounded waits' 3
+expect_output 'PR never linked: logs the last answer' '"number":534,"merged_at":null'
 
 # A merged PR whose merge commit is another SHA did not produce this push.
 new_case
