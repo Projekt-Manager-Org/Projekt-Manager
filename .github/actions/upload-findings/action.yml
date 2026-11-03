@@ -1,0 +1,54 @@
+name: Upload findings
+description: >
+  Uploads the keys this job's gates failed on as artifact
+  `findings-<label>`, for notify.yml to tell a new finding from a standing
+  one while the workflow stays red (#732).
+
+  The FINDINGS_FILE contract, for every gate: given FINDINGS_FILE
+  (`<dir>/<gate>.keys`), a gate that reaches a verdict (exit 0 or 1)
+  writes there the keys it failed on, one per line, fields tab-separated,
+  sorted and deduplicated; an empty file on a pass. No verdict (exit 2),
+  no file. Each gate's header names its key fields.
+
+  A gate in `gates` that wrote no file gets `<gate>.none`, so a crashed
+  gate reads as "no verdict", never as clean. Run this last, with
+  `if: ${{ !cancelled() }}`, as a step named `Upload findings`: notify.yml
+  reads a failed upload from that step, and a cancelled job, which uploads
+  nothing, from the job's conclusion.
+
+  Retention is the repo's (7 days). Enough: notify.yml compares with the
+  last run its ci-red issue reported, the night before while a nightly
+  stays red.
+
+inputs:
+  label:
+    description: Unique within the run; names the artifact and prefixes each key in the comment.
+    required: true
+  gates:
+    description: Space-separated gate names, each the basename of its `<gate>.keys` file.
+    required: true
+  dir:
+    description: Directory the gates wrote their `<gate>.keys` files to.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Mark gates without a verdict
+      shell: bash
+      env:
+        DIR: ${{ inputs.dir }}
+        GATES: ${{ inputs.gates }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$DIR"
+        for gate in $GATES; do
+          [ -e "$DIR/$gate.keys" ] || : > "$DIR/$gate.none"
+        done
+
+    - name: Upload findings
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: findings-${{ inputs.label }}
+        path: ${{ inputs.dir }}
+        if-no-files-found: error

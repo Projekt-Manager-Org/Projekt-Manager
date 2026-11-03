@@ -93,6 +93,36 @@ else
   sed 's/^/    /' "$TMP_ROOT/out"
 fi
 
+# assert_keys <label> <expected-keys | NOFILE> <report> — what the gate leaves
+# at FINDINGS_FILE, read by notify.yml to tell a new finding from a standing
+# one (#732).
+assert_keys() {
+  local label="$1" expected="$2" file="$3"
+  local keys="$TMP_ROOT/keys-$RANDOM$RANDOM"
+  FINDINGS_FILE="$keys" bash "$GATE" "$file" > "$TMP_ROOT/out" 2>&1
+  local actual='NOFILE'
+  [[ -e "$keys" ]] && actual="$(cat "$keys")"
+  if [[ "$actual" == "$expected" ]]; then
+    pass=$((pass + 1))
+    echo "  PASS — $label"
+  else
+    fail=$((fail + 1))
+    failures+=("$label: keys differ")
+    printf '  FAIL — %s\n    want: %s\n    got:  %s\n' "$label" "$expected" "$actual"
+  fi
+}
+
+# Two locations, listed out of order: the key must not depend on it.
+two_paths=$(jq -n '{vulnerability: {id: "CVE-9", severity: "High"},
+  artifact: {name: "stdlib", version: "go1.24.6", locations: [{path: "/usr/bin/z"}, {path: "/usr/bin/a"}]}}')
+TAB=$'\t'
+echo "Case: FINDINGS_FILE holds the keys the verdict failed on"
+assert_keys "failing matches only, sorted, version not in the key" \
+  "CVE-9${TAB}stdlib${TAB}/usr/bin/a,/usr/bin/z"$'\n'"GHSA-test-High${TAB}golang.org/x/net${TAB}/usr/bin/caddy" \
+  "$(report "[$(match High),$(match Low),$two_paths]")"
+assert_keys "a pass leaves an empty file" '' "$(report "[$(match Medium)]")"
+assert_keys "no verdict leaves no file" NOFILE "$TMP_ROOT/absent.json"
+
 echo "Case: an allowlisted High (ignoredMatches) passes"
 assert_case 0 "ignored High" "$(report '[]' "[$(match High)]")"
 

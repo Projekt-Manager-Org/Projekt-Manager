@@ -17,6 +17,13 @@ inputs:
       here. Empty: every finding fails.
     required: false
     default: ''
+  findings_file:
+    description: >
+      Where the verdict writes the keys it failed on (FINDINGS_FILE in
+      scripts/ci/trivy-gate.sh), for the nightly's upload-findings. Empty:
+      nowhere.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -104,6 +111,7 @@ runs:
       env:
         DIR: ${{ steps.dir.outputs.dir }}
         HAS_BASE: ${{ inputs.base_ref != '' }}
+        FINDINGS_FILE: ${{ inputs.findings_file }}
       run: |
         set -euo pipefail
         if [ "$HAS_BASE" = true ]; then

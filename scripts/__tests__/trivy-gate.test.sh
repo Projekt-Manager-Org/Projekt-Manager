@@ -162,6 +162,41 @@ assert_case 1 "same secret rule, another file" \
   "$(report "[$(secret app/.env private-key),$(secret app/dist/key.pem private-key)]")" \
   "$(report "[$(secret app/.env private-key)]")"
 
+# assert_keys <label> <expected-keys | NOFILE> <gate-args...> — what the gate
+# leaves at FINDINGS_FILE, read by notify.yml to tell a new finding from a
+# standing one (#732).
+assert_keys() {
+  local label="$1" expected="$2"
+  shift 2
+  local keys="$TMP_ROOT/keys-$RANDOM$RANDOM"
+  FINDINGS_FILE="$keys" bash "$GATE" "$@" > "$TMP_ROOT/out" 2>&1
+  local actual='NOFILE'
+  [[ -e "$keys" ]] && actual="$(cat "$keys")"
+  if [[ "$actual" == "$expected" ]]; then
+    pass=$((pass + 1))
+    echo "  PASS — $label"
+  else
+    fail=$((fail + 1))
+    failures+=("$label: keys differ")
+    printf '  FAIL — %s\n    want: %s\n    got:  %s\n' "$label" "$expected" "$actual"
+  fi
+}
+
+TAB=$'\t'
+echo "Case: FINDINGS_FILE holds the keys the verdict failed on"
+assert_keys "every finding without a base, sorted, version not in the key" \
+  "CVE-1${TAB}openssl${TAB}os:alpine"$'\n'"CVE-2${TAB}stdlib${TAB}usr/bin/caddy" \
+  "$(report "[$(gobin usr/bin/caddy CVE-2),$(os "$HEAD_IMG" CVE-1 openssl 3.5.0-r0)]")"
+assert_keys "a secret is (rule, secret, file)" \
+  "private-key${TAB}secret${TAB}app/.env" \
+  "$(report "[$(secret app/.env private-key)]")"
+assert_keys "with a base, only the introduced ones" \
+  "CVE-2${TAB}stdlib${TAB}usr/bin/caddy" \
+  "$(report "[$(os "$HEAD_IMG" CVE-1 openssl 3.5.0-r0),$(gobin usr/bin/caddy CVE-2)]")" \
+  "$(report "[$(os "$BASE_IMG" CVE-1 openssl 3.5.0-r0)]")"
+assert_keys "a pass leaves an empty file" '' "$(report '[]')"
+assert_keys "no verdict leaves no file" NOFILE "$TMP_ROOT/absent.json"
+
 echo "Case: an introduced finding is named, a pre-existing one is not an error"
 bash "$GATE" \
   "$(report "[$(os "$HEAD_IMG" CVE-1 openssl 3.5.0-r0),$(gobin usr/bin/caddy CVE-2)]")" \
