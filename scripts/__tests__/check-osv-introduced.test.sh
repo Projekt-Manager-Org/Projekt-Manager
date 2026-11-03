@@ -213,6 +213,39 @@ assert_one_stream 1 "red report, one stream" "$d" \
   "Scanned $d/package-lock.json" "already on the base" \
   "ERROR: this change introduces OSV findings" "GHSA-g3hv-75wg-m249"
 
+# What the check leaves at FINDINGS_FILE, read by notify.yml to tell a new
+# finding from a standing one (#732). $4 is the expected content or NOFILE.
+assert_keys() {
+  local label="$1" dir="$2" mode="$3" expected="$4"
+  local keys="$dir/findings.keys" actual='NOFILE'
+  FINDINGS_FILE="$keys" run_check "$dir" "$mode" >/dev/null
+  [[ -e "$keys" ]] && actual="$(cat "$keys")"
+  if [[ "$actual" == "$expected" ]]; then
+    record yes "$label" ""
+  else
+    record no "$label" "want '$expected', got '$actual'"
+  fi
+}
+
+TAB=$'\t'
+echo "Case: FINDINGS_FILE holds the keys the verdict failed on"
+d="$(stage)"
+answer "$d" 1 "$(pkg minimatch 10.2.6 GHSA-g3hv-75wg-m249)" "$(pkg glob 13.0.6 GHSA-3g3m-2fjr-6pw4)" \
+  "$(pkg glob 11.0.0 GHSA-3g3m-2fjr-6pw4)"
+assert_keys "every finding without a base, sorted, one per (id, ecosystem, name)" "$d" none \
+  "GHSA-3g3m-2fjr-6pw4${TAB}npm${TAB}glob"$'\n'"GHSA-g3hv-75wg-m249${TAB}npm${TAB}minimatch"
+d="$(stage)"
+answer "$d" 1 "$(pkg glob 13.0.6 GHSA-3g3m-2fjr-6pw4)" "$(pkg minimatch 10.2.6 GHSA-g3hv-75wg-m249)"
+answer "$d/base" 1 "$(pkg glob 13.0.6 GHSA-3g3m-2fjr-6pw4)"
+assert_keys "with a base, only the introduced ones" "$d" base \
+  "GHSA-g3hv-75wg-m249${TAB}npm${TAB}minimatch"
+d="$(stage)"
+answer "$d" 0
+assert_keys "a pass leaves an empty file" "$d" none ''
+d="$(stage)"
+echo 127 >"$d/osv.rc"
+assert_keys "no verdict leaves no file" "$d" none NOFILE
+
 echo "Case: head scan errors"
 # 127 = the CLI's general error. It writes no results; never read as clean.
 d="$(stage)"

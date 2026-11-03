@@ -61,47 +61,11 @@ TMP_ROOT="$(mktemp -d)"
 cleanup() { rm -rf "$TMP_ROOT"; }
 trap cleanup EXIT
 
-# ---------------------------------------------------------------------
-# Extract the `run:` body of the step whose `id:` is `classify`.
-#
-# Structural, not line-numbered: reordering the steps or reindenting
-# the file does not fool it. awk rather than a YAML parser for the same
-# reason as check-workflow-drift.sh — this must run with nothing beyond
-# a standard POSIX toolchain.
-# ---------------------------------------------------------------------
+# shellcheck source=scripts/__tests__/lib/workflow-step.sh
+. "$REPO_ROOT/scripts/__tests__/lib/workflow-step.sh"
 SCRIPT="$TMP_ROOT/classify.sh"
 
-awk '
-  # `id: classify` arms the extractor; the next `run: |` is ours.
-  /^[[:space:]]*id:[[:space:]]*classify[[:space:]]*$/ { armed = 1; next }
-
-  armed && /^[[:space:]]*run:[[:space:]]*\|[[:space:]]*$/ {
-    match($0, /^[[:space:]]*/)
-    run_indent = RLENGTH
-    armed = 0
-    in_run = 1
-    next
-  }
-
-  in_run {
-    if ($0 ~ /^[[:space:]]*$/) { print ""; next }   # blank lines belong to the block
-    match($0, /^[[:space:]]*/)
-    indent = RLENGTH
-    if (indent <= run_indent) { in_run = 0; next }  # dedent ends the block
-    lines[++n] = $0
-    if (!have_min || indent < min) { min = indent; have_min = 1 }
-    order[n] = 1
-  }
-
-  END {
-    if (n == 0) { exit 3 }
-    for (i = 1; i <= n; i++) print substr(lines[i], min + 1)
-  }
-' "$WORKFLOW" > "$SCRIPT"
-
-# awk drops blank lines from `lines[]` (they are printed inline above),
-# so a zero-length result means the step or its `run:` block is gone.
-if [[ ! -s "$SCRIPT" ]]; then
+if ! extract_run_step "$WORKFLOW" classify > "$SCRIPT"; then
   echo "ERROR: no 'id: classify' step with a 'run: |' block found in $WORKFLOW." >&2
   echo "       If the step was renamed or restructured, update this test with it." >&2
   exit 2

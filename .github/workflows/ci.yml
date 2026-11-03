@@ -242,38 +242,14 @@ jobs:
       # layer that covers what neither reaches (#345, ADR-0027
       # § 2026-08-28 amendment).
       #
-      # Inline-in-the-job CLI install instead of
-      # google/osv-scanner-action because that action only ships reusable
-      # workflows (separate jobs) and a composite Docker action documented
-      # as "not intended to be used directly" — neither fits an inline step.
-      # Binary pinned by SHA256; version + checksum are Renovate-tracked
-      # via the `# renovate:` annotation below, so the pin cannot rot
-      # silently (ADR-0027 §Decision.1). A stale scanner reports green
-      # while no longer knowing about new advisories.
-      #
-      # Scans the lockfile only (PR-time gate). Full-tree scheduled scan
-      # lives in .github/workflows/security-scheduled.yml.
-      # Allowlist: osv-scanner.toml (entries require owner + reason +
-      # ignoreUntil ≤90d per ADR-0027 §Negative).
-      - name: Install OSV-Scanner CLI
-        run: |
-          set -euo pipefail
-          # renovate: datasource=github-release-attachments depName=google/osv-scanner
-          version="v2.7.0"
-          expected_sha="160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b"
-          url="https://github.com/google/osv-scanner/releases/download/${version}/osv-scanner_linux_amd64"
-          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/osv-scanner "$url"
-          actual_sha=$(sha256sum /tmp/osv-scanner | awk '{print $1}')
-          if [ "$actual_sha" != "$expected_sha" ]; then
-            echo "::error::OSV-Scanner binary SHA256 mismatch — expected $expected_sha got $actual_sha"
-            exit 1
-          fi
-          chmod +x /tmp/osv-scanner
-          sudo mv /tmp/osv-scanner /usr/local/bin/osv-scanner
-          osv-scanner --version
+      # The pinned CLI, shared with the nightly (security-scheduled.yml),
+      # which runs the same gate without a base. Allowlist: osv-scanner.toml
+      # (entries require owner + reason + ignoreUntil ≤90d per ADR-0027
+      # §Negative).
+      - uses: ./.github/actions/install-osv-scanner
 
       - name: OSV-Scanner (lockfile, fail on introduced vulns)
-        # NOTE on severity: osv-scanner v2.3.8 has no --severity flag. The
+        # NOTE on severity: osv-scanner has no --severity flag. The
         # gate fails on ANY vuln OSV.dev knows about that the change
         # introduces, regardless of CVSS. This is stricter than ADR-0027's
         # original "HIGH/CRITICAL" wording and aligns with the project's
@@ -640,6 +616,10 @@ jobs:
       # pre-merge evidence that its state/route logic is right.
       - name: Notify classification — truth table
         run: bash scripts/__tests__/notify-classify.test.sh
+
+      # Same reason: what a standing ci-red issue is told on each red night.
+      - name: Notify ci-red comments — self-test
+        run: bash scripts/__tests__/notify-compare.test.sh
 
       # Static check: every `expected_sha` binary pin in .github/workflows
       # and .github/actions is actually matched by a Renovate customManager

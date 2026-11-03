@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * PR gate over OSV-Scanner: fail on vulnerabilities the change introduces.
+ * Gate over OSV-Scanner: in the PR gate, fail on vulnerabilities the change
+ * introduces; in the nightly `Security (scheduled)`, without a base, on any.
  *
  * WHY (#668)
  *   The gate used to fail on ANY advisory in the lockfile. An advisory
@@ -19,6 +20,7 @@
  *   affected by the same advisory introduces nothing. No worse than the
  *   allowlist, which is per id; every instance is printed.
  *   Without `--base-lockfile` every finding fails.
+ *   FINDINGS_FILE (see .github/actions/upload-findings): the failing keys.
  *
  * WHY NOT osv-reporter
  *   Google's diff (`osv-reporter --old --new`, internal/ci) keys findings on
@@ -52,6 +54,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { writeFindingsFile } from './lib/findings-file.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const projectRoot = process.env.PROJECT_ROOT ? path.resolve(process.env.PROJECT_ROOT) : repoRoot;
@@ -123,7 +127,8 @@ function scan(label, lockfile) {
       for (const v of p.vulnerabilities) {
         if (!isName(v?.id)) fail(`${shapeError} (vulnerability id)`, 2);
         const key = `${v.id}|${ecosystem}|${name}`;
-        if (!findings.has(key)) findings.set(key, { id: v.id, name, versions: new Set() });
+        if (!findings.has(key))
+          findings.set(key, { id: v.id, ecosystem, name, versions: new Set() });
         findings.get(key).versions.add(version);
       }
     }
@@ -145,6 +150,7 @@ const base = baseLockfile ? scan('base', baseLockfile) : new Map();
 
 const introduced = [...head].filter(([key]) => !base.has(key)).map(([, f]) => f);
 const preExisting = [...head].filter(([key]) => base.has(key)).map(([, f]) => f);
+writeFindingsFile(introduced.map((f) => [f.id, f.ecosystem, f.name]));
 
 // The whole report goes to stdout, the red verdict included. The Actions
 // runner reads stdout and stderr separately and orders lines by arrival, so a

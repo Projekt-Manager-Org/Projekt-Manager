@@ -145,6 +145,8 @@
  *   since its tree is not installed. A dep absent there is new, so every
  *   finding on it is introduced.
  *
+ * FINDINGS_FILE (see .github/actions/upload-findings): (ghsa, package) keys.
+ *
  * EXIT CODES
  *   0  no matching advisory (with a base: none the change introduces)
  *   1  a matching advisory (or one whose range could not be evaluated)
@@ -163,6 +165,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
+
+import { writeFindingsFile } from './lib/findings-file.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const projectRoot = process.env.PROJECT_ROOT ? path.resolve(process.env.PROJECT_ROOT) : repoRoot;
@@ -673,6 +677,8 @@ for (const c of adjudicated) {
   else if (matchesBase) onBase.push({ ...finding, baseVersion });
   else findings.push(finding);
 }
+
+writeFindingsFile(findings.map((f) => [f.ghsa, f.name]));
 
 // --- report -----------------------------------------------------------------
 

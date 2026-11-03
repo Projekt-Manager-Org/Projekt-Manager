@@ -669,6 +669,37 @@ else
   record no "base — flag without a path" "expected exit 2, got $rc: $out"
 fi
 
+# --- FINDINGS_FILE (#732) -----------------------------------------------------
+#
+# What the check leaves at FINDINGS_FILE, read by notify.yml to tell a new
+# finding from a standing one. $3 is the expected content or NOFILE.
+assert_keys() {
+  local label="$1" dir="$2" expected="$3"
+  local keys="$dir/findings.keys" actual='NOFILE'
+  FINDINGS_FILE="$keys" run_check "$dir" >/dev/null
+  [[ -e "$keys" ]] && actual="$(cat "$keys")"
+  if [[ "$actual" == "$expected" ]]; then
+    record yes "$label" ""
+  else
+    record no "$label" "want '$expected', got '$actual'"
+  fi
+}
+
+TAB=$'\t'
+echo "Case: FINDINGS_FILE holds the keys the verdict failed on"
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+assert_keys "a finding is (ghsa, package), version not in the key" "$d" \
+  "GHSA-gpj5-g38j-94v9${TAB}drizzle-orm"
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+base_lock "$d" drizzle-orm 0.45.2
+assert_keys "with a base, a pre-existing finding is not a failing key" "$d" ''
+assert_keys "a pass leaves an empty file" "$(stage)" ''
+d="$(stage)"
+rm -rf "$d/node_modules/drizzle-orm"
+assert_keys "no verdict leaves no file" "$d" NOFILE
+
 echo ""
 echo "passed: $pass   failed: $fail"
 if [[ "$fail" -gt 0 ]]; then

@@ -1,0 +1,21 @@
+name: Install OSV-Scanner
+description: >
+  Installs the OSV-Scanner CLI from a SHA256-pinned release binary. Single
+  source of truth for the pin: `ci.yml`'s `lint` (the PR gate) and
+  `security-scheduled.yml` (the nightly) run the same scanner through the
+  same gate, scripts/check-osv-introduced.mjs.
+
+  The CLI, not google/osv-scanner-action: that ships only reusable workflows
+  (separate jobs, no steps of our own) and a composite Docker action
+  documented as "not intended to be used directly". Version and checksum are
+  Renovate-tracked via the `# renovate:` annotation in the sibling
+  install-osv-scanner.sh, so the pin cannot rot silently (ADR-0027
+  §Decision.1): a stale scanner reports green while no longer knowing about
+  new advisories. A real script file so CI's shellcheck gate covers it.
+
+runs:
+  using: composite
+  steps:
+    - name: Install OSV-Scanner CLI
+      shell: bash
+      run: bash "${GITHUB_ACTION_PATH}/install-osv-scanner.sh"
