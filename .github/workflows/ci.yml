@@ -614,6 +614,9 @@ jobs:
       - name: Deploy inventory — self-test
         run: bash scripts/__tests__/deploy-inventory.test.sh
 
+      - name: Grype severity gate — self-test
+        run: bash scripts/__tests__/grype-gate.test.sh
+
       # renovate-health.yml and docker-host-advisories.yml (nightly) and
       # deploy-pending.yml (push to main) never run on a PR; these are
       # their only pre-merge evidence.
