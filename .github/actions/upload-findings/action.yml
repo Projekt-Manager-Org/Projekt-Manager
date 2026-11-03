@@ -12,7 +12,7 @@ description: >
 
   A gate in `gates` that wrote no file gets `<gate>.none`, so a crashed
   gate reads as "no verdict", never as clean. Run this last, with
-  `if: ${{ !cancelled() }}`, as a step named `Upload findings`: notify.yml
+  `!cancelled()` as its condition, as a step named `Upload findings`: notify.yml
   reads a failed upload from that step, and a cancelled job, which uploads
   nothing, from the job's conclusion.
 
