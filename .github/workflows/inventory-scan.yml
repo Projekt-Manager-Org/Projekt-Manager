@@ -7,6 +7,8 @@
 # (the `node` binary) or compiled from source (`postgres`). Grype matches
 # those binaries; Trivy sees what Grype misses (Go stdlib in `gosu`).
 #
+#   allowlists the allowlist schema, expiry included: red on a lapsed
+#              entry, without holding back the scans
 #   inventory  the image set, derived from the deploy's own compose file
 #              and profiles (scripts/ci/deploy-inventory.sh) — a new
 #              service is scanned with no change here
@@ -45,11 +47,6 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      # Before any scan: Grype does not read the expiry, so a lapsed
-      # .grype.yaml entry would suppress its finding forever without this.
-      - name: Check allowlist schema (osv-scanner.toml, .trivyignore.yaml, .grype.yaml)
-        run: bash scripts/check-allowlist-schema.sh
-
       - name: Derive inventory
         id: derive
         env:
@@ -59,6 +56,19 @@ jobs:
           images=$(bash scripts/ci/deploy-inventory.sh)
           echo "$images" | jq .
           echo "images=$images" >> "$GITHUB_OUTPUT"
+
+  # Its own job, not a step ahead of the scans (#725): a lapsed entry used
+  # to halt `inventory`, so no image was scanned while it lapsed. Grype does
+  # not read the expiry, so without this a lapsed .grype.yaml entry would
+  # suppress its finding forever; Trivy honours it and reports the finding.
+  allowlists:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Check allowlist schema (osv-scanner.toml, .trivyignore.yaml, .grype.yaml)
+        run: bash scripts/check-allowlist-schema.sh
 
   scan:
     needs: inventory

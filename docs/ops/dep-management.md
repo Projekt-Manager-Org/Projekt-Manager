@@ -249,7 +249,8 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   90 days is the maximum permitted window; pick a shorter date if upstream has a target ship-date. The expiry forces a re-review and the entry stops suppressing automatically — there is no silent-forever suppression path. Track the upstream CVE in the Renovate dashboard so the entry gets removed (not renewed) when the fix lands.
 
 - **`Inventory scan is red on main`** (ci-red issue from `inventory-scan.yml`).
-  - **`inventory` job** — an allowlist entry expired or is malformed, or the inventory cannot be derived (an image holding a variable other than `APP_IMAGE_TAG`, a build with args/target). No image is scanned until it is fixed.
+  - **`allowlists` job** — an allowlist entry expired or is malformed. The scans still run; Grype still applies a lapsed `.grype.yaml` entry.
+  - **`inventory` job** — the inventory cannot be derived (an image holding a variable other than `APP_IMAGE_TAG`, a build with args/target). No image is scanned until it is fixed.
   - **`scan (<service>)` finding with a fix upstream** — the Renovate update that carries it is the fix; do not bump by hand. Check the Dependency Dashboard, including Pending Approval, for the image or module that carries it. Only a component no manager claims needs a `renovate.json` change.
   - **Unreachable or no fix** — allowlist entry, scoped to the package or path ([§Allowlist](#allowlist)).
 
@@ -270,7 +271,7 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
 ### Allowlist
 
-The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (YAML files) — is [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative); this section is its single home for formats. `scripts/check-allowlist-schema.sh` enforces it in `lint` (before OSV-Scanner) and in the nightlies (before the repo-level check and Grype). In `lint` an expired entry the PR does not touch only warns: the nightlies fail on it, so a lapse opens a ci-red issue instead of blocking every merge.
+The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (YAML files) — is [ADR-0027 §Negative](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#negative); this section is its single home for formats. `scripts/check-allowlist-schema.sh` enforces it in `lint` (before OSV-Scanner), in `Security (scheduled)` (before the repo-level check) and in `Inventory scan`'s own `allowlists` job, beside the scans. In `lint` an expired entry the PR does not touch only warns: the nightlies fail on it, so a lapse opens a ci-red issue instead of blocking every merge.
 
 | Field  | `osv-scanner.toml` (npm, git)   | `.trivyignore.yaml` (all Trivy scans)                     | `.grype.yaml` (nightly)         |
 | ------ | ------------------------------- | --------------------------------------------------------- | ------------------------------- |
