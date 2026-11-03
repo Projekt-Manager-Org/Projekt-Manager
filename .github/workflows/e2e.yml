@@ -27,7 +27,7 @@ name: E2E
 
 on:
   schedule:
-    # 03:30 UTC daily = 05:30 Europe/Sofia (EET, winter) / 06:30 (EEST,
+    # 03:30 UTC daily = 04:30 Europe/Berlin (CET, winter) / 05:30 (CEST,
     # summer DST). Offset 30 min from `security-scheduled.yml`'s 03:00 so
     # the two nightlies neither contend for runners nor deliver their red
     # notifications in the same minute.
