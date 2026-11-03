@@ -78,7 +78,9 @@
 #   This workflow satisfies that trivially — it has no `checkout` step
 #   and runs nothing from the tree. All untrusted values (branch name,
 #   workflow name, SHA) reach the shell through `env:`, never through
-#   `${{ }}` interpolation into a `run:` body.
+#   `${{ }}` interpolation into a `run:` body. The findings artifacts it
+#   downloads (#732) come only from runs on `main` and are read as data:
+#   compared as text, quoted into code spans, never executed.
 name: Notify
 
 on:
@@ -108,7 +110,8 @@ on:
 
 # An explicit block zeroes every scope not listed. `contents: read`
 # is needed for the commit→PR lookup and `actions: read` for the jobs
-# lookup that tells a timeout from an eviction; the two write scopes
+# lookups (a timeout vs an eviction; failed steps) and the findings
+# artifacts of a standing red (#732); the two write scopes
 # serve the assignees endpoint, which is documented in terms of the
 # target type (issue vs PR) — grant both rather than bet on which is
 # checked.
@@ -137,6 +140,10 @@ env:
   # lookup is an exact, bounded query instead of a scan of every open
   # issue in the repo.
   RED_LABEL: ci-red
+  # Workflows whose jobs upload findings (.github/actions/upload-findings):
+  # a later red run says what it adds to their standing ci-red issue (#732).
+  # scripts/check-notify-coverage.sh keeps this list in step with them.
+  FINDINGS_SCOPED: '["Security (scheduled)", "Inventory scan"]'
 
 jobs:
   notify:
@@ -309,10 +316,225 @@ jobs:
       # same reason: a stale open issue stops the next incident from
       # notifying.
       # ---------------------------------------------------------------
-      - name: Open or update the red-main issue
-        if: steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'red'
+
+      # One lookup for both directions. Title carries the workflow name so
+      # `CI` and `Security (scheduled)` own separate issues: sharing one
+      # would let a green CI run close an issue raised by a still-red
+      # nightly scan. A label that does not exist yet answers `[]`, not an
+      # error: no issue was ever raised.
+      - name: Find the red-main issue
+        id: issue
+        if: steps.classify.outputs.route == 'main' && steps.classify.outputs.state != 'ignore'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+        run: |
+          set -euo pipefail
+          title="${WORKFLOW_NAME} is red on main"
+          number=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=${RED_LABEL}&per_page=100" \
+            | jq -r --arg t "$title" \
+              'map(select(.pull_request == null and .title == $t)) | first | .number // empty')
+          {
+            echo "title=${title}"
+            echo "number=${number}"
+          } >> "$GITHUB_OUTPUT"
+
+      # A later red run of a scanning workflow says what it adds to the
+      # standing red (#732): a plain "Still red" hid a new advisory in #420.
+      #
+      # The baseline is the last run the issue reported other than this one
+      # (a re-run keeps the run id); upload-findings says why its artifacts
+      # are still there. That run must be this workflow's, on `main`, not a
+      # PR's: its artifacts are trusted as the baseline. What a run reports:
+      # its failed steps (jobs API) and, per gate, the keys it failed on
+      # (`findings-<label>/<gate>.keys`). A gate's keys are compared only
+      # when it reached a verdict on both runs; otherwise the comment says
+      # "not compared" and why, never plain "Still red". The same goes for
+      # a cancelled or skipped job, a failed `Upload findings` step, and any
+      # input this step cannot read.
+      #
+      # The artifacts hold scanned third-party text (package names, paths):
+      # data only, never executed, and quoted into code spans with their
+      # backticks stripped. Capped, as GitHub rejects a comment over 65536
+      # characters and that would post nothing at all.
+      - name: Compare with the last alert
+        id: compare
+        if: >-
+          steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'red' &&
+          steps.issue.outputs.number != '' &&
+          contains(fromJSON(env.FINDINGS_SCOPED), github.event.workflow_run.name)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ steps.issue.outputs.number }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+        run: |
+          set -euo pipefail
+          # Otherwise a failure inside $(…) is ignored and its line silently
+          # missing from the comment; with it the step fails and `post` says so.
+          shopt -s inherit_errexit
+          bot='github-actions[bot]'
+          upload_step='Upload findings'
+          max_items=50
+          max_chars=300
+          work=$(mktemp -d -p "$RUNNER_TEMP" compare.XXXXXX)
+          body="$work/comment.md"
+          runs="https://github.com/${GITHUB_REPOSITORY}/actions/runs/"
+
+          # The comment's path is an output only once the comment is whole:
+          # a step that dies half-way leaves `post` to say so.
+          finish() {
+            echo "body_file=${body}" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          uncompared() {
+            printf 'Still red, **not compared** — %s\n\nFindings not compared: %s\n' "$RUN_URL" "$1" > "$body"
+            finish
+          }
+
+          # The run the issue last reported: of notify's texts, the body and
+          # its comments, the newest whose first run link is not this run. A
+          # comparing comment also links its own baseline, after its run.
+          issue=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}") \
+            || uncompared 'could not read the issue.'
+          comments=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments?per_page=100") \
+            || uncompared 'could not read the issue.'
+          base_id=$(printf '[%s]\n%s\n' "$issue" "$comments" | jq -rs \
+            --arg bot "$bot" --arg cur "$RUN_ID" --arg re "^${runs//./\\.}(?<id>[0-9]+)" '
+              add
+              | [.[] | select(.user.login == $bot) | (.body // "")
+                 | [splits("\\s+")] | map(capture($re).id) | first // empty
+                 | select(. != $cur)]
+              | last // empty')
+          [ -n "$base_id" ] || uncompared 'the issue links no earlier run.'
+          base_url="${runs}${base_id}"
+          base_link="[the last alert's run](${base_url})"
+
+          base_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${base_id}") \
+            || uncompared "could not read ${base_link}."
+          jq -e --argjson wf "$WORKFLOW_ID" --arg repo "$GITHUB_REPOSITORY" '
+            .workflow_id == $wf and .head_branch == "main" and .event != "pull_request"
+            and .head_repository.full_name == $repo' <<< "$base_run" > /dev/null \
+            || uncompared "${base_link} is not a run of this workflow on main."
+
+          # jobs <run> <dir> / findings <run> <dir>: the run's jobs, and its
+          # findings artifacts. A run that uploaded none has none to fetch;
+          # one that did must download whole, or nothing it says is known.
+          jobs() {
+            mkdir -p "$2"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/jobs?per_page=100" > "$2/jobs.json"
+          }
+          findings() {
+            mkdir -p "$2/a"
+            uploaded=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/artifacts?per_page=100" \
+              | jq '[.artifacts[] | select((.expired | not) and (.name | startswith("findings-")))] | length') \
+              || return 1
+            [ "$uploaded" -eq 0 ] \
+              || gh run download "$1" --repo "$GITHUB_REPOSITORY" --pattern 'findings-*' --dir "$2/a" > /dev/null
+          }
+          jobs "$RUN_ID" "$work/cur" || uncompared 'could not read the jobs of this run.'
+          jobs "$base_id" "$work/base" || uncompared "could not read the jobs of ${base_link}."
+          findings "$RUN_ID" "$work/cur" || uncompared 'could not download the findings of this run.'
+          findings "$base_id" "$work/base" || uncompared "could not download the findings of ${base_link}."
+
+          # A failed job reads as `steps: []` once its run's logs expire:
+          # its failed steps are unknown, not absent.
+          jq -e '[.jobs[] | select((.conclusion == "failure") and ((.steps // []) | length == 0))]
+            | length == 0' "$work/base/jobs.json" > /dev/null \
+            || uncompared "the failed jobs of ${base_link} list no steps (expired)."
+          if ! compgen -G "$work/base/a/findings-*/*.keys" > /dev/null \
+            && ! compgen -G "$work/base/a/findings-*/*.none" > /dev/null; then
+            uncompared "${base_link} left no findings (its artifacts may have expired)."
+          fi
+
+          # gates <dir> <ext>: `label/gate` per findings file of that kind.
+          gates() {
+            for f in "$1"/a/findings-*/*."$2"; do
+              [ -e "$f" ] || continue
+              label=$(basename "$(dirname "$f")")
+              echo "${label#findings-}/$(basename "$f" ".$2")"
+            done | LC_ALL=C sort -u
+          }
+          gates "$work/cur" keys > "$work/cur.keys"
+          gates "$work/base" keys > "$work/base.keys"
+          LC_ALL=C comm -12 "$work/cur.keys" "$work/base.keys" > "$work/both.keys"
+
+          # reported <dir>: one line per failed step (or failed job without
+          # one), then per finding of a gate judged on both runs
+          # `label/gate<TAB>key`.
+          reported() {
+            jq -r '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out")
+              | .name as $job | .conclusion as $how
+              | [(.steps // [])[] | select(.conclusion == "failure") | "failed: \($job) / \(.name)"]
+              | if length > 0 then .[] else "failed: \($job) (\($how))" end' "$1/jobs.json"
+            while read -r g; do
+              awk -v g="$g" 'NF { print g "\t" $0 }' "$1/a/findings-${g%%/*}/${g#*/}.keys"
+            done < "$work/both.keys"
+          }
+          reported "$work/cur" | LC_ALL=C sort -u > "$work/cur.txt"
+          reported "$work/base" | LC_ALL=C sort -u > "$work/base.txt"
+          added=$(LC_ALL=C comm -13 "$work/base.txt" "$work/cur.txt")
+
+          # Not compared: a gate without a verdict now (marked, or missing
+          # where the last run had one) or then, and a job that left
+          # nothing to read.
+          not_compared=$(
+            {
+              gates "$work/cur" none
+              cat "$work/base.keys"
+              gates "$work/base" none
+            } | LC_ALL=C sort -u | LC_ALL=C comm -23 - "$work/cur.keys" \
+              | sed 's/.*/`&` gave no verdict/'
+            LC_ALL=C comm -23 "$work/cur.keys" "$work/base.keys" \
+              | sed "s/.*/\`&\` had no verdict on the last alert's run/"
+            jq -r --arg up "$upload_step" '.jobs[] | (.name | gsub("`"; "")) as $job
+              | if .conclusion == "cancelled" or .conclusion == "skipped" then "`\($job)` (\(.conclusion))"
+                elif any((.steps // [])[]; .name == $up and .conclusion != "success")
+                then "`\($job)` uploaded no findings" else empty end' "$work/cur/jobs.json"
+          )
+
+          # bullets: one code span per line, at most max_items.
+          bullets() {
+            awk -v max="$max_items" -v width="$max_chars" '
+              { gsub(/[`\r]/, ""); gsub(/\t/, " · ")
+                if (length($0) > width) $0 = substr($0, 1, width) "…"
+                if (NR <= max) print "- `" $0 "`" }
+              END { if (NR > max) print "- … and " NR - max " more in the run" }'
+          }
+
+          header='Still red'
+          [ -n "$added" ] && header+=', **with something new**'
+          if [ -n "$not_compared" ]; then
+            if [ -n "$added" ]; then header+=', **partly not compared**'; else header+=', **not compared**'; fi
+          fi
+          {
+            echo "${header} — ${RUN_URL}"
+            if [ -n "$added" ]; then
+              printf '\nNew since %s:\n' "$base_link"
+              bullets <<< "$added"
+            fi
+            if [ -n "$not_compared" ]; then
+              printf '\nNot compared with %s, so anything new there is not listed:\n' "$base_link"
+              head -n "$max_items" <<< "$not_compared" | sed 's/^/- not compared: /'
+            fi
+          } > "$body"
+          finish
+
+      # Runs when `compare` failed too: a scanning workflow must not fall
+      # back to a plain "Still red", nor post nothing. Not when the lookup
+      # failed, which would open a second issue.
+      - name: Open or update the red-main issue
+        id: post
+        if: >-
+          !cancelled() && steps.issue.outcome == 'success' &&
+          steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'red'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXISTING: ${{ steps.issue.outputs.number }}
+          TITLE: ${{ steps.issue.outputs.title }}
+          COMPARED: ${{ contains(fromJSON(env.FINDINGS_SCOPED), github.event.workflow_run.name) }}
+          BODY_FILE: ${{ steps.compare.outputs.body_file }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           RUN_EVENT: ${{ github.event.workflow_run.event }}
@@ -321,11 +543,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Title carries the workflow name so `CI` and `Security
-          # (scheduled)` own separate issues. Sharing one would let a
-          # green CI run close an issue raised by a still-red nightly
-          # scan.
-          title="${WORKFLOW_NAME} is red on main"
+          if [ -n "$EXISTING" ]; then
+            # Still red on a later run. A comment re-notifies the
+            # assignee, which is wanted — each failure is a fresh
+            # occurrence — while keeping one issue per incident. For an
+            # event-scoped workflow it is another merge, not the same one.
+            if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
+              comment="Also red (another merge, \`${HEAD_SHA}\`) — ${RUN_URL}"
+            elif [ "$COMPARED" != 'true' ]; then
+              comment="Still red — ${RUN_URL}"
+            elif [ -n "$BODY_FILE" ] && [ -f "$BODY_FILE" ]; then
+              comment=$(cat "$BODY_FILE")
+            else
+              comment=$(printf 'Still red, **not compared** — %s\n\n%s' "$RUN_URL" \
+                "The comparison failed; see the Notify run's log.")
+            fi
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${EXISTING}/comments" \
+              -f "body=${comment}" > /dev/null
+            echo "::notice::${WORKFLOW_NAME} still red on main — commented on #${EXISTING}"
+            exit 0
+          fi
 
           # Idempotent label bootstrap — 422 means it already exists.
           gh api "repos/${GITHUB_REPOSITORY}/labels/${RED_LABEL}" > /dev/null 2>&1 || \
@@ -334,75 +571,42 @@ jobs:
               -f 'description=Raised automatically when a monitored workflow goes red on main' \
               > /dev/null
 
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=${RED_LABEL}&per_page=100" \
-            | jq -r --arg t "$title" \
-              'map(select(.pull_request == null and .title == $t)) | first | .number // empty')
-
-          if [ -n "$existing" ]; then
-            # Still red on a later run. A comment re-notifies the
-            # assignee, which is wanted — each failure is a fresh
-            # occurrence — while keeping one issue per incident. For an
-            # event-scoped workflow it is another merge, not the same one.
-            if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
-              comment="Also red (another merge, \`${HEAD_SHA}\`) — ${RUN_URL}"
-            else
-              comment="Still red — ${RUN_URL}"
-            fi
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${existing}/comments" \
-              -f "body=${comment}" > /dev/null
-            echo "::notice::${WORKFLOW_NAME} still red on main — commented on #${existing}"
+          if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
+            closing='Raised by `.github/workflows/notify.yml`. A later green run does not cover this commit: check the run, then close this issue by hand.'
           else
-            if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
-              closing='Raised by `.github/workflows/notify.yml`. A later green run does not cover this commit: check the run, then close this issue by hand.'
-            else
-              closing='Raised by `.github/workflows/notify.yml`; it closes itself on the next green run of this workflow.'
-            fi
-            # Built with printf rather than a multi-line string literal:
-            # a quoted literal inside this indented `run:` block would
-            # carry the YAML indentation into the rendered issue body.
-            body=$(printf '%s\n' \
-              "\`${WORKFLOW_NAME}\` concluded **${CONCLUSION}** on \`main\` (${RUN_EVENT})." \
-              '' \
-              "- Run: ${RUN_URL}" \
-              "- Commit: \`${HEAD_SHA}\`" \
-              '' \
-              "$closing")
-
-            number=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/issues" \
-              -f "title=${title}" -f "body=${body}" \
-              -f "labels[]=${RED_LABEL}" -f "assignees[]=${MAINTAINER}" \
-              --jq '.number')
-            echo "::notice::${WORKFLOW_NAME} red on main — opened #${number} for ${MAINTAINER}"
+            closing='Raised by `.github/workflows/notify.yml`; it closes itself on the next green run of this workflow.'
           fi
+          # Built with printf rather than a multi-line string literal:
+          # a quoted literal inside this indented `run:` block would
+          # carry the YAML indentation into the rendered issue body.
+          body=$(printf '%s\n' \
+            "\`${WORKFLOW_NAME}\` concluded **${CONCLUSION}** on \`main\` (${RUN_EVENT})." \
+            '' \
+            "- Run: ${RUN_URL}" \
+            "- Commit: \`${HEAD_SHA}\`" \
+            '' \
+            "$closing")
+
+          number=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/issues" \
+            -f "title=${TITLE}" -f "body=${body}" \
+            -f "labels[]=${RED_LABEL}" -f "assignees[]=${MAINTAINER}" \
+            --jq '.number')
+          echo "::notice::${WORKFLOW_NAME} red on main — opened #${number} for ${MAINTAINER}"
 
       - name: Close the red-main issue
         if: >-
           steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'green' &&
-          github.event.workflow_run.name != env.EVENT_SCOPED
+          steps.issue.outputs.number != '' && github.event.workflow_run.name != env.EVENT_SCOPED
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXISTING: ${{ steps.issue.outputs.number }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          title="${WORKFLOW_NAME} is red on main"
-
-          # No label bootstrap here: if the label does not exist yet,
-          # no issue was ever raised, and the query below is correctly
-          # empty. `|| true` keeps a 404 on the missing label from
-          # failing the green path.
-          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=${RED_LABEL}&per_page=100" 2>/dev/null \
-            | jq -r --arg t "$title" \
-              'map(select(.pull_request == null and .title == $t)) | first | .number // empty' || true)
-
-          if [ -z "$existing" ]; then
-            echo "::notice::${WORKFLOW_NAME} green on main — nothing open to close"
-            exit 0
-          fi
-
-          gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${existing}/comments" \
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${EXISTING}/comments" \
             -f "body=Green again on ${HEAD_SHA} — ${RUN_URL}" > /dev/null
-          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/${existing}" \
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/${EXISTING}" \
             -f 'state=closed' -f 'state_reason=completed' > /dev/null
-          echo "::notice::${WORKFLOW_NAME} green on main — closed #${existing}"
+          echo "::notice::${WORKFLOW_NAME} green on main — closed #${EXISTING}"

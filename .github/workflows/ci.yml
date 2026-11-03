@@ -617,6 +617,10 @@ jobs:
       - name: Notify classification — truth table
         run: bash scripts/__tests__/notify-classify.test.sh
 
+      # Same reason: what a standing ci-red issue is told on each red night.
+      - name: Notify ci-red comments — self-test
+        run: bash scripts/__tests__/notify-compare.test.sh
+
       # Static check: every `expected_sha` binary pin in .github/workflows
       # and .github/actions is actually matched by a Renovate customManager
       # scoped to THAT path. The manager's regex joins the `# renovate:`

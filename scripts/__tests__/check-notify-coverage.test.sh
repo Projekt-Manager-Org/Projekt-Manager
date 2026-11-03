@@ -34,6 +34,7 @@ cleanup() {
 trap cleanup EXIT
 
 # $1 = the notify.yml `workflows:` list body, e.g. "[CI, 'Security (scheduled)']"
+# $2 = its FINDINGS_SCOPED value (a JSON list); omitted means no env at all
 mktmp() {
   local d
   d="$(mktemp -d)"
@@ -46,6 +47,9 @@ on:
     workflows: $1
     types: [completed]
 EOF
+  if [[ -n "${2:-}" ]]; then
+    printf "env:\n  FINDINGS_SCOPED: '%s'\n" "$2" >> "$d/.github/workflows/notify.yml"
+  fi
   echo "$d"
 }
 
@@ -56,6 +60,24 @@ name: $3
 on:
 $4
 jobs: {}
+EOF
+}
+
+# $1 = dir, $2 = file name, $3 = name — a scheduled workflow whose job
+# uploads findings for notify.yml's comparison.
+add_uploader() {
+  cat > "$1/.github/workflows/$2" <<EOF
+name: $3
+on:
+  schedule:
+    - cron: '0 3 * * *'
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Upload findings
+        uses: ./.github/actions/upload-findings
 EOF
 }
 
@@ -136,6 +158,27 @@ dir="$(mktmp "[CI]")"
 sed -i '/workflows:/d' "$dir/.github/workflows/notify.yml"
 add_workflow "$dir" inventory-scan.yml "Inventory scan" "$SCHEDULE"
 assert_case 2 "notify.yml without a workflows: list is an error" "$dir"
+
+# FINDINGS_SCOPED must name exactly the workflows that upload findings.
+dir="$(mktmp "[Inventory scan]" '["Inventory scan"]')"
+add_uploader "$dir" inventory-scan.yml "Inventory scan"
+assert_case 0 "uploader in FINDINGS_SCOPED" "$dir"
+
+dir="$(mktmp "[Inventory scan]" '[]')"
+add_uploader "$dir" inventory-scan.yml "Inventory scan"
+assert_case 1 "uploader missing from FINDINGS_SCOPED fails, naming it" "$dir" "uploads findings but is not in"
+
+dir="$(mktmp "[Inventory scan]")"
+add_uploader "$dir" inventory-scan.yml "Inventory scan"
+assert_case 1 "no FINDINGS_SCOPED at all reads as empty" "$dir" "uploads findings but is not in"
+
+dir="$(mktmp "[Inventory scan]" '["Inventory scan", "Gone"]')"
+add_uploader "$dir" inventory-scan.yml "Inventory scan"
+assert_case 1 "FINDINGS_SCOPED entry without an uploader fails, naming it" "$dir" "'Gone', which uploads no findings"
+
+dir="$(mktmp "[Inventory scan]" 'not json')"
+add_uploader "$dir" inventory-scan.yml "Inventory scan"
+assert_case 2 "FINDINGS_SCOPED that is not a JSON list is an error" "$dir"
 
 echo ""
 echo "-------------------------------------------------------------"

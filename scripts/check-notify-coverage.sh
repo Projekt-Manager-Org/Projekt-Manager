@@ -13,11 +13,17 @@
 # push the pusher is watching. A `push` without a `branches` filter
 # includes main (`branches-ignore` is read conservatively as including it).
 #
+# notify.yml's FINDINGS_SCOPED names the workflows whose red comments say
+# what a run added; it must list exactly those that call
+# ./.github/actions/upload-findings. A renamed one would fall back to a
+# plain "Still red", and a listed one without findings is never compared.
+#
 # Exit codes:
 #   0  every such workflow is listed
 #   1  at least one is not; one line per workflow on stdout
-#   2  notify.yml has no `on.workflow_run.workflows` list — the check
-#      cannot run, which must not read as a pass
+#   2  notify.yml has no `on.workflow_run.workflows` list, or a
+#      FINDINGS_SCOPED that is not a JSON list — the check cannot run,
+#      which must not read as a pass
 
 set -euo pipefail
 
@@ -25,7 +31,7 @@ set -euo pipefail
 REPO_ROOT="${NOTIFY_REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 WORKFLOWS_DIR="$REPO_ROOT/.github/workflows" python3 - <<'PY'
-import os, sys
+import json, os, sys
 from pathlib import Path
 
 import yaml
@@ -45,6 +51,25 @@ if not isinstance(listed, list):
     print(f"ERROR: {wf_dir / 'notify.yml'}: no on.workflow_run.workflows list", file=sys.stderr)
     sys.exit(2)
 
+try:
+    scoped = json.loads((notify.get("env") or {}).get("FINDINGS_SCOPED", "[]"))
+except json.JSONDecodeError:
+    scoped = None
+if not isinstance(scoped, list):
+    print(f"ERROR: {wf_dir / 'notify.yml'}: env.FINDINGS_SCOPED is not a JSON list", file=sys.stderr)
+    sys.exit(2)
+
+UPLOAD_FINDINGS = "./.github/actions/upload-findings"
+
+
+def uploads_findings(doc):
+    return any(
+        step.get("uses") == UPLOAD_FINDINGS
+        for job in (doc.get("jobs") or {}).values()
+        for step in (job.get("steps") or [])
+    )
+
+
 def pushes_main(on):
     if "push" not in on:
         return False
@@ -53,14 +78,23 @@ def pushes_main(on):
 
 
 missing = []
+uploaders = set()
 for path in sorted([*wf_dir.glob("*.yml"), *wf_dir.glob("*.yaml")]):
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     on = triggers(doc)
+    # GitHub falls back to the file path when a workflow has no name.
+    name = doc.get("name") or str(path.relative_to(wf_dir.parent.parent))
     if "schedule" in on or pushes_main(on):
-        # GitHub falls back to the file path when a workflow has no name.
-        name = doc.get("name") or str(path.relative_to(wf_dir.parent.parent))
         if name not in listed:
             missing.append(f"{path.name}: workflow '{name}' runs unattended but is not in notify.yml's workflows: list")
+    if uploads_findings(doc):
+        uploaders.add(name)
+        if name not in scoped:
+            missing.append(f"{path.name}: workflow '{name}' uploads findings but is not in notify.yml's FINDINGS_SCOPED")
+
+for name in scoped:
+    if name not in uploaders:
+        missing.append(f"notify.yml: FINDINGS_SCOPED lists '{name}', which uploads no findings")
 
 for line in missing:
     print(line)
