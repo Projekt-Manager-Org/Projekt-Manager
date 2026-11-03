@@ -55,7 +55,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
        - **`Spec-change declaration`** (`spec-change.yml`): a PR touching `docs/spec/**` declares why in its body ([CONTRIBUTING.md § Workflow](../../CONTRIBUTING.md#workflow) step 1).
        - **`lint`** is the static-analysis pillar: Renovate config validation, lockfile-pin drift, allowlist schema, OSV-Scanner (lockfile vulns), Trivy filesystem-secret + IaC scans, compose-reference validation, lint, shellcheck, format, theme-token hygiene, type-check, env-drift, audit-write-path check, build. No DB, no MinIO — runs in parallel with the test pillar.
        - **`check`** is a 5-line aggregator that gates on the sharded `check-shard` matrix (`needs: check-shard`, fails if any shard failed). Stable required-check name across shard-count changes — only the matrix array in `ci.yml` moves when shards are added/removed; the Ruleset never has to be re-edited. The actual tests live in `check-shard` (postgres service + MinIO + integration tests, partitioned by `--shard=N/M`).
-       - **`docker`** is the image gate: both images built and Trivy-scanned (HIGH/CRITICAL/UNKNOWN blocks merge), the runtime smoke, and the Tier 1 backup round-trip. It runs on **every** PR and publishes nothing. It used to be path-filtered, which made it report **skipped** on non-image PRs — and a skipped job [counts as a successful required check](https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution), so requiring it gated nothing for the majority of PRs (#355).
+       - **`docker`** is the image gate: both images built and Trivy-scanned (a HIGH/CRITICAL/UNKNOWN finding the change introduces blocks merge), the runtime smoke, and the Tier 1 backup round-trip. It runs on **every** PR and publishes nothing. It used to be path-filtered, which made it report **skipped** on non-image PRs — and a skipped job [counts as a successful required check](https://docs.github.com/en/actions/using-jobs/using-conditions-to-control-job-execution), so requiring it gated nothing for the majority of PRs (#355).
        - Do **NOT** add `check-shard`: matrix jobs surface as `check-shard (1)` / `check-shard (2)`, names that change when shard count changes — the aggregator `check` exists precisely so the Ruleset isn't entangled with the matrix shape.
        - **`publish`** orders the land after the image is named; it is not an image gate (`docker` is). Rationale: [ADR-0011 § Decision](../adr/0011-build-images-in-ci-distribute-via-ghcr.md#decision) and [#683](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/683).
 
@@ -110,22 +110,21 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 ## Cadence
 
-| Trigger                                       | Result                                       | Latency                                    |
-| --------------------------------------------- | -------------------------------------------- | ------------------------------------------ |
-| Renovate, any time (non-majors)               | PR, auto-merged on green CI                  | 3 days (release age); Docker images: hours |
-| Renovate major                                | Pending Approval on the Dependency Dashboard | ~30 min/week wrangler                      |
-| Advisory on a **direct** dep                  | Renovate opens a vuln PR out-of-band         | Hours from publication                     |
-| Advisory on a **transitive** dep              | Dependabot security-update PR                | Hours from publication                     |
-| `lockFileMaintenance` (daily, before 9am)     | Transitive drift refreshed wholesale         | ≤24h                                       |
-| OSV / repo-level advisory a PR introduces     | PR merge blocked                             | Per-PR                                     |
-| Advisory against what `main` already ships    | Nightly goes red (ci-red issue); PRs pass    | ≤24h from publication                      |
-| Trivy image finding                           | PR merge blocked                             | Per-PR                                     |
-| Nightly full-tree OSV scan                    | Schedule goes red → manual bump (backstop)   | ≤24h from publication                      |
-| Nightly inventory scan (deployed images)      | Schedule goes red → see § CVE handling       | ≤24h from indexing                         |
-| Nightly Renovate health (dashboard, open PRs) | Schedule goes red → see § CVE handling       | ≤24h; liveness ≤48h                        |
-| Merge of a `deploy-asap` PR                   | "Deploy pending" issue for the operator      | Minutes                                    |
-| Quarterly review                              | Walk strategic-dep list (below)              | ~1 hour, 4×/year                           |
-| Any npm release (direct or transitive)        | Held from resolution until 3 days old        | +3 days (see below)                        |
+| Trigger                                                | Result                                       | Latency                                    |
+| ------------------------------------------------------ | -------------------------------------------- | ------------------------------------------ |
+| Renovate, any time (non-majors)                        | PR, auto-merged on green CI                  | 3 days (release age); Docker images: hours |
+| Renovate major                                         | Pending Approval on the Dependency Dashboard | ~30 min/week wrangler                      |
+| Advisory on a **direct** dep                           | Renovate opens a vuln PR out-of-band         | Hours from publication                     |
+| Advisory on a **transitive** dep                       | Dependabot security-update PR                | Hours from publication                     |
+| `lockFileMaintenance` (daily, before 9am)              | Transitive drift refreshed wholesale         | ≤24h                                       |
+| OSV / repo-level / Trivy image finding a PR introduces | PR merge blocked                             | Per-PR                                     |
+| Advisory against what `main` already ships             | Nightly goes red (ci-red issue); PRs pass    | ≤24h from publication                      |
+| Nightly full-tree OSV scan                             | Schedule goes red → manual bump (backstop)   | ≤24h from publication                      |
+| Nightly inventory scan (deployed images)               | Schedule goes red → see § CVE handling       | ≤24h from indexing                         |
+| Nightly Renovate health (dashboard, open PRs)          | Schedule goes red → see § CVE handling       | ≤24h; liveness ≤48h                        |
+| Merge of a `deploy-asap` PR                            | "Deploy pending" issue for the operator      | Minutes                                    |
+| Quarterly review                                       | Walk strategic-dep list (below)              | ~1 hour, 4×/year                           |
+| Any npm release (direct or transitive)                 | Held from resolution until 3 days old        | +3 days (see below)                        |
 
 **Renovate does not cover transitive deps.** Its vulnerability PRs are [direct-dependency-only by design](https://docs.renovatebot.com/configuration-options/#osvvulnerabilityalerts) — a package that exists only in `package-lock.json` is invisible to it. That class is covered by Dependabot security updates and daily lockfile maintenance instead ([ADR-0027 § 2026-08-06 amendment](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-06--renovate-does-not-remediate-transitive-deps)).
 
@@ -233,7 +232,7 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
 ## CVE handling
 
-- **New advisory against what `main` already ships** — the change-scoped PR gates stay green: they fail only on findings a change introduces ([ADR-0027 § 2026-10-31](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--pr-gates-judge-the-change-not-main)). The Trivy image gate is still absolute (#725) and goes red too. The nightly `Security (scheduled)` run goes red; triage per the bullets below — fix, or allowlist when unreachable or unfixed.
+- **New advisory against what `main` already ships** — the change-scoped PR gates stay green: they fail only on findings a change introduces ([ADR-0027 § 2026-10-31](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--pr-gates-judge-the-change-not-main)). The nightlies (`Security (scheduled)`, `Inventory scan`) go red; triage per the bullets below — fix, or allowlist when unreachable or unfixed.
 - **High/Critical** — non-majors auto-merge; merge a major on green CI, even off-hours.
 - **Medium/Low** — majors at the next wrangler pass.
 - **Unrated (Trivy `UNKNOWN`, Grype `Unknown`)** — triaged like High: fix, or allowlist. Not yet scored is not low ([ADR-0027 §Decision.2](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2-supply-chain-scanning-in-ci-blocking)); Go vuln DB records carry no severity by design. When a waiver on a Go binary needs a reachability verdict, run `govulncheck -mode=binary <binary>` by hand.
@@ -245,7 +244,7 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   ```
 
 - **False-positive on dead code** (cf. the original [ADR-0007](../adr/0007-suppress-esbuild-dev-server-advisory.md) case): add the advisory to the OSV-Scanner allowlist with a documented review trigger. Never `--omit=dev` blanket-suppress.
-- **No-fix-yet OS-package CVE in a base image** (Alpine `node:22-alpine`, `postgresql17-alpine`, etc., where the upstream distro hasn't shipped a patched build yet): Trivy blocks the `docker` job's image scans on every run because `ignore-unfixed: true` is deliberately not set (per [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational); see also [§Allowlist](#allowlist) for the schema). The deploy pipeline halts until either Alpine ships the fix or an operator writes a deliberate, time-bounded allowlist entry in `.trivyignore.yaml` (and `.grype.yaml` if Grype reports it too), scoped to the package.
+- **No-fix-yet OS-package CVE in a base image** (Alpine `node:22-alpine`, `postgresql17-alpine`, etc., where the upstream distro hasn't shipped a patched build yet): the nightly inventory scan stays red, and a PR that introduces the CVE is blocked, because `ignore-unfixed: true` is deliberately not set (per [ADR-0027 §Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational); see also [§Allowlist](#allowlist) for the schema). It stays so until either Alpine ships the fix or an operator writes a deliberate, time-bounded allowlist entry in `.trivyignore.yaml` (and `.grype.yaml` if Grype reports it too), scoped to the package.
 
   90 days is the maximum permitted window; pick a shorter date if upstream has a target ship-date. The expiry forces a re-review and the entry stops suppressing automatically — there is no silent-forever suppression path. Track the upstream CVE in the Renovate dashboard so the entry gets removed (not renewed) when the fix lands.
 
@@ -449,7 +448,7 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 
 - `.github/renovate.json` — Renovate config; behaviour in [§ Cadence](#cadence), rationale in its `description` fields.
 - `.github/dependabot.yml` — security updates only (version updates off); labels them `deploy-asap`. See [§ Deploy urgency](#deploy-urgency).
-- `.github/workflows/ci.yml` — adds OSV-Scanner step (`scripts/check-osv-introduced.mjs`; every PR; blocks on vulns the change introduces, no severity flag in CLI v2.3.8), Trivy steps (image vuln in `docker`, filesystem secret + IaC misconfig in `lint`; gating per [ADR-0027 § Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational)), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 4. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
+- `.github/workflows/ci.yml` — adds OSV-Scanner step (`scripts/check-osv-introduced.mjs`; every PR; blocks on vulns the change introduces, no severity flag in CLI v2.3.8), Trivy steps (image scans in `docker` via `.github/actions/trivy-image`, filesystem secret + IaC misconfig in `lint`; gating per [ADR-0027 § Operational](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#operational)), and actionlint (workflow files; shellcheck over `run:` blocks). It also installs ripgrep (`lint`, for the theme-token check) and `age` (`check-shard`, for the integration suite). All four binaries are installed by URL + SHA256 and carry a `# renovate:` annotation — see [ADR-0027 §Decision.1](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#decision) manager 4. Editing any of those steps, two constraints that fail silently: keep the version in the `version` variable exactly once, as the literal git tag with the `v` prefix and all or neither (`v2.3.8` for OSV-Scanner, `15.2.0` for ripgrep); and keep the annotation, `version=` and `expected_sha=` on consecutive lines. `scripts/check-renovate-annotations.mjs` enforces both.
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR; also where a lapsed allowlist entry or register row turns red.
 - `.github/workflows/renovate-health.yml` — nightly updater health; logic and probe in `scripts/ci/renovate-health.mjs`. See [§ CVE handling](#cve-handling).
 - `.github/workflows/deploy-pending.yml` — the Deploy pending issue on `deploy-asap` merges (`scripts/ci/deploy-pending.sh`). See [§ Deploy urgency](#deploy-urgency).
@@ -457,6 +456,7 @@ Minimum at adoption time: last release date, license, maintainer count or archiv
 - `.github/workflows/inventory-scan.yml` — nightly Trivy + Grype scan of every deployed image. The image set comes from `scripts/ci/deploy-inventory.sh`, which reads the deploy's compose file and profiles (`scripts/lib/deploy-compose.sh`, shared with `deploy.sh`). Grype is installed by URL + SHA256 under the same `# renovate:` annotation rules as the `ci.yml` binaries above. Grype's verdict is `scripts/ci/grype-gate.sh` over its JSON report.
 - `.npmrc` — `min-release-age=3`, the npm-side half of the release-age cooldown. See [§ Release-age cooldown](#release-age-cooldown).
 - `scripts/check-osv-introduced.mjs` — OSV-Scanner PR gate: fails on findings absent from the base. Comparison and fail-closed rules in its header.
+- `scripts/ci/trivy-gate.sh` — Trivy image verdict: PR gate against `:main`, nightly absolute. Key and fail-closed rules in its header.
 - `scripts/check-repo-advisories.mjs` — repo-level advisory gate (`lint` judged against the base + nightly absolute). See [§ Repo-level advisories](#repo-level-advisories).
 - `osv-scanner.toml` — allowlist for OSV-Scanner (npm + git deps). Schema in [§Allowlist](#allowlist) above.
 - `.trivyignore.yaml`, `.grype.yaml` — allowlists for Trivy and Grype. Schema in [§Allowlist](#allowlist).

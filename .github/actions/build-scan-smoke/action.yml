@@ -144,10 +144,13 @@ runs:
         echo "  $APP_DIGEST_REF"
         echo "  -> $APP_REF (local only)"
 
+    # Judged against `main`'s image (#725): fails on what this change
+    # introduces. The nightly inventory scan owns what `main` ships.
     - name: Trivy — app image
       uses: ./.github/actions/trivy-image
       with:
         image_ref: ${{ inputs.app_repo }}@${{ steps.push_app.outputs.digest }}
+        base_ref: ${{ inputs.app_repo }}:main
 
     # The backup build's `FROM` resolves against the app image's PUBLISHED
     # digest. That is what pushing first buys: the backup image is built
@@ -197,6 +200,7 @@ runs:
       uses: ./.github/actions/trivy-image
       with:
         image_ref: ${{ inputs.backup_repo }}@${{ steps.push_backup.outputs.digest }}
+        base_ref: ${{ inputs.backup_repo }}:main
 
     # `age` on the runner is needed by the smoke step below to mint a
     # per-run binary `age` keypair before `docker compose up`. The app
