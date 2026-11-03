@@ -73,6 +73,34 @@ vulnerabilities:
   - <<: *gosu
     id: CVE-2026-97031
 
+  # golang.org/x/sys v0.1.0 in the same gosu: CVE-2026-39824 is in
+  # x/sys/windows, which carries a `windows` build constraint and is not
+  # linked into this linux binary (no x/sys/windows symbols; x/sys/unix
+  # only, checked 2026-11-03). Drop when the image ships a gosu built
+  # with x/sys >= v0.44.0.
+  - id: CVE-2026-39824
+    paths:
+      - usr/local/bin/gosu
+    purls:
+      - pkg:golang/golang.org/x/sys
+    owner: '@vlzware'
+    statement: Windows-only package, not linked into the linux gosu binary (see comment above)
+    expired_at: 2027-02-01
+
+  # x/crypto in Caddy: GO-2026-5932 flags the openpgp packages as unsafe
+  # by design. Trivy matches the module; the advisory applies only to
+  # binaries importing openpgp, and Caddy links none (no
+  # x/crypto/openpgp symbols, checked 2026-11-03). The fix is an untagged
+  # commit; drop when a tagged x/crypto past v0.58.0 reaches Caddy.
+  - id: GO-2026-5932
+    paths:
+      - usr/bin/caddy
+    purls:
+      - pkg:golang/golang.org/x/crypto
+    owner: '@vlzware'
+    statement: openpgp packages not linked into Caddy (see comment above)
+    expired_at: 2027-02-01
+
   # go-jose v3 in Caddy (via smallstep): GHSA-mgcc-cww5-fp2q, CPU DoS
   # when parsing a crafted RSA JWK; no v3 fix exists (v4 is raised to
   # 4.1.6 in docker/caddy/Dockerfile). Our Caddyfile is a reverse proxy
