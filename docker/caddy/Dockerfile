@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     xcaddy build v2.11.7 \
         --with golang.org/x/net/http2@v0.62.0 \
-        --with github.com/go-jose/go-jose/v4@v4.1.6 \
+        --with github.com/go-jose/go-jose/v4@v4.1.7 \
         --with github.com/caddy-dns/cloudflare@v0.2.4
 
 # Source of the runtime's few files, not the runtime itself. Kept as a
