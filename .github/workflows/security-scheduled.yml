@@ -1,21 +1,16 @@
-# Scheduled OSV-Scanner full-tree scan (ADR-0027 §Decision.2 layer 3).
+# Scheduled OSV-Scanner scan of `main` (ADR-0027 §Decision.2, nightly).
 #
 # Catches retroactive CVEs landing on existing deps that no open PR is
 # bumping. PR-time gates in ci.yml only see the diff; this is the
 # safety net for the steady state.
 #
-# Uses Google's official reusable workflow rather than the CLI: the
-# reusable workflow handles SARIF upload to the GH Security tab,
-# diff-aware reporting, and artifact retention — reimplementing those
-# inline would be needless extra code. The PR-time gate in ci.yml uses
-# the CLI directly because Google ships no composite action suitable
-# for inline use in an existing job; this scheduled job is its own job,
-# so the reusable workflow fits naturally.
+# The same pinned CLI and gate as the PR check (check-osv-introduced.mjs),
+# without a base: one scanner version, one finding key, and a step whose
+# findings notify.yml can read (a reusable workflow is a job of its own).
+# The ci-red issue is the alert.
 #
-# Findings show up in the repo's "Security > Code Scanning" tab via
-# the SARIF upload performed inside the reusable workflow. The job
-# itself ALSO fails red (fail-on-vuln: true) so a missing finding in
-# the Security tab cannot mask a regression — the schedule fails loud.
+# Each job uploads the keys its gates failed on (upload-findings) for
+# notify.yml's comment on a standing ci-red issue.
 
 name: Security (scheduled)
 
@@ -28,25 +23,35 @@ on:
   workflow_dispatch:
 
 permissions:
-  # Required by the reusable workflow itself — it uploads SARIF to
-  # Code Scanning and reads action metadata for annotations.
-  actions: read
   contents: read
-  security-events: write
 
 jobs:
   osv-scan:
-    # Reusable workflow pinned by the same SHA as the PR-time CLI
-    # binary (v2.3.8 — see ci.yml). The reusable workflow scans the
-    # whole tree with `-r ./` by default; we override scan-args to
-    # also load the repo allowlist.
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
-    with:
-      scan-args: |-
-        --recursive
-        --config=./osv-scanner.toml
-        ./
-      fail-on-vuln: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # The gate needs Node, not the installed tree: the CLI reads the lockfile.
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: '.nvmrc'
+
+      - uses: ./.github/actions/install-osv-scanner
+
+      - name: OSV-Scanner (lockfile, fail on any vuln)
+        env:
+          FINDINGS_FILE: ${{ runner.temp }}/findings/osv.keys
+        run: |
+          mkdir -p "$(dirname "$FINDINGS_FILE")"
+          node scripts/check-osv-introduced.mjs
+
+      - name: Upload findings
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/upload-findings
+        with:
+          label: osv-scan
+          gates: osv
+          dir: ${{ runner.temp }}/findings
 
   # Same steady-state argument as the OSV scan above, for the layer OSV
   # cannot reach: an advisory filed at the upstream repo and never promoted
@@ -85,11 +90,24 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/check-repo-advisories.mjs
+          FINDINGS_FILE: ${{ runner.temp }}/findings/repo-advisories.keys
+        run: |
+          mkdir -p "$(dirname "$FINDINGS_FILE")"
+          node scripts/check-repo-advisories.mjs
 
       # Where a lapsed register row turns red (`lint` lets one unchanged
-      # from its base through). Last, and on any outcome: a register row
+      # from its base through). Last check, on any outcome: a register row
       # suppresses no scanner, so it neither blinds a scan nor waits on one.
       - name: Check exception register
         if: ${{ !cancelled() }}
         run: bash scripts/check-exception-register.sh
+
+      # The allowlist-schema and exception-register checks have no finding
+      # keys: notify.yml compares them by failed step.
+      - name: Upload findings
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/upload-findings
+        with:
+          label: repo-advisories
+          gates: repo-advisories
+          dir: ${{ runner.temp }}/findings
