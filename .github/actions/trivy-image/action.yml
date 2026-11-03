@@ -1,14 +1,22 @@
 name: Trivy image scan
 description: >
   Scans one locally-built image for HIGH/CRITICAL/UNKNOWN vulnerabilities
-  and fails the step on any finding. Single source of truth for the image-scan
-  policy — severity floor, unfixed handling, allowlist and cache location
-  are one decision, not one per call site.
+  and secrets. With `base_ref`, fails on findings the image has and the
+  base lacks (the PR gate); without, on any finding (the nightly). Single
+  source of truth for the image-scan policy — severity floor, unfixed
+  handling, allowlist, cache location and verdict are one decision, not one
+  per call site.
 
 inputs:
   image_ref:
     description: Image reference to scan, resolved through the runner's Docker daemon.
     required: true
+  base_ref:
+    description: >
+      Image to judge against (the PR gate passes the `:main` image), pulled
+      here. Empty: every finding fails.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -29,6 +37,11 @@ runs:
     #   path-scoped, with owner + statement + expiry ≤90d, gated by
     #   check-allowlist-schema.sh.
     #
+    #   Judged against `base_ref` when given (#725, ADR-0027 § 2026-10-31):
+    #   the PR gate fails on what the change introduces, and an advisory on
+    #   `main` turns only the nightly red. Verdict and finding key:
+    #   scripts/ci/trivy-gate.sh.
+    #
     #   cache-dir is moved OUT of the workspace. The action defaults it to
     #   `${{ github.workspace }}/.cache/trivy`, which is inside the Docker
     #   build context: the ~1.3 GB unpacked vuln DB then lands in every
@@ -37,12 +50,64 @@ runs:
     #   context transfer on run 33424054809 before this moved. .dockerignore
     #   carries a `.cache` entry as the durable guard; this keeps the bytes
     #   from being written there at all.
-    - name: Trivy — image vuln scan (HIGH/CRITICAL/UNKNOWN)
+    - name: Trivy — report directory
+      id: dir
+      shell: bash
+      run: echo "dir=$(mktemp -d -p "$RUNNER_TEMP" trivy.XXXXXX)" >> "$GITHUB_OUTPUT"
+
+    # JSON with `exit-code: 0`: the verdict is trivy-gate.sh's, below. A
+    # scan error still fails the step.
+    - name: Trivy — image scan (HIGH/CRITICAL/UNKNOWN)
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         scan-type: image
         image-ref: ${{ inputs.image_ref }}
         severity: UNKNOWN,HIGH,CRITICAL
-        exit-code: '1'
+        exit-code: '0'
+        format: json
+        output: ${{ steps.dir.outputs.dir }}/head.json
         trivyignores: .trivyignore.yaml
         cache-dir: ${{ runner.temp }}/trivy-cache
+
+    - name: Pull the base image
+      if: inputs.base_ref != ''
+      shell: bash
+      env:
+        BASE_REF: ${{ inputs.base_ref }}
+      run: docker pull "$BASE_REF"
+
+    # Same inputs, binary and DB as the head scan: a base scanned with a
+    # newer DB would make the head's findings it lacks read as introduced.
+    # The DB the head scan left in cache-dir is used as is: `cache: false`
+    # skips the action's cache restore, which would overwrite it with the
+    # stored copy, and TRIVY_SKIP_DB_UPDATE keeps Trivy from refreshing it.
+    # `skip-setup-trivy`: the head scan put the pinned binary on PATH.
+    - name: Trivy — base image scan (same DB and config)
+      if: inputs.base_ref != ''
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      env:
+        TRIVY_SKIP_DB_UPDATE: 'true'
+      with:
+        scan-type: image
+        image-ref: ${{ inputs.base_ref }}
+        severity: UNKNOWN,HIGH,CRITICAL
+        exit-code: '0'
+        format: json
+        output: ${{ steps.dir.outputs.dir }}/base.json
+        trivyignores: .trivyignore.yaml
+        cache-dir: ${{ runner.temp }}/trivy-cache
+        cache: 'false'
+        skip-setup-trivy: 'true'
+
+    - name: Trivy — verdict
+      shell: bash
+      env:
+        DIR: ${{ steps.dir.outputs.dir }}
+        HAS_BASE: ${{ inputs.base_ref != '' }}
+      run: |
+        set -euo pipefail
+        if [ "$HAS_BASE" = true ]; then
+          bash scripts/ci/trivy-gate.sh "$DIR/head.json" "$DIR/base.json"
+        else
+          bash scripts/ci/trivy-gate.sh "$DIR/head.json"
+        fi

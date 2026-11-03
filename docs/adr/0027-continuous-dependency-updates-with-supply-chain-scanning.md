@@ -78,7 +78,7 @@ Overlap between the two bots is intentional belt-and-braces.
 
 - **OSV-Scanner** (CLI v2.3.8 pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`, but **not a superset of it** — both key on `(ecosystem, name, version)` and each carries records the other lacks (see the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers)). **Blocks merge on any vuln the change introduces** ([2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main)); the nightly run fails on any vuln on `main`. The v2.3.8 CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
 - **Repo-level GitHub advisories** (`scripts/check-repo-advisories.mjs`) — reads each direct dep's `/security-advisories` endpoint, where advisories that were never promoted to the global database do exist. Covers what neither lockfile scanner structurally can. **Blocks merge on a match the change introduces** ([2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main)); fails closed on API errors. Added by the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers), which also states what all three layers leave uncovered.
-- **Trivy** (`aquasecurity/trivy-action`) — scans the built Docker image, including OS packages (`apk`, `apt`) that OSV-Scanner can't see; plus filesystem secret scan and IaC misconfig scan. **Blocks merge on `HIGH` / `CRITICAL`** (Trivy supports `--severity` and the noisier surfaces it scans benefit from the filter); the image scans **also on `UNKNOWN`**: unrated is not yet assessed, not low, and is triaged like HIGH (#724). Runs on every PR in the `docker` job, before anything is published.
+- **Trivy** (`aquasecurity/trivy-action`) — scans the built Docker image, including OS packages (`apk`, `apt`) that OSV-Scanner can't see; plus filesystem secret scan and IaC misconfig scan. **Blocks merge on `HIGH` / `CRITICAL`** (Trivy supports `--severity` and the noisier surfaces it scans benefit from the filter); the image scans **also on `UNKNOWN`**: unrated is not yet assessed, not low, and is triaged like HIGH (#724). The image scans block only on findings the change introduces ([2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main)); the nightly inventory scan owns the rest. Runs on every PR in the `docker` job, before anything is published.
 - **Nightly inventory scan** (`inventory-scan.yml`; nightly, non-blocking) — Trivy **and Grype** over every image the deployment runs, derived from the deploy's compose file. Grype matches binaries Trivy cannot see (`node`, `postgres`); Trivy sees what Grype misses. **Red on `HIGH` / `CRITICAL` or unrated from either.** Grype's verdict is `scripts/ci/grype-gate.sh` over its JSON report. Added by the [2026-10-29 amendment](#2026-10-29--security-releases-outside-npm).
 
 Exceptions to blocking go in a documented allowlist with a review trigger (the pattern from the superseded [ADR-0007](0007-suppress-esbuild-dev-server-advisory.md) is the right shape).
@@ -135,7 +135,7 @@ The lightest possible option. Ruled out: covers only the npm tree, no OS-package
   - **scope** (YAML files) — the package or path it is about; mandatory, non-empty and literal (no globs or regexes), since either scanner ignores an unscoped id everywhere.
   - **nothing else** (YAML files) — Trivy and Grype silently accept unknown keys, so a misspelt scope key widens an entry to global.
 
-  `scripts/check-allowlist-schema.sh` enforces this before OSV-Scanner and, nightly, before the repo-level check and Grype — which does not read the expiry. In `lint` an expired entry unchanged from the base only warns ([2026-10-31](#2026-10-31--pr-gates-judge-the-change-not-main)). Per-format key names and examples: [docs/ops/dep-management.md § Allowlist](../ops/dep-management.md#allowlist).
+  `scripts/check-allowlist-schema.sh` enforces this in `lint` and nightly; it is the only expiry check Grype gets. In `lint` an expired entry unchanged from the base only warns ([2026-10-31](#2026-10-31--pr-gates-judge-the-change-not-main)). Where it runs, per-format key names and examples: [docs/ops/dep-management.md § Allowlist](../ops/dep-management.md#allowlist).
 
 ### Operational
 
@@ -144,7 +144,7 @@ Implementation ships in this ADR's PR:
 - `.github/renovate.json` — schedule, grouping, auto-merge rules, manager set.
 - `.github/workflows/ci.yml` — OSV-Scanner step (blocks on any vuln the change introduces, [2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main); CLI has no severity flag) + Trivy steps placed by gating role:
   - **`lint` job** (every event, required): Trivy filesystem-secret scan (no `severity:` filter — many of Trivy's built-in secret rules, e.g. `jwt-token`, `age-secret-key`, `slack-web-hook`, ship at MEDIUM and would be silently dropped by HIGH/CRITICAL; within scanned files any rule match blocks the PR) and Trivy IaC-misconfig scan (HIGH/CRITICAL — IaC has the noisiest baseline of the three Trivy scans, the filter keeps the signal-to-noise workable). Trivy's built-in skip list (`node_modules`, `.git`, lockfiles, binary extensions, paths matching test/example/vendor/`.md`) applies; it is a known residual coverage gap.
-  - **`docker` job** (every event but `push`, required): Trivy app- and backup-image-vuln scans (HIGH/CRITICAL/UNKNOWN) on the exact bytes it pushed by digest. Build, push and naming: [ADR-0011 § Decision](0011-build-images-in-ci-distribute-via-ghcr.md#decision).
+  - **`docker` job** (every event but `push`, required): Trivy app- and backup-image scans (HIGH/CRITICAL/UNKNOWN) on the exact bytes it pushed by digest, blocking on findings the change introduces ([2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main)). Build, push and naming: [ADR-0011 § Decision](0011-build-images-in-ci-distribute-via-ghcr.md#decision).
 - `.github/workflows/security-scheduled.yml` — nightly OSV-Scanner run against `main` so newly-published advisories surface without waiting for a PR.
 - `osv-scanner.toml` (repo root) — allowlist file; empty on landing, schema documented in `docs/ops/dep-management.md`.
 - `.trivyignore` (repo root) — allowlist file for Trivy; empty on landing, same schema discipline. Replaced by `.trivyignore.yaml` (§2026-10-29).
@@ -161,7 +161,7 @@ The same aliasing is what lets the whole build → scan → smoke sequence run a
 
 Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of most PRs skipping it. That is the price of the gate being a gate; the ~5 min post-merge rebuild it replaces makes it roughly neutral per merged PR.
 
-`ignore-unfixed` is NOT set on any image scan: a no-fix-yet CVE is still a finding, and an operationally-tolerable case goes in `.trivyignore.yaml` with owner/reason/expiry ≤90d. This makes the failure mode visible — when an unfixable upstream CVE lands, the deploy pipeline halts until either the upstream fixes it or an operator writes a deliberate, time-bounded allowlist entry; the `ignore-unfixed: true` shortcut would have suppressed it silently forever. The runbook's [§CVE handling](../ops/dep-management.md#cve-handling) covers the operator procedure.
+`ignore-unfixed` is NOT set on any image scan: a no-fix-yet CVE is still a finding, and an operationally-tolerable case goes in `.trivyignore.yaml` with owner/reason/expiry ≤90d. This makes the failure mode visible — when an unfixable upstream CVE lands, the nightly inventory scan stays red, and any change that introduces it is blocked, until either the upstream fixes it or an operator writes a deliberate, time-bounded allowlist entry; the `ignore-unfixed: true` shortcut would have suppressed it silently forever. The runbook's [§CVE handling](../ops/dep-management.md#cve-handling) covers the operator procedure.
 
 - The `vv-adr` skill template is updated; retrofits to the existing ADRs in the included set land in the same change as this ADR.
 - No env-var or schema impact.
@@ -194,18 +194,19 @@ Raised in [#668](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/6
 
 ```
 lint  (pull_request, merge_group, push)  head − base findings  ─▶ red blocks the merge
-security-scheduled.yml (nightly)         main, absolute        ─▶ ci-red issue ─▶ fix, or allowlist (§Negative)
+docker, promote fallback (image scans)   head − :main image    ─▶ red blocks the merge / naming
+security-scheduled.yml, inventory-scan   main, absolute        ─▶ ci-red issue ─▶ fix, or allowlist (§Negative)
 ```
 
 - Base (`scripts/ci/gate-base.sh`): the test merge commit's first parent (`pull_request`; HEAD must be that merge), the queue's base (`merge_group`), the previous `main` (`push`), the default branch's tip (`workflow_dispatch`, a branch deployed by hand). Anything else, or a base that cannot be resolved or read, fails the job.
 - OSV-Scanner (`scripts/check-osv-introduced.mjs`) keys a finding on (advisory id, ecosystem, package name). Not on version or location: any new instance of a package the base already has under the same advisory (a bump that stays vulnerable, a second copy) introduces nothing; no worse than the per-id allowlist. Not `osv-reporter`: it keys on source path and version. The verdict is read from the results, so their shape and their agreement with the CLI's exit code are checked.
 - Repo-level advisories (`check-repo-advisories.mjs --base-lockfile`): the base version is judged on the same ranges as the head's, global when it exists, so the coarser repo-level range cannot pass an introduced finding as pre-existing.
+- Trivy image scans (`.github/actions/trivy-image`, verdict `scripts/ci/trivy-gate.sh`; #725, 2026-11-03): base = the `:main` image, scanned after the head in the same job with the same DB and `.trivyignore.yaml`, so a lapsed entry shows on both sides. A finding is keyed on (id, package, location in the image): location, unlike OSV's key, because the allowlist is path-scoped. Secrets in the image are judged the same way. `:main` lags the true base (until `promote`; behind earlier entries of a queue batch): a change that brings back what a newer base fixed passes, and the nightly stays red on it. The `lint` fs secret and IaC scans stay absolute: `.trivyignore.yaml` holds only `vulnerabilities` entries, so no lapse can red them, and no nightly runs them to own `main`'s state.
 - Allowlists apply to both sides. An expired entry the change did not touch turns the nightlies red, not every PR: `lint`'s schema check only warns on it (`--base-dir`), and `check-repo-advisories.mjs` honours `ignoreUntil` itself, like OSV-Scanner. An entry a change adds or edits is held to the full contract.
+- The inventory nightly checks the allowlist schema in its own job: a lapsed entry turns the run red without stopping the scans.
 - Every exception with no expiry of its own has a row in `exception-register.yaml`, gated like the allowlists in `lint` and the nightly security scan ([dep-management.md § Exception register](../ops/dep-management.md#exception-register)).
 
-**Not yet.** Trivy scans stay absolute until #668 B (#725): a new unfixed HIGH/CRITICAL or unscored advisory in a base image, or a lapsed `.trivyignore.yaml` entry (Trivy honours `expired_at`), still blocks every PR.
-
-**Accepted.** A new advisory on `main` shows as a ci-red issue instead of red PRs. Exposure is unchanged.
+**Accepted.** A new advisory on `main` shows as a ci-red issue instead of red PRs. Exposure is unchanged, provided a red nightly is cleared (fix or allowlist entry), not left standing: while it is red, a second finding reads as the same red.
 
 ### 2026-10-29 — Security releases outside npm
 
