@@ -1,7 +1,7 @@
 name: Trivy image scan
 description: >
-  Scans one locally-built image for HIGH/CRITICAL vulnerabilities and fails
-  the step on any finding. Single source of truth for the image-scan
+  Scans one locally-built image for HIGH/CRITICAL/UNKNOWN vulnerabilities
+  and fails the step on any finding. Single source of truth for the image-scan
   policy — severity floor, unfixed handling, allowlist and cache location
   are one decision, not one per call site.
 
@@ -15,9 +15,13 @@ runs:
   steps:
     # Policy (ADR-0027 §Decision.2), stated once:
     #
-    #   HIGH/CRITICAL only — image scans otherwise drown in LOW-severity OS
-    #   package noise. The filesystem-secret and IaC scans in `lint` carry
+    #   HIGH/CRITICAL, not LOW/MEDIUM — image scans otherwise drown in
+    #   LOW-severity OS package noise. The filesystem-secret and IaC scans in `lint` carry
     #   no severity filter for the opposite reason; see that job.
+    #
+    #   Plus UNKNOWN (#724): unrated is not yet assessed, not low. Go vuln
+    #   DB advisories carry no severity by design, and the Go binaries
+    #   (Caddy, gosu) are seen only by image scans.
     #
     #   No `ignore-unfixed` — per the project's refuse-or-block-never-
     #   downgrade principle a no-fix-yet CVE is still a finding. When one
@@ -33,12 +37,12 @@ runs:
     #   context transfer on run 33424054809 before this moved. .dockerignore
     #   carries a `.cache` entry as the durable guard; this keeps the bytes
     #   from being written there at all.
-    - name: Trivy — image vuln scan (HIGH/CRITICAL)
+    - name: Trivy — image vuln scan (HIGH/CRITICAL/UNKNOWN)
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         scan-type: image
         image-ref: ${{ inputs.image_ref }}
-        severity: HIGH,CRITICAL
+        severity: UNKNOWN,HIGH,CRITICAL
         exit-code: '1'
         trivyignores: .trivyignore.yaml
         cache-dir: ${{ runner.temp }}/trivy-cache

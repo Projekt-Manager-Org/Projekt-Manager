@@ -1,9 +1,9 @@
 # Nightly inventory scan (ADR-0027 § 2026-10-29 amendment, control 3).
 #
 # Scans every image a deploy runs, with two scanners, and fails red on
-# any HIGH/CRITICAL finding from either. #637 showed what the PR gate
-# misses: it scans only the two first-party images, only at PR time, and
-# only with Trivy — which cannot see a runtime installed from a tarball
+# any HIGH/CRITICAL or unrated finding from either. #637 showed what the
+# PR gate misses: it scans only the two first-party images, only at PR
+# time, and only with Trivy — which cannot see a runtime installed from a tarball
 # (the `node` binary) or compiled from source (`postgres`). Grype matches
 # those binaries; Trivy sees what Grype misses (Go stdlib in `gosu`).
 #
@@ -11,8 +11,8 @@
 #              and profiles (scripts/ci/deploy-inventory.sh) — a new
 #              service is scanned with no change here
 #   scan       one job per image: Trivy ∪ Grype, same floor as the PR
-#              gate (HIGH/CRITICAL, no ignore-unfixed; tolerable findings
-#              go in .trivyignore.yaml / .grype.yaml, path-scoped)
+#              gate (HIGH/CRITICAL/unrated, no ignore-unfixed; tolerable
+#              findings go in .trivyignore.yaml / .grype.yaml, path-scoped)
 #
 # First-party images are scanned at the `main` tag, which only `promote`
 # writes: the state of main, independent of what any host has deployed
@@ -120,11 +120,17 @@ jobs:
           sudo mv /tmp/grype /usr/local/bin/grype
           grype version
 
-      # Same floor as the Trivy step: HIGH and above, unfixed included.
-      # Grype refuses a vulnerability DB older than its max age by default,
-      # so a stale DB fails the run instead of scanning against old data.
+      # Same floor as the Trivy step: HIGH and above or unrated, unfixed
+      # included. Not `--fail-on high`: Grype ranks Unknown below
+      # Negligible, so no threshold reaches it; grype-gate.sh judges the
+      # JSON report instead. Grype refuses a vulnerability DB older than
+      # its max age by default, so a stale DB fails the run instead of
+      # scanning against old data.
       - name: Grype
         if: ${{ !cancelled() }}
         env:
           IMAGE: ${{ matrix.image }}
-        run: grype "docker:$IMAGE" -c .grype.yaml --fail-on high -o table
+        run: |
+          set -euo pipefail
+          grype "docker:$IMAGE" -c .grype.yaml -o table -o "json=$RUNNER_TEMP/grype.json"
+          bash scripts/ci/grype-gate.sh "$RUNNER_TEMP/grype.json"
