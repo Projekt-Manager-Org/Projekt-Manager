@@ -91,7 +91,8 @@ function scan(label, lockfile) {
       '--format=json',
       `--output-file=${output}`,
     ],
-    { stdio: 'inherit' },
+    // The CLI logs to stderr in JSON mode; into stdout with the report (#729).
+    { stdio: ['inherit', 'inherit', 1] },
   );
   if (res.error) fail(`could not run osv-scanner on the ${label}: ${res.error.message}`, 2);
   if (res.status !== 0 && res.status !== 1) {
@@ -145,6 +146,9 @@ const base = baseLockfile ? scan('base', baseLockfile) : new Map();
 const introduced = [...head].filter(([key]) => !base.has(key)).map(([, f]) => f);
 const preExisting = [...head].filter(([key]) => base.has(key)).map(([, f]) => f);
 
+// The whole report goes to stdout, the red verdict included. The Actions
+// runner reads stdout and stderr separately and orders lines by arrival, so a
+// report split across both prints scrambled (#729).
 if (preExisting.length > 0) {
   console.log(
     `already on the base, not introduced by this change (${preExisting.length}); ` +
@@ -162,16 +166,16 @@ if (introduced.length === 0) {
   process.exit(0);
 }
 
-console.error(
+console.log(
   baseLockfile
     ? '\nERROR: this change introduces OSV findings:'
     : '\nERROR: OSV findings in the lockfile (no base to judge against):',
 );
 for (const f of introduced) {
-  console.error(`  ${show(f)}  https://osv.dev/${f.id}`);
+  console.log(`  ${show(f)}  https://osv.dev/${f.id}`);
 }
-console.error('\nFix by bumping the package past the patched version.');
-console.error('If there is no fix yet, add the id to osv-scanner.toml with');
-console.error('owner + reason + ignoreUntil (<=90d) — see docs/ops/dep-management.md');
-console.error('§ Allowlist. Do not weaken this check to get past it.');
+console.log('\nFix by bumping the package past the patched version.');
+console.log('If there is no fix yet, add the id to osv-scanner.toml with');
+console.log('owner + reason + ignoreUntil (<=90d) — see docs/ops/dep-management.md');
+console.log('§ Allowlist. Do not weaken this check to get past it.');
 process.exit(1);

@@ -252,6 +252,33 @@ refute_output() {
   fi
 }
 
+# Exit code, every pattern on stdout, and nothing on stderr. The Actions
+# runner reads the two pipes separately and orders lines by arrival, so a
+# report split across both prints scrambled there while `2>&1` here keeps it
+# in order (#729).
+assert_one_stream() {
+  local expected="$1" label="$2" dir="$3"
+  shift 3
+  local out="$dir/report.out" err="$dir/report.err" actual pattern
+  PROJECT_ROOT="$dir" ADVISORY_FIXTURE_DIR="$dir/fixtures" node "$CHECK" >"$out" 2>"$err"
+  actual=$?
+  if [[ "$actual" != "$expected" ]]; then
+    record no "$label" "expected exit $expected, got $actual"
+    return
+  fi
+  if [[ -s "$err" ]]; then
+    record no "$label" "stderr not empty: $(grep -m 1 . "$err")"
+    return
+  fi
+  for pattern in "$@"; do
+    if ! grep -qF -- "$pattern" "$out"; then
+      record no "$label" "stdout missing '$pattern'"
+      return
+    fi
+  done
+  record yes "$label (exit $actual)" ""
+}
+
 echo "Case: no advisories published for the repo"
 # Fixture absent => 404 => advisories disabled or none filed. Must not fail.
 assert_case 0 "no advisories" "$(stage)"
@@ -428,6 +455,14 @@ d="$(stage)"
 add_dep "$d" "elsewhere" "1.0.0" '"gitlab:group/elsewhere"'
 add_dep "$d" "selfhosted" "1.0.0" '{ "url": "git+https://git.example.com/team/selfhosted.git" }'
 assert_output 0 "non-GitHub repositories" "$d" "NOT CHECKED — no GitHub repository (2)"
+
+echo "Case: a red report is written to one stream"
+# The red nightly of #727: a NOT CHECKED gap printed next to a finding.
+d="$(stage)"
+add_dep "$d" "elsewhere" "1.0.0" '"gitlab:group/elsewhere"'
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+assert_one_stream 1 "red report, one stream" "$d" \
+  "NOT CHECKED — no GitHub repository (1)" "REPO-LEVEL ONLY" "Fix by bumping"
 
 echo "Case: advisory listing spans more than one page"
 # `per_page=100` with no pagination silently truncates at 100, and a

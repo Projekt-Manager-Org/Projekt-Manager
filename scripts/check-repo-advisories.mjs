@@ -676,6 +676,9 @@ for (const c of adjudicated) {
 
 // --- report -----------------------------------------------------------------
 
+// The whole report goes to stdout, the red verdict included. The Actions
+// runner reads stdout and stderr separately and orders lines by arrival, so a
+// report split across both prints scrambled (#729).
 console.log(`Repo-level advisory scan: ${slugs.length} repos, ${directDeps.length} direct deps`);
 console.log(`  published advisories seen: ${advisoryCount}`);
 
@@ -735,8 +738,8 @@ if (findings.length === 0) {
   process.exit(0);
 }
 
-console.error('');
-console.error('ERROR: repo-level security advisories match installed dependencies.\n');
+console.log('');
+console.log('ERROR: repo-level security advisories match installed dependencies.\n');
 
 for (const f of findings) {
   // Whether the global DB carries it explains why the other gates were
@@ -745,28 +748,28 @@ for (const f of findings) {
     ? 'in the global advisory DB'
     : 'REPO-LEVEL ONLY — invisible to OSV-Scanner and npm audit';
 
-  console.error(`  ${f.ghsa}  [${f.severity}]  ${f.name}@${f.version}`);
-  console.error(`    ${f.summary}`);
-  console.error(`    vulnerable: ${f.range}${f.patched ? `   patched: ${f.patched}` : ''}`);
-  console.error(`    range from: ${f.rangeSource}`);
-  console.error(`    visibility: ${visibility}`);
-  console.error(`    https://github.com/${f.advisorySlug}/security/advisories/${f.ghsa}`);
+  console.log(`  ${f.ghsa}  [${f.severity}]  ${f.name}@${f.version}`);
+  console.log(`    ${f.summary}`);
+  console.log(`    vulnerable: ${f.range}${f.patched ? `   patched: ${f.patched}` : ''}`);
+  console.log(`    range from: ${f.rangeSource}`);
+  console.log(`    visibility: ${visibility}`);
+  console.log(`    https://github.com/${f.advisorySlug}/security/advisories/${f.ghsa}`);
   if (f.advisorySlug !== f.slug) {
-    console.error(
+    console.log(
       `    NOTE: filed on ${f.advisorySlug}, not on ${f.name}'s own repo ` +
         `(${f.slug}). Central filing in the same org — the advisory names ` +
         'this package, so it still counts.',
     );
   }
   if (f.unparseable) {
-    console.error(
+    console.log(
       '    NOTE: the vulnerable range could not be parsed as semver, so this is ' +
         'reported unevaluated. Check by hand and widen toSemverRange() if the ' +
         'syntax is legitimate.',
     );
   }
   if (f.splitLines) {
-    console.error(
+    console.log(
       `    NOTE: this advisory files ${f.repoRanges.length} ranges for ${f.name} ` +
         `(${f.repoRanges.map((r) => r.range).join(' | ')}) and has no global record ` +
         'to bound them. A range like `<= 2.x` written for a newer release line also ' +
@@ -774,11 +777,11 @@ for (const f of findings) {
         'really affected before treating this as real.',
     );
   }
-  console.error('');
+  console.log('');
 }
 
-console.error('Fix by bumping the package past the patched version.');
-console.error('If there is no fix yet, add the GHSA id to osv-scanner.toml with');
-console.error('owner + reason + ignoreUntil (<=90d) — see docs/ops/dep-management.md');
-console.error('§ Allowlist. Do not weaken this check to get past it.');
+console.log('Fix by bumping the package past the patched version.');
+console.log('If there is no fix yet, add the GHSA id to osv-scanner.toml with');
+console.log('owner + reason + ignoreUntil (<=90d) — see docs/ops/dep-management.md');
+console.log('§ Allowlist. Do not weaken this check to get past it.');
 process.exit(1);

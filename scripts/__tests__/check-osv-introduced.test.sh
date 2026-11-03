@@ -60,6 +60,8 @@ for a in "$@"; do
   esac
 done
 dir="$(dirname "$lf")"
+# The real CLI logs to stderr in JSON mode.
+echo "Scanned $lf" >&2
 [[ -f "$dir/osv.json" ]] && cp "$dir/osv.json" "$out"
 exit "$(cat "$dir/osv.rc" 2>/dev/null || echo 0)"
 SH
@@ -130,6 +132,34 @@ assert_output() {
   fi
 }
 
+# Exit code, every pattern on stdout, and nothing on stderr. The Actions
+# runner reads the two pipes separately and orders lines by arrival, so a
+# report split across both prints scrambled there while `2>&1` here keeps it
+# in order (#729).
+assert_one_stream() {
+  local expected="$1" label="$2" dir="$3"
+  shift 3
+  local out="$dir/report.out" err="$dir/report.err" actual pattern
+  PATH="$dir/bin:$PATH" PROJECT_ROOT="$dir" node "$CHECK" \
+    --base-lockfile "$dir/base/package-lock.json" >"$out" 2>"$err"
+  actual=$?
+  if [[ "$actual" != "$expected" ]]; then
+    record no "$label" "expected exit $expected, got $actual"
+    return
+  fi
+  if [[ -s "$err" ]]; then
+    record no "$label" "stderr not empty: $(grep -m 1 . "$err")"
+    return
+  fi
+  for pattern in "$@"; do
+    if ! grep -qF -- "$pattern" "$out"; then
+      record no "$label" "stdout missing '$pattern'"
+      return
+    fi
+  done
+  record yes "$label (exit $actual)" ""
+}
+
 echo "Case: no base, clean"
 d="$(stage)"
 answer "$d" 0
@@ -173,6 +203,15 @@ d="$(stage)"
 answer "$d" 0
 answer "$d/base" 1 "$(pkg glob 13.0.6 GHSA-3g3m-2fjr-6pw4)"
 assert_output 0 "fixed by the change" "$d" base "OK"
+
+echo "Case: a red report is written to one stream"
+# A finding the change introduces, next to one already on the base.
+d="$(stage)"
+answer "$d" 1 "$(pkg glob 13.0.6 GHSA-3g3m-2fjr-6pw4)" "$(pkg minimatch 10.2.6 GHSA-g3hv-75wg-m249)"
+answer "$d/base" 1 "$(pkg glob 13.0.6 GHSA-3g3m-2fjr-6pw4)"
+assert_one_stream 1 "red report, one stream" "$d" \
+  "Scanned $d/package-lock.json" "already on the base" \
+  "ERROR: this change introduces OSV findings" "GHSA-g3hv-75wg-m249"
 
 echo "Case: head scan errors"
 # 127 = the CLI's general error. It writes no results; never read as clean.
