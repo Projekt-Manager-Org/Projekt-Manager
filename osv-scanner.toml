@@ -35,3 +35,8 @@ reason = "@vlzware: minimatch 10.2.6 via glob, eslint, archiver>readdir-glob (^1
 id = "GHSA-8c3j-mm64-257c"
 ignoreUntil = 2026-11-09  # fix 11.4.0 clears the 3-day release-age cooldown 2026-11-05; expiry doubles as the watchdog for its Renovate bump
 reason = "@vlzware: @fastify/cors 11.3.1; preflight DoS only with the non-default hook 'onSend'. src/server/app.ts registers it with the default 'onRequest'. Unreachable (#714). Fixed in 11.4.0 (2026-11-02), held by the release-age cooldown. Drop when @fastify/cors >= 11.4.0 is on main."
+
+[[IgnoredVulns]]
+id = "GHSA-3qgw-9275-xf8w"
+ignoreUntil = 2026-11-09  # fix 5.12.8 clears the 3-day release-age cooldown 2026-11-05; expiry doubles as the watchdog for its Renovate bump
+reason = "@vlzware: fastify 5.12.7; streaming DoS only with a nonzero handlerTimeout. Neither src/server/app.ts nor any route or installed plugin sets it, so it stays at the default 0 and the timer never arms (lib/route.js). Unreachable (#727). Fixed in 5.12.8 (2026-11-02), held by the release-age cooldown. Drop when fastify >= 5.12.8 is on main."
