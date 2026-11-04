@@ -15,7 +15,7 @@
 # CI; majors wait for approval.
 # See ADR-0027 + docs/ops/dep-management.md.
 
-FROM caddy:2.11.7-builder@sha256:c4cd20eaa0b69112fd5d4f721ffc9671687e1d5d0b155c8620cf7546dbef94c0 AS builder
+FROM caddy:2.11.8-builder@sha256:212168c3a069fb6a18ced9e817f974c8a5ef21a41d305bcdb66ec0bd416079ef AS builder
 
 # The first two `--with` lines raise Go modules above what Caddy 2.11.7
 # (latest on 2026-10-27) requires, because only a Caddy release would
@@ -30,7 +30,7 @@ FROM caddy:2.11.7-builder@sha256:c4cd20eaa0b69112fd5d4f721ffc9671687e1d5d0b155c8
 # customManager in renovate.json).
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    xcaddy build v2.11.7 \
+    xcaddy build v2.11.8 \
         --with golang.org/x/net/http2@v0.62.0 \
         --with github.com/go-jose/go-jose/v4@v4.1.7 \
         --with github.com/caddy-dns/cloudflare@v0.2.4
@@ -39,7 +39,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # digest-pinned stage so Renovate's `caddy` group still moves it in
 # lockstep with the builder and the xcaddy version, and the CA bundle
 # below rides those bumps.
-FROM caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e AS base
+FROM caddy:2.11.8@sha256:f04f1e8d78da0c65ec6f81b4ea8d216849775f3bc3c87790d95fcb2ec3722f12 AS base
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
