@@ -46,6 +46,7 @@ NOW='2026-10-29T03:00:00Z'
 # `gh` stub. Reads the case directory from $GH_CASE_DIR:
 #   issues.json  served for GET .../issues?...  (missing → API error)
 #   pulls.json   served for GET .../pulls?...   (missing → API error)
+#   closed.json  served for GET .../pulls?state=closed... (missing → API error)
 #   fresh.json   served for GET .../issues/{n} if present, else that
 #                issue out of issues.json
 #   patch.json   written from stdin on -X PATCH (the probe tick)
@@ -71,6 +72,7 @@ case " $* " in
     if [[ -f "$dir/fresh.json" ]]; then cat "$dir/fresh.json"; exit 0; fi
     all="$*"; n="${all##*/issues/}"; n="${n%% *}"
     jq -e --argjson n "$n" '.[] | select(.number == $n)' "$dir/issues.json" || exit 1 ;;
+  *'/pulls?state=closed'*) serve closed.json "$@" ;;
   *'/pulls?'*)    serve pulls.json "$@" ;;
   *)              echo "gh stub: unexpected call: $*" >&2; exit 1 ;;
 esac
@@ -146,6 +148,12 @@ HEALTHY_PULLS="$(jq -s . \
   <(pr 640 'renovate[bot]' renovate/docker-host 2026-09-29T03:00:00Z) \
   <(pr 600 vlzware fix/some-topic 2026-09-01T03:00:00Z))"
 
+# closed_lockfile_pr <number> <merged_at or null>
+closed_lockfile_pr() {
+  jq -n --argjson n "$1" --argjson at "$2" \
+    '{number: $n, state: "closed", merged_at: $at, head: {ref: "renovate/lock-file-maintenance"}}'
+}
+
 PASS=0
 FAIL=0
 LAST_DIR=''
@@ -159,6 +167,7 @@ new_case() {
   : > "$CASE/calls"
   set_body "$HEALTHY_BODY"
   printf '%s' "$HEALTHY_PULLS" > "$CASE/pulls.json"
+  jq -s . <(closed_lockfile_pr 700 '"2026-10-28T03:00:00Z"') > "$CASE/closed.json"
 }
 
 # Renovate's other issue, opened by the same bot on a config error: listed
@@ -311,6 +320,29 @@ for title in 'Errored' 'Rate-Limited' 'PR Edited (Blocked)' 'Config Migration Ne
   expect_output "'$title' section: named" "$title"
 done
 
+# --- Other Branches -------------------------------------------------
+# A run inside its schedule window that produces no PR leaves the lockfile
+# branch listed here (item verbatim, 2026-11-05). Green on its own: whether
+# refreshes still land is the lockfile freshness check below.
+OTHER_LOCKFILE='- [ ] <!-- other-branch=renovate/lock-file-maintenance -->chore(deps): lock file maintenance'
+new_case
+set_body "$(printf '%s\n\n' "$HEADER"; benign_sections; section 'Other Branches' "$OTHER_LOCKFILE"; footer ' ')"
+run_check 'lockfile branch alone in Other Branches is green' 0
+expect_tick 'lockfile branch alone: probe ticked'
+
+# Any other branch beside it is still red, and named.
+new_case
+set_body "$(printf '%s\n\n' "$HEADER"; benign_sections; section 'Other Branches' "$OTHER_LOCKFILE" '- [ ] <!-- other-branch=renovate/react -->chore(deps): update react'; footer ' ')"
+run_check 'another branch in Other Branches is red' 1
+expect_output 'another branch: named' 'renovate/react'
+expect_no_output 'another branch: lockfile branch not reported' 'renovate/lock-file-maintenance'
+
+# No item this check can read: a Renovate format change. Fail closed.
+new_case
+set_body "$(printf '%s\n\n' "$HEADER"; benign_sections; section 'Other Branches' '- [ ] chore(deps): update foo'; footer ' ')"
+run_check 'Other Branches without a readable item is red' 1
+expect_output 'unreadable Other Branches: named' 'Other Branches'
+
 # Renovate's own Repository Problems section carries no checkbox items,
 # only warnings; it is red on presence.
 new_case
@@ -347,6 +379,35 @@ new_case
 jq -s 'add' <(printf '%s' "$HEALTHY_PULLS") <(jq -s . <(pr 651 'renovate[bot]' renovate/react 2026-10-22T03:01:00Z)) > "$CASE/pulls.json"
 run_check 'Renovate PR just under 7 days is green' 0
 
+# --- lockfile freshness ---------------------------------------------
+# Lockfile maintenance is the only refresh of transitive deps. A failed
+# generation renders like a run with nothing to do, so only the absence of
+# merged PRs shows it stopped.
+new_case
+jq -s . <(closed_lockfile_pr 700 '"2026-10-22T02:59:00Z"') > "$CASE/closed.json"
+run_check 'last lockfile merge over 7 days ago is red' 1
+expect_output 'stale lockfile: says so' 'lockfile PR'
+expect_tick 'stale lockfile: probe still ticked'
+
+new_case
+jq -s . <(closed_lockfile_pr 700 '"2026-10-22T03:01:00Z"') > "$CASE/closed.json"
+run_check 'last lockfile merge just under 7 days ago is green' 0
+
+# A newer PR closed without merging refreshed nothing.
+new_case
+jq -s . <(closed_lockfile_pr 701 null) <(closed_lockfile_pr 700 '"2026-10-22T02:59:00Z"') > "$CASE/closed.json"
+run_check 'closed unmerged lockfile PR does not count' 1
+expect_output 'unmerged lockfile PR: says so' 'lockfile PR'
+
+new_case
+jq -s . <(closed_lockfile_pr 701 null) <(closed_lockfile_pr 700 '"2026-10-28T03:00:00Z"') > "$CASE/closed.json"
+run_check 'closed unmerged lockfile PR does not hide a recent merge' 0
+
+new_case
+printf '[]' > "$CASE/closed.json"
+run_check 'no lockfile PR at all is red' 1
+expect_output 'no lockfile PR: says so' 'lockfile PR'
+
 # --- the dashboard issue itself -------------------------------------
 new_case
 jq -s . <(other_issue) > "$CASE/issues.json"
@@ -372,6 +433,11 @@ expect_no_tick 'two dashboards: no write'
 new_case
 rm "$CASE/pulls.json"
 run_check 'API failure exits 2' 2
+
+new_case
+rm "$CASE/closed.json"
+run_check 'API failure on the lockfile PRs exits 2' 2
+expect_no_tick 'API failure on the lockfile PRs: no write'
 
 new_case
 rm "$CASE/issues.json"
