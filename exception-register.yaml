@@ -6,7 +6,8 @@
 # so does a row whose exception is gone: add, renew or drop the row in the
 # PR that changes the exception.
 #
-#   covers     `<kind>:<name>` keys: npm-override, type-shim, renovate-disabled
+#   covers     `<kind>:<name>` keys: npm-override, type-shim, renovate-disabled,
+#              renovate-allowed-versions
 #   owner      '@<github-handle>'
 #   reason     why the exception exists
 #   drop_when  the external event that makes it removable
@@ -35,3 +36,13 @@ exceptions:
       no real data, loopback ports (ADR-0003 § Dep lifecycle health).
     drop_when: The storage emulator is replaced; #191 lists the reopen triggers (last checked 2026-09-25).
     review_by: 2026-12-24
+
+  - covers:
+      - renovate-allowed-versions:@cantoo/pdf-lib
+    owner: '@vlzware'
+    reason: >-
+      2.11.0 crash-loops the app on import (ERR_IMPORT_ATTRIBUTE_MISSING, #413).
+      The rule stops Renovate replacing package.json's narrowed range with one
+      that re-admits it (ADR-0027 § 2026-09-17).
+    drop_when: The package.json range floor reaches 2.11.1, so no range admits 2.11.0.
+    review_by: 2027-01-31

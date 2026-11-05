@@ -46,6 +46,10 @@
  *      perfectly good regex match and a dead pin: Renovate resolves no such
  *      datasource and the annotation does nothing. Rules 1 and 2 cannot see
  *      that — the pin looks tracked.
+ *   4. EVERY ANNOTATION MATCHES — every `# renovate:` line is matched by a
+ *      customManager applying to that file. A pin with no `expected_sha=` is
+ *      invisible to rule 1: the lychee version sat untracked with an
+ *      annotation that read as tracked.
  *
  *   The regexes are READ FROM .github/renovate.json rather than restated
  *   here. Restating them would let the check and the config drift apart,
@@ -65,7 +69,8 @@
  *
  * EXIT CODES
  *   0  every pin tracked
- *   1  an untracked pin, or a version referenced more than once
+ *   1  an untracked pin, a version referenced more than once, or an unmatched
+ *      annotation
  *   2  structural problem — config unreadable, no applicable manager found,
  *      or a scan root missing
  *
@@ -124,12 +129,17 @@ try {
 // false-green this check exists to prevent.
 const regexManagers = (config.customManagers ?? []).filter((m) => m.customType === 'regex');
 
+/** Managers Renovate would actually apply to `relPath`. */
+function managersFor(relPath) {
+  return regexManagers.filter((m) =>
+    (m.managerFilePatterns ?? []).some((p) => toRegExp(p).test(relPath)),
+  );
+}
+
 /** Digest-capturing managers Renovate would actually apply to `relPath`. */
 function digestManagersFor(relPath) {
-  return regexManagers.filter(
-    (m) =>
-      (m.managerFilePatterns ?? []).some((p) => toRegExp(p).test(relPath)) &&
-      (m.matchStrings ?? []).some((s) => s.includes('(?<currentDigest>')),
+  return managersFor(relPath).filter((m) =>
+    (m.matchStrings ?? []).some((s) => s.includes('(?<currentDigest>')),
   );
 }
 
@@ -212,6 +222,22 @@ for (const { abs, matchPath } of scanFiles) {
   const rel = path.relative(repoRoot, abs);
   const content = readFileSync(abs, 'utf8');
   const lines = content.split('\n');
+
+  // Rule 4. Line-anchored, so prose naming the annotation is not one.
+  const matchedSpans = managersFor(matchPath)
+    .flatMap((m) => m.matchStrings ?? [])
+    .flatMap((s) => [...content.matchAll(new RegExp(s, 'g'))])
+    .map((m) => [m.index, m.index + m[0].length]);
+  let lineStart = 0;
+  lines.forEach((line, i) => {
+    if (/^\s*#\s*renovate:/.test(line)) {
+      const at = lineStart + line.indexOf('#');
+      if (!matchedSpans.some(([from, to]) => from <= at && at < to)) {
+        problems.push(`${rel}:${i + 1}  no customManager matches this \`# renovate:\` annotation`);
+      }
+    }
+    lineStart += line.length + 1;
+  });
 
   // Digests Renovate would actually see, per manager applicable to THIS
   // file — a manager scoped elsewhere tracks nothing here.

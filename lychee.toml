@@ -1,9 +1,10 @@
 # Markdown link checker (AC-348).
 #
 # Resolves relative file links and `#anchor` fragments across every
-# tracked `*.md`. Consumed identically by CI (`lychee-action` in the
-# `lint` job) and by `npm run check:links` — every flag lives here so
-# the two paths cannot drift; both pass `.` as the only argument.
+# tracked `*.md`. Consumed identically by CI (the pinned image in the
+# `lint` job) and by `npm run check:links` — the check's flags live here
+# so the two paths cannot drift; both pass `.` as the only input. CI only
+# adds how and where it writes its report.
 #
 # The input is the repository ROOT, not a `**/*.md` glob, and the
 # difference is load-bearing. lychee resolves the two forms down

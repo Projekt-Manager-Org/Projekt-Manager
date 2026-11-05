@@ -13,7 +13,9 @@
  * WHAT IS RED
  *   - Renovate did not run within a day of a request (LIVENESS below).
  *   - A dashboard section outside BENIGN_SECTIONS. Fail closed: an unknown
- *     heading is a format change this check does not understand.
+ *     heading is a format change this check does not understand. That
+ *     includes PR Closed (Blocked): Renovate ignores the update of a closed PR
+ *     from then on and says nothing more (#740).
  *   - An Awaiting Schedule branch outside AWAITING_EXEMPT: a starved update.
  *   - An Other Branches item outside OTHER_EXEMPT: an update with no PR.
  *   - No lockfile PR merged within STALE_PR_DAYS: transitive refreshes stopped.
@@ -65,7 +67,6 @@ const BENIGN_SECTIONS = new Set([
   'Pending Status Checks',
   'Pending Branch Automerge',
   'Open',
-  'PR Closed (Blocked)',
   'Deprecations / Replacements',
   'Detected Dependencies',
 ]);

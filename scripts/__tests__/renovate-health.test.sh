@@ -116,7 +116,6 @@ benign_sections() {
   section 'Pending Branch Automerge' '- [ ] <!-- approvePr-branch=renovate/vite-7.x -->chore(deps): update dependency vite to v7.4.1'
   printf '%s' "$LOOKUP_WARNING"
   section 'Open' '- [ ] <!-- rebase-branch=renovate/go-golang.org-x-net-vulnerability -->[chore(deps): update module golang.org/x/net to v0.62.0 [security]](../pull/648)'
-  section 'PR Closed (Blocked)' '- [ ] <!-- recreate-branch=renovate/postgres-18.x -->[chore(deps): update postgres docker tag to v18](../pull/211)'
   printf '## Deprecations / Replacements\n> ⚠️ **Warning**\n> \n> These dependencies are either deprecated or have replacements available:\n\n| Datasource | Name | Replacement PR? |\n|------------|------|--------------|\n| npm | `foo` | ![Unavailable](https://img.shields.io/badge/unavailable-orange?style=flat-square) |\n\n'
 }
 
@@ -313,7 +312,7 @@ expect_no_output 'starved branch: exempt branch not reported' 'renovate/renovate
 expect_tick 'starved branch: probe still ticked'
 
 # --- problem and unknown sections -----------------------------------
-for title in 'Errored' 'Rate-Limited' 'PR Edited (Blocked)' 'Config Migration Needed' 'Other Branches'; do
+for title in 'Errored' 'Rate-Limited' 'PR Edited (Blocked)' 'PR Closed (Blocked)' 'Config Migration Needed' 'Other Branches'; do
   new_case
   set_body "$(printf '%s\n\n' "$HEADER"; benign_sections; section "$title" '- [ ] <!-- retry-branch=renovate/foo -->chore(deps): update foo'; footer ' ')"
   run_check "'$title' section is red" 1
@@ -446,16 +445,18 @@ expect_no_tick 'API failure: no write'
 
 # --- the live dashboard of 2026-10-29 -------------------------------
 # Full body, verbatim: control 1 not yet landed, so Awaiting Schedule
-# holds the starved non-majors (#637 target step 2). Red for exactly
-# that; its benign sections (Abandoned, Pending Status Checks, Open, PR
-# Closed (Blocked), Detected Dependencies) raise nothing.
+# holds the starved non-majors (#637 target step 2), and PR Closed
+# (Blocked) holds PG18. Red for exactly that; its benign sections
+# (Abandoned, Pending Status Checks, Open, Detected Dependencies) raise
+# nothing.
 new_case
 set_body "$(cat "$LIVE_DASHBOARD")"
 run_check 'live dashboard is red' 1
 expect_output 'live dashboard: starved node bump' 'renovate/node-24.x'
 expect_output 'live dashboard: failing pin branch' 'renovate/pin-dependencies'
 expect_no_output 'live dashboard: exempt branch' 'renovate/lock-file-maintenance'
-for benign in 'Abandoned Dependencies' 'Pending Status Checks' 'PR Closed (Blocked)' 'Detected Dependencies'; do
+expect_output 'live dashboard: closed PR holds its update' 'PR Closed (Blocked)'
+for benign in 'Abandoned Dependencies' 'Pending Status Checks' 'Detected Dependencies'; do
   expect_no_output "live dashboard: '$benign' not reported" "$benign"
 done
 expect_tick 'live dashboard: probe ticked'

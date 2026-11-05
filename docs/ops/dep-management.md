@@ -258,10 +258,11 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   - **Awaiting Schedule: `<branch>`** — a scheduled branch outside `AWAITING_EXEMPT`: exempt a deliberate new schedule there, else fix the config. Never a manual bump.
   - **Other Branches: `<branch>` has no PR** — an update outside `OTHER_EXEMPT`: read the Mend job log.
   - **No lockfile PR merged in 7 days** — lockfile maintenance has stopped landing: read the Mend job log. A failed generation (`ETARGET`, [§ When resolution ETARGETs](#when-resolution-etargets)) produces no PR.
-  - **Dashboard section `"<title>"`** — any heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
+  - **Dashboard section `"PR Closed (Blocked)"`** — a closed Renovate PR: Renovate ignores that update from then on. To release it, rename the closed PR; it then follows the normal rules, so a major waits in Pending Approval. The dashboard's recreate box skips that approval. To keep holding it, use `allowedVersions` with a register row ([§ Exception register](#exception-register)), then rename.
+  - **Dashboard section `"<title>"`** — any other heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
   - **Dependency lookup failed / no or several dashboards / no "manual job" box** — a Renovate config or Mend app problem: read the Mend job log.
   - **"manual job" box still ticked** — no Renovate job ran since the last check. Check the repo's status and job log on the Mend portal. A manual re-run shortly after the nightly reports this too, until Renovate's job lands.
-  - **Renovate PR `#n` open since …** — merge, fix or close it; a stuck PR also holds a PR-limit slot.
+  - **Renovate PR `#n` open since …** — merge or fix it; a stuck PR also holds a PR-limit slot. Closing it raises `PR Closed (Blocked)`.
 
 - **`Deploy pending is red on main`** — a pushed commit could not be resolved to a PR after retries (#716; the `Last answer:` line shows what the lookup saw), or an API call failed. One push can carry several merge-queue PRs: check every PR the run's `::error::` lines name (or, if the commit list failed, every PR of that push) for `deploy-asap` by hand, then close the issue: a later green run does not close it.
 
@@ -328,16 +329,17 @@ Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing 
 
 `exception-register.yaml` lists every exception with no expiry of its own. Allowlist entries ([§ Allowlist](#allowlist)) and `release-age-allowlist.json` carry owner, reason and expiry themselves and are not repeated there.
 
-| `covers` key                   | Discovered from                                                                                                                      |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `npm-override:<path>`          | each leaf of `package.json` `overrides`, nested keys joined by `>` (`@esbuild-kit/core-utils>esbuild`); `.` is the parent itself     |
-| `type-shim:<module>`           | ambient `declare module '<module>'` in a declaration file with no top-level import/export                                            |
-| `renovate-disabled:<pkg>`      | `.github/renovate.json` `ignoreDeps`; a `packageRules` entry with `enabled: false` (must list `matchPackageNames`)                   |
-| `renovate-disabled:/<setting>` | any other `enabled: false` (`/lockFileMaintenance`; `/` is Renovate off); `/ignorePaths/<glob>`; `/enabledManagers`, `/includePaths` |
+| `covers` key                      | Discovered from                                                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm-override:<path>`             | each leaf of `package.json` `overrides`, nested keys joined by `>` (`@esbuild-kit/core-utils>esbuild`); `.` is the parent itself     |
+| `type-shim:<module>`              | ambient `declare module '<module>'` in a declaration file with no top-level import/export                                            |
+| `renovate-disabled:<pkg>`         | `.github/renovate.json` `ignoreDeps`; a `packageRules` entry with `enabled: false` (must list `matchPackageNames`)                   |
+| `renovate-disabled:/<setting>`    | any other `enabled: false` (`/lockFileMaintenance`; `/` is Renovate off); `/ignorePaths/<glob>`; `/enabledManagers`, `/includePaths` |
+| `renovate-allowed-versions:<pkg>` | a `packageRules` entry with `allowedVersions` (must list `matchPackageNames`)                                                        |
 
 A row holds `covers`, `owner`, `reason`, `drop_when` (the external event that makes it removable) and `review_by` (≤ 90 days). `scripts/check-exception-register.sh` reads the sources, so an exception without a row fails, and so does a row whose exception is gone: the PR that adds or removes an exception edits its row. It runs in `lint` against the base, like the allowlist check, and in the nightly security scan, where a lapsed `review_by` turns red. To review a row: check `drop_when`, then drop the exception or renew the date. Renovate presets in `extends` (`docker:disable`) are not expanded: review those with the config.
 
-Not registered, being policy or bounded on their own: `allowedVersions` for `@cantoo/pdf-lib` (a broken release stays broken); `abandonmentThreshold` (3 years still flags real abandonment; [§ Abandonment-flag verdicts](#abandonment-flag-verdicts)); the `xcaddy --with` raises in `docker/caddy/Dockerfile` (Renovate-tracked; a Caddy needing newer fails the build); the `AWAITING_EXEMPT` schedules in `scripts/ci/renovate-health.mjs`. In-code suppressions (`eslint-disable`, `shellcheck disable`) are reviewed with the code around them.
+Not registered, being policy or bounded on their own: `abandonmentThreshold` (3 years still flags real abandonment; [§ Abandonment-flag verdicts](#abandonment-flag-verdicts)); the `xcaddy --with` raises in `docker/caddy/Dockerfile` (Renovate-tracked; a Caddy needing newer fails the build); the `AWAITING_EXEMPT` schedules in `scripts/ci/renovate-health.mjs`. In-code suppressions (`eslint-disable`, `shellcheck disable`) are reviewed with the code around them.
 
 ## Abandonment-flag verdicts
 
