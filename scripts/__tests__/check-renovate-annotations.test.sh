@@ -316,6 +316,24 @@ expected_sha="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377"
 NESTED
 assert_case 1 "pin nested below one level" "$d"
 
+echo "Case: an annotation no manager matches"
+# Must fail. A non-checksum pin has no `expected_sha=` for rule 1 to find:
+# the lychee pin sat here untracked, with an annotation that read as tracked.
+d="$(stage)"
+cat >> "$d/workflows/ci.yml" <<'UNMATCHED'
+# renovate: datasource=github-releases depName=example/tool
+exampleVersion: v1.2.3
+UNMATCHED
+assert_case 1 "unmatched annotation in a workflow" "$d"
+
+d="$(stage)"
+cat >> "$d/actions/install-age/install-age.sh" <<'UNMATCHED'
+
+# renovate: datasource=github-releases depName=example/tool
+tool_version="v1.2.3"
+UNMATCHED
+assert_case 1 "unmatched annotation in a composite action" "$d"
+
 echo "Case: two pins in one composite script do not bleed together"
 # Must pass. Rule 2 counts literal version uses inside the pin's own block.
 # In a `.sh` the pin sits at column 0, so an indentation dedent can never
