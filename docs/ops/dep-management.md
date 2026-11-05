@@ -258,10 +258,11 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
   - **Awaiting Schedule: `<branch>`** — a scheduled branch outside `AWAITING_EXEMPT`: exempt a deliberate new schedule there, else fix the config. Never a manual bump.
   - **Other Branches: `<branch>` has no PR** — an update outside `OTHER_EXEMPT`: read the Mend job log.
   - **No lockfile PR merged in 7 days** — lockfile maintenance has stopped landing: read the Mend job log. A failed generation (`ETARGET`, [§ When resolution ETARGETs](#when-resolution-etargets)) produces no PR.
-  - **Dashboard section `"<title>"`** — any heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
+  - **Dashboard section `"PR Closed (Blocked)"`** — a closed Renovate PR: Renovate ignores that update from then on. To release it, rename the closed PR; it then follows the normal rules, so a major waits in Pending Approval. The dashboard's recreate box skips that approval. To keep holding it, use `allowedVersions` with a register row ([§ Exception register](#exception-register)), then rename.
+  - **Dashboard section `"<title>"`** — any other heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
   - **Dependency lookup failed / no or several dashboards / no "manual job" box** — a Renovate config or Mend app problem: read the Mend job log.
   - **"manual job" box still ticked** — no Renovate job ran since the last check. Check the repo's status and job log on the Mend portal. A manual re-run shortly after the nightly reports this too, until Renovate's job lands.
-  - **Renovate PR `#n` open since …** — merge, fix or close it; a stuck PR also holds a PR-limit slot.
+  - **Renovate PR `#n` open since …** — merge or fix it; a stuck PR also holds a PR-limit slot. Closing it raises `PR Closed (Blocked)`.
 
 - **`Deploy pending is red on main`** — a pushed commit could not be resolved to a PR after retries (#716; the `Last answer:` line shows what the lookup saw), or an API call failed. One push can carry several merge-queue PRs: check every PR the run's `::error::` lines name (or, if the commit list failed, every PR of that push) for `deploy-asap` by hand, then close the issue: a later green run does not close it.
 

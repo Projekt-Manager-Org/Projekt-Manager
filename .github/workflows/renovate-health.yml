@@ -17,6 +17,12 @@ on:
     # job to clear it.
     - cron: '30 1 * * *'
   workflow_dispatch:
+    inputs:
+      probe:
+        description: "'red' fails this run on purpose, to exercise notify.yml"
+        type: choice
+        options: [none, red]
+        default: none
 
 permissions:
   contents: read
@@ -29,6 +35,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Probe (deliberate red)
+        if: inputs.probe == 'red'
+        run: |
+          echo '::error::Deliberate red: probe=red, to exercise notify.yml.'
+          exit 1
+
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
