@@ -3,8 +3,8 @@
 # Markdown link check (AC-348) — local runner.
 #
 # CI runs the same check through the pinned image in the `lint` job.
-# Both read `lychee.toml`, which holds every flag; the only
-# argument either passes is `.` — see that file for why the input is the
+# Both read `lychee.toml`, which holds the check's flags; the only input
+# either passes is `.` — see that file for why the input is the
 # repository root and not a `**/*.md` glob.
 #
 # lychee is a Rust binary, not a project dependency. This script uses a
