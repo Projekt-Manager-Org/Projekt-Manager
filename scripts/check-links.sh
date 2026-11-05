@@ -2,8 +2,8 @@
 #
 # Markdown link check (AC-348) — local runner.
 #
-# CI runs the same check through `lycheeverse/lychee-action` in the
-# `lint` job. Both read `lychee.toml`, which holds every flag; the only
+# CI runs the same check through the pinned image in the `lint` job.
+# Both read `lychee.toml`, which holds every flag; the only
 # argument either passes is `.` — see that file for why the input is the
 # repository root and not a `**/*.md` glob.
 #
@@ -31,15 +31,15 @@ if command -v lychee >/dev/null 2>&1; then
   exec lychee --config lychee.toml .
 fi
 
-# The version is NOT duplicated here. It is read from the `lycheeVersion`
-# input of the CI step, which Renovate keeps current — a local run and CI
-# cannot end up on different versions.
-VERSION="$(sed -n 's/.*lycheeVersion:[[:space:]]*v\{0,1\}\([0-9][0-9.]*\).*/\1/p' "$WORKFLOW" | head -1)"
+# The image is NOT duplicated here. It is read from the CI step, which
+# Renovate keeps current — a local run and CI cannot end up on different
+# images.
+IMAGE="$(sed -n 's|.*uses:[[:space:]]*docker://\(lycheeverse/lychee:[^[:space:]]*\).*|\1|p' "$WORKFLOW" | head -1)"
 
-if [ -z "$VERSION" ]; then
-  echo "ERROR: could not read lycheeVersion from $WORKFLOW." >&2
-  echo "       The CI step is the single source for the pinned version;" >&2
-  echo "       if that input was renamed, update this script with it." >&2
+if [ -z "$IMAGE" ]; then
+  echo "ERROR: could not read the lychee image from $WORKFLOW." >&2
+  echo "       The CI step is the single source for the pinned image;" >&2
+  echo "       if that step changed shape, update this script with it." >&2
   exit 2
 fi
 
@@ -49,12 +49,12 @@ for runtime in docker podman; do
     # merely configured. Read-only mount: a link checker never writes.
     exec "$runtime" run --rm --network none \
       -v "$PROJECT_ROOT":/input:ro -w /input \
-      "docker.io/lycheeverse/lychee:${VERSION}" \
+      "docker.io/${IMAGE}" \
       --config lychee.toml .
   fi
 done
 
 echo "ERROR: no lychee binary and no container runtime found." >&2
 echo "       Install lychee (cargo install lychee / brew install lychee)," >&2
-echo "       or install Docker/Podman to use the pinned v${VERSION} image." >&2
+echo "       or install Docker/Podman to use the pinned ${IMAGE} image." >&2
 exit 2

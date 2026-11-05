@@ -697,19 +697,25 @@ jobs:
       # `offline = true` in the config means no network calls: a flaky
       # third-party host cannot fail the lint job.
       #
-      # This step's pinned version is also read by
-      # scripts/check-links.sh's container fallback — keep the input name
-      # `lycheeVersion` if you move it.
+      # A digest-pinned image, which Renovate's github-actions manager tracks:
+      # lychee-action downloads its binary with no checksum, on a version
+      # input no manager matches. scripts/check-links.sh's container fallback
+      # reads this reference.
       - name: Markdown link check (AC-348)
-        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        id: links
+        uses: docker://lycheeverse/lychee:0.24.2@sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d
         with:
-          # renovate: datasource=github-releases depName=lycheeverse/lychee extractVersion=^lychee-(?<version>.*)$
-          lycheeVersion: v0.24.2
-          args: --config lychee.toml .
-          # A run that finds zero links means the walk missed the docs —
-          # green for the wrong reason. Fail instead.
-          failIfEmpty: true
-          jobSummary: false
+          args: --config lychee.toml --format json --output /github/runner_temp/lychee.json .
+
+      # With --output, lychee prints nothing: this is the only report of a
+      # broken link. It also fails on zero links: lychee exits 0 when the walk
+      # misses the docs, green for the wrong reason.
+      - name: Markdown link check — report
+        if: ${{ !cancelled() && steps.links.outcome != 'skipped' }}
+        run: |
+          jq -r '.error_map | to_entries[] | .key as $f | .value[]
+            | "::error file=\($f),line=\(.span.line // 1)::\(.url): \(.status.text)"' "$RUNNER_TEMP/lychee.json"
+          jq -e '.total > 0' "$RUNNER_TEMP/lychee.json"
 
       # Static check (S-ACTR, S-TRAC): every AC is cited by a test or
       # listed in docs/testing/verification-exceptions.md, and every AC
