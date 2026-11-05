@@ -15,7 +15,7 @@
 # CI; majors wait for approval.
 # See ADR-0027 + docs/ops/dep-management.md.
 
-FROM caddy:2.11.8-builder@sha256:212168c3a069fb6a18ced9e817f974c8a5ef21a41d305bcdb66ec0bd416079ef AS builder
+FROM caddy:2.11.8-builder@sha256:d4eb070c36154bd2d4c94b40359a03c6168346d5af5404963c74691ab77fb63f AS builder
 
 # The first two `--with` lines raise Go modules above what Caddy 2.11.7
 # (latest on 2026-10-27) requires, because only a Caddy release would
@@ -39,7 +39,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # digest-pinned stage so Renovate's `caddy` group still moves it in
 # lockstep with the builder and the xcaddy version, and the CA bundle
 # below rides those bumps.
-FROM caddy:2.11.8@sha256:f04f1e8d78da0c65ec6f81b4ea8d216849775f3bc3c87790d95fcb2ec3722f12 AS base
+FROM caddy:2.11.8@sha256:4fcafa98afd1c2e642e353e3c5cf9ddbe892fcee14bc990e7ba2c5b78e51f9cf AS base
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
