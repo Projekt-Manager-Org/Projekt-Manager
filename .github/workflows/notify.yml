@@ -1,612 +1,150 @@
-# Out-of-band CI alerting.
-#
-# GitHub emails a run failure only to the run's TRIGGERING ACTOR. With
-# Renovate's `platformAutomerge` the bot opens the PR, force-pushes it,
-# AND merges it — so it is the actor on the PR runs and on the
-# post-merge `push` to `main` alike, and every one of those failures
-# reaches nobody. This workflow is the replacement channel.
-#
-# WHY A SEPARATE WORKFLOW, NOT JOBS INSIDE ci.yml
-#   The previous shape (`notify-failure` / `unassign-on-green` as jobs
-#   of ci.yml, #346) had three defects. All three are structural, and
-#   all three close here:
-#
-#   1. It only ever saw `pull_request`. A failed `promote` on a push to
-#      `main` notified nobody — worse than the PR case, because a red
-#      PR merely sits there while a failed `promote` leaves `main`'s
-#      image unbuilt.
-#   2. The alerter shared fate with the monitored system. A job cannot
-#      report the workflow it lives in failing to start, and a runner
-#      outage takes the monitor down with the monitored.
-#   3. `needs: [lint, check, docker]` was a hand-maintained mirror of
-#      the job graph with no drift guard. The next job added to ci.yml
-#      would have dropped out of coverage silently — off-convention for
-#      a repo carrying five documentation drift guards.
-#
-#   `workflow_run` fires on the completed RUN, so it covers every
-#   trigger ci.yml has (push, PR, dispatch) and needs no `needs:`
-#   mirror to keep in sync.
-#
-# WHAT THIS STILL DOES NOT COVER
-#   - **A run that never queues.** No run, no event. Only a cron
-#     watchdog catches that; `docs/ops/dep-management.md` § Weekly
-#     wrangler is the standing backstop and says so.
-#   - **`startup_failure` of a monitored workflow.** MEASURED, not
-#     assumed: `workflow_run` does NOT fire. Two probes on #349 broke
-#     `ci.yml` deliberately — once unparseable, once valid YAML with an
-#     invalid schema — and neither produced a `Notify` run. The name
-#     filter is not the reason: the workflow ENTITY keeps its
-#     registered name (`CI`), so `workflows: [CI]` would have matched.
-#     No configuration change fixes this; the event is simply not
-#     delivered for a run that never started. Treat defect (1) above as
-#     addressed for runner outages and job-level failures, and NOT
-#     addressed for a workflow that fails to start.
-#
-#     Two observations from the same probes, worth knowing:
-#     the failed RUN is named by its file path
-#     (`.github/workflows/ci.yml`) rather than by `name:`, even when
-#     the YAML parses; and an unparseable file has no readable `on:`
-#     either, so GitHub queues a run for whatever event occurred,
-#     ignoring the branch filters.
-#
-#     Left uncovered deliberately rather than worked around, because
-#     the case cannot reach `main`: `lint` runs actionlint over
-#     `.github/workflows/`, and the "main protection" Ruleset requires
-#     `lint`/`check`/`docker`. A PR whose ci.yml does not parse reports
-#     NO checks at all — verified on #349, which sat `BLOCKED` with an
-#     empty check list — so it can never merge.
-#   - **A PR run that hits `timeout-minutes`.** It concludes
-#     `cancelled`, like a superseded run, and both have jobs that ran;
-#     only the check-run annotation text differs, and that wording is
-#     undocumented. On `main` a timeout IS caught (see `Classify run`).
-#     A stuck Renovate PR surfaces after 7 days via `Renovate health`.
-#
-# DELIBERATELY NOT MONITORED
-#   - `Cache cleanup` — housekeeping. A failure costs disk, not
-#     correctness, and produces no signal worth an issue.
-#
-#   `GHCR retention` is NOT in that class, though it looks like it. It
-#   fails closed, so a red run deleted nothing — but "nothing happened
-#   and nobody noticed" is exactly how #373 accumulated 442 versions
-#   against an intent that was recorded and never implemented. Silent
-#   non-execution is the failure mode being fixed, so it is monitored.
-#
-# SECURITY
-#   `workflow_run` is a PRIVILEGED trigger: it runs in base-repo
-#   context with a writable token regardless of what the triggering run
-#   could do. The rule is never to execute code from the monitored run.
-#   This workflow satisfies that trivially — it has no `checkout` step
-#   and runs nothing from the tree. All untrusted values (branch name,
-#   workflow name, SHA) reach the shell through `env:`, never through
-#   `${{ }}` interpolation into a `run:` body. The findings artifacts it
-#   downloads (#732) come only from runs on `main` and are read as data:
-#   compared as text, quoted into code spans, never executed.
+# CI alerts: GitHub emails a failed run only to its triggering actor, and
+# Renovate's automerge makes that the bot. A red PR is assigned to the
+# maintainer; a workflow red on main gets one issue. Both clear on green. What
+# alerts nobody: docs/ops/dep-management.md § Weekly wrangler. `workflow_run` is
+# privileged: no checkout, and untrusted values reach the shell only via `env:`.
 name: Notify
 
 on:
   workflow_run:
-    # Matched by workflow NAME, not file path. Renaming a listed workflow
-    # silently unhooks it — actionlint cannot know which names are real.
-    # scripts/check-notify-coverage.sh (ci.yml `lint`) fails the PR when a
-    # scheduled or push-to-main workflow is missing here.
-    #
-    # `E2E` was excluded until #377 as flaky and `workflow_dispatch`-only,
-    # where monitoring manufactures alert fatigue. On a nightly schedule
-    # the failure mode inverts to silence — it sat red ~3.5 weeks with
-    # nothing to say so. `route='main'` already covers the `schedule`
-    # event, and one-issue-per-incident below is what bounds the fatigue.
-    workflows:
-      [
-        CI,
-        'Security (scheduled)',
-        E2E,
-        'GHCR retention',
-        'Inventory scan',
-        'Renovate health',
-        'Deploy pending',
-        'Docker host advisories',
-      ]
+    workflows: # By NAME: scripts/check-notify-coverage.sh fails the PR that unhooks one.
+      - CI
+      - Security (scheduled)
+      - E2E
+      - GHCR retention
+      - Inventory scan
+      - Renovate health
+      - Deploy pending
+      - Docker host advisories
     types: [completed]
 
-# An explicit block zeroes every scope not listed. `contents: read`
-# is needed for the commit→PR lookup and `actions: read` for the jobs
-# lookups (a timeout vs an eviction; failed steps) and the findings
-# artifacts of a standing red (#732); the two write scopes
-# serve the assignees endpoint, which is documented in terms of the
-# target type (issue vs PR) — grant both rather than bet on which is
-# checked.
 permissions:
   actions: read
+  checks: read
   contents: read
   issues: write
   pull-requests: write
 
-# Serialised per monitored workflow per branch, and NOT cancelled: two
-# runs completing together would otherwise race the "does an open issue
-# already exist" read and open the issue twice.
 concurrency:
   group: notify-${{ github.event.workflow_run.name }}-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
+  cancel-in-progress: false # Two runs at once would race the open-issue lookup.
 
 env:
-  # Hardcoded, not derived: `github.repository_owner` is the ORG
-  # (Projekt-Manager-Org) and assigning an org 422s.
-  MAINTAINER: vlzware
-  # Reports one EVENT per run (a merge), not a state: a later green run
-  # proves nothing about an earlier red one, so its red issue is never
-  # auto-closed — the operator closes it after checking that merge.
-  EVENT_SCOPED: Deploy pending
-  # Marks the issues this workflow owns, so the "is one already open"
-  # lookup is an exact, bounded query instead of a scan of every open
-  # issue in the repo.
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+  RUN_ID: ${{ github.event.workflow_run.id }}
+  RUN_URL: ${{ github.event.workflow_run.html_url }}
+  RUN_EVENT: ${{ github.event.workflow_run.event }}
+  CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+  HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+  HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+  MAINTAINER: vlzware # Assigning the org (`github.repository_owner`) is a 422.
   RED_LABEL: ci-red
-  # Workflows whose jobs upload findings (.github/actions/upload-findings):
-  # a later red run says what it adds to their standing ci-red issue (#732).
-  # scripts/check-notify-coverage.sh keeps this list in step with them.
-  FINDINGS_SCOPED: '["Security (scheduled)", "Inventory scan"]'
+  # Reports one merge, not a state: a later green proves nothing, so its issue is closed by hand.
+  EVENT_SCOPED: Deploy pending
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      # ---------------------------------------------------------------
-      # Decide WHAT happened (state) and WHO to tell (route) once, so
-      # the acting steps below are single-purpose.
-      # ---------------------------------------------------------------
       - name: Classify run
         id: classify
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          RUN_EVENT: ${{ github.event.workflow_run.event }}
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-
-          # `cancelled` is deliberately NOT red: ci.yml's concurrency
-          # group cancels superseded runs on every force-push, and
-          # treating that as a failure would assign the maintainer to
-          # every rebased PR. It is not green either — a cancelled run
-          # proves nothing, so it must not clear a live assignment.
-          # `skipped`/`neutral`/`stale`/`action_required` are inert for
-          # the same reason. The exception, a started run cancelled on
-          # `main` (a timeout), is promoted after routing below.
+          # `cancelled` proves nothing: a force-push supersedes PR runs.
           case "$CONCLUSION" in
             success)                          state='green' ;;
             failure|timed_out|startup_failure) state='red' ;;
             *)                                state='ignore' ;;
           esac
-
-          # Routing is driven by the run's ORIGINATING EVENT, never by
-          # "can a PR be found for this SHA". The repo squash-merges,
-          # and `commits/{sha}/pulls` resolves a squashed commit on
-          # `main` straight back to the PR it came from — routing on
-          # that would send every push-to-main failure to the merged PR
-          # instead of raising the `main`-is-red issue.
-          if [ "$RUN_EVENT" = 'pull_request' ]; then
-            route='pr'
-          elif [ "$HEAD_BRANCH" = 'main' ]; then
-            # `push` to main and the nightly `schedule`. A dispatch run
-            # on a feature branch lands in `none` below: the operator
-            # who clicked it IS the triggering actor, so GitHub's own
-            # email already reaches them. `merge_group` runs sit on a
-            # synthetic `gh-readonly-queue/...` branch and land there
-            # too: a train failure is not `main` being red.
-            route='main'
-          else
-            route='none'
-          fi
-
-          # A job that hits `timeout-minutes` concludes the run
-          # `cancelled`, never `timed_out` (measured on #703), so a hung
-          # nightly would read as inert. On `main` nothing cancels a
-          # RUNNING run — no group there has `cancel-in-progress` — so
-          # `cancelled` with a job that ran on a runner is a timeout or
-          # an operator's cancel; both mean the work did not happen. The
-          # inert `cancelled` on `main` is a pending run evicted by its
-          # concurrency group (`queue: single`), which has no jobs.
-          # Not applied to PRs: a superseded PR run has run jobs too.
+          # By event: `commits/{sha}/pulls` resolves a squashed commit on main to
+          # its merged PR. Branch dispatches and merge-queue runs land in `none`.
+          if [ "$RUN_EVENT" = 'pull_request' ]; then route='pr'
+          elif [ "$HEAD_BRANCH" = 'main' ]; then route='main'
+          else route='none'; fi
+          # A timeout concludes `cancelled` (#703). An evicted pending run has no
+          # job that ran; a failed lookup is no proof of eviction, so it alerts.
           if [ "$CONCLUSION" = 'cancelled' ] && [ "$route" = 'main' ]; then
-            # A failed lookup is not proof of an eviction: alert.
             ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100" \
-              | jq -r '[.jobs[] | select((.runner_name // "") != "")] | length > 0') || {
-              echo "::warning::Jobs lookup for run ${RUN_ID} failed — treating it as a timeout."
-              ran='true'
-            }
-            if [ "$ran" = 'true' ]; then
-              state='red'
-            fi
+              | jq -r '[.jobs[] | select((.runner_name // "") != "")] | length > 0') || ran='true'
+            if [ "$ran" = 'true' ]; then state='red'; fi
           fi
-
           pr=''
           if [ "$route" = 'pr' ]; then
-            # Resolved from the head SHA rather than read out of
-            # `workflow_run.pull_requests[0]`. That field is
-            # undocumented for this event, empty for fork PRs, and
-            # live-computed — it lists only PRs that are OPEN at the
-            # moment the payload is serialised. This endpoint is the
-            # documented one, and using it exclusively keeps a single
-            # code path that every PR run exercises, instead of a
-            # primary plus a fallback that almost never runs.
             pr=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" \
               | jq -r 'map(select(.state == "open")) | first | .number // empty')
-
-            if [ -z "$pr" ]; then
-              # Legitimate and expected when the PR merged or closed
-              # between the run finishing and this event arriving —
-              # there is no longer anything to assign. It would also be
-              # how an open FORK PR fails to resolve; none exist today
-              # (Renovate and Dependabot both push branches into this
-              # repo), so that path is unobserved.
-              echo "::warning::No open PR for ${HEAD_SHA} — nothing to assign or clear."
-              route='none'
-            fi
+            if [ -z "$pr" ]; then route='none'; fi
           fi
+          printf 'state=%s\nroute=%s\npr=%s\n' "$state" "$route" "$pr" >> "$GITHUB_OUTPUT"
 
-          {
-            echo "state=${state}"
-            echo "route=${route}"
-            echo "pr=${pr}"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "::notice::${CONCLUSION} on ${HEAD_BRANCH} (${RUN_EVENT}) → state=${state} route=${route}"
-
-      # ---------------------------------------------------------------
-      # PR half — the behaviour ported from #346, both directions.
-      #
-      # Assignment produces a "Participating" notification, delivered
-      # regardless of who triggered the run and regardless of repo
-      # watch state: the two conditions that suppress the built-in
-      # Actions email.
-      # ---------------------------------------------------------------
-      - name: Assign maintainer (PR red)
-        if: steps.classify.outputs.route == 'pr' && steps.classify.outputs.state == 'red'
+      # Assigning twice raises one notification, so force-pushes stay silent;
+      # clearing on green is what lets the next incident notify.
+      - name: Assign on a red PR, clear on green
+        if: steps.classify.outputs.route == 'pr' && steps.classify.outputs.state != 'ignore'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.classify.outputs.pr }}
+          PR: ${{ steps.classify.outputs.pr }}
+          STATE: ${{ steps.classify.outputs.state }}
         run: |
-          set -euo pipefail
-          # Assigning an already-assigned user returns 200 but writes no
-          # `assigned` timeline event, so it raises no second
-          # notification. That absorbs Renovate's force-pushes
-          # without spamming — and is exactly why the clear-on-green
-          # step below is load-bearing rather than cosmetic.
-          gh api -X POST \
-            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/assignees" \
-            -f "assignees[]=${MAINTAINER}" > /dev/null
-          echo "::notice::CI is red — assigned PR #${PR_NUMBER} to ${MAINTAINER}"
+          method=POST
+          if [ "$STATE" = 'green' ]; then method=DELETE; fi
+          gh api -X "$method" "repos/${GITHUB_REPOSITORY}/issues/${PR}/assignees" -f "assignees[]=${MAINTAINER}" > /dev/null
 
-      - name: Clear assignment (PR green)
-        if: steps.classify.outputs.route == 'pr' && steps.classify.outputs.state == 'green'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.classify.outputs.pr }}
-        run: |
-          set -euo pipefail
-          # Without this, "assigned to me" decays from *needs attention
-          # now* into *was red at some point*: red → fixed → red again
-          # for an unrelated reason would notify exactly once, on the
-          # first failure. Clearing on green restores one notification
-          # per incident.
-          #
-          # ASSUMPTION: assignment on a PR here means "CI is red" and
-          # nothing else. Nothing else assigns today — renovate.json
-          # sets no `assignees`, and review requests are a separate
-          # field. If PR assignment ever takes a second meaning, this
-          # has to distinguish them or move to a label.
-          #
-          # DELETE on an unassigned PR is a harmless no-op (200,
-          # unchanged), so this runs unconditionally on green rather
-          # than reading the current assignees first. Unassigning
-          # raises no notification, so the green path stays silent.
-          gh api -X DELETE \
-            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/assignees" \
-            -f "assignees[]=${MAINTAINER}" > /dev/null
-          echo "::notice::CI is green — cleared assignment on PR #${PR_NUMBER}"
-
-      # ---------------------------------------------------------------
-      # `main` half — the gap #346 could not reach.
-      #
-      # An issue rather than an assignment, because there is no PR to
-      # hang the signal on. Opened assigned to the maintainer (same
-      # "Participating" notification), then CLOSED on the next green
-      # run — the exact mirror of clear-on-green above, and for the
-      # same reason: a stale open issue stops the next incident from
-      # notifying.
-      # ---------------------------------------------------------------
-
-      # One lookup for both directions. Title carries the workflow name so
-      # `CI` and `Security (scheduled)` own separate issues: sharing one
-      # would let a green CI run close an issue raised by a still-red
-      # nightly scan. A label that does not exist yet answers `[]`, not an
-      # error: no issue was ever raised.
-      - name: Find the red-main issue
-        id: issue
+      # A failed issue lookup fails the step, or it could open a second issue; a
+      # failed details lookup still posts. Annotations are third-party text: code
+      # spans without backticks, capped (a comment over 65536 characters fails).
+      - name: Open, comment on or close the red-main issue
+        id: post
         if: steps.classify.outputs.route == 'main' && steps.classify.outputs.state != 'ignore'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          STATE: ${{ steps.classify.outputs.state }}
         run: |
           set -euo pipefail
           title="${WORKFLOW_NAME} is red on main"
-          number=$(gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=${RED_LABEL}&per_page=100" \
-            | jq -r --arg t "$title" \
-              'map(select(.pull_request == null and .title == $t)) | first | .number // empty')
-          {
-            echo "title=${title}"
-            echo "number=${number}"
-          } >> "$GITHUB_OUTPUT"
+          issues="repos/${GITHUB_REPOSITORY}/issues"
+          existing=$(gh api "${issues}?state=open&labels=${RED_LABEL}&per_page=100" \
+            | jq -r --arg t "$title" 'map(select(.pull_request == null and .title == $t)) | first | .number // empty')
 
-      # A later red run of a scanning workflow says what it adds to the
-      # standing red (#732): a plain "Still red" hid a new advisory in #420.
-      #
-      # The baseline is the last run the issue reported other than this one
-      # (a re-run keeps the run id); upload-findings says why its artifacts
-      # are still there. That run must be this workflow's, on `main`, not a
-      # PR's: its artifacts are trusted as the baseline. What a run reports:
-      # its failed steps (jobs API) and, per gate, the keys it failed on
-      # (`findings-<label>/<gate>.keys`). A gate's keys are compared only
-      # when it reached a verdict on both runs; otherwise the comment says
-      # "not compared" and why, never plain "Still red". The same goes for
-      # a cancelled or skipped job, a failed `Upload findings` step, and any
-      # input this step cannot read.
-      #
-      # The artifacts hold scanned third-party text (package names, paths):
-      # data only, never executed, and quoted into code spans with their
-      # backticks stripped. Capped, as GitHub rejects a comment over 65536
-      # characters and that would post nothing at all.
-      - name: Compare with the last alert
-        id: compare
-        if: >-
-          steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'red' &&
-          steps.issue.outputs.number != '' &&
-          contains(fromJSON(env.FINDINGS_SCOPED), github.event.workflow_run.name)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE: ${{ steps.issue.outputs.number }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-          WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
-        run: |
-          set -euo pipefail
-          # Otherwise a failure inside $(…) is ignored and its line silently
-          # missing from the comment; with it the step fails and `post` says so.
-          shopt -s inherit_errexit
-          bot='github-actions[bot]'
-          upload_step='Upload findings'
-          max_items=50
-          max_chars=300
-          work=$(mktemp -d -p "$RUNNER_TEMP" compare.XXXXXX)
-          body="$work/comment.md"
-          runs="https://github.com/${GITHUB_REPOSITORY}/actions/runs/"
-
-          # The comment's path is an output only once the comment is whole:
-          # a step that dies half-way leaves `post` to say so.
-          finish() {
-            echo "body_file=${body}" >> "$GITHUB_OUTPUT"
+          if [ "$STATE" = 'green' ]; then
+            if [ -n "$existing" ] && [ "$WORKFLOW_NAME" != "$EVENT_SCOPED" ]; then
+              gh api -X POST "${issues}/${existing}/comments" -f "body=Green again on ${HEAD_SHA} — ${RUN_URL}" > /dev/null
+              gh api -X PATCH "${issues}/${existing}" -f 'state=closed' -f 'state_reason=completed' > /dev/null
+            fi
             exit 0
-          }
-          uncompared() {
-            printf 'Still red, **not compared** — %s\n\nFindings not compared: %s\n' "$RUN_URL" "$1" > "$body"
-            finish
-          }
-
-          # The run the issue last reported: of notify's texts, the body and
-          # its comments, the newest whose first run link is not this run. A
-          # comparing comment also links its own baseline, after its run.
-          issue=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}") \
-            || uncompared 'could not read the issue.'
-          comments=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments?per_page=100") \
-            || uncompared 'could not read the issue.'
-          base_id=$(printf '[%s]\n%s\n' "$issue" "$comments" | jq -rs \
-            --arg bot "$bot" --arg cur "$RUN_ID" --arg re "^${runs//./\\.}(?<id>[0-9]+)" '
-              add
-              | [.[] | select(.user.login == $bot) | (.body // "")
-                 | [splits("\\s+")] | map(capture($re).id) | first // empty
-                 | select(. != $cur)]
-              | last // empty')
-          [ -n "$base_id" ] || uncompared 'the issue links no earlier run.'
-          base_url="${runs}${base_id}"
-          base_link="[the last alert's run](${base_url})"
-
-          base_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${base_id}") \
-            || uncompared "could not read ${base_link}."
-          jq -e --argjson wf "$WORKFLOW_ID" --arg repo "$GITHUB_REPOSITORY" '
-            .workflow_id == $wf and .head_branch == "main" and .event != "pull_request"
-            and .head_repository.full_name == $repo' <<< "$base_run" > /dev/null \
-            || uncompared "${base_link} is not a run of this workflow on main."
-
-          # jobs <run> <dir> / findings <run> <dir>: the run's jobs, and its
-          # findings artifacts. A run that uploaded none has none to fetch;
-          # one that did must download whole, or nothing it says is known.
-          jobs() {
-            mkdir -p "$2"
-            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/jobs?per_page=100" > "$2/jobs.json"
-          }
-          findings() {
-            mkdir -p "$2/a"
-            uploaded=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/artifacts?per_page=100" \
-              | jq '[.artifacts[] | select((.expired | not) and (.name | startswith("findings-")))] | length') \
-              || return 1
-            [ "$uploaded" -eq 0 ] \
-              || gh run download "$1" --repo "$GITHUB_REPOSITORY" --pattern 'findings-*' --dir "$2/a" > /dev/null
-          }
-          jobs "$RUN_ID" "$work/cur" || uncompared 'could not read the jobs of this run.'
-          jobs "$base_id" "$work/base" || uncompared "could not read the jobs of ${base_link}."
-          findings "$RUN_ID" "$work/cur" || uncompared 'could not download the findings of this run.'
-          findings "$base_id" "$work/base" || uncompared "could not download the findings of ${base_link}."
-
-          # A failed job reads as `steps: []` once its run's logs expire:
-          # its failed steps are unknown, not absent.
-          jq -e '[.jobs[] | select((.conclusion == "failure") and ((.steps // []) | length == 0))]
-            | length == 0' "$work/base/jobs.json" > /dev/null \
-            || uncompared "the failed jobs of ${base_link} list no steps (expired)."
-          if ! compgen -G "$work/base/a/findings-*/*.keys" > /dev/null \
-            && ! compgen -G "$work/base/a/findings-*/*.none" > /dev/null; then
-            uncompared "${base_link} left no findings (its artifacts may have expired)."
           fi
 
-          # gates <dir> <ext>: `label/gate` per findings file of that kind.
-          gates() {
-            for f in "$1"/a/findings-*/*."$2"; do
-              [ -e "$f" ] || continue
-              label=$(basename "$(dirname "$f")")
-              echo "${label#findings-}/$(basename "$f" ".$2")"
-            done | LC_ALL=C sort -u
-          }
-          gates "$work/cur" keys > "$work/cur.keys"
-          gates "$work/base" keys > "$work/base.keys"
-          LC_ALL=C comm -12 "$work/cur.keys" "$work/base.keys" > "$work/both.keys"
-
-          # reported <dir>: one line per failed step (or failed job without
-          # one), then per finding of a gate judged on both runs
-          # `label/gate<TAB>key`.
-          reported() {
-            jq -r '.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out")
-              | .name as $job | .conclusion as $how
-              | [(.steps // [])[] | select(.conclusion == "failure") | "failed: \($job) / \(.name)"]
-              | if length > 0 then .[] else "failed: \($job) (\($how))" end' "$1/jobs.json"
-            while read -r g; do
-              awk -v g="$g" 'NF { print g "\t" $0 }' "$1/a/findings-${g%%/*}/${g#*/}.keys"
-            done < "$work/both.keys"
-          }
-          reported "$work/cur" | LC_ALL=C sort -u > "$work/cur.txt"
-          reported "$work/base" | LC_ALL=C sort -u > "$work/base.txt"
-          added=$(LC_ALL=C comm -13 "$work/base.txt" "$work/cur.txt")
-
-          # Not compared: a gate without a verdict now (marked, or missing
-          # where the last run had one) or then, and a job that left
-          # nothing to read.
-          not_compared=$(
-            {
-              gates "$work/cur" none
-              cat "$work/base.keys"
-              gates "$work/base" none
-            } | LC_ALL=C sort -u | LC_ALL=C comm -23 - "$work/cur.keys" \
-              | sed 's/.*/`&` gave no verdict/'
-            LC_ALL=C comm -23 "$work/cur.keys" "$work/base.keys" \
-              | sed "s/.*/\`&\` had no verdict on the last alert's run/"
-            jq -r --arg up "$upload_step" '.jobs[] | (.name | gsub("`"; "")) as $job
-              | if .conclusion == "cancelled" or .conclusion == "skipped" then "`\($job)` (\(.conclusion))"
-                elif any((.steps // [])[]; .name == $up and .conclusion != "success")
-                then "`\($job)` uploaded no findings" else empty end' "$work/cur/jobs.json"
+          list=$(mktemp)
+          capped='' unread=''
+          failed='.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled")'
+          jobs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100") || { unread=yes; jobs='{"jobs":[]}'; }
+          jq -r "$failed"' | .name as $job | .conclusion as $how
+            | [(.steps // [])[] | select(.conclusion == "failure") | "\($job) / \(.name)"]
+            | if length > 0 then .[] else "\($job) (\($how))" end' <<< "$jobs" > "$list"
+          while IFS=$'\t' read -r job url; do
+            notes=$(gh api "${url}/annotations?per_page=100" \
+              | jq '[.[] | select(.annotation_level == "failure") | .message | gsub("\\s+"; " ")]') || { unread=yes; continue; }
+            if [ "$(jq length <<< "$notes")" -ge 10 ]; then capped=yes; fi
+            jq -r --arg job "$job" '.[] | select(test("^(Process completed with exit code|The operation was canceled)") | not)
+              | "\($job): \(.)"' <<< "$notes" >> "$list"
+          done < <(jq -r "$failed | [.name, .check_run_url] | @tsv" <<< "$jobs")
+          report=$(
+            awk -v max=50 -v width=300 '
+              { gsub(/[`\r]/, ""); if (length($0) > width) $0 = substr($0, 1, width) "…" }
+              NR <= max { print "- `" $0 "`" }
+              END { if (NR > max) print "- … and " NR - max " more in the run" }' "$list"
+            if [ -n "$capped" ]; then printf '\nPossibly more errors: GitHub keeps 10 per step.\n'; fi
+            if [ -n "$unread" ] || [ ! -s "$list" ]; then printf '\n**Could not read every failure**: see the run.\n'; fi
           )
-
-          # bullets: one code span per line, at most max_items.
-          bullets() {
-            awk -v max="$max_items" -v width="$max_chars" '
-              { gsub(/[`\r]/, ""); gsub(/\t/, " · ")
-                if (length($0) > width) $0 = substr($0, 1, width) "…"
-                if (NR <= max) print "- `" $0 "`" }
-              END { if (NR > max) print "- … and " NR - max " more in the run" }'
-          }
-
-          header='Still red'
-          [ -n "$added" ] && header+=', **with something new**'
-          if [ -n "$not_compared" ]; then
-            if [ -n "$added" ]; then header+=', **partly not compared**'; else header+=', **not compared**'; fi
-          fi
-          {
-            echo "${header} — ${RUN_URL}"
-            if [ -n "$added" ]; then
-              printf '\nNew since %s:\n' "$base_link"
-              bullets <<< "$added"
-            fi
-            if [ -n "$not_compared" ]; then
-              printf '\nNot compared with %s, so anything new there is not listed:\n' "$base_link"
-              head -n "$max_items" <<< "$not_compared" | sed 's/^/- not compared: /'
-            fi
-          } > "$body"
-          finish
-
-      # Runs when `compare` failed too: a scanning workflow must not fall
-      # back to a plain "Still red", nor post nothing. Not when the lookup
-      # failed, which would open a second issue.
-      - name: Open or update the red-main issue
-        id: post
-        if: >-
-          !cancelled() && steps.issue.outcome == 'success' &&
-          steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'red'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EXISTING: ${{ steps.issue.outputs.number }}
-          TITLE: ${{ steps.issue.outputs.title }}
-          COMPARED: ${{ contains(fromJSON(env.FINDINGS_SCOPED), github.event.workflow_run.name) }}
-          BODY_FILE: ${{ steps.compare.outputs.body_file }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-          RUN_EVENT: ${{ github.event.workflow_run.event }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-
-          if [ -n "$EXISTING" ]; then
-            # Still red on a later run. A comment re-notifies the
-            # assignee, which is wanted — each failure is a fresh
-            # occurrence — while keeping one issue per incident. For an
-            # event-scoped workflow it is another merge, not the same one.
-            if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
-              comment="Also red (another merge, \`${HEAD_SHA}\`) — ${RUN_URL}"
-            elif [ "$COMPARED" != 'true' ]; then
-              comment="Still red — ${RUN_URL}"
-            elif [ -n "$BODY_FILE" ] && [ -f "$BODY_FILE" ]; then
-              comment=$(cat "$BODY_FILE")
-            else
-              comment=$(printf 'Still red, **not compared** — %s\n\n%s' "$RUN_URL" \
-                "The comparison failed; see the Notify run's log.")
-            fi
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${EXISTING}/comments" \
-              -f "body=${comment}" > /dev/null
-            echo "::notice::${WORKFLOW_NAME} still red on main — commented on #${EXISTING}"
-            exit 0
-          fi
-
-          # Idempotent label bootstrap — 422 means it already exists.
-          gh api "repos/${GITHUB_REPOSITORY}/labels/${RED_LABEL}" > /dev/null 2>&1 || \
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/labels" \
-              -f "name=${RED_LABEL}" -f 'color=b60205' \
-              -f 'description=Raised automatically when a monitored workflow goes red on main' \
-              > /dev/null
-
+          head="Still red — ${RUN_URL}"
+          closing='It closes itself on the next green run of this workflow.'
           if [ "$WORKFLOW_NAME" = "$EVENT_SCOPED" ]; then
-            closing='Raised by `.github/workflows/notify.yml`. A later green run does not cover this commit: check the run, then close this issue by hand.'
-          else
-            closing='Raised by `.github/workflows/notify.yml`; it closes itself on the next green run of this workflow.'
+            head="Also red (another merge, \`${HEAD_SHA}\`) — ${RUN_URL}"
+            closing='A later green run does not cover this commit: check the run, then close this issue by hand.'
           fi
-          # Built with printf rather than a multi-line string literal:
-          # a quoted literal inside this indented `run:` block would
-          # carry the YAML indentation into the rendered issue body.
-          body=$(printf '%s\n' \
-            "\`${WORKFLOW_NAME}\` concluded **${CONCLUSION}** on \`main\` (${RUN_EVENT})." \
-            '' \
-            "- Run: ${RUN_URL}" \
-            "- Commit: \`${HEAD_SHA}\`" \
-            '' \
-            "$closing")
-
-          number=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/issues" \
-            -f "title=${TITLE}" -f "body=${body}" \
-            -f "labels[]=${RED_LABEL}" -f "assignees[]=${MAINTAINER}" \
-            --jq '.number')
-          echo "::notice::${WORKFLOW_NAME} red on main — opened #${number} for ${MAINTAINER}"
-
-      - name: Close the red-main issue
-        if: >-
-          steps.classify.outputs.route == 'main' && steps.classify.outputs.state == 'green' &&
-          steps.issue.outputs.number != '' && github.event.workflow_run.name != env.EVENT_SCOPED
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EXISTING: ${{ steps.issue.outputs.number }}
-          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-          gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${EXISTING}/comments" \
-            -f "body=Green again on ${HEAD_SHA} — ${RUN_URL}" > /dev/null
-          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/${EXISTING}" \
-            -f 'state=closed' -f 'state_reason=completed' > /dev/null
-          echo "::notice::${WORKFLOW_NAME} green on main — closed #${EXISTING}"
+          if [ -n "$existing" ]; then
+            gh api -X POST "${issues}/${existing}/comments" -f "body=$(printf '%s\n\n%s' "$head" "$report")" > /dev/null
+          else
+            body=$(printf '`%s` concluded **%s** on `main` (%s).\n\n- Run: %s\n- Commit: `%s`\n\n%s\n\n%s' \
+              "$WORKFLOW_NAME" "$CONCLUSION" "$RUN_EVENT" "$RUN_URL" "$HEAD_SHA" "$report" "$closing")
+            gh api -X POST "$issues" -f "title=${title}" -f "body=${body}" \
+              -f "labels[]=${RED_LABEL}" -f "assignees[]=${MAINTAINER}" --jq '.number' > /dev/null
+          fi

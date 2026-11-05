@@ -104,14 +104,10 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker pull "$IMAGE"
 
-      - name: Findings directory
-        run: mkdir -p "$RUNNER_TEMP/findings"
-
       - name: Trivy
         uses: ./.github/actions/trivy-image
         with:
           image_ref: ${{ matrix.image }}
-          findings_file: ${{ runner.temp }}/findings/trivy.keys
 
       # Runs even when Trivy is red: the two scanners see different
       # things, and the run should show both verdicts.
@@ -144,19 +140,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           IMAGE: ${{ matrix.image }}
-          FINDINGS_FILE: ${{ runner.temp }}/findings/grype.keys
         run: |
           set -euo pipefail
           grype "docker:$IMAGE" -c .grype.yaml -o table -o "json=$RUNNER_TEMP/grype.json"
           bash scripts/ci/grype-gate.sh "$RUNNER_TEMP/grype.json"
-
-      # The keys both gates failed on, for notify.yml (#732); a gate that
-      # never reached its verdict (a failed build or pull, a scanner error)
-      # is marked as such.
-      - name: Upload findings
-        if: ${{ !cancelled() }}
-        uses: ./.github/actions/upload-findings
-        with:
-          label: scan-${{ matrix.service }}
-          gates: trivy grype
-          dir: ${{ runner.temp }}/findings

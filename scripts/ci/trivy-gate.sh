@@ -27,8 +27,6 @@
 #   Fails on every head finding whose key the base lacks; without a base,
 #   on every finding.
 #
-#   FINDINGS_FILE (see .github/actions/upload-findings): the keys above.
-#
 # RESIDUAL
 #   `:main` lags the true base (until `promote` runs; behind earlier entries
 #   of a queue batch), never leads it. A finding it still carries that a
@@ -89,25 +87,18 @@ findings='
       ((.Secrets // [])[]
         | {id: .RuleID, sev: .Severity, what: "secret", key: [.RuleID, "secret", $r.Target]});'
 
-# One line per head finding: "new" or "base", the report line, the key's
-# three fields; tab-separated. No base: /dev/null slurps to nothing, so every
-# finding is new.
+# One line per head finding: "new" or "base", then the report line;
+# tab-separated. No base: /dev/null slurps to nothing, so every finding is new.
 lines=$(jq -r --slurpfile base "${2:-/dev/null}" "$findings"'
   [$base[0] // {} | findings | .key] as $keys
   | findings
   | [(if (.key as $k | $keys | index([$k])) then "base" else "new" end),
-     "\(.id) \(.sev // "UNKNOWN"): \(.what) (\(.key[2]))"] + .key
+     "\(.id) \(.sev // "UNKNOWN"): \(.what) (\(.key[2]))"]
   | @tsv
 ' "$1")
 
 introduced=$(awk -F'\t' '$1 == "new" { print "::error::" $2 }' <<< "$lines")
 preexisting=$(awk -F'\t' '$1 == "base" { print "  " $2 }' <<< "$lines")
-if [[ -n "${FINDINGS_FILE:-}" ]]; then
-  # Via a temporary file: a failed pass must leave no file, which reads as
-  # "no verdict", never an empty one, which reads as clean.
-  awk -F'\t' -v OFS='\t' '$1 == "new" { print $3, $4, $5 }' <<< "$lines" | LC_ALL=C sort -u > "$FINDINGS_FILE.tmp"
-  mv "$FINDINGS_FILE.tmp" "$FINDINGS_FILE"
-fi
 
 if [[ -n "$preexisting" ]]; then
   echo "Already in the base image (the nightly owns these):"

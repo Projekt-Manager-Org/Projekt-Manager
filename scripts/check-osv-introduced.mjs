@@ -20,7 +20,6 @@
  *   affected by the same advisory introduces nothing. No worse than the
  *   allowlist, which is per id; every instance is printed.
  *   Without `--base-lockfile` every finding fails.
- *   FINDINGS_FILE (see .github/actions/upload-findings): the failing keys.
  *
  * WHY NOT osv-reporter
  *   Google's diff (`osv-reporter --old --new`, internal/ci) keys findings on
@@ -54,8 +53,6 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { writeFindingsFile } from './lib/findings-file.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const projectRoot = process.env.PROJECT_ROOT ? path.resolve(process.env.PROJECT_ROOT) : repoRoot;
@@ -150,7 +147,6 @@ const base = baseLockfile ? scan('base', baseLockfile) : new Map();
 
 const introduced = [...head].filter(([key]) => !base.has(key)).map(([, f]) => f);
 const preExisting = [...head].filter(([key]) => base.has(key)).map(([, f]) => f);
-writeFindingsFile(introduced.map((f) => [f.id, f.ecosystem, f.name]));
 
 // The whole report goes to stdout, the red verdict included. The Actions
 // runner reads stdout and stderr separately and orders lines by arrival, so a
@@ -177,8 +173,9 @@ console.log(
     ? '\nERROR: this change introduces OSV findings:'
     : '\nERROR: OSV findings in the lockfile (no base to judge against):',
 );
+// Annotations: what notify.yml lists on a ci-red issue.
 for (const f of introduced) {
-  console.log(`  ${show(f)}  https://osv.dev/${f.id}`);
+  console.log(`::error::${show(f)}  https://osv.dev/${f.id}`);
 }
 console.log('\nFix by bumping the package past the patched version.');
 console.log('If there is no fix yet, add the id to osv-scanner.toml with');

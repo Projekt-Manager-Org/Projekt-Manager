@@ -5,12 +5,7 @@
 # safety net for the steady state.
 #
 # The same pinned CLI and gate as the PR check (check-osv-introduced.mjs),
-# without a base: one scanner version, one finding key, and a step whose
-# findings notify.yml can read (a reusable workflow is a job of its own).
-# The ci-red issue is the alert.
-#
-# Each job uploads the keys its gates failed on (upload-findings) for
-# notify.yml's comment on a standing ci-red issue.
+# without a base. The ci-red issue is the alert.
 
 name: Security (scheduled)
 
@@ -39,19 +34,7 @@ jobs:
       - uses: ./.github/actions/install-osv-scanner
 
       - name: OSV-Scanner (lockfile, fail on any vuln)
-        env:
-          FINDINGS_FILE: ${{ runner.temp }}/findings/osv.keys
-        run: |
-          mkdir -p "$(dirname "$FINDINGS_FILE")"
-          node scripts/check-osv-introduced.mjs
-
-      - name: Upload findings
-        if: ${{ !cancelled() }}
-        uses: ./.github/actions/upload-findings
-        with:
-          label: osv-scan
-          gates: osv
-          dir: ${{ runner.temp }}/findings
+        run: node scripts/check-osv-introduced.mjs
 
   # Same steady-state argument as the OSV scan above, for the layer OSV
   # cannot reach: an advisory filed at the upstream repo and never promoted
@@ -90,10 +73,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          FINDINGS_FILE: ${{ runner.temp }}/findings/repo-advisories.keys
-        run: |
-          mkdir -p "$(dirname "$FINDINGS_FILE")"
-          node scripts/check-repo-advisories.mjs
+        run: node scripts/check-repo-advisories.mjs
 
       # Where a lapsed register row turns red (`lint` lets one unchanged
       # from its base through). Last check, on any outcome: a register row
@@ -101,13 +81,3 @@ jobs:
       - name: Check exception register
         if: ${{ !cancelled() }}
         run: bash scripts/check-exception-register.sh
-
-      # The allowlist-schema and exception-register checks have no finding
-      # keys: notify.yml compares them by failed step.
-      - name: Upload findings
-        if: ${{ !cancelled() }}
-        uses: ./.github/actions/upload-findings
-        with:
-          label: repo-advisories
-          gates: repo-advisories
-          dir: ${{ runner.temp }}/findings
