@@ -145,8 +145,6 @@
  *   since its tree is not installed. A dep absent there is new, so every
  *   finding on it is introduced.
  *
- * FINDINGS_FILE (see .github/actions/upload-findings): (ghsa, package) keys.
- *
  * EXIT CODES
  *   0  no matching advisory (with a base: none the change introduces)
  *   1  a matching advisory (or one whose range could not be evaluated)
@@ -165,8 +163,6 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import semver from 'semver';
-
-import { writeFindingsFile } from './lib/findings-file.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const projectRoot = process.env.PROJECT_ROOT ? path.resolve(process.env.PROJECT_ROOT) : repoRoot;
@@ -678,8 +674,6 @@ for (const c of adjudicated) {
   else findings.push(finding);
 }
 
-writeFindingsFile(findings.map((f) => [f.ghsa, f.name]));
-
 // --- report -----------------------------------------------------------------
 
 // The whole report goes to stdout, the red verdict included. The Actions
@@ -754,7 +748,8 @@ for (const f of findings) {
     ? 'in the global advisory DB'
     : 'REPO-LEVEL ONLY — invisible to OSV-Scanner and npm audit';
 
-  console.log(`  ${f.ghsa}  [${f.severity}]  ${f.name}@${f.version}`);
+  // An annotation: what notify.yml lists on a ci-red issue.
+  console.log(`::error::${f.ghsa}  [${f.severity}]  ${f.name}@${f.version}`);
   console.log(`    ${f.summary}`);
   console.log(`    vulnerable: ${f.range}${f.patched ? `   patched: ${f.patched}` : ''}`);
   console.log(`    range from: ${f.rangeSource}`);

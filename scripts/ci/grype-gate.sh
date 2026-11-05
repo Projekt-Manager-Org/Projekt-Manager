@@ -15,9 +15,6 @@
 #   missing severity (the field is `omitempty`) alike. Allowlisted
 #   findings sit in `ignoredMatches` and are not read.
 #
-#   FINDINGS_FILE (see .github/actions/upload-findings): a failing match's
-#   key is (id, package, sorted locations), version left out.
-#
 # EXIT CODES
 #   0  no failing match
 #   1  failing matches, one ::error:: line each
@@ -33,23 +30,12 @@ if ! jq -e '.matches | type == "array"' "$report" > /dev/null 2>&1; then
   exit 2
 fi
 
-# shellcheck disable=SC2016  # jq program, not a shell expansion
-select_failing='
+failing=$(jq -r '
   .matches[]
   | (.vulnerability.severity // "") as $sev
-  | select(["Negligible", "Low", "Medium"] | index($sev) | not)'
-
-failing=$(jq -r "$select_failing"'
+  | select(["Negligible", "Low", "Medium"] | index($sev) | not)
   | "::error::\(.vulnerability.id) \(if $sev == "" then "unrated" else $sev end): \(.artifact.name)@\(.artifact.version) (\([.artifact.locations[]?.path] | join(", ")))"
 ' "$report")
-if [[ -n "${FINDINGS_FILE:-}" ]]; then
-  jq -r "$select_failing"'
-    | [.vulnerability.id, .artifact.name, ([.artifact.locations[]?.path] | sort | join(","))] | @tsv
-  ' "$report" | LC_ALL=C sort -u > "$FINDINGS_FILE.tmp"
-  # Only once whole: a failed pass must leave no file ("no verdict"), never
-  # an empty one, which reads as clean.
-  mv "$FINDINGS_FILE.tmp" "$FINDINGS_FILE"
-fi
 
 if [[ -n "$failing" ]]; then
   echo "$failing"
