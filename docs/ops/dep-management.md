@@ -256,6 +256,8 @@ The window clears 3 days after the blocking version's publish, not 3 days after 
 
 - **`Renovate health is red on main`** (`renovate-health.yml`; the job log lists each finding).
   - **Awaiting Schedule: `<branch>`** — a scheduled branch outside `AWAITING_EXEMPT`: exempt a deliberate new schedule there, else fix the config. Never a manual bump.
+  - **Other Branches: `<branch>` has no PR** — an update outside `OTHER_EXEMPT`: read the Mend job log.
+  - **No lockfile PR merged in 7 days** — lockfile maintenance has stopped landing: read the Mend job log. A failed generation (`ETARGET`, [§ When resolution ETARGETs](#when-resolution-etargets)) produces no PR.
   - **Dashboard section `"<title>"`** — any heading outside `BENIGN_SECTIONS` in `scripts/ci/renovate-health.mjs` (Errored, Repository Problems, Rate-Limited, PR Edited (Blocked), or a new one): read the dashboard and the Mend job log ([developer.mend.io](https://developer.mend.io)). A new heading that needs no action goes into that set.
   - **Dependency lookup failed / no or several dashboards / no "manual job" box** — a Renovate config or Mend app problem: read the Mend job log.
   - **"manual job" box still ticked** — no Renovate job ran since the last check. Check the repo's status and job log on the Mend portal. A manual re-run shortly after the nightly reports this too, until Renovate's job lands.

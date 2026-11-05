@@ -15,6 +15,8 @@
  *   - A dashboard section outside BENIGN_SECTIONS. Fail closed: an unknown
  *     heading is a format change this check does not understand.
  *   - An Awaiting Schedule branch outside AWAITING_EXEMPT: a starved update.
+ *   - An Other Branches item outside OTHER_EXEMPT: an update with no PR.
+ *   - No lockfile PR merged within STALE_PR_DAYS: transitive refreshes stopped.
  *   - A dependency lookup warning. Renovate renders it under no heading
  *     (errors-warnings.ts, getDepWarningsDashboard), so it is matched by text.
  *   - A Renovate PR open longer than STALE_PR_DAYS, docker-host excepted.
@@ -77,6 +79,13 @@ const AWAITING_EXEMPT = new Set([
   'renovate/lock-file-maintenance',
   'renovate/renovate-config-validator',
 ]);
+const OTHER_BRANCHES = 'Other Branches';
+const LOCKFILE_BRANCH = 'renovate/lock-file-maintenance';
+// Renovate lists any in-progress branch without a PR here. That includes the
+// lockfile branch after a run inside its window that produced no PR (#739):
+// nothing to do, or a failed generation, which renders the same. So the
+// freshness check below, not this section, says whether refreshes still land.
+const OTHER_EXEMPT = new Set([LOCKFILE_BRANCH]);
 // docker-host is merged by hand after acceptance on the VPS.
 const STALE_PR_EXEMPT = new Set(['renovate/docker-host']);
 
@@ -123,6 +132,12 @@ function dashboardFindings(body) {
           );
         }
       }
+    } else if (title === OTHER_BRANCHES) {
+      const branches = lines.map((line) => line.match(BRANCH_ITEM)?.[1]).filter(Boolean);
+      if (branches.length === 0) findings.push(`dashboard section "${title}" needs attention`);
+      for (const branch of branches) {
+        if (!OTHER_EXEMPT.has(branch)) findings.push(`${OTHER_BRANCHES}: ${branch} has no PR`);
+      }
     } else if (!BENIGN_SECTIONS.has(title)) {
       findings.push(`dashboard section "${title}" needs attention`);
     }
@@ -141,6 +156,13 @@ function stalePrFindings(pulls, now) {
         now - Date.parse(pr.created_at) > STALE_PR_DAYS * DAY_MS,
     )
     .map((pr) => `Renovate PR #${pr.number} (${pr.head.ref}) open since ${pr.created_at}`);
+}
+
+/** Takes the newest page of the branch's closed PRs; an unmerged one refreshed nothing. */
+function lockfileFindings(closedPulls, now) {
+  const merges = closedPulls.filter((pr) => pr.merged_at).map((pr) => Date.parse(pr.merged_at));
+  if (now - Math.max(...merges) <= STALE_PR_DAYS * DAY_MS) return [];
+  return [`no lockfile PR merged in ${STALE_PR_DAYS} days: transitive deps are not refreshed`];
 }
 
 /** Ticks the probe on a fresh read; a box already ticked or gone is left alone. */
@@ -164,11 +186,16 @@ function main() {
 
   let dashboards;
   let pulls;
+  let closedLockfilePulls;
   try {
     dashboards = allPages(
       `repos/${repo}/issues?state=open&creator=${encodeURIComponent(RENOVATE_LOGIN)}&per_page=100`,
     ).filter((issue) => !issue.pull_request && issue.title === DASHBOARD_TITLE);
     pulls = allPages(`repos/${repo}/pulls?state=open&per_page=100`);
+    const owner = repo.split('/')[0];
+    closedLockfilePulls = JSON.parse(
+      ghApi([`repos/${repo}/pulls?state=closed&head=${owner}:${LOCKFILE_BRANCH}&per_page=30`]),
+    );
   } catch {
     console.error('Could not read from the GitHub API.');
     return 2;
@@ -194,6 +221,7 @@ function main() {
     }
   }
   findings.push(...stalePrFindings(pulls, now));
+  findings.push(...lockfileFindings(closedLockfilePulls, now));
 
   for (const finding of findings) console.log(`::error::${finding}`);
   if (findings.length === 0) console.log('Renovate is healthy.');
