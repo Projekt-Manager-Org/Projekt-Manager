@@ -189,6 +189,21 @@ assert_finding "FAIL-renovate-ignoreDeps-unregistered" "$dir" "renovate-disabled
 register_row renovate-disabled:foo/bar | sed '3a\      - renovate-disabled:baz' > "$dir/exception-register.yaml"
 assert_ok "OK-renovate-with-row" "$dir"
 
+# A version hold: Renovate proposes nothing it excludes, and says nothing.
+dir="$(mktmp)"
+renovate "$dir" <<'EOF'
+{ "packageRules": [ { "matchPackageNames": ["foo/bar"], "allowedVersions": "<2" } ] }
+EOF
+assert_finding "FAIL-renovate-allowedVersions-unregistered" "$dir" "renovate-allowed-versions:foo/bar: unregistered"
+register_row renovate-allowed-versions:foo/bar > "$dir/exception-register.yaml"
+assert_ok "OK-renovate-allowedVersions-with-row" "$dir"
+
+dir="$(mktmp)"
+renovate "$dir" <<'EOF'
+{ "packageRules": [ { "matchDatasources": ["docker"], "allowedVersions": "<2" } ] }
+EOF
+assert_finding "FAIL-renovate-allowedVersions-no-names" "$dir" "allowedVersions must list matchPackageNames"
+
 dir="$(mktmp)"
 renovate "$dir" <<'EOF'
 { "packageRules": [ { "matchDatasources": ["docker"], "enabled": false } ] }

@@ -328,16 +328,17 @@ Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing 
 
 `exception-register.yaml` lists every exception with no expiry of its own. Allowlist entries ([§ Allowlist](#allowlist)) and `release-age-allowlist.json` carry owner, reason and expiry themselves and are not repeated there.
 
-| `covers` key                   | Discovered from                                                                                                                      |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `npm-override:<path>`          | each leaf of `package.json` `overrides`, nested keys joined by `>` (`@esbuild-kit/core-utils>esbuild`); `.` is the parent itself     |
-| `type-shim:<module>`           | ambient `declare module '<module>'` in a declaration file with no top-level import/export                                            |
-| `renovate-disabled:<pkg>`      | `.github/renovate.json` `ignoreDeps`; a `packageRules` entry with `enabled: false` (must list `matchPackageNames`)                   |
-| `renovate-disabled:/<setting>` | any other `enabled: false` (`/lockFileMaintenance`; `/` is Renovate off); `/ignorePaths/<glob>`; `/enabledManagers`, `/includePaths` |
+| `covers` key                      | Discovered from                                                                                                                      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm-override:<path>`             | each leaf of `package.json` `overrides`, nested keys joined by `>` (`@esbuild-kit/core-utils>esbuild`); `.` is the parent itself     |
+| `type-shim:<module>`              | ambient `declare module '<module>'` in a declaration file with no top-level import/export                                            |
+| `renovate-disabled:<pkg>`         | `.github/renovate.json` `ignoreDeps`; a `packageRules` entry with `enabled: false` (must list `matchPackageNames`)                   |
+| `renovate-disabled:/<setting>`    | any other `enabled: false` (`/lockFileMaintenance`; `/` is Renovate off); `/ignorePaths/<glob>`; `/enabledManagers`, `/includePaths` |
+| `renovate-allowed-versions:<pkg>` | a `packageRules` entry with `allowedVersions` (must list `matchPackageNames`)                                                        |
 
 A row holds `covers`, `owner`, `reason`, `drop_when` (the external event that makes it removable) and `review_by` (≤ 90 days). `scripts/check-exception-register.sh` reads the sources, so an exception without a row fails, and so does a row whose exception is gone: the PR that adds or removes an exception edits its row. It runs in `lint` against the base, like the allowlist check, and in the nightly security scan, where a lapsed `review_by` turns red. To review a row: check `drop_when`, then drop the exception or renew the date. Renovate presets in `extends` (`docker:disable`) are not expanded: review those with the config.
 
-Not registered, being policy or bounded on their own: `allowedVersions` for `@cantoo/pdf-lib` (a broken release stays broken); `abandonmentThreshold` (3 years still flags real abandonment; [§ Abandonment-flag verdicts](#abandonment-flag-verdicts)); the `xcaddy --with` raises in `docker/caddy/Dockerfile` (Renovate-tracked; a Caddy needing newer fails the build); the `AWAITING_EXEMPT` schedules in `scripts/ci/renovate-health.mjs`. In-code suppressions (`eslint-disable`, `shellcheck disable`) are reviewed with the code around them.
+Not registered, being policy or bounded on their own: `abandonmentThreshold` (3 years still flags real abandonment; [§ Abandonment-flag verdicts](#abandonment-flag-verdicts)); the `xcaddy --with` raises in `docker/caddy/Dockerfile` (Renovate-tracked; a Caddy needing newer fails the build); the `AWAITING_EXEMPT` schedules in `scripts/ci/renovate-health.mjs`. In-code suppressions (`eslint-disable`, `shellcheck disable`) are reviewed with the code around them.
 
 ## Abandonment-flag verdicts
 

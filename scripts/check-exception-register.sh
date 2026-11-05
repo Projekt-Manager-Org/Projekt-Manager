@@ -67,7 +67,8 @@ ROW_KEYS = {"covers", "owner", "reason", "drop_when", "review_by"}
 #   npm-override       a leaf of package.json `overrides`
 #   type-shim          an ambient `declare module '<pkg>'`
 #   renovate-disabled  a package or setting Renovate is told to skip
-KINDS = ("npm-override", "type-shim", "renovate-disabled")
+#   renovate-allowed-versions  a package whose versions Renovate is told to hold back
+KINDS = ("npm-override", "type-shim", "renovate-disabled", "renovate-allowed-versions")
 # A .d.ts with a top-level import/export is a module, where `declare
 # module` augments the package instead of replacing its types; `'*.css'`
 # declares asset imports, not a package.
@@ -134,6 +135,16 @@ def renovate_disabled(node, path):
         yield from renovate_disabled(v, f"{path}/{k}")
 
 
+def renovate_allowed_versions(config):
+    # A hold Renovate reports nowhere: it never proposes what is excluded.
+    for i, rule in enumerate(config.get("packageRules") or []):
+        if "allowedVersions" in rule:
+            names = rule.get("matchPackageNames") or []
+            if not names:
+                out.append(f".github/renovate.json:0: /packageRules/{i}: allowedVersions must list matchPackageNames; register rows are keyed on them")
+            yield from names
+
+
 pkg_json = root / "package.json"
 if pkg_json.is_file():
     overrides = json.loads(pkg_json.read_text(encoding="utf-8")).get("overrides") or {}
@@ -141,8 +152,11 @@ if pkg_json.is_file():
         found[f"npm-override:{k}"] = "package.json overrides"
 renovate = root / ".github" / "renovate.json"
 if renovate.is_file():
-    for k, where in renovate_disabled(json.loads(renovate.read_text(encoding="utf-8")), ""):
+    renovate_config = json.loads(renovate.read_text(encoding="utf-8"))
+    for k, where in renovate_disabled(renovate_config, ""):
         found[f"renovate-disabled:{k}"] = f".github/renovate.json {where}"
+    for name in renovate_allowed_versions(renovate_config):
+        found[f"renovate-allowed-versions:{name}"] = ".github/renovate.json packageRules"
 for dirpath, dirnames, filenames in os.walk(root):
     dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
     for f in filenames:
