@@ -34,7 +34,7 @@
 set -euo pipefail
 
 # Project root. Defaults to the parent of this script's directory; the
-# test harness (scripts/check-audit-mutations.test.sh) overrides via
+# test harness (scripts/__tests__/check-audit-mutations.test.sh) overrides via
 # $AUDIT_PROJECT_ROOT so it can point the scan at a fixture tree
 # without copying the check + helper + schema into a tmp dir.
 PROJECT_ROOT="${AUDIT_PROJECT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
