@@ -63,6 +63,7 @@ ICMP is allowed by default in both ufw (`/etc/ufw/before.rules`) and Hetzner Clo
 - Docker Engine + Compose plugin (official repo, pinned versions, apt hold)
 - WireGuard (`wireguard-tools`, kernel module)
 - `ufw`, fail2ban, `qrencode`, `age`, `unattended-upgrades`
+- `curl`, `jq` -- `deploy.sh`'s [CI check](manual-deploy.md#ci-check)
 - `python3-boto3` -- the restore side of [sync-dev-to-vps.md](sync-dev-to-vps.md) (`sudo apt-get install -y python3-boto3`)
 
 ---

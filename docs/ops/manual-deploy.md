@@ -7,10 +7,13 @@ PR opened -> CI docker (build+scan+smoke) -> publish -> GHCR (sha-<pr-tip>, <bra
                                                   |
 merge queue (commit C)   -> CI docker + publish -> GHCR (sha-<C>)
 C lands on main          -> CI promote        -> GHCR (main -> sha-<C>)
+                         -> CI scan           -> every deployed image at C (Trivy + Grype)
                                                   |
 operator (over WireGuard):                        v
   ssh vps -> sudo -u deploy /opt/projekt-manager/scripts/deploy.sh [ref]
-    -> git fetch + checkout SHA
+    -> git fetch
+    -> refuse unless the SHA's push run is green (scripts/ops/deploy-ci-gate.sh)
+    -> checkout SHA
     -> refuse on Docker pin drift (scripts/ops/docker-converge.sh --check)
     -> decrypt secrets.env.age (age passphrase prompt)
     -> docker compose pull app backup + up -d (deploy profiles)
@@ -29,6 +32,7 @@ Have the backup identity's password-manager entry at hand before invoking the de
 | ----------------------------------------------- | ----------------------------------------------------------------------------- |
 | `/opt/projekt-manager` is a git clone           | `sudo -u deploy git -C /opt/projekt-manager remote -v`                        |
 | `age` installed                                 | `command -v age`                                                              |
+| `curl`, `jq`, `logger` installed                | `command -v curl jq logger`                                                   |
 | `deploy` can pull from GHCR                     | `sudo -u deploy docker pull ghcr.io/projekt-manager-org/projekt-manager:main` |
 | `secrets.env.age` exists, owned `deploy:deploy` | `ls -l /opt/projekt-manager/secrets.env.age`                                  |
 | `deploy` has no interactive login               | `getent passwd deploy` shows `/usr/sbin/nologin`                              |
@@ -48,11 +52,28 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/fix/some-slug
 
 # Deploy a specific SHA (rollback)
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <sha>
+
+# Past the CI check (§ CI check)
+sudo -u deploy /opt/projekt-manager/scripts/deploy.sh --accept-red-ci "<reason>" <ref>
 ```
 
-The script: fetches origin, checks out the exact SHA, refuses if the host drifted from the Docker pins (`scripts/ops/docker-converge.sh --check`), decrypts `secrets.env.age` into the shell env (capture-then-`eval`; no plaintext file — Docker still keeps the values in the container config, [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)), sets `APP_IMAGE_TAG=sha-<sha>`, runs `docker compose pull app backup && docker compose up -d` under the deploy profiles (`scripts/lib/deploy-compose.sh`, shared with the nightly inventory scan), polls `/api/health` for 60s, reloads Caddy, polls `https://$DOMAIN/api/health` through Caddy from the host for 120s (`scripts/smoke-caddy-health.sh`), and — when the backup container's tmpfs is empty — prompts the operator to paste the age private identity into `/run/drill-key/identity` via the existing `load-drill-key` tool (no key persisted to disk). A failed or skipped paste warns but does not abort the deploy; reload manually with `docker exec -it projekt-manager-backup-1 load-drill-key`.
+The script: fetches origin, refuses unless CI passed the SHA ([§ CI check](#ci-check)), checks it out, refuses if the host drifted from the Docker pins (`scripts/ops/docker-converge.sh --check`), decrypts `secrets.env.age` into the shell env (capture-then-`eval`; no plaintext file — Docker still keeps the values in the container config, [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)), sets `APP_IMAGE_TAG=sha-<sha>`, runs `docker compose pull app backup && docker compose up -d` under the deploy profiles (`scripts/lib/deploy-compose.sh`, shared with the nightly inventory scan), polls `/api/health` for 60s, reloads Caddy, polls `https://$DOMAIN/api/health` through Caddy from the host for 120s (`scripts/smoke-caddy-health.sh`), and — when the backup container's tmpfs is empty — prompts the operator to paste the age private identity into `/run/drill-key/identity` via the existing `load-drill-key` tool (no key persisted to disk). A failed or skipped paste warns but does not abort the deploy; reload manually with `docker exec -it projekt-manager-backup-1 load-drill-key`.
 
 Finally — only after the stack is verified healthy — it garbage-collects superseded images. App/backup layers are `node_modules`-heavy (thousands of tiny files) and accumulate one image-set per deploy, exhausting inodes long before disk bytes if left unbounded. Retention is count-based: it keeps the most-recent `DEPLOY_IMAGE_RETENTION` (default `3`) tags per repo image — current + 2 rollback targets — and prunes BuildKit cache older than `DEPLOY_BUILD_CACHE_MAX_AGE` (default `168h`). GC runs last and is failure-tolerant; a reclaim hiccup never fails an already-successful deploy.
+
+## CI check
+
+`deploy.sh` requires the target SHA's `push` run on `main` to be green: that run scanned every image this deploy would run, at that commit. A red, unfinished or missing run refuses, and so does an API that does not answer.
+
+`--accept-red-ci "<reason>"` overrides and logs to the journal: `journalctl -t projekt-manager-deploy`. It is needed for:
+
+- **Commits with no push run of their own:** batch-intermediate, evicted and feature-branch SHAs.
+- **`docker-bump.sh`:** a PR branch has no push run, so it always passes the flag.
+- **Emergencies:** a red run or an unreachable API. For a red run, triage (fix or dated waiver) is the normal path.
+
+Open `ci-red` issues only warn: a red nightly flags an advisory against what `main` already runs, and blocking would stop a fix deploy without reducing exposure. The next merge's push run scans the same images, so an untriaged advisory blocks from that commit on.
+
+The check runs from the script already on the host, before the checkout: a refusal leaves the tree alone, and an older target cannot skip it. The first deploy after this check lands still runs the old script, so it goes unchecked.
 
 ## How upgrades reach the VPS
 
@@ -219,6 +240,7 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/main
 | Symptom                                                                | Cause                                                                                                                                                                              | Fix                                                                                                                                                                                                                                          |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `git checkout` fails                                                   | Uncommitted changes in working tree                                                                                                                                                | `git status`, reset or stash                                                                                                                                                                                                                 |
+| `deploy of <sha> refused`                                              | CI did not pass the SHA, or the API did not answer: [§ CI check](#ci-check). Waiting on a run in progress is enough when it says it has not finished.                              |
 | `Docker host does not match the pins`                                  | The target SHA's `docker/host-versions.txt` differs from the host's Docker packages or image store                                                                                 | Deploy a SHA with the host's pins, or converge: [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions)                                                                                                     |
 | `git checkout landed at X, expected Y`                                 | Post-checkout SHA assertion                                                                                                                                                        | Inspect `git status`, clean up                                                                                                                                                                                                               |
 | `age: failed to read identity`                                         | Wrong passphrase                                                                                                                                                                   | Retry; verify against password manager after 3 attempts                                                                                                                                                                                      |

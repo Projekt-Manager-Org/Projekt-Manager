@@ -2,20 +2,14 @@
 #
 # Scenario tests for scripts/ci/trivy-gate.sh (#725).
 #
-# The gate reads a Trivy JSON report of the head image and, in the PR gate,
-# one of the base image (`:main`) scanned with the same DB and allowlist. It
-# fails on head findings the base does not have, keyed on (advisory id,
-# package, location in the image); version is not part of the key. Without
-# a base every finding fails (the nightly).
+# The gate reads a Trivy JSON report and fails on every finding, one
+# `::error::` line each.
 #
 # Reports follow Trivy's JSON shape (pkg/types/report.go, v0.70.0):
 # `SchemaVersion: 2`, `Results[]` of {Target, Class, Type, Vulnerabilities[]};
 # `Results`, `Vulnerabilities` and `PkgPath` are `omitempty`. OS-package
-# results carry the image reference in `Target`, so base and head differ
-# there by construction.
-#
-# Secrets are the image scan's other default scanner: keyed on (rule, file),
-# in `Results[].Secrets` with `Class: secret`.
+# results carry the image reference in `Target`. Secrets, the other scanner
+# the image scans use, are in `Results[].Secrets` with `Class: secret`.
 #
 # Exits 0 when every case matches its expected code; 1 otherwise.
 #
@@ -86,8 +80,7 @@ report() {
   echo "$f"
 }
 
-HEAD_IMG="ghcr.io/o/projekt-manager@sha256:aaaa"
-BASE_IMG="ghcr.io/o/projekt-manager:main"
+IMG="ghcr.io/o/projekt-manager:sha-abc"
 
 pass=0
 fail=0
@@ -111,73 +104,46 @@ assert_case() {
   fi
 }
 
-echo "Case: no base (nightly) — absolute"
-assert_case 0 "clean report, no Results key" "$(report '[]')"
+# assert_error <label> <line> <report>: the report fails, with this exact line.
+assert_error() {
+  bash "$GATE" "$3" > "$TMP_ROOT/out" 2>&1
+  if grep -qxF -- "$2" "$TMP_ROOT/out"; then
+    pass=$((pass + 1))
+    echo "  PASS — $1"
+  else
+    fail=$((fail + 1))
+    failures+=("$1: no line '$2'")
+    echo "  FAIL — $1"
+    sed 's/^/    /' "$TMP_ROOT/out"
+  fi
+}
+
+echo "Case: a clean report passes"
+assert_case 0 "no Results key" "$(report '[]')"
 assert_case 0 "clean target, no Vulnerabilities key" "$(report "[$(clean usr/bin/caddy)]")"
-assert_case 1 "any finding fails" "$(report "[$(clean usr/bin/caddy),$(os "$HEAD_IMG" CVE-1 openssl 3.5.0-r0)]")"
 
-echo "Case: no base — a secret fails"
-assert_case 1 "secret in the image" "$(report "[$(secret app/.env private-key)]")"
-
-echo "Case: with a base — a finding main already ships passes"
-assert_case 0 "same OS finding, image ref differs" \
-  "$(report "[$(os "$HEAD_IMG" CVE-1 openssl 3.5.0-r0)]")" \
-  "$(report "[$(os "$BASE_IMG" CVE-1 openssl 3.5.0-r0)]")"
-assert_case 0 "bump that stays vulnerable" \
-  "$(report "[$(os "$HEAD_IMG" CVE-1 openssl 3.5.1-r0)]")" \
-  "$(report "[$(os "$BASE_IMG" CVE-1 openssl 3.5.0-r0)]")"
-assert_case 0 "same Go binary finding" \
-  "$(report "[$(gobin usr/local/bin/gosu CVE-2)]")" \
-  "$(report "[$(gobin usr/local/bin/gosu CVE-2)]")"
-assert_case 0 "same node package copy" \
-  "$(report "[$(node app/node_modules/glob/package.json GHSA-g 13.0.6)]")" \
+echo "Case: any finding fails, named with its location"
+assert_case 1 "a vulnerability beside a clean target" "$(report "[$(clean usr/bin/caddy),$(os "$IMG" CVE-1 openssl 3.5.0-r0)]")"
+assert_error "an OS package names the OS type" '::error::CVE-1 HIGH: openssl@3.5.0-r0 (os:alpine)' \
+  "$(report "[$(os "$IMG" CVE-1 openssl 3.5.0-r0)]")"
+assert_error "a Go binary names the binary" '::error::CVE-2 UNKNOWN: stdlib@v1.24.6 (usr/bin/caddy)' \
+  "$(report "[$(gobin usr/bin/caddy CVE-2)]")"
+assert_error "a node package names its copy" '::error::GHSA-g HIGH: glob@13.0.6 (app/node_modules/glob/package.json)' \
   "$(report "[$(node app/node_modules/glob/package.json GHSA-g 13.0.6)]")"
-assert_case 0 "same secret" \
-  "$(report "[$(secret app/.env private-key)]")" \
+assert_error "a secret names the file" '::error::private-key HIGH: secret (app/.env)' \
   "$(report "[$(secret app/.env private-key)]")"
-assert_case 0 "clean targets on both sides" \
-  "$(report "[$(clean usr/bin/caddy)]")" \
-  "$(report "[$(clean usr/bin/caddy)]")"
-assert_case 0 "change fixes a base finding" \
-  "$(report '[]')" \
-  "$(report "[$(os "$BASE_IMG" CVE-1 openssl 3.5.0-r0)]")"
-
-echo "Case: with a base — a finding the change introduces fails"
-assert_case 1 "new advisory id" \
-  "$(report "[$(os "$HEAD_IMG" CVE-1 openssl 3.5.0-r0),$(os "$HEAD_IMG" CVE-3 openssl 3.5.0-r0)]")" \
-  "$(report "[$(os "$BASE_IMG" CVE-1 openssl 3.5.0-r0)]")"
-assert_case 1 "same id, another package" \
-  "$(report "[$(os "$HEAD_IMG" CVE-1 libcrypto3 3.5.0-r0)]")" \
-  "$(report "[$(os "$BASE_IMG" CVE-1 openssl 3.5.0-r0)]")"
-# Location is in the key because the allowlist is path-scoped: gosu's stdlib
-# CVE must not hide the same CVE in Caddy.
-assert_case 1 "same Go stdlib CVE, another binary" \
-  "$(report "[$(gobin usr/local/bin/gosu CVE-2),$(gobin usr/bin/caddy CVE-2)]")" \
-  "$(report "[$(gobin usr/local/bin/gosu CVE-2)]")"
-assert_case 1 "same node package CVE, another copy" \
-  "$(report "[$(node app/node_modules/glob/package.json GHSA-g 13.0.6),$(node app/node_modules/x/node_modules/glob/package.json GHSA-g 13.0.6)]")" \
-  "$(report "[$(node app/node_modules/glob/package.json GHSA-g 13.0.6)]")"
-
-assert_case 1 "same secret rule, another file" \
-  "$(report "[$(secret app/.env private-key),$(secret app/dist/key.pem private-key)]")" \
-  "$(report "[$(secret app/.env private-key)]")"
-
-echo "Case: an introduced finding is named, a pre-existing one is not an error"
-bash "$GATE" \
-  "$(report "[$(os "$HEAD_IMG" CVE-1 openssl 3.5.0-r0),$(gobin usr/bin/caddy CVE-2)]")" \
-  "$(report "[$(os "$BASE_IMG" CVE-1 openssl 3.5.0-r0)]")" > "$TMP_ROOT/out" 2>&1
-if grep -q '^::error::CVE-2 .*usr/bin/caddy' "$TMP_ROOT/out" && ! grep -q '^::error::CVE-1' "$TMP_ROOT/out"; then
+assert_error "two findings, two lines" '::error::CVE-2 UNKNOWN: stdlib@v1.24.6 (usr/bin/caddy)' \
+  "$(report "[$(os "$IMG" CVE-1 openssl 3.5.0-r0),$(gobin usr/bin/caddy CVE-2)]")"
+if [[ "$(grep -c '^::error::' "$TMP_ROOT/out")" == 2 ]]; then
   pass=$((pass + 1))
-  echo "  PASS — only the introduced finding is an error, with its location"
+  echo "  PASS — one line per finding"
 else
   fail=$((fail + 1))
-  failures+=("introduced finding not named, or pre-existing one reported as error")
-  echo "  FAIL — output:"
+  failures+=("one line per finding")
   sed 's/^/    /' "$TMP_ROOT/out"
 fi
 
 echo "Case: malformed input or arguments fail closed"
-good="$(report '[]')"
 echo 'not json' > "$TMP_ROOT/garbage.json"
 echo '{"SchemaVersion": 3}' > "$TMP_ROOT/schema3.json"
 echo '{"SchemaVersion": 2, "Results": {}}' > "$TMP_ROOT/results-object.json"
@@ -187,20 +153,17 @@ jq -n '{SchemaVersion: 2, Results: [{Target: "t", Class: "os-pkgs", Type: "alpin
   Vulnerabilities: [{VulnerabilityID: "CVE-1", PackageName: "openssl"}]}]}' > "$TMP_ROOT/no-pkgname.json"
 jq -n '{SchemaVersion: 2, Results: [{Target: "t", Class: "os-pkgs", Type: "alpine",
   Vulnerabilities: [{VulnerabilityID: "", PkgName: "openssl"}]}]}' > "$TMP_ROOT/empty-id.json"
-assert_case 2 "head not JSON" "$TMP_ROOT/garbage.json" "$good"
-assert_case 2 "base not JSON" "$good" "$TMP_ROOT/garbage.json"
-assert_case 2 "missing base" "$good" "$TMP_ROOT/absent.json"
+assert_case 2 "not JSON" "$TMP_ROOT/garbage.json"
+assert_case 2 "missing report" "$TMP_ROOT/absent.json"
 assert_case 2 "unknown schema version" "$TMP_ROOT/schema3.json"
 assert_case 2 "Results not a list" "$TMP_ROOT/results-object.json"
-# A renamed field after a Trivy bump must not collapse every key to the
-# same empty value and make head findings match the base.
-assert_case 2 "finding without VulnerabilityID (head)" "$TMP_ROOT/renamed-field.json" "$good"
-assert_case 2 "finding without VulnerabilityID (base)" "$good" "$TMP_ROOT/renamed-field.json"
-assert_case 2 "finding without PkgName" "$TMP_ROOT/no-pkgname.json" "$good"
-assert_case 2 "finding with an empty VulnerabilityID" "$TMP_ROOT/empty-id.json" "$good"
+# A renamed field after a Trivy bump must not read as clean.
+assert_case 2 "finding without VulnerabilityID" "$TMP_ROOT/renamed-field.json"
+assert_case 2 "finding without PkgName" "$TMP_ROOT/no-pkgname.json"
+assert_case 2 "finding with an empty VulnerabilityID" "$TMP_ROOT/empty-id.json"
 jq -n '{SchemaVersion: 2, Results: [{Target: "app/.env", Class: "secret",
   Secrets: [{Rule: "private-key", Severity: "HIGH"}]}]}' > "$TMP_ROOT/secret-no-rule.json"
-assert_case 2 "secret without RuleID" "$TMP_ROOT/secret-no-rule.json" "$good"
+assert_case 2 "secret without RuleID" "$TMP_ROOT/secret-no-rule.json"
 # A scanner this gate does not read must not pass unjudged.
 jq -n '{SchemaVersion: 2, Results: [{Target: "Dockerfile", Class: "config",
   Misconfigurations: [{ID: "DS002", Severity: "HIGH"}]}]}' > "$TMP_ROOT/misconfig.json"
@@ -209,6 +172,7 @@ jq -n '{SchemaVersion: 2, Results: [{Target: "OS Packages", Class: "license",
 assert_case 2 "misconfiguration findings" "$TMP_ROOT/misconfig.json"
 assert_case 2 "license findings" "$TMP_ROOT/license.json"
 assert_case 2 "no arguments"
+assert_case 2 "two arguments" "$(report '[]')" "$(report '[]')"
 
 echo
 echo "Result: $pass passed, $fail failed"

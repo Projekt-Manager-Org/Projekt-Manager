@@ -89,6 +89,9 @@ esac
 EOF
   cat >"$d/repo/scripts/deploy.sh" <<'EOF'
 #!/usr/bin/env bash
+# Like deploy.sh's CI check on a branch with no push run: no override, refused.
+[[ "${1:-}" == --accept-red-ci && "${2:-}" == "docker-bump switch to "* ]] || { echo "deploy refused: $*"; exit 1; }
+shift 2
 echo "deploy $1" >>"$STUB_DIR/calls"
 [[ "${FAIL_CHECKOUT:-0}" == 1 ]] && exit 1
 case "$1" in sha-*) echo "$1" ;; *) echo "sha-$1" ;; esac >"$STUB_DIR/head"

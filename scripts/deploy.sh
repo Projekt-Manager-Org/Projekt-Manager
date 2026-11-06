@@ -7,6 +7,7 @@
 #   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh                                  # origin/main (default)
 #   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh origin/<branch>                  # track a feature branch
 #   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh 3721783abc                       # rollback to a specific SHA
+#   sudo -u deploy /opt/projekt-manager/scripts/deploy.sh --accept-red-ci "<reason>" [ref]  # past the CI check, logged
 #
 # The script replaces .github/workflows/deploy.yml. See ADR-0012
 # (docs/adr/0012-manual-pull-based-deploy-over-wireguard.md) for the
@@ -22,8 +23,32 @@
 #
 set -euo pipefail
 
-REF="${1:-origin/main}"
-REPO_DIR="/opt/projekt-manager"
+usage() {
+  echo 'usage: deploy.sh [--accept-red-ci <reason>] [ref]' >&2
+  exit 2
+}
+
+REF=""
+ACCEPT_RED_CI=""
+ARGS=("$@")
+while (($#)); do
+  case "$1" in
+    --accept-red-ci)
+      if (($# < 2)) || [ -z "$2" ]; then usage; fi
+      ACCEPT_RED_CI="$2"
+      shift 2
+      ;;
+    -*) usage ;;
+    *)
+      if [ -n "$REF" ]; then usage; fi
+      REF="$1"
+      shift
+      ;;
+  esac
+done
+REF="${REF:-origin/main}"
+
+REPO_DIR="${DEPLOY_REPO_DIR:-/opt/projekt-manager}"
 SECRETS_FILE="$REPO_DIR/secrets.env.age"
 
 cd "$REPO_DIR"
@@ -50,6 +75,11 @@ if [ "${DEPLOY_REEXEC:-0}" != "1" ]; then
   EXPECTED_SHA="$(git rev-parse "$REF")"
   echo "Deploying $REF -> $EXPECTED_SHA"
 
+  # CI passed this commit: its push run scanned the images this would deploy.
+  # Here, not in Phase 2: a refusal leaves the tree alone, and a target older
+  # than this check cannot skip it.
+  "$REPO_DIR/scripts/ops/deploy-ci-gate.sh" "$EXPECTED_SHA" ${ACCEPT_RED_CI:+"$ACCEPT_RED_CI"}
+
   # Assert the checkout landed on the expected SHA. Without this, a silently
   # failed checkout (e.g. uncommitted local changes blocking the switch)
   # would continue past with a stale working tree and deploy the wrong code —
@@ -65,7 +95,7 @@ if [ "${DEPLOY_REEXEC:-0}" != "1" ]; then
   # env flag is both a circuit-breaker (no infinite re-exec loop) and
   # the signal Phase 2 uses to skip the fetch/checkout it already ran.
   export DEPLOY_REEXEC=1
-  exec "$0" "$@"
+  exec "$0" "${ARGS[@]}"
 fi
 
 # --- Phase 2 -----------------------------------------------------------

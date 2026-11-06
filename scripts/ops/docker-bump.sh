@@ -18,7 +18,9 @@
 # Switch: `deploy.sh <ref>` checks out the ref's pins and refuses at the
 # drift guard; converge (revert --fresh-state: docker-fresh-state.sh);
 # `deploy.sh <sha>`, the SHA the first deploy checked out, even if the
-# branch moved since. A host already on the ref's pins deploys once.
+# branch moved since. A host already on the ref's pins deploys once. Both
+# pass --accept-red-ci: a PR branch has no push run, and a revert must not wait
+# for main's. A refusal by that check would read as drift and move Docker.
 #
 # Acceptance, numbered as in the runbook:
 #   1. The last deploy.sh exits 0 (containers up, binary key loaded, health
@@ -79,9 +81,10 @@ backup_cycle() {
 # switch <ref> <converge|fresh-state> — sets $sha to the deployed SHA.
 switch() {
   local ref="$1" how="$2" head want after="$next"
+  local override=(--accept-red-ci "docker-bump switch to $ref")
   next="$UNTOUCHED"
   echo "==> deploy.sh $ref (checks out its pins; refuses on drift)"
-  if as_deploy "$REPO_DIR/scripts/deploy.sh" "$ref"; then
+  if as_deploy "$REPO_DIR/scripts/deploy.sh" "${override[@]}" "$ref"; then
     # A ref older than the drift guard deploys on any Docker.
     if ! "$REPO_DIR/scripts/ops/docker-converge.sh" --check; then
       next="pick a ref that carries docker/host-versions.txt; $after"
@@ -110,7 +113,7 @@ switch() {
     "$REPO_DIR/scripts/ops/docker-converge.sh" || fail "converge (output above)"
   fi
   echo "==> deploy.sh $sha"
-  as_deploy "$REPO_DIR/scripts/deploy.sh" "$sha" || fail "deploy.sh $sha (output above)"
+  as_deploy "$REPO_DIR/scripts/deploy.sh" "${override[@]}" "$sha" || fail "deploy.sh $sha (output above)"
 }
 
 # accept <recorded system_identifier, may be empty>
