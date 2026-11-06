@@ -8,31 +8,32 @@
 # - Both base images digest-pinned to defeat retag-under-known-good-label attacks.
 # - The caddy-dns/cloudflare plugin pinned to a release tag (Go module proxy +
 #   checksum database), so each build is reproducible from source.
-# - golang.org/x/net and go-jose/v4 pinned above Caddy's own requirement (see the build step).
+# - golang.org/x/net, go-jose/v4 and klauspost/compress pinned above Caddy's own requirement (see the build step).
 #
-# Renovate tracks all four (Caddy releases, base-image digests, the plugin and
+# Renovate tracks them all (Caddy releases, base-image digests, the plugin and
 # the other Go module pins) and auto-merges patch/minor/digest bumps on green
 # CI; majors wait for approval.
 # See ADR-0027 + docs/ops/dep-management.md.
 
 FROM caddy:2.11.9-builder@sha256:1e0eafbcb473de84e6f1a7878dc44db8063ff1f52ff1c8974d7f06f2ff67c182 AS builder
 
-# The first two `--with` lines raise Go modules above what Caddy 2.11.7
-# (latest on 2026-10-27) requires, because only a Caddy release would
-# otherwise move them: golang.org/x/net v0.59.0 → v0.60.0 (five HIGH
-# advisories) and go-jose/v4 v4.1.5 → v4.1.6 (GHSA-mgcc-cww5-fp2q).
+# The first three `--with` lines raise Go modules above what Caddy requires,
+# because only a Caddy release would otherwise move them: golang.org/x/net
+# v0.59.0 → v0.60.0 (five HIGH advisories), go-jose/v4 v4.1.5 → v4.1.6
+# (GHSA-mgcc-cww5-fp2q) and klauspost/compress v1.20.1 → v1.20.3 (GO-2026-6865).
 # xcaddy blank-imports each `--with` path, so it names a package Caddy
 # already links (x/net's module root has none). xcaddy runs one
 # `go get <module> caddy@<version>` per `--with`, in order: a later Caddy
 # requiring a newer version fails the build rather than downgrade, and
 # listing them before the plugin lets its own `go get` raise them instead
-# of being downgraded to fit. Renovate bumps both (go datasource,
+# of being downgraded to fit. Renovate bumps them (go datasource,
 # customManager in renovate.json).
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     xcaddy build v2.11.9 \
         --with golang.org/x/net/http2@v0.62.0 \
         --with github.com/go-jose/go-jose/v4@v4.1.8 \
+        --with github.com/klauspost/compress/zstd@v1.20.3 \
         --with github.com/caddy-dns/cloudflare@v0.2.4
 
 # Source of the runtime's few files, not the runtime itself. Kept as a

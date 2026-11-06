@@ -194,11 +194,12 @@
     },
     {
       "customType": "regex",
-      "description": "Go modules in `xcaddy build … --with <module>[/<pkg>]@vX` in docker/caddy/Dockerfile: the caddy-dns/cloudflare plugin, and two modules pinned above Caddy's own requirement — golang.org/x/net (named through its `/http2` package, because xcaddy blank-imports each --with path and the module root has none) and github.com/go-jose/go-jose/v4. Without those two, advisories in the edge proxy's dependencies wait for a Caddy release (#637). The plugin tracks release tags, not master: the go datasource carries a release timestamp, so the 3-day cooldown applies to the code that holds the Cloudflare token (git-refs has none). Same lane as the other Caddy inputs: auto-merged on green CI, which does not build Caddy (ci.yml `docker`, accepted gap); the nightly inventory scan does, so a bump that does not compile turns it red within a day, unless a deploy's own `docker compose build caddy` hits it first — loudly, before anything is recreated.",
+      "description": "Go modules in `xcaddy build … --with <module>[/<pkg>]@vX` in docker/caddy/Dockerfile: the caddy-dns/cloudflare plugin, and three modules pinned above Caddy's own requirement — golang.org/x/net and klauspost/compress (named through a package, `/http2` and `/zstd`, because xcaddy blank-imports each --with path and a module root may have none) and github.com/go-jose/go-jose/v4. Without those three, advisories in the edge proxy's dependencies wait for a Caddy release (#637). The plugin tracks release tags, not master: the go datasource carries a release timestamp, so the 3-day cooldown applies to the code that holds the Cloudflare token (git-refs has none). Same lane as the other Caddy inputs: auto-merged on green CI, which does not build Caddy (ci.yml `docker`, accepted gap); the nightly inventory scan does, so a bump that does not compile turns it red within a day, unless a deploy's own `docker compose build caddy` hits it first — loudly, before anything is recreated.",
       "managerFilePatterns": ["/^docker/caddy/Dockerfile$/"],
       "matchStrings": [
         "--with (?<depName>golang\\.org/x/net)/http2@(?<currentValue>v\\d+\\.\\d+\\.\\d+)",
         "--with (?<depName>github\\.com/go-jose/go-jose/v4)@(?<currentValue>v\\d+\\.\\d+\\.\\d+)",
+        "--with (?<depName>github\\.com/klauspost/compress)/zstd@(?<currentValue>v\\d+\\.\\d+\\.\\d+)",
         "--with (?<depName>github\\.com/caddy-dns/cloudflare)@(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
       ],
       "datasourceTemplate": "go",
