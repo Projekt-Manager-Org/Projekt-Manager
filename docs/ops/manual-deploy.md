@@ -65,7 +65,7 @@ Finally — only after the stack is verified healthy — it garbage-collects sup
 
 `deploy.sh` requires the target SHA's `push` run on `main` to be green: that run scanned every image this deploy would run, at that commit. A red, unfinished or missing run refuses, and so does an API that does not answer.
 
-`--accept-red-ci "<reason>"` overrides and logs to the journal: `journalctl -t projekt-manager-deploy`. It is needed for:
+`--accept-red-ci "<reason>"` overrides and logs to the journal: `sudo journalctl -t projekt-manager-deploy`. It is needed for:
 
 - **Commits with no push run of their own:** batch-intermediate, evicted and feature-branch SHAs.
 - **`docker-bump.sh`:** a PR branch has no push run, so it always passes the flag.
