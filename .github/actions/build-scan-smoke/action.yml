@@ -2,8 +2,8 @@ name: Build, push by digest, scan, smoke, and round-trip
 description: >
   Builds the app + backup images ONCE each, pushing each straight to GHCR
   by digest, then pulls the published manifests back and scans, smokes and
-  backup-round-trips those exact bytes. What Trivy scans and what the stack
-  boots IS what was published — an identity, not an argument about cache
+  backup-round-trips those exact bytes. What Trivy scans for secrets and what
+  the stack boots IS what was published — an identity, not an argument about cache
   equivalence.
 
   A digest-only manifest carries no tag, so nothing can pull, deploy or
@@ -144,13 +144,13 @@ runs:
         echo "  $APP_DIGEST_REF"
         echo "  -> $APP_REF (local only)"
 
-    # Judged against `main`'s image (#725): fails on what this change
-    # introduces. The nightly inventory scan owns what `main` ships.
-    - name: Trivy — app image
+    # Secrets only: a secret is this change's doing, an advisory is not. The
+    # inventory scan in the push run owns vulnerabilities (#740).
+    - name: Trivy — app image (secrets)
       uses: ./.github/actions/trivy-image
       with:
         image_ref: ${{ inputs.app_repo }}@${{ steps.push_app.outputs.digest }}
-        base_ref: ${{ inputs.app_repo }}:main
+        scanners: secret
 
     # The backup build's `FROM` resolves against the app image's PUBLISHED
     # digest. That is what pushing first buys: the backup image is built
@@ -194,13 +194,11 @@ runs:
         echo "  $BACKUP_DIGEST_REF"
         echo "  -> $BACKUP_REF (local only)"
 
-    # The backup image adds `postgresql17*`, `age`, `bash`, `findmnt` apk
-    # layers on top of node-alpine, each with its own CVE surface.
-    - name: Trivy — backup image
+    - name: Trivy — backup image (secrets)
       uses: ./.github/actions/trivy-image
       with:
         image_ref: ${{ inputs.backup_repo }}@${{ steps.push_backup.outputs.digest }}
-        base_ref: ${{ inputs.backup_repo }}:main
+        scanners: secret
 
     # `age` on the runner is needed by the smoke step below to mint a
     # per-run binary `age` keypair before `docker compose up`. The app

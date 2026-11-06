@@ -1,9 +1,8 @@
 name: Trivy image scan
 description: >
-  Scans one locally-built image for HIGH/CRITICAL/UNKNOWN vulnerabilities
-  and secrets. With `base_ref`, fails on findings the image has and the
-  base lacks (the PR gate); without, on any finding (the nightly). Single
-  source of truth for the image-scan policy — severity floor, unfixed
+  Scans one image and fails on any finding: HIGH/CRITICAL/UNKNOWN, or any
+  severity on a secrets-only scan.
+  Single source of truth for the image-scan policy — severity floor, unfixed
   handling, allowlist, cache location and verdict are one decision, not one
   per call site.
 
@@ -11,12 +10,12 @@ inputs:
   image_ref:
     description: Image reference to scan, resolved through the runner's Docker daemon.
     required: true
-  base_ref:
+  scanners:
     description: >
-      Image to judge against (the PR gate passes the `:main` image), pulled
-      here. Empty: every finding fails.
+      Trivy scanners. The PR gate passes `secret`, so an advisory against
+      `main` never blocks a PR; the inventory scan owns vulnerabilities.
     required: false
-    default: ''
+    default: vuln,secret
 
 runs:
   using: composite
@@ -37,10 +36,9 @@ runs:
     #   path-scoped, with owner + statement + expiry ≤90d, gated by
     #   check-allowlist-schema.sh.
     #
-    #   Judged against `base_ref` when given (#725, ADR-0027 § 2026-10-31):
-    #   the PR gate fails on what the change introduces, and an advisory on
-    #   `main` turns only the nightly red. Verdict and finding key:
-    #   scripts/ci/trivy-gate.sh.
+    #   No floor on a secrets-only scan: many built-in secret rules
+    #   (jwt-token, age-secret-key) ship at MEDIUM. Same reason as the
+    #   filesystem secret scan in `lint`.
     #
     #   cache-dir is moved OUT of the workspace. The action defaults it to
     #   `${{ github.workspace }}/.cache/trivy`, which is inside the Docker
@@ -57,57 +55,21 @@ runs:
 
     # JSON with `exit-code: 0`: the verdict is trivy-gate.sh's, below. A
     # scan error still fails the step.
-    - name: Trivy — image scan (HIGH/CRITICAL/UNKNOWN)
+    - name: Trivy — image scan
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         scan-type: image
         image-ref: ${{ inputs.image_ref }}
-        severity: UNKNOWN,HIGH,CRITICAL
+        scanners: ${{ inputs.scanners }}
+        severity: ${{ inputs.scanners == 'secret' && 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL' || 'UNKNOWN,HIGH,CRITICAL' }}
         exit-code: '0'
         format: json
-        output: ${{ steps.dir.outputs.dir }}/head.json
+        output: ${{ steps.dir.outputs.dir }}/report.json
         trivyignores: .trivyignore.yaml
         cache-dir: ${{ runner.temp }}/trivy-cache
-
-    - name: Pull the base image
-      if: inputs.base_ref != ''
-      shell: bash
-      env:
-        BASE_REF: ${{ inputs.base_ref }}
-      run: docker pull "$BASE_REF"
-
-    # Same inputs, binary and DB as the head scan: a base scanned with a
-    # newer DB would make the head's findings it lacks read as introduced.
-    # The DB the head scan left in cache-dir is used as is: `cache: false`
-    # skips the action's cache restore, which would overwrite it with the
-    # stored copy, and TRIVY_SKIP_DB_UPDATE keeps Trivy from refreshing it.
-    # `skip-setup-trivy`: the head scan put the pinned binary on PATH.
-    - name: Trivy — base image scan (same DB and config)
-      if: inputs.base_ref != ''
-      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-      env:
-        TRIVY_SKIP_DB_UPDATE: 'true'
-      with:
-        scan-type: image
-        image-ref: ${{ inputs.base_ref }}
-        severity: UNKNOWN,HIGH,CRITICAL
-        exit-code: '0'
-        format: json
-        output: ${{ steps.dir.outputs.dir }}/base.json
-        trivyignores: .trivyignore.yaml
-        cache-dir: ${{ runner.temp }}/trivy-cache
-        cache: 'false'
-        skip-setup-trivy: 'true'
 
     - name: Trivy — verdict
       shell: bash
       env:
         DIR: ${{ steps.dir.outputs.dir }}
-        HAS_BASE: ${{ inputs.base_ref != '' }}
-      run: |
-        set -euo pipefail
-        if [ "$HAS_BASE" = true ]; then
-          bash scripts/ci/trivy-gate.sh "$DIR/head.json" "$DIR/base.json"
-        else
-          bash scripts/ci/trivy-gate.sh "$DIR/head.json"
-        fi
+      run: bash scripts/ci/trivy-gate.sh "$DIR/report.json"

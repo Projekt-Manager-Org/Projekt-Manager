@@ -1,4 +1,6 @@
-# Nightly inventory scan (ADR-0027 § 2026-10-29 amendment, control 3).
+# Inventory scan (ADR-0027 § 2026-10-29 amendment, control 3): nightly on what
+# `main` runs, and from CI's push run on what each merged commit would deploy
+# (#740), which is what deploy.sh checks.
 #
 # Scans every image a deploy runs, with two scanners, and fails red on
 # any HIGH/CRITICAL or unrated finding from either. #637 showed what the
@@ -12,15 +14,15 @@
 #   inventory  the image set, derived from the deploy's own compose file
 #              and profiles (scripts/ci/deploy-inventory.sh) — a new
 #              service is scanned with no change here
-#   scan       one job per image: Trivy ∪ Grype, same floor as the PR
-#              gate (HIGH/CRITICAL/unrated, no ignore-unfixed; tolerable
+#   scan       one job per image: Trivy ∪ Grype, HIGH/CRITICAL/unrated,
+#              no ignore-unfixed (tolerable
 #              findings go in .trivyignore.yaml / .grype.yaml, path-scoped)
 #
-# First-party images are scanned at the `main` tag, which only `promote`
-# writes: the state of main, independent of what any host has deployed
-# (deploy.sh owns that). Dispatching this on a branch scans the branch's
-# files (inventory, allowlists, the Caddy build) against main's first-party
-# images.
+# The nightly scans first-party images at the `main` tag, which only `promote`
+# writes: the state of main, independent of what any host has deployed.
+# Dispatching this on a branch scans the branch's files (inventory, allowlists,
+# the Caddy build) against main's first-party images. The push run passes
+# `sha-<commit>`.
 #
 # A red run reaches a human through notify.yml (scheduled runs have no
 # PR and no triggering human); scripts/check-notify-coverage.sh fails the
@@ -34,6 +36,12 @@ on:
     # retention (04:00).
     - cron: '0 2 * * *'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      app_image_tag:
+        description: Tag of the first-party images to scan.
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -50,7 +58,7 @@ jobs:
       - name: Derive inventory
         id: derive
         env:
-          APP_IMAGE_TAG: main
+          APP_IMAGE_TAG: ${{ inputs.app_image_tag || 'main' }}
         run: |
           set -euo pipefail
           images=$(bash scripts/ci/deploy-inventory.sh)

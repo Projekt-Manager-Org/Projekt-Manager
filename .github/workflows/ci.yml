@@ -48,8 +48,9 @@ on:
 # Eviction while pending is harmless (#683; it closed gap #375.1). The
 # group defaults to `queue: single`, which cancels a pending run when a
 # newer one queues. Every queued commit already has its `sha-` pair from
-# its `merge_group` run, so a push run only moves `main`, and the newer run
-# moves it further.
+# its `merge_group` run, and the newer run moves `main` further and scans its
+# own commit. The evicted commit stays unscanned, so deploy.sh refuses it
+# without its override (#740).
 concurrency:
   group: ci-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.event_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
@@ -298,7 +299,7 @@ jobs:
       # + IaC scans there would skip them on every TS-only / docs / e2e
       # PR (the majority class), making the gate informational rather
       # than blocking. Branch protection requires `lint`; `docker`
-      # provides only the image-vuln scans + smoke.
+      # provides only the image secret scans + smoke.
       #
       # Allowlist: .trivyignore.yaml (path-scoped; entries gated by
       # check-allowlist-schema above).
@@ -604,6 +605,9 @@ jobs:
 
       - name: Trivy image gate — self-test
         run: bash scripts/__tests__/trivy-gate.test.sh
+
+      - name: Deploy CI gate — self-test
+        run: bash scripts/__tests__/deploy-ci-gate.test.sh
 
       # renovate-health.yml and docker-host-advisories.yml (nightly) and
       # deploy-pending.yml (push to main) never run on a PR; these are
@@ -1028,7 +1032,7 @@ jobs:
   #
   # `needs` is the whole safety story. Naming waits on every gate:
   # `check` + `lint` (tests, type-check, static analysis) and `docker`
-  # (both images built, both Trivy-scanned, stack booted, Tier 1
+  # (both images built, both scanned for secrets, stack booted, Tier 1
   # round-trip). No name resolves to bytes that have not passed all of
   # them. The bytes themselves are already on GHCR — `docker` pushed
   # them by digest, which nothing can pull, deploy or promote — so this
@@ -1059,7 +1063,9 @@ jobs:
   #
   # A dispatch on `main` names nothing: every `main` commit already has
   # its pair, and a rebuild would overwrite it and could move `main` back
-  # behind a newer `promote`.
+  # behind a newer `promote`. A commit already on `main` reached another way
+  # (a re-run of a landed queue run, a dispatch on a branch at that commit) is
+  # refused below: its push run scanned the pair, and deploy.sh trusts that.
   # ---------------------------------------------------------------
   publish:
     if: >-
@@ -1077,6 +1083,21 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Refuse a commit already on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA_TAG: ${{ needs.docker.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+          status=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${SHA_TAG#sha-}" --jq .status)
+          case "$status" in
+            ahead | diverged) ;;
+            *)
+              echo "::error::${SHA_TAG} is already on main (${status}): renaming it would replace bytes its push run scanned."
+              exit 1
+              ;;
+          esac
+
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - uses: ./.github/actions/tag-images
@@ -1092,7 +1113,7 @@ jobs:
 
   # ---------------------------------------------------------------
   # Promote on merge to main: point `main` at the `sha-<commit>` pair
-  # the commit's `merge_group` run built, scanned, smoked and named. The
+  # the commit's `merge_group` run built, secret-scanned, smoked and named. The
   # queue fast-forwards `main` to the exact commit that run tested, and
   # `publish` is required there, so the pair exists before this push
   # fires. No rebuild, no rescan, no smoke.
@@ -1242,3 +1263,18 @@ jobs:
           branch_slug_tag: ${{ steps.head.outputs.is_head == 'true' && steps.tags.outputs.branch_slug || '' }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           github_actor: ${{ github.actor }}
+
+  # ---------------------------------------------------------------
+  # What gets deployed was scanned at that exact commit: every image of the
+  # deploy, first-party ones at `sha-<commit>`, Caddy built from this tree.
+  # deploy.sh requires this run green (#740).
+  # ---------------------------------------------------------------
+  scan:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: promote
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/inventory-scan.yml
+    with:
+      app_image_tag: sha-${{ github.sha }}
