@@ -40,7 +40,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # digest-pinned stage so Renovate's `caddy` group still moves it in
 # lockstep with the builder and the xcaddy version, and the CA bundle
 # below rides those bumps.
-FROM caddy:2.11.9@sha256:c2aeffaeb80d5403e9c8d1d908b50e191aad204e16129f991ae357ada642094d AS base
+FROM caddy:2.11.9@sha256:0c2243efcf437ab7f7a978f1027fcf0d4f9be8a75df27b1b3fbc5dbe0ffa8cf0 AS base
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 
