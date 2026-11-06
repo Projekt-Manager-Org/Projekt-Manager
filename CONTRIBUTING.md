@@ -36,7 +36,7 @@ Steps can be skipped, after user confirmation, depending on the type of task. E.
 11. **Commit** — group changes, including multiple files, in logical groups
 12. **Open Findings** (_mandatory_) — list all open findings, including findings discovered during the workflow, even if unrelated. Each finding carries a triage call: **act** (in scope now), **track** (correctness, data integrity, security, compounding debt - with a realistic probability of affecting the project), or **drop** (everything else). Dropping a finding from a track category needs user confirmation that the threat is not realistic.
 
-A block of work finishes in a pushed branch, PR open, CI green. Merging is done by the user.
+A block of work finishes in a pushed branch, PR open, CI green. Merging is done by the user. A PR changing what a scheduled workflow runs is dispatched on its branch before merge; a new or workflow_run workflow is exercised after merge.
 
 ### Security audit
 
