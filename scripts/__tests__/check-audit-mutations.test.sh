@@ -43,14 +43,14 @@
 #    a first-class audited entity — data-model.md §5.10.)
 #
 # Usage:
-#   bash scripts/check-audit-mutations.test.sh
+#   bash scripts/__tests__/check-audit-mutations.test.sh
 #
 # Exits 0 when every scenario passes; exits 1 on the first mismatch.
 
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CHECK_SCRIPT="$SCRIPT_DIR/check-audit-mutations.sh"
+CHECK_SCRIPT="$SCRIPT_DIR/../check-audit-mutations.sh"
 
 if [ ! -x "$CHECK_SCRIPT" ]; then
   echo "ERROR: $CHECK_SCRIPT not executable. chmod +x and try again." >&2
