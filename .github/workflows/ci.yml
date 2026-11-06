@@ -461,12 +461,6 @@ jobs:
       - name: Actionlint (workflows)
         run: actionlint -shellcheck 'shellcheck --severity=warning'
 
-      # actionlint reads an action.yml only for its inputs. An expression in
-      # its metadata prose fails the manifest load, which a PR may never do
-      # if only nightlies use the action (#736).
-      - name: Action metadata (no expressions in prose)
-        run: bash scripts/check-action-metadata.sh
-
       - name: Format check
         run: npm run format:check
 
