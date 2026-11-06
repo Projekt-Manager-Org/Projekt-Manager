@@ -10,7 +10,7 @@ services:
     # Pinned, so what runs is what this line declares (#637). Renovate
     # tracks it through a regex manager (.github/renovate.json), because
     # `build: !reset null` hides the service from its docker-compose manager.
-    image: caddy:2.11.8-alpine@sha256:f6228111e5fafa1a5238258d0858e103f10599b8d1659a146e7726681a002bb9
+    image: caddy:2.11.9-alpine@sha256:e8d293dca35c033c4eb958d77b9096098e34da2987da3954acc0028267c6cc9b
     build: !reset null
     ports: !override
       - '0.0.0.0:80:80'
