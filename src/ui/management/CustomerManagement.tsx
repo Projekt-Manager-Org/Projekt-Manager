@@ -66,9 +66,9 @@ export function CustomerManagement() {
 
   const handleDelete = async (e: React.MouseEvent, customer: Customer) => {
     e.stopPropagation();
-    // AC-154: before confirming, fetch the customer to learn how many
+    // AC-534: before confirming, fetch the customer to learn how many
     // archived projects will be purged alongside it. If the fetch fails
-    // the store already wrote the error — abort silently here (S-ERRP).
+    // the store already wrote the error — abort silently here (AC-533).
     // Falling back to the generic confirm would hide a potential warning
     // about data loss.
     const detail = await fetchCustomerDetail(customer.id);

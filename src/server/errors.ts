@@ -419,7 +419,7 @@ export function companyProfileRequired(details: CompanyProfileRequiredDetails): 
 
 /**
  * Customer delete rejected — at least one of the customer's projects
- * (active or archived) carries an issued or cancelled invoice. AC-307.
+ * (active or archived) carries an issued or cancelled invoice. AC-532.
  * `details.invoiceCount` carries the count of issued + cancelled rows
  * (drafts excluded — they cascade-delete with their project).
  */

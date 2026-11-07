@@ -1,29 +1,14 @@
 /**
- * API integration tests — customer ustId field + invoice-draft pre-fill
- * (issue #109 / AC-306).
+ * API integration tests — customer ustId field + invoice-draft pre-fill.
  *
- * Two cross-cutting concerns:
+ *   1. Customer CRUD ustId surface (data-model.md §5.6): round-trip, PATCH
+ *      semantics, null-clears (AC-518, AC-519); a replay with a divergent
+ *      ustId conflicts (AC-124, AC-127).
  *
- *   1. Customer CRUD ustId surface (data-model.md §5.6 — already says
- *      `ustId` is structurally optional). Pins CRUD round-trip, PATCH
- *      semantics, null-clears, idempotent-replay conflict on divergent
- *      ustId.
- *
- *   2. Invoice draft pre-fill: `POST /api/invoices` against a project
- *      whose customer carries `ustId` populates `Invoice.recipient.ustId`
- *      from that value. The draft author may override per-invoice via
- *      explicit `recipient.ustId` in the body.
- *
- * AC coverage:
- *   - AC-306: full field surface — POST accepts, PATCH updates,
- *     null clears, GET round-trips; idempotent-replay rejects on divergence
- *     with IDEMPOTENCY_CONFLICT; new draft pre-fills from customer.
- *
- * Pre-impl red state: `customer.ustId` column probably already exists
- * (data-model.md §5.6 documents it), but the route surface may not yet
- * accept the field — POST returns the customer without the field. The
- * pre-fill arm fails because the invoice POST route doesn't exist yet
- * either.
+ *   2. Invoice draft pre-fill (AC-285): `POST /api/invoices` without a
+ *      `recipient.ustId` takes it from the project's customer; an explicit
+ *      value overrides it. The same outcome through the draft form is a
+ *      gap (#784).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -51,7 +36,7 @@ async function rechnungFaelligProjectId(ownerToken: string): Promise<string> {
   return rows[0]!.id;
 }
 
-describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', () => {
+describe('customer.ustId CRUD + idempotent-replay + invoice pre-fill', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -64,7 +49,7 @@ describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', (
   });
 
   describe('Customer CRUD surface', () => {
-    it('POST accepts ustId and the GET round-trips it', async () => {
+    it('AC-518: POST accepts ustId and the GET round-trips it', async () => {
       const ustId = 'DE111222333';
       const post = await authPost(ownerToken, '/api/customers', {
         name: `UstId-CRUD ${crypto.randomUUID().slice(0, 6)}`,
@@ -79,7 +64,7 @@ describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', (
       expect(get.json().ustId).toBe(ustId);
     });
 
-    it('PATCH updates ustId under PATCH semantics; omitted fields unchanged', async () => {
+    it('AC-519: PATCH updates ustId under PATCH semantics; omitted fields unchanged', async () => {
       const createRes = await authPost(ownerToken, '/api/customers', {
         name: `UstId-PATCH ${crypto.randomUUID().slice(0, 6)}`,
         ustId: 'DE000000001',
@@ -98,7 +83,7 @@ describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', (
       expect(body.phone).toBe('0221-1234');
     });
 
-    it('PATCH with ustId=null clears the field', async () => {
+    it('AC-519: PATCH with ustId=null clears the field', async () => {
       const createRes = await authPost(ownerToken, '/api/customers', {
         name: `UstId-CLEAR ${crypto.randomUUID().slice(0, 6)}`,
         ustId: 'DE000000002',
@@ -115,7 +100,7 @@ describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', (
   });
 
   describe('Idempotent-replay comparison includes ustId', () => {
-    it('same id + same body (ustId equal) → second call succeeds, no duplicate', async () => {
+    it('AC-124: same id + same body (ustId equal) → second call succeeds, no duplicate', async () => {
       const id = crypto.randomUUID();
       const name = `Idem-Same ${id.slice(0, 6)}`;
       const body = { id, name, ustId: 'DE123456789' };
@@ -126,7 +111,7 @@ describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', (
       expect(second.json().id).toBe(id);
     });
 
-    it('same id + divergent ustId → 409 IDEMPOTENCY_CONFLICT', async () => {
+    it('AC-127: same id + divergent ustId → 409 IDEMPOTENCY_CONFLICT', async () => {
       const id = crypto.randomUUID();
       const name = `Idem-Diff ${id.slice(0, 6)}`;
       const first = await authPost(ownerToken, '/api/customers', {
@@ -150,7 +135,7 @@ describe('AC-306: customer.ustId CRUD + idempotent-replay + invoice pre-fill', (
     });
   });
 
-  describe('Invoice draft pre-fills recipient.ustId from the project customer', () => {
+  describe('AC-285: Invoice draft pre-fills recipient.ustId from the project customer', () => {
     it('POST /api/invoices on a project whose customer carries ustId pre-fills Invoice.recipient.ustId', async () => {
       const projectId = await rechnungFaelligProjectId(ownerToken);
 

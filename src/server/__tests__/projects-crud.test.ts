@@ -64,7 +64,7 @@ describe('Project CRUD Operations', () => {
 
   // ---------------------------------------------------------------
   // AC-475: Create project with valid fields → first workflow state
-  // AC-58 [crit], AC-475 [crit]
+  // AC-475 [crit]
   // ---------------------------------------------------------------
   describe('AC-475: Create project', () => {
     it('returns 201 with a project in the first workflow state', async () => {

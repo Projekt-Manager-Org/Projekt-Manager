@@ -103,38 +103,20 @@ Rules:
 
 ### 5.6 Customer Entity
 
-```typescript
-interface Customer {
-  id: string; // UUID
-  name: string; // "Familie Müller"
-  phone?: string; // "+49 221 1234567"
-  email?: string; // "mueller@example.de"
-  ustId?: string; // "DE123456789" — USt-IdNr.; optional structurally, required at invoice issuance when taxMode === 'reverse_charge'
-  address?: {
-    // Rechnungsadresse — the legal entity's billing address.
-    // Distinct from a project's `siteAddress` (Baustelle, §5.1).
-    street: string; // "Hauptstr. 12"
-    zip: string; // "51465"
-    city: string; // "Bergisch Gladbach"
-  };
-  notes?: string;
-  createdAt: string; // ISO 8601
-  updatedAt: string; // ISO 8601
-  createdBy?: string; // UserAccount.id
-  updatedBy?: string; // UserAccount.id
-  version: number; // server-managed concurrency token — §6.4
-}
-```
+A person or company the projects are for. Only `name` is required. Behavior: [verification.md §15.11](verification.md#1511-customer-management).
 
-Design notes:
-
-- `address` is the customer's **Rechnungsadresse** — the legal entity's billing address. It is intentionally separate from `Project.siteAddress` (Baustelle, §5.1): one customer can carry several sites while billing remains tied to one legal address (the standard ERP/CRM split — SAP, Odoo, Stripe, Lexware/sevDesk).
-- Address is an optional nested object within Customer.
-- Follows the audit metadata pattern (§5.5).
-- `name` is required; all other fields are optional.
-- `ustId` (USt-IdNr.) is the customer's value-added-tax identifier. Always structurally optional; the requiredness gate runs at invoice issuance against `recipient.ustId` when the draft's `taxMode = 'reverse_charge'` (the §13b counter-party — pinned by [AC-289](verification.md#1530-invoices)). Invoice draft forms pre-fill `recipient.ustId` from this field; the draft author may override per-invoice.
-- A customer may exist without any projects (e.g., imported from an external system before project creation).
-- Customers can be hard-deleted via the API when no **active** (non-archived) projects reference them AND none of the customer's projects (active or archived) carries any issued or cancelled `Invoice` row. Archived projects without issued/cancelled invoices are purged atomically with the customer; draft invoices on those projects cascade-delete with the project (see [§6.9](#69-soft-deletes) and [ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). Deletion requires the `customer:delete` permission (owner only). A customer without projects is a normal state (e.g., imported before project creation) and deleting such a record is a cleanup operation, not a data-integrity concern.
+| Field                    | Constraint                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                     | UUID                                                                                                                           |
+| `name`                   | Not blank, at most 255 characters; not unique ([AC-536](verification.md#1511-customer-management))                             |
+| `phone`                  | Free text, at most 100 characters                                                                                              |
+| `email`                  | Free text, at most 255 characters                                                                                              |
+| `ustId`                  | USt-IdNr., at most 50 characters; a reverse-charge invoice needs it on its recipient ([AC-289](verification.md#1530-invoices)) |
+| `address`                | The billing address (Rechnungsadresse): `street`, `zip`, `city`, all non-empty — or none                                       |
+| `notes`                  | Free text                                                                                                                      |
+| `version`                | Concurrency token ([§6.4](#64-concurrency))                                                                                    |
+| `createdAt`, `updatedAt` | Server time                                                                                                                    |
+| `createdBy`, `updatedBy` | The acting user; empty for seeded or imported rows without a known actor                                                       |
 
 ### 5.7 User Theme Preference
 
@@ -249,7 +231,7 @@ Design notes:
 - **Archived rows are included.** Projects with `deleted = true` round-trip with their archive state intact (see [§6.9](#69-soft-deletes)).
 - **Users round-trip verbatim — including `passwordHash`.** Every row in the `users` table ships, active and inactive alike. `passwordHash` is the salted hash from [§5.3](#53-user-entity) and rides as-is: a fresh-install import reproduces the operator's user set without an out-of-band password-reset pass. The hash is no more PII-sensitive than the addresses and invoice line items already in the artifact (see [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md) for the threat model); excluding it would break the round-trip. `lastLoginAt` is preserved but its value is the source's last-login moment — a login between consecutive exports advances it (see [AC-141](verification.md#1514-data-exchange)).
 - **`company_profile` is a singleton in an array shape.** The slot is always length `1` — the row is pre-seeded by the baseline migration and the schema enforces a singleton CHECK + UNIQUE ([§5.17](#517-company-profile-entity)). The array shape is for uniformity with the other slots; the importer validates `length === 1`.
-- **`customers.ustId` round-trips.** The field ships and round-trips like every other customer field ([§5.6](#56-customer-entity), [AC-306](verification.md#1511-customer-management)).
+- **`customers.ustId` round-trips.** The field ships and round-trips like every other customer field ([§5.6](#56-customer-entity), [AC-135](verification.md#1514-data-exchange)).
 - **`invoices` ordering is load-bearing — `(cancellation_of NULLS FIRST, id)`.** The export orders the slot so non-Storno rows (null `cancellationOf`) precede Storno rows (non-null `cancellationOf`); within each group, ordering is by `id`. The importer is required to honour the `cancellationOf` self-FK on insert ([§6.6](#66-referential-integrity), [api.md §14.2.4](api.md#1424-unified-data-exchange)); the documented ordering is the wire contract a re-export must reproduce.
 - **`invoice_sequence` restores next-number allocation state.** Every `(year, kind)` row round-trips so allocation continues from the imported peak rather than restarting at 1 on the importing instance. Required by the gapless invariant ([§5.16](#516-invoice-sequence-entity)) — restoring `invoices` without `invoice_sequence` would let a fresh issue collide with a restored number.
 - **Attachments: metadata-only descriptor.** Only rows with `status = 'ready'` are exported; `pending` rows (uncommitted uploads whose backing objects may not exist) and `hidden` rows (the Papierkorb — a TTL-bounded undo buffer reaped per [AC-426](verification.md#1526-attachments), and behind a delete marker on the bucket, so exporting them would need version-pinned reads) are excluded. A full-account restore is consequently also a Papierkorb purge; that consequence is surfaced in the UI on both legs per [AC-432](verification.md#1526-attachments). The envelope carries the per-row metadata fields needed to restore identity and reach the right project on import; it does NOT carry crypto fields (`wrappedDek`, `wrappedThumbDek`, `wrappedDekVersion`), opaque storage keys (`originalKey`, `thumbKey`), or ciphertext sizes (`ciphertextSizeBytes`, `ciphertextThumbSizeBytes`) — those are not consumable on the importing instance. The wrapped envelopes are load-bearing for confidentiality on the exporting instance and are deliberately kept off the takeout artifact.
@@ -647,7 +629,7 @@ Low write concurrency is assumed. A write to a versioned entity based on a stale
 
 - **State transitions** use optimistic concurrency on `status` — a transition is rejected as a conflict if the project's status has moved since the client's last read (see [AC-94](verification.md#1517-data-integrity)). The client should refetch and present the new state.
 - **Edits** to Customer, Invoice and Company Profile use optimistic concurrency on `version`, a server-managed integer. Every committed API write to the row changes it ([AC-378](verification.md#1517-data-integrity)). Two exceptions: an issued or cancelled invoice is frozen, so its version no longer changes; database-level cascades ([§6.6](#66-referential-integrity)) do not change it.
-- **Versioned operations** (input `expectedVersion` in [api.md](api.md)) carry the version their edit started from. A mismatch is rejected with `VERSION_CONFLICT` and nothing is written ([AC-375](verification.md#1517-data-integrity), [AC-376](verification.md#1517-data-integrity)). The check and the write are atomic: of two writes carrying the same current version, exactly one commits ([AC-381](verification.md#1517-data-integrity)).
+- **Versioned operations** (saving the customer edit form; input `expectedVersion` in [api.md](api.md)) carry the version their edit started from. A mismatch is rejected with `VERSION_CONFLICT` and nothing is written ([AC-375](verification.md#1517-data-integrity), [AC-376](verification.md#1517-data-integrity)). The check and the write are atomic: of two writes carrying the same current version, exactly one commits ([AC-381](verification.md#1517-data-integrity)).
 - **Check order.** Request-shape validation first — a missing `expectedVersion` is a validation error ([AC-377](verification.md#1517-data-integrity)). Then: not found and archived ([AC-499](verification.md#1512-projects), [AC-513](verification.md#1530-invoices)); the invoice state checks (`INVOICE_FROZEN`, issue on a non-draft); the version check; business-rule checks (e.g. the issuance preconditions in [api.md §14.2.14](api.md#14214-invoice-operations)).
 - **Not versioned.** Project edits (Update project, Update dates) are last-write-wins: the detail page saves one field at a time, so a lost update needs two users on the same field at once — rare, and recoverable from the audit `before`. A project-wide `version` would instead reject an edit to one field whenever anything else on the project moved (a transition, an assignment, the issuance flip), discarding the user's input. Lifecycle operations — project archive / restore / purge, customer delete — act on the row's existence, not its content; their preconditions are state checks ([§6.9](#69-soft-deletes)). Delete draft is versioned: discarding a draft is a judgement on its content. Invoice cancel — its target is frozen. Attachments — own state checks ([verification.md §15.26](verification.md#1526-attachments)). Users and notification rules — low-stakes rows whose stale overwrite freezes nothing.
 - **Not exported.** `version` is a concurrency token, not business data: the export envelope omits it ([§5.8](#58-export-envelope)) and import sets it fresh. No stale client survives an override import — it drops every session ([api.md §14.2.4](api.md#1424-unified-data-exchange)).
@@ -677,8 +659,7 @@ Timestamp ownership rules are defined in section 5.5. Additionally, `statusChang
 
 - Users can be deactivated (`active = false`) or hard-deleted. Deactivation is the default for preserving assignment history. Hard deletion is available to the owner role and cascades sessions and worker assignments; `createdBy`/`updatedBy` references are set to null. Self-deletion is rejected by the API. A user referenced as `createdBy` or `updatedBy` by an issued or cancelled `Invoice` row cannot be hard-deleted (`USER_HAS_INVOICES`): the row is frozen ([§6.14](#614-immutability-of-issued-invoices)), and the reference keeps its author traceable. Deactivation is the remedy.
 - Projects are archived (`deleted`), not deleted ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). Archiving, restoring and permanently deleting a project: [verification.md §15.12](verification.md#1512-projects).
-  - When a customer is deleted, their archived projects are **purged atomically** with the customer iff none of those archived projects carries an issued or cancelled `Invoice` row; otherwise the customer-delete is rejected. The archive has no value without the customer relationship, but issued invoices are frozen artifacts whose PDFs are Object-Locked ([§6.14](#614-immutability-of-issued-invoices)) and cannot cascade away with their parent customer either. Draft invoices on those archived projects cascade-delete with the project (drafts were never issued). Active (non-archived) projects still block customer deletion as a conflict (see [AC-92](verification.md#1511-customer-management)); a customer whose project graph (active or archived) carries any issued or cancelled invoice is rejected with `CUSTOMER_HAS_INVOICES`.
-  - The API exposes archived-project AND invoice counts on the customer GET response so the UI can warn before destructive customer deletion. The exposed `invoiceCount` counts issued + cancelled rows only (the rows that block); drafts are excluded by construction.
+  - Deleting a customer with its archived projects: [verification.md §15.11](verification.md#1511-customer-management).
 
 ### 6.10 Audit Log Retention
 

@@ -49,6 +49,11 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-49  | infra   | deployment review — VPN-only reachability                                                                |
 | AC-50  | infra   | deployment review — persistent volumes                                                                   |
 | AC-51  | infra   | deploy procedure — `scripts/deploy.sh` takes a commit SHA                                                |
+| AC-54  | retired | —                                                                                                        |
+| AC-55  | retired | —                                                                                                        |
+| AC-56  | retired | —                                                                                                        |
+| AC-57  | retired | —                                                                                                        |
+| AC-58  | retired | —                                                                                                        |
 | AC-59  | retired | —                                                                                                        |
 | AC-60  | retired | —                                                                                                        |
 | AC-61  | retired | —                                                                                                        |
@@ -62,12 +67,14 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-77  | retired | —                                                                                                        |
 | AC-78  | retired | —                                                                                                        |
 | AC-79  | retired | —                                                                                                        |
-| AC-80  | gap     | needs an e2e walking the customer table + project-count column                                           |
+| AC-80  | retired | —                                                                                                        |
+| AC-81  | retired | —                                                                                                        |
 | AC-86  | retired | —                                                                                                        |
 | AC-87  | retired | —                                                                                                        |
 | AC-88  | retired | —                                                                                                        |
 | AC-89  | retired | —                                                                                                        |
 | AC-90  | retired | —                                                                                                        |
+| AC-91  | retired | —                                                                                                        |
 | AC-95  | retired | —                                                                                                        |
 | AC-105 | gap     | needs an e2e confirming the entry is visible only with `customer:write`                                  |
 | AC-106 | gap     | needs an e2e covering the textarea and the action disabled while empty / in flight                       |
@@ -79,14 +86,15 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-114 | gap     | needs an e2e that swaps the accent and walks primary, link, focus, selection                             |
 | AC-125 | retired | —                                                                                                        |
 | AC-126 | retired | —                                                                                                        |
-| AC-128 | gap     | needs an e2e of the create-form dropdown flows (`CustomerManagement.test.tsx` is mock-based)             |
-| AC-129 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
+| AC-128 | retired | —                                                                                                        |
+| AC-129 | retired | —                                                                                                        |
 | AC-130 | retired | —                                                                                                        |
 | AC-140 | retired | —                                                                                                        |
 | AC-143 | retired | —                                                                                                        |
 | AC-144 | retired | —                                                                                                        |
 | AC-151 | retired | —                                                                                                        |
 | AC-152 | retired | —                                                                                                        |
+| AC-154 | retired | —                                                                                                        |
 | AC-155 | retired | —                                                                                                        |
 | AC-156 | retired | —                                                                                                        |
 | AC-158 | retired | —                                                                                                        |
@@ -158,6 +166,8 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-281 | retired | —                                                                                                        |
 | AC-282 | retired | —                                                                                                        |
 | AC-284 | retired | —                                                                                                        |
+| AC-306 | retired | —                                                                                                        |
+| AC-307 | retired | —                                                                                                        |
 | AC-308 | retired | —                                                                                                        |
 | AC-313 | retired | —                                                                                                        |
 | AC-314 | retired | —                                                                                                        |
@@ -194,3 +204,14 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-479 | gap     | needs an e2e covering blur → verdict → edit clears verdict (`ProjectManagement.test.tsx` is mock-based)  |
 | AC-506 | gap     | `archive-flows.spec.ts` does not assert the project name; restore is untested                            |
 | AC-511 | gap     | needs a page test clearing the start while an end is set                                                 |
+| AC-521 | gap     | the API accepts a partial address: #783                                                                  |
+| AC-522 | gap     | the forms lack both fields: #784                                                                         |
+| AC-523 | gap     | the draft form sends an explicit null, which overrides the pre-fill: #784                                |
+| AC-527 | gap     | needs an e2e of the create-form list (`CustomerManagement.test.tsx` is mock-based)                       |
+| AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based)                     |
+| AC-529 | gap     | needs an e2e of a failed search                                                                          |
+| AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
+| AC-537 | gap     | the API accepts a whitespace-only name: #783                                                             |
+| AC-538 | gap     | over-limit input returns 500: #783                                                                       |
+| AC-540 | gap     | the customer delete hides no stored object: #785                                                         |
+| AC-541 | gap     | needs a test failing the delete part-way                                                                 |

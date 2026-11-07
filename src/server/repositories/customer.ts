@@ -69,7 +69,7 @@ export function toCustomerResponse(row: CustomerRow) {
     phone: row.phone ?? null,
     email: row.email ?? null,
     address: row.address ?? null,
-    // USt-IdNr. — data-model.md §5.6 / AC-306. Structurally optional;
+    // USt-IdNr. — data-model.md §5.6. Structurally optional;
     // requiredness gate fires at invoice issuance when taxMode =
     // 'reverse_charge'. Round-trips on POST/PATCH/GET.
     ustId: row.ustId ?? null,
@@ -182,11 +182,10 @@ export async function getCustomer(
       .select({ value: count() })
       .from(projects)
       .where(and(eq(projects.customerId, id), eq(projects.deleted, true), callerAssignmentFilter)),
-    // AC-307 trailing clause: the customer GET exposes the count of
-    // issued + cancelled invoice rows across the project graph
-    // (active + archived). Drafts excluded by construction — they have
-    // no legal weight and cascade-delete with their project. The UI
-    // uses this number to disable the destructive-delete affordance.
+    // The count of issued + cancelled invoice rows across the project
+    // graph (active + archived). Drafts excluded by construction — they
+    // have no legal weight and cascade-delete with their project. No
+    // client reads it (#783).
     db
       .select({ value: count() })
       .from(invoices)

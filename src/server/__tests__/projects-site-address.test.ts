@@ -9,7 +9,7 @@
  * `siteAddress` is the Baustellen-/Leistungsadresse — distinct from
  * `customer.address` (Rechnungsadresse). `null` means the site is at the
  * customer's billing address (data-model.md §5.1). PATCH-null clears the
- * stored value, mirroring the customer-address rule pinned by AC-55
+ * stored value, mirroring the customer-address rule pinned by AC-519
  * (idempotency.test.ts already pins the customer-address branch).
  *
  * Runs against a real test database via Fastify inject. The same

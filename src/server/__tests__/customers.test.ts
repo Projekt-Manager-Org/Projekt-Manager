@@ -3,10 +3,7 @@
  *
  * Runs against a real test database via Fastify inject (no network).
  *
- * These tests are written ahead of the implementation (TDD). They define
- * the API contract for the customers entity introduced in iteration 6.
- *
- * Route conventions (inferred from existing patterns):
+ * Routes:
  *   GET    /api/customers           → list customers (with search, pagination)
  *   GET    /api/customers/:id       → get single customer (with project count)
  *   POST   /api/customers           → create customer
@@ -15,7 +12,7 @@
  * Permission model:
  *   - All authenticated users can read customers (customer:read)
  *   - owner and office can create/update (customer:write)
- *   - owner can delete customers without projects (customer:delete) — see data-model.md §5.6
+ *   - owner can delete customers (customer:delete)
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -30,12 +27,13 @@ import {
   expectedVersion,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
+import { STRINGS } from '../../config/strings.js';
 
 describe('Customer CRUD Operations', () => {
   let ownerToken: string;
   let workerToken: string;
 
-  /** ID of a customer created in the AC-54 test, used by subsequent tests. */
+  /** ID of a customer created in the AC-518 test, used by subsequent tests. */
   let createdCustomerId: string;
 
   beforeAll(async () => {
@@ -49,9 +47,9 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-54: Create customer with a name → generated ID
+  // AC-518: Create customer with a name
   // ---------------------------------------------------------------
-  describe('AC-54: Create customer', () => {
+  describe('AC-518: Create customer', () => {
     it('returns 201 with a customer object containing a generated ID', async () => {
       const res = await authPost(ownerToken, '/api/customers', {
         name: 'Familie Testmann',
@@ -110,13 +108,14 @@ describe('Customer CRUD Operations', () => {
       expect(customer.notes).toBeNull();
     });
 
-    it('requires name — rejects when missing', async () => {
+    it('AC-520: requires a name — rejects when missing', async () => {
       const res = await authPost(ownerToken, '/api/customers', {
         phone: '0221-0000000',
       });
 
-      expect(res.statusCode).toBeGreaterThanOrEqual(400);
-      expect(res.statusCode).toBeLessThan(500);
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect(res.json().message).toBe(STRINGS.errors.invalidInput);
     });
 
     it('requires customer:write permission — worker is rejected', async () => {
@@ -130,10 +129,10 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-55: Update customer — PATCH semantics
-  // AC-55 [crit]
+  // AC-519: Update customer — PATCH semantics
+  // AC-519 [crit]
   // ---------------------------------------------------------------
-  describe('AC-55: Update customer (PATCH semantics)', () => {
+  describe('AC-519: Update customer (PATCH semantics)', () => {
     it('changes only the specified fields, preserves others', async () => {
       // Read before state
       const beforeRes = await authGet(ownerToken, `/api/customers/${createdCustomerId}`);
@@ -173,6 +172,21 @@ describe('Customer CRUD Operations', () => {
       expect(res.json().email).toBeNull();
     });
 
+    it('AC-520: refuses an empty name and changes nothing', async () => {
+      const path = `/api/customers/${createdCustomerId}`;
+      const before = (await authGet(ownerToken, path)).json();
+
+      const res = await authPatch(ownerToken, path, {
+        ...(await expectedVersion(ownerToken, path)),
+        name: '',
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect(res.json().message).toBe(STRINGS.errors.invalidInput);
+      expect((await authGet(ownerToken, path)).json()).toEqual(before);
+    });
+
     it('requires customer:write permission — worker is rejected', async () => {
       const res = await authPatch(workerToken, `/api/customers/${createdCustomerId}`, {
         ...(await expectedVersion(ownerToken, `/api/customers/${createdCustomerId}`)),
@@ -185,11 +199,10 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-56: List customers with search parameter
-  // AC-56 [crit]
+  // List customers; AC-524: search
   // ---------------------------------------------------------------
-  describe('AC-56: List customers', () => {
-    it('returns all customers with pagination', async () => {
+  describe('List customers', () => {
+    it('returns all customers', async () => {
       const res = await authGet(ownerToken, '/api/customers');
 
       expect(res.statusCode).toBe(200);
@@ -209,7 +222,7 @@ describe('Customer CRUD Operations', () => {
       expect(body.customers.length).toBeLessThanOrEqual(2);
     });
 
-    it('filters by name substring (case-insensitive)', async () => {
+    it('AC-524: filters by name substring (case-insensitive)', async () => {
       const res = await authGet(ownerToken, '/api/customers?search=testmann');
 
       expect(res.statusCode).toBe(200);
@@ -222,7 +235,7 @@ describe('Customer CRUD Operations', () => {
       }
     });
 
-    it('returns empty array when search has no match', async () => {
+    it('AC-524: returns empty array when search has no match', async () => {
       const res = await authGet(ownerToken, '/api/customers?search=DefinitelyNoMatchXYZ123');
 
       expect(res.statusCode).toBe(200);
@@ -241,10 +254,9 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-57: Get customer includes project count
-  // AC-57 [crit]
+  // Get customer includes project counts
   // ---------------------------------------------------------------
-  describe('AC-57: Get single customer with project count', () => {
+  describe('Get single customer with project count', () => {
     it('returns the full customer object and associated project count', async () => {
       const res = await authGet(ownerToken, `/api/customers/${createdCustomerId}`);
 
@@ -266,24 +278,24 @@ describe('Customer CRUD Operations', () => {
       expect(body.code).toBe('NOT_FOUND');
     });
 
-    // AC-154 [crit] data prerequisite: the warning dialog is fed by
+    // AC-534 [crit] data prerequisite: the warning dialog is fed by
     // `archivedProjectCount` from this endpoint. Pin both counts on
     // a customer with a mix of active + archived projects.
     it('returns archivedProjectCount reflecting soft-deleted projects', async () => {
       const createRes = await authPost(ownerToken, '/api/customers', {
-        name: 'AC-57 Counts Fixture',
+        name: 'Counts Fixture',
       });
       const countsCustomerId = createRes.json().id as string;
 
       const activeRes = await authPost(ownerToken, '/api/projects', {
-        number: 'AC-57-ACTIVE',
+        number: 'COUNTS-ACTIVE',
         title: 'Active project',
         customerId: countsCustomerId,
       });
       expect(activeRes.statusCode).toBe(201);
 
       const archivedRes = await authPost(ownerToken, '/api/projects', {
-        number: 'AC-57-ARCHIVED',
+        number: 'COUNTS-ARCHIVED',
         title: 'Archived project',
         customerId: countsCustomerId,
       });
@@ -300,8 +312,8 @@ describe('Customer CRUD Operations', () => {
 
   // ---------------------------------------------------------------
   // Delete customer
-  // AC-91 [crit]: delete customer with no projects succeeds
-  // AC-92 [crit]: delete customer with projects is rejected (409)
+  // AC-530 [crit]: delete customer with no projects succeeds
+  // AC-92 [crit]: delete customer with an active project is rejected (409)
   // AC-93 [crit]: delete customer requires customer:delete permission
   // ---------------------------------------------------------------
   describe('Delete customer', () => {
@@ -333,9 +345,16 @@ describe('Customer CRUD Operations', () => {
 
       expect(res.statusCode).toBe(409);
       expect(res.json().code).toBe('CONFLICT');
+
+      // Refused means nothing changed: the customer and its project remain.
+      const customer = await authGet(ownerToken, `/api/customers/${createdCustomerId}`);
+      expect(customer.statusCode).toBe(200);
+      expect(customer.json().projectCount).toBe(1);
+      const project = await authGet(ownerToken, `/api/projects/${projectRes.json().id}`);
+      expect(project.statusCode).toBe(200);
     });
 
-    it('AC-91: deletes customer with no projects', async () => {
+    it('AC-530: deletes customer with no projects', async () => {
       // Create a fresh customer with no projects
       const createRes = await authPost(ownerToken, '/api/customers', {
         name: 'Zum Löschen',
@@ -370,7 +389,7 @@ describe('Customer CRUD Operations', () => {
   // rows under test, ignoring any seed customers that happened to
   // share the global ordering.
   // ---------------------------------------------------------------
-  describe('Sort customers', () => {
+  describe('AC-525: Sort customers', () => {
     it('sorts by name ascending then descending', async () => {
       const tag = `SORT-NAME-${Date.now()}`;
       const names = [`${tag}-Bravo`, `${tag}-Alpha`, `${tag}-Charlie`];

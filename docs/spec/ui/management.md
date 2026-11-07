@@ -30,55 +30,33 @@ Behavior: [AC-475](../verification.md#1512-projects), [AC-476](../verification.m
 
 ## 8.9 Customer Management View
 
-A tabular list of all customers with search and CRUD operations.
+A table of customers. Behavior: [verification.md §15.11](../verification.md#1511-customer-management).
 
 ### 8.9.1 List
 
-- Columns: name, phone, email, city, project count, last updated.
-- Search: name substring filter (case-insensitive), matching the API's `search` parameter.
-- Pagination when the list exceeds a configurable page size **[C]**.
-- Clicking a customer's project count navigates to the Project Management View filtered to that customer.
+- **Columns** — name, phone, email, city; an action for a caller who may delete.
+- **Order** — by name. Every column sorts ([AC-525](../verification.md#1511-customer-management)), empty values last.
+- **Toolbar** — `Erstellen` (§8.9.2), search ([AC-524](../verification.md#1511-customer-management)).
+- **Row** — opens the edit form (§8.9.3, [AC-526](../verification.md#1511-customer-management)). `Löschen` per §8.9.5.
 
 ### 8.9.2 Create Customer
 
-Accessible via a primary action button. Requires `customer:write` permission.
+A form with:
 
-Fields:
+- **Name** — with the list of existing customers matching it ([AC-527](../verification.md#1511-customer-management), [AC-528](../verification.md#1511-customer-management), [AC-529](../verification.md#1511-customer-management)).
+- **Street, zip, city**.
+- **Phone, email**.
+- **USt-IdNr., notes** ([AC-522](../verification.md#1511-customer-management)).
 
-- **Name** — required.
-- **Phone** — optional.
-- **Email** — optional.
-- **USt-IdNr.** — optional. The customer's value-added-tax identifier ([data-model.md §5.6](../data-model.md#56-customer-entity)); pre-fills the invoice draft's `recipient.ustId`. Required at invoice issuance only when the draft's `taxMode` is `reverse_charge` ([data-model.md §5.15](../data-model.md#515-invoice-entity)); the customer form does not gate on tax mode.
-- **Address** — optional nested group: street, zip, city. **All-or-none requiredness:** all three of `street`, `zip`, `city` are required if the group is opened (any field has a non-empty value); the group is treated as omitted (and the resulting persisted value is null) only when all three are blank. A partial group (one or two fields filled) is rejected at submit with a German validation message. The rule applies to Edit Customer ([§8.9.3](#893-edit-customer)) identically — Edit reuses the same form fields.
-- **Notes** — optional free text.
-
-**Duplicate-name suggestions (as-you-type).** While the user types in the name field, the form runs a debounced search against the customer list and presents matching customers in a dropdown below the input. Clicking a suggested customer closes the create form and opens that customer's edit form. The dropdown is an advisory hint — the user may ignore it and continue creating a new customer.
-
-**Soft confirm on exact-name match.** On submit, if any existing customer's name matches the entered name (case-insensitive, whitespace-normalized), a confirmation dialog appears before the create is dispatched. The user must explicitly opt in via "Trotzdem erstellen" to proceed; cancelling returns to the form without sending a request. Creating legitimate duplicates is allowed — the confirm is a guard against accidental ones.
-
-On success, the new customer appears in the list and is immediately available in project creation/editing dropdowns.
-
-**In-flight mutation lock.** See [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior). The lock covers the soft-confirm dialog — submitting once while the confirm is open does not permit a second submit to fire through.
-
-**Idempotency-conflict recovery.** A rare server-side conflict (see [api.md §14.4](../api.md#144-error-handling)) closes the create form, refreshes the customer list, and surfaces the German error message via the mutation error banner ([index.md §8.1.2](index.md#812-authenticated-state)). The user is not invited to retry the same submission.
+Fields: [data-model.md §5.6](../data-model.md#56-customer-entity). Behavior: [AC-518](../verification.md#1511-customer-management), [AC-539](../verification.md#1511-customer-management), [AC-520](../verification.md#1511-customer-management), [AC-537](../verification.md#1511-customer-management), [AC-538](../verification.md#1511-customer-management), [AC-521](../verification.md#1511-customer-management), [AC-536](../verification.md#1511-customer-management).
 
 ### 8.9.3 Edit Customer
 
-Clicking a customer row opens the customer for editing. PATCH semantics: omitted fields unchanged, explicit `null` clears optional fields.
-
-Requires `customer:write` permission for mutations. Users without this permission see all fields as read-only.
+The same fields with the customer's values, reached from a row or the Project Detail Page. Without `customer:write` every field is read-only and no save is offered ([AC-121](../verification.md#1521-role-scoping)). Behavior: [AC-519](../verification.md#1511-customer-management), [AC-520](../verification.md#1511-customer-management), [AC-537](../verification.md#1511-customer-management), [AC-538](../verification.md#1511-customer-management), [AC-521](../verification.md#1511-customer-management).
 
 ### 8.9.5 Delete Customer
 
-Available per customer row or in the edit view. Requires `customer:delete` permission (button hidden otherwise).
-
-The confirmation dialog text depends on `archivedProjectCount` and `invoiceCount` (issued + cancelled rows only) returned by `GET /api/customers/:id` (see [api.md §14.2.5](../api.md#1425-customer-management)):
-
-- When `archivedProjectCount` is 0 AND `invoiceCount` is 0, the standard confirmation phrasing applies. Draft invoices on archived projects do not block — they cascade with the project on hard-delete.
-- When `archivedProjectCount > 0` AND `invoiceCount` is 0, the confirmation surfaces a German warning that names the archived-project count and informs the user that those archived projects (and any draft invoices on them) will be permanently deleted together with the customer.
-- When `invoiceCount > 0`, the delete affordance is disabled and an inline German invoice notice replaces it: `"Der Kunde kann nicht gelöscht werden, da ausgestellte oder stornierte Rechnungen existieren."` (or the configured equivalent — German UI strings `[C]`, [architecture.md §12.2](../architecture.md#122-company-configurable-settings)). The notice does not suggest a remediation: issued invoices are immutable ([data-model.md §6.14](../data-model.md#614-immutability-of-issued-invoices)) and cancellation creates a Storno sibling rather than removing the original, so there is no in-app path that brings the count to zero. The API enforces the same gate — `CUSTOMER_HAS_INVOICES` ([api.md §14.4](../api.md#144-error-handling)).
-
-Deletion of a customer that still has active (non-archived) projects is rejected as a conflict by the API — the UI surfaces the German error message via the mutation error banner. Deletion of a customer whose project graph (active or archived) carries any issued or cancelled invoice is rejected with `CUSTOMER_HAS_INVOICES`; the UI surfaces the same invoice notice via the mutation error banner if the request reaches the server (defense-in-depth on the disabled-affordance gate). See [ADR-0017](../../adr/0017-soft-delete-as-board-archive.md) for the archive-vs-purge boundary; see [ADR-0026](../../adr/0026-invoices-immutability-and-zugferd.md) for the invoice retention posture.
+`Löschen` on a row, for a caller who may delete. A confirmation names the customer, or warns about its archived projects ([AC-534](../verification.md#1511-customer-management), [AC-535](../verification.md#1511-customer-management), [AC-533](../verification.md#1511-customer-management)). Behavior: [AC-530](../verification.md#1511-customer-management), [AC-531](../verification.md#1511-customer-management), [AC-540](../verification.md#1511-customer-management), [AC-541](../verification.md#1511-customer-management), [AC-92](../verification.md#1511-customer-management), [AC-532](../verification.md#1511-customer-management).
 
 ---
 

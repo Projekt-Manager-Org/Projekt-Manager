@@ -93,7 +93,7 @@ export function customerRoutes(db: Database) {
                   city: { type: 'string' },
                 },
               },
-              // USt-IdNr. — data-model.md §5.6 / AC-306. Structurally
+              // USt-IdNr. — data-model.md §5.6. Structurally
               // optional at the route layer; the issuance-time
               // requiredness gate fires only when taxMode =
               // 'reverse_charge' (see AC-289). Capped at 50 chars to
@@ -157,7 +157,7 @@ export function customerRoutes(db: Database) {
                   city: { type: 'string' },
                 },
               },
-              // USt-IdNr. — see POST handler note above (AC-306).
+              // USt-IdNr. — see POST handler note above.
               // PATCH with `ustId: null` clears the field.
               ustId: { type: ['string', 'null'], maxLength: 50 },
               notes: { type: ['string', 'null'] },
