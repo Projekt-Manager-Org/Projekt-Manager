@@ -39,8 +39,7 @@ Renovate's vulnerability PRs are [direct-dependency-only by design](https://docs
 | Playwright's browser in E2E                                                                        | CI only; it follows `@playwright/test`                                                                                                               | A break shows as a red nightly                                                                                              |
 | Stock Caddy in `docker-compose.http.yml`                                                           | Evaluation mode, no real data ([ADR-0013](../adr/0013-http-only-evaluation-mode.md)); not in the deployed inventory, so not scanned                  | Renovate updates it                                                                                                         |
 | Pinned LLM model (`OPENROUTER_MODEL`)                                                              | A provider's model id; no feed exists                                                                                                                | [§ Quarterly lifecycle review](#quarterly-lifecycle-review)                                                                 |
-
-**Open, not accepted:** VPS OS packages, including `wireguard-tools`. `unattended-upgrades` owns them, and its failure alerts nobody ([#740](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/740) § Track separately).
+| VPS OS packages, including `wireguard-tools`                                                       | `unattended-upgrades` owns them                                                                                                                      | Nothing alerts if it fails                                                                                                  |
 
 ### Two-way check
 
