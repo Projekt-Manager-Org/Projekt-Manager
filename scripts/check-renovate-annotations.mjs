@@ -332,7 +332,6 @@ for (const { abs, matchPath } of scanFiles) {
     // only the `version=` span is harmless there — a stale comment is a
     // docs nit, not a step that fetches the wrong asset. Counting them
     // would make the rule unsatisfiable short of rewording the comment.
-    // Same reason `check-workflow-drift.sh` strips comments before diffing.
     const literalUses = block.filter((l) => !/^\s*#/.test(l) && l.includes(version)).length;
     if (literalUses > 1) {
       problems.push(

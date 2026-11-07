@@ -8,9 +8,8 @@
 #   Exits 3 when there is no such step or it has no `run: |` block.
 #
 # Structural, not line-numbered: reordering the steps or reindenting the file
-# does not fool it. awk rather than a YAML parser for the same reason as
-# check-workflow-drift.sh — this must run with nothing beyond a standard
-# POSIX toolchain.
+# does not fool it. awk rather than a YAML parser: this must run with nothing
+# beyond a standard POSIX toolchain.
 extract_run_step() {
   awk -v id="$2" '
     # `id: <id>` arms the extractor; the next `run: |` is ours.

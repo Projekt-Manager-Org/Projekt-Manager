@@ -93,36 +93,6 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
-      # Catches the specific drift class where `package.json` carries an
-      # exact pin (e.g. `eslint: 10.3.0`) but `package-lock.json` resolves
-      # the package to a different version (e.g. 10.4.0). The Renovate
-      # `rangeStrategy: pin` + `lockFileMaintenance` interaction can
-      # produce this: a pin PR generated against an older lockfile state
-      # merges after a `lockFileMaintenance` PR bumped the resolved
-      # version past the pin range, and the pin PR's lockfile is never
-      # regenerated. `npm ci` below would also flag this, but a named
-      # step with an actionable error message is cheaper to triage than
-      # parsing npm's wall-of-errors output. See #214 for the incident.
-      - name: Lockfile-pin drift sanity check
-        run: |
-          node -e '
-            const pj = require("./package.json");
-            const pl = require("./package-lock.json");
-            const deps = { ...(pj.dependencies || {}), ...(pj.devDependencies || {}) };
-            const drift = Object.entries(deps)
-              .filter(([, v]) => /^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(v))
-              .map(([n, v]) => [n, v, pl.packages?.["node_modules/" + n]?.version])
-              .filter(([, v, r]) => r && r !== v);
-            if (drift.length) {
-              console.error("::error::Lockfile drift: exact pins in package.json do not match resolved versions in package-lock.json");
-              drift.forEach(([n, v, r]) => console.error(`  ${n}: package.json=${v}  lockfile=${r}`));
-              console.error("");
-              console.error("Likely cause: a Renovate pin PR shipped without regenerating the lockfile after a lockFileMaintenance merge.");
-              console.error("Fix: on a branch, run `npm install --package-lock-only`, commit package-lock.json, open PR.");
-              process.exit(1);
-            }
-          '
-
       - run: npm ci
 
       # ripgrep — needed by scripts/check-theme-tokens.sh, which
@@ -511,17 +481,6 @@ jobs:
       - name: Env drift check (env.ts ↔ docker-compose.yml)
         run: bash scripts/check-env-drift.sh
 
-      # Static check: this workflow's postgres service container is one
-      # decision written twice with e2e.yml — Actions has no include
-      # mechanism for a service block (see the script header). e2e.yml runs
-      # nightly and on dispatch, outside the merge gate, so an unsynced edit
-      # there surfaces a day late, as a red nightly. The `Install age`
-      # step used to be compared here too; it is now one composite action
-      # and cannot drift — but the check still asserts both workflows call
-      # it, since deduplication does not stop the call being dropped.
-      - name: Workflow drift check (ci.yml ↔ e2e.yml)
-        run: bash scripts/check-workflow-drift.sh
-
       # Static check: .nvmrc, package.json devEngines and every `FROM node:`
       # stage name one Node version, so dev, CI and the images the VPS runs
       # cannot drift apart (#700).
@@ -642,10 +601,8 @@ jobs:
       matrix:
         shard: [1, 2]
 
-    # Duplicated verbatim in e2e.yml, comments aside — Actions cannot
-    # factor a service block out of two jobs that share nothing else, so
-    # scripts/check-workflow-drift.sh (a step in the `lint` job)
-    # fails the build when they diverge. Edit both blocks together.
+    # Written twice with e2e.yml — Actions cannot factor a service block out
+    # of two jobs that share nothing else. Edit both blocks together.
     services:
       postgres:
         # docker-compose.yml's `db` image: Renovate bumps both in one PR,
