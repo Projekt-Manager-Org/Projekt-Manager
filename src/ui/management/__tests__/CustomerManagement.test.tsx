@@ -383,7 +383,10 @@ describe('CustomerManagement — delete confirmation', () => {
   };
 
   it('AC-534: warns about the archived projects and names their count', async () => {
-    expect(await opensConfirmWith(2)).toBe(STRINGS.customers.deleteWithArchived(2));
+    const message = await opensConfirmWith(2);
+    expect(message).toBe(STRINGS.customers.deleteWithArchived(2));
+    // The customer is "Ada", so this digit can only be the count.
+    expect(message).toContain('2');
   });
 
   it('AC-535: without archived projects, names the customer', async () => {

@@ -64,7 +64,7 @@ describe('customer.ustId CRUD + idempotent-replay + invoice pre-fill', () => {
       expect(get.json().ustId).toBe(ustId);
     });
 
-    it('AC-519: PATCH updates ustId under PATCH semantics; omitted fields unchanged', async () => {
+    it('AC-519: PATCH stores the entered ustId; omitted fields unchanged', async () => {
       const createRes = await authPost(ownerToken, '/api/customers', {
         name: `UstId-PATCH ${crypto.randomUUID().slice(0, 6)}`,
         ustId: 'DE000000001',

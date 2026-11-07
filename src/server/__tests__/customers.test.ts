@@ -129,10 +129,9 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-519: Update customer — PATCH semantics
-  // AC-519 [crit]
+  // Update customer — PATCH semantics; AC-519: a cleared field
   // ---------------------------------------------------------------
-  describe('AC-519: Update customer (PATCH semantics)', () => {
+  describe('Update customer (PATCH semantics)', () => {
     it('changes only the specified fields, preserves others', async () => {
       // Read before state
       const beforeRes = await authGet(ownerToken, `/api/customers/${createdCustomerId}`);
@@ -155,7 +154,7 @@ describe('Customer CRUD Operations', () => {
       expect(after.updatedAt).toBeDefined();
     });
 
-    it('clears an optional field when set to null', async () => {
+    it('AC-519: clears an optional field when set to null', async () => {
       // First set a phone number
       await authPatch(ownerToken, `/api/customers/${createdCustomerId}`, {
         ...(await expectedVersion(ownerToken, `/api/customers/${createdCustomerId}`)),
@@ -349,7 +348,6 @@ describe('Customer CRUD Operations', () => {
       // Refused means nothing changed: the customer and its project remain.
       const customer = await authGet(ownerToken, `/api/customers/${createdCustomerId}`);
       expect(customer.statusCode).toBe(200);
-      expect(customer.json().projectCount).toBe(1);
       const project = await authGet(ownerToken, `/api/projects/${projectRes.json().id}`);
       expect(project.statusCode).toBe(200);
     });

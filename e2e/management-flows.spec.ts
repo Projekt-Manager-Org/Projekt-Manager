@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { clickView } from './nav-helpers';
+import { STRINGS } from '../src/config/strings';
 
 /**
  * E2E Management flows
@@ -105,12 +106,12 @@ test.describe('Management flows', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-85: no page load between creating the customer and the project form.
+  // AC-85: no page load between creating the customer and its project.
   // ---------------------------------------------------------------
-  test('AC-85: the project create form offers a new customer without a page reload', async ({
-    page,
-  }) => {
-    const name = `E2E Ohne Reload ${Date.now()}`;
+  test('AC-85: create a project for a new customer without a page reload', async ({ page }) => {
+    const stamp = Date.now();
+    const name = `E2E Ohne Reload ${stamp}`;
+    const number = `E2E-${stamp % 1_000_000_000}`;
     await page.evaluate(() => {
       (window as unknown as { __sameDocument: boolean }).__sameDocument = true;
     });
@@ -123,13 +124,57 @@ test.describe('Management flows', () => {
 
     await page.getByTestId('view-toggle-projekte').click();
     await page.getByTestId('project-create-button').click();
+    await page.getByTestId('project-number-input').fill(number);
+    await page.getByTestId('project-title-input').fill('Ohne Reload');
     await page.getByTestId('project-customer-select').click();
-    await expect(page.getByText(name)).toBeVisible();
+    await page.getByText(name).click();
+    await page.getByTestId('project-submit').click();
+    await expect(page.getByText(number)).toBeVisible();
 
     const sameDocument = await page.evaluate(
       () => (window as unknown as { __sameDocument?: boolean }).__sameDocument,
     );
     expect(sameDocument).toBe(true);
+  });
+
+  // ---------------------------------------------------------------
+  // AC-524, AC-525: the customer list searches and sorts.
+  // ---------------------------------------------------------------
+  test('AC-524, AC-525: search narrows the customer list; a header click reverses it', async ({
+    page,
+  }) => {
+    await page.getByTestId('view-toggle-kunden').click();
+    const rows = page.getByTestId('customer-table').locator('tbody tr');
+    await expect(rows.first()).toBeVisible();
+    const firstBySortedName = await rows.first().locator('td').first().innerText();
+    expect(await rows.count()).toBeGreaterThan(1);
+
+    await page.getByTestId('customer-sort-name').click();
+    await expect(rows.first().locator('td').first()).not.toHaveText(firstBySortedName);
+
+    await page.getByTestId('customer-search').fill(testCustomerName.toLowerCase());
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText(testCustomerName);
+    await page.getByTestId('customer-search').fill('');
+  });
+
+  // ---------------------------------------------------------------
+  // AC-535, AC-530: a customer without archived projects is confirmed by
+  // name and removed. Net-zero: the customer exists only for this test.
+  // ---------------------------------------------------------------
+  test('AC-535, AC-530: delete a customer without archived projects', async ({ page }) => {
+    const name = `E2E Zum Loeschen ${Date.now()}`;
+    await page.getByTestId('view-toggle-kunden').click();
+    await page.getByTestId('customer-create-button').click();
+    await page.getByTestId('customer-name-input').fill(name);
+    await page.getByTestId('customer-submit').click();
+    const row = page.getByRole('row', { name: new RegExp(name) });
+    await expect(row).toBeVisible();
+
+    await row.getByRole('button', { name: STRINGS.ui.delete }).click();
+    await expect(page.getByTestId('confirm-dialog')).toContainText(name);
+    await page.getByTestId('confirm-ok').click();
+    await expect(row).toHaveCount(0);
   });
 
   // ---------------------------------------------------------------

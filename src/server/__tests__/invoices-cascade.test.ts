@@ -188,6 +188,37 @@ async function selectInvoicesByProject(
   }
 }
 
+async function assignSeedWorker(projectId: string): Promise<void> {
+  const { db, pool } = createDatabase();
+  try {
+    await db.execute(sql`
+      INSERT INTO project_workers (project_id, user_id)
+      SELECT ${projectId}, id FROM users WHERE username = ${SEED_USERS.worker1.username}
+    `);
+    const { workers } = await countProjectRows([projectId]);
+    expect(workers).toBe(1);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function countProjectRows(ids: string[]): Promise<{ projects: number; workers: number }> {
+  const { db, pool } = createDatabase();
+  try {
+    const list = sql.join(
+      ids.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
+    const res = await db.execute(sql`
+      SELECT (SELECT count(*)::int FROM projects WHERE id IN (${list})) AS projects,
+             (SELECT count(*)::int FROM project_workers WHERE project_id IN (${list})) AS workers
+    `);
+    return res.rows[0] as { projects: number; workers: number };
+  } finally {
+    await pool.end();
+  }
+}
+
 async function selectInvoicesByCustomer(
   customerId: string,
 ): Promise<Array<{ id: string; status: string; project_id: string }>> {
@@ -270,6 +301,7 @@ describe('AC-532, AC-531: DELETE /api/customers/:id retention/cascade behaviour'
     const projectB = await createProject(ownerToken, customerId);
     const draftA = await seedDraftInvoice(projectA);
     const draftB = await seedDraftInvoice(projectB);
+    await assignSeedWorker(projectA);
 
     // Archive both projects so the customer can be deleted (AC-92, AC-531).
     await archiveProject(ownerToken, projectA);
@@ -291,9 +323,10 @@ describe('AC-532, AC-531: DELETE /api/customers/:id retention/cascade behaviour'
     const ids = await selectInvoicesByCustomer(customerId);
     expect(ids.find((r) => r.id === draftA || r.id === draftB)).toBeUndefined();
 
-    // Customer + projects are gone (GET → 404).
+    // Customer gone (GET → 404); projects and worker assignments too.
     const after = await authGet(ownerToken, `/api/customers/${customerId}`);
     expect(after.statusCode).toBe(404);
+    expect(await countProjectRows([projectA, projectB])).toEqual({ projects: 0, workers: 0 });
   });
 
   it('customer with zero invoices behaves per AC-530 / AC-92 (regression cover)', async () => {

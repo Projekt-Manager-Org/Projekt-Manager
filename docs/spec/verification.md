@@ -122,11 +122,11 @@ States, their order and per-state values: [index.md §3](index.md#3-workflow-sta
 ### 15.11 Customer Management
 
 - **AC-518** `[crit]`: When a user creates a customer with a name, the system stores it.
-- **AC-539** `[vis]`: When a user has created a customer, the customer list shows it.
+- **AC-539** `[vis]`: When a user has created a customer, the customer list shows it, unless the active search excludes it.
 - **AC-124** `[crit]`: When a customer create is retried after its response was lost, the system stores the customer once.
-- **AC-519** `[crit]`: When a user saves the customer edit form, the system stores the entered values, an emptied field other than the name as empty.
-- **AC-520** `[crit]`: If a save would leave a customer without a name, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) with a German message and changes nothing.
-- **AC-537** `[crit]`: If a save would store a customer name of only whitespace, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) with a German message and changes nothing.
+- **AC-519** `[crit]`: When a user saves the customer edit form, the system stores the entered values, an emptied phone, email, USt-IdNr. or notes as empty, and an address with all three fields emptied as no address.
+- **AC-520** `[crit]`: If a save would leave a customer without a name, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) and changes nothing.
+- **AC-537** `[crit]`: If a save would store a customer name of only whitespace, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) and changes nothing.
 - **AC-538** `[crit]`: If a save would exceed a customer field limit ([§5.6](data-model.md#56-customer-entity)), the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) with a German message and changes nothing.
 - **AC-521** `[crit]`: If a save would store a customer address missing its street, zip or city, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) with a German message and changes nothing.
 - **AC-522** `[vis]`: The customer create and edit forms offer USt-IdNr. and notes.
@@ -137,14 +137,14 @@ States, their order and per-state values: [index.md §3](index.md#3-workflow-sta
 - **AC-527** `[vis]`: While a user types a name in the customer create form, the system lists existing customers whose name contains the text, ignoring letter case.
 - **AC-528** `[vis]`: When a user picks a customer listed in the create form, the system closes the form and opens that customer's edit form.
 - **AC-529** `[vis]`: If the name search in the customer create form fails, the system lists nothing, shows no error, and the form keeps working.
-- **AC-536** `[vis]`: When a user submits a name that a customer listed in the create form also has, ignoring letter case and whitespace differences, the system creates the customer only after the user confirms with "Trotzdem erstellen"; cancelling returns to the form and creates nothing.
-- **AC-85** `[vis]`: When a customer has been created, the project create form offers it without a page reload.
+- **AC-536** `[vis]`: When a user submits a name that a customer listed in the create form also has, ignoring letter case and surrounding whitespace, the system creates the customer only after the user confirms with "Trotzdem erstellen"; cancelling returns to the form and creates nothing.
+- **AC-85** `[vis]`: When a user has created a customer, the system lets them create a project for it without a page reload.
 - **AC-530** `[crit]`: When a user deletes a customer with no active project and no issued or cancelled invoice, the system removes it.
-- **AC-531** `[crit]`: When a user deletes a customer, the system permanently deletes its archived projects with it, with their worker assignments and draft invoices.
+- **AC-531** `[crit]`: When the system removes a customer ([AC-530](#1511-customer-management)), it permanently deletes the customer's archived projects with it, with their worker assignments and draft invoices ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md)).
 - **AC-540** `[crit]`: When a customer delete removes archived projects, the system deletes their attachments and hides their stored objects ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)).
 - **AC-541** `[crit]`: If a customer delete fails part-way, the system changes nothing.
-- **AC-92** `[crit]`: If a customer has an active project, the system refuses deleting it as a conflict ([api.md §14.4.1](api.md#1441-error-categories)) and changes nothing.
-- **AC-532** `[crit]`: If a customer without an active project has an issued or cancelled invoice on an archived project, the system refuses deleting the customer as a conflict ([api.md §14.4.1](api.md#1441-error-categories)) with a German message saying why and changes nothing.
+- **AC-92** `[crit]`: If a customer has an active project, the system refuses deleting the customer as a conflict ([api.md §14.4.1](api.md#1441-error-categories)) and changes nothing.
+- **AC-532** `[crit]`: If a customer without an active project has an issued or cancelled invoice on an archived project, the system refuses deleting the customer as a conflict ([api.md §14.4.1](api.md#1441-error-categories)) with a German message saying why and changes nothing ([ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md)).
 - **AC-93** `[crit]`: Deleting a customer requires `customer:delete` permission. Users without this permission receive an authorization error.
 - **AC-534** `[crit]`: When a user starts deleting a customer with archived projects, the confirmation warns that they will be permanently deleted with it and names their count.
 - **AC-535** `[vis]`: When a user starts deleting a customer without archived projects, the confirmation names the customer.

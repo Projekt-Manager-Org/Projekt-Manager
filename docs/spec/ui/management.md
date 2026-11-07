@@ -43,7 +43,7 @@ A table of customers. Behavior: [verification.md §15.11](../verification.md#151
 
 A form with:
 
-- **Name** — with the list of existing customers matching it ([AC-527](../verification.md#1511-customer-management), [AC-528](../verification.md#1511-customer-management), [AC-529](../verification.md#1511-customer-management)).
+- **Name** — no save is offered while it is blank; with the list of existing customers matching it ([AC-527](../verification.md#1511-customer-management), [AC-528](../verification.md#1511-customer-management), [AC-529](../verification.md#1511-customer-management)).
 - **Street, zip, city**.
 - **Phone, email**.
 - **USt-IdNr., notes** ([AC-522](../verification.md#1511-customer-management)).

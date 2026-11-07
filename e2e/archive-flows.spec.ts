@@ -217,7 +217,9 @@ test.describe('Archive flows', () => {
 
     const dialog = page.getByTestId('confirm-dialog');
     await expect(dialog).toBeVisible();
+    // The warning, with the count: the customer name has a digit of its own.
     await expect(dialog).toContainText(STRINGS.customers.deleteWithArchived(2));
+    await expect(dialog).toContainText(/\b2 archivierte/);
 
     await Promise.all([
       page.waitForResponse(
