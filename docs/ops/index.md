@@ -24,7 +24,7 @@ Who does what in operations — the operating company's duties, the operator rol
 | [binary-key/](binary-key/overview.md)                          | Layer 3 binary `age` identity — setup, paste-after-reboot, drills, recovery, rotation, troubleshooting |
 | [local-dev.md](local-dev.md)                                   | Local development environment                                                                          |
 | [http-only-evaluation.md](http-only-evaluation.md)             | Domain-less HTTP testing on a bare VPS                                                                 |
-| [dep-management.md](dep-management.md)                         | Renovate cadence, CVE handling, quarterly lifecycle review                                             |
+| [dep-management.md](dep-management.md)                         | Coverage matrix, guards, CVE handling, quarterly lifecycle review                                      |
 
 ## Operations record
 

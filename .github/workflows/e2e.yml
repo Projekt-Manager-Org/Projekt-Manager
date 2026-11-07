@@ -47,13 +47,11 @@ jobs:
     # watching to cancel a hang, and the job default is 6 h of runner time.
     timeout-minutes: 30
 
-    # Byte-for-byte the same postgres service container as ci.yml's
-    # `check-shard` job, comments aside. It has to be duplicated — Actions
-    # has no include mechanism for a service block (composite actions have
-    # no `services` key; reusable workflows reuse a whole job, and these
-    # two jobs share nothing else) — so the invariant is machine-enforced
-    # instead: scripts/check-workflow-drift.sh, a step in ci.yml's
-    # `lint` job, fails the build when the two diverge. Edit both together.
+    # The same postgres service container as ci.yml's `check-shard` job. It
+    # has to be duplicated: Actions has no include mechanism for a service
+    # block (composite actions have no `services` key; reusable workflows
+    # reuse a whole job, and these two jobs share nothing else). Edit both
+    # together.
     services:
       postgres:
         # docker-compose.yml's `db` image: Renovate bumps both in one PR,
@@ -136,10 +134,7 @@ jobs:
       # Same composite as ci.yml's `check-shard` and `build-scan-smoke`:
       # one tool, one pin, one definition. A version skew between E2E and
       # the integration suite would mean the two identities are generated
-      # by different `age` builds, which is why this used to be a
-      # hand-synced copy guarded by scripts/check-workflow-drift.sh. That
-      # check still fails the build if this line goes missing — no PR check
-      # would notice otherwise, only the next nightly.
+      # by different `age` builds.
       - uses: ./.github/actions/install-age
 
       # Storage — MinIO + full bucket/IAM provisioning. Rationale, image
