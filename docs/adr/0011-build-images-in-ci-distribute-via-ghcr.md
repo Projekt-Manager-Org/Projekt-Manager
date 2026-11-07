@@ -1,6 +1,6 @@
 # ADR-0011: Build app images in CI, distribute via GHCR
 
-- **Status:** Accepted
+- **Status:** Accepted; `base_ref` and scan placement superseded by [ADR-0028](0028-dependency-ci-coverage-matrix-and-gated-deploy.md)
 - **Date:** 2026-04-09
 - **Confidence:** High
 
@@ -42,7 +42,7 @@ Build the production `app` image in GitHub Actions, push to GitHub Container Reg
 Three composite actions in `.github/actions/`, split at the **naming** boundary rather than the push boundary. The distinction is the whole design: bytes reach GHCR as an untagged digest, and a separate action — gated on every other check — is what gives them a name.
 
 - **`build-scan-smoke`** — builds each image **once**, pushing it straight to GHCR with `push-by-digest=true`, then pulls the manifest back to Trivy-scan it, boot the stack, run the smoke and the Tier 1 backup round-trip against those exact bytes. Every gate on the bytes lives here, so `docker` and `promote`'s fallback cannot drift apart (#691: the round-trip once sat in `docker` only). A digest-only manifest carries no tag: nothing can `docker pull` it by name, `scripts/deploy.sh` cannot deploy it, and `promote` cannot find it. Publishing, in the sense that matters, has not happened — which is what lets the push come first and makes "the scanned bytes are the published bytes" an identity rather than an argument about two builds.
-- **`trivy-image`** — the image-scan policy (severity floor, unfixed handling, allowlist, cache location, verdict: `scripts/ci/trivy-gate.sh`, against `base_ref` when given) stated once instead of once per call site.
+- **`trivy-image`** — the image-scan policy (severity floor, unfixed handling, allowlist, cache location, verdict: `scripts/ci/trivy-gate.sh`) stated once instead of once per call site.
 - **`tag-images`** — points `sha-<commit>` and, when given, `<branch-slug>` at an existing GHCR digest via `docker buildx imagetools create`. Registry-side manifest copy: no pull, no build, no daemon. Both immutable `sha-` tags are written before either moving `<branch-slug>` tag, so an interrupted run leaves at worst a stale slug the next run overwrites.
 
 Callers in `.github/workflows/ci.yml`:
@@ -86,6 +86,8 @@ land ──► promote sha-<C> pair ✓ ──► imagetools create ──► ma
                  main moves only while C is still the head of refs/heads/main
 ```
 
+`scan` above means image secrets; vulnerabilities are scanned on the merged commit ([ADR-0028 § Decision](0028-dependency-ci-coverage-matrix-and-gated-deploy.md#decision)).
+
 1. PR opens. `docker` builds both images once, pushes them by digest, scans both, smokes them and runs the Tier 1 round-trip. `publish` waits on `check`, `lint` **and** `docker`, then names those exact digests `sha-<pr-tip>` + `<branch-slug>`. No _name_ resolves to bytes that have not passed every gate — and because the names are applied to a digest rather than to the output of a second build, the named bytes are the scanned bytes by identity rather than by assumption. These images are for deploying a branch; nothing promotes them.
 2. The queue builds commit C (`main` + the PRs ahead + this one) and runs the same jobs on it. `publish` names C's digests `sha-<C>`. The queue lands C only once that is green, by fast-forwarding `main` to C — the exact commit the run tested.
 3. `promote` fires on `push: main`. First guard: `docker manifest inspect …:sha-<C>` must succeed for both packages. Happy path: `docker buildx imagetools create` points `main` at that pair. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke. Second guard, right before the write: `git ls-remote origin refs/heads/main` must still equal C. Otherwise a newer commit has landed, and `main` stays where it is with a `::notice::` — without it, a re-run of an older push run points `main` back at its own pair (#691). A newer commit landing after the check is harmless: push runs share one concurrency group, so its run is pending behind this one and moves `main` forward. A failed lookup fails the run.
@@ -101,7 +103,6 @@ Trade-offs accepted:
 
   Measured on run [33424054809](https://github.com/Projekt-Manager-Org/Projekt-Manager/actions/runs/33424054809), the last run of the two-build design: 6m45s wall-clock — `lint` 3m47s, `check-shard` 3m43s and `docker` 3m17s in parallel, then `publish` 2m48s serially behind them. `publish` was 41% of the run and was rebuilding, not re-materialising (see below). With `publish` reduced to a manifest copy and the push moved into `docker`, the serial tail is seconds rather than minutes. An earlier revision of this ADR claimed the change was "roughly neutral per merged PR" while omitting `publish` from the arithmetic entirely; it was not.
 
-- **Trivy DB binds to queue time.** CVEs published after the queue run slip past until the nightly `inventory-scan.yml` catches them.
 - **GHCR tag count.** Each push to a PR branch produces its own `sha-<pr-tip>` app+backup pair plus a moving `<branch-slug>` pair, on top of `sha-<commit>` per queue run (re-queued groups included) + `main` — call it 5–10 immutable SHA tags per merged PR, plus everything left behind by PRs that never merge. The dispatch-driven design produced ~2× because the dispatch never fired. Digest-first publishing adds a second class: when a run's `docker` pushes but `publish` never names the result (a red `check`/`lint`, a cancelled run), the digest stays on GHCR untagged. That class was assumed to be what GHCR's built-in "keep last N untagged versions" policy covers — measurement says otherwise: it is 11 versions of 295, the other 284 being the children of tagged indices, which the built-in policy would also delete. Reaped since #373 by `ghcr-retention.yml`; see Retention below.
 - **The push is in `docker`, not in a second job that re-derives the bytes.** #355's first shape had `publish` rebuild both images from the gha cache and Trivy-scan them again before pushing, on the theory that a warm cache made the rebuild a layer-for-layer hit and the rescan covered the cold case. **Both halves were false**, and the logs of run 33424054809 say so:
 

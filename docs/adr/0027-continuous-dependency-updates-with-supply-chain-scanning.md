@@ -1,6 +1,6 @@
 # ADR-0027: Continuous dependency updates with supply-chain scanning
 
-- **Status:** Accepted
+- **Status:** Accepted; scan placement and the mechanics of the amendments superseded by [ADR-0028](0028-dependency-ci-coverage-matrix-and-gated-deploy.md)
 - **Date:** 2026-05-15
 - **Confidence:** Medium-High — the design rests on established industry patterns (Renovate + OSV-Scanner + Trivy is the OSS-tier supply-chain baseline at this stage). Renovate is installed and actively raising and merging dependency PRs, but the allowlist schema has only been exercised against the empty baseline and the quarterly-review cadence has not yet completed a full loop. Promote to High once a quarterly review walk completes and the allowlist has been exercised against a real advisory.
 
@@ -75,6 +75,8 @@ Dependabot Alerts stays on at the GH Security tab as the CVE **notification** su
 Overlap between the two bots is intentional belt-and-braces.
 
 ### 2. Supply-chain scanning in CI (blocking)
+
+> Tool choices stand; where each scan runs and what it blocks: [ADR-0028 § Decision](0028-dependency-ci-coverage-matrix-and-gated-deploy.md#decision).
 
 - **OSV-Scanner** (CLI pinned by SHA256) — scans the npm tree against the OSV database. Free, OSS, broader DB than `npm audit`, but **not a superset of it** — both key on `(ecosystem, name, version)` and each carries records the other lacks (see the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers)). **Blocks merge on any vuln the change introduces** ([2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main)); the nightly run fails on any vuln on `main`. The CLI has no severity flag, so the implementation gates on every advisory OSV.dev publishes. This is stricter than originally drafted (HIGH/CRITICAL) and matches the project's "refuse-or-block, never downgrade" principle. False positives go through `osv-scanner.toml` with the owner/reason/expiry schema in §Negative.
 - **Repo-level GitHub advisories** (`scripts/check-repo-advisories.mjs`) — reads each direct dep's `/security-advisories` endpoint, where advisories that were never promoted to the global database do exist. Covers what neither lockfile scanner structurally can. **Blocks merge on a match the change introduces** ([2026-10-31 amendment](#2026-10-31--pr-gates-judge-the-change-not-main)); fails closed on API errors. Added by the [2026-08-28 amendment](#2026-08-28--repo-level-advisories-and-what-no-layer-covers), which also states what all three layers leave uncovered.
@@ -167,6 +169,8 @@ Acknowledged tradeoff: every PR now pays the image build (~6–7 min) instead of
 - No env-var or schema impact.
 
 ## Amendments
+
+> History and rationale. What each one means now: [ADR-0028 § Decision](0028-dependency-ci-coverage-matrix-and-gated-deploy.md#decision).
 
 ### 2026-11-01 — Docker host advisories: the per-component exception
 
