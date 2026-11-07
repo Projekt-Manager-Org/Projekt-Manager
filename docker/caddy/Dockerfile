@@ -5,7 +5,8 @@
 #
 # Pinning policy:
 # - Caddy version pinned to a specific tag (xcaddy build vN.N.N).
-# - Both base images digest-pinned to defeat retag-under-known-good-label attacks.
+# - Both base images digest-pinned (linux/amd64 manifest, see dep-management.md
+#   § Deploy urgency) to defeat retag-under-known-good-label attacks.
 # - The caddy-dns/cloudflare plugin pinned to a release tag (Go module proxy +
 #   checksum database), so each build is reproducible from source.
 # - golang.org/x/net, go-jose/v4 and klauspost/compress pinned above Caddy's own requirement (see the build step).
@@ -15,7 +16,7 @@
 # CI; majors wait for approval.
 # See ADR-0027 + docs/ops/dep-management.md.
 
-FROM caddy:2.11.9-builder@sha256:3fddbec729442a56b942d4c9eaef1df80893dbf2cf5b86701bfae6aad1408eeb AS builder
+FROM caddy:2.11.9-builder@sha256:f7d08b96ba62ff0ae985079c0db4e0f97acb1f174e0e111aebe1f8a4b2d56f31 AS builder
 
 # The first three `--with` lines raise Go modules above what Caddy requires,
 # because only a Caddy release would otherwise move them: golang.org/x/net
@@ -40,7 +41,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # digest-pinned stage so Renovate's `caddy` group still moves it in
 # lockstep with the builder and the xcaddy version, and the CA bundle
 # below rides those bumps.
-FROM caddy:2.11.9@sha256:0c2243efcf437ab7f7a978f1027fcf0d4f9be8a75df27b1b3fbc5dbe0ffa8cf0 AS base
+FROM caddy:2.11.9@sha256:fc9cbc100585871d18d4e451cca7021785c90a7006087427ae5ceb3e4efe6424 AS base
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 

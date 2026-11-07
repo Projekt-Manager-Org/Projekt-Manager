@@ -108,7 +108,7 @@
       "automerge": false
     },
     {
-      "description": "deploy-asap on updates of the runtime images production builds or runs: the fixes they carry reach a host only on deploy, so merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29). Pins are excluded: they change no bytes. A group gets the label when any of its updates matches (labels are combined per branch). docker-compose.http.yml is evaluation-only, and CI's service images never ship. prPriority=1: these take the next free PR slot first (#668).",
+      "description": "deploy-asap on updates of the runtime images production builds or runs: the fixes they carry reach a host only on deploy, so merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29). Pins are excluded: they change no bytes. These images are pinned to their linux/amd64 manifest, so a digest update means that image changed, not that another architecture landed in the index (#780). A group gets the label when any of its updates matches (labels are combined per branch). docker-compose.http.yml is evaluation-only, and CI's service images never ship. prPriority=1: these take the next free PR slot first (#668).",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["node", "postgres", "caddy"],
       "matchFileNames": [
