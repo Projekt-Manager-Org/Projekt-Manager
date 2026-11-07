@@ -161,7 +161,7 @@ export const customers = pgTable('customers', {
     zip: string;
     city: string;
   } | null>(),
-  // USt-IdNr. — data-model.md §5.6, AC-306 / AC-289. Structurally
+  // USt-IdNr. — data-model.md §5.6, AC-289. Structurally
   // optional; the requiredness gate fires at invoice issuance when
   // the draft's taxMode = 'reverse_charge'. Pre-fills the recipient
   // ustId on new invoice drafts when set. ADR-0026.

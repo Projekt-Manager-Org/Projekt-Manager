@@ -310,7 +310,7 @@ export class CustomerService {
         throw conflict(STRINGS.customers.hasProjects);
       }
 
-      // AC-307: any issued or cancelled invoice across the customer's
+      // AC-532: any issued or cancelled invoice across the customer's
       // project graph (active + archived) blocks the delete. Drafts
       // cascade-delete with their parent project and DO NOT count.
       // The check runs INSIDE the tx so a concurrent issue committed

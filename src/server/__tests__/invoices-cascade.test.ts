@@ -4,16 +4,16 @@
  *
  * Pins the §6.9 / §6.14 retention invariants:
  *
- *   - AC-307: `DELETE /api/customers/:id` against a customer
- *     whose project graph (active + archived) carries any issued or
- *     cancelled invoice is rejected with `409 CUSTOMER_HAS_INVOICES`;
- *     `details.invoiceCount` matches issued + cancelled count (drafts
- *     excluded). A customer whose archived projects carry only draft
- *     invoices succeeds atomically — drafts cascade-delete with the
- *     project; no orphan invoice rows remain. A customer with zero
- *     invoices of any status behaves as before (AC-91 / AC-92).
- *     `GET /api/customers/:id` returns `invoiceCount` on every
- *     customer (zero when no issued/cancelled rows; drafts don't count).
+ *   - AC-532: `DELETE /api/customers/:id` against a customer whose
+ *     archived projects carry any issued or cancelled invoice is rejected
+ *     with `409 CUSTOMER_HAS_INVOICES`; `details.invoiceCount` matches the
+ *     issued + cancelled count (drafts excluded).
+ *   - AC-531: a customer whose archived projects carry only draft invoices
+ *     is deleted — drafts cascade-delete with the project; no orphan
+ *     invoice rows remain.
+ *   - AC-530 / AC-92: a customer with zero invoices.
+ *   - `GET /api/customers/:id` returns `invoiceCount` on every customer
+ *     (zero when no issued/cancelled rows; drafts don't count).
  *
  *   - AC-504, AC-502: `DELETE /api/projects/:id/purge` against an
  *     archived project carrying any issued or cancelled invoice is
@@ -188,6 +188,37 @@ async function selectInvoicesByProject(
   }
 }
 
+async function assignSeedWorker(projectId: string): Promise<void> {
+  const { db, pool } = createDatabase();
+  try {
+    await db.execute(sql`
+      INSERT INTO project_workers (project_id, user_id)
+      SELECT ${projectId}, id FROM users WHERE username = ${SEED_USERS.worker1.username}
+    `);
+    const { workers } = await countProjectRows([projectId]);
+    expect(workers).toBe(1);
+  } finally {
+    await pool.end();
+  }
+}
+
+async function countProjectRows(ids: string[]): Promise<{ projects: number; workers: number }> {
+  const { db, pool } = createDatabase();
+  try {
+    const list = sql.join(
+      ids.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
+    const res = await db.execute(sql`
+      SELECT (SELECT count(*)::int FROM projects WHERE id IN (${list})) AS projects,
+             (SELECT count(*)::int FROM project_workers WHERE project_id IN (${list})) AS workers
+    `);
+    return res.rows[0] as { projects: number; workers: number };
+  } finally {
+    await pool.end();
+  }
+}
+
 async function selectInvoicesByCustomer(
   customerId: string,
 ): Promise<Array<{ id: string; status: string; project_id: string }>> {
@@ -206,10 +237,10 @@ async function selectInvoicesByCustomer(
 }
 
 // ---------------------------------------------------------------------
-// AC-307 — Customer delete cascade with invoices.
+// AC-532, AC-531 — Customer delete cascade with invoices.
 // ---------------------------------------------------------------------
 
-describe('AC-307: DELETE /api/customers/:id retention/cascade behaviour', () => {
+describe('AC-532, AC-531: DELETE /api/customers/:id retention/cascade behaviour', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -221,7 +252,7 @@ describe('AC-307: DELETE /api/customers/:id retention/cascade behaviour', () => 
     await stopApp();
   });
 
-  it('customer with issued invoices on any project → 409 CUSTOMER_HAS_INVOICES; details.invoiceCount counts issued+cancelled only', async () => {
+  it('customer with issued invoices on an archived project → 409 CUSTOMER_HAS_INVOICES; details.invoiceCount counts issued+cancelled only', async () => {
     const customerId = await createCustomer(ownerToken);
     const projectId = await createProject(ownerToken, customerId);
 
@@ -231,14 +262,14 @@ describe('AC-307: DELETE /api/customers/:id retention/cascade behaviour', () => 
     await seedIssuedInvoice(projectId, '7001');
     await seedCancelledInvoice(projectId, '7002');
 
-    // Even archive the project first — AC-307 is about the customer
-    // graph (active + archived), so the rejection must fire regardless
-    // of the project state.
+    // Archive first: an active project would be refused by AC-92 before
+    // the invoice check.
     await archiveProject(ownerToken, projectId);
 
     const del = await authDelete(ownerToken, `/api/customers/${customerId}`);
     expect(del.statusCode).toBe(409);
     expect(del.json().code).toBe('CUSTOMER_HAS_INVOICES');
+    expect(del.json().message).toBe(STRINGS.errors.customerHasInvoices);
     expect(del.json().details.invoiceCount).toBe(2);
 
     // Customer + projects + invoices unchanged on rejection.
@@ -248,15 +279,31 @@ describe('AC-307: DELETE /api/customers/:id retention/cascade behaviour', () => 
     expect(surviving).toHaveLength(3);
   });
 
+  it('a refused delete purges no archived project, not even one without invoices', async () => {
+    const customerId = await createCustomer(ownerToken);
+    const clean = await createProject(ownerToken, customerId);
+    const invoiced = await createProject(ownerToken, customerId);
+    await seedIssuedInvoice(invoiced, '7003');
+    await archiveProject(ownerToken, clean);
+    await archiveProject(ownerToken, invoiced);
+
+    const del = await authDelete(ownerToken, `/api/customers/${customerId}`);
+    expect(del.statusCode).toBe(409);
+
+    const cust = await authGet(ownerToken, `/api/customers/${customerId}`);
+    expect(cust.statusCode).toBe(200);
+    expect(cust.json().archivedProjectCount).toBe(2);
+  });
+
   it('customer whose archived projects carry only draft invoices → 204; drafts cascade-delete with no orphans', async () => {
     const customerId = await createCustomer(ownerToken);
     const projectA = await createProject(ownerToken, customerId);
     const projectB = await createProject(ownerToken, customerId);
     const draftA = await seedDraftInvoice(projectA);
     const draftB = await seedDraftInvoice(projectB);
+    await assignSeedWorker(projectA);
 
-    // Archive both projects so the customer can be deleted (AC-92 +
-    // the §6.9 customer-delete-purges-archived-projects rule).
+    // Archive both projects so the customer can be deleted (AC-92, AC-531).
     await archiveProject(ownerToken, projectA);
     await archiveProject(ownerToken, projectB);
 
@@ -276,14 +323,15 @@ describe('AC-307: DELETE /api/customers/:id retention/cascade behaviour', () => 
     const ids = await selectInvoicesByCustomer(customerId);
     expect(ids.find((r) => r.id === draftA || r.id === draftB)).toBeUndefined();
 
-    // Customer + projects are gone (GET → 404).
+    // Customer gone (GET → 404); projects and worker assignments too.
     const after = await authGet(ownerToken, `/api/customers/${customerId}`);
     expect(after.statusCode).toBe(404);
+    expect(await countProjectRows([projectA, projectB])).toEqual({ projects: 0, workers: 0 });
   });
 
-  it('customer with zero invoices behaves per AC-91 / AC-92 (regression cover)', async () => {
+  it('customer with zero invoices behaves per AC-530 / AC-92 (regression cover)', async () => {
     const customerId = await createCustomer(ownerToken);
-    // No projects, no invoices → AC-91 allows delete.
+    // No projects, no invoices → AC-530 allows delete.
     const del = await authDelete(ownerToken, `/api/customers/${customerId}`);
     expect(del.statusCode).toBe(204);
   });

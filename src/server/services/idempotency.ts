@@ -45,7 +45,7 @@ export function customerMatches(incoming: CustomerIncoming, stored: CustomerStor
   if ((incoming.phone ?? null) !== stored.phone) return false;
   if ((incoming.email ?? null) !== stored.email) return false;
   if ((incoming.notes ?? null) !== stored.notes) return false;
-  // AC-306: `ustId` participates in idempotent-replay comparison.
+  // `ustId` participates in idempotent-replay comparison.
   if ((incoming.ustId ?? null) !== stored.ustId) return false;
 
   const incAddr = normalizeAddress(incoming.address ?? null);
@@ -117,8 +117,8 @@ export function projectMatches(incoming: ProjectIncoming, stored: ProjectStored)
 
   // Component-wise comparison on the nested triple — same rule as
   // `customers.address` in `customerMatches` above. Null vs populated
-  // counts as a divergence (mirrors the customer-side rule pinned by
-  // AC-55; the project triple compares the same way).
+  // counts as a divergence (mirrors the customer-side rule; the project
+  // triple compares the same way).
   const incSite = normalizeAddress(incoming.siteAddress ?? null);
   const storedSite = normalizeAddress(stored.siteAddress);
   if (incSite === null && storedSite !== null) return false;

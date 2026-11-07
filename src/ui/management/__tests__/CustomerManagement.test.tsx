@@ -20,12 +20,14 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import type { ApiResult } from '@/api/client';
 import type { Customer } from '@/domain/types';
+import { STRINGS } from '@/config/strings';
 
 type CustomerCreateResult = ApiResult<Customer>;
 type CustomerListResult = ApiResult<{ customers: Customer[]; total: number }>;
 
 const customerCreateMock = vi.fn<() => Promise<CustomerCreateResult>>();
 const customerListMock = vi.fn<() => Promise<CustomerListResult>>();
+const customerGetMock = vi.fn<() => Promise<ApiResult<Customer>>>();
 
 vi.mock('@/api/client', () => ({
   customerApi: {
@@ -33,7 +35,7 @@ vi.mock('@/api/client', () => ({
       customerListMock(...(args as Parameters<typeof customerListMock>)),
     create: (...args: unknown[]) =>
       customerCreateMock(...(args as Parameters<typeof customerCreateMock>)),
-    get: vi.fn(),
+    get: (...args: unknown[]) => customerGetMock(...(args as Parameters<typeof customerGetMock>)),
     update: vi.fn(),
     delete: vi.fn(),
   },
@@ -71,6 +73,7 @@ beforeEach(() => {
   customerCreateMock.mockReset();
   customerListMock.mockReset();
   customerListMock.mockResolvedValue(emptyList());
+  customerGetMock.mockReset();
   useAuthStore.setState({
     authUser: {
       id: 'u-1',
@@ -271,7 +274,7 @@ describe('CustomerManagement — soft-confirm double-click protection', () => {
   });
 });
 
-describe('CustomerManagement — list search', () => {
+describe('AC-524: CustomerManagement — list search', () => {
   it('debounces typing in the toolbar search and refetches with the search param', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
@@ -307,7 +310,7 @@ describe('CustomerManagement — list search', () => {
   });
 });
 
-describe('CustomerManagement — sortable headers', () => {
+describe('AC-525: CustomerManagement — sortable headers', () => {
   it('clicking a header refetches with that column ascending', async () => {
     render(<CustomerManagement />);
 
@@ -354,6 +357,62 @@ describe('CustomerManagement — sortable headers', () => {
     await userEvent.click(screen.getByTestId('customer-sort-email'));
     await waitFor(() => expect(customerListMock).toHaveBeenCalledTimes(3));
     expect(customerListMock).toHaveBeenLastCalledWith({ sortBy: 'email', sortDir: 'asc' });
+  });
+});
+
+describe('CustomerManagement — delete confirmation', () => {
+  const opensConfirmWith = async (archivedProjectCount: number) => {
+    customerListMock.mockResolvedValue(
+      ok({ customers: [{ id: 'c-1', name: 'Ada' } as Customer], total: 1 }),
+    );
+    customerGetMock.mockResolvedValue(
+      ok({ id: 'c-1', name: 'Ada', archivedProjectCount } as Customer & {
+        archivedProjectCount: number;
+      }),
+    );
+
+    render(<CustomerManagement />);
+    await userEvent.click(await screen.findByRole('button', { name: STRINGS.ui.delete }));
+
+    await waitFor(() => expect(useConfirmStore.getState().isOpen).toBe(true));
+    const { message } = useConfirmStore.getState();
+    await act(async () => {
+      useConfirmStore.getState().resolve(false);
+    });
+    return message;
+  };
+
+  it('AC-534: warns about the archived projects and names their count', async () => {
+    const message = await opensConfirmWith(2);
+    expect(message).toBe(STRINGS.customers.deleteWithArchived(2));
+    // The customer is "Ada", so this digit can only be the count.
+    expect(message).toContain('2');
+  });
+
+  it('AC-535: without archived projects, names the customer', async () => {
+    expect(await opensConfirmWith(0)).toBe(STRINGS.ui.deleteConfirm('Ada'));
+  });
+});
+
+describe('AC-533: CustomerManagement — archived-project count fails to load', () => {
+  it('shows the error and opens no confirmation', async () => {
+    customerListMock.mockResolvedValue(
+      ok({ customers: [{ id: 'c-1', name: 'Ada' } as Customer], total: 1 }),
+    );
+    customerGetMock.mockResolvedValue({
+      ok: false,
+      error: { code: 'SERVER_ERROR', message: 'Laden fehlgeschlagen' },
+      category: 'server_error',
+      sessionExpired: false,
+    });
+
+    render(<CustomerManagement />);
+
+    await userEvent.click(await screen.findByRole('button', { name: STRINGS.ui.delete }));
+
+    expect(await screen.findByText('Laden fehlgeschlagen')).toBeInTheDocument();
+    expect(customerGetMock).toHaveBeenCalledTimes(1);
+    expect(useConfirmStore.getState().isOpen).toBe(false);
   });
 });
 

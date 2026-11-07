@@ -268,7 +268,7 @@ export async function getInvoiceRowForMutation(
 
 /**
  * Count issued + cancelled invoice rows for a given project. Drafts are
- * excluded by construction (AC-307 / AC-504): drafts cascade-delete and
+ * excluded by construction (AC-532 / AC-504): drafts cascade-delete and
  * have no legal weight. Returns 0 when the project carries no invoices.
  */
 export async function countIssuedOrCancelledForProject(
@@ -286,7 +286,7 @@ export async function countIssuedOrCancelledForProject(
 
 /**
  * Count issued + cancelled invoice rows across a customer's project
- * graph (active + archived). AC-307: drives the customer-delete reject
+ * graph (active + archived). AC-532: drives the customer-delete reject
  * decision and the `invoiceCount` exposed on the customer GET response.
  */
 export async function countIssuedOrCancelledForCustomer(

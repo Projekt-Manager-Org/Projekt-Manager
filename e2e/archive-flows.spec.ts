@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { STRINGS } from '../src/config/strings';
 
 /**
  * E2E Archive flows
@@ -11,9 +12,9 @@ import { test, expect } from '@playwright/test';
  *     active ones.
  *   - AC-153: archived rows are visually distinguished from active ones
  *     via a muted row class and an "Archiviert" badge.
- *   - AC-154: the customer-delete confirmation dialog names the archived
+ *   - AC-534: the customer-delete confirmation dialog names the archived
  *     project count when `archivedProjectCount > 0` (sourced from
- *     GET /api/customers/:id; purge is atomic per AC-91).
+ *     GET /api/customers/:id; purge is atomic per AC-531).
  *   - AC-478: the create form's number check reports an archived
  *     project's number as taken.
  *
@@ -24,7 +25,7 @@ import { test, expect } from '@playwright/test';
  *   4. Verify the visual distinction (AC-153).
  *   5. The number check counts the archived project (AC-478).
  *   6. Archive the second project, then delete the customer with the
- *      archived-count warning text and confirm cleanup (AC-154).
+ *      archived-count warning text and confirm cleanup (AC-534).
  *
  * Seed data assumptions (inherited from auth.setup.ts):
  *   - Logged in as owner — full permissions on projects and customers.
@@ -179,12 +180,12 @@ test.describe('Archive flows', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-154: customer-delete warning surfaces archivedProjectCount.
+  // AC-534: customer-delete warning surfaces archivedProjectCount.
   // Setup for this test: archive the second project as well, so the
   // customer has 0 active and 2 archived projects — allowed for delete
   // but the dialog must warn.
   // ---------------------------------------------------------------
-  test('AC-154: customer delete warns with archived-project count and purges on confirm', async ({
+  test('AC-534: customer delete warns with archived-project count and purges on confirm', async ({
     page,
   }) => {
     // Archive the second project so the customer has only archived projects.
@@ -203,7 +204,7 @@ test.describe('Archive flows', () => {
     await expect(page.getByRole('row', { name: new RegExp(secondProjectNumber) })).toHaveCount(0);
 
     // Now delete the customer. Both projects are archived, so the delete
-    // must be allowed (AC-91) but the confirm dialog must warn with the
+    // must be allowed (AC-531) but the confirm dialog must warn with the
     // archived count.
     await page.getByTestId('view-toggle-kunden').click();
     await expect(page.getByTestId('customer-table')).toBeVisible();
@@ -216,10 +217,9 @@ test.describe('Archive flows', () => {
 
     const dialog = page.getByTestId('confirm-dialog');
     await expect(dialog).toBeVisible();
-    // AC-154's load-bearing contract is the archived-project count
-    // surfaced to the user; the surrounding German copy belongs to
-    // unit-level STRINGS tests.
-    await expect(dialog).toContainText('2');
+    // The warning, with the count: the customer name has a digit of its own.
+    await expect(dialog).toContainText(STRINGS.customers.deleteWithArchived(2));
+    await expect(dialog).toContainText(/\b2 archivierte/);
 
     await Promise.all([
       page.waitForResponse(
@@ -228,7 +228,7 @@ test.describe('Archive flows', () => {
       page.getByTestId('confirm-ok').click(),
     ]);
 
-    // Customer row gone — atomic purge by AC-91 also removed both archived
+    // Customer row gone — atomic purge by AC-531 also removed both archived
     // projects, so this suite leaves the DB clean.
     await expect(page.getByRole('row', { name: new RegExp(archiveCustomerName) })).toHaveCount(0);
   });
@@ -237,7 +237,7 @@ test.describe('Archive flows', () => {
   // AC-501, AC-505: Per-project `Endgültig löschen` action on archived rows.
   //
   // Uses a dedicated customer + project so this test stands on its own
-  // and does not depend on the AC-154 test's teardown state. The AC-154
+  // and does not depend on the AC-534 test's teardown state. The AC-534
   // test atomically purges its customer, which would leave nothing for
   // a reuse-the-fixture approach to work against.
   //

@@ -636,7 +636,7 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   // -------------------------------------------------------------------
   // (6) CustomerService.deleteCustomer — atomic archived-project purge.
   //
-  // AC-91 says the customer-delete cascade purges every archived project
+  // AC-531 says the customer-delete cascade purges every archived project
   // atomically. AC-270 says a single event fires when at least one of
   // those projects carried a byte-bearing row, and zero events fire
   // otherwise (no archived projects, or archived projects had only
