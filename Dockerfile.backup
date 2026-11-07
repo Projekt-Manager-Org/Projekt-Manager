@@ -40,7 +40,7 @@ FROM ghcr.io/projekt-manager-org/projekt-manager:${APP_IMAGE_TAG} AS appsrc
 # Named so the build can exempt it from the layer cache
 # (`no-cache-filters` in .github/actions/build-scan-smoke), same as
 # Dockerfile's runtime stage — a cached `apk upgrade` upgrades nothing.
-FROM node:24.22.2-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS runtime
+FROM node:24.22.2-alpine@sha256:ec318aabf188af4e5488847eea4b24452650b9917140563e140762526a37f1df AS runtime
 
 # Package roles:
 #   postgresql17         — server binaries (initdb, postgres) used by
