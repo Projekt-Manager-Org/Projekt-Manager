@@ -27,7 +27,8 @@ set -euo pipefail
 version="v1.3.2"
 expected_sha="cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10"
 url="https://github.com/FiloSottile/age/releases/download/${version}/age-${version}-linux-amd64.tar.gz"
-curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/age.tar.gz "$url"
+code=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -w '%{http_code}' -o /tmp/age.tar.gz "$url") \
+  || { echo "::error::age download failed (curl exit $?, HTTP ${code:-000}): $url"; exit 1; }
 actual_sha=$(sha256sum /tmp/age.tar.gz | awk '{print $1}')
 if [ "$actual_sha" != "$expected_sha" ]; then
   echo "::error::age tarball SHA256 mismatch — expected $expected_sha got $actual_sha"

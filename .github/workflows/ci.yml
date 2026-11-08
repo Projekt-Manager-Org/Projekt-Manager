@@ -122,7 +122,8 @@ jobs:
           expected_sha="33e15bcf1624b25cdd2a55813a47a2f95dbe126268203e76aa6a585d1e7b149c"
           asset="ripgrep-${version}-x86_64-unknown-linux-musl"
           url="https://github.com/BurntSushi/ripgrep/releases/download/${version}/${asset}.tar.gz"
-          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/ripgrep.tar.gz "$url"
+          code=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -w '%{http_code}' -o /tmp/ripgrep.tar.gz "$url") \
+            || { echo "::error::ripgrep download failed (curl exit $?, HTTP ${code:-000}): $url"; exit 1; }
           actual_sha=$(sha256sum /tmp/ripgrep.tar.gz | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::ripgrep tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
@@ -418,7 +419,8 @@ jobs:
           expected_sha="8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
           # Tag carries the `v`, the asset name does not.
           url="https://github.com/rhysd/actionlint/releases/download/${version}/actionlint_${version#v}_linux_amd64.tar.gz"
-          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/actionlint.tar.gz "$url"
+          code=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -w '%{http_code}' -o /tmp/actionlint.tar.gz "$url") \
+            || { echo "::error::actionlint download failed (curl exit $?, HTTP ${code:-000}): $url"; exit 1; }
           actual_sha=$(sha256sum /tmp/actionlint.tar.gz | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::actionlint tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
