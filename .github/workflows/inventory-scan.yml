@@ -120,6 +120,7 @@ jobs:
       # Runs even when Trivy is red: the two scanners see different
       # things, and the run should show both verdicts.
       - name: Install Grype
+        id: install-grype
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
@@ -128,7 +129,8 @@ jobs:
           expected_sha="bc3ea3f9e6fd56ac781c08c6c5e614271b79f438200757f6932085c19b0a4657"
           asset="grype_${version#v}_linux_amd64.tar.gz"
           url="https://github.com/anchore/grype/releases/download/${version}/${asset}"
-          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/grype.tar.gz "$url"
+          code=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -w '%{http_code}' -o /tmp/grype.tar.gz "$url") \
+            || { echo "::error::Grype download failed (curl exit $?, HTTP ${code:-000}): $url"; exit 1; }
           actual_sha=$(sha256sum /tmp/grype.tar.gz | awk '{print $1}')
           if [ "$actual_sha" != "$expected_sha" ]; then
             echo "::error::Grype tarball SHA256 mismatch — expected $expected_sha got $actual_sha"
@@ -144,8 +146,10 @@ jobs:
       # JSON report instead. Grype refuses a vulnerability DB older than
       # its max age by default, so a stale DB fails the run instead of
       # scanning against old data.
+      # Not after a failed install: a missing binary is that step's failure,
+      # not a second one here.
       - name: Grype
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.install-grype.outcome == 'success' }}
         env:
           IMAGE: ${{ matrix.image }}
         run: |

@@ -5,7 +5,8 @@ set -euo pipefail
 version="v2.7.0"
 expected_sha="160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b"
 url="https://github.com/google/osv-scanner/releases/download/${version}/osv-scanner_linux_amd64"
-curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -o /tmp/osv-scanner "$url"
+code=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -w '%{http_code}' -o /tmp/osv-scanner "$url") \
+  || { echo "::error::OSV-Scanner download failed (curl exit $?, HTTP ${code:-000}): $url"; exit 1; }
 actual_sha=$(sha256sum /tmp/osv-scanner | awk '{print $1}')
 if [ "$actual_sha" != "$expected_sha" ]; then
   echo "::error::OSV-Scanner binary SHA256 mismatch — expected $expected_sha got $actual_sha"
