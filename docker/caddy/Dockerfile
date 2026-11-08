@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     xcaddy build v2.11.9 \
         --with golang.org/x/net/http2@v0.62.0 \
-        --with github.com/go-jose/go-jose/v4@v4.1.8 \
+        --with github.com/go-jose/go-jose/v4@v4.1.9 \
         --with github.com/klauspost/compress/zstd@v1.20.3 \
         --with github.com/caddy-dns/cloudflare@v0.2.4
 
