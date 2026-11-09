@@ -267,6 +267,21 @@ export async function getInvoiceRowForMutation(
 }
 
 /**
+ * Row-lock every draft on a customer's projects, archived ones included
+ * (data-model.md §5.15). A waiter re-evaluates against the row it waited
+ * for, so a draft issued or deleted meanwhile drops out and a committed
+ * override is seen (§6.4).
+ */
+export async function getCustomerDraftsForMutation(tx: MutatingDatabase, customerId: string) {
+  return tx
+    .select({ invoice: invoices, project: projects })
+    .from(invoices)
+    .innerJoin(projects, eq(invoices.projectId, projects.id))
+    .where(and(eq(projects.customerId, customerId), eq(invoices.status, 'draft')))
+    .for('update', { of: invoices });
+}
+
+/**
  * Count issued + cancelled invoice rows for a given project. Drafts are
  * excluded by construction (AC-532 / AC-504): drafts cascade-delete and
  * have no legal weight. Returns 0 when the project carries no invoices.

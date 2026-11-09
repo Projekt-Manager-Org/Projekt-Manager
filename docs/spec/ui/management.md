@@ -52,7 +52,7 @@ Fields: [data-model.md §5.6](../data-model.md#56-customer-entity). Behavior: [A
 
 ### 8.9.3 Edit Customer
 
-The same fields with the customer's values, reached from a row or the Project Detail Page. Without `customer:write` every field is read-only and no save is offered ([AC-121](../verification.md#1521-role-scoping)). Behavior: [AC-519](../verification.md#1511-customer-management), [AC-520](../verification.md#1511-customer-management), [AC-537](../verification.md#1511-customer-management), [AC-538](../verification.md#1511-customer-management), [AC-521](../verification.md#1511-customer-management).
+The same fields with the customer's values, reached from a row or the Project Detail Page. Without `customer:write` every field is read-only and no save is offered ([AC-121](../verification.md#1521-role-scoping)). Behavior: [AC-519](../verification.md#1511-customer-management), [AC-520](../verification.md#1511-customer-management), [AC-537](../verification.md#1511-customer-management), [AC-538](../verification.md#1511-customer-management), [AC-521](../verification.md#1511-customer-management), [AC-543](../verification.md#1530-invoices), [AC-544](../verification.md#1530-invoices).
 
 ### 8.9.5 Delete Customer
 

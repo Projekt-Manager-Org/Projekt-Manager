@@ -155,8 +155,8 @@ export interface EnvelopeCompanyProfile {
 
 /**
  * Immutable issued invoice snapshot. Every contributing value (issuer,
- * recipient, lines, totals, profile) is copied onto the row at issuance
- * and frozen thereafter (ADR-0026, data-model.md §5.15). Storno rows
+ * recipient, lines, totals, profile) is frozen on the row at issuance
+ * (ADR-0026, data-model.md §5.15). Storno rows
  * carry a non-null `cancellationOf`; the importer inserts non-Storno
  * rows first and Storno rows second to satisfy the self-FK without
  * needing a deferrable constraint. `renderedPdfBinaryDescriptorId`

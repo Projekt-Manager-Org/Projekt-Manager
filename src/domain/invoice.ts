@@ -58,7 +58,7 @@ export interface InvoiceIssuerSnapshot {
   footerText?: string | null;
 }
 
-/** §5.15 recipient snapshot — copied from the project's customer at issuance. */
+/** §5.15 recipient — held on the draft, frozen at issuance. */
 export interface InvoiceRecipientSnapshot {
   name: string;
   address?: { street: string; zip: string; city: string } | null;

@@ -463,6 +463,7 @@ Issuing is one transaction; any failure, an XSD rejection included, rolls back t
 | Concern                                              | Where                                                                                                                                |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Route facade; issue; cancel                          | `src/server/services/InvoiceService.ts`, `src/server/services/InvoiceIssueService.ts`, `src/server/services/InvoiceCancelService.ts` |
+| Customer correction into open drafts                 | `src/server/services/draftRecipientCorrection.ts`                                                                                    |
 | Immutability backstop below the services             | `invoices_enforce_immutability` trigger in `src/server/db/baseline/tail/30-invoices-immutability.sql`                                |
 | Line and totals math — decimal (big.js)              | `src/domain/invoice.ts`, `src/domain/money.ts`                                                                                       |
 | Gapless number per `(year, kind)`                    | `invoice_sequence` in `src/server/db/schema.ts`                                                                                      |
