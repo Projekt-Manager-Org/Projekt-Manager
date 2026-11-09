@@ -504,6 +504,49 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(res.statusCode).toBe(201);
       expect(res.json().recipient.name).toBe('Override Name GmbH');
     });
+
+    it('fields absent from a partial recipient come from the current customer', async () => {
+      const created = await authPost(ownerToken, '/api/customers', {
+        name: 'Alt GmbH',
+        address: { street: 'Altweg 1', zip: '10115', city: 'Berlin' },
+        ustId: 'DE111111111',
+      });
+      expect(created.statusCode).toBe(201);
+      const customer = created.json();
+      const project = await authPost(ownerToken, '/api/projects', {
+        number: `RCPT-${crypto.randomUUID().slice(0, 8)}`,
+        title: 'Empfänger-Korrektur',
+        customerId: customer.id,
+      });
+      expect(project.statusCode).toBe(201);
+
+      const corrected = {
+        name: 'Neu GmbH',
+        address: { street: 'Neuweg 2', zip: '20095', city: 'Hamburg' },
+        ustId: 'DE222222222',
+      };
+      const edit = await authPatch(ownerToken, `/api/customers/${customer.id}`, {
+        expectedVersion: customer.version,
+        ...corrected,
+      });
+      expect(edit.statusCode).toBe(200);
+
+      const untouched = await authPost(ownerToken, '/api/invoices', {
+        projectId: project.json().id,
+        lines: [],
+        recipient: {},
+      });
+      expect(untouched.statusCode).toBe(201);
+      expect(untouched.json().recipient).toEqual(corrected);
+
+      const overridden = await authPost(ownerToken, '/api/invoices', {
+        projectId: project.json().id,
+        lines: [],
+        recipient: { ustId: 'DE333333333' },
+      });
+      expect(overridden.statusCode).toBe(201);
+      expect(overridden.json().recipient).toEqual({ ...corrected, ustId: 'DE333333333' });
+    });
   });
 
   // -------------------------------------------------------------------

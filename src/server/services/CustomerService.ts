@@ -256,6 +256,8 @@ export class CustomerService {
         },
       },
     );
+    // Post-commit: project reads carry the nested customer (architecture.md §11.13).
+    emitProjectChanged();
     log.info({ customerId: id }, 'customer_updated');
     return customer;
   }

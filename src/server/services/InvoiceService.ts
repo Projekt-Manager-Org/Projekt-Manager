@@ -140,7 +140,7 @@ function deriveTotals(lines: InvoiceLine[], mode: TaxMode): InvoiceTotals {
 export interface CreateDraftInput {
   projectId: string;
   lines?: InvoiceLineInput[];
-  recipient?: InvoiceRecipientSnapshot;
+  recipient?: Partial<InvoiceRecipientSnapshot>;
   taxMode?: TaxMode;
   performanceDate?: string | null;
 }

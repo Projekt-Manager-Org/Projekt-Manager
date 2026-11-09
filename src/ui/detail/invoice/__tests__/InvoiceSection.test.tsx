@@ -10,16 +10,18 @@
  *
  * Also: the totals preview survives a typed value that overflows a double,
  * the tax-rate select follows the tax mode (ui/invoices.md §8.16.2), and the
- * recipient's USt-IdNr. is pre-filled and editable (AC-523).
+ * recipient's USt-IdNr. is pre-filled and editable, with unchanged fields
+ * left to the server pre-fill.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import type { ApiResult } from '@/api/client';
 import type { Customer, Project } from '@/domain/types';
 import type { Invoice } from '@/domain/invoice';
+import { STRINGS } from '@/config/strings';
 
 type InvoiceListResult = ApiResult<{ data: Invoice[]; total: number }>;
 const listByProjectMock = vi.fn<(projectId: string) => Promise<InvoiceListResult>>();
@@ -320,14 +322,60 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
 
   const sentRecipient = () => vi.mocked(invoicesApi.createDraft).mock.calls[0]![1].recipient;
 
-  it("AC-523: a new draft shows the customer's USt-IdNr. and carries it", async () => {
+  it("ui/invoices.md §8.16.2: a new draft shows the customer's USt-IdNr.", async () => {
     await openNewDraft();
     expect(ustIdInput()).toHaveValue('DE123456789');
+  });
+
+  it('ui/invoices.md §8.16.2: an unchanged recipient is left to the server pre-fill', async () => {
+    await openNewDraft();
     await fillUsableLine();
     await userEvent.click(screen.getByTestId('invoice-form-save'));
 
     await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
-    expect(sentRecipient()?.ustId).toBe('DE123456789');
+    expect(sentRecipient()).toEqual({});
+  });
+
+  it('ui/invoices.md §8.16.2: a correction landing while the form is open is not overridden by the shown value', async () => {
+    await openNewDraft();
+    act(() => {
+      useProjectStore.setState({
+        projects: [makeProject({ customer: { ...CUSTOMER, ustId: 'DE000000001' } })],
+      });
+    });
+    await fillUsableLine();
+    await userEvent.click(screen.getByTestId('invoice-form-save'));
+
+    await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
+    expect(sentRecipient()).toEqual({});
+  });
+
+  it('ui/invoices.md §8.16.2: a form opened after a customer correction shows the corrected values', async () => {
+    await openNewDraft();
+    await userEvent.click(screen.getByRole('button', { name: STRINGS.ui.cancel }));
+    act(() => {
+      useProjectStore.setState({
+        projects: [makeProject({ customer: { ...CUSTOMER, ustId: 'DE000000001' } })],
+      });
+    });
+
+    await userEvent.click(await screen.findByTestId('invoice-draft-create'));
+
+    expect(await screen.findByTestId('invoice-recipient-ustid-input')).toHaveValue('DE000000001');
+  });
+
+  it('ui/invoices.md §8.16.2: an edited address is sent whole, and only the address', async () => {
+    await openNewDraft();
+    const street = screen.getByRole('textbox', { name: STRINGS.invoices.formRecipientStreet });
+    await userEvent.clear(street);
+    await userEvent.type(street, 'Neue Straße 5');
+    await fillUsableLine();
+    await userEvent.click(screen.getByTestId('invoice-form-save'));
+
+    await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
+    expect(sentRecipient()).toEqual({
+      address: { street: 'Neue Straße 5', zip: '10117', city: 'Berlin' },
+    });
   });
 
   it('ui/invoices.md §8.16.2: an edited USt-IdNr. overrides the customer value on the draft', async () => {
@@ -338,7 +386,7 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     await userEvent.click(screen.getByTestId('invoice-form-save'));
 
     await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
-    expect(sentRecipient()?.ustId).toBe('DE987654321');
+    expect(sentRecipient()).toEqual({ ustId: 'DE987654321' });
   });
 
   it('ui/invoices.md §8.16.2: an emptied USt-IdNr. is sent as no value', async () => {
@@ -348,7 +396,21 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     await userEvent.click(screen.getByTestId('invoice-form-save'));
 
     await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
-    expect(sentRecipient()?.ustId).toBeNull();
+    expect(sentRecipient()).toEqual({ ustId: null });
+  });
+
+  it('ui/invoices.md §8.16.2: a cleared address is sent as no address', async () => {
+    await openNewDraft();
+    for (const label of ['Street', 'Zip', 'City'] as const) {
+      await userEvent.clear(
+        screen.getByRole('textbox', { name: STRINGS.invoices[`formRecipient${label}`] }),
+      );
+    }
+    await fillUsableLine();
+    await userEvent.click(screen.getByTestId('invoice-form-save'));
+
+    await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
+    expect(sentRecipient()).toEqual({ address: null });
   });
 
   it("ui/invoices.md §8.16.2: an existing draft shows its own USt-IdNr., not the customer's", async () => {

@@ -12,8 +12,9 @@
  *
  * Mounted from `InvoiceSection` when the user clicks `+ Neue Rechnung` on
  * a project in `rechnung_faellig`. The form opens with the recipient from
- * `project.customer`, editable, and sends it explicitly: `createDraft` on
- * the first save, `updateDraft` on every later one.
+ * `project.customer`, editable. `createDraft` on the first save sends only
+ * the fields the user changed, so the server fills the rest from the
+ * current customer; `updateDraft` on every later save sends them all.
  *
  * Editing an existing draft: the form mounts with that draft's id and
  * skips the create step.
@@ -150,6 +151,20 @@ function toWireRecipient(r: RecipientDraft): InvoiceRecipientSnapshot {
   };
 }
 
+/** The recipient fields that differ from the pre-fill; the address is one field. */
+function changedRecipientFields(
+  current: RecipientDraft,
+  prefilled: RecipientDraft,
+): Partial<InvoiceRecipientSnapshot> {
+  const now = toWireRecipient(current);
+  const before = toWireRecipient(prefilled);
+  return {
+    ...(now.name !== before.name && { name: now.name }),
+    ...(JSON.stringify(now.address) !== JSON.stringify(before.address) && { address: now.address }),
+    ...(now.ustId !== before.ustId && { ustId: now.ustId }),
+  };
+}
+
 export function InvoiceDraftForm({
   projectId,
   draft,
@@ -163,6 +178,7 @@ export function InvoiceDraftForm({
   const [recipient, setRecipient] = useState<RecipientDraft>(
     draft ? recipientFromInvoice(draft) : fallbackRecipient,
   );
+  const prefilledRecipient = useRef(recipient);
   const [lines, setLines] = useState<LineDraft[]>(draft ? linesFromInvoice(draft) : [emptyLine()]);
   const [taxMode, setTaxMode] = useState<TaxMode>(draft?.taxMode ?? 'standard');
   const [performanceDate, setPerformanceDate] = useState<string>(
@@ -230,7 +246,6 @@ export function InvoiceDraftForm({
     }
 
     const wireLines = toWireLines(lines);
-    const wireRecipient = toWireRecipient(recipient);
     const wirePerformanceDate = performanceDate ? performanceDate : null;
 
     // Client-side aggregate validation: block the submit if no line
@@ -251,13 +266,13 @@ export function InvoiceDraftForm({
     const outcome = saved
       ? await updateDraft(saved.id, projectId, saved.version, {
           lines: wireLines,
-          recipient: wireRecipient,
+          recipient: toWireRecipient(recipient),
           taxMode,
           performanceDate: wirePerformanceDate,
         })
       : await createDraft(projectId, {
           lines: wireLines,
-          recipient: wireRecipient,
+          recipient: changedRecipientFields(recipient, prefilledRecipient.current),
           taxMode,
           performanceDate: wirePerformanceDate,
         });

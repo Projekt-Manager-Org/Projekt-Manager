@@ -22,10 +22,11 @@ import { STORAGE_STATES } from './storage-states';
  *   4. Owner edits a project's planned dates (AC-7).
  *   5. Owner edits an assigned-worker set.
  *   6. Owner creates a new project (AC-475).
+ *   7. Owner edits a customer while the office has its project open.
  *
  * Why no worker actor: workers do not hold `project:transition`,
- * `project:create`, `project:update`, `project:delete`, or
- * `project:dates` per the permission matrix in `src/config/permissions.ts`
+ * `project:create`, `project:update`, `project:delete`, `project:dates`,
+ * or `customer:write` per the permission matrix in `src/config/permissions.ts`
  * (mirrored in api.md §14.3 and pinned by `auth.test.ts` AC-29). None of
  * the AC-276 project-mutation sites are worker-reachable, so a worker
  * session adds no value here. Contrast with storage usage (`storage-usage-multi-user.spec.ts`),
@@ -47,7 +48,7 @@ import { STORAGE_STATES } from './storage-states';
  *
  * Topology:
  *   - One long-lived browser context: office (observer).
- *   - Per-test-arm one-shot owner request context for the six owner
+ *   - Per-test-arm one-shot owner request context for the seven owner
  *     mutations — a request context is the cheapest way to issue an
  *     authenticated mutation from a session distinct from the office
  *     tab. The OFFICE browser session does NOT initiate any mutation;
@@ -501,5 +502,56 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
     // a regression that fires the wrong invalidation (e.g. delete
     // event) would change the count in the wrong direction.
     expect(after.matchCount).toBe(1);
+  });
+
+  // ------------------------------------------------------------------
+  // 7. Owner edits a customer while the office has its project open.
+  //
+  // Project reads nest the customer, so the open page must follow. Uses
+  // its own page, which waits for its SSE connection before the edit;
+  // the phone number is restored for later specs in the same run.
+  // ------------------------------------------------------------------
+  test('AC-277: an open project page reflects an owner customer edit within 2s', async ({
+    browser,
+  }) => {
+    const ownerContext = await browser.newContext({ storageState: STORAGE_STATES.owner });
+    const detailPage = await officeContext.newPage();
+    try {
+      const ownerRequest = ownerContext.request;
+      const project = await resolveProjectIdBySuffix(ownerRequest, '009');
+      const detailResp = await ownerRequest.get(`/api/projects/${project.id}`);
+      expect(detailResp.ok(), `project detail fetch failed: ${detailResp.status()}`).toBe(true);
+      const { customer } = (await detailResp.json()) as {
+        customer: { id: string; phone: string | null; version: number };
+      };
+
+      const sseConnected = detailPage.waitForResponse(
+        (r) => r.url().endsWith('/api/events') && r.ok(),
+      );
+      await detailPage.goto(`/projects/${project.id}`);
+      await sseConnected;
+      await expect(detailPage.getByTestId('project-detail-customer')).toBeVisible();
+
+      const corrected = '+49 30 5550277';
+      const edited = await ownerRequest.patch(`/api/customers/${customer.id}`, {
+        data: { expectedVersion: customer.version, phone: corrected },
+      });
+      expect(edited.ok(), `customer patch failed: ${edited.status()}`).toBe(true);
+      const { version } = (await edited.json()) as { version: number };
+
+      try {
+        await expect(detailPage.getByTestId('project-detail-customer-phone')).toHaveText(
+          corrected,
+          { timeout: SSE_PROPAGATION_TIMEOUT_MS },
+        );
+      } finally {
+        await ownerRequest.patch(`/api/customers/${customer.id}`, {
+          data: { expectedVersion: version, phone: customer.phone },
+        });
+      }
+    } finally {
+      await detailPage.close();
+      await ownerContext.close();
+    }
   });
 });
