@@ -12,6 +12,7 @@ import type { AuthUser } from '../middleware/auth.js';
 import {
   projectScopeForCaller,
   isProjectInScope,
+  isUnscoped,
   OUT_OF_SCOPE,
   type ScopedReadResult,
 } from './scope.js';
@@ -68,6 +69,28 @@ function toCustomer(row: CustomerRow) {
     ustId: row.ustId ?? null,
     notes: row.notes ?? null,
     version: row.version,
+  };
+}
+
+/**
+ * Project read for a caller. A worker reaches an archived project they are
+ * assigned to, but a customer is readable only through an active one (AC-146,
+ * AC-148), so only its name comes along, and its address where that is the
+ * project's site (AC-542, AC-490).
+ */
+function toProjectForCaller(caller: AuthUser, ...args: Parameters<typeof toProject>) {
+  const project = toProject(...args);
+  if (isUnscoped(caller) || !project.deleted || !project.customer) return project;
+  return {
+    ...project,
+    customer: {
+      ...project.customer,
+      phone: null,
+      email: null,
+      address: project.siteAddress === null ? project.customer.address : null,
+      ustId: null,
+      notes: null,
+    },
   };
 }
 
@@ -375,7 +398,7 @@ export async function listProjects(
       rows.map((r) => r.project.id),
     );
     const data = rows.map((r) =>
-      toProject(r.project, r.customer, workerMap.get(r.project.id) ?? []),
+      toProjectForCaller(caller, r.project, r.customer, workerMap.get(r.project.id) ?? []),
     );
 
     return { data, total };
@@ -402,7 +425,7 @@ export async function listProjects(
     rows.map((r) => r.id),
   );
   const data = rows.map((r) =>
-    toProject(r, customerMap.get(r.customerId) ?? null, workerMap.get(r.id) ?? []),
+    toProjectForCaller(caller, r, customerMap.get(r.customerId) ?? null, workerMap.get(r.id) ?? []),
   );
 
   return { data, total };
@@ -448,7 +471,7 @@ export async function getProject(
     fetchWorkersForProject(db, id),
     db.select().from(customers).where(eq(customers.id, row.customerId)).limit(1),
   ]);
-  return toProject(row, customerRows[0] ?? null, workers);
+  return toProjectForCaller(caller, row, customerRows[0] ?? null, workers);
 }
 
 /**

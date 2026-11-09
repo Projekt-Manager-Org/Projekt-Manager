@@ -261,7 +261,7 @@ Routes live in `src/server/routes/`, and `buildApp()` (`src/server/app.ts`) regi
 - **One matrix, two layers.** `src/config/permissions.ts` feeds server gates (`requirePermission`, 403) and UI affordances (`usePermission`). The server is authoritative. UI code asks for a permission, not a role — except owner-only surfaces (company profile, backup badge) ([api.md §14.3](docs/spec/api.md#143-authorization-rules)).
 - **One exception:** `requireRole('owner')` on `PUT /api/company-profile` — the spec mints no `company_profile:*` key for a singleton.
 - **Navigation:** `src/config/routes.ts` declares each view's access rule as data; nav, route guard and landing derive from it.
-- **Data scoping is orthogonal** ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)): permissions grant the capability, `src/server/repositories/scope.ts` narrows the rows. Every route a worker reaches is probed for it, or exempt with a reason, in `src/test/workerScopeGate.ts` (AC-383).
+- **Data scoping is orthogonal** ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)): permissions grant the capability, `src/server/repositories/scope.ts` narrows the rows, and `project-read.ts` narrows a customer's fields on an archived project (AC-542). Every route a worker reaches is probed for it, or exempt with a reason, in `src/test/workerScopeGate.ts` (AC-383).
 - Both matrices are mirrored in the spec and checked against the code (AC-343, AC-349).
 
 ---

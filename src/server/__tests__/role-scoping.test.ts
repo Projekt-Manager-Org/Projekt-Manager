@@ -28,17 +28,19 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import {
   startApp,
   stopApp,
   login,
   authGet,
+  authPost,
   createTestUserSession,
 } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
-import { projects } from '../db/schema.js';
+import { projects, projectWorkers, users } from '../db/schema.js';
 
 const year = new Date().getFullYear();
 
@@ -305,6 +307,101 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
         });
       },
     );
+  });
+
+  // ---------------------------------------------------------------
+  // A worker reaches an archived project they are assigned to, but its
+  // customer is readable only through an active one.
+  // ---------------------------------------------------------------
+  describe("a project's nested customer detail", () => {
+    const CUSTOMER_DETAIL = {
+      phone: '0221-1',
+      email: 'a@b.de',
+      address: { street: 'Hauptstr. 1', zip: '50667', city: 'Köln' },
+      ustId: 'DE123123123',
+      notes: 'Nur intern',
+    };
+    const WITHHELD = { phone: null, email: null, ustId: null, notes: null };
+
+    async function assignedProject(
+      deleted: boolean,
+      siteAddress: { street: string; zip: string; city: string } | null = null,
+    ): Promise<string> {
+      const customer = await authPost(ownerToken, '/api/customers', {
+        name: `Nested Scope ${crypto.randomUUID().slice(0, 8)}`,
+        ...CUSTOMER_DETAIL,
+      });
+      const { db, pool } = createDatabase();
+      try {
+        const [worker] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.username, SEED_USERS.worker1.username));
+        const [project] = await db
+          .insert(projects)
+          .values({
+            number: `NS-${crypto.randomUUID().slice(0, 8)}`,
+            title: 'Nested scope fixture',
+            status: 'anfrage',
+            customerId: customer.json().id,
+            deleted,
+            siteAddress,
+          })
+          .returning({ id: projects.id });
+        await db.insert(projectWorkers).values({ projectId: project!.id, userId: worker!.id });
+        return project!.id;
+      } finally {
+        await pool.end();
+      }
+    }
+
+    it('AC-542: is withheld from a worker on an archived project, except the name', async () => {
+      const id = await assignedProject(true, { street: 'Bauweg 2', zip: '50668', city: 'Köln' });
+
+      const detail = await authGet(worker1Token, `/api/projects/${id}`);
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json().customer).toMatchObject({ ...WITHHELD, address: null });
+      expect(detail.json().customer.name).toMatch(/^Nested Scope/);
+
+      const list = await authGet(worker1Token, '/api/projects?includeArchived=true&limit=200');
+      const row = (list.json().data as { id: string; customer: object }[]).find((p) => p.id === id);
+      expect(row?.customer).toMatchObject({ ...WITHHELD, address: null });
+
+      // The customer-search list takes a separate query path.
+      const number = detail.json().number as string;
+      const searched = await authGet(
+        worker1Token,
+        `/api/projects?includeArchived=true&search=${number}`,
+      );
+      expect(searched.json().data[0].customer).toMatchObject({ ...WITHHELD, address: null });
+    });
+
+    it("AC-542: keeps the customer's address when it is the project's site", async () => {
+      const id = await assignedProject(true);
+
+      const res = await authGet(worker1Token, `/api/projects/${id}`);
+
+      expect(res.json().customer).toMatchObject({
+        ...WITHHELD,
+        address: CUSTOMER_DETAIL.address,
+      });
+    });
+
+    it('AC-542: reaches a worker on an active project', async () => {
+      const id = await assignedProject(false);
+
+      const res = await authGet(worker1Token, `/api/projects/${id}`);
+
+      expect(res.json().customer).toMatchObject(CUSTOMER_DETAIL);
+    });
+
+    it('AC-542: reaches an unscoped caller on an archived project', async () => {
+      const id = await assignedProject(true);
+
+      const res = await authGet(ownerToken, `/api/projects/${id}`);
+
+      expect(res.json().customer).toMatchObject(CUSTOMER_DETAIL);
+    });
   });
 
   // ---------------------------------------------------------------
