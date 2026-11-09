@@ -6,15 +6,6 @@ Section 9 of the [product spec](../index.md) — cross-cutting behavioral rules 
 
 ## 9. Behavioral Rules
 
-### 9.4 Authentication Behavior
-
-- On app load, the client checks for an existing valid session. If valid → load authenticated view. If expired or absent → login screen.
-- After successful login, the client fetches the full project list and renders the default view (Kanban).
-- Logout clears the local session and returns to the login screen.
-- Session expiry while the app is open (detected by an API request returning an authentication error) → redirect to login with message: `"Sitzung abgelaufen. Bitte erneut anmelden."` **[C]**
-- The login screen is the **only** view available to unauthenticated users. No project data is accessible without authentication.
-- After logout, the browser back button must **not** reveal project data.
-
 ### 9.5 Asynchronous Mutation Behavior
 
 Mutations (state transitions, date updates, creates, edits) go through the API (see [API](../api.md)). The UI must handle:
@@ -35,7 +26,7 @@ The application renders in light or dark color scheme based on the user's theme 
 - **Initial resolution** (before first paint): the client reads its local cache; if absent, it falls back to the operating-system `prefers-color-scheme`. This runs before themed content is first painted.
 - **Session hydration**: after the authenticated session is established, the client replaces the local cache with the server value and re-applies the theme.
 - **`'system'` mode**: the client subscribes to operating-system color-scheme changes and updates the UI without a reload.
-- **Updates**: the user selects a theme via the user menu ([index.md §8.7.2](index.md#872-user-menu)). The selection is sent to the server via the self-update operation ([api.md §14.2.1](../api.md#1421-authentication)) and applied optimistically — a failed mutation reverts the local theme per [§9.5](#95-asynchronous-mutation-behavior).
+- **Updates**: the user selects a theme via the user menu ([index.md §8.7.2](index.md#872-user-menu)). The selection is sent to the server via the self-update ([data-model.md §5.3](../data-model.md#53-user-entity)) and applied optimistically — a failed mutation reverts the local theme per [§9.5](#95-asynchronous-mutation-behavior).
 - **Unauthenticated screens**: the login screen and insecure banner follow the client's initial resolution (local cache or operating-system preference); no server value is available yet.
 - **Logout and session expiry**: the local cache is retained across logout so the returning user does not see a theme flash at the login screen. Logging in as a different user replaces the cache on the next session hydration.
 
@@ -52,6 +43,6 @@ While a mutation is in flight, close paths (Escape, explicit cancel, close butto
 The application never auto-requests the browser push permission. The prompt is raised only as the direct result of a user activation on the opt-in affordance ([index.md §8.7.2](index.md#872-user-menu)). Auto-request on page load is forbidden — a denied permission has no in-app remediation (the user must reset it via browser settings), so the request surface must be deliberate.
 
 - **Opt-in flow.** The user activates `Push-Benachrichtigungen aktivieren`. The client requests browser permission, obtains the device's subscription handle, and posts it via subscribe ([api.md §14.2.10](../api.md#14210-push-subscription)). On success, the affordance re-renders as a registered-device indicator with `Gerät abmelden`. If registration fails (network error, server 5xx), the button remains, an error notification appears, and the user can retry.
-- **Mute toggle.** `Stummschalten` reflects `pushMuted`. Applied optimistically via self-update ([api.md §14.2.1](../api.md#1421-authentication)); reverts on failure per [§9.5](#95-asynchronous-mutation-behavior). Mute retains the subscription — unmuting restores delivery without another browser prompt.
+- **Mute toggle.** `Stummschalten` reflects `pushMuted`. Applied optimistically via self-update ([data-model.md §5.3](../data-model.md#53-user-entity)); reverts on failure per [§9.5](#95-asynchronous-mutation-behavior). Mute retains the subscription — unmuting restores delivery without another browser prompt.
 - **Unsubscribe.** `Gerät abmelden` removes the current device's subscription ([api.md §14.2.10](../api.md#14210-push-subscription)). Other registered devices remain subscribed. Optimistic UI hides the affordance on click; on failure (network error, 5xx) it returns with an error notification, the subscription remains registered, and a retry succeeds per [§9.5](#95-asynchronous-mutation-behavior).
 - **Permission denied / unsupported.** If the browser denies permission or web push is unsupported, the affordance is replaced by an informational German cue pointing at browser settings; no retry, no re-prompt on later sessions.

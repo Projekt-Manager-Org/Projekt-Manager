@@ -97,7 +97,7 @@ test.describe('Kanban board flows', () => {
 
   test.describe('Kanban board render', () => {
     test('renders all nine state columns after login', async ({ page }) => {
-      // AC-22: Valid credentials → Kanban view with nine columns
+      // Kanban view with nine columns
       const columns = [
         'kanban-column-anfrage',
         'kanban-column-angebot',

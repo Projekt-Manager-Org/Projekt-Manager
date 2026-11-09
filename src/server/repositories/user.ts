@@ -161,7 +161,7 @@ export async function updateUser(
  * is allowed to change appear here. Identity-bearing fields (`username`,
  * `roles`, `active`) are excluded at the type level so that a mistake
  * in the route layer (e.g. forwarding an attacker-controlled body verbatim)
- * cannot reach the repository. See api.md §14.2.1 design notes.
+ * cannot reach the repository.
  */
 export async function updateSelf(
   db: MutatingDatabase,

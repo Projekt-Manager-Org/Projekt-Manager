@@ -294,10 +294,9 @@ describe('AC-96/AC-97: DB CHECK constraints', () => {
 });
 
 // ---------------------------------------------------------------
-// §15.18 AC-98: Customer audit FK SET NULL on user delete
-// AC-98
+// AC-567: audit references SET NULL on user delete
 // ---------------------------------------------------------------
-describe('AC-98: Customer audit FK cascade', () => {
+describe('AC-567: Audit FK cascade on user delete', () => {
   let token: string;
 
   beforeAll(async () => {
@@ -309,7 +308,7 @@ describe('AC-98: Customer audit FK cascade', () => {
     await stopApp();
   });
 
-  it('AC-98: deleting a user nullifies createdBy/updatedBy on customers', async () => {
+  it('AC-567: deleting a user nullifies createdBy/updatedBy on customers', async () => {
     // Create a temporary user
     const createUserRes = await authPost(token, '/api/users', {
       username: 'audit_fk_test_user',
@@ -343,16 +342,44 @@ describe('AC-98: Customer audit FK cascade', () => {
     // Clean up the test customer
     await authDelete(token, `/api/customers/${customerId}`);
   });
+
+  it('AC-567: deleting a user keeps their projects and clears the references', async () => {
+    const created = await authPost(token, '/api/users', {
+      username: 'audit_fk_project_user',
+      displayName: 'FK Project User',
+      password: 'TestPass123!',
+      roles: ['office'],
+    });
+    expect(created.statusCode).toBe(201);
+    const userId = created.json().id;
+    const userToken = await login('audit_fk_project_user', 'TestPass123!');
+    const customer = await authPost(token, '/api/customers', { name: 'FK Projekt Kunde' });
+    const project = await authPost(userToken, '/api/projects', {
+      number: 'FK-AUDIT-1',
+      title: 'FK Audit Projekt',
+      customerId: customer.json().id,
+    });
+    expect(project.statusCode).toBe(201);
+    const projectId = project.json().id;
+    expect(project.json().createdBy).toBe(userId);
+
+    expect((await authDelete(token, `/api/users/${userId}`)).statusCode).toBe(204);
+
+    const after = await authGet(token, `/api/projects/${projectId}`);
+    expect(after.statusCode).toBe(200);
+    expect(after.json().createdBy).toBeNull();
+    expect(after.json().updatedBy).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------
-// AC-98 parity for audit_log.actor_id:
+// AC-567 parity for audit_log.actor_id:
 // data-model.md §5.10 pins ON DELETE SET NULL on `audit_log.actor_id`
 // (parallel to `createdBy`/`updatedBy`). Hard-deleting a user whose id
 // appears in an audit row must nullify `actor_id` rather than cascade
 // the row — the audit trail survives purged actors.
 // ---------------------------------------------------------------
-describe('AC-98 parity: audit_log.actor_id FK cascade on user delete', () => {
+describe('AC-567 parity: audit_log.actor_id FK cascade on user delete', () => {
   let token: string;
 
   beforeAll(async () => {
@@ -406,7 +433,7 @@ describe('AC-98 parity: audit_log.actor_id FK cascade on user delete', () => {
 
       // The audit row must still exist, but `actor_id` must be NULL —
       // FK ON DELETE SET NULL, not CASCADE. Pins data-model.md §5.10
-      // "Referential integrity" and AC-98 parity.
+      // "Referential integrity" and AC-567 parity.
       const after = await db.execute(
         sql`SELECT id, actor_id FROM audit_log WHERE id = ${auditRowBefore.id}`,
       );

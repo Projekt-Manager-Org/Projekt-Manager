@@ -61,17 +61,26 @@ States, their order and per-state values: [index.md §3](index.md#3-workflow-sta
 
 ### 15.4 Authentication
 
-- **AC-21** `[crit]`: Unauthenticated users see only a login screen. No project data is accessible.
-- **AC-22** `[crit]`: Entering valid credentials and clicking "Anmelden" logs the user in and shows the Kanban view.
-- **AC-23** `[crit]`: Entering invalid credentials shows a generic error message in German.
-- **AC-24** `[vis]`: The user's display name is shown in the header.
-- **AC-25** `[crit]`: Clicking "Abmelden" logs the user out and returns to the login screen.
-- **AC-26** `[crit]`: After logout, pressing the browser back button does not reveal project data.
-- **AC-27** `[crit]`: A session that expires while the app is open redirects to login with an expiry message.
-- **AC-28** `[crit]`: A request with a valid session token for a deactivated user is rejected with an authentication error.
-- **AC-52** `[crit]`: An authenticated user can change their own password. A change attempt with an incorrect current password is rejected.
+What the login screen shows: [ui/index.md §8.1.1](ui/index.md#811-unauthenticated-state). Sessions: [data-model.md §5.4](data-model.md#54-session).
+
+- **AC-21** `[crit]`: While a user is not signed in, the system shows only the login screen and serves no project data.
+- **AC-23** `[crit]`: If a user submits invalid credentials, the system shows a generic error message in German.
+- **AC-24** `[vis]`: While a user is signed in, the header shows their display name.
+- **AC-25** `[crit]`: When a user clicks "Abmelden", the system signs them out and shows the login screen.
+- **AC-26** `[crit]`: If a user presses the browser back button after signing out, the system shows no project data.
+- **AC-27** `[crit]`: If a session expires while the app is open, the system shows the login screen with an expiry message.
+- **AC-28** `[crit]`: If a request carries a valid session token of a deactivated user, the system refuses it as an authentication error.
 - **AC-395** `[vis]`: While a session is valid, reloading the app keeps the user signed in.
 - **AC-396** `[crit]`: If a login attempt fails — unknown username, wrong password, or deactivated account — the system returns the same error.
+- **AC-566** `[crit]`: When a user submits valid credentials, the system signs them in and shows the landing view of their role ([ui/index.md §8.7.1](ui/index.md#871-views)).
+- **AC-547** `[crit]`: When a user submits their correct current password and a new one, the system stores the new password.
+- **AC-548** `[crit]`: If the submitted current password is wrong, the system refuses the change and keeps the password.
+- **AC-549** `[crit]`: When a user changes their own password, the system ends that user's other sessions and keeps the current one.
+- **AC-550** `[crit]`: If a password set on create, change or reset violates the password policy ([data-model.md §5.3](data-model.md#53-user-entity)), the system refuses it as a validation error and stores nothing.
+- **AC-568** `[crit]`: The system applies a self-update only to the caller's own record and only to `themePreference` and `pushMuted`.
+- **AC-569** `[crit]`: If the first-run bootstrap password violates the password policy, the system refuses to start ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)).
+- **AC-551** `[crit]`: When a user signs out, the system ends that session only.
+- **AC-552** `[crit]`: The system delivers the session token only in a cookie that page scripts cannot read and the browser withholds from cross-site requests ([ADR-0005](../adr/0005-session-management-httponly-cookies.md)).
 
 ### 15.5 Multi-User
 
@@ -113,11 +122,7 @@ States, their order and per-state values: [index.md §3](index.md#3-workflow-sta
 ### 15.8 Configurability
 
 - **AC-38** `[vis]`: App name (header) and footer text are driven by a branding config, not hardcoded in components. Changing the config changes all instances.
-- **AC-39** `[crit]`: Authentication parameters (session duration) are driven by configuration.
-
-### 15.9 Infrastructure
-
-- **AC-132** `[crit]`: The server runs a periodic job that deletes expired sessions (sessions past their `expiresAt`, see [data-model.md §5.4](data-model.md#54-session)). An in-flight sweep is drained on graceful shutdown before the database pool closes. Rationale: unbounded growth of expired session rows degrades auth-check performance and is an operational data-integrity concern.
+- **AC-39** `[crit]`: The system takes the session duration from configuration.
 
 ### 15.11 Customer Management
 
@@ -200,18 +205,29 @@ Fields: [data-model.md §5.1](data-model.md#51-project-entity). What the screens
 
 ### 15.13 User Management
 
-- **AC-63** `[crit]`: An owner can create a new user account with username, display name, password, and roles. The created user can log in with the provided credentials.
-- **AC-64** `[crit]`: An owner can update a user's display name, roles, and email. Username is immutable — attempts to change it are rejected.
-- **AC-65** `[crit]`: An owner can deactivate a user. Deactivation invalidates all sessions for that user. The deactivated user cannot log in.
-- **AC-66** `[crit]`: An owner can reactivate a previously deactivated user. The reactivated user can log in again.
-- **AC-67** `[crit]`: An owner can reset another user's password. The new password must meet the password policy. The operation invalidates all sessions for the target user.
-- **AC-68** `[crit]`: A user cannot deactivate themselves. The API rejects self-deactivation with an error.
+Fields and password policy: [data-model.md §5.3](data-model.md#53-user-entity). What the view shows: [ui/management.md §8.10](ui/management.md#810-user-management-view).
+
+- **AC-63** `[crit]`: When an owner creates a user with username, display name, password and roles, the system stores the account and the user can log in with those credentials.
+- **AC-66** `[crit]`: When an owner reactivates a deactivated user, the system marks the account active and the user can log in again.
+- **AC-68** `[crit]`: If a user tries to deactivate their own account, the system refuses it and changes nothing.
 - **AC-69** `[crit]`: Only users with `user:manage` permission (owner role) can create, update, deactivate, reactivate, or reset passwords. Other roles receive an authorization error.
-- **AC-385** `[crit]`: `DELETE /api/users/:id` is rejected with `409` and `code = USER_HAS_INVOICES` when an issued or cancelled `Invoice` row references the user as `createdBy` or `updatedBy` ([data-model.md §6.9](data-model.md#69-soft-deletes)). `details.invoiceCount` carries the count of those rows. The user and invoice rows are unchanged on rejection. A user referenced only by draft invoices is deleted, and the drafts' references are set to null.
 - **AC-394** `[crit]`: The system never sends a password hash to a client, except inside a data export ([AC-135](#1514-data-exchange)).
-- **AC-82** `[vis]`: The user management view is only accessible to users with `user:manage` permission (owner only under the default role set). It displays all users including deactivated ones. `user:read` alone is not sufficient — office holds `user:read` for worker-assignment dropdowns (see [api.md §14.3](api.md#143-authorization-rules)) but is not admitted to the admin view.
-- **AC-83** `[vis]`: Creating a user from the management view produces an account that can log in immediately with the provided credentials.
-- **AC-84** `[vis]`: Deactivating a user from the management view prevents that user from logging in and invalidates their active sessions.
+- **AC-553** `[crit]`: When an owner changes a user's display name, roles or email, the system stores them.
+- **AC-554** `[vis]`: The user panel offers display name, roles and email for editing and shows the username read-only.
+- **AC-555** `[crit]`: When an owner deactivates a user, the system marks the account inactive.
+- **AC-570** `[crit]`: When an owner deactivates a user, the system ends all that user's sessions.
+- **AC-556** `[crit]`: When an owner resets a user's password, the system stores the new password without asking for the current one.
+- **AC-557** `[crit]`: When an owner resets a user's password, the system ends all that user's sessions.
+- **AC-558** `[crit]`: If a user tries to delete their own account, the system refuses it and changes nothing.
+- **AC-559** `[crit]`: When an owner deletes a user, the system removes the account with its sessions and worker assignments.
+- **AC-567** `[crit]`: When an owner deletes a user, the system keeps the records that user created or last edited and clears those references, except on other user accounts ([data-model.md §6.6](data-model.md#66-referential-integrity)).
+- **AC-560** `[crit]`: If an owner deletes a user whom an issued or cancelled invoice names as creator or last editor, the system refuses it with a German message pointing to deactivation and changes nothing.
+- **AC-561** `[crit]`: When an owner deletes a user whom only draft invoices name, the system deletes the user and clears those references on the drafts.
+- **AC-562** `[vis]`: The system admits only users with `user:manage` to the user management view; `user:read` alone is not enough.
+- **AC-563** `[vis]`: The user management view lists all users, including deactivated ones.
+- **AC-571** `[vis]`: The user management view shows deactivated users as visually distinct.
+- **AC-564** `[crit]`: If an owner creates a user with a username already in use, the system refuses it and creates nothing.
+- **AC-565** `[crit]`: If a user create or edit violates a blank, length or role-set constraint of [data-model.md §5.3](data-model.md#53-user-entity), the system refuses it as a validation error and changes nothing.
 
 ### 15.14 Data Exchange
 
@@ -276,7 +292,6 @@ Fields: [data-model.md §5.1](data-model.md#51-project-entity). What the screens
 - **AC-382** `[crit]`: The `Ausstellen` and `Verwerfen` confirmation dialogs on a draft row ([ui/project-detail.md §8.15.11](ui/project-detail.md#81511-invoice)) preview the draft's recipient, lines, `taxMode`, `performanceDate` and totals. If the draft changes after the dialog opened, confirming is rejected with `VERSION_CONFLICT` — a background refresh does not advance the version the dialog sends.
 - **AC-96** `[crit]`: The database rejects a project row with a `status` value outside the valid workflow states (defense-in-depth CHECK constraint).
 - **AC-97** `[crit]`: The database rejects a project row where `plannedEnd < plannedStart` (defense-in-depth CHECK constraint).
-- **AC-98** `[crit]`: Deleting a user nullifies the audit references (`createdBy` / `updatedBy`) on any customer records that user created or last modified.
 - **AC-99** `[crit]`: Project creation (insert + worker assignment) is atomic. If worker assignment fails, the project row is not persisted.
 - **AC-127** `[crit]`: A create request carrying a client-supplied `id` that already identifies a row, but whose body differs from the stored row in any user-supplied field, is rejected with the `IDEMPOTENCY_CONFLICT` error code and the German message `"Diese Anfrage-ID wurde bereits mit abweichenden Daten verwendet."` The stored row is unchanged. Applies to both customer and project creation.
 - **AC-516** `[crit]`: If a request body carries a field the operation does not define, at any depth, the system refuses it with `422 VALIDATION_ERROR` and changes nothing ([api.md §14.4.2](api.md#1442-error-principles)).
@@ -353,7 +368,7 @@ These criteria pin the Layer 2 backup-and-drill cycle ([architecture.md §11.10]
 - **AC-173** `[infra]`: The backup bucket has object-lock retention AND a lifecycle rule, both configured per the canonical values in [ADR-0020 §Retention](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention). Verified by infrastructure review against the runbook; direct automated assertion against the provider is not required. Provider and bucket name live in [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md) and the runbook.
 - **AC-174** `[crit]`: The per-table content checksum is deterministic across runs on identical data. Two backup runs against the same database state produce byte-equal manifest values for every table. Rationale: non-deterministic checksums invalidate Tier 1 and Tier 2 comparison.
 - **AC-175** `[infra]`: The operator's private decryption identity is never persisted to disk on the VPS. The drill-key load path writes the identity only into a tmpfs mount; a reboot removes it. Verified by the runbook procedure and by repository-level review of the drill-key load script. Tool choice and script name live in [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md).
-- **AC-176** `[crit]`: The owner's backup-freshness badge reads `BackupStatus` from the authenticated `GET /api/auth/me` response (`backupStatus` field, owner-only — see [api.md §14.2.1](api.md#1421-authentication)). When the status row is unreachable the field is omitted, which the client maps to the explicit "Status unbekannt" state per AC-171; a silently-empty surface is forbidden. No public `/api/backup/status` endpoint is exposed — the badge has no unauthenticated consumer.
+- **AC-176** `[crit]`: The owner's backup-freshness badge reads `BackupStatus` from the authenticated `GET /api/auth/me` response (`backupStatus` field, owner-only). When the status row is unreachable the field is omitted, which the client maps to the explicit "Status unbekannt" state per AC-171; a silently-empty surface is forbidden. No public `/api/backup/status` endpoint is exposed — the badge has no unauthenticated consumer.
 - **AC-344** `[crit]`: The source manifest and the dump artifact are produced from a single database snapshot. A run that overlaps concurrent committed writes still passes Tier 1 — the manifest recomputed from the restored dump equals the source manifest — and uploads per AC-166. A run that cannot establish the shared snapshot fails and uploads no artifact; falling back to an independently-snapshotted dump is forbidden. Rationale: a Tier 1 mismatch is the corruption signal (AC-165), and a mismatch caused only by concurrent writes makes that signal unreadable while discarding a sound backup. Mechanism in [ADR-0020 §Manifest and dump share one snapshot](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#snapshot).
 - **AC-345** `[crit]`: Every wait a backup or drill run performs is bounded — subprocesses, off-host requests, and database statements alike. External processes it starts carry a wall-clock limit and are terminated on exceeding it. Requests to the off-site object store carry a wall-clock limit and abort on exceeding it. Every database statement it issues carries a lock-wait limit, and the manifest transaction additionally carries an overall statement limit. Exceeding any bound fails the run, and the status row records the reason — not merely the operation that failed. One exemption: the verify database instance, which is long-lived by design and stopped by the run that started it. Rationale: the scheduler runs one tick at a time, so a single unbounded wait suppresses every later run and reports nothing — the backup stops happening with the status surface still green on its last success. The bound on the status write itself is what keeps that reporting possible when the blocked resource is the status table.
 - **AC-346** `[crit]`: A run that feeds a subprocess through stdin survives that subprocess exiting before it has consumed the input — the run fails with the failure recorded on the status row, and the runner process does not terminate. Rationale: the backup runner is a separate entrypoint with no uncaught-exception guard, so an unhandled pipe error ends the process before the status write. The run then reports nothing at all and the freshness badge holds its last success, which is the misleading-state class [ADR-0014](../adr/0014-ac-tier-system-critical-vs-design.md) rules out. Reachable on ordinary failure paths, not exotic ones: `age` on a malformed recipient, `pg_restore` on a corrupt archive.
@@ -392,7 +407,7 @@ Criteria for the DB-stored rule engine and two delivery channels defined in [ADR
 - **AC-199** `[vis]`: The rule-editor form renders `Ziel-Status` only for `project.transition_forward` / `project.transition_backward` (otherwise hidden; payload carries `stateFilter = null`). The `Zugewiesene Mitarbeiter benachrichtigen` toggle is disabled and forced `false` for `backup.failed` / `disk.threshold_reached`.
 - **AC-200** `[vis]`: The global Aktivität view ([ui/management.md §8.13](ui/management.md#813-audit-view)) defaults to the caller's recipient-scoped set (rows they would receive per the resolved rule set). A `"Alles anzeigen"` toggle switches to the full RBAC-scoped feed. Toggle state is local-only; navigation returns to the default. RBAC scoping per [AC-180](#1523-audit-log) remains authoritative under either state. The default empty state is distinct from [AC-185](#1523-audit-log)'s: when (a) rules exist but none admit the caller as recipient, OR (b) the rule table is entirely empty, the label reads `"Keine Benachrichtigungen für Sie. Alles anzeigen für den vollständigen Aktivitätsverlauf."` — `Alles anzeigen` retains `"Keine Aktivität"` for a genuinely empty RBAC-scoped feed.
 - **AC-201** `[vis]`: The app does not auto-request the browser push permission on page load. The prompt is raised only on user activation of `"Push-Benachrichtigungen aktivieren"` ([ui/index.md §8.7.2](ui/index.md#872-user-menu)). Rationale: a denied permission is near-irreversible in-app; every prompt must be a deliberate user action.
-- **AC-202** `[vis]`: The `Stummschalten` toggle reflects `UserAccount.pushMuted` and persists via self-update ([api.md §14.2.1](api.md#1421-authentication)). Survives a reload; a failed mutation reverts the optimistic UI per [ui/behavior.md §9.5](ui/behavior.md#95-asynchronous-mutation-behavior).
+- **AC-202** `[vis]`: The `Stummschalten` toggle reflects `UserAccount.pushMuted` and persists via self-update ([data-model.md §5.3](data-model.md#53-user-entity)). Survives a reload; a failed mutation reverts the optimistic UI per [ui/behavior.md §9.5](ui/behavior.md#95-asynchronous-mutation-behavior).
 - **AC-203** `[crit]`: A rule referencing a user later deactivated or deleted does not crash dispatch — the user is skipped at resolution ([AC-192](#1524-notifications)); the rule row is unchanged by the user state change.
 - **AC-393** `[crit]`: When a notification rule is created, updated or deleted, the system writes no `audit_log` row ([ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)).
 - **AC-204** `[crit]`: A `PATCH /api/auth/me` updating `themePreference` or `pushMuted` writes no `audit_log` row — the self-preference carve-out per [ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md). A `PATCH /api/users/:id` from a caller with `user:manage` changing another user's field produces exactly one `audit_log` row per [AC-177](#1523-audit-log). Rationale: self-preference is per-user UI state with no cross-user consequence; routing through audit dilutes the feed with configuration noise.

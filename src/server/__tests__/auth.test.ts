@@ -7,7 +7,7 @@
  * keep the coupling to `src/server/seed.ts` single-sourced:
  *   - owner (SEED_USERS.owner) — active, owner (admin)
  *   - office (SEED_USERS.office) — active, office
- *   - inactive (SEED_USERS.inactive) — active=false, for AC-65 / AC-28
+ *   - inactive (SEED_USERS.inactive) — active=false, for AC-396 / AC-28
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -77,9 +77,9 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-22: Login with valid credentials returns a session and user profile
+  // AC-566: Login with valid credentials returns a session and user profile
   // ---------------------------------------------------------------
-  describe('AC-22: Login with valid credentials', () => {
+  describe('AC-566: Login with valid credentials', () => {
     it('returns 200 with session cookie and user profile', async () => {
       const res = await getApp().inject({
         method: 'POST',
@@ -94,6 +94,7 @@ describe('Authentication & Session Management', () => {
       const cookieStr = Array.isArray(setCookie) ? setCookie[0] : setCookie;
       expect(cookieStr).toBeDefined();
       expect(cookieStr).toMatch(/session=[^;]+/);
+      // AC-552: unreadable by page scripts, withheld from cross-site requests.
       expect(cookieStr).toContain('HttpOnly');
       expect(cookieStr).toContain('SameSite=Strict');
 
@@ -256,10 +257,10 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-65 / AC-396: Login with an inactive user account returns the same error
+  // AC-396: Login with an inactive user account returns the same error
   // AC-28 [crit]
   // ---------------------------------------------------------------
-  describe('AC-65: Login with inactive user', () => {
+  describe('AC-396: Login with inactive user', () => {
     it('AC-396: returns 401 with INVALID_CREDENTIALS (same as wrong password)', async () => {
       // Seed includes an inactive user for this test — see SEED_USERS.inactive.
       const res = await getApp().inject({
@@ -428,7 +429,7 @@ describe('Authentication & Session Management', () => {
       await deactivateUser(userId);
 
       // 3. Use the same token — auth middleware must reject it
-      //    because session validation checks user.active (data-model.md §5.4)
+      //    because session validation checks user.active (AC-28)
       const res = await authGet(validToken, '/api/auth/me');
 
       expect(res.statusCode).toBe(401);
@@ -465,7 +466,7 @@ describe('Authentication & Session Management', () => {
 
   // ---------------------------------------------------------------
   // Logout: Session invalidation
-  // Covers api.md §14.2.1: "Invalidates the specific session."
+  // AC-551 [crit]
   // AC-25 [crit]
   // ---------------------------------------------------------------
   describe('Logout: Session invalidation', () => {
@@ -497,6 +498,16 @@ describe('Authentication & Session Management', () => {
       // See src/server/services/AuthService.ts:73 — the deleteSession call.
       const body = afterRes.json();
       expect(body.code).toBe('SESSION_EXPIRED');
+    });
+
+    it("AC-551: leaves the user's other session signed in", async () => {
+      const closing = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      const other = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+
+      expect((await authPost(closing, '/api/auth/logout')).statusCode).toBe(200);
+
+      expect((await authGet(closing, '/api/auth/me')).statusCode).toBe(401);
+      expect((await authGet(other, '/api/auth/me')).statusCode).toBe(200);
     });
   });
 
@@ -566,7 +577,7 @@ describe('Authentication & Session Management', () => {
   // AC-116: Self-update with a valid themePreference round-trips
   // AC-116 [crit]
   //
-  // Contract pinned here (api.md §14.2.1 + design notes):
+  // Contract pinned here:
   //   - Endpoint:   PATCH /api/auth/me
   //   - Body:       { themePreference?: 'light' | 'dark' | 'system' }
   //   - Response:   200 { user: <UserProfile> } — same envelope as
@@ -578,13 +589,31 @@ describe('Authentication & Session Management', () => {
   // the read-back, a broken endpoint that returns the input unchanged
   // would pass the first assertion silently.
   // ---------------------------------------------------------------
+  describe('AC-568: Self-update reaches only own preferences', () => {
+    it.each([
+      ['roles', { roles: ['owner'] }],
+      ['username', { username: 'renamed_by_self' }],
+      ['active', { active: false }],
+      ['another user id', { id: '00000000-0000-4000-8000-000000000000', pushMuted: true }],
+    ])('refuses a body naming %s and changes nothing', async (_, body) => {
+      const token = await login(SEED_USERS.worker2.username, SEED_DEFAULT_PASSWORD);
+      const before = (await authGet(token, '/api/auth/me')).json().user;
+
+      const res = await authPatch(token, '/api/auth/me', body);
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect((await authGet(token, '/api/auth/me')).json().user).toEqual(before);
+    });
+  });
+
   describe('AC-116: Self-update with a valid themePreference', () => {
     it("PATCH /api/auth/me with themePreference='dark' updates the user row", async () => {
       // Use worker1 — the owner is deactivated / mutated by other
       // tests in this file (AC-28 deactivates office, AC-29 advances
       // a project via owner). worker1 is left alone by the preceding
       // blocks and has no special permissions required for self-update
-      // (self-scope only, per api.md §14.2.1 design notes).
+      // (self-scope only).
       const token = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
 
       // Sanity-check the starting state — the worker has not set a
@@ -620,8 +649,7 @@ describe('Authentication & Session Management', () => {
   // AC-117: Self-update without a valid session is rejected
   // AC-117 [crit]
   //
-  // api.md §14.2.1 design note: "missing or invalid session →
-  // authentication error". A PATCH with no cookie is exactly the
+  // A missing or invalid session is an authentication error. A PATCH with no cookie is exactly the
   // "missing session" branch. The error code must be UNAUTHENTICATED
   // (not SESSION_EXPIRED) — SESSION_EXPIRED is reserved for requests
   // that presented a cookie which no longer validates. The distinction
@@ -649,9 +677,8 @@ describe('Authentication & Session Management', () => {
   // AC-118: Self-update with an invalid themePreference is rejected
   // AC-118 [crit]
   //
-  // api.md §14.2.1 design note: "request body violating the allowed
-  // value set (e.g., themePreference outside 'light' | 'dark' |
-  // 'system') → validation error". The accepted range is exactly
+  // A body outside the allowed value set (e.g. themePreference other
+  // than 'light' | 'dark' | 'system') is a validation error. The accepted range is exactly
   // those three literals; anything else — here 'ultraviolet' — must
   // be rejected with VALIDATION_ERROR.
   //

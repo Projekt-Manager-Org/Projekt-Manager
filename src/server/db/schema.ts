@@ -361,7 +361,7 @@ export const auditLog = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    // ON DELETE SET NULL mirrors AC-98 for createdBy/updatedBy: hard-deleting
+    // ON DELETE SET NULL mirrors AC-567 for createdBy/updatedBy: hard-deleting
     // a user must not cascade their audit trail away. entity_id deliberately
     // has no FK — a `purge` removes the target row while the audit entry
     // remains (data-model.md §5.10 "Referential integrity").
@@ -451,7 +451,7 @@ export const auditLog = pgTable(
     // actor_id is deliberately NOT required for user-kind rows: when
     // the authoring user is hard-deleted, the FK's ON DELETE SET NULL
     // clause nullifies this column — per data-model.md §5.10
-    // "Referential integrity" (parity with AC-98). Write-time
+    // "Referential integrity" (parity with AC-567). Write-time
     // validation lives in the service layer (`validateContext()` in
     // mutate.ts); the CHECK here pins only the invariants that must
     // hold regardless of cascades.

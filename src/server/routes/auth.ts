@@ -139,7 +139,7 @@ export function authRoutes(db: Database) {
     });
 
     // ---------------------------------------------------------------
-    // PATCH /api/auth/me — self-scope preference update (api.md §14.2.1)
+    // PATCH /api/auth/me — self-scope preference update (data-model.md §5.3)
     //
     // Body is open-ended by design: future iterations may add further
     // user-controlled fields alongside themePreference. The JSON-Schema
@@ -162,7 +162,7 @@ export function authRoutes(db: Database) {
                 // the DB CHECK `users_valid_theme_preference`.
                 enum: ['light', 'dark', 'system'],
               },
-              // data-model.md §5.3 / api.md §14.2.1 — self-settable
+              // data-model.md §5.3 — self-settable
               // boolean. Validation of non-boolean values is Fastify's
               // standard ajv path → 422 VALIDATION_ERROR (AC-195 arm).
               pushMuted: { type: 'boolean' },

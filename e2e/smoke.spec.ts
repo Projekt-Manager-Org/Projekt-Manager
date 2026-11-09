@@ -26,7 +26,7 @@ test('app boots, seeded user can log in and log out', async ({ page }) => {
   await expect(page.getByTestId('kanban-board')).not.toBeVisible();
 
   // ── Step 2: User enters credentials and logs in — Kanban view renders ──
-  // AC-22: Valid credentials → Kanban view
+  // AC-566: Valid credentials → the owner lands on Kanban
   await page.getByTestId('login-username').fill('inhaber');
   await page.getByTestId('login-password').fill('changeme');
   await page.getByTestId('login-submit').click();

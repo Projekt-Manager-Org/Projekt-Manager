@@ -8,7 +8,7 @@
  * - AC-B7 (ordering after migrate / before listen, failure aborts startup):
  *   parts (a) "after migrate()" and (b) "before listen()" are verified by
  *   inspecting src/server/start.ts; part (c) "failure aborts startup" is
- *   verified indirectly by the throw-assertions in AC-B3 and AC-B5 plus
+ *   verified indirectly by the throw-assertions in AC-B3 and AC-569 plus
  *   the top-level start().catch() in start.ts that exits non-zero.
  *
  * - AC-B6 unique-constraint fallback: the AC's parenthetical acknowledges
@@ -308,9 +308,9 @@ describe('AC-B4: opt-in when neither var is set', () => {
 });
 
 // -----------------------------------------------------------------------
-// AC-B5 — Password policy applies
+// AC-569 — Password policy applies
 // -----------------------------------------------------------------------
-describe('AC-B5: password policy applies', () => {
+describe('AC-569: password policy applies', () => {
   it('throws a length-violation error when password is shorter than 8 characters', async () => {
     await expect(
       bootstrapAdminIfEmpty(

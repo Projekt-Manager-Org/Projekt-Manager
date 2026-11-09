@@ -254,7 +254,7 @@ test.describe('Management flows', () => {
 
   // ---------------------------------------------------------------
   // Step 22: Create a user with worker role
-  // AC-63, AC-82, AC-83
+  // AC-63
   // ---------------------------------------------------------------
   test('step 22: navigate to User view and create a worker user', async ({ page }) => {
     // Navigate to the User Management view
@@ -282,7 +282,7 @@ test.describe('Management flows', () => {
 
   // ---------------------------------------------------------------
   // Step 23: Deactivate user — verify can't log in
-  // AC-65, AC-84
+  // AC-555, AC-563, AC-571
   // ---------------------------------------------------------------
   test('step 23: deactivate user and verify login is blocked', async ({ page, browser }) => {
     // Navigate to User Management
@@ -305,7 +305,7 @@ test.describe('Management flows', () => {
 
     // Verify the user is shown as deactivated
     await expect(page.getByText('E2E Testarbeiter')).toBeVisible();
-    // Deactivated users should be visually distinct (e.g., grayed out, badge)
+    await expect(page.locator('tr.deactivated', { hasText: 'E2E Testarbeiter' })).toBeVisible();
 
     // Verify in a separate browser context that the deactivated user can't log in
     const freshContext = await browser.newContext({

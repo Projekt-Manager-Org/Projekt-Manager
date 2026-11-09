@@ -91,7 +91,7 @@ export interface User {
 /**
  * Profile shape returned by the authenticated-user endpoints (login,
  * GET /api/auth/me, PATCH /api/auth/me). A narrower projection than
- * `User`; see api.md §14.2.1 and the AuthUser interface in the server
+ * `User`; see the AuthUser interface in the server
  * middleware.
  */
 export interface AuthUserProfile {

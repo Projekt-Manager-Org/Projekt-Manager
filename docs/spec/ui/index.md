@@ -23,27 +23,7 @@ The application has two top-level layout states depending on authentication.
 
 ### 8.1.1 Unauthenticated State
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│                     App Name / Logo                      │
-│                                                          │
-│                    ┌──────────────┐                      │
-│                    │  Benutzername│                      │
-│                    ├──────────────┤                      │
-│                    │  Passwort    │                      │
-│                    ├──────────────┤                      │
-│                    │  [Anmelden]  │                      │
-│                    └──────────────┘                      │
-│                                                          │
-│                    (error area)                          │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
-
-The server returns a generic error message on failed login — no distinction between "user not found" and "wrong password" to avoid information leakage. The client displays the server-provided message. The generic behavior is enforced server-side, not client-side.
-
-The login screen is the **only** view available to unauthenticated users. No project data is accessible without authentication.
+The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `Anmelden` button and an error area. Behavior: [verification.md §15.4](../verification.md#154-authentication).
 
 ### 8.1.2 Authenticated State
 

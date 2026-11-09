@@ -181,7 +181,7 @@ describe('ROUTES — per-role nav matrix (AC-75)', () => {
 
 describe('ROUTES — landing (ui/index.md §8.1.2)', () => {
   for (const role of Object.keys(LANDINGS) as RoleName[]) {
-    it(`role '${role}' has exactly one landing entry at ${LANDINGS[role]}`, () => {
+    it(`AC-566: role '${role}' has exactly one landing entry at ${LANDINGS[role]}`, () => {
       const c = caller(role);
       expect(() => assertLandingCoherent(c)).not.toThrow();
       expect(landingPathForUser(c)).toBe(LANDINGS[role]);

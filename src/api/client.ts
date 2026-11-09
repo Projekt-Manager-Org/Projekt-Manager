@@ -239,7 +239,7 @@ interface AuthUser {
    * Server-authoritative push-mute flag (data-model.md §5.3). When true,
    * the dispatcher skips every subscription the user owns but the row is
    * retained — unmuting restores delivery without a re-subscribe.
-   * Updated via the self-update API (§14.2.1).
+   * Updated via the self-update API (data-model.md §5.3).
    */
   pushMuted: boolean;
 }
@@ -248,7 +248,7 @@ interface AuthUser {
  * Response envelope for /api/auth/login and /api/auth/me.
  *
  * The server includes `backupStatus` only when the caller holds the
- * `owner` role (api.md §14.2.1, verification.md AC-170). Other roles
+ * `owner` role (verification.md AC-170). Other roles
  * get an envelope without the key — absence drives the UI's "no badge
  * on this surface" branch without requiring a separate role check.
  */

@@ -106,7 +106,7 @@ The system is authenticated and implements a **four-role permission matrix**. Th
 - **Office** carries full read + write permissions on projects and customers, plus read access to user accounts and `data:export` (read-only access to the business-data backup).
 - **Worker** has read-only access scoped to the projects the worker is assigned to (assignment recorded in `project_workers`). Customer reads are scoped to the customers referenced by the non-deleted ones among those projects — a worker can reach a customer's detail from a non-deleted project the worker is assigned to, but the customer list and direct customer lookups exclude customers the worker has no such link to. Workers also have change-own-password.
 - **Bookkeeper** currently has unscoped read access to projects and customers plus change-own-password. This is an MVP placeholder: the kickoff calls for an invoice-oriented view ([kickoff.md](../project/kickoff.md)) tailored to the bookkeeping role, which is not yet implemented. Until that view lands, the bookkeeper is given the broader read surface rather than no view at all. Tightening the scope is deferred until the invoice-oriented view in [kickoff.md](../project/kickoff.md) is specified — not in scope for iteration 7.
-- Self-registration is not available — users are created by an administrator, by seed data, or by the first-run bootstrap (see [§4.5](#45-authentication)).
+- Self-registration is not available — users are created by an administrator, by seed data, or by the first-run bootstrap ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)).
 - The Daten navigation tab ([ui/daten.md §8.11](ui/daten.md#811-daten-view)) is governed by `data:export`; the restore form within it is additionally governed by `data:restore`.
 
 The role set and per-role permission list are configurable **[C]**.
@@ -114,22 +114,6 @@ The role set and per-role permission list are configurable **[C]**.
 ### 4.4 Data Origin
 
 All data is stored in a persistent database, accessed through an API layer. Seed data (see [data-model.md §7](data-model.md#7-seed-data-specification)) is loaded only in non-production environments — the production start-up path deliberately skips seeding to avoid overwriting real data on a first deploy. Re-seeding drops and recreates all seed records.
-
-### 4.5 Authentication
-
-| Attribute                            | Assumed Value                                                                                        |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| Authentication method                | Username + password                                                                                  |
-| Password policy                      | Min 8 characters, max 72 UTF-8 bytes, common-password blocklist **[C]**                              |
-| Session duration                     | 24 hours **[C]**                                                                                     |
-| Maximum concurrent sessions per user | Unlimited                                                                                            |
-| Default admin account                | Environment-driven bootstrap on first run — see [ADR-0010](../adr/0010-first-run-admin-bootstrap.md) |
-| Self-registration                    | Not available                                                                                        |
-| Password-change side effect          | See [data-model.md §5.4](data-model.md#54-session)                                                   |
-
-**Password policy detail.** The minimum length is 8 characters; the maximum is 72 UTF-8 bytes — the system enforces a hard ceiling so long inputs fail loudly rather than silently truncating. A blocklist of common passwords is checked on every password set to reject trivially guessable values. Both checks run through a single validation path so the bootstrap path and the change-password endpoint cannot diverge. See [ADR-0006](../adr/0006-password-policy-nist-blocklist.md).
-
-For development, initial users come from seed data (see [data-model.md §7.2](data-model.md#72-user-dataset)). For production, the first admin account is created by the first-run bootstrap mechanism (see [ADR-0010](../adr/0010-first-run-admin-bootstrap.md)); subsequent users are added administratively.
 
 ---
 

@@ -23,7 +23,17 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { startApp, stopApp, login, authGet, authPost, authPatch } from '../../test/api-helpers.js';
+import { sql } from 'drizzle-orm';
+import {
+  startApp,
+  stopApp,
+  getDb,
+  login,
+  authGet,
+  authPost,
+  authPatch,
+  authDelete,
+} from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 
 describe('User Management Operations', () => {
@@ -134,13 +144,31 @@ describe('User Management Operations', () => {
     });
   });
 
+  describe('AC-550: Password policy on create', () => {
+    it('refuses a too-short password and creates nothing', async () => {
+      const username = 'policy_refused_user';
+      const res = await authPost(ownerToken, '/api/users', {
+        username,
+        displayName: 'Policy Refused',
+        password: 'kurz',
+        roles: ['worker'],
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      const list = await authGet(ownerToken, '/api/users');
+      const usernames = list.json().users.map((u: { username: string }) => u.username);
+      expect(usernames).not.toContain(username);
+    });
+  });
+
   // ---------------------------------------------------------------
   // AC-115: Newly created user defaults themePreference to 'system'
   // AC-115 [crit] (data-model.md §5.7, verification.md §15.21)
   //
   // The admin create-user payload does not expose themePreference —
   // only the user themselves controls their preference via the
-  // self-update operation (api.md §14.2.1). A brand-new account must
+  // self-update operation (data-model.md §5.3). A brand-new account must
   // therefore land on the documented default 'system', both in the
   // create response and in the subsequent GET /api/users/:id fetch
   // (which pins that the default was actually persisted, not just
@@ -178,7 +206,7 @@ describe('User Management Operations', () => {
   // ---------------------------------------------------------------
   // Duplicate username → validation error
   // ---------------------------------------------------------------
-  describe('Duplicate username', () => {
+  describe('AC-564: Duplicate username', () => {
     it('rejects creation with an already-used username', async () => {
       const res = await authPost(ownerToken, '/api/users', {
         username: 'testuser_at28', // Created in AC-63
@@ -188,6 +216,9 @@ describe('User Management Operations', () => {
       });
 
       expect(res.statusCode).toBe(409);
+      const list = await authGet(ownerToken, '/api/users');
+      const names = list.json().users.map((u: { displayName: string }) => u.displayName);
+      expect(names).not.toContain('Duplicate Name');
 
       const body = res.json();
       expect(body.code).toBe('CONFLICT');
@@ -196,10 +227,10 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-64: Update user — displayName, roles; username immutable
-  // AC-64 [crit]
+  // AC-553: Update user — displayName, roles; username immutable
+  // AC-553 [crit]
   // ---------------------------------------------------------------
-  describe('AC-64: Update user', () => {
+  describe('AC-553: Update user', () => {
     it('changes display name and roles', async () => {
       const res = await authPatch(ownerToken, `/api/users/${createdUserId}`, {
         displayName: 'Aktualisierter Name',
@@ -234,9 +265,10 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-65: Deactivate user → active=false, sessions invalidated
+  // AC-555: Deactivate user → active=false, sessions invalidated
   // ---------------------------------------------------------------
-  describe('AC-65: Deactivate user', () => {
+  describe('AC-555: Deactivate user', () => {
+    let deactivateTargetSecondToken: string;
     /** A user created specifically for deactivation testing. */
     let deactivateTargetId: string;
     let deactivateTargetToken: string;
@@ -253,6 +285,7 @@ describe('User Management Operations', () => {
 
       // Log the user in to create a session
       deactivateTargetToken = await login('testuser_deactivate', 'DeactPass123!');
+      deactivateTargetSecondToken = await login('testuser_deactivate', 'DeactPass123!');
     });
 
     it('sets active to false', async () => {
@@ -264,7 +297,10 @@ describe('User Management Operations', () => {
       expect(user.active).toBe(false);
     });
 
-    it('invalidates all sessions — previously valid token is rejected', async () => {
+    it('AC-570: invalidates all sessions — previously valid tokens are rejected', async () => {
+      const second = await authGet(deactivateTargetSecondToken, '/api/auth/me');
+      expect(second.statusCode).toBe(401);
+
       const res = await authGet(deactivateTargetToken, '/api/auth/me');
 
       expect(res.statusCode).toBe(401);
@@ -319,12 +355,13 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-67: Reset password → sessions invalidated
-  // AC-67 [crit]
+  // AC-556: Reset password → AC-557 sessions invalidated
+  // AC-556 [crit]
   // ---------------------------------------------------------------
-  describe('AC-67: Reset password', () => {
+  describe('AC-556: Reset password', () => {
     let resetTargetId: string;
     let resetTargetToken: string;
+    let resetTargetSecondToken: string;
 
     beforeAll(async () => {
       const createRes = await authPost(ownerToken, '/api/users', {
@@ -336,6 +373,7 @@ describe('User Management Operations', () => {
       resetTargetId = createRes.json().id;
 
       resetTargetToken = await login('testuser_reset', 'OldPass123!');
+      resetTargetSecondToken = await login('testuser_reset', 'OldPass123!');
     });
 
     it('resets the password — admin does not need current password', async () => {
@@ -346,7 +384,8 @@ describe('User Management Operations', () => {
       expect(res.statusCode).toBe(200);
     });
 
-    it('invalidates all sessions for the target user', async () => {
+    it('AC-557: invalidates all sessions for the target user', async () => {
+      expect((await authGet(resetTargetSecondToken, '/api/auth/me')).statusCode).toBe(401);
       const res = await authGet(resetTargetToken, '/api/auth/me');
 
       expect(res.statusCode).toBe(401);
@@ -368,13 +407,55 @@ describe('User Management Operations', () => {
       expect(res.statusCode).toBe(401);
     });
 
-    it('rejects a new password that violates password policy', async () => {
+    it('AC-550: rejects a new password that violates password policy', async () => {
       const res = await authPost(ownerToken, `/api/users/${resetTargetId}/reset-password`, {
         newPassword: 'short', // Below minimum length (8 chars)
       });
 
-      expect(res.statusCode).toBeGreaterThanOrEqual(400);
-      expect(res.statusCode).toBeLessThan(500);
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      // Nothing stored: the password set by the earlier test still logs in.
+      await expect(login('testuser_reset', 'NewSecurePass456!')).resolves.toBeTruthy();
+    });
+  });
+
+  describe('Delete user', () => {
+    it('AC-558: refuses deleting the own account and changes nothing', async () => {
+      const res = await authDelete(ownerToken, `/api/users/${ownerId}`);
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect((await authGet(ownerToken, `/api/users/${ownerId}`)).statusCode).toBe(200);
+    });
+
+    it('AC-559: removes the account with its sessions and worker assignments', async () => {
+      const username = 'delete_cascade_user';
+      const password = 'TestPass123!';
+      const created = await authPost(ownerToken, '/api/users', {
+        username,
+        displayName: 'Delete Cascade',
+        password,
+        roles: ['worker'],
+      });
+      expect(created.statusCode).toBe(201);
+      const userId = created.json().id as string;
+      const token = await login(username, password);
+      const project = await getDb().execute(sql`SELECT id FROM projects LIMIT 1`);
+      const projectId = (project.rows[0] as { id: string }).id;
+      await getDb().execute(
+        sql`INSERT INTO project_workers (project_id, user_id) VALUES (${projectId}, ${userId})`,
+      );
+
+      expect((await authDelete(ownerToken, `/api/users/${userId}`)).statusCode).toBe(204);
+
+      expect((await authGet(ownerToken, `/api/users/${userId}`)).statusCode).toBe(404);
+      expect((await authGet(token, '/api/auth/me')).statusCode).toBe(401);
+      const sessions = await getDb().execute(sql`SELECT 1 FROM sessions WHERE user_id = ${userId}`);
+      expect(sessions.rows).toHaveLength(0);
+      const assignments = await getDb().execute(
+        sql`SELECT 1 FROM project_workers WHERE user_id = ${userId}`,
+      );
+      expect(assignments.rows).toHaveLength(0);
     });
   });
 
