@@ -270,7 +270,7 @@ The transaction shape and supporting topology for the invoice domain ([data-mode
 
 1. Atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE … RETURNING next_value` on `invoice_sequence` `(year, 'invoice')` — single statement covers both first-of-year and steady-state; Postgres takes a row-exclusive lock for the duration of the transaction (equivalent to `SELECT FOR UPDATE`).
 2. Format the resulting `Invoice.number` as `RE-YYYY-NNNN`.
-3. Snapshot `issuer` from the live `company_profile` row, `recipient` from the live `customers` row (looked up via `project.customerId`); freeze `lines`, `taxMode`, `profile` from the draft's current values; compute `totals` server-side from `lines` + `taxMode`.
+3. Snapshot `issuer` from the live `company_profile` row; freeze `recipient`, `lines`, `taxMode`, `profile` from the draft's current values; compute `totals` server-side from `lines` + `taxMode`.
 4. Render the PDF/A-3 with embedded `factur-x.xml` (ZUGFeRD EN 16931 Comfort profile) — the render happens inside the transaction so a render failure rolls back the sequence allocation.
 5. Write the rendered bytes through the binary descriptor pipeline ([ARCHITECTURE.md § Attachments Module](../../ARCHITECTURE.md#attachments-module)) using the e2e envelope ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)). The descriptor write is part of the same transaction; the object carries its own Object Lock per `INVOICE_OBJECT_LOCK_DAYS` (Object Lock retention below).
 6. Flip `Invoice.status` to `'issued'`, persist the snapshotted fields, persist `renderedPdfBinaryDescriptorId`.

@@ -37,8 +37,9 @@ import { customerMatches, createIdempotent } from './idempotency.js';
 import type { ServiceLogger } from './Logger.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { isOutOfScope } from '../repositories/scope.js';
-import { mutate, mutateInTx, dispatchAuditRows } from './mutate.js';
+import { mutate, mutateInTx, dispatchAuditRows, type MutateContext } from './mutate.js';
 import type { AuditLogRow } from './audit-publisher.js';
+import { applyCustomerCorrectionToDrafts } from './draftRecipientCorrection.js';
 import { projectAuditLabel } from '../../domain/audit.js';
 import {
   emitInvoiceChanged,
@@ -231,10 +232,14 @@ export class CustomerService {
     log: ServiceLogger,
     correlationId?: string | null,
   ) {
-    const customer = await mutate(
-      this.db,
-      { actorKind: 'user', actorId: userId, correlationId: correlationId ?? null },
-      {
+    const ctx: MutateContext = {
+      actorKind: 'user',
+      actorId: userId,
+      correlationId: correlationId ?? null,
+    };
+    const draftAuditRows: AuditLogRow[] = [];
+    const { value: customer, auditRow } = await this.db.transaction((outerTx) =>
+      mutateInTx(outerTx, ctx, {
         entityType: 'customer',
         action: 'update',
         run: async (tx) => {
@@ -245,6 +250,10 @@ export class CustomerService {
           const updated = await updateCustomerRepo(tx, id, userId, data);
           if (!updated) throw notFound(STRINGS.entities.customer);
 
+          draftAuditRows.push(
+            ...(await applyCustomerCorrectionToDrafts(tx, ctx, userId, id, priorRow, updated)),
+          );
+
           const changed = diffCustomerChange(priorRow, data);
           return {
             entityId: id,
@@ -254,10 +263,12 @@ export class CustomerService {
             after: changed.after,
           };
         },
-      },
+      }),
     );
+    await dispatchAuditRows([auditRow, ...draftAuditRows]);
     // Post-commit: project reads carry the nested customer (architecture.md §11.13).
     emitProjectChanged();
+    if (draftAuditRows.length > 0) emitInvoiceChanged();
     log.info({ customerId: id }, 'customer_updated');
     return customer;
   }
@@ -268,14 +279,10 @@ export class CustomerService {
     log: ServiceLogger,
     correlationId?: string | null,
   ) {
-    // Every check happens INSIDE the transaction — the earlier
-    // implementation ran the "any active projects?" guard on `this.db`,
-    // then opened a separate tx for the DELETE, opening a TOCTOU window:
-    // a concurrent project create under the customer between the two
-    // statements would bypass the guard and crash the DELETE with a raw
-    // 23503. Holding the work in one tx lets a `FOR UPDATE` lock on the
-    // active-project probe serialize against concurrent inserts the same
-    // way the transitions path does for status drift.
+    // Every check runs inside the transaction, behind the customer row
+    // lock: a project create needs a key-share lock on that row for its FK
+    // check, so it either commits before the guard reads or waits for
+    // this delete.
     const collectedAudit: AuditLogRow[] = [];
     // Collected before the FK cascade removes the rows, for the post-commit
     // storage cleanup (AC-540) and the storage-usage emitter (AC-270).
@@ -299,14 +306,11 @@ export class CustomerService {
     // layer's error handler maps each to its HTTP status without
     // further massaging here.
     await this.db.transaction(async (tx) => {
-      // Active-project guard, INSIDE the tx. `FOR UPDATE` is not
-      // strictly required to catch concurrent creates (an insert does
-      // not lock the rows this query scans), so the defense-in-depth
-      // catch around the final DELETE below is what makes the guarantee
-      // complete. Running the check inside the tx still matters: it
-      // makes the "customer has active projects" error path observe the
-      // same snapshot the DELETE will operate on, so the two cannot
-      // disagree.
+      // Customer row before any draft row, the order a correction takes
+      // them in; the opposite order deadlocks against it.
+      const priorRow = await getCustomerRowForMutation(tx, id);
+      if (!priorRow) throw notFound(STRINGS.entities.customer);
+
       const activeProjects = await tx
         .select({ id: projects.id })
         .from(projects)
@@ -376,20 +380,12 @@ export class CustomerService {
         entityType: 'customer',
         action: 'delete',
         run: async (innerTx) => {
-          const priorRow = await getCustomerRow(innerTx, id);
-          if (!priorRow) throw notFound(STRINGS.entities.customer);
-
           try {
-            const deleted = await deleteCustomerRepo(innerTx, id);
-            if (!deleted) throw notFound(STRINGS.entities.customer);
+            await deleteCustomerRepo(innerTx, id);
           } catch (dbErr) {
-            // Defense in depth: a concurrent project create between
-            // the `activeProjects` probe above and this DELETE races
-            // the guard. The insert completes with the customer still
-            // present (no row-level lock on the probe), then the
-            // DELETE hits a 23503 FK violation. Map that back to the
-            // 409 "has projects" contract so callers see a consistent
-            // error shape instead of a 500 leaked from the driver.
+            // A project restored after the `activeProjects` probe takes
+            // no customer lock, so this DELETE can still hit a 23503 FK
+            // violation. Map it to the 409 "has projects" contract.
             if (
               typeof dbErr === 'object' &&
               dbErr !== null &&

@@ -241,8 +241,8 @@ export class InvoiceService {
    * Rejected on an archived project (mirrors AC-499) — 404 NOT_FOUND.
    *
    * TOCTOU safety: the project + customer lookups run INSIDE the
-   * `mutate()` transaction body so they share the same READ COMMITTED
-   * snapshot as the INSERT. A concurrent archive committed between
+   * `mutate()` transaction body, the customer read under a share lock
+   * (AC-545). A concurrent archive committed between
    * route entry and the audit transaction's start is observed by the
    * in-tx lookup and rejected — closing the M2 race window. Mirrors
    * `CustomerService.deleteCustomer`, which moved its
@@ -291,12 +291,10 @@ export class InvoiceService {
         entityType: 'invoice',
         action: 'create',
         run: async (tx) => {
-          // Project + customer lookup INSIDE the tx — shares its
-          // snapshot with the INSERT below (AC-285 / M2). A concurrent
-          // archive committed before this tx started is visible here
-          // and triggers the 404; an archive committed AFTER this tx
-          // started cannot be observed by our snapshot and the INSERT
-          // proceeds against the row as we saw it.
+          // Project lookup INSIDE the tx (AC-285). An archive committed
+          // before this read is visible here and triggers the 404; one
+          // committed after it goes unseen and the INSERT proceeds
+          // against the row as read.
           const projRows = await tx
             .select()
             .from(projects)
@@ -308,11 +306,14 @@ export class InvoiceService {
             throw notFound(STRINGS.entities.project);
           }
 
+          // Shared lock: a draft committed behind a running customer edit
+          // would be invisible to that edit's correction (AC-545).
           const customerRows = await tx
             .select()
             .from(customers)
             .where(eq(customers.id, project.customerId))
-            .limit(1);
+            .limit(1)
+            .for('share');
           const customer = customerRows[0];
 
           const taxMode: TaxMode = input.taxMode ?? profile.defaultTaxMode;

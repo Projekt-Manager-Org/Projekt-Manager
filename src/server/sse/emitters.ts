@@ -50,7 +50,7 @@ export function emitProjectChanged(): void {
 
 /**
  * Broadcast `invoice_changed` (ADR-0026, api.md §14.2.13). Emit AFTER
- * the issuance / cancellation transaction commits — a rollback must
+ * the mutating transaction commits — a rollback must
  * leak no event. Mirrors `emitProjectChanged` (architecture.md §11.13).
  */
 export function emitInvoiceChanged(): void {

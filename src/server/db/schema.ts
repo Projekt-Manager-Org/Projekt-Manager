@@ -829,8 +829,8 @@ export const invoiceSequence = pgTable(
 // Invoices (data-model.md §5.15, ADR-0026)
 //
 // Immutable issued snapshots — every contributing value (issuer,
-// recipient, lines, taxMode, profile) is copied onto the row at
-// issuance and frozen thereafter. A correction is a fresh
+// recipient, lines, taxMode, profile) is frozen on the row at
+// issuance. A correction is a fresh
 // draft → issued cycle; cancellation creates a sibling Stornorechnung
 // row with `cancellationOf` set, NEVER mutates the original beyond
 // the `issued → cancelled` status flip.
