@@ -62,6 +62,14 @@ export const EXPORT_FILTER_SAFETY_CAP = 5000;
  */
 const UTF8_BOM = '\uFEFF';
 
+/**
+ * A character a spreadsheet may evaluate (OWASP CSV injection), at the start
+ * of the text or after anything that ends a cell or row under another import
+ * separator; spaces in between count, as an import may trim them. Quoting
+ * cannot cover those: the row itself starts unquoted.
+ */
+const FORMULA_START = /(^|[,\t\r\n])(?= *[=+\-@\uFF1D\uFF0B\uFF0D\uFF20])/g;
+
 export interface ResolvedExport {
   invoices: Invoice[];
   /** `auswahl` for ids-mode, `<year>` or `alle` for filter-mode. */
@@ -204,7 +212,7 @@ export function buildManifestCsv(invoices: Invoice[]): string {
     [
       csvField(invoice.number ?? ''),
       csvField(formatGermanDate(invoice.issueDate)),
-      csvField(invoice.recipient?.name ?? ''),
+      csvField(neutralizeFormulas(invoice.recipient?.name ?? '')),
       csvField(formatGermanDecimal(invoice.totals.netGrandTotal)),
       csvField(formatGermanDecimal(invoice.totals.taxGrandTotal)),
       csvField(formatGermanDecimal(invoice.totals.grossGrandTotal)),
@@ -220,6 +228,11 @@ function csvField(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
+}
+
+/** A leading `'` makes a spreadsheet read a formula as text. Apply before `csvField`. */
+function neutralizeFormulas(text: string): string {
+  return text.replace(FORMULA_START, "$1'");
 }
 
 /** ISO `YYYY-MM-DD` → German `DD.MM.YYYY`. */
