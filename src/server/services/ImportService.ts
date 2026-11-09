@@ -73,6 +73,11 @@ import {
   taxRatesFor,
 } from '../../domain/invoice.js';
 
+/** An address has all of street, zip and city (data-model.md §5.1, §5.6). */
+function isPartialAddress(a: { street: unknown; zip: unknown; city: unknown }): boolean {
+  return [a.street, a.zip, a.city].some((v) => typeof v !== 'string' || v.trim().length === 0);
+}
+
 /**
  * Within-envelope structural checks — uniqueness of keys that become DB
  * constraints on insert, plus referential integrity between tables. Row-level
@@ -234,21 +239,21 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
   // refuse.
   for (let i = 0; i < envelope.projects.length; i++) {
     const p = envelope.projects[i]!;
-    if (p.siteAddress == null) continue;
-    const { street, zip, city } = p.siteAddress;
-    const partial =
-      typeof street !== 'string' ||
-      street.length === 0 ||
-      typeof zip !== 'string' ||
-      zip.length === 0 ||
-      typeof city !== 'string' ||
-      city.length === 0;
-    if (partial) {
-      issues.push({
-        path: `projects[${i}].siteAddress`,
-        message: `partial siteAddress (street/zip/city must all be non-empty, or the whole field must be null)`,
-      });
-    }
+    if (p.siteAddress == null || !isPartialAddress(p.siteAddress)) continue;
+    issues.push({
+      path: `projects[${i}].siteAddress`,
+      message: `partial siteAddress (street/zip/city must all be non-empty, or the whole field must be null)`,
+    });
+  }
+
+  // AC-521: the same all-or-nothing rule for the billing address.
+  for (let i = 0; i < envelope.customers.length; i++) {
+    const address = envelope.customers[i]!.address;
+    if (address == null || !isPartialAddress(address)) continue;
+    issues.push({
+      path: `customers[${i}].address`,
+      message: `partial address (street/zip/city must all be non-empty, or the whole field must be null)`,
+    });
   }
 
   for (let i = 0; i < envelope.project_workers.length; i++) {

@@ -9,14 +9,15 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { STRINGS } from '@/config/strings';
 import type { Customer, CustomerSummary } from '@/domain/types';
+import { readAddressDraft } from '@/domain/address';
 import { CustomerFields } from './CustomerCreateForm';
 import styles from './Management.module.css';
 
 interface Props {
   // Accept the narrower CustomerSummary so the project detail page can
-  // pass its embedded `project.customer` directly. The form only reads
-  // id/name/phone/email/address/version — exactly what CustomerSummary
-  // carries. A full Customer still satisfies this type (superset).
+  // pass its embedded `project.customer` directly. The summary must carry
+  // every field the form edits: a save sends them all, so a missing one
+  // would be wiped. A full Customer still satisfies this type (superset).
   customer: Customer | CustomerSummary;
   onClose: () => void;
   /** Optional hook fired after a successful save, before close. */
@@ -36,6 +37,9 @@ export function CustomerEditForm({ customer, onClose, onSaved, onConflict }: Pro
   const [street, setStreet] = useState(customer.address?.street ?? '');
   const [zip, setZip] = useState(customer.address?.zip ?? '');
   const [city, setCity] = useState(customer.address?.city ?? '');
+  const [ustId, setUstId] = useState(customer.ustId ?? '');
+  const [notes, setNotes] = useState(customer.notes ?? '');
+  const [addressError, setAddressError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // The version the form opened at — the edit's start version
   // (behavior.md §9.5); replaced only by the refetch after a stale write.
@@ -48,23 +52,29 @@ export function CustomerEditForm({ customer, onClose, onSaved, onConflict }: Pro
     setStreet(fresh.address?.street ?? '');
     setZip(fresh.address?.zip ?? '');
     setCity(fresh.address?.city ?? '');
+    setUstId(fresh.ustId ?? '');
+    setNotes(fresh.notes ?? '');
     setStartVersion(fresh.version);
   };
 
   const handleUpdate = async () => {
     if (submitting || !name.trim()) return;
-    setSubmitting(true);
 
-    const address =
-      street.trim() || zip.trim() || city.trim()
-        ? { street: street.trim(), zip: zip.trim(), city: city.trim() }
-        : null;
+    const addressDraft = readAddressDraft(street, zip, city);
+    if (addressDraft.kind === 'partial') {
+      setAddressError(STRINGS.customers.addressPartial);
+      return;
+    }
+    setAddressError(null);
+    setSubmitting(true);
 
     const outcome = await updateCustomer(customer.id, startVersion, {
       name: name.trim(),
       phone: phone.trim() || null,
       email: email.trim() || null,
-      address,
+      address: addressDraft.value,
+      ustId: ustId.trim() || null,
+      notes: notes.trim() || null,
     });
 
     setSubmitting(false);
@@ -123,6 +133,11 @@ export function CustomerEditForm({ customer, onClose, onSaved, onConflict }: Pro
           setPhone={setPhone}
           email={email}
           setEmail={setEmail}
+          ustId={ustId}
+          setUstId={setUstId}
+          notes={notes}
+          setNotes={setNotes}
+          addressError={addressError}
           disabled={disabled}
         />
 

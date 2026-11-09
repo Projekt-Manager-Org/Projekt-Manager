@@ -703,6 +703,35 @@ describe('Unified Data Exchange', () => {
     });
   });
 
+  describe('AC-521: ImportService partial customer-address validation', () => {
+    it.each([
+      ['an empty component', { street: 'Goethestr. 18', zip: '', city: 'Köln' }],
+      ['a whitespace-only component', { street: 'Goethestr. 18', zip: '  ', city: 'Köln' }],
+    ])('rejects an envelope whose customer address has %s (422)', async (_label, address) => {
+      await wipeBusinessData();
+      try {
+        const envelope = buildFreshEnvelope();
+        envelope.customers[0]!.address = address;
+
+        const err = await expectImportRejection(envelope as unknown as Envelope, {
+          override: false,
+          confirmationPhrase: null,
+        });
+
+        expect(err.statusCode).toBe(422);
+        expect(err.code).toBe('VALIDATION_ERROR');
+        const issues = err.details as ValidationIssue[];
+        expect(issues.find((i) => i.path === 'customers[0].address')).toBeDefined();
+
+        // Validation runs before any write.
+        const out = (await exportEnvelope()) as unknown as ExportEnvelope;
+        expect(out.customers.length).toBe(0);
+      } finally {
+        await reseed();
+      }
+    });
+  });
+
   // ---------------------------------------------------------------
   // AC-485: ImportService refuses partial siteAddress envelopes.
   //

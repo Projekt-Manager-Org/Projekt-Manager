@@ -60,6 +60,7 @@ const { CustomerManagement } = await import('@/ui/management/CustomerManagement'
 const { useAuthStore } = await import('@/state/authStore');
 const { useCustomerStore } = await import('@/state/customerStore');
 const { useConfirmStore } = await import('@/state/confirmStore');
+const { customerApi } = await import('@/api/client');
 
 function emptyList(): CustomerListResult {
   return { ok: true, data: { customers: [], total: 0 } };
@@ -74,6 +75,7 @@ beforeEach(() => {
   customerListMock.mockReset();
   customerListMock.mockResolvedValue(emptyList());
   customerGetMock.mockReset();
+  vi.mocked(customerApi.update).mockReset();
   useAuthStore.setState({
     authUser: {
       id: 'u-1',
@@ -413,6 +415,141 @@ describe('AC-533: CustomerManagement — archived-project count fails to load', 
     expect(await screen.findByText('Laden fehlgeschlagen')).toBeInTheDocument();
     expect(customerGetMock).toHaveBeenCalledTimes(1);
     expect(useConfirmStore.getState().isOpen).toBe(false);
+  });
+});
+
+describe('CustomerManagement — address group and optional fields', () => {
+  const STORED: Customer = {
+    id: 'c-1',
+    name: 'Ada',
+    phone: null,
+    email: null,
+    address: { street: 'Hauptstr. 1', zip: '50667', city: 'Köln' },
+    ustId: 'DE123456789',
+    notes: 'Kontakt über Empfehlung',
+    version: 3,
+    createdAt: '2026-03-30T00:00:00Z',
+    updatedAt: '2026-03-30T00:00:00Z',
+    createdBy: null,
+    updatedBy: null,
+  };
+
+  const openCreate = async () => {
+    render(<CustomerManagement />);
+    await userEvent.click(screen.getByTestId('customer-create-button'));
+    await userEvent.type(screen.getByTestId('customer-name-input'), 'Neu');
+  };
+
+  const openEdit = async () => {
+    customerListMock.mockResolvedValue(ok({ customers: [STORED], total: 1 }));
+    render(<CustomerManagement />);
+    await userEvent.click(await screen.findByText('Ada'));
+  };
+
+  it('AC-521: the create form names a partial address and sends nothing', async () => {
+    await openCreate();
+    await userEvent.type(screen.getByTestId('customer-city-input'), 'Köln');
+    await userEvent.click(screen.getByTestId('customer-submit'));
+
+    expect(await screen.findByText(STRINGS.customers.addressPartial)).toBeInTheDocument();
+    expect(customerCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('AC-521: the edit form names a partial address and sends nothing', async () => {
+    await openEdit();
+    await userEvent.clear(screen.getByTestId('customer-zip-input'));
+    await userEvent.click(screen.getByTestId('customer-save'));
+
+    expect(await screen.findByText(STRINGS.customers.addressPartial)).toBeInTheDocument();
+    expect(customerApi.update).not.toHaveBeenCalled();
+  });
+
+  it('data-model.md §5.6: an address group of only whitespace stays no address', async () => {
+    customerCreateMock.mockResolvedValueOnce(ok({ id: 'srv-1', name: 'Neu' } as Customer));
+    await openCreate();
+    await userEvent.type(screen.getByTestId('customer-street-input'), '   ');
+    await userEvent.click(screen.getByTestId('customer-submit'));
+
+    await waitFor(() => expect(customerCreateMock).toHaveBeenCalledTimes(1));
+    expect(customerCreateMock).toHaveBeenCalledWith(expect.objectContaining({ address: null }));
+  });
+
+  it('AC-522: the create form sends USt-IdNr. and notes', async () => {
+    customerCreateMock.mockResolvedValueOnce(ok({ id: 'srv-1', name: 'Neu' } as Customer));
+    await openCreate();
+    await userEvent.type(screen.getByTestId('customer-ustid-input'), ' DE123456789 ');
+    await userEvent.type(screen.getByTestId('customer-notes-input'), 'Hinterhof');
+    await userEvent.click(screen.getByTestId('customer-submit'));
+
+    await waitFor(() => expect(customerCreateMock).toHaveBeenCalledTimes(1));
+    expect(customerCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ ustId: 'DE123456789', notes: 'Hinterhof' }),
+    );
+  });
+
+  it('AC-522: the edit form shows USt-IdNr. and notes and saves them back unchanged', async () => {
+    vi.mocked(customerApi.update).mockResolvedValue(ok(STORED));
+    await openEdit();
+
+    expect(screen.getByTestId('customer-ustid-input')).toHaveValue('DE123456789');
+    expect(screen.getByTestId('customer-notes-input')).toHaveValue('Kontakt über Empfehlung');
+    await userEvent.click(screen.getByTestId('customer-save'));
+
+    await waitFor(() => expect(customerApi.update).toHaveBeenCalledTimes(1));
+    expect(customerApi.update).toHaveBeenCalledWith(
+      'c-1',
+      3,
+      expect.objectContaining({ ustId: 'DE123456789', notes: 'Kontakt über Empfehlung' }),
+    );
+  });
+
+  it('AC-519: an emptied USt-IdNr. or notes becomes empty', async () => {
+    vi.mocked(customerApi.update).mockResolvedValue(ok(STORED));
+    await openEdit();
+    await userEvent.clear(screen.getByTestId('customer-ustid-input'));
+    await userEvent.clear(screen.getByTestId('customer-notes-input'));
+    await userEvent.click(screen.getByTestId('customer-save'));
+
+    await waitFor(() => expect(customerApi.update).toHaveBeenCalledTimes(1));
+    expect(customerApi.update).toHaveBeenCalledWith(
+      'c-1',
+      3,
+      expect.objectContaining({ ustId: null, notes: null }),
+    );
+  });
+});
+
+describe('CustomerManagement — stale write', () => {
+  it('data-model.md §6.4: resets USt-IdNr. and notes to the refetched customer', async () => {
+    const stored = {
+      id: 'c-1',
+      name: 'Ada',
+      phone: null,
+      email: null,
+      address: null,
+      ustId: 'DE111111111',
+      notes: 'Alt',
+      version: 1,
+    } as Customer;
+    customerListMock.mockResolvedValue(ok({ customers: [stored], total: 1 }));
+    vi.mocked(customerApi.update).mockResolvedValue({
+      ok: false,
+      error: { code: 'VERSION_CONFLICT', message: 'Veraltet' },
+      category: 'server_error',
+      sessionExpired: false,
+    });
+    customerGetMock.mockResolvedValue(
+      ok({ ...stored, ustId: 'DE222222222', notes: 'Neu', version: 2 }),
+    );
+
+    render(<CustomerManagement />);
+    await userEvent.click(await screen.findByText('Ada'));
+    await userEvent.click(screen.getByTestId('customer-save'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('customer-ustid-input')).toHaveValue('DE222222222'),
+    );
+    expect(screen.getByTestId('customer-notes-input')).toHaveValue('Neu');
   });
 });
 

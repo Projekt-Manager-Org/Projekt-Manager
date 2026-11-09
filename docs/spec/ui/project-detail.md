@@ -33,7 +33,7 @@ Reached by URL, from a project list row ([AC-496](../verification.md#1512-projec
 
 ### 8.15.2 Core Fields
 
-- **Customer** — name; phone and email as links. A caller who may edit customers opens the customer's edit form from it ([management.md §8.9.3](management.md#893-edit-customer)); the project's customer itself does not change ([data-model.md §5.1](../data-model.md#51-project-entity)).
+- **Customer** — name; phone and email as links, for a worker on a soft-deleted project the name only ([AC-542](../verification.md#1521-role-scoping)). A caller who may edit customers opens the customer's edit form from it ([management.md §8.9.3](management.md#893-edit-customer)); the project's customer itself does not change ([data-model.md §5.1](../data-model.md#51-project-entity)).
 - **`Baustelle:` line** — the site address, or its fallback ([AC-489](../verification.md#1512-projects), [AC-490](../verification.md#1512-projects), [AC-491](../verification.md#1512-projects)), with one map link ([AC-283](../verification.md#1512-projects)); the same on the panel. Clicking it opens a dialog with the Baustelle group and `Speichern` ([AC-483](../verification.md#1512-projects), [AC-484](../verification.md#1512-projects), [AC-485](../verification.md#1512-projects), [AC-486](../verification.md#1512-projects), [AC-487](../verification.md#1512-projects), [AC-488](../verification.md#1512-projects), [AC-510](../verification.md#1512-projects)).
 - **Planned start, planned end, estimated value, notes** — editable in place ([AC-480](../verification.md#1512-projects), [AC-511](../verification.md#1512-projects), [AC-482](../verification.md#1512-projects)).
 

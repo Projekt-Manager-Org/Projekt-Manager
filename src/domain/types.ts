@@ -14,6 +14,8 @@ export interface CustomerSummary {
   phone: string | null;
   email: string | null;
   address: Address | null;
+  ustId: string | null;
+  notes: string | null;
   /** Concurrency token (data-model.md §6.4). */
   version: number;
 }
@@ -56,6 +58,7 @@ export interface Customer {
   phone: string | null;
   email: string | null;
   address: Address | null;
+  ustId: string | null;
   notes: string | null;
   /** Concurrency token (data-model.md §6.4). */
   version: number;

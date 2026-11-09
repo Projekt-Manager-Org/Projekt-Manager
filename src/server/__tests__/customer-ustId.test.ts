@@ -7,8 +7,8 @@
  *
  *   2. Invoice draft pre-fill (AC-285): `POST /api/invoices` without a
  *      `recipient.ustId` takes it from the project's customer; an explicit
- *      value overrides it. The same outcome through the draft form is a
- *      gap (#784).
+ *      value overrides it. A project response carries the values the
+ *      draft form pre-fills and the customer edit form saves back.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -96,6 +96,30 @@ describe('customer.ustId CRUD + idempotent-replay + invoice pre-fill', () => {
       });
       expect(patchRes.statusCode).toBe(200);
       expect(patchRes.json().ustId).toBeNull();
+    });
+  });
+
+  describe("A project's nested customer", () => {
+    // Data prerequisite: the draft form pre-fills from it, and the edit form
+    // opened from the project page saves it back, so a missing field would
+    // be wiped on save.
+    it('carries ustId and notes', async () => {
+      const customer = await authPost(ownerToken, '/api/customers', {
+        name: `UstId-Nested ${crypto.randomUUID().slice(0, 6)}`,
+        ustId: 'DE123123123',
+        notes: 'Kontakt über Empfehlung',
+      });
+      const project = await authPost(ownerToken, '/api/projects', {
+        number: `UN-${crypto.randomUUID().slice(0, 8)}`,
+        title: 'Nested customer fixture',
+        customerId: customer.json().id,
+      });
+      expect(project.statusCode).toBe(201);
+
+      const res = await authGet(ownerToken, `/api/projects/${project.json().id}`);
+
+      expect(res.json().customer.ustId).toBe('DE123123123');
+      expect(res.json().customer.notes).toBe('Kontakt über Empfehlung');
     });
   });
 

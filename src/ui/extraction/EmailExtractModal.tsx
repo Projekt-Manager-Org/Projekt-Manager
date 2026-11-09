@@ -19,6 +19,7 @@ import { useProjectStore } from '@/state/projectStore';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { STRINGS } from '@/config/strings';
 import type { Address, Customer } from '@/domain/types';
+import { readAddressDraft } from '@/domain/address';
 import { MenuBackdrop } from '../common/MenuBackdrop';
 import { SiteAddressGroup, type SiteAddressGroupHandle } from '../management/SiteAddressGroup';
 import styles from '../management/Management.module.css';
@@ -180,17 +181,19 @@ export function EmailExtractModal({ onClose }: Props) {
         return;
       }
 
-      const address =
-        street.trim() || zip.trim() || city.trim()
-          ? { street: street.trim(), zip: zip.trim(), city: city.trim() }
-          : null;
+      const addressDraft = readAddressDraft(street, zip, city);
+      if (addressDraft.kind === 'partial') {
+        setError(STRINGS.customers.addressPartial);
+        setSaving(false);
+        return;
+      }
 
       const custResult = await createCustomerFromExtraction({
         id: customerCreateIdRef.current,
         name: customerName.trim(),
         phone: phone.trim() || null,
         email: email.trim() || null,
-        address,
+        address: addressDraft.value,
       });
 
       if (!custResult.ok) {

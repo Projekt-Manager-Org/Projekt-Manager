@@ -200,6 +200,7 @@ export const STRINGS = {
     duplicateNameConfirm: (name: string) =>
       `Ein Kunde mit dem Namen "${name}" existiert bereits. Trotzdem erstellen?`,
     nameRequired: 'Kundenname ist erforderlich.',
+    addressPartial: 'Bitte Straße, PLZ und Ort vollständig ausfüllen oder alle drei leer lassen.',
     hasProjects: 'Kunde kann nicht gelöscht werden, da noch aktive Projekte zugeordnet sind.',
     deleteWithArchived: (n: number) =>
       `Achtung: ${n} archivierte Projekt${n === 1 ? '' : 'e'} werden dabei endgültig gelöscht. Fortfahren?`,
@@ -337,7 +338,6 @@ export const STRINGS = {
     displayName: 'Anzeigename',
     roles: 'Rollen',
     actions: 'Aktionen',
-    projectCount: 'Projekte',
     value: 'Wert',
     deactivate: 'Deaktivieren',
     reactivate: 'Reaktivieren',
@@ -576,6 +576,7 @@ export const STRINGS = {
     formRecipientStreet: 'Straße',
     formRecipientZip: 'PLZ',
     formRecipientCity: 'Ort',
+    formRecipientUstId: 'USt-IdNr.',
     formLinesHeading: 'Positionen',
     formLineDescription: 'Beschreibung',
     formLineQuantity: 'Menge',

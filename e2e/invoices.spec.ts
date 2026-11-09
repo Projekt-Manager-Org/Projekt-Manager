@@ -373,3 +373,88 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
     await expect(link).toHaveAttribute('href', /\/rechnungen\/[a-f0-9-]+$/);
   });
 });
+
+// ---------------------------------------------------------------------
+// AC-522, AC-523: a customer's USt-IdNr. entered in the form reaches the
+// invoice, so a reverse-charge invoice issues without leaving the UI.
+// Owns its customer and project; the seed stays as the tests above left it.
+// ---------------------------------------------------------------------
+test.describe('Reverse-charge invoice from the UI', () => {
+  test('AC-522, AC-523: USt-IdNr. entered on the customer issues a reverse-charge invoice', async ({
+    page,
+  }) => {
+    const stamp = Date.now();
+    const customerName = `E2E Reverse Charge ${stamp}`;
+    const ustId = 'DE811907980';
+    const notes = 'Zufahrt über den Hof';
+
+    await page.goto('/projects');
+    await page.getByTestId('view-toggle-kunden').click();
+    await page.getByTestId('customer-create-button').click();
+    await page.getByTestId('customer-name-input').fill(customerName);
+    await page.getByTestId('customer-street-input').fill('Industriestr. 42');
+    await page.getByTestId('customer-zip-input').fill('50667');
+    await page.getByTestId('customer-city-input').fill('Köln');
+    await page.getByTestId('customer-ustid-input').fill(ustId);
+    await page.getByTestId('customer-notes-input').fill(notes);
+    await page.getByTestId('customer-submit').click();
+
+    const row = page.getByRole('row', { name: new RegExp(customerName) });
+    await expect(row).toBeVisible();
+    await page.reload();
+    await page.getByTestId('view-toggle-kunden').click();
+    await page.getByText(customerName).click();
+    await expect(page.getByTestId('customer-ustid-input')).toHaveValue(ustId);
+    await expect(page.getByTestId('customer-notes-input')).toHaveValue(notes);
+    await page.keyboard.press('Escape');
+
+    const list = await page.request.get(
+      `/api/customers?search=${encodeURIComponent(customerName)}`,
+    );
+    const customerId = (await list.json()).customers[0].id as string;
+    const created = await page.request.post('/api/projects', {
+      data: { number: `RC-${stamp % 1_000_000_000}`, title: 'Reverse Charge', customerId },
+    });
+    expect(created.ok()).toBe(true);
+    const projectId = (await created.json()).id as string;
+    for (const expectedStatus of [
+      'anfrage',
+      'angebot',
+      'beauftragt',
+      'geplant',
+      'in_arbeit',
+      'abnahme',
+    ]) {
+      const moved = await page.request.post(`/api/projects/${projectId}/transition/forward`, {
+        data: { expectedStatus },
+      });
+      expect(moved.ok(), `transition from ${expectedStatus}`).toBe(true);
+    }
+
+    await page.goto(`/projects/${projectId}`);
+    await page.getByTestId('invoice-draft-create').click();
+    await expect(page.getByTestId('invoice-recipient-ustid-input')).toHaveValue(ustId);
+    await page.getByTestId('invoice-tax-mode-select').selectOption('reverse_charge');
+    await page.getByTestId('invoice-performance-date-input').fill('2026-04-10');
+    await page.getByTestId('invoice-line-description-input').fill('Fassade');
+    await page.getByTestId('invoice-line-quantity-input').fill('1');
+    await page.getByTestId('invoice-line-unit-input').fill('pauschal');
+    await page.getByTestId('invoice-line-unit-price-input').fill('1500');
+    await page.getByTestId('invoice-line-tax-rate-select').selectOption('0');
+    await page.getByTestId('invoice-form-save').click();
+    await expect(page.getByTestId('invoice-form')).toBeHidden();
+
+    const draftRow = page
+      .getByTestId('invoice-list')
+      .locator('[data-testid^="invoice-row-"]')
+      .first();
+    await draftRow.getByTestId('invoice-issue-button').click();
+    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+    await Promise.all([
+      page.waitForResponse((resp) => resp.url().includes('/issue') && resp.ok()),
+      page.getByTestId('confirm-ok').click(),
+    ]);
+
+    await expect(draftRow.getByTestId('invoice-status-badge')).toContainText(/Ausgestellt/i);
+  });
+});

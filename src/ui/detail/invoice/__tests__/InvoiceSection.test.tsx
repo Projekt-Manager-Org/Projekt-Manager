@@ -9,7 +9,8 @@
  * page and just strips the `editDraft` URL param.
  *
  * Also: the totals preview survives a typed value that overflows a double,
- * and the tax-rate select follows the tax mode (ui/invoices.md §8.16.2).
+ * the tax-rate select follows the tax mode (ui/invoices.md §8.16.2), and the
+ * recipient's USt-IdNr. is pre-filled and editable (AC-523).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -60,6 +61,7 @@ const CUSTOMER: Customer = {
   phone: null,
   email: null,
   address: { street: 'Gartenweg 2', zip: '10117', city: 'Berlin' },
+  ustId: null,
   notes: null,
   createdAt: '2026-03-30T00:00:00Z',
   updatedAt: '2026-03-30T00:00:00Z',
@@ -187,12 +189,13 @@ beforeEach(() => {
 
 interface RenderOptions {
   state?: { returnTo?: unknown };
+  search?: string;
 }
 
 function renderSection(opts: RenderOptions = {}) {
   const entry = {
     pathname: '/projects/proj-abc',
-    search: '?editDraft=draft-1',
+    search: opts.search ?? '?editDraft=draft-1',
     state: opts.state ?? null,
   };
   render(
@@ -292,6 +295,81 @@ describe('InvoiceSection — draft editor totals preview', () => {
     await userEvent.type(unitPrice, '1e200');
 
     expect(screen.getByTestId('invoice-totals-net')).toHaveTextContent('—');
+  });
+});
+
+describe('InvoiceSection — recipient USt-IdNr.', () => {
+  const ustIdInput = () => screen.getByTestId('invoice-recipient-ustid-input');
+
+  async function fillUsableLine() {
+    await userEvent.type(screen.getByTestId('invoice-line-description-input'), 'Anstrich');
+    await userEvent.type(screen.getByTestId('invoice-line-unit-price-input'), '100');
+  }
+
+  async function openNewDraft() {
+    useProjectStore.setState({
+      projects: [makeProject({ customer: { ...CUSTOMER, ustId: 'DE123456789' } })],
+    });
+    listByProjectMock.mockResolvedValue({ ok: true, data: { data: [], total: 0 } });
+    vi.mocked(invoicesApi.createDraft).mockReset();
+    vi.mocked(invoicesApi.createDraft).mockResolvedValue({ ok: true, data: makeDraft() });
+    renderSection({ search: '' });
+    await userEvent.click(await screen.findByTestId('invoice-draft-create'));
+    await screen.findByTestId('invoice-form');
+  }
+
+  const sentRecipient = () => vi.mocked(invoicesApi.createDraft).mock.calls[0]![1].recipient;
+
+  it("AC-523: a new draft shows the customer's USt-IdNr. and carries it", async () => {
+    await openNewDraft();
+    expect(ustIdInput()).toHaveValue('DE123456789');
+    await fillUsableLine();
+    await userEvent.click(screen.getByTestId('invoice-form-save'));
+
+    await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
+    expect(sentRecipient()?.ustId).toBe('DE123456789');
+  });
+
+  it('ui/invoices.md §8.16.2: an edited USt-IdNr. overrides the customer value on the draft', async () => {
+    await openNewDraft();
+    await userEvent.clear(ustIdInput());
+    await userEvent.type(ustIdInput(), ' DE987654321 ');
+    await fillUsableLine();
+    await userEvent.click(screen.getByTestId('invoice-form-save'));
+
+    await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
+    expect(sentRecipient()?.ustId).toBe('DE987654321');
+  });
+
+  it('ui/invoices.md §8.16.2: an emptied USt-IdNr. is sent as no value', async () => {
+    await openNewDraft();
+    await userEvent.clear(ustIdInput());
+    await fillUsableLine();
+    await userEvent.click(screen.getByTestId('invoice-form-save'));
+
+    await waitFor(() => expect(invoicesApi.createDraft).toHaveBeenCalledTimes(1));
+    expect(sentRecipient()?.ustId).toBeNull();
+  });
+
+  it("ui/invoices.md §8.16.2: an existing draft shows its own USt-IdNr., not the customer's", async () => {
+    useProjectStore.setState({
+      projects: [makeProject({ customer: { ...CUSTOMER, ustId: 'DE123456789' } })],
+    });
+    listByProjectMock.mockResolvedValue({
+      ok: true,
+      data: {
+        data: [
+          makeDraft({
+            recipient: { ...makeDraft().recipient, ustId: 'DE555555555' },
+          }),
+        ],
+        total: 1,
+      },
+    });
+    renderSection();
+    await screen.findByTestId('invoice-form');
+
+    expect(ustIdInput()).toHaveValue('DE555555555');
   });
 });
 

@@ -667,13 +667,16 @@
                   },
                   "name": {
                     "type": "string",
-                    "minLength": 1
+                    "pattern": "\\S",
+                    "maxLength": 255
                   },
                   "phone": {
-                    "type": ["string", "null"]
+                    "type": ["string", "null"],
+                    "maxLength": 100
                   },
                   "email": {
-                    "type": ["string", "null"]
+                    "type": ["string", "null"],
+                    "maxLength": 255
                   },
                   "address": {
                     "type": ["object", "null"],
@@ -681,13 +684,16 @@
                     "required": ["street", "zip", "city"],
                     "properties": {
                       "street": {
-                        "type": "string"
+                        "type": "string",
+                        "pattern": "\\S"
                       },
                       "zip": {
-                        "type": "string"
+                        "type": "string",
+                        "pattern": "\\S"
                       },
                       "city": {
-                        "type": "string"
+                        "type": "string",
+                        "pattern": "\\S"
                       }
                     }
                   },
@@ -746,13 +752,16 @@
                   },
                   "name": {
                     "type": "string",
-                    "minLength": 1
+                    "pattern": "\\S",
+                    "maxLength": 255
                   },
                   "phone": {
-                    "type": ["string", "null"]
+                    "type": ["string", "null"],
+                    "maxLength": 100
                   },
                   "email": {
-                    "type": ["string", "null"]
+                    "type": ["string", "null"],
+                    "maxLength": 255
                   },
                   "address": {
                     "type": ["object", "null"],
@@ -760,13 +769,16 @@
                     "required": ["street", "zip", "city"],
                     "properties": {
                       "street": {
-                        "type": "string"
+                        "type": "string",
+                        "pattern": "\\S"
                       },
                       "zip": {
-                        "type": "string"
+                        "type": "string",
+                        "pattern": "\\S"
                       },
                       "city": {
-                        "type": "string"
+                        "type": "string",
+                        "pattern": "\\S"
                       }
                     }
                   },

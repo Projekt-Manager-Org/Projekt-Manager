@@ -5,7 +5,7 @@
  *
  * Routes:
  *   GET    /api/customers           → list customers (with search, pagination)
- *   GET    /api/customers/:id       → get single customer (with project count)
+ *   GET    /api/customers/:id       → get single customer (with archived-project count)
  *   POST   /api/customers           → create customer
  *   PATCH  /api/customers/:id       → update customer (PATCH semantics)
  *
@@ -198,6 +198,72 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
+  // AC-537, AC-538, AC-521: refused input changes nothing
+  // ---------------------------------------------------------------
+  describe('Refused input', () => {
+    const refused: Array<[string, Record<string, unknown>]> = [
+      ['AC-537: a whitespace-only name', { name: '   ' }],
+      ['AC-538: a name over 255 characters', { name: 'n'.repeat(256) }],
+      ['AC-538: a phone over 100 characters', { phone: '1'.repeat(101) }],
+      ['AC-538: an email over 255 characters', { email: 'e'.repeat(256) }],
+      ['AC-521: an address with only a street', { address: { street: 'A', zip: '', city: '' } }],
+      ['AC-521: an address with only a city', { address: { street: '', zip: '', city: 'Köln' } }],
+      ['AC-521: an all-empty address', { address: { street: '', zip: '', city: '' } }],
+      [
+        'AC-521: a whitespace-only address component',
+        { address: { street: 'Hauptstr. 1', zip: '   ', city: 'Köln' } },
+      ],
+    ];
+
+    const expectRefused = (res: { statusCode: number; json: () => Record<string, unknown> }) => {
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect(res.json().message).toBe(STRINGS.errors.invalidInput);
+    };
+
+    it.each(refused)('POST refuses %s and creates nothing', async (_label, fields) => {
+      const totalBefore = (await authGet(ownerToken, '/api/customers')).json().total;
+
+      const res = await authPost(ownerToken, '/api/customers', {
+        name: 'Refused Fixture',
+        ...fields,
+      });
+
+      expectRefused(res);
+      expect((await authGet(ownerToken, '/api/customers')).json().total).toBe(totalBefore);
+    });
+
+    it.each(refused)('PATCH refuses %s and changes nothing', async (_label, fields) => {
+      const created = await authPost(ownerToken, '/api/customers', {
+        name: 'Unchanged Fixture',
+        phone: '0221-1',
+        email: 'a@b.de',
+        address: { street: 'Hauptstr. 1', zip: '50667', city: 'Köln' },
+      });
+      const url = `/api/customers/${created.json().id}`;
+      const before = (await authGet(ownerToken, url)).json();
+
+      const res = await authPatch(ownerToken, url, {
+        ...(await expectedVersion(ownerToken, url)),
+        ...fields,
+      });
+
+      expectRefused(res);
+      expect((await authGet(ownerToken, url)).json()).toEqual(before);
+    });
+
+    it('AC-538: accepts values exactly at each limit', async () => {
+      const res = await authPost(ownerToken, '/api/customers', {
+        name: 'n'.repeat(255),
+        phone: '1'.repeat(100),
+        email: 'e'.repeat(255),
+      });
+
+      expect(res.statusCode).toBe(201);
+    });
+  });
+
+  // ---------------------------------------------------------------
   // List customers; AC-524: search
   // ---------------------------------------------------------------
   describe('List customers', () => {
@@ -253,10 +319,10 @@ describe('Customer CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // Get customer includes project counts
+  // Get customer includes the archived-project count
   // ---------------------------------------------------------------
-  describe('Get single customer with project count', () => {
-    it('returns the full customer object and associated project count', async () => {
+  describe('Get single customer', () => {
+    it('returns the full customer object', async () => {
       const res = await authGet(ownerToken, `/api/customers/${createdCustomerId}`);
 
       expect(res.statusCode).toBe(200);
@@ -264,8 +330,6 @@ describe('Customer CRUD Operations', () => {
       const customer = res.json();
       expect(customer.id).toBe(createdCustomerId);
       expect(customer.name).toBe('Familie Testmann');
-      expect(typeof customer.projectCount).toBe('number');
-      expect(customer.projectCount).toBeGreaterThanOrEqual(0);
     });
 
     it('returns 404 for non-existent customer', async () => {
@@ -278,8 +342,8 @@ describe('Customer CRUD Operations', () => {
     });
 
     // AC-534 [crit] data prerequisite: the warning dialog is fed by
-    // `archivedProjectCount` from this endpoint. Pin both counts on
-    // a customer with a mix of active + archived projects.
+    // `archivedProjectCount` from this endpoint. Active projects must
+    // not count.
     it('returns archivedProjectCount reflecting soft-deleted projects', async () => {
       const createRes = await authPost(ownerToken, '/api/customers', {
         name: 'Counts Fixture',
@@ -304,7 +368,6 @@ describe('Customer CRUD Operations', () => {
       const getRes = await authGet(ownerToken, `/api/customers/${countsCustomerId}`);
       expect(getRes.statusCode).toBe(200);
       const customer = getRes.json();
-      expect(customer.projectCount).toBe(1);
       expect(customer.archivedProjectCount).toBe(1);
     });
   });

@@ -101,6 +101,7 @@ import {
   validateMime,
 } from '../../domain/attachments.js';
 import { RESTORE_CONFIRMATION_PHRASE } from '../../config/dataExchangeConfig.js';
+import { AppError } from '../errors.js';
 import type { Envelope, EnvelopeAttachment } from '../../domain/dataExchange.js';
 
 export interface RunTakeoutImportDeps {
@@ -155,6 +156,24 @@ function storageKey(projectId: string, attachmentId: string, suffix: 'orig' | 't
  * BEFORE the destructive restore rather than mid-Pass-2 after it commits.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const FAILURE_DETAIL_MAX_PATHS = 10;
+
+/**
+ * The job's error detail is all the operator sees: a validation refusal
+ * names the envelope paths to fix.
+ */
+function failureDetail(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  if (err instanceof AppError && Array.isArray(err.details)) {
+    const paths = (err.details as Array<{ path?: unknown }>)
+      .map((issue) => issue.path)
+      .filter((path): path is string => typeof path === 'string')
+      .slice(0, FAILURE_DETAIL_MAX_PATHS);
+    if (paths.length > 0) return `${err.message} (${paths.join(', ')})`;
+  }
+  return err.message;
+}
 
 /** Manifest shapes as produced by takeout-export-builder.ts. */
 interface ManifestFileEntry {
@@ -552,7 +571,7 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
       payload: { filesTotal, filesDone, bytesDone },
     });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = failureDetail(err);
     logger.error(
       { event: 'takeout-import-failed', jobId, error_hint: detail },
       'takeout-import-failed',
