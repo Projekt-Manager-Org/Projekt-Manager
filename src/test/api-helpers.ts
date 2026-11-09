@@ -227,7 +227,7 @@ export async function authDelete(token: string, url: string) {
  * Create an expired session for the given user and return its token.
  *
  * The session must be a real database row whose expiresAt is in the past.
- * This lets AC-27 verify that the auth middleware rejects expired sessions
+ * This lets AC-572 verify that the auth middleware rejects expired sessions
  * with the correct error code — something a fabricated string can never do.
  *
  * Test-only helper — intentionally NOT in production code.

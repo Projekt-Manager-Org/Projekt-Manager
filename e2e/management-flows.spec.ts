@@ -303,7 +303,8 @@ test.describe('Management flows', () => {
       page.getByTestId('confirm-ok').click(),
     ]);
 
-    // Verify the user is shown as deactivated
+    // Verify a fresh fetch still lists the user, shown as deactivated
+    await page.reload();
     await expect(page.getByText('E2E Testarbeiter')).toBeVisible();
     await expect(page.locator('tr.deactivated', { hasText: 'E2E Testarbeiter' })).toBeVisible();
 

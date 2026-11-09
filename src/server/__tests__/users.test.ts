@@ -467,8 +467,8 @@ describe('User Management Operations', () => {
     it('rejects when owner tries to deactivate themselves', async () => {
       const res = await authPost(ownerToken, `/api/users/${ownerId}/deactivate`);
 
-      expect(res.statusCode).toBeGreaterThanOrEqual(400);
-      expect(res.statusCode).toBeLessThan(500);
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
 
       const body = res.json();
       expect(typeof body.message).toBe('string');

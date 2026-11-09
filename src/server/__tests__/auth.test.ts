@@ -346,9 +346,9 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-27: A request with an expired session returns an authentication error
+  // AC-572: A request with an expired session returns an authentication error
   // ---------------------------------------------------------------
-  describe('AC-27: Expired session', () => {
+  describe('AC-572: Expired session', () => {
     it('returns 401 with SESSION_EXPIRED', async () => {
       // 1. Log in to get a real user ID
       const setupToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
@@ -370,9 +370,9 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-21: A request with no session returns an authentication error
+  // AC-574: A request with no session returns an authentication error
   // ---------------------------------------------------------------
-  describe('AC-21: Request with no session', () => {
+  describe('AC-574: Request with no session', () => {
     it('GET /api/auth/me without session cookie returns 401', async () => {
       const res = await getApp().inject({
         method: 'GET',
@@ -573,22 +573,6 @@ describe('Authentication & Session Management', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // AC-116: Self-update with a valid themePreference round-trips
-  // AC-116 [crit]
-  //
-  // Contract pinned here:
-  //   - Endpoint:   PATCH /api/auth/me
-  //   - Body:       { themePreference?: 'light' | 'dark' | 'system' }
-  //   - Response:   200 { user: <UserProfile> } — same envelope as
-  //                 GET /api/auth/me and POST /api/auth/login.
-  //   - PATCH semantics: omitted fields unchanged.
-  //
-  // The second GET /api/auth/me proves the value is actually persisted
-  // on the user row, not just echoed from the request body. Without
-  // the read-back, a broken endpoint that returns the input unchanged
-  // would pass the first assertion silently.
-  // ---------------------------------------------------------------
   describe('AC-568: Self-update reaches only own preferences', () => {
     it.each([
       ['roles', { roles: ['owner'] }],
@@ -607,6 +591,22 @@ describe('Authentication & Session Management', () => {
     });
   });
 
+  // ---------------------------------------------------------------
+  // AC-116: Self-update with a valid themePreference round-trips
+  // AC-116 [crit]
+  //
+  // Contract pinned here:
+  //   - Endpoint:   PATCH /api/auth/me
+  //   - Body:       { themePreference?: 'light' | 'dark' | 'system' }
+  //   - Response:   200 { user: <UserProfile> } — same envelope as
+  //                 GET /api/auth/me and POST /api/auth/login.
+  //   - PATCH semantics: omitted fields unchanged.
+  //
+  // The second GET /api/auth/me proves the value is actually persisted
+  // on the user row, not just echoed from the request body. Without
+  // the read-back, a broken endpoint that returns the input unchanged
+  // would pass the first assertion silently.
+  // ---------------------------------------------------------------
   describe('AC-116: Self-update with a valid themePreference', () => {
     it("PATCH /api/auth/me with themePreference='dark' updates the user row", async () => {
       // Use worker1 — the owner is deactivated / mutated by other

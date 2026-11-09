@@ -362,6 +362,7 @@ describe('AC-567: Audit FK cascade on user delete', () => {
     expect(project.statusCode).toBe(201);
     const projectId = project.json().id;
     expect(project.json().createdBy).toBe(userId);
+    expect(project.json().updatedBy).toBe(userId);
 
     expect((await authDelete(token, `/api/users/${userId}`)).statusCode).toBe(204);
 

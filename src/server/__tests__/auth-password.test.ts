@@ -188,18 +188,14 @@ describe('Password Change Operations', () => {
       const body = res.json();
       expect(body.code).toBeDefined();
       expect(typeof body.message).toBe('string');
-    });
 
-    it('does not change the password on rejection', async () => {
-      // After the failed attempt, original password should still work.
-      // Logs in fresh — no dependency on any prior test state.
-      const res = await getApp().inject({
+      // The original password still works after the refused attempt.
+      const relogin = await getApp().inject({
         method: 'POST',
         url: '/api/auth/login',
         payload: { username: SEED_USERS.owner.username, password: SEED_DEFAULT_PASSWORD },
       });
-
-      expect(res.statusCode).toBe(200);
+      expect(relogin.statusCode).toBe(200);
     });
   });
 

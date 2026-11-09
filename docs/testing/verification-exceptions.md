@@ -30,6 +30,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-18  | retired | —                                                                                                        |
 | AC-19  | retired | —                                                                                                        |
 | AC-20  | retired | —                                                                                                        |
+| AC-21  | retired | —                                                                                                        |
 | AC-22  | retired | —                                                                                                        |
 | AC-30  | infra   | deployment review — reverse-proxy TLS                                                                    |
 | AC-31  | infra   | deploy procedure — `scripts/deploy.sh`                                                                   |

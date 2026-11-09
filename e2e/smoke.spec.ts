@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test';
  */
 test('app boots, seeded user can log in and log out', async ({ page }) => {
   // ── Step 1: App loads — login screen is displayed ──
-  // AC-21: Unauthenticated users see only a login screen.
+  // AC-573: Unauthenticated users see only a login screen.
   await page.goto('/');
   const loginForm = page.getByTestId('login-form');
   await expect(loginForm).toBeVisible();

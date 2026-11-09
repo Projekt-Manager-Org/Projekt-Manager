@@ -74,7 +74,7 @@ Fields: username, display name, password with confirmation, roles (multi-select 
 
 ### 8.10.3 User Panel
 
-Shows the username, display name, roles, email and status ([AC-554](../verification.md#1513-user-management)). Actions:
+Shows the username (read-only), display name, roles, email and status. Editable fields: [AC-554](../verification.md#1513-user-management). Actions:
 
 - **Passwort zurücksetzen** — new password with confirmation; no submission until both match.
 - **Deaktivieren / Reaktivieren** — confirmation dialog.
