@@ -11,10 +11,13 @@ import {
   type CustomerSortKey,
 } from '../services/CustomerService.js';
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
+import { getEnv } from '../config/env.js';
 
 export function customerRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
-    const customerService = new CustomerService(db);
+    // Hides the objects of archived projects a delete purges (AC-540).
+    const customerService = new CustomerService(db, createStorageClientFromEnv(getEnv()));
 
     requireSession(app, db);
 

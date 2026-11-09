@@ -154,6 +154,31 @@ describe('Attachment purge cascade', () => {
   });
 
   // -------------------------------------------------------------------
+  // A customer delete purges its archived projects through the same
+  // cascade (AC-540).
+  // -------------------------------------------------------------------
+  it("AC-540: a customer delete removes its archived projects' attachments and hides their objects", async () => {
+    const created = await authPost(ownerToken, '/api/customers', {
+      name: `Delete-cascade fixture ${crypto.randomUUID().slice(0, 8)}`,
+    });
+    expect(created.statusCode).toBe(201);
+    const ownCustomerId = created.json().id as string;
+    const projectId = await createProject(ownerToken, ownCustomerId);
+    const photo = await seedReadyAttachment(projectId, storage, true);
+    const binary = await seedReadyAttachment(projectId, storage, false);
+    await archiveProject(ownerToken, projectId);
+
+    const del = await authDelete(ownerToken, `/api/customers/${ownCustomerId}`);
+    expect(del.statusCode).toBe(204);
+
+    expect(await attachmentRowExists(photo.id)).toBe(false);
+    expect(await attachmentRowExists(binary.id)).toBe(false);
+    expect(await objectAbsent(storage, photo.originalKey)).toBe(true);
+    expect(await objectAbsent(storage, photo.thumbKey!)).toBe(true);
+    expect(await objectAbsent(storage, binary.originalKey)).toBe(true);
+  });
+
+  // -------------------------------------------------------------------
   // Hard-delete (purge) cascades the attachments table + storage.
   // -------------------------------------------------------------------
   it('purge removes every attachment row AND deletes every backing object', async () => {

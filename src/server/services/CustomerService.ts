@@ -7,7 +7,7 @@
  */
 
 import type { Database } from '../db/connection.js';
-import { eq, and, inArray, or } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import {
   listCustomers as listCustomersRepo,
   getCustomer as getCustomerRepo,
@@ -26,8 +26,10 @@ import {
 // (architecture.md §11.2 — routes delegate through services).
 export { CUSTOMER_SORT_KEYS };
 export type { CustomerSortKey };
-import { attachments, projects } from '../db/schema.js';
+import { projects } from '../db/schema.js';
 import { hardDeleteProjectUnchecked } from '../repositories/project.js';
+import { listKeysForProject } from '../repositories/attachment.js';
+import type { AttachmentStorageClient } from '../storage/client.js';
 import { DB_CONSTRAINTS } from '../db/constraints.js';
 import { STRINGS } from '../../config/strings.js';
 import { notFound, notPermitted, conflict, versionConflict } from '../errors.js';
@@ -45,6 +47,7 @@ import {
 } from '../sse/emitters.js';
 import { countIssuedOrCancelledForCustomer } from '../repositories/invoice-read.js';
 import { customerHasInvoices } from '../errors.js';
+import { bestEffortHideStorageKeys } from './AttachmentService.js';
 
 /**
  * Fields captured in the audit payload for customer writes. Kept as a
@@ -72,7 +75,10 @@ function customerDiffFields(row: {
 }
 
 export class CustomerService {
-  constructor(private db: Database) {}
+  constructor(
+    private db: Database,
+    private storage: AttachmentStorageClient,
+  ) {}
 
   async listCustomers(
     caller: AuthUser,
@@ -269,10 +275,9 @@ export class CustomerService {
     // active-project probe serialize against concurrent inserts the same
     // way the transitions path does for status drift.
     const collectedAudit: AuditLogRow[] = [];
-    // Tracked across the tx boundary so the post-commit emitter can
-    // gate on whether the cascade actually moved counters (AC-270 —
-    // pending and zero-attachment cases must not emit).
-    let movedBytes = false;
+    // Collected before the FK cascade removes the rows, for the post-commit
+    // storage cleanup (AC-540) and the storage-usage emitter (AC-270).
+    const collectedKeys: Awaited<ReturnType<typeof listKeysForProject>> = [];
     // Tracked across the tx boundary so the post-commit emitter only
     // fires `project_changed` when the cascade actually purged at least
     // one archived project (AC-276 — no event for a customer-delete
@@ -332,30 +337,8 @@ export class CustomerService {
         .from(projects)
         .where(and(eq(projects.customerId, id), eq(projects.deleted, true)));
 
-      // Probe whether any of the archived projects carry byte-bearing
-      // attachments. Drives `storage_usage_changed` emission post-commit
-      // (AC-270). Run before the cascade fires so the rows are still
-      // present to count; pending rows are excluded — they contribute
-      // zero on every counter, so a customer-delete whose archived
-      // projects had only pending (or no) attachments must not emit.
-      if (archived.length > 0) {
-        const probe = await tx
-          .select({ id: attachments.id })
-          .from(attachments)
-          .where(
-            and(
-              inArray(
-                attachments.projectId,
-                archived.map((row) => row.id),
-              ),
-              or(eq(attachments.status, 'ready'), eq(attachments.status, 'hidden')),
-            ),
-          )
-          .limit(1);
-        movedBytes = probe.length > 0;
-      }
-
       for (const row of archived) {
+        collectedKeys.push(...(await listKeysForProject(tx, row.id)));
         const { auditRow } = await mutateInTx(tx, ctx, {
           entityType: 'project',
           action: 'purge',
@@ -452,9 +435,13 @@ export class CustomerService {
     // observers' Footer badge / DatenView row need to refetch. Skip
     // when no byte-bearing rows were touched — pending rows or empty
     // projects do not move the global figure.
-    if (movedBytes) {
+    if (collectedKeys.some((entry) => entry.status === 'ready' || entry.status === 'hidden')) {
       emitStorageUsageChanged();
     }
+
+    // Post-commit storage cleanup (AC-540), best-effort as for a project
+    // purge (AC-429): the rows are gone, an orphaned key is logged.
+    await bestEffortHideStorageKeys(this.storage, collectedKeys, log);
 
     log.info({ customerId: id }, 'customer_deleted');
   }
