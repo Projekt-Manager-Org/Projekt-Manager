@@ -2,7 +2,7 @@
  * API integration tests — `project_changed` emission per call site
  * (issue #176, ADR-0025).
  *
- * Pins AC-276 from verification.md §15.28: each of the ten project-
+ * Pins AC-276 from verification.md §15.28: each of the eleven project-
  * mutation sites enumerated in architecture.md §11.13 emits exactly
  * one `project_changed` event post-commit to a subscribed `/api/events`
  * connection — and a tx that aborts emits nothing. AC-276 cross-refs
@@ -25,6 +25,7 @@
  *  11. ImportService.import — both branches:
  *      a. override path (TRUNCATE + re-insert into a non-empty target)
  *      b. empty-target path (insert into empty tables; the seed-equivalent path)
+ *  12. CustomerService.updateCustomer (project reads nest the customer)
  *
  * Silence cases:
  *   - CustomerService.deleteCustomer with zero archived projects
@@ -681,6 +682,55 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
         await new Promise<void>((r) => setImmediate(r));
 
         expect(countProjectChanged(conn)).toBe(1);
+      } finally {
+        bus.unsubscribe(conn);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // CustomerService.updateCustomer — project reads carry the nested
+  // customer, so an open project page must refetch after an edit.
+  // -------------------------------------------------------------------
+  describe('AC-276: CustomerService.updateCustomer emits exactly one event', () => {
+    it('a subscribed connection observes one project_changed event after a customer edit', async () => {
+      const bus = await loadBus();
+      const customerId = await createCustomer(ownerToken);
+      await createActiveProject(ownerToken, customerId);
+      const { version } = (await authGet(ownerToken, `/api/customers/${customerId}`)).json();
+
+      const conn = subscribeFake(bus);
+      try {
+        const res = await authPatch(ownerToken, `/api/customers/${customerId}`, {
+          expectedVersion: version,
+          name: 'Korrigierter Kunde',
+        });
+        expect(res.statusCode).toBe(200);
+
+        await new Promise<void>((r) => setImmediate(r));
+
+        expect(countProjectChanged(conn)).toBe(1);
+      } finally {
+        bus.unsubscribe(conn);
+      }
+    });
+
+    it('a customer edit refused on a stale version emits no event', async () => {
+      const bus = await loadBus();
+      const customerId = await createCustomer(ownerToken);
+      const { version } = (await authGet(ownerToken, `/api/customers/${customerId}`)).json();
+
+      const conn = subscribeFake(bus);
+      try {
+        const res = await authPatch(ownerToken, `/api/customers/${customerId}`, {
+          expectedVersion: version + 1,
+          name: 'Veralteter Stand',
+        });
+        expect(res.statusCode).toBe(409);
+
+        await new Promise<void>((r) => setImmediate(r));
+
+        expect(countProjectChanged(conn)).toBe(0);
       } finally {
         bus.unsubscribe(conn);
       }

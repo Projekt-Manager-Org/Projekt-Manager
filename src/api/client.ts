@@ -796,7 +796,7 @@ export interface InvoiceListResponse {
 
 export interface InvoiceCreateDraftInput {
   lines?: InvoiceLineInput[];
-  recipient?: InvoiceRecipientSnapshot;
+  recipient?: Partial<InvoiceRecipientSnapshot>;
   taxMode?: TaxMode;
   performanceDate?: string | null;
 }

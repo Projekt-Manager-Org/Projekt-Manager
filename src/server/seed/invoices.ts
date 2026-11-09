@@ -38,7 +38,7 @@ import { projects } from '../db/schema.js';
 import { createInvoiceService } from '../services/InvoiceService.js';
 import type { ServiceLogger } from '../services/Logger.js';
 import { getSeededUserIds } from './users.js';
-import type { InvoiceLine, InvoiceRecipientSnapshot, TaxMode } from '../../domain/invoice.js';
+import type { InvoiceLine, TaxMode } from '../../domain/invoice.js';
 
 // `info` is silenced — routine seed invoice creation should not flood
 // the dev startup log. `error` still goes to console so a broken seed
@@ -527,16 +527,6 @@ async function applyIssueSpec(
 
   await setProjectStatus(db, projectId, 'rechnung_faellig', now);
 
-  // `recipient` cast: `CreateDraftInput.recipient` is typed as a full
-  // `InvoiceRecipientSnapshot` but `InvoiceService.createDraft` treats
-  // each field as an optional overlay over the customer's row
-  // (services/InvoiceService.ts:279-294). The seed supplies sparse
-  // overrides (`address` only for the no-address customer; `ustId`
-  // only for reverse_charge) and relies on that overlay semantics — a
-  // future tightening of the service signature should turn this cast
-  // into a proper partial type.
-  const recipientOverride = spec.recipient as InvoiceRecipientSnapshot | undefined;
-
   const issueDate = parseIsoDate(spec.issueDate);
 
   const draft = await service.createDraft(
@@ -544,7 +534,7 @@ async function applyIssueSpec(
       projectId,
       lines: spec.lines,
       taxMode: spec.taxMode,
-      recipient: recipientOverride,
+      recipient: spec.recipient,
       performanceDate: dateFromNow(issueDate, spec.performanceDateDaysFromIssue),
     },
     ownerId,
@@ -577,7 +567,7 @@ async function applyIssueSpec(
           projectId,
           lines: spec.cancellation.reissue.lines,
           taxMode: spec.taxMode,
-          recipient: recipientOverride,
+          recipient: spec.recipient,
           performanceDate: dateFromNow(
             reissueIssueDate,
             spec.cancellation.reissue.performanceDateDaysFromIssue,

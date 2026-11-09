@@ -222,7 +222,7 @@ export function invoiceRoutes(db: Database) {
         const body = request.body as {
           projectId: string;
           lines?: InvoiceLineInput[];
-          recipient?: InvoiceRecipientSnapshot;
+          recipient?: Partial<InvoiceRecipientSnapshot>;
           taxMode?: TaxMode;
           performanceDate?: string | null;
         };
