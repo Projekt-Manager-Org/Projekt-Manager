@@ -14,6 +14,29 @@ import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 
+/**
+ * The writable fields and their limits (data-model.md §5.6). `\\S` refuses
+ * an empty or whitespace-only value; an address has all three parts or is
+ * null. `ustId` is required only at reverse-charge issuance (AC-289).
+ */
+const CUSTOMER_FIELDS = {
+  name: { type: 'string', pattern: '\\S', maxLength: 255 },
+  phone: { type: ['string', 'null'], maxLength: 100 },
+  email: { type: ['string', 'null'], maxLength: 255 },
+  address: {
+    type: ['object', 'null'],
+    additionalProperties: false,
+    required: ['street', 'zip', 'city'],
+    properties: {
+      street: { type: 'string', pattern: '\\S' },
+      zip: { type: 'string', pattern: '\\S' },
+      city: { type: 'string', pattern: '\\S' },
+    },
+  },
+  ustId: { type: ['string', 'null'], maxLength: 50 },
+  notes: { type: ['string', 'null'] },
+} as const;
+
 export function customerRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
     // Hides the objects of archived projects a delete purges (AC-540).
@@ -83,27 +106,7 @@ export function customerRoutes(db: Database) {
             additionalProperties: false,
             properties: {
               id: { type: 'string', format: 'uuid' },
-              name: { type: 'string', minLength: 1 },
-              phone: { type: ['string', 'null'] },
-              email: { type: ['string', 'null'] },
-              address: {
-                type: ['object', 'null'],
-                additionalProperties: false,
-                required: ['street', 'zip', 'city'],
-                properties: {
-                  street: { type: 'string' },
-                  zip: { type: 'string' },
-                  city: { type: 'string' },
-                },
-              },
-              // USt-IdNr. — data-model.md §5.6. Structurally
-              // optional at the route layer; the issuance-time
-              // requiredness gate fires only when taxMode =
-              // 'reverse_charge' (see AC-289). Capped at 50 chars to
-              // bound the audit payload and the recipient-snapshot
-              // metadata embedded in rendered invoices.
-              ustId: { type: ['string', 'null'], maxLength: 50 },
-              notes: { type: ['string', 'null'] },
+              ...CUSTOMER_FIELDS,
             },
           },
         },
@@ -147,23 +150,7 @@ export function customerRoutes(db: Database) {
             minProperties: 2,
             properties: {
               expectedVersion: EXPECTED_VERSION_SCHEMA,
-              name: { type: 'string', minLength: 1 },
-              phone: { type: ['string', 'null'] },
-              email: { type: ['string', 'null'] },
-              address: {
-                type: ['object', 'null'],
-                additionalProperties: false,
-                required: ['street', 'zip', 'city'],
-                properties: {
-                  street: { type: 'string' },
-                  zip: { type: 'string' },
-                  city: { type: 'string' },
-                },
-              },
-              // USt-IdNr. — see POST handler note above.
-              // PATCH with `ustId: null` clears the field.
-              ustId: { type: ['string', 'null'], maxLength: 50 },
-              notes: { type: ['string', 'null'] },
+              ...CUSTOMER_FIELDS,
             },
           },
         },

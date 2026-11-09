@@ -308,18 +308,17 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
   });
 
   // ---------------------------------------------------------------
-  // getCustomer.projectCount is scoped to the caller's assignment
-  // graph. A worker assigned to 1 of N projects for a customer sees
-  // projectCount: 1; unscoped callers see N. Direct-DB setup per
-  // ADR-0018 — the API has no "create extra project for this
-  // customer, but don't assign the worker" helper, and building one
-  // would be more complex than the assertion it supports.
+  // getCustomer exposes only counts scoped to the caller's assignment
+  // graph (ADR-0019). Direct-DB setup per ADR-0018 — the API has no
+  // "create extra project for this customer, but don't assign the
+  // worker" helper, and building one would be more complex than the
+  // assertion it supports.
   // ---------------------------------------------------------------
-  describe('getCustomer.projectCount is scoped to assignments', () => {
-    it('worker sees 1 when assigned to 1 of 2 projects; unscoped callers see 2', async () => {
+  describe('getCustomer counts are scoped to assignments', () => {
+    it('a worker count excludes archived projects not assigned to them; unscoped callers count all', async () => {
       // Customer: Evangelische Gemeinde Refrath — already has project
-      // YYYY-007 with worker1 assigned. We add a second project for the
-      // same customer WITHOUT assigning worker1.
+      // YYYY-007 with worker1 assigned. We add an archived project for
+      // the same customer WITHOUT assigning worker1.
       const refrathId = await customerIdByName(ownerToken, 'Evangelische Gemeinde Refrath');
       const { db, pool } = createDatabase();
       try {
@@ -330,6 +329,7 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
             title: 'Extra unassigned project (m1 regression)',
             status: 'anfrage',
             customerId: refrathId,
+            deleted: true,
           })
           .returning({ id: projects.id });
         const extraId = extraProject[0]!.id;
@@ -337,25 +337,36 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
         try {
           const workerRes = await authGet(worker1Token, `/api/customers/${refrathId}`);
           expect(workerRes.statusCode).toBe(200);
-          expect(workerRes.json().projectCount).toBe(1);
+          expect(workerRes.json().archivedProjectCount).toBe(0);
 
-          // Owner sees both active projects; the unscoped count is
+          // Owner sees the archived project; the unscoped count is
           // unaffected by caller identity.
           const ownerRes = await authGet(ownerToken, `/api/customers/${refrathId}`);
           expect(ownerRes.statusCode).toBe(200);
-          expect(ownerRes.json().projectCount).toBe(2);
+          expect(ownerRes.json().archivedProjectCount).toBe(1);
 
           // Bookkeeper is unscoped too (MVP placeholder) — same count
           // as owner, pinning the classification.
           const bookkeeperRes = await authGet(bookkeeperToken, `/api/customers/${refrathId}`);
           expect(bookkeeperRes.statusCode).toBe(200);
-          expect(bookkeeperRes.json().projectCount).toBe(2);
+          expect(bookkeeperRes.json().archivedProjectCount).toBe(1);
         } finally {
           await db.delete(projects).where(eq(projects.id, extraId));
         }
       } finally {
         await pool.end();
       }
+    });
+
+    // The invoice count ignored the caller's assignments, and a worker
+    // holds no `invoice:read`.
+    it("a worker's response carries no invoice count", async () => {
+      const refrathId = await customerIdByName(ownerToken, 'Evangelische Gemeinde Refrath');
+
+      const res = await authGet(worker1Token, `/api/customers/${refrathId}`);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).not.toHaveProperty('invoiceCount');
     });
   });
 });

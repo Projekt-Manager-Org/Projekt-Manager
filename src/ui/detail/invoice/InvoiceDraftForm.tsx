@@ -11,12 +11,9 @@
  * state owner, so further splitting would split responsibility.
  *
  * Mounted from `InvoiceSection` when the user clicks `+ Neue Rechnung` on
- * a project in `rechnung_faellig`. The form drives a two-call sequence:
- * first `createDraft` to mint the row server-side (which pre-fills the
- * `recipient` snapshot from the project's customer), then `updateDraft`
- * on every save while the form is open. The split keeps the recipient
- * snapshot under server control — the client never has to copy the
- * customer fields out of `project.customer` and risk a stale read.
+ * a project in `rechnung_faellig`. The form opens with the recipient from
+ * `project.customer`, editable, and sends it explicitly: `createDraft` on
+ * the first save, `updateDraft` on every later one.
  *
  * Editing an existing draft: the form mounts with that draft's id and
  * skips the create step.
@@ -68,7 +65,7 @@ interface Props {
   /** Project planned-end ISO date — pre-fills the performance date input. */
   defaultPerformanceDate: string | null;
   /** Customer snapshot for the recipient block when no draft is loaded yet. */
-  fallbackRecipient: { name: string; street: string; zip: string; city: string };
+  fallbackRecipient: { name: string; street: string; zip: string; city: string; ustId: string };
   onClose: () => void;
 }
 
@@ -85,14 +82,7 @@ interface RecipientDraft {
   street: string;
   zip: string;
   city: string;
-  /**
-   * Carried through the round-trip but not yet editable in the form —
-   * the per-recipient `USt-IdNr.` input is a future spec amendment. The
-   * draft create endpoint pre-fills this from the customer snapshot;
-   * preserving it on PATCH keeps any pre-existing value intact instead
-   * of wiping it on every save (F1).
-   */
-  ustId: string | null;
+  ustId: string;
 }
 
 function emptyLine(): LineDraft {
@@ -122,7 +112,7 @@ function recipientFromInvoice(inv: Invoice): RecipientDraft {
     street: inv.recipient.address?.street ?? '',
     zip: inv.recipient.address?.zip ?? '',
     city: inv.recipient.address?.city ?? '',
-    ustId: inv.recipient.ustId ?? null,
+    ustId: inv.recipient.ustId ?? '',
   };
 }
 
@@ -156,7 +146,7 @@ function toWireRecipient(r: RecipientDraft): InvoiceRecipientSnapshot {
   return {
     name: r.name.trim(),
     address: hasAddress ? { street, zip, city } : null,
-    ustId: r.ustId,
+    ustId: r.ustId.trim() || null,
   };
 }
 
@@ -171,10 +161,7 @@ export function InvoiceDraftForm({
   const updateDraft = useInvoiceStore((s) => s.updateDraft);
 
   const [recipient, setRecipient] = useState<RecipientDraft>(
-    // The fallback path has no carried `ustId` to preserve (no draft has
-    // been minted yet); the server's recipient pre-fill on createDraft
-    // populates it from the customer snapshot on the round-trip back.
-    draft ? recipientFromInvoice(draft) : { ...fallbackRecipient, ustId: null },
+    draft ? recipientFromInvoice(draft) : fallbackRecipient,
   );
   const [lines, setLines] = useState<LineDraft[]>(draft ? linesFromInvoice(draft) : [emptyLine()]);
   const [taxMode, setTaxMode] = useState<TaxMode>(draft?.taxMode ?? 'standard');
@@ -378,6 +365,19 @@ export function InvoiceDraftForm({
                   value={recipient.city}
                   onChange={(e) => setRecipient((r) => ({ ...r, city: e.target.value }))}
                   disabled={submitting}
+                />
+              </div>
+              <div className={styles.formField}>
+                <label className={styles.formLabel} htmlFor="invoice-recipient-ustid">
+                  {STRINGS.invoices.formRecipientUstId}
+                </label>
+                <input
+                  id="invoice-recipient-ustid"
+                  className={styles.formInput}
+                  value={recipient.ustId}
+                  onChange={(e) => setRecipient((r) => ({ ...r, ustId: e.target.value }))}
+                  disabled={submitting}
+                  data-testid="invoice-recipient-ustid-input"
                 />
               </div>
             </div>

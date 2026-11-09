@@ -13,6 +13,7 @@ import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { STRINGS } from '@/config/strings';
 import type { Customer } from '@/domain/types';
 import { normalizeName } from '@/domain/nameNormalize';
+import { readAddressDraft } from '@/domain/address';
 import { MenuBackdrop } from '../common/MenuBackdrop';
 import styles from './Management.module.css';
 
@@ -35,6 +36,9 @@ export function CustomerCreateForm({ onClose, onSelectExisting }: Props) {
   const [street, setStreet] = useState('');
   const [zip, setZip] = useState('');
   const [city, setCity] = useState('');
+  const [ustId, setUstId] = useState('');
+  const [notes, setNotes] = useState('');
+  const [addressError, setAddressError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Client-supplied UUID for idempotent create. Stable across re-renders
@@ -76,6 +80,13 @@ export function CustomerCreateForm({ onClose, onSelectExisting }: Props) {
   const handleCreate = async () => {
     if (submitting || !name.trim()) return;
 
+    const addressDraft = readAddressDraft(street, zip, city);
+    if (addressDraft.kind === 'partial') {
+      setAddressError(STRINGS.customers.addressPartial);
+      return;
+    }
+    setAddressError(null);
+
     // Set submitting BEFORE any await so a second click cannot slip past
     // the guard. `useConfirmStore.request` does not block pointer events
     // on the underlying form and its preemption semantic silently
@@ -95,17 +106,14 @@ export function CustomerCreateForm({ onClose, onSelectExisting }: Props) {
       }
     }
 
-    const address =
-      street.trim() || zip.trim() || city.trim()
-        ? { street: street.trim(), zip: zip.trim(), city: city.trim() }
-        : null;
-
     const outcome = await createCustomer({
       id: createIdRef.current,
       name: name.trim(),
       phone: phone.trim() || null,
       email: email.trim() || null,
-      address,
+      address: addressDraft.value,
+      ustId: ustId.trim() || null,
+      notes: notes.trim() || null,
     });
 
     setSubmitting(false);
@@ -203,6 +211,11 @@ export function CustomerCreateForm({ onClose, onSelectExisting }: Props) {
           setPhone={setPhone}
           email={email}
           setEmail={setEmail}
+          ustId={ustId}
+          setUstId={setUstId}
+          notes={notes}
+          setNotes={setNotes}
+          addressError={addressError}
           disabled={submitting}
         />
 
@@ -242,6 +255,11 @@ interface CustomerFieldsProps {
   setPhone: (v: string) => void;
   email: string;
   setEmail: (v: string) => void;
+  ustId: string;
+  setUstId: (v: string) => void;
+  notes: string;
+  setNotes: (v: string) => void;
+  addressError: string | null;
   disabled: boolean;
 }
 
@@ -281,6 +299,12 @@ export function CustomerFields(props: CustomerFieldsProps) {
         />
       </div>
 
+      {props.addressError && (
+        <div className={styles.fieldHintError} data-testid="customer-address-error" role="status">
+          {props.addressError}
+        </div>
+      )}
+
       <div className={styles.formGroup}>
         <label className={styles.formLabel}>{STRINGS.ui.phone}</label>
         <input
@@ -298,6 +322,28 @@ export function CustomerFields(props: CustomerFieldsProps) {
           value={props.email}
           onChange={(e) => props.setEmail(e.target.value)}
           disabled={props.disabled}
+        />
+      </div>
+
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel}>{STRINGS.companyProfile.ustId}</label>
+        <input
+          className={styles.formInput}
+          value={props.ustId}
+          onChange={(e) => props.setUstId(e.target.value)}
+          disabled={props.disabled}
+          data-testid="customer-ustid-input"
+        />
+      </div>
+
+      <div className={styles.formGroup}>
+        <label className={styles.formLabel}>{STRINGS.ui.notes}</label>
+        <textarea
+          className={styles.formTextarea}
+          value={props.notes}
+          onChange={(e) => props.setNotes(e.target.value)}
+          disabled={props.disabled}
+          data-testid="customer-notes-input"
         />
       </div>
     </>

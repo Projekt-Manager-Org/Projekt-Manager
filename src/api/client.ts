@@ -435,10 +435,7 @@ export const customerApi = {
       '/api/customers' + toQuery(params as Record<string, string | number | boolean | undefined>),
     ),
 
-  get: (id: string) =>
-    apiCall<Customer & { projectCount: number; archivedProjectCount: number }>(
-      `/api/customers/${id}`,
-    ),
+  get: (id: string) => apiCall<Customer & { archivedProjectCount: number }>(`/api/customers/${id}`),
 
   create: (data: {
     id?: string;
@@ -446,6 +443,7 @@ export const customerApi = {
     phone?: string | null;
     email?: string | null;
     address?: { street: string; zip: string; city: string } | null;
+    ustId?: string | null;
     notes?: string | null;
   }) => apiCall<Customer>('/api/customers', { method: 'POST', body: data }),
 
@@ -457,6 +455,7 @@ export const customerApi = {
       phone?: string | null;
       email?: string | null;
       address?: { street: string; zip: string; city: string } | null;
+      ustId?: string | null;
       notes?: string | null;
     },
   ) =>

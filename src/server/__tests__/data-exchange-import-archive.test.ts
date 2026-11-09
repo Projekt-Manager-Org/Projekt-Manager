@@ -931,6 +931,33 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       return Buffer.from(zipSync(entries));
     }
 
+    it('AC-521: a repaired manifest gets past the hash check; a partial customer address is refused by its path', async () => {
+      await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'a.pdf' });
+      const archive = await buildExportArchive(ownerToken);
+      const customersBefore = await countRows('customers');
+
+      // The docs/ops/backup/troubleshooting.md repair, in reverse: edit
+      // data.json and carry its size and hash over to the manifest.
+      const partial = remuxArchive(archive, (entries) => {
+        const env = JSON.parse(Buffer.from(entries['data.json']!).toString('utf-8'));
+        env.customers[0].address = { street: 'Hauptstr. 1', zip: '', city: 'Köln' };
+        const data = Buffer.from(JSON.stringify(env));
+        entries['data.json'] = new Uint8Array(data);
+        const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf-8'));
+        const entry = manifest.files.find((f: { zipPath: string }) => f.zipPath === 'data.json');
+        entry.sizeBytes = data.length;
+        entry.sha256 = crypto.createHash('sha256').update(data).digest('hex');
+        entries['manifest.json'] = new Uint8Array(Buffer.from(JSON.stringify(manifest)));
+      });
+
+      const jobId = await uploadArchiveToNewJob(ownerToken, partial);
+      const terminal = await pollImportTerminal(ownerToken, jobId);
+
+      expect(terminal.status).toBe('failed');
+      expect(terminal.errorDetail).toContain('customers[0].address');
+      expect(await countRows('customers')).toBe(customersBefore);
+    });
+
     it('a wrong schema_version in data.json → job failed, error_detail set, target untouched', async () => {
       await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'a.pdf' });
       const archive = await buildExportArchive(ownerToken);

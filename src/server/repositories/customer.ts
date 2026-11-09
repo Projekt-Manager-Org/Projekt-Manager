@@ -2,9 +2,9 @@
  * Customer repository — CRUD operations.
  */
 
-import { eq, and, count, ilike, inArray, sql, type SQL } from 'drizzle-orm';
+import { eq, and, count, ilike, sql, type SQL } from 'drizzle-orm';
 import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
-import { customers, projects, invoices } from '../db/schema.js';
+import { customers, projects } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import {
   customerScopeForCaller,
@@ -144,9 +144,7 @@ export async function getCustomer(
 ): Promise<
   ScopedReadResult<
     ReturnType<typeof toCustomerResponse> & {
-      projectCount: number;
       archivedProjectCount: number;
-      invoiceCount: number;
     }
   >
 > {
@@ -157,14 +155,11 @@ export async function getCustomer(
     return OUT_OF_SCOPE;
   }
 
-  // Scope the project counts to the caller's assignment graph. A worker
-  // assigned to 1 of 2 projects for this customer must see projectCount: 1,
-  // not 2 — surfacing the higher number leaks row existence the worker
-  // cannot otherwise observe and misleads the UI (ADR-0019). Unscoped
-  // callers (owner/office/bookkeeper) get the full count unchanged. The
-  // EXISTS fragment mirrors `projectScopeForCaller` in scope.ts — same
-  // correlation (`projects.id` from the outer query), kept local here
-  // because the surrounding query is driven off projects directly.
+  // Scope the count to the caller's assignment graph: surfacing projects a
+  // worker is not assigned to leaks row existence (ADR-0019). The EXISTS
+  // fragment mirrors `projectScopeForCaller` in scope.ts — same correlation
+  // (`projects.id` from the outer query), kept local because this query is
+  // driven off projects directly.
   const callerAssignmentFilter = isUnscoped(caller)
     ? undefined
     : sql`EXISTS (
@@ -173,31 +168,14 @@ export async function getCustomer(
           AND pw.user_id = ${caller.id}
       )`;
 
-  const [[activeCount], [archivedCount], [invoiceCountRow]] = await Promise.all([
-    db
-      .select({ value: count() })
-      .from(projects)
-      .where(and(eq(projects.customerId, id), eq(projects.deleted, false), callerAssignmentFilter)),
-    db
-      .select({ value: count() })
-      .from(projects)
-      .where(and(eq(projects.customerId, id), eq(projects.deleted, true), callerAssignmentFilter)),
-    // The count of issued + cancelled invoice rows across the project
-    // graph (active + archived). Drafts excluded by construction — they
-    // have no legal weight and cascade-delete with their project. No
-    // client reads it (#783).
-    db
-      .select({ value: count() })
-      .from(invoices)
-      .innerJoin(projects, eq(invoices.projectId, projects.id))
-      .where(and(eq(projects.customerId, id), inArray(invoices.status, ['issued', 'cancelled']))),
-  ]);
+  const [archivedCount] = await db
+    .select({ value: count() })
+    .from(projects)
+    .where(and(eq(projects.customerId, id), eq(projects.deleted, true), callerAssignmentFilter));
 
   return {
     ...toCustomerResponse(rows[0]!),
-    projectCount: activeCount?.value ?? 0,
     archivedProjectCount: archivedCount?.value ?? 0,
-    invoiceCount: invoiceCountRow?.value ?? 0,
   };
 }
 

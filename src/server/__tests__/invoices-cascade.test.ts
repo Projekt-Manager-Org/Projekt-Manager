@@ -12,8 +12,6 @@
  *     is deleted — drafts cascade-delete with the project; no orphan
  *     invoice rows remain.
  *   - AC-530 / AC-92: a customer with zero invoices.
- *   - `GET /api/customers/:id` returns `invoiceCount` on every customer
- *     (zero when no issued/cancelled rows; drafts don't count).
  *
  *   - AC-504, AC-502: `DELETE /api/projects/:id/purge` against an
  *     archived project carrying any issued or cancelled invoice is
@@ -345,31 +343,6 @@ describe('AC-532, AC-531: DELETE /api/customers/:id retention/cascade behaviour'
     // The code is CONFLICT (active project blocks), not
     // CUSTOMER_HAS_INVOICES — they are distinct rejection paths.
     expect(del.json().code).toBe('CONFLICT');
-  });
-
-  it('GET /api/customers/:id returns invoiceCount on every customer (zero when no issued/cancelled rows, regardless of drafts)', async () => {
-    const customerId = await createCustomer(ownerToken);
-    const projectId = await createProject(ownerToken, customerId);
-
-    // Zero invoices.
-    let res = await authGet(ownerToken, `/api/customers/${customerId}`);
-    expect(res.statusCode).toBe(200);
-    expect(res.json().invoiceCount).toBe(0);
-
-    // One draft — must not count.
-    await seedDraftInvoice(projectId);
-    res = await authGet(ownerToken, `/api/customers/${customerId}`);
-    expect(res.json().invoiceCount).toBe(0);
-
-    // One issued — counts.
-    await seedIssuedInvoice(projectId, '7101');
-    res = await authGet(ownerToken, `/api/customers/${customerId}`);
-    expect(res.json().invoiceCount).toBe(1);
-
-    // One cancelled — counts.
-    await seedCancelledInvoice(projectId, '7102');
-    res = await authGet(ownerToken, `/api/customers/${customerId}`);
-    expect(res.json().invoiceCount).toBe(2);
   });
 });
 

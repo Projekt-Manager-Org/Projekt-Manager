@@ -351,6 +351,7 @@ export function InvoiceSection({ projectId, projectStatus, archived }: Props) {
             street: project?.customer?.address?.street ?? '',
             zip: project?.customer?.address?.zip ?? '',
             city: project?.customer?.address?.city ?? '',
+            ustId: project?.customer?.ustId ?? '',
           }}
           onClose={() => {
             setFormOpen(false);

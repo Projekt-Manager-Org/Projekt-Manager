@@ -204,14 +204,8 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-479 | gap     | needs an e2e covering blur → verdict → edit clears verdict (`ProjectManagement.test.tsx` is mock-based)  |
 | AC-506 | gap     | `archive-flows.spec.ts` does not assert the project name; restore is untested                            |
 | AC-511 | gap     | needs a page test clearing the start while an end is set                                                 |
-| AC-521 | gap     | the API accepts a partial address: #783                                                                  |
-| AC-522 | gap     | the forms lack both fields: #784                                                                         |
-| AC-523 | gap     | the draft form sends an explicit null, which overrides the pre-fill: #784                                |
 | AC-527 | gap     | needs an e2e of the create-form list (`CustomerManagement.test.tsx` is mock-based)                       |
 | AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based)                     |
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
-| AC-537 | gap     | the API accepts a whitespace-only name: #783                                                             |
-| AC-538 | gap     | over-limit input returns 500: #783                                                                       |
-| AC-540 | gap     | the customer delete hides no stored object: #785                                                         |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |

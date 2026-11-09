@@ -65,6 +65,8 @@ function toCustomer(row: CustomerRow) {
     phone: row.phone ?? null,
     email: row.email ?? null,
     address: row.address ?? null,
+    ustId: row.ustId ?? null,
+    notes: row.notes ?? null,
     version: row.version,
   };
 }

@@ -34,13 +34,12 @@ let customerFetchSeq = 0;
 export type CreateCustomerOutcome = { status: 'ok' } | { status: 'error' } | { status: 'conflict' };
 
 /**
- * Result of `fetchCustomerDetail` — the counts-bearing customer payload
- * from `GET /api/customers/:id`. `null` signals the store already wrote
+ * Result of `fetchCustomerDetail` — the customer with its archived-project
+ * count, from `GET /api/customers/:id`. `null` signals the store already wrote
  * a user-facing error message (or a session-expired redirect has been
  * triggered). The caller should abort its flow when null comes back.
  */
 export type CustomerDetail = Customer & {
-  projectCount: number;
   archivedProjectCount: number;
 };
 
@@ -75,6 +74,7 @@ interface CustomerState {
     phone?: string | null;
     email?: string | null;
     address?: { street: string; zip: string; city: string } | null;
+    ustId?: string | null;
     notes?: string | null;
   }) => Promise<CreateCustomerOutcome>;
   /**
@@ -90,6 +90,7 @@ interface CustomerState {
       phone?: string | null;
       email?: string | null;
       address?: { street: string; zip: string; city: string } | null;
+      ustId?: string | null;
       notes?: string | null;
     },
   ) => Promise<CustomerUpdateOutcome>;

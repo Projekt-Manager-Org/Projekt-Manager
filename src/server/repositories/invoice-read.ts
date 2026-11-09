@@ -287,7 +287,7 @@ export async function countIssuedOrCancelledForProject(
 /**
  * Count issued + cancelled invoice rows across a customer's project
  * graph (active + archived). AC-532: drives the customer-delete reject
- * decision and the `invoiceCount` exposed on the customer GET response.
+ * decision.
  */
 export async function countIssuedOrCancelledForCustomer(
   db: TransactionalDatabase,
