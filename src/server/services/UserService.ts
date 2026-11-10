@@ -205,11 +205,6 @@ export class UserService {
     log: ServiceLogger,
     correlationId?: string | null,
   ) {
-    // Prevent self-deactivation
-    if (id === actorId) {
-      throw validationError(STRINGS.users.cannotDeactivateSelf);
-    }
-
     // Atomic: deactivation + session invalidation in one transaction via
     // mutate(). Session rows are not audited (not in AuditEntityType).
     const user = await mutate(
@@ -221,6 +216,9 @@ export class UserService {
         run: async (tx) => {
           const prior = await findById(tx, id);
           if (!prior) throw notFound(STRINGS.entities.user);
+          // AC-68. Compared on the stored id: the path id may differ in case
+          // and still match the row.
+          if (prior.id === actorId) throw validationError(STRINGS.users.cannotDeactivateSelf);
 
           const result = await deactivateUserRepo(tx, id, actorId);
           if (!result) throw notFound(STRINGS.entities.user);
@@ -275,10 +273,6 @@ export class UserService {
   }
 
   async deleteUser(id: string, actorId: string, log: ServiceLogger, correlationId?: string | null) {
-    if (id === actorId) {
-      throw validationError(STRINGS.users.cannotDeleteSelf);
-    }
-
     await mutate(
       this.db,
       { actorKind: 'user', actorId, correlationId: correlationId ?? null },
@@ -292,6 +286,8 @@ export class UserService {
           await lockInvoicesReferencingUser(tx, id);
           const prior = await getUserRowForDelete(tx, id);
           if (!prior) throw notFound(STRINGS.entities.user);
+          // AC-558, compared on the stored id like AC-68 above.
+          if (prior.id === actorId) throw validationError(STRINGS.users.cannotDeleteSelf);
 
           const invoiceCount = await countIssuedOrCancelledForUser(tx, id);
           if (invoiceCount > 0) throw userHasInvoices({ invoiceCount });

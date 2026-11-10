@@ -603,6 +603,40 @@ describe('User Management Operations', () => {
     });
   });
 
+  // The path id may differ in case and still match the own row. Each test
+  // acts as its own fresh owner, so a failing guard cannot remove the
+  // seeded owner the other tests log in as.
+  describe('Own id in upper case', () => {
+    async function freshOwner(username: string): Promise<{ id: string; token: string }> {
+      const res = await authPost(ownerToken, '/api/users', {
+        username,
+        displayName: username,
+        password: 'FreshOwner123!',
+        roles: ['owner'],
+      });
+      return { id: res.json().id, token: await login(username, 'FreshOwner123!') };
+    }
+
+    it('AC-68: refuses the self-deactivation and changes nothing', async () => {
+      const self = await freshOwner('upper_deactivate');
+      const res = await authPost(self.token, `/api/users/${self.id.toUpperCase()}/deactivate`);
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect((await authGet(ownerToken, `/api/users/${self.id}`)).json().active).toBe(true);
+      expect((await authGet(self.token, '/api/auth/me')).statusCode).toBe(200);
+    });
+
+    it('AC-558: refuses the self-delete and changes nothing', async () => {
+      const self = await freshOwner('upper_delete');
+      const res = await authDelete(self.token, `/api/users/${self.id.toUpperCase()}`);
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect((await authGet(ownerToken, `/api/users/${self.id}`)).statusCode).toBe(200);
+    });
+  });
+
   // ---------------------------------------------------------------
   // AC-69: Permission enforcement — only user:manage can manage
   // AC-69 [crit]
