@@ -38,8 +38,10 @@ set -euo pipefail
 CONTAINER="${1:?usage: $0 <container_name> [timeout_seconds]}"
 TIMEOUT="${2:-60}"
 
-# Probe runs inside the container. The app listens on :3000 internally
-# regardless of any host-port mapping, so localhost is correct here. Using
+# Probe runs inside the container, against the container's own hostname
+# (its compose-network address in /etc/hosts), not localhost: the app
+# defaults to loopback (#826), and a probe on localhost would pass an image
+# Caddy cannot reach. :3000 holds regardless of any host-port mapping. Using
 # `node -e` (not curl) because the app image is Node-based — no extra
 # binary needed.
 #
@@ -63,7 +65,7 @@ TIMEOUT="${2:-60}"
 #                           "Container ... is not running") falls through
 #                           unchanged.
 PROBE_JS=$(cat <<'JS'
-fetch('http://localhost:3000/api/health')
+fetch(`http://${require('os').hostname()}:3000/api/health`)
   .then(async r => {
     if (r.ok) process.exit(0);
     const body = await r.text();

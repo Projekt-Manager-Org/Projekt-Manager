@@ -164,11 +164,13 @@ export default defineConfig({
     sourcemap: true,
   },
   server: {
-    // Listen on all interfaces so the dev server is reachable via the
-    // machine's IP address — needed for E2E tests that verify the
-    // insecure-connection banner (which triggers on non-localhost HTTP).
-    // Consistent with the Fastify backend which already binds to 0.0.0.0.
-    host: true,
+    // Loopback only: the dev server is no security boundary, so it must
+    // not be on the LAN (#826). Same address as the Fastify backend.
+    host: '127.0.0.1',
+    // The insecure-banner E2E reaches this server under a non-localhost
+    // name mapped to loopback (playwright.config.ts); Vite refuses unknown
+    // Host headers unless listed.
+    allowedHosts: process.env.VITE_DEV_ALLOWED_HOST ? [process.env.VITE_DEV_ALLOWED_HOST] : [],
     // `VITE_DEV_PORT` / `VITE_API_PROXY_TARGET` let Playwright spawn
     // an isolated client + backend on non-default ports without
     // colliding with a developer's running dev server. Without the

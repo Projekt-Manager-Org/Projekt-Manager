@@ -377,7 +377,7 @@ Read-only Deploy Key scoped to this repo (outbound only).
 ```bash
 sudo -u deploy docker ps --filter name=projekt-manager-
 sudo -u deploy docker exec projekt-manager-app-1 \
-  node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1))"
+  node -e "fetch('http://'+require('os').hostname()+':3000/api/health').then(r=>process.exit(r.ok?0:1))"
 ```
 
 Note: `curl https://localhost/api/health` does NOT work from the server -- Caddy binds to `${WG_BIND_IP}:443` only. Use the `docker exec` path above or test from a WireGuard client.
