@@ -51,7 +51,7 @@ export function UserCreateForm({ onClose }: Props) {
     const ok = await createUser({
       username: username.trim(),
       displayName: displayName.trim(),
-      password: password.trim(),
+      password,
       roles: selectedRoles,
       email: trimmedEmail ? trimmedEmail : null,
     });

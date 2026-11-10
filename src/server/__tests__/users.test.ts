@@ -227,6 +227,69 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
+  // AC-565: blank, length and role-set constraints (data-model.md §5.3)
+  // ---------------------------------------------------------------
+  describe('AC-565: User field constraints', () => {
+    const tooLong = 'x'.repeat(256);
+    const valid = {
+      displayName: 'Feldprüfung',
+      password: 'FieldCheck123!',
+      roles: ['worker'],
+    };
+
+    async function listUsernames(): Promise<string[]> {
+      const list = await authGet(ownerToken, '/api/users?limit=200');
+      return list.json().users.map((u: { username: string }) => u.username);
+    }
+
+    it.each([
+      ['a whitespace-only username', { username: '   ' }],
+      ['a whitespace-only display name', { displayName: '   ' }],
+      ['a username over 255 characters', { username: tooLong }],
+      ['a display name over 255 characters', { displayName: tooLong }],
+      ['an email over 255 characters', { email: `${'x'.repeat(245)}@example.de` }],
+      ['no role', { roles: [] }],
+      ['a repeated role', { roles: ['worker', 'worker'] }],
+    ])('refuses a create with %s and creates nothing', async (label, override) => {
+      const before = await listUsernames();
+      // A username per case, so an earlier wrongly accepted case cannot turn this one into a 409.
+      const username = `ac565_${label.replaceAll(' ', '_')}`.slice(0, 255);
+      const res = await authPost(ownerToken, '/api/users', { ...valid, username, ...override });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect(await listUsernames()).toEqual(before);
+    });
+
+    it('accepts username, display name and email of exactly 255 characters', async () => {
+      const res = await authPost(ownerToken, '/api/users', {
+        ...valid,
+        username: 'u'.repeat(255),
+        displayName: 'd'.repeat(255),
+        email: `${'e'.repeat(244)}@example.de`,
+      });
+
+      expect(res.statusCode).toBe(201);
+    });
+
+    it.each([
+      ['a whitespace-only display name', { displayName: '   ' }],
+      ['a display name over 255 characters', { displayName: tooLong }],
+      ['an email over 255 characters', { email: `${'x'.repeat(245)}@example.de` }],
+      ['no role', { roles: [] }],
+      ['a repeated role', { roles: ['worker', 'worker'] }],
+    ])('refuses an edit with %s and changes nothing', async (_label, override) => {
+      const before = (await authGet(ownerToken, `/api/users/${createdUserId}`)).json();
+      const res = await authPatch(ownerToken, `/api/users/${createdUserId}`, override);
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      const after = (await authGet(ownerToken, `/api/users/${createdUserId}`)).json();
+      expect(after).toEqual(before);
+    });
+  });
+
+  // ---------------------------------------------------------------
   // AC-553: Update user — displayName, roles; username immutable
   // AC-553 [crit]
   // ---------------------------------------------------------------

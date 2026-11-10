@@ -8,6 +8,22 @@ import { requirePermission, requireSession } from '../middleware/auth.js';
 import { UserService } from '../services/UserService.js';
 import { ROLE_KEYS } from '../../config/roleKeys.js';
 
+/**
+ * The writable fields and their limits (data-model.md §5.3). `\\S` refuses
+ * an empty or whitespace-only value.
+ */
+const USER_FIELDS = {
+  username: { type: 'string', pattern: '\\S', maxLength: 255 },
+  displayName: { type: 'string', pattern: '\\S', maxLength: 255 },
+  roles: {
+    type: 'array',
+    items: { type: 'string', enum: [...ROLE_KEYS] },
+    minItems: 1,
+    uniqueItems: true,
+  },
+  email: { type: ['string', 'null'], maxLength: 255 },
+} as const;
+
 export function userRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
     const userService = new UserService(db);
@@ -66,15 +82,8 @@ export function userRoutes(db: Database) {
             required: ['username', 'displayName', 'password', 'roles'],
             additionalProperties: false,
             properties: {
-              username: { type: 'string', minLength: 1 },
-              displayName: { type: 'string', minLength: 1 },
+              ...USER_FIELDS,
               password: { type: 'string', minLength: 1 },
-              roles: {
-                type: 'array',
-                items: { type: 'string', enum: [...ROLE_KEYS] },
-                minItems: 1,
-              },
-              email: { type: ['string', 'null'] },
             },
           },
         },
@@ -113,13 +122,9 @@ export function userRoutes(db: Database) {
             additionalProperties: false,
             minProperties: 1,
             properties: {
-              displayName: { type: 'string', minLength: 1 },
-              roles: {
-                type: 'array',
-                items: { type: 'string', enum: [...ROLE_KEYS] },
-                minItems: 1,
-              },
-              email: { type: ['string', 'null'] },
+              displayName: USER_FIELDS.displayName,
+              roles: USER_FIELDS.roles,
+              email: USER_FIELDS.email,
             },
           },
         },
