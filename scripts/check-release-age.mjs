@@ -67,7 +67,7 @@
  *   RELEASE_AGE_MIN_DAYS    cooldown in days (default 3)
  *   RELEASE_AGE_TIMES       JSON fixture {name: {version: iso}} instead of the registry (tests)
  *   RELEASE_AGE_NOW         ISO instant treated as "now" (tests)
- *   RELEASE_AGE_ADVISORY_BYPASS  `1` waives age findings — set by CI on `security`-labelled PRs
+ *   RELEASE_AGE_ADVISORY_BYPASS  `1` waives age findings — set by CI on `security`-labelled PRs (scripts/ci/advisory-bypass.sh)
  */
 
 import { execFileSync } from 'node:child_process';
