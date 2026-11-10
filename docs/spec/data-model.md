@@ -27,59 +27,28 @@ A job for one customer, moving through the workflow states. Behavior: [verificat
 
 ### 5.3 User Entity
 
-```typescript
-type AccountRole = string; // internal key — e.g. 'owner', 'office', 'worker', 'bookkeeper' [C]
+A person who can sign in. A user changes their own `themePreference` and `pushMuted` by self-update ([AC-568](verification.md#154-authentication)) and their own password ([AC-547](verification.md#154-authentication)); the other editable fields are administrative. Behavior: [verification.md §15.13](verification.md#1513-user-management).
 
-type ThemePreference = 'light' | 'dark' | 'system';
+| Field                    | Constraint                                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `id`                     | UUID                                                                                                                 |
+| `username`               | Not blank, at most 255 characters, unique; used to log in; immutable after creation                                  |
+| `displayName`            | Not blank, at most 255 characters                                                                                    |
+| `passwordHash`           | Salted hash of the password; reaches a client only inside an export ([AC-394](verification.md#1513-user-management)) |
+| `roles`                  | One or more of the role set **[C]** ([api.md §14.3](api.md#143-authorization-rules))                                 |
+| `email`                  | Optional free text, at most 255 characters                                                                           |
+| `active`                 | Default `true`; `false` means deactivated ([§6.9](#69-soft-deletes))                                                 |
+| `themePreference`        | [§5.7](#57-user-theme-preference)                                                                                    |
+| `pushMuted`              | Default `false`; mutes push delivery only ([§5.12](#512-push-subscription))                                          |
+| `createdAt`, `updatedAt` | Server time                                                                                                          |
+| `lastLoginAt`            | Time of the last successful login; empty before the first                                                            |
+| `createdBy`, `updatedBy` | The acting user; empty for seeded or bootstrapped rows                                                               |
 
-interface UserAccount {
-  id: string; // UUID
-  username: string; // unique, used for login
-  displayName: string; // shown in UI, e.g. "Maria Schmidt"
-  passwordHash: string; // server/DB only — NEVER in API responses or client-side code
-  roles: AccountRole[]; // array — see design notes
-  email?: string;
-  active: boolean; // soft-disable without deletion
-  themePreference: ThemePreference; // default 'system' — see §5.7
-  pushMuted: boolean; // default false — mutes push delivery only; activity-feed inclusion unaffected (§5.12)
-  createdAt: string; // ISO 8601
-  updatedAt: string; // ISO 8601
-  lastLoginAt?: string; // ISO 8601
-  createdBy?: string; // UserAccount.id — optional for seeded/bootstrapped records
-  updatedBy?: string; // UserAccount.id — optional for seeded/bootstrapped records
-}
-```
-
-Design notes:
-
-- `createdBy` / `updatedBy` are nullable UUIDs with no FK constraint (bootstrapping the first admin would create a circular dependency).
-- `roles` is an array — supports multi-role assignment without schema changes. Role set is configurable **[C]**. Role labels are applied by configuration.
-- `passwordHash` is **never** included in API responses.
-- `themePreference` controls the rendered color scheme per user (see [§5.7](#57-user-theme-preference)). The value must be one of the allowed literals; the database enforces this via a CHECK constraint (defense in depth).
-- `pushMuted` is a self-settable boolean alongside `themePreference`. Default `false`. Updated via the self-update API ([api.md §14.2.1](api.md#1421-authentication)). Subscription-level semantics: [§5.12](#512-push-subscription); rationale for a single boolean vs. per-event matrix: [ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md).
-- Users can be deactivated (`active = false`) or hard-deleted (owner only). See [§6.9](#69-soft-deletes).
+**Password policy [C]** ([ADR-0006](../adr/0006-password-policy-nist-blocklist.md)): at least 8 characters, at most 72 UTF-8 bytes, not on the common-password blocklist.
 
 ### 5.4 Session
 
-Minimal session model. Transport mechanism is an implementation decision (see [ADR-0005](../adr/0005-session-management-httponly-cookies.md)).
-
-```typescript
-interface Session {
-  id: string; // opaque session identifier
-  userId: string; // references UserAccount.id
-  token: string; // cryptographically random lookup key — transport mechanism detail
-  createdAt: string; // ISO 8601
-  expiresAt: string; // ISO 8601
-}
-```
-
-Design note: The `token` field is a cryptographically random, opaque value delivered to the client. The delivery mechanism is defined in [ADR-0005](../adr/0005-session-management-httponly-cookies.md).
-
-Session validation must verify that the referenced user is still active (`active = true`). If the user has been deactivated, the session is treated as invalid regardless of its `expiresAt`.
-
-**Password-change session side effects:** when a user changes their own password, all **other** sessions for that user are invalidated (the current session survives). When an administrator resets another user's password, **all** sessions for the target user are invalidated.
-
-**Session termination.** A session ends on: expiry (`expiresAt` reached), explicit logout — which invalidates that one session only, not the user's other sessions ([api.md §14.2.1](api.md#1421-authentication)) — the password-change / admin-reset side effects above, or account deactivation, which invalidates all of the user's sessions ([api.md §14.2.3](api.md#1423-user-management)).
+A login creates a session. It lasts the session duration **[C]** (default 24 hours); a user may hold any number of sessions at once. Token delivery: [ADR-0005](../adr/0005-session-management-httponly-cookies.md). When sessions end: [verification.md §15.4](verification.md#154-authentication), [§15.13](verification.md#1513-user-management).
 
 ### 5.5 Audit Metadata
 
@@ -129,7 +98,7 @@ A person or company the projects are for. Only `name` is required. Behavior: [ve
 | `'system'` | The UI follows the operating system's color-scheme preference and updates when that preference changes. |
 
 - New users default to `'system'`.
-- The value is updated by the authenticated user via the self-update API operation (see [api.md §14.2.1](api.md#1421-authentication)).
+- The value is updated by the authenticated user via self-update ([§5.3](#53-user-entity)).
 - The server value is authoritative. Clients may cache the value locally to prevent a flash of the wrong theme on page load, but must replace any cached value with the server value on session hydration.
 
 ### 5.8 Export Envelope
@@ -165,8 +134,8 @@ interface EnvelopeUser {
   createdAt: string; // ISO 8601 — preserved on restore
   updatedAt: string; // ISO 8601 — preserved on restore
   lastLoginAt: string | null; // ISO 8601 — preserved on restore (mutates on login, see roundtrip AC-141)
-  createdBy: string | null; // UserAccount.id — no FK at DB level (§5.3 design notes)
-  updatedBy: string | null; // UserAccount.id — no FK at DB level (§5.3 design notes)
+  createdBy: string | null; // UserAccount.id — no FK at DB level (§6.6)
+  updatedBy: string | null; // UserAccount.id — no FK at DB level (§6.6)
 }
 
 interface EnvelopeCompanyProfile {
@@ -311,9 +280,9 @@ Design notes:
 - **Entity label snapshot.** `entityLabel` is a nullable text column captured at write time (e.g. a project's `"2026-002 Innenraumgestaltung Weber"`, a customer's `"Firma Weber GmbH"`, a user's `displayName`). Frozen with the audit row so the activity feed stays readable after the target is renamed or purged. Write paths that do not have a natural label (import, retention cleanup) leave it null; the UI falls back to `entityId`. This is display metadata — it is not part of the `{ before, after }` diff contract. For `project_worker` rows specifically, `entityId` is the project's id (not the join-row's composite key) and `entityLabel` is the **worker's** displayName — the feed reads "Jan Nowak wurde zugewiesen" under the owning project's header, so the worker name is the meaningful label, while the project id remains the row's target. Pinned by [AC-188](verification.md#1523-audit-log).
 - **Ancestor label snapshot.** `ancestorEntityLabel` is a text column captured at write time alongside the existing `ancestorEntityType` / `ancestorEntityId` pair ([architecture.md §11.12](architecture.md#1112-audit-ancestor-link)). It carries the parent project's `entityLabel` for child-entity rows (`attachment`, `project_worker`, `invoice`) and for `entityType = 'project'` rows (self-ancestor) duplicates the row's own `entityLabel`. Frozen with the audit row so the activity feed surfaces "_who_ did _what_, _where_" without a runtime JOIN against `projects` (which would lose context once a project is purged). Co-populated with `ancestorEntityType` / `ancestorEntityId` — when the ancestor pair is null (top-level entities: `customer`, `user`, `company_profile`, `data_import`), `ancestorEntityLabel` is also null; when the pair is non-null, the service layer always populates the label (projects always carry a `displayName`-derived label, see [architecture.md §11.12](architecture.md#1112-audit-ancestor-link)). Display metadata only — not part of the `{ before, after }` diff contract, and not a substitute for the row's own `entityLabel`. Pinned by [AC-342](verification.md#1532-activity-dock).
 - **Correlation id.** `correlationId` is a nullable, per-request id set at the route layer and threaded through the service call chain. It groups every audit row produced by one request, enabling a future bulk-undo or one-request trace. Null is valid for entries produced outside a request (bootstrap and other unattended domain-entity writes).
-- **Referential integrity.** `actorId` is a nullable foreign key to `UserAccount.id`; when a user is hard-deleted, `actorId` is set to null rather than cascading the audit row (parity with [AC-98](verification.md#1517-data-integrity)). `entityId` is not foreign-keyed — a purge removes the target row while its audit trail remains.
+- **Referential integrity.** `actorId` is a nullable foreign key to `UserAccount.id`; when a user is hard-deleted, `actorId` is set to null rather than cascading the audit row (parity with [AC-567](verification.md#1513-user-management)). `entityId` is not foreign-keyed — a purge removes the target row while its audit trail remains.
 - **Transactional write.** Every domain-entity mutation and its audit row commit in a single database transaction. The application does not write the state change without the audit row, and it does not write the audit row without the state change. See [architecture.md §11.3](architecture.md#113-state-layer-behavioral-contract) and [ADR-0021 — Decision](../adr/0021-audit-log-and-notifications-single-write-path.md#decision).
-- **Non-audited self-preference writes on `UserAccount`.** A narrow carve-out from the single-write-path invariant: a self-update API call ([api.md §14.2.1](api.md#1421-authentication)) whose patch touches only `themePreference`, `pushMuted`, or both writes the new values without producing an `audit_log` row. These are per-user UI/notification preferences with no cross-user or security consequence; auditing them would add rows to the activity feed that are not "who-did-what-to-whom" events and would drown out the actor-on-entity traffic the feed is optimized for (ADR-0021 "high-signal activity feed"). Any write that touches `roles`, `active`, `username`, `displayName`, `email`, or `passwordHash` (administrator paths, not self-update) goes through `mutate()` and produces an audit row unconditionally. The CI architecture check ([verification.md AC-179](verification.md#1523-audit-log)) remains authoritative for every non-carve-out mutation on `user_accounts`; the carve-out is expressed as an allowlisted write site, not a general bypass of the single-write-path helper.
+- **Non-audited self-preference writes on `UserAccount`.** A narrow carve-out from the single-write-path invariant: a self-update ([§5.3](#53-user-entity)) whose patch touches only `themePreference`, `pushMuted`, or both writes the new values without producing an `audit_log` row. These are per-user UI/notification preferences with no cross-user or security consequence; auditing them would add rows to the activity feed that are not "who-did-what-to-whom" events and would drown out the actor-on-entity traffic the feed is optimized for (ADR-0021 "high-signal activity feed"). Any write that touches `roles`, `active`, `username`, `displayName`, `email`, or `passwordHash` (administrator paths, not self-update) goes through `mutate()` and produces an audit row unconditionally. The CI architecture check ([verification.md AC-179](verification.md#1523-audit-log)) remains authoritative for every non-carve-out mutation on `user_accounts`; the carve-out is expressed as an allowlisted write site, not a general bypass of the single-write-path helper.
 - **Post-commit notification dispatch.** Subscribers (notification publisher and any future projection) dispatch after the transaction commits, so a throwing subscriber cannot roll back domain state. The `audit_log` row is the event source; publishing is a read-over-audit projection.
 
 ### 5.11 Notification Rule
@@ -648,7 +617,7 @@ Low write concurrency is assumed. A write to a versioned entity based on a stale
 - The database enforces foreign keys where relationships exist (e.g., `Session.userId` references `UserAccount.id`, `Project.customerId` references `Customer.id`, `Project.createdBy`/`updatedBy` reference `UserAccount.id`).
 - **`Invoice.projectId`** references `Project.id`. Hard-deleting (purging) a project that carries any **issued or cancelled** `Invoice` row is rejected — those rows are issued artifacts whose PDFs are Object-Locked ([§6.14](#614-immutability-of-issued-invoices)) and cannot cascade away with their parent. **Draft** invoices (`status = 'draft'`) were never issued and cascade-delete with the project via FK; the audit trail is unaffected because drafts produce no `invoice:issue` audit row.
 - **`Invoice.cancellationOf`** is a nullable self-FK on `invoices.id`; non-null only on Storno rows. The original-invoice row referenced by `cancellationOf` cannot be hard-deleted while the Storno row exists (parity with the project FK above).
-- **Exception**: `UserAccount.createdBy`/`updatedBy` are nullable UUIDs with no FK constraint. A self-referential FK on the users table would complicate bootstrapping and deletion without adding meaningful integrity (see §5.3 design notes).
+- **Exception**: `UserAccount.createdBy`/`updatedBy` are nullable UUIDs with no FK constraint. A self-referential FK on the users table would complicate bootstrapping and deletion without adding meaningful integrity.
 - Orphaned records are not acceptable.
 
 ### 6.7 Timestamps
@@ -659,7 +628,7 @@ Timestamp ownership rules are defined in section 5.5. Additionally, `statusChang
 
 ### 6.9 Soft Deletes
 
-- Users can be deactivated (`active = false`) or hard-deleted. Deactivation is the default for preserving assignment history. Hard deletion is available to the owner role and cascades sessions and worker assignments; `createdBy`/`updatedBy` references are set to null. Self-deletion is rejected by the API. A user referenced as `createdBy` or `updatedBy` by an issued or cancelled `Invoice` row cannot be hard-deleted (`USER_HAS_INVOICES`): the row is frozen ([§6.14](#614-immutability-of-issued-invoices)), and the reference keeps its author traceable. Deactivation is the remedy.
+- Users can be deactivated or hard-deleted: [verification.md §15.13](verification.md#1513-user-management). Deactivation preserves assignment history, and is the remedy when an issued or cancelled invoice names the user: the invoice is frozen ([§6.14](#614-immutability-of-issued-invoices)) and its author stays traceable.
 - Projects are archived (`deleted`), not deleted ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). Archiving, restoring and permanently deleting a project: [verification.md §15.12](verification.md#1512-projects).
   - Deleting a customer with its archived projects: [verification.md §15.11](verification.md#1511-customer-management).
 

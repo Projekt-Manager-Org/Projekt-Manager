@@ -1,7 +1,7 @@
 /**
  * User management view — list, create, deactivate, reactivate, reset password.
  *
- * Only accessible to users with user:read permission (owner, office).
+ * Only accessible to users with user:manage permission.
  * Test IDs follow the established naming convention (kebab-case).
  * See e2e/management-flows.spec.ts steps 22–24.
  */

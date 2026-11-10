@@ -310,7 +310,7 @@ describe('AC-B4: opt-in when neither var is set', () => {
 // -----------------------------------------------------------------------
 // AC-B5 — Password policy applies
 // -----------------------------------------------------------------------
-describe('AC-B5: password policy applies', () => {
+describe('AC-569 (AC-B5): password policy applies', () => {
   it('throws a length-violation error when password is shorter than 8 characters', async () => {
     await expect(
       bootstrapAdminIfEmpty(

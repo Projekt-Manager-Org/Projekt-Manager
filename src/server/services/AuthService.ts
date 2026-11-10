@@ -77,7 +77,7 @@ export class AuthService {
         displayName: user.displayName,
         roles: user.roles,
         email: user.email,
-        // data-model.md §5.7 / api.md §14.2.1 — login response exposes
+        // data-model.md §5.7 — login response exposes
         // the user's stored theme preference so the client can render
         // the correct scheme on first paint without an extra round-trip.
         // Narrow the raw text column to the domain literal union; the
@@ -89,7 +89,7 @@ export class AuthService {
   }
 
   /**
-   * Self-scope profile update — used by PATCH /api/auth/me (api.md §14.2.1).
+   * Self-scope profile update — used by PATCH /api/auth/me (data-model.md §5.3).
    * Only fields the user themselves controls appear in `patch`; identity-
    * bearing fields stay administrative (see `UserService`).
    *

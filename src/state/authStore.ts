@@ -45,7 +45,7 @@ interface AuthState {
  * Normalize a server-returned user profile so optional fields the
  * client relies on always carry a defined value.
  *
- * The login endpoint (api.md §14.2.1) historically did not include
+ * The login endpoint historically did not include
  * `pushMuted` in its response — only `/api/auth/me` and PATCH /me did.
  * The data-model default for a fresh user is `false`
  * (data-model.md §5.3), so a missing value maps to `false` here. This

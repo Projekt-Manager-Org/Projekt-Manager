@@ -361,8 +361,8 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 - Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers ([index.md §3](index.md#3-workflow-states))
 - German UI and error strings
 - Date and locale display settings
-- Password policy — minimum length, maximum byte length, blocklist
-- Session duration
+- Password policy — [data-model.md §5.3](data-model.md#53-user-entity)
+- Session duration — [data-model.md §5.4](data-model.md#54-session)
 - Role set and per-role permission matrix
 - Seed default password
 - Restore confirmation phrase — typed by the caller to confirm an override-restore into a non-empty database (see [api.md §14.2.4](api.md#1424-unified-data-exchange))
@@ -372,7 +372,7 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 - Audit log retention window — rolling age at which `audit_log` entries are removed by the scheduled cleanup (default 90 days; see [data-model.md §6.10](data-model.md#610-audit-log-retention)). Env var: `AUDIT_RETENTION_WINDOW_DAYS`; unset falls back to the build-time default in `src/config/auditRetention.ts`
 - Audit activity-feed rendering — mapping from audit entry (`action`, `payload`) ([data-model.md §5.10](data-model.md#510-audit-log-entity)) to the German display string in the activity feed ([ui/workflow-views.md §8.4.1](ui/workflow-views.md#841-activity-feed)) and global Aktivität view ([ui/management.md §8.13](ui/management.md#813-audit-view)). Covers each mutation-sourced [`NotificationEventClass`](data-model.md#511-notification-rule) — every such class has an `(action, payload)` projection; system events have no audit row to render ([§11.11](#1111-notification-publisher-and-dispatch)).
 - Realtime invalidation heartbeat — interval of `:` keepalive comment lines on `/api/events` ([§11.13](#1113-realtime-invalidation-channel), [api.md §14.2.13](api.md#14213-realtime-events)). Default 25 seconds; bounded 1 s … 600 s. Env var: `SSE_HEARTBEAT_INTERVAL_MS`.
-- List page size — default row count for paginated list endpoints (users, audit) and their management views
+- List page size — default row count for paginated list endpoints (audit) and their management views
 - Rate limit buckets — per-session ceilings defined in `getRateLimit()` (`src/server/config/index.ts`); exceeding returns `429 RATE_LIMITED`. Push-subscription mutations (`POST`, `DELETE`) 20/min and password change 5/min are source constants ([api.md §14.2.10](api.md#14210-push-subscription)). The login bucket is env-backed — env var `LOGIN_RATE_LIMIT_MAX`; unset falls back to an environment-aware default (5/min under `NODE_ENV=production`, 30/min elsewhere)
 - Attachment per-file size cap — maximum `sizeBytes` of a single attachment original (default 1 MB); enforced at init validation, pinned via the presigned PUT's signed `Content-Length`, and re-verified at complete ([data-model.md §5.13](data-model.md#513-attachment)). The derived thumbnail carries its own cap (default 200 KB). Env vars: `ATTACHMENT_PER_FILE_CAP_BYTES`, `ATTACHMENT_THUMB_CAP_BYTES`; unset falls back to the build-time defaults in `src/config/attachmentConfig.ts`
 - Attachment bulk-fetch caps — maximum attachment count and summed plaintext byte size per request (default 20 files AND 20 MB); breach rejected with `BULK_LIMIT_EXCEEDED` ([verification.md AC-415](verification.md#1526-attachments)). Env vars: `ATTACHMENT_BULK_MAX_FILES`, `ATTACHMENT_BULK_MAX_BYTES`

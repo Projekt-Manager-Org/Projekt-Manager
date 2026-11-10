@@ -165,6 +165,7 @@ test.describe('AC-121: permission-based UI visibility', () => {
         await expectViewReachable(page, 'projekte', c.canSeeManagement);
         await expectViewReachable(page, 'kunden', c.canSeeManagement);
         await expectViewReachable(page, 'rechnungen', c.canReadInvoices);
+        // AC-562: the nav offers the user view only with `user:manage`.
         await expectViewReachable(page, 'benutzer', c.canReadUsers);
         // AC-198 — Notification Rules view (Benachrichtigungen tab)
         // gated on notifications:manage (owner only under default matrix).
@@ -375,5 +376,16 @@ test.describe('AC-149: forbidden URL probe → NotPermittedView, URL unchanged',
     for (const testid of VIEW_TESTIDS) {
       await expect(page.getByTestId(testid)).toHaveCount(0);
     }
+  });
+});
+
+test.describe('AC-562: the user view needs user:manage', () => {
+  test.use({ storageState: STORAGE_STATES.office });
+
+  test('office, holding only user:read, is refused on a direct URL', async ({ page }) => {
+    await page.goto('/users');
+
+    await expect(page.getByTestId('not-permitted-view')).toBeVisible();
+    await expect(page.getByTestId('user-table')).toHaveCount(0);
   });
 });

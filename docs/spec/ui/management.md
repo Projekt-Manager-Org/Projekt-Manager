@@ -62,55 +62,23 @@ The same fields with the customer's values, reached from a row or the Project De
 
 ## 8.10 User Management View
 
-An administrative view for managing user accounts. Only accessible to users with `user:manage` permission (owner only under the default role set — matches the nav matrix in [index.md §8.7.1](index.md#871-views)). Hidden from navigation for users without this permission. Office and other roles that hold only `user:read` (for dropdown lookups, not administration) are not admitted — server-side listing via `GET /api/users` remains gated on `user:read` independently.
+An administrative view of the user accounts. Who is admitted: [AC-562](../verification.md#1513-user-management). Behavior: [verification.md §15.13](../verification.md#1513-user-management).
 
 ### 8.10.1 List
 
-- Columns: display name, username, roles (as badges), email, active status indicator, last login.
-- Shows all users including deactivated ones. Deactivated users are visually distinct.
+Columns: username, display name, roles, email, status. A primary action opens the create form; a row opens the user panel.
 
 ### 8.10.2 Create User
 
-Accessible via a primary action button. Requires `user:manage` permission (button hidden otherwise).
+Fields: username, display name, password with confirmation, roles (multi-select from the role set), email (optional). No submission until the required fields are filled and both password entries match. Constraints: [data-model.md §5.3](../data-model.md#53-user-entity).
 
-Fields:
+### 8.10.3 User Panel
 
-- **Username** — required, unique, immutable after creation.
-- **Display name** — required.
-- **Password** — required. Must meet the configured password policy **[C]**. Includes a confirmation field; submission is blocked until both entries match.
-- **Roles** — required. Multi-select from the configured role set **[C]**.
-- **Email** — optional.
+Shows the username (read-only), display name, roles, email and status. Editable fields: [AC-554](../verification.md#1513-user-management). Actions:
 
-### 8.10.3 Edit User
-
-Clicking a user row opens the user for editing. Editable fields: display name, roles, email. Username is read-only.
-
-Password is not part of the edit form — password reset uses a dedicated operation ([§8.10.5](#8105-reset-password)).
-
-Requires `user:manage` permission for mutations.
-
-### 8.10.4 Deactivate / Reactivate
-
-Available as a row action or within the edit view. Requires `user:manage` permission.
-
-- **Deactivate**: confirmation dialog. Self-deactivation is rejected by the API; the UI should prevent it.
-- **Reactivate**: confirmation dialog.
-
-### 8.10.5 Reset Password
-
-Available as a row action or within the edit view. Opens a form with new password plus confirmation. Must meet the configured password policy.
-
-Administrative action — does not require the target user's current password. Invalidates all of the target user's sessions.
-
-Requires `user:manage` permission.
-
-### 8.10.6 Delete User
-
-Available within the user detail view. Confirmation dialog. Self-deletion is prevented (button hidden for the authenticated user's own record; API rejects if attempted). Hard-deletes the user and cascades related data (sessions, worker assignments).
-
-Deletion of a user referenced by an issued or cancelled invoice is rejected with `USER_HAS_INVOICES` ([api.md §14.4](../api.md#144-error-handling)); the user list surfaces the German message, which points to deactivation, via the mutation error banner ([§8.10.4](#8104-deactivate--reactivate)).
-
-Requires `user:delete` permission (owner only).
+- **Passwort zurücksetzen** — new password with confirmation; no submission until both match.
+- **Deaktivieren / Reaktivieren** — confirmation dialog.
+- **Löschen** — confirmation dialog; not offered on the user's own account.
 
 ---
 
@@ -125,7 +93,7 @@ Navigation: exposed via the shell navigation matrix ([index.md §8.7.1](index.md
 - Default view shows only events the caller is a recipient of per the resolved notification-rule set ([data-model.md §5.11](../data-model.md#511-notification-rule)). A `"Alles anzeigen"` toggle switches to the full RBAC-scoped feed (governed by `audit:read` and the destructive-action predicate per §8.13.3). Toggle state is local-only; navigation or reload restores the default. RBAC scoping ([ADR-0019](../../adr/0019-worker-data-scoping-repository-layer-predicate.md)) remains authoritative under either state.
 - Columns: timestamp (`createdAt`, German locale `DD.MM.YYYY HH:mm`), actor, **project**, entity (type + human-readable label resolved server-side), action (German label derived from the action vocabulary), payload indicator.
 - Project cell: the parent project's label snapshot for child entities (`project_worker`, `attachment`, `invoice`) — sourced from `ancestorEntityLabel` ([data-model.md §5.10](../data-model.md#510-audit-log-entity)). For `entityType = 'project'` rows it duplicates the row's own `entityLabel` so the column reads uniformly across the project's own lifecycle and its nested entities. For entity types with no project ancestor (`customer`, `user`, `company_profile`, `data_import`) the cell renders an em dash. Pinned by [verification.md AC-342](../verification.md#1532-activity-dock).
-- Actor cell: `displayName` for user-actor entries. When the authoring user has been hard-deleted the API returns null `actorId` (per AC-98's SET NULL cascade); the UI renders the neutral German label `"Benutzer"` on those rows. System-actor entries render `"System"` with the `actorReason` as supporting text.
+- Actor cell: `displayName` for user-actor entries. When the authoring user has been hard-deleted the API returns null `actorId` (per AC-567's SET NULL cascade); the UI renders the neutral German label `"Benutzer"` on those rows. System-actor entries render `"System"` with the `actorReason` as supporting text.
 - Payload indicator: a `Details` affordance opening a drawer that shows actor display-name, timestamp, and the payload diff (before/after for update; after for create; before for delete). Rendered only when the API response for the row includes a non-null `payload` ([api.md §14.2.8](../api.md#1428-audit-log)).
 - Default sort: `createdAt` descending, with `id` as a stable tiebreaker.
 - Pagination follows the configurable page size **[C]**.

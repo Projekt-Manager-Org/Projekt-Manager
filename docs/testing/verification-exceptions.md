@@ -30,6 +30,8 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-18  | retired | —                                                                                                        |
 | AC-19  | retired | —                                                                                                        |
 | AC-20  | retired | —                                                                                                        |
+| AC-21  | retired | —                                                                                                        |
+| AC-22  | retired | —                                                                                                        |
 | AC-30  | infra   | deployment review — reverse-proxy TLS                                                                    |
 | AC-31  | infra   | deploy procedure — `scripts/deploy.sh`                                                                   |
 | AC-32  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                                      |
@@ -49,6 +51,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-49  | infra   | deployment review — VPN-only reachability                                                                |
 | AC-50  | infra   | deployment review — persistent volumes                                                                   |
 | AC-51  | infra   | deploy procedure — `scripts/deploy.sh` takes a commit SHA                                                |
+| AC-52  | retired | —                                                                                                        |
 | AC-54  | retired | —                                                                                                        |
 | AC-55  | retired | —                                                                                                        |
 | AC-56  | retired | —                                                                                                        |
@@ -58,6 +61,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-60  | retired | —                                                                                                        |
 | AC-61  | retired | —                                                                                                        |
 | AC-62  | retired | —                                                                                                        |
+| AC-64  | retired | —                                                                                                        |
+| AC-65  | retired | —                                                                                                        |
+| AC-67  | retired | —                                                                                                        |
 | AC-70  | retired | —                                                                                                        |
 | AC-71  | retired | —                                                                                                        |
 | AC-72  | retired | —                                                                                                        |
@@ -69,6 +75,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-79  | retired | —                                                                                                        |
 | AC-80  | retired | —                                                                                                        |
 | AC-81  | retired | —                                                                                                        |
+| AC-82  | retired | —                                                                                                        |
+| AC-83  | retired | —                                                                                                        |
+| AC-84  | retired | —                                                                                                        |
 | AC-86  | retired | —                                                                                                        |
 | AC-87  | retired | —                                                                                                        |
 | AC-88  | retired | —                                                                                                        |
@@ -76,6 +85,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-90  | retired | —                                                                                                        |
 | AC-91  | retired | —                                                                                                        |
 | AC-95  | retired | —                                                                                                        |
+| AC-98  | retired | —                                                                                                        |
 | AC-105 | gap     | needs an e2e confirming the entry is visible only with `customer:write`                                  |
 | AC-106 | gap     | needs an e2e covering the textarea and the action disabled while empty / in flight                       |
 | AC-107 | gap     | needs an e2e walking the extraction-review form + existing-customer match                                |
@@ -89,6 +99,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-128 | retired | —                                                                                                        |
 | AC-129 | retired | —                                                                                                        |
 | AC-130 | retired | —                                                                                                        |
+| AC-132 | retired | —                                                                                                        |
 | AC-140 | retired | —                                                                                                        |
 | AC-143 | retired | —                                                                                                        |
 | AC-144 | retired | —                                                                                                        |
@@ -178,6 +189,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-372 | retired | —                                                                                                        |
 | AC-373 | retired | —                                                                                                        |
 | AC-374 | infra   | monthly binary-key drill — `docs/ops/binary-key/drills.md`                                               |
+| AC-385 | retired | —                                                                                                        |
 | AC-388 | retired | —                                                                                                        |
 | AC-401 | gap     | needs an e2e asserting the stored object is not the uploaded plaintext                                   |
 | AC-405 | gap     | no test drives the client-side cap block or the missing retry action                                     |
@@ -209,3 +221,5 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
+| AC-554 | gap     | the user panel edits only the email: #813                                                                |
+| AC-565 | gap     | blank and over-limit values are accepted or return 500: #814                                             |

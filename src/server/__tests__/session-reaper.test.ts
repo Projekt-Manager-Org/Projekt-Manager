@@ -1,5 +1,5 @@
 /**
- * Unit tests for the periodic session reaper (AC-132).
+ * Unit tests for the periodic session reaper.
  *
  * Uses vitest fake timers. We do not exercise the real DB here —
  * integration/end-to-end timer behavior is impractical to test against

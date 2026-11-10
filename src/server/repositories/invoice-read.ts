@@ -338,7 +338,7 @@ export async function lockInvoicesReferencingUser(
 
 /**
  * Count issued + cancelled invoice rows that reference a user as
- * `created_by` or `updated_by`. AC-385: such rows are frozen, so the
+ * `created_by` or `updated_by`. AC-560: such rows are frozen, so the
  * user's hard-delete (`ON DELETE SET NULL`) is rejected. Drafts excluded.
  */
 export async function countIssuedOrCancelledForUser(

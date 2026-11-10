@@ -280,7 +280,7 @@ export class UserService {
         entityType: 'user',
         action: 'delete',
         run: async (tx) => {
-          // AC-385: issued / cancelled invoices are frozen (§6.14), so
+          // AC-560: issued / cancelled invoices are frozen (§6.14), so
           // the FK's SET NULL on their author columns must not run.
           // Invoices first, then the user: see the lock helpers.
           await lockInvoicesReferencingUser(tx, id);

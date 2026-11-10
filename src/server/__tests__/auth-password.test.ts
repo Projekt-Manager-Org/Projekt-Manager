@@ -4,19 +4,19 @@
  * Runs against a real test database via Fastify inject (no network).
  *
  * Separated from auth.test.ts because AC-28 deactivates the office user,
- * and AC-52 needs that same user active. Each test file gets a fresh seed
+ * and AC-547 needs that same user active. Each test file gets a fresh seed
  * via startApp(), so isolation requires a separate file.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
-import { startApp, stopApp, getApp, login, authPost } from '../../test/api-helpers.js';
+import { startApp, stopApp, getApp, login, authGet, authPost } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { validateEnvRuntime } from '../config/env.js';
 
 /**
  * Read a single users row directly from the database via a one-shot
- * pg.Client. Used by AC-52 to pin the audit columns written by
+ * pg.Client. Used by AC-547 to pin the audit columns written by
  * changePassword — see `docs/spec/data-model.md §5.5`.
  *
  * A one-shot Client (not a long-lived Pool) is deliberate: holding a
@@ -101,10 +101,10 @@ describe('Password Change Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-52: Change own password with correct current password succeeds
-  // AC-52 [crit]
+  // AC-547: Change own password with correct current password succeeds
+  // AC-547 [crit]
   // ---------------------------------------------------------------
-  describe('AC-52: Change own password (success)', () => {
+  describe('AC-547: Change own password (success)', () => {
     it('changes password and allows login with the new one', async () => {
       // Self-contained: login, change, verify new password — all in one test.
       // Uses the office user to avoid affecting other tests that log in as owner.
@@ -167,12 +167,12 @@ describe('Password Change Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-52: Change own password with incorrect current password is rejected
-  // AC-52 [crit]
+  // AC-548: Change own password with incorrect current password is rejected
+  // AC-548 [crit]
   // ---------------------------------------------------------------
-  describe('AC-52: Change own password (wrong current password)', () => {
+  describe('AC-548: Change own password (wrong current password)', () => {
     it('rejects when current password is incorrect', async () => {
-      // Uses owner — completely independent of AC-52's office-user flow.
+      // Uses owner — completely independent of AC-547's office-user flow.
       const ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
 
       const res = await authPost(ownerToken, '/api/auth/change-password', {
@@ -188,25 +188,48 @@ describe('Password Change Operations', () => {
       const body = res.json();
       expect(body.code).toBeDefined();
       expect(typeof body.message).toBe('string');
-    });
 
-    it('does not change the password on rejection', async () => {
-      // After the failed attempt, original password should still work.
-      // Logs in fresh — no dependency on any prior test state.
-      const res = await getApp().inject({
+      // The original password still works after the refused attempt.
+      const relogin = await getApp().inject({
         method: 'POST',
         url: '/api/auth/login',
         payload: { username: SEED_USERS.owner.username, password: SEED_DEFAULT_PASSWORD },
       });
+      expect(relogin.statusCode).toBe(200);
+    });
+  });
 
+  describe('AC-549: Session side effects of changing the own password', () => {
+    it("ends the user's other sessions and keeps the current one", async () => {
+      // A fresh account: the policy tests below still log in with seed passwords.
+      const username = 'pw_change_sessions_user';
+      const password = 'TestPass123!';
+      const ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      const created = await authPost(ownerToken, '/api/users', {
+        username,
+        displayName: 'Password Sessions',
+        password,
+        roles: ['worker'],
+      });
+      expect(created.statusCode).toBe(201);
+      const current = await login(username, password);
+      const other = await login(username, password);
+
+      const res = await authPost(current, '/api/auth/change-password', {
+        currentPassword: password,
+        newPassword: 'nochEinNeuesPasswort456!',
+      });
       expect(res.statusCode).toBe(200);
+
+      expect((await authGet(current, '/api/auth/me')).statusCode).toBe(200);
+      expect((await authGet(other, '/api/auth/me')).statusCode).toBe(401);
     });
   });
 
   // ---------------------------------------------------------------
   // Password policy — shared with bootstrap via password-policy.ts
   // ---------------------------------------------------------------
-  describe('Password policy enforcement on change-password', () => {
+  describe('AC-550: Password policy enforcement on change-password', () => {
     it('rejects a blocklist entry as the new password', async () => {
       // Self-contained: uses worker1 to avoid side effects on other tests.
       const token = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);

@@ -26,8 +26,8 @@ import { test, expect, type Page } from '@playwright/test';
  *   - German labels are pinned contract — see §8.7.2. If the impl picks
  *     different labels, these tests fail and the LABELS get reconciled
  *     in the spec, not by rewriting the test.
- *   - The localStorage key and API path are pinned contract — see
- *     src/config/themeStorage.ts and docs/spec/api.md §14.2.1.
+ *   - The localStorage key is pinned contract — see
+ *     src/config/themeStorage.ts.
  */
 
 test.describe.configure({ mode: 'serial' });
@@ -35,7 +35,7 @@ test.describe.configure({ mode: 'serial' });
 // Local-cache key for the user's theme preference. Pinned contract.
 const THEME_PREFERENCE_KEY = 'theme-preference';
 
-// Self-update API path. Pinned contract (api.md §14.2.1).
+// Self-update API path.
 const AUTH_ME_PATH = '/api/auth/me';
 
 // German labels for the theme selector. Pinned by docs/spec/ui/index.md §8.7.2.

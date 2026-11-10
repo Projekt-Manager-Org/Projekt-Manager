@@ -443,7 +443,7 @@ export function projectHasInvoices(details: InvoiceRetentionDetails): AppError {
 /**
  * User hard-delete rejected — an issued or cancelled invoice references
  * the user as `created_by` / `updated_by`, and the frozen row cannot
- * take the FK's SET NULL. AC-385.
+ * take the FK's SET NULL. AC-560.
  */
 export function userHasInvoices(details: InvoiceRetentionDetails): AppError {
   return new AppError('USER_HAS_INVOICES', STRINGS.errors.userHasInvoices, 409, details);
