@@ -58,9 +58,9 @@ need EVENT
 case "$EVENT" in
   pull_request)
     need PR_LABELS
-    labels="$(jq -er '.[]' <<<"$PR_LABELS" 2>/dev/null)" ||
-      [[ "$(jq -e 'length' <<<"$PR_LABELS" 2>/dev/null)" == 0 ]] ||
+    jq -e 'type == "array" and all(.[]; type == "string")' <<<"$PR_LABELS" >/dev/null 2>&1 ||
       die "PR_LABELS is not a JSON array of names: $PR_LABELS"
+    labels="$(jq -r '.[]' <<<"$PR_LABELS")"
     ;;
   merge_group)
     need MERGE_GROUP_HEAD_REF

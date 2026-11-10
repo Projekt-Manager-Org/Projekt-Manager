@@ -71,6 +71,8 @@ assert_case "security label" 0 1 EVENT=pull_request 'PR_LABELS=["bug","security"
 assert_case "no security label" 0 0 EVENT=pull_request 'PR_LABELS=["bug","security-review"]'
 assert_case "no labels" 0 0 EVENT=pull_request 'PR_LABELS=[]'
 assert_case "labels not JSON" 1 "" EVENT=pull_request 'PR_LABELS=security'
+assert_case "labels not an array" 1 "" EVENT=pull_request 'PR_LABELS={"a":"security"}'
+assert_case "labels null" 1 "" EVENT=pull_request 'PR_LABELS=null'
 
 echo "Case: merge_group"
 assert_case "security PR" 0 1 EVENT=merge_group "$REF" REPO=o/r STUB_LABELS=$'bug\nsecurity'
