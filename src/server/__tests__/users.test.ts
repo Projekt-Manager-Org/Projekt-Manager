@@ -546,6 +546,63 @@ describe('User Management Operations', () => {
     });
   });
 
+  // A second owner acts on itself, so a failing guard cannot strip the
+  // seeded owner the other tests log in as.
+  describe('AC-575: Own roles keep user:manage', () => {
+    let selfToken: string;
+    let selfId: string;
+
+    beforeAll(async () => {
+      const res = await authPost(ownerToken, '/api/users', {
+        username: 'ac575_owner',
+        displayName: 'Zweiter Inhaber',
+        password: 'SecondOwner123!',
+        roles: ['owner'],
+      });
+      selfId = res.json().id;
+      selfToken = await login('ac575_owner', 'SecondOwner123!');
+    });
+
+    it('refuses dropping the own owner role and changes nothing', async () => {
+      const res = await authPatch(selfToken, `/api/users/${selfId}`, {
+        displayName: 'Nur noch Büro',
+        roles: ['office'],
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      const after = (await authGet(ownerToken, `/api/users/${selfId}`)).json();
+      expect(after.roles).toEqual(['owner']);
+      expect(after.displayName).toBe('Zweiter Inhaber');
+    });
+
+    it('refuses it when the own id is sent in upper case', async () => {
+      const res = await authPatch(selfToken, `/api/users/${selfId.toUpperCase()}`, {
+        roles: ['office'],
+      });
+
+      expect(res.statusCode).toBe(422);
+      const after = (await authGet(ownerToken, `/api/users/${selfId}`)).json();
+      expect(after.roles).toEqual(['owner']);
+    });
+
+    it('accepts an own role edit that keeps the owner role', async () => {
+      const res = await authPatch(selfToken, `/api/users/${selfId}`, {
+        roles: ['owner', 'office'],
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().roles).toEqual(['owner', 'office']);
+    });
+
+    it("accepts dropping another owner's owner role", async () => {
+      const res = await authPatch(ownerToken, `/api/users/${selfId}`, { roles: ['office'] });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().roles).toEqual(['office']);
+    });
+  });
+
   // ---------------------------------------------------------------
   // AC-69: Permission enforcement — only user:manage can manage
   // AC-69 [crit]

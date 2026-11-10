@@ -216,6 +216,7 @@ export const STRINGS = {
     duplicateUsername: 'Benutzername ist bereits vergeben.',
     cannotDeactivateSelf: 'Sie können sich nicht selbst deaktivieren.',
     cannotDeleteSelf: 'Sie können sich nicht selbst löschen.',
+    cannotDropOwnUserManage: 'Sie können sich nicht selbst die Benutzerverwaltung entziehen.',
     alreadyActive: 'Benutzer ist bereits aktiv.',
     alreadyInactive: 'Benutzer ist bereits deaktiviert.',
   },

@@ -212,6 +212,7 @@ Fields and password policy: [data-model.md §5.3](data-model.md#53-user-entity).
 - **AC-63** `[crit]`: When an owner creates a user with username, display name, password and roles, the system stores the account and the user can log in with those credentials.
 - **AC-66** `[crit]`: When an owner reactivates a deactivated user, the system marks the account active and the user can log in again.
 - **AC-68** `[crit]`: If a user tries to deactivate their own account, the system refuses it and changes nothing.
+- **AC-575** `[crit]`: If a user's edit of their own roles would leave them without `user:manage`, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) and changes nothing.
 - **AC-69** `[crit]`: Only users with `user:manage` permission (owner role) can create, update, deactivate, reactivate, or reset passwords. Other roles receive an authorization error.
 - **AC-394** `[crit]`: The system never sends a password hash to a client, except inside a data export ([AC-135](#1514-data-exchange)).
 - **AC-553** `[crit]`: When an owner changes a user's display name, roles or email, the system stores them.
