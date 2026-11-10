@@ -222,4 +222,3 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
 | AC-554 | gap     | the user panel edits only the email: #813                                                                |
-| AC-565 | gap     | blank and over-limit values are accepted or return 500: #814                                             |
