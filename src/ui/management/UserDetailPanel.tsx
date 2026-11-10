@@ -10,8 +10,11 @@ import { useConfirmStore } from '@/state/confirmStore';
 import { usePermission } from '@/hooks/usePermission';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { STRINGS } from '@/config/strings';
+import { hasPermission } from '@/config/permissions';
 import type { User } from '@/domain/types';
 import styles from './Management.module.css';
+
+const AVAILABLE_ROLES = Object.keys(STRINGS.roles);
 
 interface Props {
   user: User;
@@ -38,6 +41,40 @@ export function UserDetailPanel({ user, onClose }: Props) {
   const [resetPwConfirm, setResetPwConfirm] = useState('');
   const [resetSuccess, setResetSuccess] = useState(false);
   const [emailDraft, setEmailDraft] = useState(user.email ?? '');
+  const [nameDraft, setNameDraft] = useState(user.displayName);
+  const [rolesDraft, setRolesDraft] = useState(user.roles);
+  const [savingRoles, setSavingRoles] = useState(false);
+  const isSelf = user.id === authUser?.id;
+
+  const saveDisplayName = () => {
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      setNameDraft(user.displayName);
+      return;
+    }
+    if (trimmed === user.displayName) return;
+    void updateUser(user.id, { displayName: trimmed }).then((ok) => {
+      if (!ok) setNameDraft(user.displayName);
+    });
+  };
+
+  const nextRoles = (role: string) =>
+    rolesDraft.includes(role) ? rolesDraft.filter((r) => r !== role) : [...rolesDraft, role];
+
+  // The last role cannot go, nor one whose loss ends the own user:manage (AC-575).
+  const canToggleRole = (role: string) => {
+    const next = nextRoles(role);
+    return next.length > 0 && !(isSelf && !hasPermission(next, 'user:manage'));
+  };
+
+  const toggleRole = async (role: string) => {
+    const next = nextRoles(role);
+    setRolesDraft(next);
+    setSavingRoles(true);
+    const ok = await updateUser(user.id, { roles: next });
+    setSavingRoles(false);
+    if (!ok) setRolesDraft(user.roles);
+  };
 
   const resetPwMatch = resetPw === resetPwConfirm;
 
@@ -109,8 +146,41 @@ export function UserDetailPanel({ user, onClose }: Props) {
         </div>
 
         <div className={styles.formGroup}>
+          <label className={styles.formLabel}>{STRINGS.ui.displayName}</label>
+          {canManage ? (
+            <input
+              className={styles.formInput}
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={saveDisplayName}
+              disabled={submitting}
+              data-testid="user-panel-displayname-input"
+            />
+          ) : (
+            <div>{user.displayName}</div>
+          )}
+        </div>
+
+        <div className={styles.formGroup}>
           <label className={styles.formLabel}>{STRINGS.ui.roles}</label>
-          <div>{user.roles.map((r) => STRINGS.roles[r] ?? r).join(', ')}</div>
+          {canManage ? (
+            <div className={styles.checkboxGroup}>
+              {AVAILABLE_ROLES.map((role) => (
+                <label key={role} className={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={rolesDraft.includes(role)}
+                    onChange={() => void toggleRole(role)}
+                    disabled={submitting || savingRoles || !canToggleRole(role)}
+                    data-testid={`user-panel-role-${role}`}
+                  />
+                  {STRINGS.roles[role]}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <div>{user.roles.map((r) => STRINGS.roles[r] ?? r).join(', ')}</div>
+          )}
         </div>
 
         <div className={styles.formGroup}>

@@ -33,6 +33,7 @@ import { deleteSessionsByUserId } from '../repositories/session.js';
 import { hashPassword } from '../password.js';
 import { checkPasswordPolicy } from '../config/password-policy.js';
 import { STRINGS } from '../../config/strings.js';
+import { hasPermission } from '../../config/permissions.js';
 import {
   notFound,
   validationError,
@@ -160,6 +161,11 @@ export class UserService {
         run: async (tx) => {
           const prior = await findById(tx, id);
           if (!prior) throw notFound(STRINGS.entities.user);
+          // AC-575: a user cannot remove their own `user:manage`. Compared on the
+          // stored id: the path id may differ in case and still match the row.
+          if (prior.id === actorId && data.roles && !hasPermission(data.roles, 'user:manage')) {
+            throw validationError(STRINGS.users.cannotDropOwnUserManage);
+          }
 
           const updated = await updateUserRepo(tx, id, actorId, data);
           if (!updated) throw notFound(STRINGS.entities.user);

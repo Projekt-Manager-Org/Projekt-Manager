@@ -25,7 +25,9 @@ export function UserManagement() {
   const clearError = useUserStore((s) => s.clearError);
 
   const [formOpen, setFormOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  // An id, not a copy: the panel shows the store's row as edits land.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedUser = users.find((u) => u.id === selectedId) ?? null;
 
   useEffect(() => {
     fetchUsers();
@@ -33,12 +35,12 @@ export function UserManagement() {
 
   const openCreateForm = () => {
     clearError();
-    setSelectedUser(null);
+    setSelectedId(null);
     setFormOpen(true);
   };
 
   const handleRowClick = (u: User) => {
-    setSelectedUser(u);
+    setSelectedId(u.id);
     setFormOpen(false);
     clearError();
   };
@@ -101,7 +103,7 @@ export function UserManagement() {
       {formOpen && <UserCreateForm onClose={() => setFormOpen(false)} />}
 
       {selectedUser && !formOpen && (
-        <UserDetailPanel user={selectedUser} onClose={() => setSelectedUser(null)} />
+        <UserDetailPanel user={selectedUser} onClose={() => setSelectedId(null)} />
       )}
     </div>
   );
