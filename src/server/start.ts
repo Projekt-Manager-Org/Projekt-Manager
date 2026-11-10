@@ -50,8 +50,6 @@ import { probeStagingDurability } from './config/assertStagingDurable.js';
 import { registerStaticAssets } from './staticCache.js';
 import { DIST_ROOT } from './staticRoot.js';
 
-const HOST = '0.0.0.0';
-
 // Takeout staging reaper cadence. The TTL it enforces is a [C] value
 // (TAKEOUT_STAGING_TTL_MINUTES, default 24h); the sweep cadence is fixed
 // because the action it takes is on a multi-hour window — hourly is the
@@ -434,7 +432,7 @@ async function start(): Promise<void> {
     });
   }
 
-  await app.listen({ port: env.PORT, host: HOST });
+  await app.listen({ port: env.PORT, host: env.HOST });
 }
 
 // Global error supervision (canonical Node.js production pattern;

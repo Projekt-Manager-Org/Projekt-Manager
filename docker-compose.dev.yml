@@ -26,7 +26,7 @@ services:
     # to unblock local `up` without weakening the prod gate.
     build: .
     ports:
-      - '${PORT:-3000}:3000'
+      - '127.0.0.1:${PORT:-3000}:3000'
     # Profile-gated off the default dev workflow. Local dev runs the
     # app via `npm run dev` on the host (HMR, faster reload, no image
     # rebuild per change), so a containerised app would be a duplicate

@@ -34,6 +34,7 @@ const PLACEHOLDER_BINARY_RECIPIENT =
 /** Minimal Env shape with only the fields assertProductionSafe reads. */
 function makeEnv(overrides: Partial<Env>): Env {
   return {
+    HOST: '127.0.0.1',
     PORT: 3000,
     NODE_ENV: 'production',
     DATABASE_URL: 'postgres://unused',

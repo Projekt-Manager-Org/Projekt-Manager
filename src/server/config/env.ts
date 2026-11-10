@@ -80,6 +80,9 @@ function parseRetiredRecipients(raw: string): string[] | null {
 }
 
 export const envSchema = z.object({
+  // Listen address. Loopback by default, so a dev server is never on the
+  // LAN (#826); docker-compose.yml sets 0.0.0.0 for the container.
+  HOST: z.string().trim().min(1).default('127.0.0.1'),
   PORT: z.coerce.number().int().positive().default(3000),
   // Default to 'production' so the production-safety checks (see
   // assertProductionSafe below) fire when NODE_ENV is unset. The previous

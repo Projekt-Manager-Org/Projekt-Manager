@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import os from 'node:os';
 import { BRANDING } from '../src/config/brandingConfig';
 
 /**
@@ -16,16 +15,12 @@ import { BRANDING } from '../src/config/brandingConfig';
 // authenticated session from auth.setup.ts) — we need the login page.
 test.use({ storageState: { cookies: [], origins: [] } });
 
-/** Returns the first non-loopback IPv4 address, or null. */
-function getLocalIPv4(): string | null {
-  for (const addrs of Object.values(os.networkInterfaces())) {
-    if (!addrs) continue;
-    for (const addr of addrs) {
-      if (addr.family === 'IPv4' && !addr.internal) return addr.address;
-    }
-  }
-  return null;
-}
+/**
+ * Non-localhost name that Chromium resolves to 127.0.0.1 — see
+ * `INSECURE_HOST` in playwright.config.ts. The dev server is on loopback
+ * only (#826), so the LAN IP is not an option.
+ */
+const INSECURE_HOST = 'insecure.test';
 
 test.describe('Insecure connection banner', () => {
   test('no banner and standard title on localhost', async ({ page }) => {
@@ -55,15 +50,11 @@ test.describe('Insecure connection banner', () => {
   });
 
   test('banner and title prefix on non-localhost HTTP', async ({ page }) => {
-    const ip = getLocalIPv4();
-    test.skip(!ip, 'No non-loopback IPv4 address available');
-
-    // Swap the `localhost` host for the machine's LAN IP while keeping
-    // whatever port the active project was configured with — 5173 for
-    // the developer dev server, 5174 for Playwright's isolated E2E
-    // server (see playwright.config.ts webServer).
-    const port = new URL(test.info().project.use.baseURL ?? 'http://localhost:5173').port || '5173';
-    await page.goto(`http://${ip}:${port}/`);
+    // Swap the `localhost` host for INSECURE_HOST, keeping the port of
+    // Playwright's isolated E2E server (playwright.config.ts webServer —
+    // the only one that admits INSECURE_HOST).
+    const { baseURL } = test.info().project.use;
+    await page.goto(`http://${INSECURE_HOST}:${new URL(baseURL!).port}/`);
     await expect(page.getByTestId('login-form')).toBeVisible();
 
     await expect(page.getByTestId('insecure-banner')).toBeVisible();

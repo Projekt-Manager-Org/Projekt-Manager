@@ -166,6 +166,11 @@ if (USE_SUID_SANDBOX) {
  * Specs that need a different role import `STORAGE_STATES` from
  * auth.setup.ts and set `test.use({ storageState: STORAGE_STATES.<role> })`.
  */
+// Non-localhost name for e2e/insecure-banner.spec.ts, mapped to loopback in
+// Chromium and admitted by Vite (`use.launchOptions`, `webServer.env`).
+// `.test` is reserved (RFC 2606): it never resolves anywhere else.
+const INSECURE_HOST = 'insecure.test';
+
 const STORAGE_STATE = path.resolve(__dirname, 'e2e/.auth/owner.json');
 
 /**
@@ -220,7 +225,12 @@ export default defineConfig({
     // Re-enable Chromium's sandbox only when the SUID helper is available
     // (Playwright disables it by default). See the CHROME_DEVEL_SANDBOX
     // block above for the Ubuntu 24.04 AppArmor context.
-    launchOptions: { chromiumSandbox: USE_SUID_SANDBOX },
+    // `INSECURE_HOST` resolves to loopback, so the insecure-banner spec
+    // gets a non-localhost hostname without a server on the LAN (#826).
+    launchOptions: {
+      chromiumSandbox: USE_SUID_SANDBOX,
+      args: [`--host-resolver-rules=MAP ${INSECURE_HOST} 127.0.0.1`],
+    },
   },
   projects: [
     // 1. Setup — reseed database, authenticate once per role, save four
@@ -365,6 +375,7 @@ export default defineConfig({
       PORT: '3100',
       VITE_DEV_PORT: '5174',
       VITE_API_PROXY_TARGET: 'http://localhost:3100',
+      VITE_DEV_ALLOWED_HOST: INSECURE_HOST,
       DATABASE_URL: E2E_DATABASE_URL,
       STORAGE_BUCKET: E2E_STORAGE_BUCKET,
       BINARY_AGE_RECIPIENT: E2E_BINARY_RECIPIENT,
