@@ -36,7 +36,7 @@ test.describe('Management flows', () => {
   const testProjectNumber = 'E2E-001';
   const testProjectTitle = 'Fassadenreinigung E2E-Test';
 
-  /** Username created in step 22, used for deactivation/reactivation. */
+  /** Username created in step 22, used by the later user steps. */
   const testUsername = 'e2e_worker';
   const testPassword = 'E2eSecure123!';
 
@@ -371,6 +371,39 @@ test.describe('Management flows', () => {
     } finally {
       await freshContext.close();
     }
+  });
+
+  test('AC-554: change display name and roles from the user panel', async ({ page }) => {
+    await clickView(page, 'benutzer');
+    await page.getByText(testUsername).click();
+
+    const nameInput = page.getByTestId('user-panel-displayname-input');
+    await nameInput.fill('E2E Bürokraft');
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/users/') && r.request().method() === 'PATCH' && r.ok(),
+      ),
+      nameInput.blur(),
+    ]);
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/users/') && r.request().method() === 'PATCH' && r.ok(),
+      ),
+      page.getByTestId('user-panel-role-office').check(),
+    ]);
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/api/users/') && r.request().method() === 'PATCH' && r.ok(),
+      ),
+      page.getByTestId('user-panel-role-worker').uncheck(),
+    ]);
+
+    await page.reload();
+    await clickView(page, 'benutzer');
+    await page.getByText(testUsername).click();
+    await expect(page.getByTestId('user-panel-displayname-input')).toHaveValue('E2E Bürokraft');
+    await expect(page.getByTestId('user-panel-role-office')).toBeChecked();
+    await expect(page.getByTestId('user-panel-role-worker')).not.toBeChecked();
   });
 
   // ---------------------------------------------------------------
