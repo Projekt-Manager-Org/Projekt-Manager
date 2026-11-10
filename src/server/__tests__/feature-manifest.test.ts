@@ -70,7 +70,7 @@ const MANIFEST_EVENT = 'config-feature-manifest';
  */
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    HOST: '127.0.0.1',
+    LISTEN_HOST: '127.0.0.1',
     PORT: 3000,
     NODE_ENV: 'test',
     DATABASE_URL: 'postgres://unused',

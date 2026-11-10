@@ -127,7 +127,7 @@ sudo -u deploy docker ps --filter name=projekt-manager-
 
 # Direct health check (bypasses Caddy)
 sudo -u deploy docker exec projekt-manager-app-1 \
-  node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1))"
+  node -e "fetch('http://'+require('os').hostname()+':3000/api/health').then(r=>process.exit(r.ok?0:1))"
 
 # From WireGuard client (end-to-end with TLS)
 curl -sS https://${DOMAIN}/api/health

@@ -99,7 +99,7 @@ services:
       NODE_ENV: production
       # The app defaults to loopback (#826); here it must listen on the
       # compose network, where Caddy reaches it.
-      HOST: 0.0.0.0
+      LISTEN_HOST: 0.0.0.0
       PORT: '3000'
       SEED: ${SEED:-false}
       # First-run admin bootstrap (ADR-0010 / #57). Optional with an empty

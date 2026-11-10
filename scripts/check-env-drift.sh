@@ -266,7 +266,7 @@ SCHEMA_DOC_EXCLUDE=$(cat <<'EOF'
 DATABASE_URL          # compose builds from POSTGRES_PASSWORD (documented in secrets.manifest.txt)
 NODE_ENV              # compose hardcodes "production"; an operator override is the wrong surface to expose
 PORT                  # compose hardcodes "3000"; not an operator-tunable surface
-HOST                  # compose hardcodes "0.0.0.0"; not an operator-tunable surface
+LISTEN_HOST           # compose hardcodes "0.0.0.0"; not an operator-tunable surface
 STORAGE_KEY_PREFIX    # test-only knob — vitest sets `test-<pid>/` via process.env (src/test/integration-setup.ts); production leaves it unset
 EOF
 )

@@ -432,7 +432,7 @@ async function start(): Promise<void> {
     });
   }
 
-  await app.listen({ port: env.PORT, host: env.HOST });
+  await app.listen({ port: env.PORT, host: env.LISTEN_HOST });
 }
 
 // Global error supervision (canonical Node.js production pattern;
