@@ -73,8 +73,10 @@ services:
   db:
     # Built locally, like `app` above: the base `image:` names GHCR.
     build: ./docker/db
+    # Loopback only (#838): the seed superuser's password is public, and
+    # Docker's published ports bypass ufw. CI fails a dev port off loopback.
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       # Long-form bind with `create_host_path: false`. The default
       # daemon behaviour is to silently materialise a missing bind-mount
