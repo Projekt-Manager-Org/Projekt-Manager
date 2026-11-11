@@ -191,6 +191,10 @@ Raised in [#683](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/6
 
 **Decision.** `publish` names the `merge_group` run's digests `sha-<commit>`. `promote` only moves `main` onto that pair, or rebuilds when it is missing. PR discovery, tree equality and `pull-requests: read` are gone. Side effect: the deployed image's baked `GIT_SHA` is the `main` commit, not the PR tip.
 
+### 2026-11-11 — A third image: `db`
+
+Raised in [#835](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/835). The stock `postgres` image took Alpine fixes only when upstream rebuilt it. `db` is now `docker/db/Dockerfile` (the pinned base plus `apk upgrade`), built, published, named and promoted with `app` and `backup` as one set; "pair" above reads as that set. Its package, `projekt-manager-db`, is created private by its first push and is made public by hand before the first deploy, per § Image visibility.
+
 ## Dep lifecycle health (as of 2026-05-15)
 
 | Dep                              | Status                         | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |

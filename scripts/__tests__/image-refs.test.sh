@@ -73,6 +73,8 @@ assert_case "owner is lowercased in the app repo" 0 \
   'app_repo=ghcr.io/projekt-manager-org/projekt-manager' 'topic' 'refs/pull/1/merge'
 assert_case "backup repo is derived from the same owner" 0 \
   'backup_repo=ghcr.io/projekt-manager-org/projekt-manager-backup' 'topic' 'refs/pull/1/merge'
+assert_case "db repo is derived from the same owner" 0 \
+  'db_repo=ghcr.io/projekt-manager-org/projekt-manager-db' 'topic' 'refs/pull/1/merge'
 assert_case "sha tag carries the head SHA" 0 \
   "sha_tag=sha-$SHA" 'topic' 'refs/pull/1/merge'
 assert_case "app ref joins repo and sha tag" 0 \

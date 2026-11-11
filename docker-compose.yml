@@ -230,10 +230,15 @@ services:
     logging: *default-logging
 
   db:
-    # Digest-pinned: `up -d` pulls a digest it does not have and recreates
-    # the container, so what runs is what this line declares. A floating
-    # tag already present is never re-pulled (#637). Renovate bumps both.
-    image: postgres:17.11-alpine@sha256:4717f90960a225c2d1c5dac50508c401230f693ff626e06e84e6db0a68ded508
+    # Upstream Postgres plus Alpine's current fixes, built and published
+    # with the app and backup images (docker/db/Dockerfile, #835). The base
+    # digest is pinned there.
+    image: ghcr.io/projekt-manager-org/projekt-manager-db:${APP_IMAGE_TAG:?APP_IMAGE_TAG must be set}
+    # Every deploy carries a new tag, so every deploy recreates this
+    # container. Docker's default 10 s would SIGKILL a shutdown checkpoint
+    # that runs long; the data survives (WAL), but the next start replays
+    # it as crash recovery.
+    stop_grace_period: 60s
     mem_limit: 512m
     cpus: 1.0
     volumes:

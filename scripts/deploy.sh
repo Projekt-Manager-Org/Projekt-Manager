@@ -118,13 +118,13 @@ if ! "$REPO_DIR/scripts/ops/docker-converge.sh" --check; then
 fi
 
 # Pin the exact SHA-tagged image so this deploy is reproducible and a
-# rollback is just re-running with an older SHA. Both `app` and `backup`
-# images are produced by this repo and share APP_IMAGE_TAG — CI pushes
-# them as a pair per commit SHA (see .github/workflows/ci.yml
-# publish job and ADR-0020 §Decision for the backup image).
+# rollback is just re-running with an older SHA. The `app`, `backup` and
+# `db` images are produced by this repo and share APP_IMAGE_TAG — CI
+# pushes them as a set per commit SHA (see .github/workflows/ci.yml
+# publish job, ADR-0020 §Decision for the backup image, #835 for db).
 #
 # Exported HERE — before any compose invocation in Phase 2 — because
-# the docker-compose.yml `image:` lines for `app` and `backup` use
+# the docker-compose.yml `image:` lines for `app`, `backup` and `db` use
 # the `${APP_IMAGE_TAG:?…}` gate. Without an early export, even a
 # read-only `compose ps` (used by the baseline-state pre-flight
 # below) trips the gate and exits non-zero — silently, with stderr
@@ -286,17 +286,16 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx db; then
   fi
 fi
 
-# Only `app` and `backup` are pulled here: they resolve via APP_IMAGE_TAG
-# (exported in Phase 2 setup above). `db` is left to `up -d`, which pulls
-# a missing image — and with a digest-pinned reference (#637) a new
-# digest is always a missing image. The deploy profiles are needed on
+# The images that resolve via APP_IMAGE_TAG (exported in Phase 2 setup
+# above). Pulled ahead of `up -d`, so a missing tag fails here, before
+# anything is stopped. The deploy profiles are needed on
 # BOTH `pull` and `up` — without them on pull, the backup service is
 # filtered out of the active set and its image is never fetched ahead of
 # `up -d` (which would then block on a registry round-trip while
 # starting).
 #
 # `--policy missing` is what makes the local cache below a real rollback
-# store rather than decoration. `app`/`backup` tags are immutable
+# store rather than decoration. `app`/`backup`/`db` tags are immutable
 # `sha-<commit>`, so "already present locally" and "identical bytes" are
 # the same statement — re-pulling one buys nothing and, once GHCR
 # retention has reaped that tag, the pull 404s under `set -e` and aborts
@@ -306,7 +305,7 @@ fi
 # Same reasoning as Kubernetes' `imagePullPolicy: IfNotPresent` for
 # non-moving tags: the registry is the cold path, the host cache is the
 # warm one.
-docker compose "${DEPLOY_COMPOSE_PROFILES[@]}" pull --policy missing app backup
+docker compose "${DEPLOY_COMPOSE_PROFILES[@]}" pull --policy missing app backup db
 
 # Caddy uses `build: ./docker/caddy` (locally built, not a registry
 # pull), so `compose up -d` below does NOT auto-rebuild on Dockerfile
@@ -494,7 +493,7 @@ else
 fi
 
 # --- Post-deploy: image garbage collection (host-side retention) ------
-# Each deploy pulls a fresh `sha-<commit>` app+backup pair and builds a
+# Each deploy pulls a fresh `sha-<commit>` app/backup/db set and builds a
 # new caddy layer; nothing here reclaimed the superseded ones, so they
 # accumulated one image-set per deploy. App/backup layers are
 # node_modules-heavy (thousands of tiny files) and exhaust INODES long
@@ -550,6 +549,7 @@ prune_repo_image() {
 
 prune_repo_image projekt-manager-app-1
 prune_repo_image projekt-manager-backup-1
+prune_repo_image projekt-manager-db-1
 
 # Reclaim dangling (<none>) images — chiefly superseded `docker compose
 # build caddy` layers, which the per-repo pass above cannot see (they

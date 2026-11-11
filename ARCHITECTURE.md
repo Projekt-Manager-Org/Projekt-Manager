@@ -361,13 +361,13 @@ flowchart LR
   backup -->|"age-encrypted dumps"| r2[("Cloudflare R2")]
 ```
 
-| Service                   | Role                                                                                                      |
-| ------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `app`                     | API + SPA. A tmpfs holds the operator-loaded binary `age` identity; boot refuses without it (ADR-0024).   |
-| `db`                      | Postgres 17 with page checksums (AC-366).                                                                 |
-| `backup`                  | Encrypted R2 backups and restore drills on an in-process schedule (ADR-0020). `backup` compose profile.   |
-| `caddy`                   | Reverse proxy; custom xcaddy build for DNS-01 ACME.                                                       |
-| `storage`, `storage-init` | MinIO and its bucket bootstrap — dev/CI only (`docker-compose.minio.yml`); deployments use B2 (ADR-0022). |
+| Service                   | Role                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `app`                     | API + SPA. A tmpfs holds the operator-loaded binary `age` identity; boot refuses without it (ADR-0024).        |
+| `db`                      | Postgres 17 with page checksums (AC-366); upstream image plus Alpine's current fixes (`docker/db/Dockerfile`). |
+| `backup`                  | Encrypted R2 backups and restore drills on an in-process schedule (ADR-0020). `backup` compose profile.        |
+| `caddy`                   | Reverse proxy; custom xcaddy build for DNS-01 ACME.                                                            |
+| `storage`, `storage-init` | MinIO and its bucket bootstrap — dev/CI only (`docker-compose.minio.yml`); deployments use B2 (ADR-0022).      |
 
 Overlays: `docker-compose.dev.yml` (DB + storage for `npm run dev`), `docker-compose.http.yml` (HTTP-only evaluation, ADR-0013).
 

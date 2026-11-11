@@ -98,8 +98,8 @@ FROM node:24.22.2-alpine@sha256:ec318aabf188af4e5488847eea4b24452650b9917140563e
 #     Node bundle when the schedule moved in-process.
 #
 # No explicit version pins here: cross-environment compatibility is
-# governed by the postgresql17 major matching the `db` service's
-# postgres:17-alpine (docker-compose.yml) — pg_restore / pg_dump must
+# governed by the postgresql17 major matching the `db` image's
+# postgres:17-alpine base (docker/db/Dockerfile) — pg_restore / pg_dump must
 # speak the same major as that server. Everything else tracks Alpine
 # 3.24.
 #
