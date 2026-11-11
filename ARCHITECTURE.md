@@ -483,7 +483,7 @@ Workers: list, years and single-row reads are narrowed by the repository scope p
 - **Project number format**: configurable `[C]`, enforced only for uniqueness.
 - **Site vs billing address**: `projects.siteAddress` (Baustelle) beside `customers.address` (Rechnung) — the standard ERP split; null means "at the billing address". No `addresses` table: no need for several per customer.
 - **Bulk transitions**: not supported.
-- **One DB role** (`pm`) serves app, backup and migrations. The integrity backstop is external (immutable R2 backups, B2 Compliance lock); a least-privilege split would only stop an attacker holding the app but not the host (#418).
+- **One DB role** (`pm`) serves app, backup and migrations. The integrity backstop is external (immutable R2 backups, B2 Compliance lock); a least-privilege split would only stop an attacker holding the app but not the host (#418). The role stays superuser: a non-superuser owner protects no data, and the shell or persistence superuser adds over SQL injection is cleared by the restore an injection requires anyway (#836).
 - **Client-side routing**: declarative mode (`<BrowserRouter>`, no data router). `src/config/routes.ts` is the single route table — URL, access rule, per-role landing; nav and guard derive from it, landing from its `LANDING_ORDER`.
 - **Escape-to-dismiss**: every Esc-closable surface registers on the LIFO `src/hooks/escapeStack.ts`, so only the topmost closes. Modals use `src/ui/common/useDialogA11y.ts`, the rest `src/hooks/useEscapeKey.ts`; no hand-rolled `keydown` listeners.
 - **Menu close on outside click**: `src/ui/common/MenuBackdrop.tsx`, an invisible overlay, so one click closes the menu without activating what lies beneath (#130).
