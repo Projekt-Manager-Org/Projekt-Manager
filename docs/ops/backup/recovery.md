@@ -63,13 +63,14 @@ If either decrypt fails with `no identity matched any of the recipients`, the du
 
 You are about to start a throwaway container. This is fully reversible — it touches no production data.
 
+No published port: every step below uses `docker exec`, and a port would serve the decrypted data on every interface, past ufw (#838).
+
 ```bash
 docker run --rm -d \
   --name pm-restore-scratch \
   -e POSTGRES_PASSWORD=scratch \
   -e POSTGRES_DB=projekt_manager \
   -e POSTGRES_USER=pm \
-  -p 55432:5432 \
   postgres:17-alpine
 
 # Wait for readiness
