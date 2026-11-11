@@ -388,6 +388,21 @@ jobs:
           check "dev overlays, backup profile" -f docker-compose.yml -f docker-compose.minio.yml -f docker-compose.dev.yml --profile backup
           echo "Compose files validated."
 
+          # Dev publishes on loopback only (#826, #838): a port without a
+          # host IP listens on every interface, and Docker's published
+          # ports bypass ufw. Every profile, so a gated service counts too.
+          exposed=$(docker compose -f docker-compose.yml -f docker-compose.minio.yml -f docker-compose.dev.yml \
+            --profile '*' config --format json \
+            | jq -r '.services | to_entries[] | .key as $s
+                | (.value.ports // [])[] | select(.host_ip != "127.0.0.1")
+                | "\($s): \(.host_ip // "all interfaces"):\(.published)"')
+          if [ -n "$exposed" ]; then
+            echo "::error::dev overlays publish a port off loopback — bind it to 127.0.0.1:"
+            echo "$exposed"
+            exit 1
+          fi
+          echo "Dev ports are loopback-only."
+
       - name: Lint
         run: npm run lint
 

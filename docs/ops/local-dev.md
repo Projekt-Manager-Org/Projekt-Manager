@@ -49,7 +49,7 @@ docker compose up -d
 npm run dev
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api/*` to `http://localhost:3000`. Both listen on `127.0.0.1` only, never on the LAN (#826).
+Open `http://localhost:5173`. Vite proxies `/api/*` to `http://localhost:3000`. Both listen on `127.0.0.1` only, never on the LAN (#826). So does every port compose publishes; CI enforces it (#838).
 
 `COMPOSE_FILE` in `.env.example` declares the dev overlay triple (`docker-compose.yml:docker-compose.minio.yml:docker-compose.dev.yml`), so bare `docker compose` commands pick up the right file set without `-f` flags. The dev overlay's `app` service is profile-gated (`containerised-app`) — bare `up` starts only `db`, `storage`, `storage-init` because the app runs on the host via `npm run dev`. To exercise the prod-shaped Dockerfile build locally, opt in with `docker compose --profile containerised-app up -d`.
 
