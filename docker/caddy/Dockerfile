@@ -16,7 +16,7 @@
 # CI; majors wait for approval.
 # See ADR-0027 + docs/ops/dep-management.md.
 
-FROM caddy:2.11.9-builder@sha256:f7d08b96ba62ff0ae985079c0db4e0f97acb1f174e0e111aebe1f8a4b2d56f31 AS builder
+FROM caddy:2.11.9-builder@sha256:29f98311e17e583811355fa62cc080f71d6f3aa19cf09a9e1494d30579f8bebf AS builder
 
 # The first three `--with` lines raise Go modules above what Caddy requires,
 # because only a Caddy release would otherwise move them: golang.org/x/net
