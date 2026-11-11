@@ -158,6 +158,7 @@ else
     (map({(.service): .}) | add) as $by
     | [ ($by.app.image    | test("/projekt-manager:main$"))        // false,
         ($by.backup.image | test("/projekt-manager-backup:main$")) // false,
+        ($by.db.image     | test("/projekt-manager-db:main$"))     // false,
         ($by.db.build == false),
         ($by.caddy.build == true and $by.caddy.context == "docker/caddy") ]
     | to_entries | map(select(.value != true) | .key) | join(",")' <<<"$out" 2>&1)

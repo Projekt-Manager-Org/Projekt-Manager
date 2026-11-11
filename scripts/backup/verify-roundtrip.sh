@@ -107,17 +107,17 @@ for f in "$BASELINE_SQL" "$SEED_SQL" "$VERIFY_MJS" "$INIT_STORAGE"; do
   fi
 done
 
-# --- Image tags, derived from the compose files -----------------------
+# --- Image tags, derived from the files that pin them -----------------
 #
 # Read rather than hardcoded, deliberately. The Postgres major here MUST
-# match the `db` service (pg_restore older→newer is the unsupported
+# match the `db` image (pg_restore older→newer is the unsupported
 # direction, which is also why Dockerfile.backup's apk pin is
 # Renovate-tracked), and the MinIO pair MUST match the mirror the rest of
 # dev and CI runs. Deriving them makes that drift impossible instead of
 # merely detectable, and adds no new pin for Renovate to track.
 
 image_pin() {
-  # $1 = compose file, $2 = ERE anchored on the image name
+  # $1 = pinning file, $2 = ERE anchored on the image name
   local found
   found="$(grep -oE "$2" "$1" | head -1)"
   if [ -z "$found" ]; then
@@ -127,7 +127,9 @@ image_pin() {
   printf '%s\n' "$found"
 }
 
-PG_IMAGE="$(image_pin docker-compose.yml 'postgres:[0-9]+(\.[0-9]+)*-alpine')"
+# The `db` image's upstream base: `apk upgrade` on top changes no
+# Postgres binary.
+PG_IMAGE="$(image_pin docker/db/Dockerfile 'postgres:[0-9]+(\.[0-9]+)*-alpine@sha256:[0-9a-f]{64}')"
 # The pattern spans the whole reference, registry through digest, on
 # purpose: `grep -oE` returns only the matched span. Starting later strips
 # the registry and silently resolves to Docker Hub, which no longer serves

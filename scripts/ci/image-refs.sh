@@ -25,7 +25,7 @@
 #
 #   Writes `key=value` lines on stdout, for `>> "$GITHUB_OUTPUT"`:
 #     owner, sha_tag, branch_slug, git_sha, app_repo, backup_repo,
-#     app_ref, backup_ref
+#     db_repo, app_ref, backup_ref, db_ref
 #
 # EXIT CODES
 #   0  values printed
@@ -62,6 +62,7 @@ fi
 
 app_repo="ghcr.io/${owner}/projekt-manager"
 backup_repo="ghcr.io/${owner}/projekt-manager-backup"
+db_repo="ghcr.io/${owner}/projekt-manager-db"
 
 cat <<EOF
 owner=${owner}
@@ -70,6 +71,8 @@ branch_slug=${branch_slug}
 git_sha=${HEAD_SHA}
 app_repo=${app_repo}
 backup_repo=${backup_repo}
+db_repo=${db_repo}
 app_ref=${app_repo}:sha-${HEAD_SHA}
 backup_ref=${backup_repo}:sha-${HEAD_SHA}
+db_ref=${db_repo}:sha-${HEAD_SHA}
 EOF

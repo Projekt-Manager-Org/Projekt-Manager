@@ -1,7 +1,7 @@
 name: Tag images on GHCR
 description: >
-  Points the `sha-<commit>` and `<branch-slug>` tags at an app + backup
-  image pair that is already on GHCR, by registry-level manifest copy. No
+  Points the `sha-<commit>` and `<branch-slug>` tags at an app, backup and
+  db image set that is already on GHCR, by registry-level manifest copy. No
   pull, no build, no local Docker daemon involvement. This is the only
   step in the pipeline that makes an image reachable by a name anything
   deploys — everything before it addresses images by digest.
@@ -13,6 +13,9 @@ inputs:
   backup_repo:
     description: GHCR repository path for the backup image, without a tag.
     required: true
+  db_repo:
+    description: GHCR repository path for the db image, without a tag.
+    required: true
   app_source:
     description: >
       Complete existing reference to copy the app image from — either
@@ -22,6 +25,9 @@ inputs:
     required: true
   backup_source:
     description: Complete existing reference to copy the backup image from.
+    required: true
+  db_source:
+    description: Complete existing reference to copy the db image from.
     required: true
   sha_tag:
     description: Immutable per-commit tag (e.g. `sha-<commit>`). Written first.
@@ -54,9 +60,9 @@ runs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-    # Both immutable tags before either moving one. A run killed partway
+    # Every immutable tag before any moving one. A run killed partway
     # then leaves at worst a stale `<branch-slug>`, which the next run
-    # overwrites. The reverse order would leave the slug pair split across
+    # overwrites. The reverse order would leave the slug set split across
     # two commits with nothing to repair it — the failure that made PR
     # runs uncancellable in the first place (#355 §5).
     #
@@ -73,22 +79,26 @@ runs:
       env:
         APP_REPO: ${{ inputs.app_repo }}
         BACKUP_REPO: ${{ inputs.backup_repo }}
+        DB_REPO: ${{ inputs.db_repo }}
         APP_SOURCE: ${{ inputs.app_source }}
         BACKUP_SOURCE: ${{ inputs.backup_source }}
+        DB_SOURCE: ${{ inputs.db_source }}
         SHA_TAG: ${{ inputs.sha_tag }}
         BRANCH_SLUG_TAG: ${{ inputs.branch_slug_tag }}
       run: |
         set -euo pipefail
-        tag_pair() {
+        tag_set() {
           local tag=$1
           echo "::group::Tag ${tag}"
           echo "  ${APP_SOURCE} -> ${APP_REPO}:${tag}"
           docker buildx imagetools create -t "${APP_REPO}:${tag}" "${APP_SOURCE}"
           echo "  ${BACKUP_SOURCE} -> ${BACKUP_REPO}:${tag}"
           docker buildx imagetools create -t "${BACKUP_REPO}:${tag}" "${BACKUP_SOURCE}"
+          echo "  ${DB_SOURCE} -> ${DB_REPO}:${tag}"
+          docker buildx imagetools create -t "${DB_REPO}:${tag}" "${DB_SOURCE}"
           echo "::endgroup::"
         }
-        tag_pair "$SHA_TAG"
+        tag_set "$SHA_TAG"
         if [ -n "$BRANCH_SLUG_TAG" ]; then
-          tag_pair "$BRANCH_SLUG_TAG"
+          tag_set "$BRANCH_SLUG_TAG"
         fi

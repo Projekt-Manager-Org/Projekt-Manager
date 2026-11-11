@@ -16,13 +16,13 @@ operator (over WireGuard):                        v
     -> checkout SHA
     -> refuse on Docker pin drift (scripts/ops/docker-converge.sh --check)
     -> decrypt secrets.env.age (age passphrase prompt)
-    -> docker compose pull app backup + up -d (deploy profiles)
+    -> docker compose pull app backup db + up -d (deploy profiles)
     -> smoke test /api/health (60s timeout)
     -> health through Caddy from the host (120s timeout)
     -> drill-key reload prompt (when /run/drill-key/identity is empty)
 ```
 
-Every commit the merge queue lands has `sha-<commit>` from its queue run, and `promote` only moves `main` onto it (~30s, no rebuild), and only while that commit is still the head of `main`. A commit no queue run named, or one whose pair retention reaped, has none; `promote` then rebuilds through the same composite action: ~5 min, with a `::warning::` in the run log. A PR run's `sha-<pr-tip>` (or a dispatch's) is for deploying a branch; nothing promotes it. See ADR-0011 §"Build once, promote on merge" for the full topology.
+Every commit the merge queue lands has `sha-<commit>` from its queue run, and `promote` only moves `main` onto it (~30s, no rebuild), and only while that commit is still the head of `main`. A commit no queue run named, or one whose image set retention reaped, has none; `promote` then rebuilds through the same composite action: ~5 min, with a `::warning::` in the run log. A PR run's `sha-<pr-tip>` (or a dispatch's) is for deploying a branch; nothing promotes it. See ADR-0011 §"Build once, promote on merge" for the full topology.
 
 Have the backup identity's password-manager entry at hand before invoking the deploy — when the backup container was recreated by the deploy, the script will prompt to paste the age private identity into the container's tmpfs (AC-175). See [backup/drills.md](backup/drills.md) for the threat model.
 
@@ -57,7 +57,7 @@ sudo -u deploy /opt/projekt-manager/scripts/deploy.sh <sha>
 sudo -u deploy /opt/projekt-manager/scripts/deploy.sh --accept-red-ci "<reason>" <ref>
 ```
 
-The script: fetches origin, refuses unless CI passed the SHA ([§ CI check](#ci-check)), checks it out, refuses if the host drifted from the Docker pins (`scripts/ops/docker-converge.sh --check`), decrypts `secrets.env.age` into the shell env (capture-then-`eval`; no plaintext file — Docker still keeps the values in the container config, [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)), sets `APP_IMAGE_TAG=sha-<sha>`, runs `docker compose pull app backup && docker compose up -d` under the deploy profiles (`scripts/lib/deploy-compose.sh`, shared with the nightly inventory scan), polls `/api/health` for 60s, reloads Caddy, polls `https://$DOMAIN/api/health` through Caddy from the host for 120s (`scripts/smoke-caddy-health.sh`), and — when the backup container's tmpfs is empty — prompts the operator to paste the age private identity into `/run/drill-key/identity` via the existing `load-drill-key` tool (no key persisted to disk). A failed or skipped paste warns but does not abort the deploy; reload manually with `docker exec -it projekt-manager-backup-1 load-drill-key`.
+The script: fetches origin, refuses unless CI passed the SHA ([§ CI check](#ci-check)), checks it out, refuses if the host drifted from the Docker pins (`scripts/ops/docker-converge.sh --check`), decrypts `secrets.env.age` into the shell env (capture-then-`eval`; no plaintext file — Docker still keeps the values in the container config, [ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)), sets `APP_IMAGE_TAG=sha-<sha>`, runs `docker compose pull app backup db && docker compose up -d` under the deploy profiles (`scripts/lib/deploy-compose.sh`, shared with the nightly inventory scan) — `db` carries the new tag too, so every deploy restarts Postgres (up to 60 s to stop) — polls `/api/health` for 60s, reloads Caddy, polls `https://$DOMAIN/api/health` through Caddy from the host for 120s (`scripts/smoke-caddy-health.sh`), and — when the backup container's tmpfs is empty — prompts the operator to paste the age private identity into `/run/drill-key/identity` via the existing `load-drill-key` tool (no key persisted to disk). A failed or skipped paste warns but does not abort the deploy; reload manually with `docker exec -it projekt-manager-backup-1 load-drill-key`.
 
 Finally — only after the stack is verified healthy — it garbage-collects superseded images. App/backup layers are `node_modules`-heavy (thousands of tiny files) and accumulate one image-set per deploy, exhausting inodes long before disk bytes if left unbounded. Retention is count-based: it keeps the most-recent `DEPLOY_IMAGE_RETENTION` (default `3`) tags per repo image — current + 2 rollback targets — and prunes BuildKit cache older than `DEPLOY_BUILD_CACHE_MAX_AGE` (default `168h`). GC runs last and is failure-tolerant; a reclaim hiccup never fails an already-successful deploy.
 
@@ -79,12 +79,11 @@ The check runs from the script already on the host, before the checkout: a refus
 
 `deploy.sh` covers everything except the Docker engine itself.
 
-| Layer                                 | How                                                                                                                                                                                                                              |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App / backup (npm, app code, Node)    | CI builds + pushes to GHCR per commit SHA → `deploy.sh` pulls + recreates containers                                                                                                                                             |
-| Caddy (`docker/caddy/Dockerfile`)     | `deploy.sh` runs `docker compose build caddy` — Docker's layer cache makes it near-free when nothing changed. The runtime is the static binary on `scratch`, so the cache cannot hold stale OS packages                          |
-| Postgres (`db`)                       | Digest-pinned in `docker-compose.yml`; Renovate bumps the pin. `deploy.sh`'s `up -d` pulls a digest not present locally and recreates the container ([#637](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/637)). |
-| Docker engine + Compose plugin (host) | Manual converge per host; `deploy.sh` refuses on drift → [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions)                                                                                |
+| Layer                                                    | How                                                                                                                                                                                                     |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App / backup / db (npm, app code, Node, Alpine packages) | CI builds + pushes to GHCR per commit SHA → `deploy.sh` pulls + recreates containers                                                                                                                    |
+| Caddy (`docker/caddy/Dockerfile`)                        | `deploy.sh` runs `docker compose build caddy` — Docker's layer cache makes it near-free when nothing changed. The runtime is the static binary on `scratch`, so the cache cannot hold stale OS packages |
+| Docker engine + Compose plugin (host)                    | Manual converge per host; `deploy.sh` refuses on drift → [server-setup.md § Upgrading pinned versions](server-setup.md#upgrading-pinned-versions)                                                       |
 
 **When:** an open **Deploy pending** issue means a merged `deploy-asap` change is not running yet: deploy, [verify](#verify-a-deploy), close it ([dep-management.md § Deploy urgency](dep-management.md#deploy-urgency)).
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Reap stale GHCR image versions for the app and backup packages.
+# Reap stale GHCR image versions for the app, backup and db packages.
 #
 # WHY NOT THE BUILT-IN POLICY OR actions/delete-package-versions
 #   `provenance: mode=max` makes every published artifact an OCI *index*.
@@ -52,7 +52,8 @@
 #     GITHUB_REPOSITORY  owner/repo (set by Actions).
 #     GH_TOKEN           token for `gh` and for the registry read.
 #     PACKAGES           space-separated package names.
-#                        Default: "projekt-manager projekt-manager-backup"
+#                        Default: "projekt-manager projekt-manager-backup
+#                        projekt-manager-db"
 #     KEEP_MAIN          rollback window, in commits on main. Default 5.
 #     MIN_AGE_HOURS      floor below which nothing is deleted. Default 24.
 #     DRY_RUN            anything but "false" reports without deleting.
@@ -62,7 +63,7 @@
 #
 # EXIT CODES
 #   0  reaped (or reported, under DRY_RUN)
-#   1  swept both packages, but one or more deletes were rejected
+#   1  swept every package, but one or more deletes were rejected
 #   2  bad invocation: missing variable, missing tool, shallow checkout,
 #      unlistable PR set
 #   3  refused: an invariant protecting the `main` pointer did not hold
@@ -81,7 +82,7 @@ ORG="${GITHUB_REPOSITORY%%/*}"
 # GHCR rejects uppercase in the registry path; the org is mixed-case.
 # Same lowercasing scripts/ci/image-refs.sh does for the push side.
 OWNER="${ORG,,}"
-PACKAGES="${PACKAGES:-projekt-manager projekt-manager-backup}"
+PACKAGES="${PACKAGES:-projekt-manager projekt-manager-backup projekt-manager-db}"
 KEEP_MAIN="${KEEP_MAIN:-5}"
 MIN_AGE_HOURS="${MIN_AGE_HOURS:-24}"
 DRY_RUN="${DRY_RUN:-true}"
@@ -99,9 +100,9 @@ for tool in gh jq curl git; do
 done
 
 # --- Keep tags (rules 1 and 2) ----------------------------------------
-# Resolved once and shared by both packages: the app and backup images
-# are built and tagged as a pair, so anything worth keeping in one is
-# worth keeping in the other.
+# Resolved once and shared by every package: the images are built and
+# tagged as a set, so anything worth keeping in one is worth keeping in
+# the others.
 mapfile -t main_shas < <(git rev-list -n "$KEEP_MAIN" "$MAIN_REF")
 if [ "${#main_shas[@]}" -lt "$KEEP_MAIN" ]; then
   echo "::error::ghcr-retention: $MAIN_REF yields ${#main_shas[@]} commits, need $KEEP_MAIN — deepen the checkout (fetch-depth)" >&2

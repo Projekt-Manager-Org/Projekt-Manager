@@ -71,6 +71,8 @@ services:
         APP_IMAGE_TAG: ${APP_IMAGE_TAG}
 
   db:
+    # Built locally, like `app` above: the base `image:` names GHCR.
+    build: ./docker/db
     ports:
       - '5432:5432'
     volumes:

@@ -29,6 +29,9 @@ services:
       DOMAIN: ''
       CLOUDFLARE_API_TOKEN: ''
 
+  db:
+    build: ./docker/db
+
   app:
     build: .
     environment:

@@ -1,8 +1,8 @@
 name: Build, push by digest, scan, smoke, and round-trip
 description: >
-  Builds the app + backup images ONCE each, pushing each straight to GHCR
-  by digest, then pulls the published manifests back and scans, smokes and
-  backup-round-trips those exact bytes. What Trivy scans for secrets and what
+  Builds the app, backup and db images ONCE each, pushing each straight to
+  GHCR by digest, then pulls the published manifests back and smokes,
+  secret-scans (app, backup) and backup-round-trips those exact bytes. What Trivy scans for secrets and what
   the stack boots IS what was published — an identity, not an argument about cache
   equivalence.
 
@@ -25,6 +25,9 @@ inputs:
     required: true
   backup_repo:
     description: GHCR repository path for the backup image, without a tag.
+    required: true
+  db_repo:
+    description: GHCR repository path for the db image, without a tag.
     required: true
   sha_tag:
     description: >
@@ -50,6 +53,9 @@ outputs:
   backup_digest:
     description: Digest of the pushed backup image index.
     value: ${{ steps.push_backup.outputs.digest }}
+  db_digest:
+    description: Digest of the pushed db image index.
+    value: ${{ steps.push_db.outputs.digest }}
 
 runs:
   using: composite
@@ -200,6 +206,34 @@ runs:
         image_ref: ${{ inputs.backup_repo }}@${{ steps.push_backup.outputs.digest }}
         scanners: secret
 
+    # Upstream Postgres plus `apk upgrade` (docker/db/Dockerfile, #835).
+    # Its own context: nothing of the repo goes into it, so it gets no
+    # secrets scan — there is nothing of ours in it to leak. The smoke
+    # below boots it as the stack's `db`.
+    - name: Build db image and push by digest
+      id: push_db
+      uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      with:
+        context: docker/db
+        provenance: mode=max
+        outputs: type=image,name=${{ inputs.db_repo }},push-by-digest=true,name-canonical=true,push=true
+        # The upgrade is the image's only purpose; a cached layer would
+        # freeze it at the first build's packages. `runtime` is the only
+        # stage, so there is no layer cache to read or write.
+        no-cache-filters: runtime
+
+    - name: Pull the db image back and name it locally
+      shell: bash
+      env:
+        DB_DIGEST_REF: ${{ inputs.db_repo }}@${{ steps.push_db.outputs.digest }}
+        DB_REF: ${{ inputs.db_repo }}:${{ inputs.sha_tag }}
+      run: |
+        set -euo pipefail
+        docker pull "$DB_DIGEST_REF"
+        docker tag "$DB_DIGEST_REF" "$DB_REF"
+        echo "  $DB_DIGEST_REF"
+        echo "  -> $DB_REF (local only)"
+
     # `age` on the runner is needed by the smoke step below to mint a
     # per-run binary `age` keypair before `docker compose up`. The app
     # boot probe (assertBinaryIdentityLoaded — ADR-0024) refuses to start
@@ -242,7 +276,7 @@ runs:
     # binary, or schedule-registration regression all surface here.
     #
     # It runs after the push, which is what the naming boundary buys: a
-    # smoke failure leaves two untagged digests on GHCR that nothing can
+    # smoke failure leaves three untagged digests on GHCR that nothing can
     # name, pull or deploy, and `tag-images` never runs. Runtime cost is
     # ~60–90s on GHA's hosted runners.
     # ---------------------------------------------------------------
