@@ -181,6 +181,11 @@ interface PendingFileSlot {
 }
 const FILES_BY_CLIENT_ID = new Map<string, PendingFileSlot>();
 
+/** Test-only: whether the side-map still holds bytes for `clientId`. */
+export function __hasPendingFileForTests(clientId: string): boolean {
+  return FILES_BY_CLIENT_ID.has(clientId);
+}
+
 /**
  * Per-upload `AbortController` map. Stored outside Zustand state so
  * the controller survives store rehydration and stays out of the
@@ -351,13 +356,14 @@ export const useAttachmentStore = create<AttachmentState>((set, get) => {
       // prior successful pipeline run if one exists (a retry after a
       // network failure at init / POST / complete shouldn't re-encode
       // the photo), otherwise run it and cache the output for any
-      // subsequent retry.
+      // subsequent retry. A cancel during the pipeline already dropped the
+      // slot; caching after it would bring the bytes back (#855).
       let processed = slot.processed;
       if (!processed) {
         processed = await runImagePipeline(file, { hasThumbnail });
+        if (wasAborted()) return;
         FILES_BY_CLIENT_ID.set(clientId, { ...slot, processed });
       }
-      if (wasAborted()) return;
 
       // Step 2 — per-file size cap. Enforced server-side at init by
       // the same cap (the route/service rejects with 422) and at the
