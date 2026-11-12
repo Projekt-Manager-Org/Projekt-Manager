@@ -57,14 +57,92 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------
+  # Does the push run need to test? (#849)
+  #
+  # A merged commit came through the queue, whose `merge_group` run
+  # tested that exact commit and named its `sha-<commit>` set. Every
+  # producer of a set (`publish` on a queue run or a branch dispatch,
+  # `promote`'s fallback) waits on `lint` + `check` passing on that
+  # exact tree, so an existing set means the tests already passed and
+  # `lint`/`check` are not run again. A PR run's `publish` names
+  # `sha-<pr-tip>` after testing its merge with `main`; that tip reaches
+  # `main` only by fast-forward, with the same tree. This rests on the
+  # ruleset: squash-only queue, no force pushes. A missing set (no
+  # queue run named this commit, or retention reaped it before a
+  # re-run) is the fallback: test, then rebuild.
+  #
+  # Runs on every event, as a no-op off `push`. Skipped there, it would
+  # skip every job downstream of it (actions/runner#2205): `check` would
+  # fail on its skipped shards, and the required `lint` and `publish`
+  # would report skipped, which counts as met.
+  # ---------------------------------------------------------------
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      fallback: ${{ steps.lookup.outputs.fallback }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        if: github.event_name == 'push'
+
+      # Same derivation `docker` and `promote` run, so the refs looked up
+      # here are the ones `promote` copies from.
+      - name: Compute image tags
+        if: github.event_name == 'push'
+        id: tags
+        env:
+          BRANCH_REF: ${{ github.ref_name }}
+          HEAD_SHA: ${{ github.sha }}
+        run: bash scripts/ci/image-refs.sh >> "$GITHUB_OUTPUT"
+
+      # `docker manifest inspect` is a lightweight HEAD-equivalent — no
+      # pull. Only "manifest unknown" means absent. Any other error (outage,
+      # rate limit, auth) fails the run: a rebuild would overwrite the
+      # queue's validated set with different bytes, and a re-run is the
+      # fix. Credentials come through the environment, never interpolated
+      # into the script body — GH_TOKEN is in this step's `env:` and
+      # GITHUB_ACTOR is a default Actions variable.
+      - name: Find the queue's sha-<commit> set
+        if: github.event_name == 'push'
+        id: lookup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APP_REF: ${{ steps.tags.outputs.app_ref }}
+          BACKUP_REF: ${{ steps.tags.outputs.backup_ref }}
+          DB_REF: ${{ steps.tags.outputs.db_ref }}
+        run: |
+          set -euo pipefail
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for ref in "$APP_REF" "$BACKUP_REF" "$DB_REF"; do
+            if err=$(docker manifest inspect "$ref" 2>&1 > /dev/null); then
+              continue
+            fi
+            if grep -qiE 'manifest unknown|no such manifest' <<< "$err"; then
+              echo "::warning::${ref} not on GHCR (retention reaped it, or no queue run named this commit) — falling back to test + rebuild"
+              echo "fallback=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Cannot read ${ref} from GHCR: ${err}"
+            exit 1
+          done
+          echo "fallback=false" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------
   # Static-analysis pillar. Runs in parallel with `check-shard`
   # below — both are required gates, but they share no runner state.
   # No postgres service, no MinIO; only the npm cache + the static
   # checkers. Build also lives here because it has no DB/MinIO
   # dependency and we want the test shards' critical path to be
   # tests only.
+  #
+  # On `push`, only in `resolve`'s fallback.
   # ---------------------------------------------------------------
   lint:
+    needs: resolve
+    if: github.event_name != 'push' || needs.resolve.outputs.fallback == 'true'
     runs-on: ubuntu-latest
     # The release-age gate reaches the npm registry, so this job can now
     # block on a remote host. Without a bound a hung socket parks it at
@@ -79,8 +157,9 @@ jobs:
       # check sees only after merge (#637). The image is
       # digest-pinned and Renovate-tracked (weekly, `renovate-config-validator`
       # group), not `npx renovate`, whose transitive deps are unpinned.
-      # Skipped on push: the PR run validated the same config, and the image
+      # Skipped on push (reached only in `resolve`'s fallback): the image
       # (GHCR, no release-age cooldown) never runs with main's cache scope.
+      # Cost: a commit that bypassed the queue goes unvalidated here.
       - name: Validate Renovate config
         if: github.event_name != 'push'
         uses: docker://ghcr.io/renovatebot/renovate:44.222.5@sha256:8a4c49ef19bb71bedf4eaa4d1087a31a1793bd53de41478753d2d648e53eed19
@@ -319,7 +398,7 @@ jobs:
       # 'push'`, so on the one path where compose validation matters
       # most — `promote`'s fallback, taken for a commit no queue run
       # named — nothing would have validated those bytes.
-      # `lint` runs on every event. Same argument that put the Trivy
+      # `lint` runs on that path too. Same argument that put the Trivy
       # filesystem-secret and IaC scans here rather than in the image
       # job: it needs no image and costs seconds.
       - name: Validate Compose file references
@@ -569,9 +648,9 @@ jobs:
       # A digest-pinned image, which Renovate's github-actions manager tracks:
       # lychee-action downloads its binary with no checksum, on a version
       # input no manager matches. scripts/check-links.sh's container fallback
-      # reads this reference. Skipped on push, like the Renovate validator: the
-      # queue run checked the same tree, and the image (no release-age
-      # cooldown) never runs with main's cache scope.
+      # reads this reference. Skipped on push for the Renovate validator's
+      # reason: the image (no release-age cooldown) never runs with main's
+      # cache scope.
       - name: Markdown link check (AC-348)
         id: links
         if: github.event_name != 'push'
@@ -619,8 +698,12 @@ jobs:
   # The aggregator job below (`check`) is the stable required-check
   # name the Ruleset depends on — shard-count changes only touch its
   # `needs:` list, never the Ruleset.
+  #
+  # On `push`, only in `resolve`'s fallback, like `lint`.
   # ---------------------------------------------------------------
   check-shard:
+    needs: resolve
+    if: github.event_name != 'push' || needs.resolve.outputs.fallback == 'true'
     runs-on: ubuntu-latest
 
     strategy:
@@ -756,11 +839,14 @@ jobs:
   # skipped required checks as success, which would silently let a
   # failing shard through). Shard-count changes only touch the
   # `matrix.shard:` array above, never the Ruleset.
+  #
+  # Skipped with the shards on a `push` that is not a fallback; a skipped
+  # shard anywhere else still fails it.
   # ---------------------------------------------------------------
   check:
-    needs: check-shard
+    needs: [resolve, check-shard]
     runs-on: ubuntu-latest
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event_name != 'push' || needs.resolve.outputs.fallback == 'true') }}
     steps:
       - name: Verify all shards passed
         run: |
@@ -985,22 +1071,33 @@ jobs:
   # the commit's `merge_group` run built, secret-scanned, smoked and named. The
   # queue fast-forwards `main` to the exact commit that run tested, and
   # `publish` is required there, so the set exists before this push
-  # fires. No rebuild, no rescan, no smoke.
+  # fires. No retest, no rebuild, no rescan, no smoke.
   #
   # Two guards:
-  #   - Every image of `sha-<commit>` on GHCR. A commit with no set falls
-  #     through to a full rebuild through the same composite `docker`
-  #     runs. No queue run named it (a ruleset bypass), or retention
-  #     reaped it (`KEEP_MAIN`) and this is a re-run of an old push run.
+  #   - Every image of `sha-<commit>` on GHCR (`resolve`). A commit with
+  #     no set falls through to `lint` + `check`, then a full rebuild
+  #     through the same composite `docker` runs. No queue run named it
+  #     (a ruleset bypass), or retention reaped it (`KEEP_MAIN`) and this
+  #     is a re-run of an old push run.
   #   - The commit is still the head of `main`. Otherwise `main` is left
   #     alone, so a re-run of an older run cannot move it back (#691).
   #
+  # `!cancelled()` plus explicit results, because `lint` and `check` are
+  # skipped on the happy path and a skipped need skips this job otherwise.
+  # A failed or skipped `lint`/`check` in the fallback stops it.
+  #
   # See ADR-0011 §"Build once, promote on merge" and § Amendments
-  # 2026-10-31, #355 and #683.
+  # 2026-10-31, 2026-11-12, #355 and #683.
   # ---------------------------------------------------------------
   promote:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [check, lint]
+    if: >-
+      !cancelled() &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.resolve.result == 'success' &&
+      (needs.resolve.outputs.fallback == 'false' ||
+       (needs.resolve.outputs.fallback == 'true' &&
+        needs.check.result == 'success' && needs.lint.result == 'success'))
+    needs: [resolve, check, lint]
     runs-on: ubuntu-latest
     # The happy path is seconds, but the fallback runs the same composite
     # `docker` does — and `docker` never runs on `push`, so main's layer
@@ -1028,44 +1125,13 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: bash scripts/ci/image-refs.sh >> "$GITHUB_OUTPUT"
 
-      # `docker manifest inspect` is a lightweight HEAD-equivalent — no
-      # pull. Only "manifest unknown" means absent. Any other error (outage,
-      # rate limit, auth) fails the run: a rebuild would overwrite the
-      # queue's validated set with different bytes, and a re-run is the
-      # fix. Credentials come through the environment, never interpolated
-      # into the script body — GH_TOKEN is in this step's `env:` and
-      # GITHUB_ACTOR is a default Actions variable.
-      - name: Find the queue's sha-<commit> set
-        id: resolve
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APP_REF: ${{ steps.tags.outputs.app_ref }}
-          BACKUP_REF: ${{ steps.tags.outputs.backup_ref }}
-          DB_REF: ${{ steps.tags.outputs.db_ref }}
-        run: |
-          set -euo pipefail
-          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          for ref in "$APP_REF" "$BACKUP_REF" "$DB_REF"; do
-            if err=$(docker manifest inspect "$ref" 2>&1 > /dev/null); then
-              continue
-            fi
-            if grep -qiE 'manifest unknown|no such manifest' <<< "$err"; then
-              echo "::warning::${ref} not on GHCR (retention reaped it, or no queue run named this commit) — falling back to rebuild"
-              echo "fallback=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "::error::Cannot read ${ref} from GHCR: ${err}"
-            exit 1
-          done
-          echo "fallback=false" >> "$GITHUB_OUTPUT"
-
       # Fallback path: no `sha-<commit>` set. Runs the same composite
       # `docker` runs, against the pushed commit — build, push by digest,
       # scan, smoke, Tier 1 round-trip — and the tag step below names the
       # result. Cache scope is main's (cold relative to the PR branch's
       # scope), so expect wall-clock comparable to a fresh main build.
       - name: Fallback — build + push by digest + scan + smoke + round-trip
-        if: steps.resolve.outputs.fallback == 'true'
+        if: needs.resolve.outputs.fallback == 'true'
         id: fallback_images
         uses: ./.github/actions/build-scan-smoke
         with:
@@ -1109,7 +1175,7 @@ jobs:
       # keeps the composite to one shape. Not head: nothing to write, the
       # set already exists.
       - name: Promote — point main at the queue's images
-        if: steps.resolve.outputs.fallback == 'false' && steps.head.outputs.is_head == 'true'
+        if: needs.resolve.outputs.fallback == 'false' && steps.head.outputs.is_head == 'true'
         uses: ./.github/actions/tag-images
         with:
           app_repo: ${{ steps.tags.outputs.app_repo }}
@@ -1125,7 +1191,7 @@ jobs:
 
       # Not head: `sha-<commit>` only, the commit's rollback target.
       - name: Fallback — tag the rebuilt digests
-        if: steps.resolve.outputs.fallback == 'true'
+        if: needs.resolve.outputs.fallback == 'true'
         uses: ./.github/actions/tag-images
         with:
           app_repo: ${{ steps.tags.outputs.app_repo }}
@@ -1143,9 +1209,12 @@ jobs:
   # What gets deployed was scanned at that exact commit: every image of the
   # deploy, first-party ones at `sha-<commit>`, Caddy built from this tree.
   # deploy.sh requires this run green (#740).
+  #
+  # Explicit result: on the happy path `lint` and `check` upstream are
+  # skipped, which would skip this job too (actions/runner#2205).
   # ---------------------------------------------------------------
   scan:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.promote.result == 'success' }}
     needs: promote
     permissions:
       contents: read

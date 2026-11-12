@@ -82,7 +82,7 @@ queue ─► docker  same, on commit C = main + queued PRs
          publish tag sha-<C>                                              (required: C lands only after)
 
 land ──► promote sha-<C> pair ✓ ──► imagetools create ──► main                          ~30s
-                              ✗ ──► build ─► push ─► scan ─► smoke ─► round-trip ─► tag   ~5 min
+                              ✗ ──► lint + check ─► build ─► push ─► scan ─► smoke ─► round-trip ─► tag
                  main moves only while C is still the head of refs/heads/main
 ```
 
@@ -90,8 +90,8 @@ land ──► promote sha-<C> pair ✓ ──► imagetools create ──► ma
 
 1. PR opens. `docker` builds both images once, pushes them by digest, scans both, smokes them and runs the Tier 1 round-trip. `publish` waits on `check`, `lint` **and** `docker`, then names those exact digests `sha-<pr-tip>` + `<branch-slug>`. No _name_ resolves to bytes that have not passed every gate — and because the names are applied to a digest rather than to the output of a second build, the named bytes are the scanned bytes by identity rather than by assumption. These images are for deploying a branch; nothing promotes them.
 2. The queue builds commit C (`main` + the PRs ahead + this one) and runs the same jobs on it. `publish` names C's digests `sha-<C>`. The queue lands C only once that is green, by fast-forwarding `main` to C — the exact commit the run tested.
-3. `promote` fires on `push: main`. First guard: `docker manifest inspect …:sha-<C>` must succeed for both packages. Happy path: `docker buildx imagetools create` points `main` at that pair. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke. Second guard, right before the write: `git ls-remote origin refs/heads/main` must still equal C. Otherwise a newer commit has landed, and `main` stays where it is with a `::notice::` — without it, a re-run of an older push run points `main` back at its own pair (#691). A newer commit landing after the check is harmless: push runs share one concurrency group, so its run is pending behind this one and moves `main` forward. A failed lookup fails the run.
-4. Fallback: no `sha-<C>` (a commit no queue run named — a ruleset bypass — or a re-run of a push run whose pair retention reaped) → `build-scan-smoke` (build, digest push, scan, smoke, Tier 1 round-trip) then `tag-images`, against the pushed commit. It names `sha-<C>` always and `main` only under step 3's head check. ~4 min on main's (cold-ish) cache scope, with a `::warning::` in the run log. Any registry error other than "manifest unknown" fails the run instead: a rebuild would overwrite the validated pair.
+3. `promote` fires on `push: main`. First guard, in the `resolve` job: `docker manifest inspect …:sha-<C>` must succeed for every package. Then `lint` and `check` are not re-run: the queue run passed them on C. Happy path: `docker buildx imagetools create` points `main` at that pair. ~30s. Registry-level copy — no pull, no daemon involvement, so the OCI image-index wrapper and the buildx-generated provenance/SBOM attestation manifests are preserved (a plain `docker pull/tag/push` cycle would drop the attestation entry; observed on the first promote run in #226). No rebuild, no rescan, no smoke. Second guard, right before the write: `git ls-remote origin refs/heads/main` must still equal C. Otherwise a newer commit has landed, and `main` stays where it is with a `::notice::` — without it, a re-run of an older push run points `main` back at its own pair (#691). A newer commit landing after the check is harmless: push runs share one concurrency group, so its run is pending behind this one and moves `main` forward. A failed lookup fails the run.
+4. Fallback: no `sha-<C>` (a commit no queue run named — a ruleset bypass — or a re-run of a push run whose pair retention reaped) → `lint` + `check`, then `build-scan-smoke` (build, digest push, scan, smoke, Tier 1 round-trip) then `tag-images`, against the pushed commit. It names `sha-<C>` always and `main` only under step 3's head check. ~4 min on main's (cold-ish) cache scope, with a `::warning::` in the run log. Any registry error other than "manifest unknown" fails the run instead: a rebuild would overwrite the validated pair.
 
 Promotion is exact-artifact only. `GIT_SHA` is baked into the client bundle for the footer version chip, so every commit yields distinct image bytes — there is no "close enough" ancestor to promote, and the exact-SHA lookup is the only sound key.
 
@@ -194,6 +194,12 @@ Raised in [#683](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/6
 ### 2026-11-11 — A third image: `db`
 
 Raised in [#835](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/835). The stock `postgres` image took Alpine fixes only when upstream rebuilt it. `db` is now `docker/db/Dockerfile` (the pinned base plus `apk upgrade`), built, published, named and promoted with `app` and `backup` as one set; "pair" above reads as that set. Its package, `projekt-manager-db`, is created private by its first push and is made public by hand before the first deploy, per § Image visibility.
+
+### 2026-11-12 — The push run re-tests only on fallback
+
+Raised in [#849](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/849). The push run re-ran `lint` and `check` on the commit the queue had just tested, adding ~5 min before `promote` and `scan`.
+
+**Decision.** `resolve` looks up `sha-<commit>`. Present: `promote` and `scan` only. Missing: `lint` + `check`, then the rebuild. Every producer of a set waits on `lint` + `check` passing on that tree, so an existing set is proof they passed. A PR run names `sha-<pr-tip>` after testing its merge with `main`; that tip reaches `main` only by fast-forward, with the same tree. The argument rests on the ruleset: squash-only queue, no force pushes. A bypass push without a set still takes the fallback.
 
 ## Dep lifecycle health (as of 2026-05-15)
 
