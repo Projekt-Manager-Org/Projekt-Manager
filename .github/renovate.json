@@ -27,6 +27,11 @@
   "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
+      "description": "GitHub runners (`runs-on:`) move with the host pins in docker/host-versions.txt, in one PR, never alone: CI tests code the hosts run with their tools (#856). scripts/check-runner-release.sh fails on drift.",
+      "matchDepTypes": ["github-runner"],
+      "enabled": false
+    },
+    {
       "description": "AWS SDK family — bump together",
       "groupName": "aws-sdk",
       "matchManagers": ["npm"],

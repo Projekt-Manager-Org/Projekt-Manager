@@ -146,7 +146,7 @@ const E2E_TAKEOUT_STAGING_DIR = process.env.TAKEOUT_STAGING_DIR!;
 // Chromium's docs rank this as the safest of the three workarounds
 // (https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md).
 //
-// Skipped under CI: the ubuntu-latest runner image ships the
+// Skipped under CI: the GitHub runner image ships the
 // `/opt/google/chrome/chrome-sandbox` binary but without the required
 // `chown root && chmod 4755`, so Chromium aborts on launch ("SUID
 // sandbox helper binary was found, but is not configured correctly").

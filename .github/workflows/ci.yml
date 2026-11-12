@@ -77,7 +77,7 @@ jobs:
   # would report skipped, which counts as met.
   # ---------------------------------------------------------------
   resolve:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -143,7 +143,7 @@ jobs:
   lint:
     needs: resolve
     if: github.event_name != 'push' || needs.resolve.outputs.fallback == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The release-age gate reaches the npm registry, so this job can now
     # block on a remote host. Without a bound a hung socket parks it at
     # the 6-hour default; the job otherwise runs in ~4 min.
@@ -596,6 +596,12 @@ jobs:
       - name: Node pin drift check (.nvmrc ↔ devEngines ↔ Dockerfiles)
         run: bash scripts/check-node-pin.sh
 
+      # Static check: every `runs-on:` names the hosts' Ubuntu release, the
+      # one docker/host-versions.txt encodes (#856). Tools CI takes from the
+      # runner image (apt's python3-boto3, shellcheck) then match the hosts.
+      - name: Runner release drift check (runs-on ↔ host pins)
+        run: bash scripts/check-runner-release.sh
+
       # notify.yml hooks workflows by name; a scheduled or push-to-main one
       # it misses fails red with nobody told (ADR-0027 § 2026-10-29).
       # Static, so it belongs on the PR that adds or renames the workflow.
@@ -704,7 +710,7 @@ jobs:
   check-shard:
     needs: resolve
     if: github.event_name != 'push' || needs.resolve.outputs.fallback == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       # All shards run even if one fails — operator gets the full
@@ -759,8 +765,8 @@ jobs:
 
       # age — needed by src/test/integration-setup.ts, which generates a
       # per-fork binary identity via `age-keygen` before vitest's
-      # integration suite runs (ADR-0024). Not preinstalled on
-      # ubuntu-latest. ripgrep lives in `lint` only (theme-token check).
+      # integration suite runs (ADR-0024). Not preinstalled on the runner
+      # image. ripgrep lives in `lint` only (theme-token check).
       #
       # The SHA-pinned install lives in the composite so this job, e2e.yml
       # and `build-scan-smoke` share ONE pin rather than two hand-synced
@@ -770,8 +776,8 @@ jobs:
 
       # boto3 — src/server/__tests__/sync-restore-objects.test.ts runs
       # scripts/ops/restore-bucket-objects.py, which runs on the VPS host
-      # against Ubuntu's python3-boto3. Same version as the VPS only while
-      # ubuntu-latest and the VPS share a release (both 24.04 today).
+      # against Ubuntu's python3-boto3. Same version as the VPS because the
+      # runner is pinned to the hosts' release (check-runner-release.sh).
       - name: Install python3-boto3
         run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-boto3
 
@@ -845,7 +851,7 @@ jobs:
   # ---------------------------------------------------------------
   check:
     needs: [resolve, check-shard]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: ${{ !cancelled() && (github.event_name != 'push' || needs.resolve.outputs.fallback == 'true') }}
     steps:
       - name: Verify all shards passed
@@ -883,7 +889,7 @@ jobs:
   # ---------------------------------------------------------------
   docker:
     if: github.event_name != 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Measured across the last 70 runs: 3-5 min warm, 7-14.4 min cold —
     # and cold is the first run on every new branch, not a rare tail. The
     # bound is ~2x the cold worst case, not 5x the warm median: a healthy
@@ -1027,7 +1033,7 @@ jobs:
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: [check, lint, docker]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Registry-side manifest copies only, measured ~20s. Bounded for the
     # same reason as `docker`: `imagetools create` is an unbounded
     # network call.
@@ -1098,7 +1104,7 @@ jobs:
        (needs.resolve.outputs.fallback == 'true' &&
         needs.check.result == 'success' && needs.lint.result == 'success'))
     needs: [resolve, check, lint]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The happy path is seconds, but the fallback runs the same composite
     # `docker` does — and `docker` never runs on `push`, so main's layer
     # cache is written almost only by these fallbacks themselves. That
