@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   osv-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -43,7 +43,7 @@ jobs:
   # when someone opens a PR — on a dep nobody is touching, this nightly run
   # is the only thing that will ever notice.
   repo-advisories:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:

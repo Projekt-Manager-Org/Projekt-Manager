@@ -41,7 +41,7 @@ on:
 
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     # The suite runs 4-7 min. Unattended on a schedule there is no operator
     # watching to cancel a hang, and the job default is 6 h of runner time.
@@ -129,7 +129,7 @@ jobs:
 
       # `age` is required by playwright.config.ts, which generates a
       # per-run binary identity via `age-keygen` before spawning the
-      # webServer (ADR-0024). Not preinstalled on ubuntu-latest.
+      # webServer (ADR-0024). Not preinstalled on the runner image.
       #
       # Same composite as ci.yml's `check-shard` and `build-scan-smoke`:
       # one tool, one pin, one definition. A version skew between E2E and

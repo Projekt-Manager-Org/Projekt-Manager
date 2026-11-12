@@ -49,7 +49,7 @@ permissions:
 
 jobs:
   inventory:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       images: ${{ steps.derive.outputs.images }}
@@ -71,7 +71,7 @@ jobs:
   # not read the expiry, so without this a lapsed .grype.yaml entry would
   # suppress its finding forever; Trivy honours it and reports the finding.
   allowlists:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -82,7 +82,7 @@ jobs:
   scan:
     needs: inventory
     name: scan (${{ matrix.service }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read

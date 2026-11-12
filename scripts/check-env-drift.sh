@@ -12,7 +12,7 @@
 # path instead of firing, and the failure was silent.
 #
 # This check is grep/awk-based rather than a YAML parser so it has no
-# dependencies beyond a standard POSIX toolchain (ubuntu-latest GitHub
+# dependencies beyond a standard POSIX toolchain (Ubuntu GitHub
 # runners ship with mawk, not gawk, so portability matters). It is
 # intentionally strict: new vars require explicit placement in the
 # compose file or explicit entry in the EXCLUDE list below.
