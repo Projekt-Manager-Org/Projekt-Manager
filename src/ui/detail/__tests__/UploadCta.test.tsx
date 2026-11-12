@@ -13,7 +13,7 @@
  *   3. user clicks Erneut versuchen → init is called again
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ApiResult, AttachmentInitResponse } from '@/api/client';
@@ -79,6 +79,7 @@ function makeAttachment(): Attachment {
 
 beforeEach(() => {
   initMock.mockReset();
+  completeMock.mockReset();
   useAttachmentStore.setState({ byProject: {}, pendingUploads: {}, error: null });
   useAuthStore.setState({
     authUser: {
@@ -93,6 +94,12 @@ beforeEach(() => {
     authError: null,
     sessionChecked: true,
   });
+});
+
+// An upload outlives its test unless stopped: a later test's mocks would
+// count its calls (#853). `runUpload` re-checks the abort before every API call.
+afterEach(() => {
+  useAttachmentStore.getState().cancelUploadsForProject('p-42');
 });
 
 async function pickFile(): Promise<void> {
@@ -153,11 +160,8 @@ describe('UploadCta — Erneut versuchen restarts init (AC-225)', () => {
   });
 
   it('retry succeeds when init recovers — banner is cleared', async () => {
-    // First attempt fails, second attempt succeeds end-to-end. The
-    // previous version of this test relied on a broken ack set that
-    // masked any downstream failure behind "retry clicked"; post-fix
-    // the banner only clears when the upload actually completes, so
-    // we stub every network step of the happy path.
+    // First attempt fails, second attempt succeeds end-to-end, so every
+    // network step of the happy path is stubbed.
     initMock
       .mockResolvedValueOnce({
         ok: false,
@@ -204,9 +208,15 @@ describe('UploadCta — Erneut versuchen restarts init (AC-225)', () => {
 
       await userEvent.click(screen.getByTestId('upload-retry'));
 
+      // `retryUpload` clears the banner as the retry starts, so its absence
+      // alone proves nothing: wait until the upload completed and its
+      // pending row is gone.
       await waitFor(() => {
-        expect(screen.queryByTestId('upload-error-banner')).not.toBeInTheDocument();
+        expect(completeMock).toHaveBeenCalledTimes(1);
+        expect(useAttachmentStore.getState().pendingUploads).toEqual({});
       });
+      expect(initMock).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId('upload-error-banner')).not.toBeInTheDocument();
     } finally {
       globalThis.fetch = originalFetch;
     }
