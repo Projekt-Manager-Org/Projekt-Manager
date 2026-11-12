@@ -269,7 +269,7 @@ for name, spec in SPECS.items():
             for k in sorted(set(e) - allowed, key=str):
                 out.append(f"{label}: {k}: unknown key (allowed: {', '.join(sorted(allowed))})")
             # Mandatory, and non-empty: both scanners read a missing or empty
-            # scope as "everywhere" — a gosu entry would also hide Caddy's CVE.
+            # scope as "everywhere" — one binary's entry would hide another's CVE.
             # Empty VALUES count as missing too: Trivy matches an empty path
             # against every OS package, Grype skips empty package fields.
             scopes = [k for k in scope_keys if k in e]
@@ -307,7 +307,7 @@ for name, spec in SPECS.items():
                     out.append(f"{label}: {spec['expiry']}: expired ({d} < {today})")
                 elif d > max_d:
                     out.append(f"{label}: {spec['expiry']}: too far ({d} > today+90d {max_d})")
-            # Go's stdlib is compiled into every Go binary (gosu, Caddy), so
+            # Go's stdlib is compiled into every Go binary, so
             # by name or purl alone a waiver for one hides the CVE in all.
             purls = e.get("purls")
             if name == ".trivyignore.yaml" and "paths" not in e and isinstance(purls, list) and any(

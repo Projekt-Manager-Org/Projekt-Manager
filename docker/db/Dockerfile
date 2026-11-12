@@ -24,9 +24,16 @@ RUN apk upgrade --no-cache
 
 # Nothing runs as root. Upstream's entrypoint starts as root only to chown
 # the data and socket directories, then drops to `postgres` (uid 70) via
-# gosu; as `postgres` it skips both. The image's own directories are
+# gosu; as `postgres` it skips all three. The image's own directories are
 # already uid 70, so a fresh volume inherits that, and an existing cluster
 # was chowned on its first start (the VPS's: all uid 70, 2026-11-11). A
 # wrong owner fails the start loudly ("data directory has wrong
 # ownership"), never silently.
+#
+# gosu is therefore never run, but it is a Go binary upstream does not
+# rebuild: every Go stdlib CVE turned the image scan red (#847). Removed;
+# started as root, the entrypoint now fails at `exec gosu` instead.
+# Plain `rm`: a base without gosu fails the build, so this line goes too.
+RUN rm /usr/local/bin/gosu
+
 USER postgres

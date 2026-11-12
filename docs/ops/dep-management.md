@@ -212,13 +212,13 @@ reason = "@vlzware: esbuild dev-server only; prod build invokes the bundler API,
 vulnerabilities:
   - id: CVE-2026-12345
     paths:
-      - usr/local/bin/gosu
+      - usr/bin/caddy
     owner: '@vlzware'
-    statement: Go stdlib CVE in gosu, unreachable on its privilege-drop path
+    statement: <why it does not apply here; link to the triage>
     expired_at: <today+≤90d>
 ```
 
-A run of entries sharing scope, owner and reason uses a YAML anchor and merge keys (`- <<: *gosu` + `id:`); see the file.
+A run of entries sharing scope, owner and reason uses a YAML anchor on the first (`- &name`) and merge keys on the rest (`- <<: *name` + `id:`).
 
 ```yaml
 # .grype.yaml — `ignore:` only; the file is also Grype's config
@@ -232,7 +232,7 @@ ignore:
     expires: <today+≤90d>
 ```
 
-Go's stdlib is compiled into every Go binary (gosu, Caddy), so a waiver scoped by package would hide the CVE in all of them. Grype reports it as the synthetic package `stdlib`, Trivy as `pkg:golang/stdlib@…`; scope it by the binary's path (Grype `location`, Trivy `paths`). The schema check rejects a `stdlib` scope without one.
+Go's stdlib is compiled into every Go binary, so a waiver scoped by package would hide the CVE in all of them. Grype reports it as the synthetic package `stdlib`, Trivy as `pkg:golang/stdlib@…`; scope it by the binary's path (Grype `location`, Trivy `paths`). The schema check rejects a `stdlib` scope without one.
 
 Run `bash scripts/check-allowlist-schema.sh` locally to validate before pushing — the same script gates the CI `lint` job.
 
