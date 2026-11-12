@@ -379,12 +379,14 @@ flowchart LR
   shard --> check
   lint & check & docker --> publish["publish<br/>tag digests"]
   publish --> queue["merge queue<br/>same jobs on main + PR,<br/>publish names sha-commit"] --> merge([fast-forward main])
-  merge -->|"push: lint + check"| promote["promote<br/>point main at sha-commit"]
+  merge -->|push| resolve{"sha-commit<br/>on GHCR?"}
+  resolve -->|yes| promote["promote<br/>point main at sha-commit"]
+  resolve -->|"no: lint + check"| promote
   promote --> scan["scan<br/>every deployed image<br/>at sha-commit"]
   scan -.->|"requires the push run green"| deploy["scripts/deploy.sh<br/>manual, on the VPS"]
 ```
 
-- **Build once, promote on merge** ([ADR-0011](docs/adr/0011-build-images-in-ci-distribute-via-ghcr.md)): the scanned and smoked image is the deployed one; later stages only re-tag.
+- **Build once, promote on merge** ([ADR-0011](docs/adr/0011-build-images-in-ci-distribute-via-ghcr.md)): the scanned and smoked image is the deployed one; later stages only re-tag. The push run re-tests and rebuilds only when the queue's `sha-<commit>` set is missing.
 - **Deploy is manual and pull-based** ([ADR-0012](docs/adr/0012-manual-pull-based-deploy-over-wireguard.md), [manual-deploy.md](docs/ops/manual-deploy.md)).
 - **Outside the merge gate:** `e2e.yml` (Playwright, nightly — a green PR does not imply green E2E), `security-scheduled.yml` (nightly OSV sweep), `inventory-scan.yml` (Trivy + Grype over every deployed image: nightly, and from the push run on `sha-<commit>`, which `deploy.sh` requires green), `renovate-health.yml` (nightly: Renovate running, queue moving), `deploy-pending.yml` (a `deploy-asap` merge opens or extends a _Deploy pending_ issue), `docker-host-advisories.yml` (nightly: an issue per upstream advisory above MEDIUM/LOW for a pinned Docker host package), `notify.yml` (assigns on red; a `ci-red` issue for `main` listing each red run's failed steps and error annotations), `cache-cleanup.yml`, `ghcr-retention.yml`.
 - Per-job rationale lives in the comments of each workflow under `.github/workflows/`.

@@ -197,10 +197,12 @@ Raised in [#668](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/6
 **Decision.**
 
 ```
-lint  (pull_request, merge_group, push)  head − base findings  ─▶ red blocks the merge
+lint  (pull_request, merge_group, push*) head − base findings  ─▶ red blocks the merge
 docker, promote fallback (image scans)   head − :main image    ─▶ red blocks the merge / naming
 security-scheduled.yml, inventory-scan   main, absolute        ─▶ ci-red issue ─▶ fix, or allowlist (§Negative)
 ```
+
+`push*`: only when the commit has no `sha-<commit>` set ([ADR-0011 § 2026-11-12](0011-build-images-in-ci-distribute-via-ghcr.md#2026-11-12--the-push-run-re-tests-only-on-fallback)).
 
 - Base (`scripts/ci/gate-base.sh`): the test merge commit's first parent (`pull_request`; HEAD must be that merge), the queue's base (`merge_group`), the previous `main` (`push`), the default branch's tip (`workflow_dispatch`, a branch deployed by hand). Anything else, or a base that cannot be resolved or read, fails the job.
 - OSV-Scanner (`scripts/check-osv-introduced.mjs`) keys a finding on (advisory id, ecosystem, package name). Not on version or location: any new instance of a package the base already has under the same advisory (a bump that stays vulnerable, a second copy) introduces nothing; no worse than the per-id allowlist. Not `osv-reporter`: it keys on source path and version. The verdict is read from the results, so their shape and their agreement with the CLI's exit code are checked.
