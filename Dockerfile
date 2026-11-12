@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:24.22.2-alpine@sha256:ec318aabf188af4e5488847eea4b24452650b9917140563e140762526a37f1df AS build
+FROM node:24.22.3-alpine@sha256:d8d97e479cdc64f052f81f129362168717c59783ade8dcc1abd22e1cca8dbd7c AS build
 
 WORKDIR /app
 
@@ -25,7 +25,7 @@ RUN npm prune --omit=dev
 # Named so the build can exempt it from the layer cache (`no-cache-filters`
 # in .github/actions/build-scan-smoke) — the `apk upgrade` below is only
 # worth anything if it actually re-resolves.
-FROM node:24.22.2-alpine@sha256:ec318aabf188af4e5488847eea4b24452650b9917140563e140762526a37f1df AS runtime
+FROM node:24.22.3-alpine@sha256:d8d97e479cdc64f052f81f129362168717c59783ade8dcc1abd22e1cca8dbd7c AS runtime
 
 WORKDIR /app
 
