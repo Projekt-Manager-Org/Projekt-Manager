@@ -27,8 +27,8 @@ runs:
     #   no severity filter for the opposite reason; see that job.
     #
     #   Plus UNKNOWN (#724): unrated is not yet assessed, not low. Go vuln
-    #   DB advisories carry no severity by design, and the Go binaries
-    #   (Caddy, gosu) are seen only by image scans.
+    #   DB advisories carry no severity by design, and Go binaries are
+    #   seen only by image scans.
     #
     #   No `ignore-unfixed` — per the project's refuse-or-block-never-
     #   downgrade principle a no-fix-yet CVE is still a finding. When one

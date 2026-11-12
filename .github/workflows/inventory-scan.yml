@@ -7,7 +7,8 @@
 # PR gate misses: it scans only the two first-party images, only at PR
 # time, and only with Trivy — which cannot see a runtime installed from a tarball
 # (the `node` binary) or compiled from source (`postgres`). Grype matches
-# those binaries; Trivy sees what Grype misses (Go stdlib in `gosu`).
+# those binaries; Trivy saw what Grype missed (Go stdlib in `gosu`, since
+# removed, #847).
 #
 #   allowlists the allowlist schema, expiry included: red on a lapsed
 #              entry, without holding back the scans

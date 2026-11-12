@@ -6,7 +6,7 @@
 #   `grype --fail-on high` cannot fail on an unrated advisory: Grype ranks
 #   Unknown below Negligible, so no threshold reaches it. Unrated is not
 #   yet assessed, not low — Go vuln DB advisories carry no severity by
-#   design, and Go binaries (Caddy, gosu) are seen only by the image scans.
+#   design, and Go binaries are seen only by the image scans.
 #
 # CONTRACT
 #   Argument: the report path (`grype ... -o json=<path>`).
