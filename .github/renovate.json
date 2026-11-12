@@ -27,11 +27,6 @@
   "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
-      "description": "GitHub runners (`runs-on:`) move with the host pins in docker/host-versions.txt, in one PR, never alone: CI tests code the hosts run with their tools (#856). scripts/check-runner-release.sh fails on drift.",
-      "matchDepTypes": ["github-runner"],
-      "enabled": false
-    },
-    {
       "description": "AWS SDK family — bump together",
       "groupName": "aws-sdk",
       "matchManagers": ["npm"],
@@ -163,6 +158,12 @@
       "separateMajorMinor": false,
       "separateMultipleMajor": false,
       "dependencyDashboardApproval": false,
+      "automerge": false
+    },
+    {
+      "description": "GitHub runners (`runs-on:`) move with the host pins in docker/host-versions.txt, in one PR, never alone: CI tests code the hosts run with their tools (#856). A new release waits under Pending Approval as the reminder; scripts/check-runner-release.sh fails a runner-only PR. Last, so no earlier rule (automerge) overrides it.",
+      "matchDepTypes": ["github-runner"],
+      "dependencyDashboardApproval": true,
       "automerge": false
     }
   ],

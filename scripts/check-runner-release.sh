@@ -10,8 +10,8 @@
 # CI installs tools from the runner image (apt's `python3-boto3` for the
 # restore script, `shellcheck`) and tests code the hosts run with theirs.
 # `ubuntu-latest` moved to 26.04 under hosts on 24.04 with every check
-# green. Renovate does not bump runners (.github/renovate.json): the
-# release moves with the host pins, in one PR.
+# green. Renovate holds a new runner release under Pending Approval
+# (.github/renovate.json): the release moves with the host pins, in one PR.
 #
 # EXIT CODES
 #   0  in sync
