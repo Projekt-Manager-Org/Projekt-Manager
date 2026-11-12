@@ -2,8 +2,8 @@
 # Installs the pinned OSV-Scanner CLI to /usr/local/bin. See action.yml.
 set -euo pipefail
 # renovate: datasource=github-release-attachments depName=google/osv-scanner
-version="v2.7.0"
-expected_sha="160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b"
+version="v2.7.1"
+expected_sha="fb7dab19a8bd9bbe5c3189f09d4b7ee1820c9553a23bac202648a56efd2f6ee8"
 url="https://github.com/google/osv-scanner/releases/download/${version}/osv-scanner_linux_amd64"
 code=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -w '%{http_code}' -o /tmp/osv-scanner "$url") \
   || { echo "::error::OSV-Scanner download failed (curl exit $?, HTTP ${code:-000}): $url"; exit 1; }
