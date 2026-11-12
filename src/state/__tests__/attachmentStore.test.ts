@@ -101,7 +101,7 @@ vi.mock('@/api/client', async (importActual) => {
   };
 });
 
-const { useAttachmentStore } = await import('@/state/attachmentStore');
+const { useAttachmentStore, __hasPendingFileForTests } = await import('@/state/attachmentStore');
 
 function ok<T>(data: T): ApiResult<T> {
   return { ok: true, data };
@@ -527,6 +527,30 @@ function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void } {
 }
 
 describe('attachmentStore — cancellation', () => {
+  it('a cancel during the image pipeline frees the file once the pipeline resolves (#855)', async () => {
+    const pipeline = deferred<ProcessedUpload>();
+    runImagePipelineMock.mockImplementationOnce(() => pipeline.promise);
+
+    const file = new File([new Uint8Array([1, 2, 3])], 'photo.jpg', { type: 'image/jpeg' });
+    const uploadPromise = useAttachmentStore
+      .getState()
+      .uploadFile('proj-1', file, { label: 'foto', hasThumbnail: false });
+    await vi.waitFor(() => expect(runImagePipelineMock).toHaveBeenCalled());
+    const clientId = Object.keys(useAttachmentStore.getState().pendingUploads)[0]!;
+
+    useAttachmentStore.getState().cancelUpload(clientId);
+    pipeline.resolve({
+      original: file,
+      thumbnail: null,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    });
+    await uploadPromise;
+
+    expect(__hasPendingFileForTests(clientId)).toBe(false);
+    expect(initMock).not.toHaveBeenCalled();
+  });
+
   it('cancelUpload aborts the in-flight transport and drops the pending row', async () => {
     // Hold `initUpload` open so the orchestrator is mid-flight when we
     // fire `cancelUpload`. Capture the `AbortSignal` passed by the store
