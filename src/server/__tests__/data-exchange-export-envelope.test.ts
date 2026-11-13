@@ -31,7 +31,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
 import { startApp, stopApp } from '../../test/api-helpers.js';
-import { exportEnvelope } from '../../test/data-exchange-helpers.js';
+import { exportEnvelope, TEST_OWNER } from '../../test/data-exchange-helpers.js';
 import { createDatabase } from '../db/connection.js';
 import { SCHEMA_VERSION } from '../../domain/dataExchange.js';
 import type { Database } from '../db/connection.js';
@@ -116,6 +116,15 @@ describe('ExportService envelope — Layer 1 (issue #230)', () => {
   afterAll(async () => {
     if (pool) await pool.end();
     await stopApp();
+  });
+
+  // -------------------------------------------------------------------
+  // Scoped-caller guard: `data:export` comes from `owner` (AC-576);
+  // holding `worker` beside it must not trip the guard (AC-577).
+  // -------------------------------------------------------------------
+  it('AC-576, AC-577: exports for an owner who also holds worker', async () => {
+    const env = await exportEnvelope({ ...TEST_OWNER, roles: ['owner', 'worker'] });
+    expect(env.schema_version).toBe(SCHEMA_VERSION);
   });
 
   // -------------------------------------------------------------------
