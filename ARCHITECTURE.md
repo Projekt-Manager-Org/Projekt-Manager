@@ -475,7 +475,7 @@ Issuing is one transaction; any failure, an XSD rejection included, rolls back t
 | Bookkeeper bulk export                               | `src/server/services/InvoiceExportService.ts`                                                                                        |
 | Client stores                                        | `src/state/invoiceStore.ts` (per project), `src/state/invoiceListStore.ts` (`/rechnungen`)                                           |
 
-Workers: list, years and single-row reads are narrowed by the repository scope predicate ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)) — empty set, or 403 / 404 on one row. The PDF, the export and every write are `invoice:*`-gated (403).
+Workers hold no `invoice:*` permission, so every invoice route refuses them (403, AC-576). The repository scope predicate ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)) stays as a backstop: empty set, or `OUT_OF_SCOPE` on one row.
 
 ---
 

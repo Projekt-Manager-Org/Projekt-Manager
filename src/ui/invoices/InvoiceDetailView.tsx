@@ -19,8 +19,8 @@
  *
  * Permission: gated on `invoice:read` at the central route table
  * (config/routes.ts) — the route guard in `App.tsx` is the load-bearing
- * client-side check. Server-side, the repository scope predicate
- * (ADR-0019) is authoritative; workers never reach this surface.
+ * client-side check. The server is authoritative: it refuses a caller
+ * without `invoice:read` (AC-576).
  *
  * SSE: re-renders on `invoice_changed` via `subscribeInvoiceStoreToSse`
  * + `useInvoiceDetailStore.refreshAll`. An open `Stornorechnung`

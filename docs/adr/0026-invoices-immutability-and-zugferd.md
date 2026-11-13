@@ -1,7 +1,7 @@
 # ADR-0026: Invoices — immutable snapshot, gapless sequence, ZUGFeRD EN 16931
 
 - **Status:** Accepted
-- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417; restore gap amended 2026-09-28, #429; compliance boundary amended 2026-10-21, #551)
+- **Date:** 2026-05-12 (storage and retention amended 2026-09-21, #417; restore gap amended 2026-09-28, #429; compliance boundary amended 2026-10-21, #551; worker refusal amended 2026-11-13, #868)
 - **Confidence:** High
 
 ## Context
@@ -82,7 +82,7 @@ Kleinunternehmer (§19 UStG) is not supported ([§ Kleinunternehmer tax mode](#k
 
 - **`invoice:write`** — owner, office.
 - **`invoice:read`** — owner, office, bookkeeper.
-- **Worker:** no access. The repository-predicate scope ([ADR-0019](0019-worker-data-scoping-repository-layer-predicate.md)) already gates worker visibility through project-assignment; invoices have no `project_worker` scope path, so the predicate returns the empty set for the worker role — no special case needed at the route layer.
+- **Worker:** no access. Every invoice route is `invoice:*`-gated, so a worker is refused (403), not handed an empty set or a 404 (AC-576). The repository-predicate scope ([ADR-0019](0019-worker-data-scoping-repository-layer-predicate.md)) stays as the backstop: invoices have no `project_worker` scope path, so it returns the empty set for the worker role.
 
 ### Audit and realtime
 

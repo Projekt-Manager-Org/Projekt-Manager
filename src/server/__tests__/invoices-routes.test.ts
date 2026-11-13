@@ -5,8 +5,7 @@
  * api.md §14.2.14:
  *
  *   POST   /api/invoices                       — create draft
- *   GET    /api/invoices                       — list (worker scope arm)
- *   GET    /api/invoices/:id                   — get (worker scope arm)
+ *   GET    /api/invoices/:id                   — get
  *   PATCH  /api/invoices/:id                   — update draft
  *   DELETE /api/invoices/:id                   — delete draft
  *   GET    /api/invoices/:id/pdf               — download rendered PDF
@@ -19,8 +18,7 @@
  *                      DELETE on draft removes; DELETE on non-draft frozen.
  *   - AC-574, AC-576: authentication and permission matrix, with
  *                      `invoices-auth.test.ts`; not duplicated in the
- *                      issue / cancel / cascade files. A worker's list
- *                      and unknown-id read lag AC-576 (#868).
+ *                      issue / cancel / cascade files.
  *   - AC-299: download PDF — issued / cancelled / draft / worker
  *                      arms.
  *
@@ -718,30 +716,6 @@ describe('Invoice routes — integration (issue #109)', () => {
       const res = await authGet(workerToken, `/api/invoices/${draftId}`);
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
-    });
-  });
-
-  // -------------------------------------------------------------------
-  // Current behavior, not contract: AC-576 requires 403 for both. The
-  // worker scope predicate (ADR-0019) answers instead; #868 adds the
-  // `invoice:read` gate and flips these assertions.
-  // -------------------------------------------------------------------
-  describe('worker list and unknown-id read — lag the permission gate (#868)', () => {
-    it('worker GET /api/invoices returns an empty list regardless of project assignments', async () => {
-      // Seed a draft so the list is non-empty for owner/office; the
-      // worker filter must still produce zero results.
-      await seedDraftInvoice(projectId);
-
-      const res = await authGet(workerToken, '/api/invoices');
-      expect(res.statusCode).toBe(200);
-      const body = res.json() as { data: unknown[] };
-      expect(body.data).toHaveLength(0);
-    });
-
-    it('worker GET /api/invoices/:id on an unknown id → 404 NOT_FOUND', async () => {
-      const res = await authGet(workerToken, '/api/invoices/00000000-0000-0000-0000-000000000000');
-      expect(res.statusCode).toBe(404);
-      expect(res.json().code).toBe('NOT_FOUND');
     });
   });
 

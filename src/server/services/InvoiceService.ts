@@ -165,11 +165,9 @@ export class InvoiceService {
   // -------------------------------------------------------------------
 
   /**
-   * List visible invoices. Worker callers receive `[]` by
-   * construction of the repository predicate; permission gating is
-   * the route layer's job. The service is callable from any
-   * authenticated context — readers without `invoice:read` are
-   * rejected upstream.
+   * List visible invoices. Readers without `invoice:read` are
+   * rejected upstream at the route layer; the repository predicate
+   * still returns `[]` for a worker as a backstop.
    */
   async list(caller: AuthUser, opts: ListInvoicesOpts = {}) {
     return listInvoicesRepo(this.db, caller, opts);

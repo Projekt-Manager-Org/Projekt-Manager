@@ -75,9 +75,9 @@ Both read the routes through `scripts/lib/route-introspection.ts`. An access gat
 | GET     | `/api/projects/:id/attachments/:attId/download-url` | session | `attachment:read`      | none          |
 | POST    | `/api/projects/:id/attachments/bulk-fetch`          | session | `attachment:read`      | none          |
 | GET     | `/api/storage-usage`                                | session | `data:export`          | none          |
-| GET     | `/api/invoices`                                     | session | —                      | none          |
-| GET     | `/api/invoices/years`                               | session | —                      | none          |
-| GET     | `/api/invoices/:id`                                 | session | —                      | none          |
+| GET     | `/api/invoices`                                     | session | `invoice:read`         | none          |
+| GET     | `/api/invoices/years`                               | session | `invoice:read`         | none          |
+| GET     | `/api/invoices/:id`                                 | session | `invoice:read`         | none          |
 | POST    | `/api/invoices`                                     | session | `invoice:write`        | none          |
 | PATCH   | `/api/invoices/:id`                                 | session | `invoice:write`        | none          |
 | DELETE  | `/api/invoices/:id`                                 | session | `invoice:write`        | none          |
@@ -93,7 +93,7 @@ Both read the routes through `scripts/lib/route-introspection.ts`. An access gat
 <!-- GENERATED:api-surface:END -->
 
 - **Auth** `session` without a valid session → `401 UNAUTHENTICATED`; a failed **Access** rule → `403 NOT_PERMITTED`. Gates: `src/server/middleware/auth.ts`; keys resolve against `src/config/permissions.ts`.
-- **Access** `—` means no gate at the route boundary, not "open to every role": some reads narrow rows by scope instead (ADR-0019) — a worker's `GET /api/invoices` answers `200` with an empty set (lags AC-576, #868).
+- **Access** `—` on a `session` row means any session: the caller's own account, the company-profile read and realtime events ([api.md §14.3](../spec/api.md#143-authorization-rules)). Gated reads still narrow rows by scope (ADR-0019).
 - **Rate limit** shows production values. Login is 5/min in production, 30/min in dev/test; `LOGIN_RATE_LIMIT_MAX` overrides both.
 - What each endpoint does: [api.md §14.2](../spec/api.md#142-operations). `OPTIONS *` is the CORS preflight. Static SPA assets (`registerStaticAssets`, production only) are not API surface and appear in neither artifact.
 
