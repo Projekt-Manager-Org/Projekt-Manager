@@ -44,7 +44,7 @@ export const IS_TEST_ONLY_ROLE: Record<Role, boolean> = {
 
 // data:export gates the unified business-data export (api.md §14.2.4).
 // data:restore gates the unified import — owner-only because a restore
-// replaces all business data in a single transaction (api.md §14.3).
+// replaces all business data in a single transaction.
 //
 // audit:read gates the audit surface (api.md §14.2.8). Owner and office
 // hold it; worker and bookkeeper do not. The destructive-action predicate
@@ -72,7 +72,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'data:restore',
     'audit:read',
     // notifications:manage aligns with user:manage as an admin-only gate
-    // (api.md §14.3, ADR-0023). Rule edits change who-sees-what platform-
+    // (ADR-0023). Rule edits change who-sees-what platform-
     // wide, so the least-privilege baseline is owner only.
     'notifications:manage',
     'attachment:read',
@@ -85,9 +85,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'attachment:trash',
     // invoice:read / invoice:write — ADR-0026. Owner + office hold
     // write; owner / office / bookkeeper hold read. Worker holds
-    // neither — the repository-predicate scope (ADR-0019) returns
-    // the empty set for invoices on the worker role (no
-    // project_worker scope path), so worker exclusion is structural.
+    // neither; AC-576 refuses it (list, years and get lag: #868). The
+    // repository-predicate scope (ADR-0019) returns the empty set for
+    // invoices on the worker role as a backstop.
     'invoice:read',
     'invoice:write',
     'auth:change-password',

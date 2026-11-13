@@ -79,7 +79,7 @@ describe('Role-based Permission Enforcement', () => {
     // coincidence (arbeiter1 happens to be assigned to geplant/in_arbeit
     // projects); bookkeeper would fail if workers' seed coverage shrank.
     it.each(restrictedRoles)(
-      '%s cannot transition forward — returns 403 NOT_PERMITTED',
+      'AC-576: %s cannot transition forward — returns 403 NOT_PERMITTED',
       async (role) => {
         const project = await findProjectByStatus(ownerToken, 'geplant');
 
@@ -99,7 +99,7 @@ describe('Role-based Permission Enforcement', () => {
     );
 
     it.each(restrictedRoles)(
-      '%s cannot transition backward — returns 403 NOT_PERMITTED',
+      'AC-576: %s cannot transition backward — returns 403 NOT_PERMITTED',
       async (role) => {
         const project = await findProjectByStatus(ownerToken, 'in_arbeit');
 
@@ -118,21 +118,24 @@ describe('Role-based Permission Enforcement', () => {
       },
     );
 
-    it.each(restrictedRoles)('%s cannot update dates — returns 403 NOT_PERMITTED', async (role) => {
-      const project = await findProjectByStatus(ownerToken, 'geplant');
+    it.each(restrictedRoles)(
+      'AC-576: %s cannot update dates — returns 403 NOT_PERMITTED',
+      async (role) => {
+        const project = await findProjectByStatus(ownerToken, 'geplant');
 
-      const res = await authPatch(tokenFor(role), `/api/projects/${project.id}/dates`, {
-        plannedStart: '2026-10-01',
-        plannedEnd: '2026-10-15',
-      });
+        const res = await authPatch(tokenFor(role), `/api/projects/${project.id}/dates`, {
+          plannedStart: '2026-10-01',
+          plannedEnd: '2026-10-15',
+        });
 
-      expect(res.statusCode).toBe(403);
+        expect(res.statusCode).toBe(403);
 
-      const body = res.json();
-      expect(body.code).toBe('NOT_PERMITTED');
-      expect(typeof body.message).toBe('string');
-      expect(body.message.length).toBeGreaterThan(0);
-    });
+        const body = res.json();
+        expect(body.code).toBe('NOT_PERMITTED');
+        expect(typeof body.message).toBe('string');
+        expect(body.message.length).toBeGreaterThan(0);
+      },
+    );
 
     it.each(restrictedRoles)('%s CAN read projects — returns 200', async (role) => {
       const res = await authGet(tokenFor(role), '/api/projects');
@@ -205,13 +208,13 @@ describe('Role-based Permission Enforcement', () => {
       noPermsToken = session.token;
     });
 
-    it('cannot list projects — returns 403 NOT_PERMITTED', async () => {
+    it('AC-576: cannot list projects — returns 403 NOT_PERMITTED', async () => {
       const res = await authGet(noPermsToken, '/api/projects');
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('cannot get a project by id — returns 403 NOT_PERMITTED', async () => {
+    it('AC-576: cannot get a project by id — returns 403 NOT_PERMITTED', async () => {
       // A project id obtained via an authorized user — the id itself is not
       // authorization-sensitive; the check is role-based.
       const project = await findProjectByStatus(ownerToken, 'anfrage');
@@ -220,7 +223,7 @@ describe('Role-based Permission Enforcement', () => {
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('cannot change own password — returns 403 NOT_PERMITTED', async () => {
+    it('AC-576: cannot change own password — returns 403 NOT_PERMITTED', async () => {
       const res = await authPost(noPermsToken, '/api/auth/change-password', {
         currentPassword: 'irrelevant',
         newPassword: 'irrelevant-too',
@@ -229,7 +232,7 @@ describe('Role-based Permission Enforcement', () => {
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('cannot transition a project — returns 403 NOT_PERMITTED', async () => {
+    it('AC-576: cannot transition a project — returns 403 NOT_PERMITTED', async () => {
       const project = await findProjectByStatus(ownerToken, 'anfrage');
       const res = await authPost(noPermsToken, `/api/projects/${project.id}/transition/forward`, {
         expectedStatus: 'anfrage',

@@ -122,7 +122,7 @@ describe('Attachment permission matrix (api.md §14.3 + AC-411)', () => {
       expect(res.statusCode).toBe(200);
     });
 
-    it('user with no roles receives 403 NOT_PERMITTED', async () => {
+    it('AC-576: user with no roles receives 403 NOT_PERMITTED', async () => {
       const res = await authGet(noPermsToken, `/api/projects/${projectId}/attachments`);
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
@@ -133,7 +133,7 @@ describe('Attachment permission matrix (api.md §14.3 + AC-411)', () => {
   // attachment:write — owner, office, worker (bookkeeper denied)
   // -------------------------------------------------------------------
   describe('write (init) — attachment:write gate', () => {
-    it('bookkeeper is rejected with 403 NOT_PERMITTED — lacks attachment:write', async () => {
+    it('AC-576: bookkeeper is rejected with 403 NOT_PERMITTED — lacks attachment:write', async () => {
       const res = await authPost(
         bookkeeperToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -143,7 +143,7 @@ describe('Attachment permission matrix (api.md §14.3 + AC-411)', () => {
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('user with no roles is rejected with 403 NOT_PERMITTED', async () => {
+    it('AC-576: user with no roles is rejected with 403 NOT_PERMITTED', async () => {
       const res = await authPost(
         noPermsToken,
         `/api/projects/${projectId}/attachments/init`,
@@ -192,14 +192,14 @@ describe('Attachment permission matrix (api.md §14.3 + AC-411)', () => {
   // authorship / grace branches).
   // -------------------------------------------------------------------
   describe('delete — attachment:hide gate', () => {
-    it('bookkeeper is rejected with 403 NOT_PERMITTED — lacks attachment:hide', async () => {
+    it('AC-576: bookkeeper is rejected with 403 NOT_PERMITTED — lacks attachment:hide', async () => {
       const id = await seedReadyAttachment(projectId, null);
       const res = await authDelete(bookkeeperToken, `/api/projects/${projectId}/attachments/${id}`);
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('user with no roles is rejected with 403 NOT_PERMITTED', async () => {
+    it('AC-576: user with no roles is rejected with 403 NOT_PERMITTED', async () => {
       const id = await seedReadyAttachment(projectId, null);
       const res = await authDelete(noPermsToken, `/api/projects/${projectId}/attachments/${id}`);
       expect(res.statusCode).toBe(403);

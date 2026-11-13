@@ -402,7 +402,7 @@ export class AttachmentService {
     log: ServiceLogger,
   ): Promise<InitUploadResult> {
     // Project existence check — 404 takes precedence over scope (AC-410
-    // + AC-147 pattern).
+    // + AC-581 pattern).
     const projectRow = await getProjectRowById(this.db, projectId);
     if (!projectRow) throw notFound(STRINGS.entities.project);
     if (projectRow.deleted) throw notFound(STRINGS.entities.project);
@@ -913,7 +913,7 @@ export class AttachmentService {
   }
 
   async listForProject(caller: AuthUser, projectId: string): Promise<Attachment[]> {
-    // 404 / 403 order mirrors the project-detail policy (AC-147) —
+    // 404 / 403 order mirrors the project-detail policy (AC-581) —
     // a missing project is 404, an existing project out-of-scope is 403.
     // Archived projects ARE listed: the detail page renders them as a
     // read-only preview (AC-500), so the attachment listing has
@@ -1149,7 +1149,7 @@ export class AttachmentService {
     }
 
     // Scope: worker hitting an attachment on an unassigned project is
-    // 403 (AC-410 / AC-147 three-way result). The attachment row existence is
+    // 403 (AC-410 / AC-581 three-way result). The attachment row existence is
     // already confirmed above, so this branch cannot collapse to 404.
     if (!(await isProjectInScope(this.db, caller, projectId))) {
       throw notPermitted();

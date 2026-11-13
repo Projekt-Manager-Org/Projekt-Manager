@@ -81,6 +81,6 @@ Skip admin-in-DB by delegating auth. Rejected: scope is explicitly single-tenant
 
 - [ADR-0005](0005-session-management-httponly-cookies.md) — session cookies (requires a user to exist before login works)
 - [ADR-0006](0006-password-policy-nist-blocklist.md) — password policy the bootstrap password must pass
-- [spec/index.md §4.2](../spec/index.md#42-users) — how users are created
+- [spec/index.md §4.2](../spec/index.md#42-roles) — how users are created
 - [spec/data-model.md §7.2](../spec/data-model.md#72-user-dataset) — seed user records (dev-only)
 - `src/server/start.ts` — `NODE_ENV=production → skip seed()` guard that this ADR preserves

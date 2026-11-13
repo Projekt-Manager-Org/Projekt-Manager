@@ -13,7 +13,7 @@
  *   - Any attachment endpoint on a non-existent project id → 404 NOT_FOUND.
  *
  *   - get-by-id three-way result (200 in-scope / 403 out-of-scope /
- *     404 missing) mirrors the project pattern in AC-147 /
+ *     404 missing) mirrors the project pattern in AC-581 /
  *     role-scoping.test.ts. AC-410 pins the symmetry explicitly.
  *
  * Fixtures:
@@ -183,7 +183,7 @@ describe('Attachment scope (AC-410)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-410 — Three-way get-by-id (200 / 403 / 404) mirrors AC-147.
+  // AC-410 — Three-way get-by-id (200 / 403 / 404) mirrors AC-581.
   //
   // The download-url endpoint is the natural get-by-id surface for an
   // attachment — it's the one caller-facing read path that keys off an

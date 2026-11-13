@@ -1,7 +1,7 @@
 /**
  * API integration tests: Project hard-delete (purge) operation.
  *
- * Pins AC-502, AC-503, AC-157 from §15.12; the not-found case is wire
+ * Pins AC-502, AC-503 from §15.12 and AC-576; the not-found case is wire
  * shape with no AC.
  *
  * The purge endpoint is a narrower, strictly more destructive counterpart to
@@ -162,10 +162,10 @@ describe('Project Purge (hard-delete)', () => {
   });
 
   // ---------------------------------------------------------------
-  // Permission (AC-157) + not-found
+  // Permission (AC-576) + not-found
   // ---------------------------------------------------------------
-  describe('AC-157: Permission and not-found contracts', () => {
-    describe('permission gate (AC-157)', () => {
+  describe('Permission and not-found contracts', () => {
+    describe('AC-576: permission gate', () => {
       it('rejects callers without project:purge — worker, bookkeeper, office; only owner succeeds', async () => {
         const projectId = await createArchivedProject();
 
@@ -180,7 +180,7 @@ describe('Project Purge (hard-delete)', () => {
         expect(bookkeeperRes.statusCode).toBe(403);
         expect(bookkeeperRes.json().code).toBe('NOT_PERMITTED');
 
-        // Office — LOAD-BEARING assertion per AC-157: office holds
+        // Office — LOAD-BEARING assertion per api.md §14.3: office holds
         // `project:delete` but NOT `project:purge`. The existing delete
         // permission must not grant the narrower purge.
         const officeRes = await authDelete(officeToken, `/api/projects/${projectId}/purge`);

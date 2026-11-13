@@ -344,7 +344,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       expect(res.statusCode).toBe(401);
     });
 
-    it('POST /api/import-jobs as office (has data:export, lacks data:restore) → 403 NOT_PERMITTED', async () => {
+    it('AC-576: POST /api/import-jobs as office (has data:export, lacks data:restore) → 403 NOT_PERMITTED', async () => {
       const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
       const res = await createImportJob(officeToken, 1024, {
         override: true,
@@ -354,7 +354,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('POST /api/import-jobs as worker (no data perms) → 403 NOT_PERMITTED', async () => {
+    it('AC-576: POST /api/import-jobs as worker (no data perms) → 403 NOT_PERMITTED', async () => {
       const workerToken = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
       const res = await createImportJob(workerToken, 1024, {
         override: true,
@@ -364,20 +364,20 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('GET /api/import-jobs as office → 403 NOT_PERMITTED', async () => {
+    it('AC-576: GET /api/import-jobs as office → 403 NOT_PERMITTED', async () => {
       const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
       const res = await authGet(officeToken, '/api/import-jobs');
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('HEAD /api/import-jobs/:id/archive as office → 403', async () => {
+    it('AC-576: HEAD /api/import-jobs/:id/archive as office → 403', async () => {
       const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
       const res = await headArchive(officeToken, crypto.randomUUID());
       expect(res.statusCode).toBe(403);
     });
 
-    it('PATCH /api/import-jobs/:id/archive as office → 403 NOT_PERMITTED', async () => {
+    it('AC-576: PATCH /api/import-jobs/:id/archive as office → 403 NOT_PERMITTED', async () => {
       const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
       const res = await patchArchive(officeToken, crypto.randomUUID(), 0, Buffer.from('x'));
       expect(res.statusCode).toBe(403);

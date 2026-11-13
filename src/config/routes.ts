@@ -222,7 +222,7 @@ const ROUTE_DEFINITIONS: readonly RouteDefinition[] = [
     // Per-invoice viewer (ui/invoices.md §8.16.3) — gated on
     // `invoice:read`, same as the list. Worker is excluded both
     // client-side (no permission) and server-side (repository scope
-    // predicate, ADR-0019 + AC-298). Parametrized — deep-linkable,
+    // predicate, ADR-0019; AC-576). Parametrized — deep-linkable,
     // not a nav entry; excluded from `visibleRoutesForUser` by the
     // `/:` filter alongside `projektDetail`.
     view: 'rechnungDetail',

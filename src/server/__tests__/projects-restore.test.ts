@@ -162,7 +162,7 @@ describe('Project Restore (undo archive)', () => {
     expect(res.json().deleted).toBe(false);
   });
 
-  it('worker cannot restore (lacks project:delete)', async () => {
+  it('AC-576: worker cannot restore (lacks project:delete)', async () => {
     const projectId = await createArchivedProject();
     const res = await authPost(workerToken, `/api/projects/${projectId}/restore`, {});
     expect(res.statusCode).toBe(403);

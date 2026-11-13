@@ -638,10 +638,9 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-69: Permission enforcement — only user:manage can manage
-  // AC-69 [crit]
+  // AC-576: a caller without user:manage / user:read is refused
   // ---------------------------------------------------------------
-  describe('AC-69: Permission enforcement', () => {
+  describe('AC-576: Permission enforcement', () => {
     it('office cannot create users (has user:read, lacks user:manage)', async () => {
       const res = await authPost(officeToken, '/api/users', {
         username: 'office_cannot_create',
@@ -652,6 +651,9 @@ describe('User Management Operations', () => {
 
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
+      const list = await authGet(ownerToken, '/api/users');
+      const usernames = list.json().users.map((u: { username: string }) => u.username);
+      expect(usernames).not.toContain('office_cannot_create');
     });
 
     it('office cannot update users', async () => {
@@ -661,6 +663,8 @@ describe('User Management Operations', () => {
 
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
+      const user = (await authGet(ownerToken, `/api/users/${createdUserId}`)).json();
+      expect(user.displayName).not.toBe('Office Cannot Update');
     });
 
     it('office cannot deactivate users', async () => {

@@ -74,8 +74,8 @@ function toCustomer(row: CustomerRow) {
 
 /**
  * Project read for a caller. A worker reaches an archived project they are
- * assigned to, but a customer is readable only through an active one (AC-146,
- * AC-148), so only its name comes along, and its address where that is the
+ * assigned to, but a customer is readable only through an active one (AC-580,
+ * AC-582), so only its name comes along, and its address where that is the
  * project's site (AC-542, AC-490).
  */
 function toProjectForCaller(caller: AuthUser, ...args: Parameters<typeof toProject>) {
@@ -342,7 +342,7 @@ export async function listProjects(
     if (combined) conditions.push(combined);
   }
 
-  // AC-145: apply per-caller read scope. Owner/office/bookkeeper → null
+  // AC-579: apply per-caller read scope. Owner/office/bookkeeper → null
   // (no additional filter); worker → EXISTS-predicate over project_workers.
   const scope = projectScopeForCaller(caller);
   if (scope) conditions.push(scope);
@@ -437,7 +437,7 @@ export async function listProjects(
  * Three-valued result (ADR-0019):
  *   - `null`              — row does not exist (→ 404 NOT_FOUND)
  *   - `OUT_OF_SCOPE`      — row exists but caller is not assigned
- *                           (→ 403 NOT_PERMITTED; AC-147)
+ *                           (→ 403 NOT_PERMITTED; AC-581)
  *   - `ReturnType<toProject>` — in-scope row, active OR archived. The
  *                           archive flag rides on the project body
  *                           (`deleted: true`) so the UI can render a

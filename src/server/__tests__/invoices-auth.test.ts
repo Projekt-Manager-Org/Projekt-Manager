@@ -1,8 +1,6 @@
 /**
  * API integration test — auth + permission matrix for the eight
- * invoice endpoints (AC-297 / AC-298 coverage backfill).
- *
- * AC-297 (verification.md:409) names exactly eight endpoints:
+ * invoice endpoints (AC-576, api.md §14.3):
  *
  *   GET    /api/invoices                — list
  *   GET    /api/invoices/:id            — get
@@ -14,33 +12,18 @@
  *   GET    /api/invoices/:id/pdf        — download
  *
  * Matrix:
- *   - Unauthenticated → 401 UNAUTHENTICATED | SESSION_EXPIRED.
- *   - Worker          → 403 NOT_PERMITTED on every endpoint EXCEPT the
- *                       two repository-predicate-scoped reads (list,
- *                       get): per AC-298 / ADR-0019 worker callers see
- *                       the empty set on list and a three-way result
- *                       on get (404 for unknown id, 403 for in-scope-
- *                       hidden id). This file does not duplicate
- *                       AC-298's nuance — it asserts only the surfaces
- *                       AC-297 owns:
- *                         * write/issue/cancel endpoints → 403 always,
- *                         * read endpoints on an OWNED draft id → 403
- *                           (NOT 200), satisfying "worker → 403 on all
- *                           eight" interpreted as "worker cannot reach
- *                           a successful 200 on any endpoint".
+ *   - Unauthenticated → 401 UNAUTHENTICATED | SESSION_EXPIRED (AC-574).
+ *   - Worker          → 403 NOT_PERMITTED on every endpoint. The list
+ *                       still answers 200 + empty data: it lags AC-576
+ *                       (#868), pinned below as current behavior.
  *   - Bookkeeper      → read endpoints succeed (200) / write/issue/
  *                       cancel → 403.
  *   - Office          → all eight succeed (200/201/204) on a real
  *                       target; or 404 NOT_FOUND for known-missing ids.
  *   - Owner           → same as office (regression anchor).
  *
- * Why a dedicated file: AC-297 is the auth-matrix anchor; consolidating
- * it here keeps `invoices-routes.test.ts` focused on the wire/contract
- * surfaces (defaults, freeze rules, scope) and gives AC-297 a single
- * home.
- *
- * The five existing invoice route tests cover individual cells of this
- * matrix incidentally; this file is the systematic walk.
+ * The other invoice route tests cover individual cells of this matrix
+ * incidentally; this file is the systematic walk.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -68,7 +51,7 @@ interface Project {
 }
 
 /**
- * The eight endpoints AC-297 names. `needsId` marks the ones bound to
+ * The eight invoice endpoints. `needsId` marks the ones bound to
  * a specific row — used by the test loops to substitute the seeded
  * draft / issued ids per arm.
  */
@@ -232,7 +215,7 @@ async function call(
   throw new Error(`unsupported method ${method as string}`);
 }
 
-describe('AC-297 — invoice auth + permission matrix (per-role × per-endpoint walk)', () => {
+describe('invoice auth + permission matrix (per-role × per-endpoint walk)', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -343,7 +326,7 @@ describe('AC-297 — invoice auth + permission matrix (per-role × per-endpoint 
   // Unauthenticated arm — every endpoint, no session cookie → 401.
   // ---------------------------------------------------------------------
 
-  describe('unauthenticated → 401 UNAUTHENTICATED | SESSION_EXPIRED', () => {
+  describe('AC-574: unauthenticated → 401 UNAUTHENTICATED | SESSION_EXPIRED', () => {
     it.each(ENDPOINTS)('$method $path', async (ep) => {
       // For per-id endpoints, use a random UUID — the auth gate fires
       // before the row lookup, so the id need not exist.
@@ -351,37 +334,17 @@ describe('AC-297 — invoice auth + permission matrix (per-role × per-endpoint 
       const res = await call(ep, '', id);
       expect(res.statusCode).toBe(401);
       const body = res.json();
-      // Either code is spec-conformant per AC-297 wording ("401
-      // UNAUTHENTICATED / SESSION_EXPIRED").
+      // Either code is an authentication error (AC-574).
       expect(['UNAUTHENTICATED', 'SESSION_EXPIRED']).toContain(body.code);
     });
   });
 
   // ---------------------------------------------------------------------
-  // Worker arm — no `invoice:read` or `invoice:write`. AC-297 says
-  // "403 on all eight endpoints", reconciled with AC-298 nuance:
-  //   - list: 200 + empty data (repository-predicate scope returns []);
-  //   - get on owned id: 403 NOT_PERMITTED (in-scope-hidden);
-  //   - get on unknown id: 404 NOT_FOUND.
-  // AC-297's "403 on all eight" is interpreted as "worker cannot reach
-  // a successful mutation / a 200-on-row response". Below we pin the
-  // 403 / non-200 path for every endpoint, with list as the documented
-  // exception (200 + empty).
+  // Worker arm — no `invoice:read` or `invoice:write`: 403 on every
+  // endpoint. The list lags (#868) and is pinned separately below.
   // ---------------------------------------------------------------------
 
-  describe('worker — no invoice permission; AC-298 scope on reads, 403 on writes', () => {
-    it('GET /api/invoices → 200 with empty data (worker scope predicate)', async () => {
-      // Per AC-298 / routes/invoices.ts:81-91 the list endpoint does NOT
-      // gate on `invoice:read` — the repo predicate produces the empty
-      // set for worker. AC-297's "403 on all eight" is not literal on
-      // the list endpoint; the auth-matrix interpretation is "worker
-      // never sees invoice rows", which is what the empty list pins.
-      const res = await call(ENDPOINTS[0], workerToken, null);
-      expect(res.statusCode).toBe(200);
-      expect(Array.isArray((res.json() as { data?: unknown[] }).data)).toBe(true);
-      expect((res.json() as { data: unknown[] }).data.length).toBe(0);
-    });
-
+  describe('AC-576: worker — no invoice permission, 403', () => {
     it('GET /api/invoices/:id on an existing draft → 403 NOT_PERMITTED', async () => {
       const res = await call(ENDPOINTS[1], workerToken, draftIdForWorkerReject);
       expect(res.statusCode).toBe(403);
@@ -425,6 +388,16 @@ describe('AC-297 — invoice auth + permission matrix (per-role × per-endpoint 
     });
   });
 
+  // Current behavior, not contract: AC-576 requires 403 here. #868 adds
+  // the `invoice:read` gate and flips this assertion.
+  describe('worker list — lags the permission gate (#868)', () => {
+    it('GET /api/invoices → 200 with empty data (worker scope predicate)', async () => {
+      const res = await call(ENDPOINTS[0], workerToken, null);
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { data: unknown[] }).data).toEqual([]);
+    });
+  });
+
   // ---------------------------------------------------------------------
   // Bookkeeper arm — `invoice:read` only.
   //   - Reads (list / get / pdf) succeed.
@@ -442,13 +415,13 @@ describe('AC-297 — invoice auth + permission matrix (per-role × per-endpoint 
       expect(res.statusCode).toBe(200);
     });
 
-    it('POST /api/invoices → 403 NOT_PERMITTED', async () => {
+    it('AC-576: POST /api/invoices → 403 NOT_PERMITTED', async () => {
       const res = await call(ENDPOINTS[2], bookkeeperToken, projectId);
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('PATCH /api/invoices/:id → 403 NOT_PERMITTED', async () => {
+    it('AC-576: PATCH /api/invoices/:id → 403 NOT_PERMITTED', async () => {
       const res = await call(ENDPOINTS[3], bookkeeperToken, draftIdForBookkeeperReject, {
         lines: [],
       });
@@ -456,19 +429,19 @@ describe('AC-297 — invoice auth + permission matrix (per-role × per-endpoint 
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('DELETE /api/invoices/:id → 403 NOT_PERMITTED', async () => {
+    it('AC-576: DELETE /api/invoices/:id → 403 NOT_PERMITTED', async () => {
       const res = await call(ENDPOINTS[4], bookkeeperToken, draftIdForBookkeeperReject);
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('POST /api/invoices/:id/issue → 403 NOT_PERMITTED', async () => {
+    it('AC-576: POST /api/invoices/:id/issue → 403 NOT_PERMITTED', async () => {
       const res = await call(ENDPOINTS[5], bookkeeperToken, draftIdForBookkeeperReject);
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('POST /api/invoices/:id/cancel → 403 NOT_PERMITTED', async () => {
+    it('AC-576: POST /api/invoices/:id/cancel → 403 NOT_PERMITTED', async () => {
       const res = await call(ENDPOINTS[6], bookkeeperToken, issuedIdForReadOnly, {});
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');

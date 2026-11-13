@@ -24,7 +24,7 @@ A single **"Export"** action starts a server-side **export job** ([api.md §14.2
 
 **Surface placement.** The dialog hosts only the _active_ build — a `pending`/`running` job auto-opens it (including the live `ready → download` transition while the operator watches). Once terminal and the dialog is closed (or re-attached on a reload), the affordance moves **inline** into the Export section (download, or `error_detail`), never an auto-opened modal — so a finished export cannot cover the Import action below it.
 
-Permission: `data:export`. Users without it do not see the action — a component-level gate (defense in depth on the nav-level gate in [index.md §8.7.1](index.md#871-views), [AC-150](../verification.md#1521-role-scoping)); the server remains authoritative ([AC-133](../verification.md#1514-data-exchange), [AC-322](../verification.md#1514-data-exchange)).
+Permission: `data:export`. Users without it do not see the action — a component-level gate (defense in depth on the nav-level gate in [index.md §8.7.1](index.md#871-views), [AC-121](../verification.md#1521-role-scoping)); the server remains authoritative ([AC-576](../verification.md#1521-role-scoping), [AC-322](../verification.md#1514-data-exchange)).
 
 The archive's envelope includes archived (soft-deleted) business data with archive state preserved: `users` (incl. inactive accounts and `passwordHash`), the singleton `company_profile`, every `invoice` (issued, cancelled, Storno), and `invoice_sequence`. Sessions and `audit_log` are excluded — ephemeral / per-instance state. See [data-model.md §5.8](../data-model.md#58-export-envelope).
 
@@ -46,7 +46,7 @@ A single **"Import"** action restores a takeout archive via a server-side **impo
 
 **A picked file always starts a new import.** `GET /api/import-jobs` keeps returning the last finished job, so a prior _terminal_ job must never take over a dialog opened with a picked archive — it would render that old summary instead of the confirmation gate, making the restore usable exactly once per deployment. Re-attach (no picked file) still resumes onto a terminal job, per the paragraph above.
 
-Permission: `data:restore`. Users without it do not see the action; the server remains authoritative ([AC-134](../verification.md#1514-data-exchange), [AC-329](../verification.md#1514-data-exchange)). The job re-encrypts attachments server-side, wrapped to the active binary recipient, so `attachment:write` is not a UI prerequisite.
+Permission: `data:restore`. Users without it do not see the action; the server remains authoritative ([AC-576](../verification.md#1521-role-scoping), [AC-329](../verification.md#1514-data-exchange)). The job re-encrypts attachments server-side, wrapped to the active binary recipient, so `attachment:write` is not a UI prerequisite.
 
 ### 8.11.3 Speichernutzung
 
@@ -63,7 +63,7 @@ Behavior: [verification.md §15.29](../verification.md#1529-storage-usage).
 
 An owner-only form persisting the singleton `company_profile` row ([data-model.md §5.17](../data-model.md#517-company-profile-entity)) — the source from which every issued invoice's `issuer` block is snapshotted. The form is the only UI surface that mutates the row; the API contract is [api.md §14.2.15](../api.md#14215-company-profile-operations).
 
-**Visibility.** The section is rendered to every authenticated role with read access; the editable surface (inputs enabled, save button visible) is owner-only. Office, worker, and bookkeeper see the section as a read-only summary — useful for verifying the values an invoice will snapshot, with no save affordance. The server is authoritative ([AC-301](../verification.md#1531-company-profile)).
+**Visibility.** The section is rendered to every authenticated role with read access; the editable surface (inputs enabled, save button visible) is owner-only. Office, worker, and bookkeeper see the section as a read-only summary — useful for verifying the values an invoice will snapshot, with no save affordance. The server is authoritative ([AC-576](../verification.md#1521-role-scoping)).
 
 **Fields.**
 

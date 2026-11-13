@@ -17,13 +17,10 @@
  *   - AC-286: PATCH on draft updates and re-derives totals;
  *                      PATCH on issued/cancelled → INVOICE_FROZEN;
  *                      DELETE on draft removes; DELETE on non-draft frozen.
- *   - AC-297 / AC-298 partial: permission matrix concentrated here —
- *                      walks every role × write/read endpoint. Per the
- *                      task brief, the matrix is centralised here +
- *                      `company-profile.test.ts`, not duplicated in the
- *                      issue / cancel / cascade files.
- *   - AC-298: worker exclusion via repository-predicate scope —
- *                      empty list, 403 on existing get, 404 on unknown.
+ *   - AC-574, AC-576: authentication and permission matrix, with
+ *                      `invoices-auth.test.ts`; not duplicated in the
+ *                      issue / cancel / cascade files. A worker's list
+ *                      and unknown-id read lag AC-576 (#868).
  *   - AC-299: download PDF — issued / cancelled / draft / worker
  *                      arms.
  *
@@ -412,7 +409,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(res.statusCode).toBe(201);
     });
 
-    it('worker is rejected — lacks invoice:write', async () => {
+    it('AC-576: worker is rejected — lacks invoice:write', async () => {
       const res = await authPost(workerToken, '/api/invoices', {
         projectId,
         lines: [],
@@ -421,7 +418,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('bookkeeper is rejected — holds invoice:read only', async () => {
+    it('AC-576: bookkeeper is rejected — holds invoice:read only', async () => {
       const res = await authPost(bookkeeperToken, '/api/invoices', {
         projectId,
         lines: [],
@@ -691,7 +688,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(get.json().status).toBe('issued');
     });
 
-    it('PATCH / DELETE by worker / bookkeeper are rejected at the permission gate', async () => {
+    it('AC-576: PATCH / DELETE by worker / bookkeeper are rejected at the permission gate', async () => {
       const draftId = await seedDraftInvoice(projectId);
 
       // A well-formed body — the permission gate is under test, not the version.
@@ -712,13 +709,24 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-298 — Worker scope: empty list, 403 on existing get,
-  // 404 on unknown id. The worker scope predicate (ADR-0019) returns
-  // the empty set for the worker role on the invoice repository, so
-  // GET /api/invoices returns 0 rows regardless of `project_workers`
-  // assignments.
+  // AC-576 — a worker holds no `invoice:read`.
   // -------------------------------------------------------------------
-  describe('AC-298: worker exclusion via repository-predicate scope', () => {
+  describe('AC-576: worker read of an existing invoice', () => {
+    it('worker GET /api/invoices/:id on an existing row → 403 NOT_PERMITTED', async () => {
+      const draftId = await seedDraftInvoice(projectId);
+
+      const res = await authGet(workerToken, `/api/invoices/${draftId}`);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().code).toBe('NOT_PERMITTED');
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // Current behavior, not contract: AC-576 requires 403 for both. The
+  // worker scope predicate (ADR-0019) answers instead; #868 adds the
+  // `invoice:read` gate and flips these assertions.
+  // -------------------------------------------------------------------
+  describe('worker list and unknown-id read — lag the permission gate (#868)', () => {
     it('worker GET /api/invoices returns an empty list regardless of project assignments', async () => {
       // Seed a draft so the list is non-empty for owner/office; the
       // worker filter must still produce zero results.
@@ -726,20 +734,8 @@ describe('Invoice routes — integration (issue #109)', () => {
 
       const res = await authGet(workerToken, '/api/invoices');
       expect(res.statusCode).toBe(200);
-      // Pin one wire shape — `{ data: [...] }` mirrors the existing
-      // list endpoints (projects, attachments). A regression to
-      // `{ invoices: [...] }` would be a separate visible decision.
       const body = res.json() as { data: unknown[] };
-      expect(Array.isArray(body.data)).toBe(true);
       expect(body.data).toHaveLength(0);
-    });
-
-    it('worker GET /api/invoices/:id on an existing row → 403 NOT_PERMITTED', async () => {
-      const draftId = await seedDraftInvoice(projectId);
-
-      const res = await authGet(workerToken, `/api/invoices/${draftId}`);
-      expect(res.statusCode).toBe(403);
-      expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
     it('worker GET /api/invoices/:id on an unknown id → 404 NOT_FOUND', async () => {
@@ -753,7 +749,7 @@ describe('Invoice routes — integration (issue #109)', () => {
   // AC-299 — GET /api/invoices/:id/pdf
   // Status: issued | cancelled → bytes (or presigned-GET + DEK wrapper).
   //        draft → 409 INVOICE_NOT_ISSUED.
-  //        worker → 403 NOT_PERMITTED (covered by AC-298).
+  //        worker → 403 NOT_PERMITTED (AC-576).
   // -------------------------------------------------------------------
   describe('AC-299: GET /api/invoices/:id/pdf', () => {
     // Each PDF-download arm that needs real rendered bytes drives a
@@ -817,12 +813,11 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-298 / AC-297 — Authenticated/unauthenticated arm of the
-  // permission matrix. Concentrated here per the task brief; sibling
-  // files reference this coverage conceptually rather than duplicate.
+  // Authenticated/unauthenticated arm of the
+  // permission matrix.
   // -------------------------------------------------------------------
-  describe('AC-298 / AC-297: authentication + permission matrix', () => {
-    it('unauthenticated GET /api/invoices → 401', async () => {
+  describe('authentication + permission matrix', () => {
+    it('AC-574: unauthenticated GET /api/invoices → 401', async () => {
       const res = await authGet('', '/api/invoices');
       expect(res.statusCode).toBe(401);
       // Either code is spec-conformant (the session middleware emits
@@ -830,7 +825,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(['UNAUTHENTICATED', 'SESSION_EXPIRED']).toContain(res.json().code);
     });
 
-    it('unauthenticated POST /api/invoices → 401', async () => {
+    it('AC-574: unauthenticated POST /api/invoices → 401', async () => {
       const res = await authPost('', '/api/invoices', { projectId, lines: [] });
       expect(res.statusCode).toBe(401);
     });

@@ -131,7 +131,7 @@ describe('Project CRUD Operations', () => {
       expect(project.notes).toBe('Testnotiz für CRUD-003');
     });
 
-    it('requires project:create permission — worker is rejected', async () => {
+    it('AC-576: requires project:create permission — worker is rejected', async () => {
       const res = await authPost(workerToken, '/api/projects', {
         number: 'CRUD-DENIED',
         title: 'Should Not Create',
@@ -600,7 +600,7 @@ describe('Project CRUD Operations', () => {
       expect(found).toBeUndefined();
     });
 
-    it('requires project:delete permission — worker is rejected', async () => {
+    it('AC-576: requires project:delete permission — worker is rejected', async () => {
       // Create another project to try deleting with insufficient permissions
       const createRes = await authPost(ownerToken, '/api/projects', {
         number: 'CRUD-DEL2',

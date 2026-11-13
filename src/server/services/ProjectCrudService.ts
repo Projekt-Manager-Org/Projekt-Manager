@@ -123,7 +123,7 @@ export class ProjectCrudService {
   async getProject(caller: AuthUser, id: string) {
     const result = await getProjectRepo(this.db, caller, id);
     if (result === null) throw notFound(STRINGS.entities.project);
-    // AC-147: an existing project the caller is not assigned to surfaces
+    // AC-581: an existing project the caller is not assigned to surfaces
     // as 403 NOT_PERMITTED, not 404. The spec accepts the existence leak
     // because project IDs are UUIDs and callers are internal users.
     if (isOutOfScope(result)) throw notPermitted();

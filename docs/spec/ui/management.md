@@ -142,7 +142,7 @@ Fields:
 - **Ereignis (event)** — required. Single-select over the catalog ([data-model.md §5.11](../data-model.md#511-notification-rule)), German labels via the event-class mapping **[C]**.
 - **Ziel-Status (state filter)** — single-select. Rendered only for `project.transition_forward` / `project.transition_backward`; otherwise hidden and sent as null. Values are workflow-state labels; empty = null.
 - **Empfänger (recipient spec)** — three additive sub-sections:
-  - **Rollen** — multi-select over the configured role set ([index.md §4.2](../index.md#42-users)).
+  - **Rollen** — multi-select over the configured role set ([index.md §4.2](../index.md#42-roles)).
   - **Zugewiesene Mitarbeiter** — toggle `"Zugewiesene Mitarbeiter benachrichtigen"`. Disabled and forced `false` for `backup.failed` / `disk.threshold_reached`.
   - **Einzelne Benutzer** — autocomplete over active users; selection adds a chip with a remove affordance.
 - **Aktiv** — boolean toggle.

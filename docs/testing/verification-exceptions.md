@@ -64,6 +64,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-64  | retired | —                                                                                                        |
 | AC-65  | retired | —                                                                                                        |
 | AC-67  | retired | —                                                                                                        |
+| AC-69  | retired | —                                                                                                        |
 | AC-70  | retired | —                                                                                                        |
 | AC-71  | retired | —                                                                                                        |
 | AC-72  | retired | —                                                                                                        |
@@ -84,8 +85,10 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-89  | retired | —                                                                                                        |
 | AC-90  | retired | —                                                                                                        |
 | AC-91  | retired | —                                                                                                        |
+| AC-93  | retired | —                                                                                                        |
 | AC-95  | retired | —                                                                                                        |
 | AC-98  | retired | —                                                                                                        |
+| AC-101 | retired | —                                                                                                        |
 | AC-105 | gap     | needs an e2e confirming the entry is visible only with `customer:write`                                  |
 | AC-106 | gap     | needs an e2e covering the textarea and the action disabled while empty / in flight                       |
 | AC-107 | gap     | needs an e2e walking the extraction-review form + existing-customer match                                |
@@ -100,14 +103,22 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-129 | retired | —                                                                                                        |
 | AC-130 | retired | —                                                                                                        |
 | AC-132 | retired | —                                                                                                        |
+| AC-133 | retired | —                                                                                                        |
+| AC-134 | retired | —                                                                                                        |
 | AC-140 | retired | —                                                                                                        |
 | AC-143 | retired | —                                                                                                        |
 | AC-144 | retired | —                                                                                                        |
+| AC-145 | retired | —                                                                                                        |
+| AC-146 | retired | —                                                                                                        |
+| AC-147 | retired | —                                                                                                        |
+| AC-148 | retired | —                                                                                                        |
+| AC-150 | retired | —                                                                                                        |
 | AC-151 | retired | —                                                                                                        |
 | AC-152 | retired | —                                                                                                        |
 | AC-154 | retired | —                                                                                                        |
 | AC-155 | retired | —                                                                                                        |
 | AC-156 | retired | —                                                                                                        |
+| AC-157 | retired | —                                                                                                        |
 | AC-158 | retired | —                                                                                                        |
 | AC-159 | retired | —                                                                                                        |
 | AC-162 | retired | —                                                                                                        |
@@ -116,6 +127,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-173 | infra   | provider-side review against the recovery runbook                                                        |
 | AC-175 | infra   | repo scan of `scripts/backup/load-drill-key.sh` (tmpfs-only); runbook review                             |
 | AC-181 | retired | —                                                                                                        |
+| AC-189 | retired | —                                                                                                        |
 | AC-191 | retired | —                                                                                                        |
 | AC-194 | retired | —                                                                                                        |
 | AC-206 | retired | —                                                                                                        |
@@ -177,6 +189,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-281 | retired | —                                                                                                        |
 | AC-282 | retired | —                                                                                                        |
 | AC-284 | retired | —                                                                                                        |
+| AC-297 | retired | —                                                                                                        |
+| AC-298 | retired | —                                                                                                        |
+| AC-301 | retired | —                                                                                                        |
 | AC-306 | retired | —                                                                                                        |
 | AC-307 | retired | —                                                                                                        |
 | AC-308 | retired | —                                                                                                        |

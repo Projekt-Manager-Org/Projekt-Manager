@@ -97,7 +97,7 @@ export class CustomerService {
   async getCustomer(caller: AuthUser, id: string) {
     const result = await getCustomerRepo(this.db, caller, id);
     if (result === null) throw notFound(STRINGS.entities.customer);
-    // AC-148: out-of-scope → 403 NOT_PERMITTED, not 404.
+    // AC-582: out-of-scope → 403 NOT_PERMITTED, not 404.
     if (isOutOfScope(result)) throw notPermitted();
     return result;
   }

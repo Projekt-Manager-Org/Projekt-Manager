@@ -165,7 +165,7 @@ export class InvoiceService {
   // -------------------------------------------------------------------
 
   /**
-   * List visible invoices. Worker callers receive `[]` (AC-298) by
+   * List visible invoices. Worker callers receive `[]` by
    * construction of the repository predicate; permission gating is
    * the route layer's job. The service is callable from any
    * authenticated context — readers without `invoice:read` are
@@ -186,7 +186,7 @@ export class InvoiceService {
   }
 
   /**
-   * Three-way result (AC-298): row → 200 / OUT_OF_SCOPE → 403 / null → 404.
+   * Three-way result: row → 200 / OUT_OF_SCOPE → 403 / null → 404.
    */
   async get(caller: AuthUser, id: string): Promise<Invoice> {
     const result = await getInvoiceRepo(this.db, caller, id);

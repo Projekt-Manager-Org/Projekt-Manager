@@ -160,7 +160,7 @@ export class CompanyProfileService {
   /**
    * Upsert (PUT semantics). Routes pass the authenticated `caller` and
    * the validated body; the service enforces the owner-only invariant
-   * as defense in depth (the route layer also gates it — M3 / AC-297),
+   * as defense in depth (the route layer also gates it — AC-576),
    * re-checks content-level invariants, opens a transaction, captures
    * `payload.before` from the pre-write row, writes the UPDATE, and
    * commits the audit row via `mutate()`.
@@ -180,7 +180,7 @@ export class CompanyProfileService {
     log: ServiceLogger,
     correlationId?: string | null,
   ): Promise<CompanyProfile> {
-    // Defense-in-depth role check (M3 / AC-297). The route layer's
+    // Defense-in-depth role check (AC-576). The route layer's
     // pre-handler gates this surface to `owner` already; this rejects
     // any direct service caller bypassing the route (background jobs,
     // scripts, test fixtures, future internal consumers) on the same

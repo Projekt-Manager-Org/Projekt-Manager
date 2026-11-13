@@ -303,9 +303,7 @@ Exact German strings live in the German UI and error strings catalogue (`[C]` �
 
 **Object Lock retention.** Each rendered PDF/A-3 is written with its own Compliance Object Lock until write time + `INVOICE_OBJECT_LOCK_DAYS` ([§12.2](#122-company-configurable-settings) `[C]`); the full-account import job applies the same lock when it restores one. The lock is per object, not the bucket default: the bucket-default retention `R` must stay within the trash window `L` ([AC-236](verification.md#1526-attachments)), so it cannot carry a multi-year horizon. A write whose lock the storage provider rejects fails, and the surrounding transaction rolls back.
 
-**Worker exclusion.** The worker role holds no invoice permission and is excluded from invoice rows by absence of a `project_worker` scope path — the repository-predicate pattern ([ADR-0019](../adr/0019-worker-data-scoping-repository-layer-predicate.md)) returns the empty set for the worker role without a route-level carve-out.
-
-**Verification.** State-machine, transaction shape, sequence gaplessness, tax-mode rendering, Storno mechanics, Object Lock enforcement, and worker exclusion are pinned by [§15.30](verification.md#1530-invoices). Company-profile invariants are pinned by [§15.31](verification.md#1531-company-profile).
+**Verification.** State-machine, transaction shape, sequence gaplessness, tax-mode rendering, Storno mechanics and Object Lock enforcement are pinned by [§15.30](verification.md#1530-invoices). Company-profile invariants are pinned by [§15.31](verification.md#1531-company-profile).
 
 ---
 
