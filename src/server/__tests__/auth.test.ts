@@ -535,7 +535,7 @@ describe('Authentication & Session Management', () => {
       const mutatorToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
 
       // Find a project the observer can see. Worker1 is scoped
-      // (AC-145/ADR-0019) to their assigned projects — pick one in
+      // (AC-579/ADR-0019) to their assigned projects — pick one in
       // a non-terminal state so the forward transition is always safe.
       // `geplant` is one of worker1's seeded assignments (2024-007, 008).
       const initialObserver = await authGet(observerToken, '/api/projects');

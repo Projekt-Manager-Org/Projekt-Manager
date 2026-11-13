@@ -242,7 +242,7 @@ describe('POST /api/invoices/export', () => {
   // -------------------------------------------------------------------
   // Worker → 403 NOT_PERMITTED (lacks invoice:read).
   // -------------------------------------------------------------------
-  it('rejects 403 when called as a worker', async () => {
+  it('AC-576: rejects 403 when called as a worker', async () => {
     const res = await authPost(workerToken, '/api/invoices/export', { filter: {} });
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe('NOT_PERMITTED');

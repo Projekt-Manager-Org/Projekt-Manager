@@ -247,7 +247,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       expect(res.statusCode).toBe(401);
     });
 
-    it('POST /api/export-jobs without data:export → 403 NOT_PERMITTED', async () => {
+    it('AC-576: POST /api/export-jobs without data:export → 403 NOT_PERMITTED', async () => {
       // arbeiter1 (worker) holds neither data:export nor data:restore.
       const workerToken = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
       const res = await authPost(workerToken, '/api/export-jobs');
@@ -302,7 +302,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       expect(body.job?.id).toBe(created.id);
     });
 
-    it('GET /api/export-jobs without data:export → 403 NOT_PERMITTED', async () => {
+    it('AC-576: GET /api/export-jobs without data:export → 403 NOT_PERMITTED', async () => {
       const bookkeeperToken = await login(SEED_USERS.bookkeeper.username, SEED_DEFAULT_PASSWORD);
       const res = await authGet(bookkeeperToken, '/api/export-jobs');
       expect(res.statusCode).toBe(403);
@@ -392,7 +392,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       expect(ranged.headers['content-range']).toBe(`bytes */${size}`);
     });
 
-    it('download without data:export → 403 NOT_PERMITTED', async () => {
+    it('AC-576: download without data:export → 403 NOT_PERMITTED', async () => {
       const created = await createExportJob(ownerToken);
       const workerToken = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
       const res = await authGet(workerToken, `/api/export-jobs/${created.id}/download`);

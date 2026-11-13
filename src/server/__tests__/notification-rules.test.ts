@@ -1,7 +1,7 @@
 /**
  * Notification rules CRUD integration tests — Iteration 8, issue #112.
  *
- * Pins AC-189 / AC-190 / AC-193 / AC-203 / AC-393 in §15.24.
+ * Pins AC-190 / AC-193 / AC-203 / AC-393 in §15.24, and AC-576.
  *
  * Failing-state expectations (step 3 of the workflow — tests land ahead
  * of implementation):
@@ -57,7 +57,7 @@ interface NotificationRuleApi {
 }
 
 // ---------------------------------------------------------------------
-// AC-189 — Permission matrix on rule CRUD
+// AC-576 — Permission matrix on rule CRUD
 // ---------------------------------------------------------------------
 //
 // `notifications:manage` (owner-only under the default matrix). Office,
@@ -65,7 +65,7 @@ interface NotificationRuleApi {
 // failures are asserted per-HTTP-method because middleware is often
 // wired per-route — a regression that forgets the gate on DELETE but
 // keeps it on POST would otherwise slip through.
-describe('Notification-rule CRUD permission matrix (AC-189)', () => {
+describe('Notification-rule CRUD permission matrix', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -120,7 +120,7 @@ describe('Notification-rule CRUD permission matrix (AC-189)', () => {
     ['worker', 'workerToken'],
     ['bookkeeper', 'bookkeeperToken'],
   ] as const) {
-    it(`${role} GET /api/notification-rules → 403 NOT_PERMITTED`, async () => {
+    it(`AC-576: ${role} GET /api/notification-rules → 403 NOT_PERMITTED`, async () => {
       const token =
         tokenName === 'officeToken'
           ? officeToken
@@ -132,7 +132,7 @@ describe('Notification-rule CRUD permission matrix (AC-189)', () => {
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it(`${role} POST /api/notification-rules → 403 NOT_PERMITTED`, async () => {
+    it(`AC-576: ${role} POST /api/notification-rules → 403 NOT_PERMITTED`, async () => {
       const token =
         tokenName === 'officeToken'
           ? officeToken
@@ -148,7 +148,7 @@ describe('Notification-rule CRUD permission matrix (AC-189)', () => {
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it(`${role} DELETE /api/notification-rules/:id → 403 NOT_PERMITTED`, async () => {
+    it(`AC-576: ${role} DELETE /api/notification-rules/:id → 403 NOT_PERMITTED`, async () => {
       const token =
         tokenName === 'officeToken'
           ? officeToken
@@ -167,7 +167,7 @@ describe('Notification-rule CRUD permission matrix (AC-189)', () => {
     });
   }
 
-  it('unauthenticated GET /api/notification-rules → 401 UNAUTHENTICATED', async () => {
+  it('AC-574: unauthenticated GET /api/notification-rules → 401 UNAUTHENTICATED', async () => {
     // authGet drops the cookie header when the token is empty — an
     // empty string still lands at the route's auth middleware, which
     // must reject with 401 rather than falling through to the

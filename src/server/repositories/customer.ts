@@ -93,7 +93,7 @@ export async function listCustomers(
     sortDir?: 'asc' | 'desc';
   } = {},
 ): Promise<{ customers: ReturnType<typeof toCustomerResponse>[]; total: number }> {
-  // AC-146: apply per-caller read scope. Worker sees only customers linked
+  // AC-580: apply per-caller read scope. Worker sees only customers linked
   // through non-deleted projects they're assigned to; owner/office/bookkeeper
   // unscoped.
   const searchCondition = opts.search
@@ -129,7 +129,7 @@ export async function listCustomers(
 }
 
 /**
- * Get a customer by id, respecting the caller's read scope (AC-148).
+ * Get a customer by id, respecting the caller's read scope (AC-582).
  *
  * Three-valued result (ADR-0019):
  *   - `null`              — row does not exist (→ 404 NOT_FOUND)

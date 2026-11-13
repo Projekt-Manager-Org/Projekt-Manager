@@ -50,9 +50,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-101: customer:write permission required
+  // AC-576: customer:write permission required
   // ---------------------------------------------------------------
-  it('AC-101: worker role (no customer:write) is rejected with authorization error', async () => {
+  it('AC-576: worker role (no customer:write) is rejected with authorization error', async () => {
     const res = await authPost(workerToken, '/api/extract', { text: 'any email text' });
 
     expect(res.statusCode).toBe(403);

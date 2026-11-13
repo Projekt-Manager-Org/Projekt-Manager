@@ -8,10 +8,11 @@
  *   - format the response (and, for PDF, decrypt + stream the bytes).
  *
  * Authorization model:
- *   - `invoice:read` for list / get / pdf,
+ *   - `invoice:read` for pdf / export; list, years and get carry no
+ *     gate yet and rely on the scope predicate — lags AC-576 (#868),
  *   - `invoice:write` for create / patch / delete / issue / cancel.
- * Worker holds neither; the repository-predicate scope (ADR-0019) also
- * narrows worker reads to the empty set as a structural backstop.
+ * Worker holds neither; the repository-predicate scope (ADR-0019)
+ * narrows worker reads to the empty set as a backstop.
  *
  * The PDF download path retrieves the rendered ciphertext via the
  * attachment binary-descriptor reference, unwraps the row's `wrappedDek`
@@ -88,13 +89,10 @@ export function invoiceRoutes(db: Database) {
     // ---------------------------------------------------------------
     // GET /api/invoices — list.
     //
-    // No `invoice:read` permission gate (AC-298): worker holds
-    // no invoice permission but the repository-predicate scope
-    // (ADR-0019) returns the empty set for worker callers — structural
-    // exclusion rather than 403. A permission gate here would surface
-    // worker calls as 403 instead of `200 + { data: [] }`, contrary to
-    // the spec. The authenticated-session preHandler still runs so
-    // unauthenticated callers see 401.
+    // No `invoice:read` permission gate yet — lags AC-576 (#868): a
+    // worker gets `200 + { data: [] }` from the repository-predicate
+    // scope (ADR-0019) instead of 403. The authenticated-session
+    // preHandler still runs so unauthenticated callers see 401.
     // ---------------------------------------------------------------
     app.get(
       '/api/invoices',
@@ -148,7 +146,7 @@ export function invoiceRoutes(db: Database) {
     // GET /api/invoices/years — distinct issue-date years in the
     // caller's scope, descending. Drives the year-filter dropdown
     // independent of the active filter. Workers see `[]` because the
-    // scope predicate excludes them (ADR-0019).
+    // scope predicate excludes them (ADR-0019) — lags AC-576 (#868).
     // ---------------------------------------------------------------
     app.get('/api/invoices/years', async (request, reply) => {
       const years = await service.listYears(request.user!);
@@ -156,15 +154,12 @@ export function invoiceRoutes(db: Database) {
     });
 
     // ---------------------------------------------------------------
-    // GET /api/invoices/:id — three-way 200 / 403 / 404 (AC-298).
+    // GET /api/invoices/:id — three-way 200 / 403 / 404.
     //
-    // No `invoice:read` permission gate: the service's three-way result
-    // (in-scope row / OUT_OF_SCOPE / null) maps to 200 / 403 / 404. A
-    // worker hitting an existing row gets 403 via `notPermitted()`
-    // raised from the OUT_OF_SCOPE branch; a worker hitting an unknown
-    // id gets 404 from the null branch. A permission gate here would
-    // collapse both worker arms to 403 — including the unknown-id
-    // arm — and contradict AC-298's 404 expectation.
+    // No `invoice:read` permission gate yet — lags AC-576 (#868): the
+    // service's three-way result (in-scope row / OUT_OF_SCOPE / null)
+    // maps to 200 / 403 / 404, so a worker hitting an unknown id gets
+    // 404 instead of 403.
     // ---------------------------------------------------------------
     app.get(
       '/api/invoices/:id',

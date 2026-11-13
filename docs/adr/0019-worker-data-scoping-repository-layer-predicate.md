@@ -31,7 +31,7 @@ Shape:
 | Worker predicate (projects)  | `WHERE EXISTS (SELECT 1 FROM project_workers pw WHERE pw.project_id = projects.id AND pw.user_id = :callerId)`                                                                                                          |
 | Worker predicate (customers) | AND-ed existence over the same join: customer visible iff at least one of its non-deleted projects is visible                                                                                                           |
 | Owner / office               | Predicate returns `null` — no additional filter                                                                                                                                                                         |
-| Bookkeeper                   | Predicate returns `null` — unscoped per `index.md §4.2` MVP stand-in. Revisit when the invoice-oriented view is introduced (see kickoff)                                                                                |
+| Bookkeeper                   | Predicate returns `null` — unscoped ([AC-577](../spec/verification.md#1521-role-scoping))                                                                                                                               |
 | Get-by-id                    | Repository fetches by id without the scope fragment, then applies the predicate to distinguish three outcomes: not-found (`null`), in-scope (`row`), out-of-scope (`{ outOfScope: true }`). Handler maps to 200/403/404 |
 
 Predicate composes via Drizzle's `and(...)`. For list endpoints it inlines in the `WHERE`; for get-by-id the two-step exists/scope check avoids collapsing 403 and 404 into the same SQL result.
@@ -69,14 +69,15 @@ A preHandler derives a `scopePredicate` and attaches it to `request`; handlers p
 
 - Repository signatures gain a caller argument; every existing caller of a now-scoped repository needs updating. Mechanical but wide.
 - The get-by-id three-way result (not-found / in-scope / out-of-scope) is a subtle bug vector — the spec's 403-over-404 choice forces us to keep the distinction honest, and a future refactor could collapse it back to a single null.
+- 403 over 404 reveals that an unassigned project or customer exists. Accepted: callers are authenticated staff, and ids are non-enumerable UUIDs.
 - Legitimate unscoped consumers (exports per ADR-0018, future admin views) must go through a distinct entry point or pass a sentinel "system" caller returning `null`. Careless use grows a second-class API.
 - Test writers must set up `project_workers` rows in fixtures to exercise scoped behavior — minor overhead, easy to forget, silently produces empty result sets instead of meaningful assertions.
 
 ## References
 
-- Spec commit `fccb905` — `docs/spec/api.md §14.3` (permission matrix), `docs/spec/verification.md §15.21` (AC-145, AC-146, AC-147, AC-148, AC-149, AC-150)
+- Spec commit `fccb905` — `docs/spec/api.md §14.3` (permission matrix), `docs/spec/verification.md §15.21` (the role-scoping ACs)
 - [Kickoff](../project/kickoff.md) — line 60 (worker-visible projects)
-- [ADR-0014](0014-ac-tier-system-critical-vs-design.md) — AC tiers; AC-145, AC-146, AC-147 and AC-148 are `[crit]` and require unit/integration coverage of the predicate
+- [ADR-0014](0014-ac-tier-system-critical-vs-design.md) — AC tiers; AC-579, AC-580, AC-581 and AC-582 are `[crit]` and require unit/integration coverage of the predicate
 - [ADR-0018](0018-data-persistence-and-recovery-layered-strategy.md) — test-seed path that bypasses the API (reason RLS is ruled out)
 - [ADR-0004](0004-backend-stack-fastify-drizzle-node-postgres.md) — `node-postgres` pool shape (reason per-connection RLS is expensive)
 - `docs/spec/api.md §14.4.1` — NOT_PERMITTED vs NOT_FOUND taxonomy underlying the 403-over-404 choice

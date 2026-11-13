@@ -12,7 +12,7 @@
  * Worker exclusion follows ADR-0019: there is no `project_worker` scope
  * path on invoices, so the worker predicate returns the empty set on
  * the list query and rejects the `getInvoice` path before the row read
- * — defense in depth against the route-layer permission gate (AC-298).
+ * — defense in depth against the route-layer permission gate (AC-576).
  */
 
 import { eq, and, or, desc, asc, inArray, count, sql, type SQL } from 'drizzle-orm';
@@ -103,7 +103,7 @@ export interface ListInvoicesOpts {
 
 /**
  * List invoices visible to the caller. Worker callers always see the
- * empty set (AC-298) — the scope predicate has no
+ * empty set — the scope predicate has no
  * `project_worker` path on the invoice row, so the worker branch
  * short-circuits before issuing the SELECT.
  *
@@ -221,13 +221,9 @@ export async function listInvoiceYears(db: Database, caller: AuthUser): Promise<
 
 /**
  * Get an invoice by id with the worker-exclusion three-way semantic
- * (AC-298 — `null` / OUT_OF_SCOPE / row), mirroring the project-scope
- * policy (AC-147).
- *
- * Existence is not secret — workers receive 403 on hit, 404 on miss;
- * this is the documented role-boundary policy per AC-147 (and AC-298
- * for invoices). The row existence check runs before the scope check
- * so the three-way semantic surfaces correctly.
+ * (`null` / OUT_OF_SCOPE / row). The row existence check runs before
+ * the scope check so the three-way semantic surfaces correctly. A
+ * worker's 404 on an unknown id lags AC-576 (#868).
  */
 export async function getInvoice(
   db: Database,

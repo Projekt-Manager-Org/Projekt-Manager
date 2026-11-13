@@ -383,7 +383,7 @@ describe('Project List Filters', () => {
     // worker filtering by *other* workers' ids cannot see projects they
     // are not assigned to. Without this guarantee, a future refactor of
     // the predicate chain (e.g. moving the assignee branch outside the
-    // scope AND) could regress to a data leak. AC-145, scope.ts.
+    // scope AND) could regress to a data leak. AC-579, scope.ts.
     it('worker caller cannot widen scope via assignedWorkerIds filter', async () => {
       const workerToken = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
       // Filter by worker2 only — the "both" fixture is assigned to

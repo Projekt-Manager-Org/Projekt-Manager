@@ -344,14 +344,14 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-133 / AC-134 (export + import auth gate) were route-middleware
+  // The export and import permission gates (AC-576) were route-middleware
   // concerns. The removed `GET /api/export` / `POST /api/import` routes
   // enforced 401 (unauthenticated) and 403 NOT_PERMITTED (missing
   // data:export / data:restore). ExportService / ImportService have no
   // auth or permission check of their own, so those describes were
   // dropped: the gate is now covered on the live job routes
   // (`data-exchange-export-job.test.ts` asserts 401 + 403 NOT_PERMITTED
-  // for `data:export`). The AC-134 empty-DB success arm is covered by
+  // for `data:export`). The import's empty-DB success arm is covered by
   // AC-137 below.
   // ---------------------------------------------------------------
 

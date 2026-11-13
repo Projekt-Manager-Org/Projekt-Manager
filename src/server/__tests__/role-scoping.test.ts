@@ -1,24 +1,15 @@
 /**
- * API integration tests: worker read scoping (AC-145, AC-146, AC-147, AC-148).
- *
- * Covers the behavior pinned by verification.md §15.21 and realized per
- * ADR-0019:
- *   - AC-145: GET /api/projects — worker sees only assigned projects;
- *             owner/office see all; worker with no assignments sees []
- *   - AC-146: GET /api/customers — worker sees only customers reachable
- *             through assigned non-deleted projects; owner/office see all;
- *             customers reachable only via soft-deleted projects excluded
- *   - AC-147: GET /api/projects/:id — 403 NOT_PERMITTED (not 404) for a
- *             project the worker is not assigned to; 404 for a missing id;
- *             200 for an assigned project
- *   - AC-148: GET /api/customers/:id — 403 NOT_PERMITTED (not 404) for a
- *             customer the worker cannot reach via any assigned non-deleted
- *             project; 404 for a missing id; 200 for a reachable customer
- *
- * Also asserts cross-role regressions: owner, office, and bookkeeper
- * responses are unchanged by scoping. Bookkeeper is classified as unscoped
- * (MVP placeholder per ADR-0019 / api.md §14.3) — these regressions pin
- * that behavior so a future tightening is a deliberate break, not silent.
+ * API integration tests: worker read scoping (verification.md §15.21,
+ * realized per ADR-0019):
+ *   - AC-579: worker project list — assigned projects only, [] for none
+ *   - AC-580: worker customer list — customers of assigned non-archived
+ *             projects only
+ *   - AC-581, AC-582: a worker's read of an unassigned project or
+ *             unreachable customer is 403 NOT_PERMITTED, not 404
+ *   - AC-577: owner, office and bookkeeper are unscoped
+ *   - AC-578: a worker's customer read reveals nothing beyond the
+ *             worker's assigned projects
+ *   - AC-542: a worker's archived-project read withholds customer details
  *
  * Worker visibility derived from src/server/seed.ts assignments:
  *   arbeiter1 (worker1) → 007, 008, 009, 011
@@ -66,7 +57,7 @@ async function customerIdByName(ownerToken: string, name: string): Promise<strin
   return match.id;
 }
 
-describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
+describe('Worker Read Scoping', () => {
   let ownerToken: string;
   let officeToken: string;
   let bookkeeperToken: string;
@@ -88,7 +79,7 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
       login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD),
     ]);
     // A worker account created fresh with no project_workers rows. Anchors
-    // the "empty list" branch of AC-145 without mutating the seed.
+    // the "empty list" branch of AC-579 without mutating the seed.
     const unassigned = await createTestUserSession({
       roles: ['worker'],
       displayName: 'Unassigned Worker',
@@ -117,11 +108,11 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-145: GET /api/projects — scoped for worker, unscoped for
+  // AC-579: GET /api/projects — scoped for worker, unscoped for
   // owner / office, empty for unassigned worker.
   // ---------------------------------------------------------------
-  describe('AC-145: GET /api/projects scoped by assignment', () => {
-    it('worker sees only projects they are assigned to', async () => {
+  describe('GET /api/projects scoped by assignment', () => {
+    it('AC-579: worker sees only projects they are assigned to', async () => {
       const res = await authGet(worker1Token, '/api/projects?limit=200');
       expect(res.statusCode).toBe(200);
       const body = res.json();
@@ -130,7 +121,7 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
       expect(body.total).toBe(worker1AssignedNumbers.length);
     });
 
-    it('worker with no assignments sees an empty list', async () => {
+    it('AC-579: worker with no assignments sees an empty list', async () => {
       const res = await authGet(unassignedWorkerToken, '/api/projects?limit=200');
       expect(res.statusCode).toBe(200);
       const body = res.json();
@@ -138,15 +129,14 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
       expect(body.total).toBe(0);
     });
 
-    // Unscoped roles share identical list behavior — owner/office by
-    // design, bookkeeper as an MVP placeholder (ADR-0019, api.md §14.3).
+    // Unscoped roles share identical list behavior (AC-577).
     // Parametrized so adding / reclassifying a role is a one-line change
     // and the assertion never drifts between roles.
     describe.each([
       ['owner', () => ownerToken],
       ['office', () => officeToken],
       ['bookkeeper', () => bookkeeperToken],
-    ] as const)('%s sees every non-deleted project (regression — unscoped)', (_label, getToken) => {
+    ] as const)('AC-577: %s sees every non-deleted project', (_label, getToken) => {
       it('returns the full project list', async () => {
         const res = await authGet(getToken(), '/api/projects?limit=200');
         expect(res.statusCode).toBe(200);
@@ -159,22 +149,21 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-146: GET /api/customers — scoped for worker via assigned
+  // AC-580: GET /api/customers — scoped for worker via assigned
   // non-deleted projects; owner / office unchanged.
   // ---------------------------------------------------------------
-  describe('AC-146: GET /api/customers scoped by assignment', () => {
-    it('worker sees only customers linked through assigned projects', async () => {
+  describe('GET /api/customers scoped by assignment', () => {
+    it('AC-580: worker sees only customers linked through assigned projects', async () => {
       const res = await authGet(worker1Token, '/api/customers?limit=200');
       expect(res.statusCode).toBe(200);
       const names = (res.json().customers as { name: string }[]).map((c) => c.name).sort();
       expect(names).toEqual([...worker1AssignedCustomerNames].sort());
     });
 
-    it('excludes a customer reachable only through a soft-deleted project', async () => {
+    it('AC-580: excludes a customer reachable only through a soft-deleted project', async () => {
       // Soft-delete the current year's -011 project (Café Sonnenschein) —
       // worker1's only project for that customer. Expect the customer to
-      // vanish from the worker's list while remaining in owner's (AC-146
-      // parity clause). Direct-DB mutation per ADR-0018.
+      // vanish from the worker's list while remaining in owner's (AC-577). Direct-DB mutation per ADR-0018.
       const cafeProjectId = await projectIdByNumber(ownerToken, `${year}-011`);
       const { db, pool } = createDatabase();
       try {
@@ -187,8 +176,7 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
         expect(workerNames).toContain('Evangelische Gemeinde Refrath');
 
         // Owner still sees every customer — the soft-delete of a project
-        // must not cascade into the owner's customer list (parity clause
-        // to AC-145's "every non-deleted project" for owner/office).
+        // must not cascade into the owner's customer list (AC-577).
         const ownerRes = await authGet(ownerToken, '/api/customers?limit=200');
         const ownerNames = (ownerRes.json().customers as { name: string }[])
           .map((c) => c.name)
@@ -206,7 +194,7 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
       ['owner', () => ownerToken],
       ['office', () => officeToken],
       ['bookkeeper', () => bookkeeperToken],
-    ] as const)('%s sees every customer (regression — unscoped)', (_label, getToken) => {
+    ] as const)('AC-577: %s sees every customer', (_label, getToken) => {
       it('returns the full customer list', async () => {
         const res = await authGet(getToken(), '/api/customers?limit=200');
         expect(res.statusCode).toBe(200);
@@ -217,10 +205,10 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-147: GET /api/projects/:id — 200 / 403 / 404.
+  // AC-581: GET /api/projects/:id — 200 / 403 / 404.
   // ---------------------------------------------------------------
-  describe('AC-147: GET /api/projects/:id distinguishes 403 from 404', () => {
-    it('worker receives 403 NOT_PERMITTED for a project they are not assigned to', async () => {
+  describe('GET /api/projects/:id distinguishes 403 from 404', () => {
+    it('AC-581: worker receives 403 NOT_PERMITTED for a project they are not assigned to', async () => {
       // 2024-001 is an "anfrage" project with no worker assignments.
       const id = await projectIdByNumber(ownerToken, `${year}-001`);
       const res = await authGet(worker1Token, `/api/projects/${id}`);
@@ -245,26 +233,23 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
       ['owner', () => ownerToken],
       ['office', () => officeToken],
       ['bookkeeper', () => bookkeeperToken],
-    ] as const)(
-      '%s receives 200 for any existing project (regression — unscoped)',
-      (_label, getToken) => {
-        it('returns 200 for a project no scoped role would see', async () => {
-          // 2024-001 is an "anfrage" project with no worker assignments — a
-          // scoped caller would get 403 here. Unscoped roles must see it.
-          const id = await projectIdByNumber(ownerToken, `${year}-001`);
-          const res = await authGet(getToken(), `/api/projects/${id}`);
-          expect(res.statusCode).toBe(200);
-          expect(res.json().id).toBe(id);
-        });
-      },
-    );
+    ] as const)('AC-577: %s receives 200 for any existing project', (_label, getToken) => {
+      it('returns 200 for a project no scoped role would see', async () => {
+        // 2024-001 is an "anfrage" project with no worker assignments — a
+        // scoped caller would get 403 here. Unscoped roles must see it.
+        const id = await projectIdByNumber(ownerToken, `${year}-001`);
+        const res = await authGet(getToken(), `/api/projects/${id}`);
+        expect(res.statusCode).toBe(200);
+        expect(res.json().id).toBe(id);
+      });
+    });
   });
 
   // ---------------------------------------------------------------
-  // AC-148: GET /api/customers/:id — 200 / 403 / 404.
+  // AC-582: GET /api/customers/:id — 200 / 403 / 404.
   // ---------------------------------------------------------------
-  describe('AC-148: GET /api/customers/:id distinguishes 403 from 404', () => {
-    it('worker receives 403 NOT_PERMITTED for a customer not reachable through assignments', async () => {
+  describe('GET /api/customers/:id distinguishes 403 from 404', () => {
+    it('AC-582: worker receives 403 NOT_PERMITTED for a customer not reachable through assignments', async () => {
       // "Familie Müller" only appears on 2024-001 (anfrage, unassigned) —
       // worker1 has no path to it.
       const id = await customerIdByName(ownerToken, 'Familie Müller');
@@ -294,19 +279,16 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
       ['owner', () => ownerToken],
       ['office', () => officeToken],
       ['bookkeeper', () => bookkeeperToken],
-    ] as const)(
-      '%s receives 200 for any existing customer (regression — unscoped)',
-      (_label, getToken) => {
-        it('returns 200 for a customer no scoped role would reach', async () => {
-          // "Familie Müller" sits on an unassigned anfrage project only — a
-          // scoped caller would get 403. Unscoped roles must see it.
-          const id = await customerIdByName(ownerToken, 'Familie Müller');
-          const res = await authGet(getToken(), `/api/customers/${id}`);
-          expect(res.statusCode).toBe(200);
-          expect(res.json().id).toBe(id);
-        });
-      },
-    );
+    ] as const)('AC-577: %s receives 200 for any existing customer', (_label, getToken) => {
+      it('returns 200 for a customer no scoped role would reach', async () => {
+        // "Familie Müller" sits on an unassigned anfrage project only — a
+        // scoped caller would get 403. Unscoped roles must see it.
+        const id = await customerIdByName(ownerToken, 'Familie Müller');
+        const res = await authGet(getToken(), `/api/customers/${id}`);
+        expect(res.statusCode).toBe(200);
+        expect(res.json().id).toBe(id);
+      });
+    });
   });
 
   // ---------------------------------------------------------------
@@ -412,7 +394,7 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
   // assertion it supports.
   // ---------------------------------------------------------------
   describe('getCustomer counts are scoped to assignments', () => {
-    it('a worker count excludes archived projects not assigned to them; unscoped callers count all', async () => {
+    it('AC-578: a worker count excludes archived projects not assigned to them; unscoped callers count all', async () => {
       // Customer: Evangelische Gemeinde Refrath — already has project
       // YYYY-007 with worker1 assigned. We add an archived project for
       // the same customer WITHOUT assigning worker1.
@@ -442,7 +424,7 @@ describe('Worker Read Scoping (AC-145, AC-146, AC-147, AC-148)', () => {
           expect(ownerRes.statusCode).toBe(200);
           expect(ownerRes.json().archivedProjectCount).toBe(1);
 
-          // Bookkeeper is unscoped too (MVP placeholder) — same count
+          // Bookkeeper is unscoped too (AC-577) — same count
           // as owner, pinning the classification.
           const bookkeeperRes = await authGet(bookkeeperToken, `/api/customers/${refrathId}`);
           expect(bookkeeperRes.statusCode).toBe(200);

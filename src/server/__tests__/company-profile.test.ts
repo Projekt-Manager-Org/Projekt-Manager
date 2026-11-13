@@ -13,8 +13,9 @@
  * COMPANY_PROFILE_REQUIRED rejection with sequence-lock release.
  *
  * AC coverage in this file:
- *   - AC-300, AC-301: role matrix + singleton CHECK (DB-level
- *     INSERT-second-row and DELETE-singleton rejections).
+ *   - AC-576: role matrix (owner-only PUT).
+ *   - AC-300: singleton CHECK (DB-level INSERT-second-row and
+ *     DELETE-singleton rejections).
  *   - AC-302: audit row shape on PUT — entityType,
  *     action, ancestor pair null, payload.before / payload.after.
  *   - AC-303: required-field validation, details lists
@@ -119,10 +120,10 @@ async function createDraft(ownerToken: string, projectId: string): Promise<strin
 }
 
 // ---------------------------------------------------------------------
-// AC-300, AC-301 — Role matrix + DB singleton CHECKs.
+// AC-300 — DB singleton CHECKs; AC-576 — owner-only PUT.
 // ---------------------------------------------------------------------
 
-describe('AC-300, AC-301: company-profile role matrix + singleton invariant', () => {
+describe('AC-300: company-profile role matrix + singleton invariant', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -170,14 +171,17 @@ describe('AC-300, AC-301: company-profile role matrix + singleton invariant', ()
     ['office', () => officeToken],
     ['worker', () => workerToken],
     ['bookkeeper', () => bookkeeperToken],
-  ] as const)('%s PUT /api/company-profile → 403 NOT_PERMITTED', async (_label, getToken) => {
-    const res = await authPut(getToken(), '/api/company-profile', {
-      ...completeProfileBody,
-      expectedVersion: 1,
-    });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().code).toBe('NOT_PERMITTED');
-  });
+  ] as const)(
+    'AC-576: %s PUT /api/company-profile → 403 NOT_PERMITTED',
+    async (_label, getToken) => {
+      const res = await authPut(getToken(), '/api/company-profile', {
+        ...completeProfileBody,
+        expectedVersion: 1,
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().code).toBe('NOT_PERMITTED');
+    },
+  );
 
   it('unauthenticated GET → 401', async () => {
     const res = await authGet('', '/api/company-profile');
@@ -603,7 +607,7 @@ describe('AC-305: failed issue does not permanently advance the sequence', () =>
 });
 
 // ---------------------------------------------------------------------
-// M3 — Defense-in-depth role check on `CompanyProfileService.upsert`.
+// Defense-in-depth role check on `CompanyProfileService.upsert`.
 //
 // The service's docstring (CompanyProfileService.ts:8-9) promises:
 //
@@ -628,23 +632,21 @@ describe('AC-305: failed issue does not permanently advance the sequence', () =>
 // service-layer call site receives the authenticated principal, not a
 // flat userId.
 //
-// Why this is appended here, not a sibling file: AC-300 / AC-301 in
-// this file already pins the route-layer permission matrix; this block
+// Why this is appended here, not a sibling file: AC-576 in this
+// file already pins the route-layer permission matrix; this block
 // pins the service-layer backstop for the same invariant. Keeping
 // both pins in one file makes the "two layers, one rule" easy to read.
 //
-// AC pin: AC-297 (auth + permission gates on the company-profile
-// surface) — the surface here is the service entry point rather than
-// the route, but the load-bearing invariant is the same: a non-owner
-// principal cannot drive a successful upsert.
+// No AC pin: the service entry point is not observable; the route-layer
+// refusal above is AC-576.
 // ---------------------------------------------------------------------
 
-describe('M3 / AC-297: CompanyProfileService.upsert defense-in-depth role check', () => {
+describe('CompanyProfileService.upsert defense-in-depth role check', () => {
   // Post-fix expected shape: `upsert(caller: AuthUser, input, log, correlationId)`.
   // The test casts to `UpsertWithCaller` to invoke the post-fix shape;
   // load-bearing assertions are in the test invocations themselves.
   // Body type is imported as `CompanyProfileUpsertInput` rather than
-  // derived from `Parameters<...>` so the cast survives the M3 signature
+  // derived from `Parameters<...>` so the cast survives the signature
   // change (where the body's parameter index shifted from [0] to [1]).
   interface UpsertWithCaller {
     upsert(

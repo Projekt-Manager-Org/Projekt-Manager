@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { STORAGE_STATES } from './storage-states';
 
 /**
- * E2E — Company profile management (pins AC-301, AC-303 at the UI layer).
+ * E2E — Company profile management (pins AC-303 at the UI layer).
  *
  * Lives on the Rechnungen tab (`/rechnungen`) inside a collapsible
  * `<details>` — the values are referenced by every invoice snapshot
@@ -16,12 +16,13 @@ import { STORAGE_STATES } from './storage-states';
  *   2. Owner attempts to save with an empty `ustId`; the form blocks
  *      submit with a German validation message naming the missing field.
  *   3. Office user opens the section; it is read-only (no save button
- *      rendered) per AC-301.
+ *      rendered); owner-only edit is a role check (api.md §14.3), so no AC
+ *      covers the hidden save button.
  */
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('Company profile management (AC-301, AC-303)', () => {
+test.describe('Company profile management (AC-303)', () => {
   test.describe('Owner flow', () => {
     test.use({ storageState: STORAGE_STATES.owner });
 
@@ -116,12 +117,12 @@ test.describe('Company profile management (AC-301, AC-303)', () => {
       await page.getByTestId('company-profile-details').locator('summary').click();
 
       // The section renders (every authenticated role may read per
-      // AC-301), but the save affordance is not rendered for office.
+      // api.md §14.3), but the save affordance is not rendered for office.
       const form = page.getByTestId('company-profile-form');
       await expect(form).toBeVisible();
       // The values are visible (read-only display).
       await expect(form.getByTestId('company-profile-companyName-input')).toBeVisible();
-      // No save button — owner-only mutation surface per AC-301.
+      // No save button — owner-only mutation surface (api.md §14.3).
       await expect(form.getByTestId('company-profile-save')).toHaveCount(0);
     });
   });

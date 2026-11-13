@@ -1531,13 +1531,13 @@ describe('Attachment routes — integration (issue #108)', () => {
       expect(dbVersions?.versionId).toBe(head.versionId);
     });
 
-    it('worker is rejected from the trash listing with 403 NOT_PERMITTED', async () => {
+    it('AC-576: worker is rejected from the trash listing with 403 NOT_PERMITTED', async () => {
       const res = await authGet(workerToken, `/api/projects/${projectId}/attachments/trash`);
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('worker is rejected from restore with 403 NOT_PERMITTED', async () => {
+    it('AC-576: worker is rejected from restore with 403 NOT_PERMITTED', async () => {
       const attId = await seedReadyAttachment();
       const res = await authPost(
         workerToken,

@@ -608,13 +608,13 @@ describe('AC-180: Audit-list access matrix', () => {
     expect(ids.has(ownerAuthoredUserRowId)).toBe(true);
   });
 
-  it('worker is denied — lacks audit:read', async () => {
+  it('AC-576: worker is denied — lacks audit:read', async () => {
     const res = await authGet(workerToken, '/api/audit?limit=1');
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe('NOT_PERMITTED');
   });
 
-  it('bookkeeper is denied — lacks audit:read', async () => {
+  it('AC-576: bookkeeper is denied — lacks audit:read', async () => {
     const res = await authGet(bookkeeperToken, '/api/audit?limit=1');
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe('NOT_PERMITTED');

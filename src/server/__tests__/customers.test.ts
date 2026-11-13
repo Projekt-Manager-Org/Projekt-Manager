@@ -118,7 +118,7 @@ describe('Customer CRUD Operations', () => {
       expect(res.json().message).toBe(STRINGS.errors.invalidInput);
     });
 
-    it('requires customer:write permission — worker is rejected', async () => {
+    it('AC-576: requires customer:write permission — worker is rejected', async () => {
       const res = await authPost(workerToken, '/api/customers', {
         name: 'Worker Should Not Create',
       });
@@ -186,7 +186,7 @@ describe('Customer CRUD Operations', () => {
       expect((await authGet(ownerToken, path)).json()).toEqual(before);
     });
 
-    it('requires customer:write permission — worker is rejected', async () => {
+    it('AC-576: requires customer:write permission — worker is rejected', async () => {
       const res = await authPatch(workerToken, `/api/customers/${createdCustomerId}`, {
         ...(await expectedVersion(ownerToken, `/api/customers/${createdCustomerId}`)),
         phone: '0170-0000000',
@@ -376,17 +376,20 @@ describe('Customer CRUD Operations', () => {
   // Delete customer
   // AC-530 [crit]: delete customer with no projects succeeds
   // AC-92 [crit]: delete customer with an active project is rejected (409)
-  // AC-93 [crit]: delete customer requires customer:delete permission
+  // AC-576 [crit]: delete customer requires customer:delete permission
   // ---------------------------------------------------------------
   describe('Delete customer', () => {
-    it('AC-93: requires customer:delete permission — worker is rejected', async () => {
+    it('AC-576: requires customer:delete permission — worker is rejected', async () => {
       const res = await authDelete(workerToken, `/api/customers/${createdCustomerId}`);
 
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');
+      expect((await authGet(ownerToken, `/api/customers/${createdCustomerId}`)).statusCode).toBe(
+        200,
+      );
     });
 
-    it('AC-93: requires customer:delete permission — office is rejected', async () => {
+    it('AC-576: requires customer:delete permission — office is rejected', async () => {
       const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
       const res = await authDelete(officeToken, `/api/customers/${createdCustomerId}`);
 

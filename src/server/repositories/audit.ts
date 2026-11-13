@@ -325,7 +325,7 @@ export async function listAuditEntries(
  * The two-step fetch (id lookup, then scope check with both predicates)
  * is deliberate: one combined query cannot distinguish "not found" from
  * "out of scope" post-hoc, and collapsing them would leak existence via
- * absence (parity with AC-147 for the per-entity surface).
+ * absence (parity with AC-581 for the per-entity surface).
  */
 export async function getAuditEntry(
   db: Database,

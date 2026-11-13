@@ -11,8 +11,7 @@
  *   - unscoped roles → `null` (no additional filter)
  *   - scoped roles   → EXISTS (...) fragment scoped via project_workers
  *
- * Bookkeeper is classified as unscoped as an MVP placeholder (ADR-0019, to
- * be revisited when the invoice-oriented view is introduced).
+ * Bookkeeper is classified as unscoped (AC-577).
  *
  * Returning `null` for unscoped callers is load-bearing: callers AND it into
  * a conditions list, and drizzle's `and(cond, undefined)` collapses to `cond`
@@ -49,6 +48,7 @@ const SCOPED_ROLES: ReadonlySet<Role> = new Set<Role>(
 
 /**
  * A caller is unscoped iff none of their roles is classified as scoped.
+ * Lags AC-577 (#869): any unscoped role should make the caller unscoped.
  *
  * Exported so scope-bypassing services (e.g. ExportService) can fail-fast
  * when a scoped caller is threaded in — see ADR-0019.
@@ -85,7 +85,7 @@ export function projectScopeForCaller(user: AuthUser): SQL | null {
  *   project references it AND the caller is assigned to that project.
  *
  * Soft-deleted projects do not make their customers visible to scoped
- * callers, matching AC-146. Unscoped callers are unaffected — `deleted`
+ * callers, matching AC-580. Unscoped callers are unaffected — `deleted`
  * projects do not restrict their customer list.
  */
 export function customerScopeForCaller(user: AuthUser): SQL | null {
@@ -113,7 +113,7 @@ export function attachmentScopeForCaller(user: AuthUser): SQL | null {
  *
  *   - `null`                 — row does not exist (→ 404 NOT_FOUND)
  *   - `{ outOfScope: true }` — row exists but caller's scope excludes it
- *                              (→ 403 NOT_PERMITTED per AC-147/AC-148)
+ *                              (→ 403 NOT_PERMITTED per AC-581/AC-582)
  *   - `T`                    — in-scope row
  *
  * Representing out-of-scope as a discriminated shape (rather than throwing)
@@ -219,7 +219,7 @@ export async function isCustomerInScope(
  *
  * The predicate keys off the action + entity_type + payload shape, not on
  * permissions — "destructive visibility" is orthogonal to `audit:read`
- * (ADR-0019 reaffirmed in api.md §14.3 design notes).
+ * (ADR-0019).
  */
 export function auditDestructiveScopeForCaller(user: AuthUser): SQL | null {
   // Owner is the sole role that bypasses the destructive filter. Every

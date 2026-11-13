@@ -421,7 +421,7 @@ export function projectRoutes(db: Database) {
     );
 
     // ---------------------------------------------------------------
-    // DELETE /api/projects/:id/purge — hard-delete (AC-502, AC-503, AC-157)
+    // DELETE /api/projects/:id/purge — hard-delete (AC-502, AC-503, AC-576)
     //
     // Requires the narrower `project:purge` permission (owner-only).
     // `project:delete` (which office holds) does not grant purge.
