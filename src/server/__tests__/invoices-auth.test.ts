@@ -1,5 +1,5 @@
 /**
- * API integration test — auth + permission matrix for the eight
+ * API integration test — auth + permission matrix for the nine
  * invoice endpoints (AC-576, api.md §14.3):
  *
  *   GET    /api/invoices                — list
@@ -10,15 +10,18 @@
  *   POST   /api/invoices/:id/issue      — issue
  *   POST   /api/invoices/:id/cancel     — cancel
  *   GET    /api/invoices/:id/pdf        — download
+ *   GET    /api/invoices/years          — list years
+ *
+ * Export (`POST /api/invoices/export`) has its own matrix in
+ * `invoices-export.test.ts`.
  *
  * Matrix:
  *   - Unauthenticated → 401 UNAUTHENTICATED | SESSION_EXPIRED (AC-574).
- *   - Worker          → 403 NOT_PERMITTED on every endpoint. The list
- *                       still answers 200 + empty data: it lags AC-576
- *                       (#868), pinned below as current behavior.
+ *   - Worker          → 403 NOT_PERMITTED on every endpoint, an unknown
+ *                       id included.
  *   - Bookkeeper      → read endpoints succeed (200) / write/issue/
  *                       cancel → 403.
- *   - Office          → all eight succeed (200/201/204) on a real
+ *   - Office          → every endpoint succeeds (200/201/204) on a real
  *                       target; or 404 NOT_FOUND for known-missing ids.
  *   - Owner           → same as office (regression anchor).
  *
@@ -51,7 +54,7 @@ interface Project {
 }
 
 /**
- * The eight invoice endpoints. `needsId` marks the ones bound to
+ * The nine invoice endpoints. `needsId` marks the ones bound to
  * a specific row — used by the test loops to substitute the seeded
  * draft / issued ids per arm.
  */
@@ -64,6 +67,7 @@ const ENDPOINTS = [
   { method: 'POST', path: '/api/invoices/:id/issue', needsId: true, kind: 'write' as const },
   { method: 'POST', path: '/api/invoices/:id/cancel', needsId: true, kind: 'write' as const },
   { method: 'GET', path: '/api/invoices/:id/pdf', needsId: true, kind: 'read' as const },
+  { method: 'GET', path: '/api/invoices/years', needsId: false, kind: 'read' as const },
 ] as const;
 
 type Endpoint = (typeof ENDPOINTS)[number];
@@ -341,10 +345,29 @@ describe('invoice auth + permission matrix (per-role × per-endpoint walk)', () 
 
   // ---------------------------------------------------------------------
   // Worker arm — no `invoice:read` or `invoice:write`: 403 on every
-  // endpoint. The list lags (#868) and is pinned separately below.
+  // endpoint. The permission gate answers before any scope check, so an
+  // unknown id is refused too, not 404.
   // ---------------------------------------------------------------------
 
   describe('AC-576: worker — no invoice permission, 403', () => {
+    it('GET /api/invoices → 403 NOT_PERMITTED', async () => {
+      const res = await call(ENDPOINTS[0], workerToken, null);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().code).toBe('NOT_PERMITTED');
+    });
+
+    it('GET /api/invoices/years → 403 NOT_PERMITTED', async () => {
+      const res = await call(ENDPOINTS[8], workerToken, null);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().code).toBe('NOT_PERMITTED');
+    });
+
+    it('GET /api/invoices/:id on an unknown id → 403 NOT_PERMITTED, not 404', async () => {
+      const res = await call(ENDPOINTS[1], workerToken, crypto.randomUUID());
+      expect(res.statusCode).toBe(403);
+      expect(res.json().code).toBe('NOT_PERMITTED');
+    });
+
     it('GET /api/invoices/:id on an existing draft → 403 NOT_PERMITTED', async () => {
       const res = await call(ENDPOINTS[1], workerToken, draftIdForWorkerReject);
       expect(res.statusCode).toBe(403);
@@ -388,16 +411,6 @@ describe('invoice auth + permission matrix (per-role × per-endpoint walk)', () 
     });
   });
 
-  // Current behavior, not contract: AC-576 requires 403 here. #868 adds
-  // the `invoice:read` gate and flips this assertion.
-  describe('worker list — lags the permission gate (#868)', () => {
-    it('GET /api/invoices → 200 with empty data (worker scope predicate)', async () => {
-      const res = await call(ENDPOINTS[0], workerToken, null);
-      expect(res.statusCode).toBe(200);
-      expect((res.json() as { data: unknown[] }).data).toEqual([]);
-    });
-  });
-
   // ---------------------------------------------------------------------
   // Bookkeeper arm — `invoice:read` only.
   //   - Reads (list / get / pdf) succeed.
@@ -407,6 +420,11 @@ describe('invoice auth + permission matrix (per-role × per-endpoint walk)', () 
   describe('bookkeeper — invoice:read only', () => {
     it('GET /api/invoices → 200', async () => {
       const res = await call(ENDPOINTS[0], bookkeeperToken, null);
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('GET /api/invoices/years → 200', async () => {
+      const res = await call(ENDPOINTS[8], bookkeeperToken, null);
       expect(res.statusCode).toBe(200);
     });
 
@@ -461,6 +479,11 @@ describe('invoice auth + permission matrix (per-role × per-endpoint walk)', () 
   describe('office — invoice:read + invoice:write', () => {
     it('GET /api/invoices → 200', async () => {
       const res = await call(ENDPOINTS[0], officeToken, null);
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('GET /api/invoices/years → 200', async () => {
+      const res = await call(ENDPOINTS[8], officeToken, null);
       expect(res.statusCode).toBe(200);
     });
 
@@ -539,6 +562,11 @@ describe('invoice auth + permission matrix (per-role × per-endpoint walk)', () 
   describe('owner — invoice:read + invoice:write', () => {
     it('GET /api/invoices → 200', async () => {
       const res = await call(ENDPOINTS[0], ownerToken, null);
+      expect(res.statusCode).toBe(200);
+    });
+
+    it('GET /api/invoices/years → 200', async () => {
+      const res = await call(ENDPOINTS[8], ownerToken, null);
       expect(res.statusCode).toBe(200);
     });
 

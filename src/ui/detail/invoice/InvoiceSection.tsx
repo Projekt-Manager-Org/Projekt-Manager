@@ -18,8 +18,8 @@
  * Feed; the page never holds invoice state directly.
  *
  * Permission gating: the whole section is hidden for callers without
- * `invoice:read` (workers — server is authoritative via the repository
- * scope predicate). Every change — CTA, row actions, draft form — needs
+ * `invoice:read` (workers — the server refuses them too, AC-576).
+ * Every change — CTA, row actions, draft form — needs
  * `invoice:write` on a project that is not archived (AC-500); the
  * `Neue Rechnung` CTA additionally needs `project.status ===
  * 'rechnung_faellig'` per spec §8.15.11.

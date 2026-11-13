@@ -222,8 +222,9 @@ export async function listInvoiceYears(db: Database, caller: AuthUser): Promise<
 /**
  * Get an invoice by id with the worker-exclusion three-way semantic
  * (`null` / OUT_OF_SCOPE / row). The row existence check runs before
- * the scope check so the three-way semantic surfaces correctly. A
- * worker's 404 on an unknown id lags AC-576 (#868).
+ * the scope check so the three-way semantic surfaces correctly. The
+ * route's `invoice:read` gate refuses a worker first (AC-576); this is
+ * the backstop.
  */
 export async function getInvoice(
   db: Database,

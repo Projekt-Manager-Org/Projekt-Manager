@@ -210,9 +210,8 @@ const ROUTE_DEFINITIONS: readonly RouteDefinition[] = [
   {
     // Standalone Rechnungen list view (ui/invoices.md §8.16.1) — gated
     // on `invoice:read` (owner / office / bookkeeper under the default
-    // matrix). Worker holds no invoice permission and the repository
-    // scope predicate (ADR-0019) returns the empty set, so worker is
-    // structurally excluded both client- and server-side.
+    // matrix). Worker holds no invoice permission, so the server refuses
+    // it too (AC-576).
     view: 'rechnungen',
     path: '/rechnungen',
     label: STRINGS.ui.viewInvoices,
@@ -220,9 +219,8 @@ const ROUTE_DEFINITIONS: readonly RouteDefinition[] = [
   },
   {
     // Per-invoice viewer (ui/invoices.md §8.16.3) — gated on
-    // `invoice:read`, same as the list. Worker is excluded both
-    // client-side (no permission) and server-side (repository scope
-    // predicate, ADR-0019; AC-576). Parametrized — deep-linkable,
+    // `invoice:read`, same as the list; the server refuses a worker
+    // too (AC-576). Parametrized — deep-linkable,
     // not a nav entry; excluded from `visibleRoutesForUser` by the
     // `/:` filter alongside `projektDetail`.
     view: 'rechnungDetail',

@@ -85,9 +85,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'attachment:trash',
     // invoice:read / invoice:write — ADR-0026. Owner + office hold
     // write; owner / office / bookkeeper hold read. Worker holds
-    // neither; AC-576 refuses it (list, years and get lag: #868). The
-    // repository-predicate scope (ADR-0019) returns the empty set for
-    // invoices on the worker role as a backstop.
+    // neither; AC-576 refuses it. The repository-predicate scope
+    // (ADR-0019) returns the empty set for invoices on the worker role
+    // as a backstop.
     'invoice:read',
     'invoice:write',
     'auth:change-password',
