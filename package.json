@@ -90,7 +90,7 @@
     "@seriousme/openapi-schema-validator": "2.11.0",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.3",
-    "@testing-library/user-event": "14.6.8",
+    "@testing-library/user-event": "14.6.9",
     "@types/archiver": "8.0.0",
     "@types/big.js": "7.0.0",
     "@types/pg": "8.23.1",
