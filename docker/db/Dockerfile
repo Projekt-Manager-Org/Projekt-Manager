@@ -18,7 +18,7 @@
 #
 # Base digest pinned to the linux/amd64 manifest (docs/ops/dep-management.md
 # § Deploy urgency); Renovate bumps it.
-FROM postgres:17.11-alpine@sha256:4717f90960a225c2d1c5dac50508c401230f693ff626e06e84e6db0a68ded508 AS runtime
+FROM postgres:17.12-alpine@sha256:005c5c37db96c1e6652a79ea31f9886402fba81ac95dc2db897739121dd7f8f2 AS runtime
 
 RUN apk upgrade --no-cache
 
