@@ -8,10 +8,11 @@
  *
  * The predicate is a pure, total function of the caller's identity,
  * classified by `ROLE_CLASSIFICATION` below:
- *   - unscoped roles → `null` (no additional filter)
- *   - scoped roles   → EXISTS (...) fragment scoped via project_workers
+ *   - any unscoped role → `null` (no additional filter)
+ *   - only scoped roles → EXISTS (...) fragment scoped via project_workers
  *
- * Bookkeeper is classified as unscoped (AC-577).
+ * Scope follows permissions: both are the union of the caller's roles, so
+ * an owner who also holds `worker` is unscoped (AC-577).
  *
  * Returning `null` for unscoped callers is load-bearing: callers AND it into
  * a conditions list, and drizzle's `and(cond, undefined)` collapses to `cond`
@@ -28,9 +29,7 @@ import type { Role } from '../../config/permissions.js';
  * Single-source classification of every `Role`. A new `Role` variant forces
  * an update to this map — otherwise `tsc` errors with a missing key. That
  * guarantees we cannot silently add a role that's neither explicitly scoped
- * nor explicitly unscoped (prior `UNSCOPED_ROLES` Set missed this: adding a
- * role would simply fall into the scoped branch without a type-level
- * warning).
+ * nor explicitly unscoped.
  */
 const ROLE_CLASSIFICATION: Record<Role, 'scoped' | 'unscoped'> = {
   owner: 'unscoped',
@@ -39,22 +38,22 @@ const ROLE_CLASSIFICATION: Record<Role, 'scoped' | 'unscoped'> = {
   bookkeeper: 'unscoped',
 };
 
-/** Roles whose reads ARE constrained by scope. Derived from the map above. */
-const SCOPED_ROLES: ReadonlySet<Role> = new Set<Role>(
+/** Roles whose reads are NOT constrained by scope. Derived from the map above. */
+const UNSCOPED_ROLES: ReadonlySet<Role> = new Set<Role>(
   (Object.entries(ROLE_CLASSIFICATION) as [Role, 'scoped' | 'unscoped'][])
-    .filter(([, classification]) => classification === 'scoped')
+    .filter(([, classification]) => classification === 'unscoped')
     .map(([role]) => role),
 );
 
 /**
- * A caller is unscoped iff none of their roles is classified as scoped.
- * Lags AC-577 (#869): any unscoped role should make the caller unscoped.
+ * A caller is unscoped iff any of their roles is classified as unscoped
+ * (AC-577). A caller with no known role stays scoped — closed by default.
  *
  * Exported so scope-bypassing services (e.g. ExportService) can fail-fast
  * when a scoped caller is threaded in — see ADR-0019.
  */
 export function isUnscoped(user: AuthUser): boolean {
-  return !user.roles.some((role) => SCOPED_ROLES.has(role as Role));
+  return user.roles.some((role) => UNSCOPED_ROLES.has(role as Role));
 }
 
 /**
