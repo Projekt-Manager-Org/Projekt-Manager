@@ -1351,6 +1351,25 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
         expect(await targetCounts()).toEqual(before);
       });
 
+      it('a business row referencing a user outside the archive names the reference (#887)', async () => {
+        // AC-593: the failure names its reason — for a missing user, the
+        // referring path and the missing id, not only the generic message.
+        const archive = await buildExportArchive(ownerToken);
+        const before = await targetCounts();
+        const ghost = crypto.randomUUID();
+        const corrupt = editArchive(archive, (env) => {
+          env.customers![0]!.createdBy = ghost;
+        });
+
+        const jobId = await uploadArchiveToNewJob(ownerToken, corrupt);
+        const terminal = await jobTerminal(jobId);
+        expect(terminal.status).toBe('failed');
+        expect(terminal.errorDetail).toContain('customers[0].createdBy');
+        expect(terminal.errorDetail).toContain(ghost);
+
+        expect(await targetCounts()).toEqual(before);
+      });
+
       it("AC-594: a user's createdBy / updatedBy outside the archive's users imports as ready, verbatim", async () => {
         // A hard-deleted creator (data-model.md §6.6) leaves exactly this
         // in a legitimate export.

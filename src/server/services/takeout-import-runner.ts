@@ -101,7 +101,7 @@ import {
   validateMime,
 } from '../../domain/attachments.js';
 import { RESTORE_CONFIRMATION_PHRASE } from '../../config/dataExchangeConfig.js';
-import { AppError } from '../errors.js';
+import { AppError, type MissingUserRefsDetails } from '../errors.js';
 import type { Envelope, EnvelopeAttachment } from '../../domain/dataExchange.js';
 
 export interface RunTakeoutImportDeps {
@@ -161,18 +161,24 @@ const FAILURE_DETAIL_MAX_PATHS = 10;
 
 /**
  * The job's error detail is all the operator sees: a validation refusal
- * names the envelope paths to fix.
+ * names the envelope paths to fix; a missing-user refusal also names the
+ * missing id at each path.
  */
 function failureDetail(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
-  if (err instanceof AppError && Array.isArray(err.details)) {
-    const paths = (err.details as Array<{ path?: unknown }>)
+  if (!(err instanceof AppError)) return err.message;
+  let sites: string[] = [];
+  if (err.code === 'MISSING_USER_REFS') {
+    sites = (err.details as MissingUserRefsDetails).references.map(
+      (ref) => `${ref.path}: ${ref.userId}`,
+    );
+  } else if (Array.isArray(err.details)) {
+    sites = (err.details as Array<{ path?: unknown }>)
       .map((issue) => issue.path)
-      .filter((path): path is string => typeof path === 'string')
-      .slice(0, FAILURE_DETAIL_MAX_PATHS);
-    if (paths.length > 0) return `${err.message} (${paths.join(', ')})`;
+      .filter((path): path is string => typeof path === 'string');
   }
-  return err.message;
+  sites = sites.slice(0, FAILURE_DETAIL_MAX_PATHS);
+  return sites.length > 0 ? `${err.message} (${sites.join(', ')})` : err.message;
 }
 
 /** Manifest shapes as produced by takeout-export-builder.ts. */
