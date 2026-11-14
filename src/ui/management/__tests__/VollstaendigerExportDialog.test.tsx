@@ -96,6 +96,41 @@ describe('VollstaendigerExportDialog — preflight', () => {
   });
 });
 
+describe('VollstaendigerExportDialog — a fresh open over an earlier export (AC-608)', () => {
+  it('after Start, the earlier export is not shown as ready while the new job is created', () => {
+    // The create discards the earlier export's archive; offering its
+    // download meanwhile would point at an archive that is being deleted.
+    useExportJobStore.setState({ job: makeJob({ id: 'old', status: 'ready' }), start: vi.fn() });
+    render(<VollstaendigerExportDialog onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId('export-job-start'));
+
+    expect(screen.queryByTestId('export-job-ready')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('export-job-download')).not.toBeInTheDocument();
+    expect(screen.getByTestId('export-job-start')).toBeDisabled();
+
+    act(() => {
+      useExportJobStore.setState({ job: makeJob({ id: 'new', status: 'pending' }) });
+    });
+    expect(screen.getByTestId('export-job-progress')).toBeInTheDocument();
+  });
+
+  it('a failed create re-enables Start over the earlier export', async () => {
+    useExportJobStore.setState({
+      job: makeJob({ id: 'old', status: 'ready' }),
+      start: vi.fn().mockResolvedValue(undefined),
+    });
+    render(<VollstaendigerExportDialog onClose={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('export-job-start'));
+    });
+
+    expect(screen.getByTestId('export-job-start')).toBeEnabled();
+    expect(screen.queryByTestId('export-job-ready')).not.toBeInTheDocument();
+  });
+});
+
 describe('VollstaendigerExportDialog — progress (AC-602)', () => {
   it('renders files/bytes/current-item from a running job (resume open)', () => {
     // A running job AT MOUNT = resume → tracking → progress straight away.
