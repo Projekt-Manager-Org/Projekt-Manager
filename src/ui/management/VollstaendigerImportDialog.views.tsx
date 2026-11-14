@@ -62,6 +62,8 @@ export interface ConfirmViewProps {
   startDisabled: boolean;
   /** Set when the server rejected the create-time destructive guard. */
   showMismatch: boolean;
+  /** The picked file is not the archive of the upload in progress (AC-610). */
+  sizeMismatch: boolean;
   dialogRef: RefObject<HTMLDivElement | null>;
   initialFocusRef: RefObject<HTMLInputElement | null>;
   onCancel: () => void;
@@ -76,6 +78,7 @@ export function ConfirmView(props: ConfirmViewProps) {
     phraseMatches,
     startDisabled,
     showMismatch,
+    sizeMismatch,
     dialogRef,
     initialFocusRef,
     onCancel,
@@ -133,6 +136,15 @@ export function ConfirmView(props: ConfirmViewProps) {
               {STRINGS.dataExchange.importConfirmMismatch}
             </div>
           )}
+          {sizeMismatch && (
+            <div
+              className={styles.destructiveNotice}
+              data-testid="import-job-size-mismatch"
+              role="alert"
+            >
+              {STRINGS.dataExchange.importFileSizeMismatch}
+            </div>
+          )}
           {isMobile && (
             <div
               className={styles.mobileWarning}
@@ -158,7 +170,7 @@ export function ConfirmView(props: ConfirmViewProps) {
             type="button"
             className={`${styles.button} ${styles.confirm}`}
             onClick={onConfirm}
-            disabled={!phraseMatches || startDisabled}
+            disabled={!phraseMatches || startDisabled || sizeMismatch}
             data-testid="import-job-start"
           >
             {STRINGS.dataExchange.importPreflightConfirm}
@@ -173,29 +185,40 @@ export interface UploadingViewProps {
   job: DataExchangeJobDto;
   /** Bytes uploaded to the VPS so far (client→VPS phase). */
   uploadOffset: number;
+  /** This page is uploading the archive right now (AC-611). */
+  uploading: boolean;
   dialogRef: RefObject<HTMLDivElement | null>;
   initialFocusRef: RefObject<HTMLButtonElement | null>;
   onClose: () => void;
 }
 
 export function UploadingView(props: UploadingViewProps) {
-  const { job, uploadOffset, dialogRef, initialFocusRef, onClose } = props;
+  const { job, uploadOffset, uploading, dialogRef, initialFocusRef, onClose } = props;
+  // Interrupted: this page is not sending and has not sent it all — re-attached,
+  // or its upload gave up (AC-611). A page that sent the last chunk keeps
+  // `Hochladen …` until the server's `running` lands.
+  const interrupted = !uploading && uploadOffset < job.bytesTotal;
+  const bytesDone = Math.max(uploadOffset, job.bytesDone);
   return (
     <DialogShell
       dialogRef={dialogRef}
       phaseTestId="import-job-uploading"
       titleId="import-job-uploading-title"
       bodyId="import-job-uploading-body"
-      title={STRINGS.dataExchange.importUploadingTitle}
+      title={
+        interrupted
+          ? STRINGS.dataExchange.importUploadInterruptedTitle
+          : STRINGS.dataExchange.importUploadingTitle
+      }
       body={
         <div
           className={styles.readoutLine}
           data-testid="import-job-upload-bytes"
           data-bytes-total={job.bytesTotal}
-          data-bytes-done={uploadOffset}
+          data-bytes-done={bytesDone}
         >
           {STRINGS.dataExchange.importProgressBytes(
-            formatBytes(uploadOffset),
+            formatBytes(bytesDone),
             formatBytes(job.bytesTotal),
           )}
         </div>

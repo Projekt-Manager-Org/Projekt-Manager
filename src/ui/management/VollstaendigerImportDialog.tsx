@@ -15,13 +15,15 @@
  *   - summary    — restored count.
  *   - failed     — the job's error_detail.
  *
- * Two open modes, distinguished by the job status captured AT MOUNT:
+ * Three open modes, distinguished by the job status captured AT MOUNT:
  *   - Fresh import: a picked `file`, no active job → confirm → create → upload.
+ *   - Continue: a picked `file` while an upload is `pending` → confirm →
+ *     create re-attaches → upload resumes at the server's offset (AC-609).
  *   - Re-attach: `file` is null; DatenView auto-opens onto an already
- *     running/terminal job (after a reload or post-wipe re-login) → straight to
- *     processing/summary, no upload.
+ *     pending/running/terminal job (after a reload or post-wipe re-login) →
+ *     straight to its phase, no upload.
  *
- * A picked `file` always means a NEW import, so a PRIOR TERMINAL job never
+ * A picked `file` never shows an earlier job's result, so a PRIOR TERMINAL job never
  * takes over the dialog — `latest('import')` keeps returning the finished row,
  * and letting it render its summary made the restore usable exactly once per
  * deployment.
@@ -67,6 +69,7 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
 
   const job = useImportJobStore((s) => s.job);
   const uploadOffset = useImportJobStore((s) => s.uploadOffset);
+  const uploading = useImportJobStore((s) => s.uploading);
   const createError = useImportJobStore((s) => s.createError);
   const create = useImportJobStore((s) => s.create);
 
@@ -86,13 +89,21 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
     file !== null && (priorJob?.status === 'ready' || priorJob?.status === 'failed');
   const showingPriorJob = priorTerminal && job?.id === priorJob?.id;
 
+  // A picked file while an upload is in progress continues that upload
+  // (AC-609): confirm first, then create answers IMPORT_JOB_ACTIVE, the store
+  // re-attaches and `upload` resumes at the server's offset. A file of another
+  // size cannot be that archive (AC-610) — judged on the live job, until Start.
+  const priorPending = file !== null && priorJob?.status === 'pending';
+  const sizeMismatch =
+    file !== null && !confirmClicked && job?.status === 'pending' && file.size !== job.bytesTotal;
+
   // Create → upload (the load-bearing sequence). Always `override: true` — a
   // full-account restore is always destructive. A create-time rejection
   // (`confirmation_mismatch` / `target_not_empty`) re-enables Start and surfaces
   // the mismatch copy; otherwise the upload begins, the server flips the job to
   // `running`, and the SSE refetch advances the dialog into processing → summary.
   const onConfirm = useCallback(async () => {
-    if (!file) return;
+    if (!file || sizeMismatch) return;
     setConfirmClicked(true);
     await create({ file, override: true, phrase: phraseInput });
     const s = useImportJobStore.getState();
@@ -103,21 +114,20 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
     if (s.job) {
       await s.upload(file);
     }
-  }, [create, file, phraseInput]);
+  }, [create, file, phraseInput, sizeMismatch]);
 
-  // Phase the dialog will render — needed by a11y (Escape is blocked only while
-  // an active client upload is in flight).
+  // Phase the dialog will render.
   const isResume =
     !priorTerminal &&
+    !priorPending &&
     (priorJob?.status === 'pending' ||
       priorJob?.status === 'running' ||
       priorJob?.status === 'ready' ||
       priorJob?.status === 'failed');
   const tracking = isResume || confirmClicked;
-  const inUploadingPhase = tracking && job?.status === 'pending';
 
-  // Escape closes in every phase EXCEPT `uploading`: closing during an active
-  // client upload would abandon bytes mid-stream. Confirm/processing/summary/
+  // Escape closes in every phase EXCEPT an active client upload: closing then
+  // would abandon bytes mid-stream. Confirm/processing/summary/
   // failed are safe — the job is server-side or not yet started, and the
   // resume probe re-attaches.
   useDialogA11y({
@@ -126,7 +136,7 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
     onOpenedFocus: useCallback(() => {
       (inputFocusRef.current ?? buttonFocusRef.current)?.focus();
     }, []),
-    onEscape: inUploadingPhase ? undefined : onClose,
+    onEscape: uploading ? undefined : onClose,
   });
 
   // Confirm until we have a job to track: a fresh open (or the brief window
@@ -144,6 +154,7 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
         phraseMatches={restorePhraseMatches(phraseInput)}
         startDisabled={confirmClicked}
         showMismatch={createError !== null}
+        sizeMismatch={sizeMismatch}
         dialogRef={dialogRef}
         initialFocusRef={inputFocusRef}
         onCancel={onClose}
@@ -190,6 +201,7 @@ export function VollstaendigerImportDialog({ file, onClose }: VollstaendigerImpo
     <UploadingView
       job={job}
       uploadOffset={uploadOffset}
+      uploading={uploading}
       dialogRef={dialogRef}
       initialFocusRef={buttonFocusRef}
       onClose={onClose}

@@ -40,6 +40,8 @@ interface ImportJobStore {
   job: DataExchangeJobDto | null;
   /** Bytes uploaded to the VPS so far (client→VPS phase). */
   uploadOffset: number;
+  /** True while `upload` runs — this page is sending the archive (AC-611). */
+  uploading: boolean;
   /** The last create-time rejection, or null. */
   createError: ImportCreateError | null;
   /**
@@ -85,7 +87,10 @@ async function refetch(): Promise<void> {
   const result = await importJobApi.getLatest();
   if (epoch !== refetchEpoch) return;
   if (result.ok) {
-    useImportJobStore.setState({ job: result.data.job });
+    const next = result.data.job;
+    // The page's own offset belongs to the job it uploaded; another job starts at 0.
+    const sameJob = next?.id === useImportJobStore.getState().job?.id;
+    useImportJobStore.setState(sameJob ? { job: next } : { job: next, uploadOffset: 0 });
     return;
   }
   // EXPECTED mid-wipe path (AC-597): the users-wipe CASCADE-dropped the
@@ -110,9 +115,70 @@ function detachListeners(): void {
   }
 }
 
+/**
+ * The resumable-upload loop behind `upload`: continue `file` at the server's
+ * offset until it reaches the file size, or give up.
+ */
+async function uploadFrom(id: string, file: File): Promise<void> {
+  const set = useImportJobStore.setState;
+  const get = useImportJobStore.getState;
+  const total = file.size;
+
+  // Resume from the server's authoritative offset (HEAD) — a re-attached
+  // upload must not re-send bytes the VPS already holds. A failed
+  // HEAD (transient blip) keeps the last-known offset rather than snapping to
+  // 0 — re-sending from 0 would 409 on the first chunk and yo-yo the
+  // progress bar; the in-loop re-HEAD recovers the true offset either way.
+  const head = await importJobApi.headOffset(id);
+  let offset = head.ok ? head.offset : get().uploadOffset;
+  set({ uploadOffset: offset });
+
+  let stalls = 0;
+  while (offset < total) {
+    const before = offset;
+    const chunk = file.slice(offset, Math.min(offset + UPLOAD_CHUNK_BYTES, total));
+    const res = await importJobApi.patchChunk(id, { offset, chunk });
+    if (res.ok) {
+      offset = res.offset;
+      set({ uploadOffset: offset });
+      // A 2xx that does NOT advance the offset (a misbehaving server/proxy
+      // returning 200 without an Upload-Offset header → patchChunk falls back
+      // to the request offset) would otherwise spin `while (offset < total)`
+      // forever. Feed the SAME stall breaker the 409 path uses.
+      if (offset <= before) {
+        stalls += 1;
+        if (stalls >= MAX_UPLOAD_STALLS) break;
+      } else {
+        stalls = 0;
+      }
+      continue;
+    }
+    // Stale offset (409 UPLOAD_OFFSET_CONFLICT): the server left its offset
+    // unchanged. Re-read the authoritative offset and resume (retry-safe).
+    if (res.status === 409) {
+      const reHead = await importJobApi.headOffset(id);
+      offset = reHead.ok ? reHead.offset : offset;
+      set({ uploadOffset: offset });
+      // No forward progress this round — bound the retries so a wedged server
+      // cannot spin the loop forever.
+      if (offset <= before) {
+        stalls += 1;
+        if (stalls >= MAX_UPLOAD_STALLS) break;
+      } else {
+        stalls = 0;
+      }
+      continue;
+    }
+    // 413 (past length) / 401 / network — stop. The job status (SSE-refetched)
+    // or the re-auth flow takes over from here.
+    break;
+  }
+}
+
 export const useImportJobStore = create<ImportJobStore>((set, get) => ({
   job: null,
   uploadOffset: 0,
+  uploading: false,
   createError: null,
   dismissedJobId: null,
 
@@ -151,10 +217,10 @@ export const useImportJobStore = create<ImportJobStore>((set, get) => ({
       set({ createError: 'confirmation_mismatch' });
       return;
     }
-    // One-active-per-kind (AC-331): re-attach to the running import (parity
-    // with the export side) — the active job owns the single slot, so there is
-    // nothing to upload. No createError: the dialog shows the running job's
-    // progress, not an error.
+    // One-active-per-kind (AC-331): re-attach to the active import (parity
+    // with the export side) — the active job owns the single slot. A `pending`
+    // one is then continued by `upload` (AC-609). No createError: the dialog
+    // shows the active job's progress, not an error.
     if (result.error.code === 'IMPORT_JOB_ACTIVE') {
       await refetch();
       return;
@@ -165,58 +231,15 @@ export const useImportJobStore = create<ImportJobStore>((set, get) => ({
   },
 
   upload: async (file) => {
-    const id = get().job?.id;
-    if (!id) return;
-    const total = file.size;
-
-    // Resume from the server's authoritative offset (HEAD) — a re-attached
-    // upload must not re-send bytes the VPS already holds. A failed
-    // HEAD (transient blip) keeps the last-known offset rather than snapping to
-    // 0 — re-sending from 0 would 409 on the first chunk and yo-yo the
-    // progress bar; the in-loop re-HEAD recovers the true offset either way.
-    const head = await importJobApi.headOffset(id);
-    let offset = head.ok ? head.offset : get().uploadOffset;
-    set({ uploadOffset: offset });
-
-    let stalls = 0;
-    while (offset < total) {
-      const before = offset;
-      const chunk = file.slice(offset, Math.min(offset + UPLOAD_CHUNK_BYTES, total));
-      const res = await importJobApi.patchChunk(id, { offset, chunk });
-      if (res.ok) {
-        offset = res.offset;
-        set({ uploadOffset: offset });
-        // A 2xx that does NOT advance the offset (a misbehaving server/proxy
-        // returning 200 without an Upload-Offset header → patchChunk falls back
-        // to the request offset) would otherwise spin `while (offset < total)`
-        // forever. Feed the SAME stall breaker the 409 path uses.
-        if (offset <= before) {
-          stalls += 1;
-          if (stalls >= MAX_UPLOAD_STALLS) break;
-        } else {
-          stalls = 0;
-        }
-        continue;
-      }
-      // Stale offset (409 UPLOAD_OFFSET_CONFLICT): the server left its offset
-      // unchanged. Re-read the authoritative offset and resume (retry-safe).
-      if (res.status === 409) {
-        const reHead = await importJobApi.headOffset(id);
-        offset = reHead.ok ? reHead.offset : offset;
-        set({ uploadOffset: offset });
-        // No forward progress this round — bound the retries so a wedged server
-        // cannot spin the loop forever.
-        if (offset <= before) {
-          stalls += 1;
-          if (stalls >= MAX_UPLOAD_STALLS) break;
-        } else {
-          stalls = 0;
-        }
-        continue;
-      }
-      // 413 (past length) / 401 / network — stop. The job status (SSE-refetched)
-      // or the re-auth flow takes over from here.
-      break;
+    const job = get().job;
+    // Only the archive of this upload continues it (AC-610).
+    if (!job || job.bytesTotal !== file.size) return;
+    const id = job.id;
+    set({ uploading: true });
+    try {
+      await uploadFrom(id, file);
+    } finally {
+      set({ uploading: false });
     }
   },
 
@@ -226,13 +249,13 @@ export const useImportJobStore = create<ImportJobStore>((set, get) => ({
 
   reset: () => {
     refetchEpoch += 1;
-    set({ job: null, uploadOffset: 0, createError: null, dismissedJobId: null });
+    set({ job: null, uploadOffset: 0, uploading: false, createError: null, dismissedJobId: null });
   },
 
   __resetForTests: () => {
     detachListeners();
     subscriberCount = 0;
     refetchEpoch = 0;
-    set({ job: null, uploadOffset: 0, createError: null, dismissedJobId: null });
+    set({ job: null, uploadOffset: 0, uploading: false, createError: null, dismissedJobId: null });
   },
 }));

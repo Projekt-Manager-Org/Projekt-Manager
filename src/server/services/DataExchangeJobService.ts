@@ -26,7 +26,7 @@
  * frames, and they supply the job-kind-specific terminal audit content.
  */
 
-import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
 import { auditLog, dataExchangeJob } from '../db/schema.js';
 import { emitDataExchangeJobChanged } from '../sse/emitters.js';
@@ -66,17 +66,15 @@ export function toExchangeJobDto(row: DataExchangeJob): DataExchangeJobDto {
   return dto;
 }
 
-/** Totals known at the point the job starts running. */
-export interface RunningInit {
-  filesTotal?: number;
-  bytesTotal?: number;
+/** What an import records when its upload completes. */
+export interface UploadComplete {
+  bytesTotal: number;
   /**
-   * Staged archive path. The import job stamps this at `markRunning` (when
-   * the upload completes) so the staging reaper (AC-589) can
-   * locate the file for a terminal job — ready OR failed. The export job
-   * leaves it unset here and stamps it at `markReady` instead.
+   * Staged archive path, stamped when the upload completes so the staging
+   * reaper (AC-589) can locate the file for a terminal job — ready OR failed.
+   * The export job stamps it at `markReady` instead.
    */
-  archiveRef?: string;
+  archiveRef: string;
 }
 
 /** Incremental progress; `currentItem` is the file/label being processed. */
@@ -113,6 +111,13 @@ export interface TerminalAuditRow {
   payload: Record<string, unknown>;
 }
 
+/** The terminal audit row of a failed job of `kind` (AC-332). */
+export function failedJobAudit(kind: DataExchangeJobKind, detail: string): TerminalAuditRow {
+  return kind === 'export'
+    ? { action: 'export_failed', entityLabel: 'Export fehlgeschlagen', payload: { error: detail } }
+    : { action: 'import_failed', entityLabel: 'Import fehlgeschlagen', payload: { error: detail } };
+}
+
 export class DataExchangeJobService {
   constructor(private readonly db: Database) {}
 
@@ -123,15 +128,53 @@ export class DataExchangeJobService {
     return row!;
   }
 
-  /** `pending → running`: stamp `startedAt` and any known totals. */
-  async markRunning(id: string, init: RunningInit = {}): Promise<DataExchangeJob> {
-    return this.updateAndEmit(id, {
-      status: 'running',
-      startedAt: new Date(),
-      ...(init.filesTotal !== undefined ? { filesTotal: init.filesTotal } : {}),
-      ...(init.bytesTotal !== undefined ? { bytesTotal: init.bytesTotal } : {}),
-      ...(init.archiveRef !== undefined ? { archiveRef: init.archiveRef } : {}),
-    });
+  /** `pending → running`: stamp `startedAt`. */
+  async markRunning(id: string): Promise<DataExchangeJob> {
+    return this.updateAndEmit(id, { status: 'running', startedAt: new Date() });
+  }
+
+  /**
+   * `pending → running` for an import whose upload completed — only while it
+   * is still `pending`. Returns `null` when the job left `pending` meanwhile
+   * (the staging reaper failed it, AC-599): the caller then fires no restore.
+   */
+  async markRunningIfPending(id: string, done: UploadComplete): Promise<DataExchangeJob | null> {
+    const [row] = await this.db
+      .update(dataExchangeJob)
+      .set({
+        status: 'running',
+        startedAt: new Date(),
+        updatedAt: new Date(),
+        bytesTotal: done.bytesTotal,
+        archiveRef: done.archiveRef,
+      })
+      .where(and(eq(dataExchangeJob.id, id), eq(dataExchangeJob.status, 'pending')))
+      .returning();
+    if (!row) return null;
+    emitDataExchangeJobChanged();
+    return row;
+  }
+
+  /**
+   * Mark upload progress on a `pending` import: bump `updatedAt` — the clock
+   * the staging reaper ends a stalled upload by (AC-599) — and record
+   * `bytesDone` when given (AC-611). Emits nothing: one call per chunk, and
+   * the uploading page tracks its own offset. Returns `null` when the job is
+   * not a `pending` import.
+   */
+  async touchUpload(id: string, bytesDone?: number): Promise<DataExchangeJob | null> {
+    const [row] = await this.db
+      .update(dataExchangeJob)
+      .set({ updatedAt: new Date(), ...(bytesDone !== undefined ? { bytesDone } : {}) })
+      .where(
+        and(
+          eq(dataExchangeJob.id, id),
+          eq(dataExchangeJob.kind, 'import'),
+          eq(dataExchangeJob.status, 'pending'),
+        ),
+      )
+      .returning();
+    return row ?? null;
   }
 
   /** Advance the progress counters / current-item readout. Caller throttles. */
@@ -170,6 +213,25 @@ export class DataExchangeJobService {
       id,
       { status: 'failed', errorDetail, finishedAt: new Date() },
       audit,
+    );
+  }
+
+  /**
+   * Terminal `failed` for a job the system ends itself (restart, stalled
+   * upload), with its audit row — but only while `stillMatches` holds, so a
+   * job that moved on meanwhile is left alone. Returns `null` then.
+   */
+  async failIfStill(
+    id: string,
+    kind: DataExchangeJobKind,
+    errorDetail: string,
+    stillMatches: SQL,
+  ): Promise<DataExchangeJob | null> {
+    return this.terminalAndEmit(
+      id,
+      { status: 'failed', errorDetail, finishedAt: new Date() },
+      failedJobAudit(kind, errorDetail),
+      stillMatches,
     );
   }
 
@@ -278,20 +340,37 @@ export class DataExchangeJobService {
    * row in ONE transaction, then emit post-commit. The two writes commit
    * together so a poller that observes the terminal status is guaranteed to
    * also see the audit row (AC-332). Throws (rolling back both) if `id`
-   * matched no row.
+   * matched no row; with a `guard`, returns `null` instead when the row no
+   * longer matches it.
    */
   private async terminalAndEmit(
     id: string,
     patch: Partial<typeof dataExchangeJob.$inferInsert>,
     audit: TerminalAuditRow,
-  ): Promise<DataExchangeJob> {
+  ): Promise<DataExchangeJob>;
+  private async terminalAndEmit(
+    id: string,
+    patch: Partial<typeof dataExchangeJob.$inferInsert>,
+    audit: TerminalAuditRow,
+    guard: SQL,
+  ): Promise<DataExchangeJob | null>;
+  private async terminalAndEmit(
+    id: string,
+    patch: Partial<typeof dataExchangeJob.$inferInsert>,
+    audit: TerminalAuditRow,
+    guard?: SQL,
+  ): Promise<DataExchangeJob | null> {
     const row = await this.db.transaction(async (tx) => {
       const [updated] = await tx
         .update(dataExchangeJob)
         .set({ ...patch, updatedAt: new Date() })
-        .where(eq(dataExchangeJob.id, id))
+        .where(guard ? and(eq(dataExchangeJob.id, id), guard) : eq(dataExchangeJob.id, id))
         .returning();
-      if (!updated) throw new Error(`DataExchangeJobService: job ${id} not found`);
+      if (!updated) {
+        // A guarded flip that no longer matches is a no-op, not a bug.
+        if (guard) return null;
+        throw new Error(`DataExchangeJobService: job ${id} not found`);
+      }
       // Constant envelope: a takeout terminal is a deployment-level event with
       // a `system` actor (actor_id NULL ⇒ actor_reason non-empty, the schema's
       // compound CHECK). `data_import` backs no physical table, so it sits
@@ -315,6 +394,7 @@ export class DataExchangeJobService {
         .returning();
       return { updated, auditRow: auditRow! };
     });
+    if (!row) return null;
     emitDataExchangeJobChanged();
     // Written outside `mutate()`, so dispatch by hand: the publisher's
     // subscribers emit `audit_changed` (AC-320).
