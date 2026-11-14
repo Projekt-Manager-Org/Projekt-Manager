@@ -314,7 +314,15 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
   }
 
   // Coverage parity: envelope.attachments ↔ manifest attachment entries.
-  const envelopeAttachmentIds = new Set(envelope.attachments.map((a) => a.id));
+  // Ids must be unique first: two rows sharing one would both match a single
+  // manifest entry, and Pass 2 would restore one of them after the wipe.
+  const envelopeAttachmentIds = new Set<string>();
+  for (const att of envelope.attachments) {
+    if (envelopeAttachmentIds.has(att.id)) {
+      throw new Error(`duplicate attachment id ${att.id} in data.json`);
+    }
+    envelopeAttachmentIds.add(att.id);
+  }
   for (const id of envelopeAttachmentIds) {
     if (!manifestAttachmentIds.has(id))
       throw new Error(`envelope attachment ${id} has no manifest entry`);

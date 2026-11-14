@@ -1327,6 +1327,30 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
         expect(await targetCounts()).toEqual(before);
       });
 
+      it('an attachment listed twice in data.json → job failed at Pass-1, target untouched (#886)', async () => {
+        // Both rows match the one manifest entry, so coverage parity holds;
+        // Pass 2 restores one of them and would fail after the wipe.
+        const seeded = await seedReadyAttachment({
+          plaintext: crypto.randomBytes(512),
+          fileName: 'twice.pdf',
+        });
+        const archive = await buildExportArchive(ownerToken);
+        const before = await targetCounts();
+        expect(before.attachments).toBe(1);
+
+        const corrupt = editArchive(archive, (env) => {
+          const att = env.attachments!.find((a) => a.id === seeded.id)!;
+          env.attachments!.push({ ...att });
+        });
+
+        const jobId = await uploadArchiveToNewJob(ownerToken, corrupt);
+        const terminal = await jobTerminal(jobId);
+        expect(terminal.status).toBe('failed');
+        expect(terminal.errorDetail).toContain(seeded.id);
+
+        expect(await targetCounts()).toEqual(before);
+      });
+
       it("AC-594: a user's createdBy / updatedBy outside the archive's users imports as ready, verbatim", async () => {
         // A hard-deleted creator (data-model.md §6.6) leaves exactly this
         // in a legitimate export.
