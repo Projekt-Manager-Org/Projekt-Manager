@@ -115,6 +115,9 @@ export const useExportJobStore = create<ExportJobStore>((set) => ({
   start: async () => {
     const result = await exportJobApi.create();
     if (result.ok) {
+      // A refetch in flight from before the create (its sweep frame) would
+      // otherwise commit the earlier job over this one.
+      refetchEpoch += 1;
       set({ job: result.data });
       return;
     }

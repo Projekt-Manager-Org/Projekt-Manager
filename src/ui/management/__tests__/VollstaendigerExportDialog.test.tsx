@@ -31,6 +31,7 @@ function makeJob(overrides: Partial<DataExchangeJobDto> = {}): DataExchangeJobDt
     updatedAt: '2026-05-25T10:00:00.000Z',
     startedAt: null,
     finishedAt: null,
+    archiveAvailable: true,
     ...overrides,
   };
 }
@@ -93,6 +94,41 @@ describe('VollstaendigerExportDialog — preflight', () => {
     // job is still null (create in flight) → preflight stays, Start disabled
     // so a second click cannot mint a second job.
     expect(screen.getByTestId('export-job-start')).toBeDisabled();
+  });
+});
+
+describe('VollstaendigerExportDialog — a fresh open over an earlier export (AC-608)', () => {
+  it('after Start, the earlier export is not shown as ready while the new job is created', () => {
+    // The create discards the earlier export's archive; offering its
+    // download meanwhile would point at an archive that is being deleted.
+    useExportJobStore.setState({ job: makeJob({ id: 'old', status: 'ready' }), start: vi.fn() });
+    render(<VollstaendigerExportDialog onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId('export-job-start'));
+
+    expect(screen.queryByTestId('export-job-ready')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('export-job-download')).not.toBeInTheDocument();
+    expect(screen.getByTestId('export-job-start')).toBeDisabled();
+
+    act(() => {
+      useExportJobStore.setState({ job: makeJob({ id: 'new', status: 'pending' }) });
+    });
+    expect(screen.getByTestId('export-job-progress')).toBeInTheDocument();
+  });
+
+  it('a failed create re-enables Start over the earlier export', async () => {
+    useExportJobStore.setState({
+      job: makeJob({ id: 'old', status: 'ready' }),
+      start: vi.fn().mockResolvedValue(undefined),
+    });
+    render(<VollstaendigerExportDialog onClose={vi.fn()} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('export-job-start'));
+    });
+
+    expect(screen.getByTestId('export-job-start')).toBeEnabled();
+    expect(screen.queryByTestId('export-job-ready')).not.toBeInTheDocument();
   });
 });
 

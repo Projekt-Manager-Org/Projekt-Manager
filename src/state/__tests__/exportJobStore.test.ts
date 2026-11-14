@@ -45,6 +45,7 @@ interface DataExchangeJobDto {
   updatedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  archiveAvailable: boolean;
 }
 
 type LatestResult = ApiResult<{ job: DataExchangeJobDto | null }>;
@@ -156,6 +157,7 @@ function makeJob(overrides: Partial<DataExchangeJobDto> = {}): DataExchangeJobDt
     updatedAt: '2026-05-25T10:00:00.000Z',
     startedAt: null,
     finishedAt: null,
+    archiveAvailable: true,
     ...overrides,
   };
 }
@@ -383,6 +385,35 @@ describe('exportJobStore — refetch race / epoch guard', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(useExportJobStore.getState().job).toEqual(fresh);
+
+    unsubscribe();
+  });
+
+  it('a refetch started before start() resolves cannot overwrite the job it created', async () => {
+    // The create discards the earlier job's archive and signals it before
+    // the new row exists; a refetch from that frame returns the earlier job.
+    const earlier = makeJob({ id: 'earlier', status: 'ready' });
+    const created = makeJob({ id: 'created', status: 'pending' });
+    getLatestMock.mockResolvedValueOnce(ok({ job: earlier }));
+    const unsubscribe = useExportJobStore.getState().subscribe();
+    await vi.waitFor(() => expect(useExportJobStore.getState().job).toEqual(earlier));
+
+    let resolveStale!: (v: LatestResult) => void;
+    getLatestMock.mockReturnValueOnce(
+      new Promise<LatestResult>((r) => {
+        resolveStale = r;
+      }),
+    );
+    for (const h of sseHandlers.get('data_exchange_job_changed')!) h();
+
+    createMock.mockResolvedValueOnce(ok(created));
+    await useExportJobStore.getState().start();
+    expect(useExportJobStore.getState().job).toEqual(created);
+
+    resolveStale(ok({ job: earlier }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useExportJobStore.getState().job).toEqual(created);
 
     unsubscribe();
   });

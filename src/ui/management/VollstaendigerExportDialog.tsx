@@ -56,17 +56,21 @@ export function VollstaendigerExportDialog({ onClose }: VollstaendigerExportDial
   // pending/running) resumes straight to progress; a fresh open (Export button,
   // job null or terminal) shows preflight first.
   const [jobStatusAtMount] = useState(() => job?.status);
+  // The earlier job a fresh open sits over. After Start it stays in the store
+  // until the create returns; it is not the job being tracked, and its archive
+  // is the one the create discards (AC-608).
+  const [jobIdAtMount] = useState(() => job?.id);
 
   const onStart = useCallback(() => {
     setStartClicked(true);
     void (async () => {
       await start();
-      // A non-409 failure produced no job — re-enable the preflight so the user
-      // can retry. A 409 re-attach or a success leaves `job` set, so the
+      // A non-409 failure produced no new job — re-enable the preflight so the
+      // user can retry. A 409 re-attach or a success sets a new `job`, so the
       // derivation moves to progress and Start is no longer rendered.
-      if (!useExportJobStore.getState().job) setStartClicked(false);
+      if (useExportJobStore.getState().job?.id === jobIdAtMount) setStartClicked(false);
     })();
-  }, [start]);
+  }, [start, jobIdAtMount]);
 
   // Escape closes in every phase: closing never stops the server-side job —
   // the build continues and the mount-time resume probe re-attaches.
@@ -80,7 +84,7 @@ export function VollstaendigerExportDialog({ onClose }: VollstaendigerExportDial
   });
 
   const isResume = jobStatusAtMount === 'pending' || jobStatusAtMount === 'running';
-  const tracking = isResume || startClicked;
+  const tracking = isResume || (startClicked && job?.id !== jobIdAtMount);
 
   // Preflight until we have a job to track: a fresh open, or the brief window
   // after Start before the pending row arrives (Start is disabled meanwhile).

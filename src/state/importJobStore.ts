@@ -204,6 +204,9 @@ export const useImportJobStore = create<ImportJobStore>((set, get) => ({
     set({ createError: null });
     const result = await importJobApi.create({ uploadLength: file.size, override, phrase });
     if (result.ok) {
+      // A refetch in flight from before the create (its sweep frame) would
+      // otherwise commit the earlier job over this one.
+      refetchEpoch += 1;
       set({ job: result.data, createError: null, uploadOffset: 0 });
       return;
     }

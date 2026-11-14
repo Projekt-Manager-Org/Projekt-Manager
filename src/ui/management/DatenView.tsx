@@ -126,14 +126,18 @@ export function DatenView() {
               `export-job-download` at a time. */}
           {!exportDialogOpen && exportJob?.status === 'ready' && (
             <div className={styles.inlineGroup} data-testid="export-job-status">
-              <a
-                className={styles.submitButton}
-                href={exportDownloadPath(exportJob.id)}
-                download={exportDownloadFilename()}
-                data-testid="export-job-download"
-              >
-                {STRINGS.dataExchange.exportDownloadAction}
-              </a>
+              {exportJob.archiveAvailable ? (
+                <a
+                  className={styles.submitButton}
+                  href={exportDownloadPath(exportJob.id)}
+                  download={exportDownloadFilename()}
+                  data-testid="export-job-download"
+                >
+                  {STRINGS.dataExchange.exportDownloadAction}
+                </a>
+              ) : (
+                <span>{STRINGS.dataExchange.exportArchiveGone}</span>
+              )}
             </div>
           )}
           {!exportDialogOpen && exportJob?.status === 'failed' && (

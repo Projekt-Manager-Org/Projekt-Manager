@@ -38,6 +38,7 @@ interface JobDto {
   updatedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  archiveAvailable: boolean;
 }
 
 const exportGetLatestMock = vi.fn<() => Promise<ApiResult<{ job: JobDto | null }>>>();
@@ -106,6 +107,7 @@ function makeJob(overrides: Partial<JobDto>): JobDto {
     updatedAt: '2026-05-25T00:00:00.000Z',
     startedAt: null,
     finishedAt: null,
+    archiveAvailable: true,
     ...overrides,
   };
 }
@@ -152,6 +154,21 @@ describe('DatenView — export open-state (mirror-export fix)', () => {
     expect(screen.queryByTestId('mock-export-dialog')).not.toBeInTheDocument();
     // The import action stays reachable.
     expect(screen.getByTestId('data-import-button')).toBeInTheDocument();
+  });
+
+  it('AC-608: a READY export whose archive is gone offers no download, only a new export', async () => {
+    exportGetLatestMock.mockResolvedValue(
+      ok({ job: makeJob({ id: 'e-gone', status: 'ready', archiveAvailable: false }) }),
+    );
+    setAuthRoles(['owner']);
+
+    render(<DatenView />);
+
+    expect(await screen.findByTestId('export-job-status')).toHaveTextContent(
+      'Das Archiv ist nicht mehr verfügbar. Starten Sie einen neuen Export.',
+    );
+    expect(screen.queryByTestId('export-job-download')).not.toBeInTheDocument();
+    expect(screen.getByTestId('data-export-button')).toBeEnabled();
   });
 
   it('a FAILED export surfaces inline (error), not as a modal', async () => {
