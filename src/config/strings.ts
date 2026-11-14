@@ -528,6 +528,10 @@ export const STRINGS = {
     exportReadyTitle: 'Export bereit',
     exportDownloadAction: 'Herunterladen',
     importUploadingTitle: 'Hochladen …',
+    importUploadInterruptedTitle:
+      'Upload unterbrochen. Zum Fortsetzen das Archiv über „Import“ erneut wählen.',
+    // A picked file whose size is not the total of the upload in progress (AC-610).
+    importFileSizeMismatch: 'Diese Datei gehört nicht zum laufenden Import.',
     importProcessingTitle: 'Wiederherstellung läuft',
     // Surfaced when the server rejects the create-time destructive guard
     // despite the client-side phrase match (clock skew, a stale config).

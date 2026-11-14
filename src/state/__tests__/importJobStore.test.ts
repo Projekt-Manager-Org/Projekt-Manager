@@ -284,6 +284,21 @@ describe('importJobStore — resume probe (AC-603)', () => {
     unsubscribe();
   });
 
+  it("AC-611: landing a different job drops this page's offset of the earlier one", async () => {
+    useImportJobStore.setState({
+      job: makeJob({ id: 'uploaded-earlier', status: 'ready', bytesTotal: 4096 }),
+      uploadOffset: 4096,
+    });
+    const other = makeJob({ id: 'other-tab', status: 'pending', bytesTotal: 2048 });
+    getLatestMock.mockResolvedValue(ok({ job: other }));
+
+    const unsubscribe = useImportJobStore.getState().subscribe();
+
+    await vi.waitFor(() => expect(useImportJobStore.getState().job).toEqual(other));
+    expect(useImportJobStore.getState().uploadOffset).toBe(0);
+    unsubscribe();
+  });
+
   it('does not refetch when a second subscriber joins an already-probed store', async () => {
     getLatestMock.mockResolvedValue(ok({ job: null }));
 
@@ -398,6 +413,52 @@ describe('importJobStore — create() guard mapping (AC-591, AC-592)', () => {
 });
 
 describe('importJobStore — resumable upload', () => {
+  it('AC-610: does not upload a file whose size differs from the job total', async () => {
+    useImportJobStore.setState({
+      job: makeJob({ status: 'pending', id: 'import-size-1', bytesTotal: 4096 }),
+    });
+    wireResumableUpload(4096);
+
+    await useImportJobStore.getState().upload(makeArchive(2048));
+
+    expect(headOffsetMock).not.toHaveBeenCalled();
+    expect(patchChunkMock).not.toHaveBeenCalled();
+  });
+
+  it('AC-611: reports uploading while upload() runs, and not once it stops', async () => {
+    const size = 5 * 1024;
+    useImportJobStore.setState({
+      job: makeJob({ status: 'pending', id: 'import-uploading-1', bytesTotal: size }),
+    });
+    wireResumableUpload(size);
+    const seen: boolean[] = [];
+    const wired = patchChunkMock.getMockImplementation()!;
+    patchChunkMock.mockImplementation(async (id, args) => {
+      seen.push(useImportJobStore.getState().uploading);
+      return wired(id, args);
+    });
+    expect(useImportJobStore.getState().uploading).toBe(false);
+
+    await useImportJobStore.getState().upload(makeArchive(size));
+
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every(Boolean)).toBe(true);
+    expect(useImportJobStore.getState().uploading).toBe(false);
+  });
+
+  it('AC-611: stops reporting uploading when the upload gives up', async () => {
+    const size = 5 * 1024;
+    useImportJobStore.setState({
+      job: makeJob({ status: 'pending', id: 'import-uploading-2', bytesTotal: size }),
+    });
+    headOffsetMock.mockResolvedValue({ ok: true, status: 200, offset: 0, length: size });
+    patchChunkMock.mockResolvedValue({ ok: false, status: 0, offset: 0 });
+
+    await useImportJobStore.getState().upload(makeArchive(size));
+
+    expect(useImportJobStore.getState().uploading).toBe(false);
+  });
+
   it('reads the server offset via headOffset then PATCHes chunks to file.size, advancing uploadOffset', async () => {
     // Fresh upload from offset 0. The store HEADs the current offset, then
     // PATCHes sequential chunks until the offset reaches Upload-Length
@@ -427,7 +488,7 @@ describe('importJobStore — resumable upload', () => {
     expect(useImportJobStore.getState().uploadOffset).toBe(size);
   });
 
-  it('resumes from a non-zero server offset reported by headOffset', async () => {
+  it('AC-609: resumes from a non-zero server offset reported by headOffset', async () => {
     // Re-attach after an interrupted upload: HEAD reports bytes already on the
     // server, so the store must NOT re-send from 0 — it picks up at the
     // server's offset (resumability).
