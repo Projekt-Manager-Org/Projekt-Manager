@@ -90,7 +90,7 @@ export interface EnvelopeAssignment {
  * and the wrapped envelopes additionally remain inside the exporting
  * instance's confidentiality boundary (ADR-0024). The import job
  * re-encrypts each attachment server-side under the importing
- * instance's recipient (AC-328).
+ * instance's recipient (AC-594).
  */
 export interface EnvelopeAttachment {
   id: string;
@@ -236,7 +236,7 @@ export interface Envelope {
    * the field unconditionally (empty array when no ready rows exist);
    * the business-data import (`ImportService`) never inserts attachment
    * rows and ignores any `attachments` key on the envelope
-   * (issue #163 / AC-253) — the field rides the takeout zip, not the
+   * (issue #163) — the field rides the takeout zip, not the
    * import envelope.
    */
   attachments: EnvelopeAttachment[];
@@ -246,7 +246,7 @@ export interface ImportOptions {
   override: boolean;
   /**
    * Typed confirmation phrase from the caller. Required by the server when
-   * `override` is true AND the target database is non-empty (AC-160);
+   * `override` is true AND the target database is non-empty (AC-592);
    * ignored on the empty-target path. `null` indicates the
    * request body omitted the field entirely.
    */

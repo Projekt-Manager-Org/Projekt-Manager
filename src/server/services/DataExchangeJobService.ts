@@ -72,7 +72,7 @@ export interface RunningInit {
   bytesTotal?: number;
   /**
    * Staged archive path. The import job stamps this at `markRunning` (when
-   * the upload completes) so the staging reaper ([data-model.md §6.15]) can
+   * the upload completes) so the staging reaper (AC-589) can
    * locate the file for a terminal job — ready OR failed. The export job
    * leaves it unset here and stamps it at `markReady` instead.
    */
@@ -184,10 +184,10 @@ export class DataExchangeJobService {
   }
 
   /**
-   * The currently-active (`pending` or `running`) job of a kind, or
-   * `null` — backs the one-active-per-kind gate on create (api.md
-   * §14.2.4). In-process single-operator execution means at most one
-   * such row exists; `desc(createdAt)` is a defensive tiebreaker.
+   * The currently-active (`pending` or `running`) job of a kind, or `null` —
+   * backs the one-active-per-kind gate on create (AC-331). In-process
+   * single-operator execution means at most one such row exists;
+   * `desc(createdAt)` is a defensive tiebreaker.
    */
   async activeOfKind(kind: DataExchangeJobKind): Promise<DataExchangeJob | null> {
     const [row] = await this.db

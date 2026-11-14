@@ -68,7 +68,7 @@ const ROLE_STATES: ReadonlyArray<{ user: { username: string }; statePath: string
  *
  * Needed after a destructive flow truncates `sessions` — e.g. the daten-jobs
  * roundtrip's import job plus the force-reseed its teardown runs to reset the
- * DB (AC-310) — which kills EVERY session, including the shared storageState
+ * DB (AC-597) — which kills EVERY session, including the shared storageState
  * cookies the rest of the serial mutating bucket reuses. Without this, every
  * mutating spec ordered after the destructive one lands on the login screen.
  * The reseed re-inserts users with their seed credentials, so the seed

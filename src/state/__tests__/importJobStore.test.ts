@@ -21,19 +21,19 @@
  *     shape — NOT `ApiResult`.
  *
  * Coverage references:
- *   - AC-326 — import-job create + resumable chunked upload (HEAD→PATCH loop,
+ *   - import-job create + resumable chunked upload (HEAD→PATCH loop,
  *              409 UPLOAD_OFFSET_CONFLICT is retry-safe with the offset
  *              unchanged).
- *   - AC-329 — override + confirmation phrase up front: TARGET_NOT_EMPTY /
+ *   - AC-591, AC-592 — override + confirmation phrase up front: TARGET_NOT_EMPTY /
  *              RESTORE_CONFIRMATION_MISMATCH map to `createError`; the checks
  *              reject at create, before any upload.
- *   - AC-330 — session invalidation + re-auth: the users-wipe CASCADE-drops
+ *   - AC-603 — session invalidation + re-auth: the users-wipe CASCADE-drops
  *              the operator's session mid-run; the SSE-driven refetch's 401 is
  *              the EXPECTED path → delegate to handleSessionExpired (route to
  *              login). DatenView's mount-time resume re-attaches after re-login.
- *   - AC-331 — one active job per kind: 409 IMPORT_JOB_ACTIVE re-attaches to
+ *   - AC-601 — one active job per kind: 409 IMPORT_JOB_ACTIVE re-attaches to
  *              the running job (no createError), mirroring the export side.
- *   - AC-335 (E2E) — the dialog phases these store actions back.
+ *   - `e2e/daten-jobs.spec.ts` — the dialog phases these store actions back.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -142,7 +142,7 @@ function ok<T>(data: T): ApiResult<T> {
   return { ok: true, data };
 }
 
-/** 409 TARGET_NOT_EMPTY — rejects at create when override is omitted (AC-329). */
+/** 409 TARGET_NOT_EMPTY — rejects at create when override is omitted (AC-591). */
 function targetNotEmpty<T>(): ApiResult<T> {
   return {
     ok: false,
@@ -153,7 +153,7 @@ function targetNotEmpty<T>(): ApiResult<T> {
 }
 
 /**
- * 422 RESTORE_CONFIRMATION_MISMATCH — phrase wrong/missing at create (AC-329).
+ * 422 RESTORE_CONFIRMATION_MISMATCH — phrase wrong/missing at create (AC-592).
  * `category: 'server_error'` is what the real client produces: `classifyCode`
  * (client.ts) has no case for this code, so it falls to the default bucket.
  * The store branches on `error.code`, not `category`, so the value is inert to
@@ -178,7 +178,7 @@ function importJobActive<T>(): ApiResult<T> {
   };
 }
 
-/** 401 SESSION_EXPIRED — the EXPECTED mid-wipe path (AC-330). */
+/** 401 SESSION_EXPIRED — the EXPECTED mid-wipe path (AC-597). */
 function expired<T>(): ApiResult<T> {
   return {
     ok: false,
@@ -218,12 +218,12 @@ function makeArchive(size = 5 * 1024): File {
  * Wire `headOffset` + `patchChunk` to a moving server-offset cursor, so the
  * store's HEAD→PATCH loop converges regardless of the implementation's chunk
  * size. Each accepted PATCH advances the cursor by the chunk's byte length and
- * echoes the new offset (the server contract in AC-326). Returns the cursor
+ * echoes the new offset (the server contract). Returns the cursor
  * holder so a test can inspect the final offset.
  *
  * `conflictAt`, when set, makes the FIRST PATCH whose start offset equals that
- * value return 409 UPLOAD_OFFSET_CONFLICT with the offset UNCHANGED (AC-326:
- * a stale PATCH is retry-safe). The store is expected to re-HEAD and resume.
+ * value return 409 UPLOAD_OFFSET_CONFLICT with the offset UNCHANGED
+ * (a stale PATCH is retry-safe). The store is expected to re-HEAD and resume.
  */
 function wireResumableUpload(
   length: number,
@@ -269,10 +269,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('importJobStore — resume probe (AC-330)', () => {
+describe('importJobStore — resume probe (AC-603)', () => {
   it('runs the resume probe via importJobApi.getLatest() on first subscribe and stores the job', async () => {
     // DatenView mounts → first subscriber probes for an in-flight import so a
-    // reload (or a re-login after the mid-wipe re-auth) re-attaches (AC-330).
+    // reload (or a re-login after the mid-wipe re-auth) re-attaches (AC-603).
     const running = makeJob({ status: 'running', filesTotal: 4, filesDone: 1 });
     getLatestMock.mockResolvedValue(ok({ job: running }));
 
@@ -300,7 +300,7 @@ describe('importJobStore — resume probe (AC-330)', () => {
   });
 
   it('refetches via getLatest when a data_exchange_job_changed frame fires', async () => {
-    // Invalidation-only frame (AC-333 / ADR-0025): refetch the row over REST.
+    // Invalidation-only frame (AC-602 / ADR-0025): refetch the row over REST.
     const pending = makeJob({ status: 'pending' });
     getLatestMock.mockResolvedValueOnce(ok({ job: pending }));
     const unsubscribe = useImportJobStore.getState().subscribe();
@@ -327,7 +327,7 @@ describe('importJobStore — resume probe (AC-330)', () => {
   });
 });
 
-describe('importJobStore — create() guard mapping (AC-329)', () => {
+describe('importJobStore — create() guard mapping (AC-591, AC-592)', () => {
   it('stores the pending row and CLEARS any prior createError on a clean create', async () => {
     // First, a rejected create leaves createError set — so the clean create
     // below has a non-null prior value to clear (otherwise the final
@@ -354,7 +354,7 @@ describe('importJobStore — create() guard mapping (AC-329)', () => {
   });
 
   it("maps 409 TARGET_NOT_EMPTY to createError='target_not_empty' and leaves job unset", async () => {
-    // AC-329: a restore into a non-empty target without override is rejected
+    // AC-591: a restore into a non-empty target without override is rejected
     // at create, before any upload. The dialog surfaces a "must override" cue.
     createMock.mockResolvedValueOnce(targetNotEmpty<DataExchangeJobDto>());
 
@@ -366,7 +366,7 @@ describe('importJobStore — create() guard mapping (AC-329)', () => {
   });
 
   it("maps 422 RESTORE_CONFIRMATION_MISMATCH to createError='confirmation_mismatch'", async () => {
-    // AC-329: override set but the phrase is wrong/missing — rejected at create.
+    // AC-592: override set but the phrase is wrong/missing — rejected at create.
     createMock.mockResolvedValueOnce(confirmationMismatch<DataExchangeJobDto>());
 
     const file = makeArchive();
@@ -377,7 +377,7 @@ describe('importJobStore — create() guard mapping (AC-329)', () => {
   });
 
   it('re-attaches to the active job (no createError) when create() returns 409 IMPORT_JOB_ACTIVE', async () => {
-    // AC-331: a second create while an import is pending/running is rejected
+    // AC-601: a second create while an import is pending/running is rejected
     // with IMPORT_JOB_ACTIVE. Mirroring the export side, the store does NOT
     // surface this as a create error — it re-attaches to the running job via
     // getLatest so the dialog jumps straight to the processing phase. The
@@ -397,11 +397,11 @@ describe('importJobStore — create() guard mapping (AC-329)', () => {
   });
 });
 
-describe('importJobStore — resumable upload (AC-326)', () => {
+describe('importJobStore — resumable upload', () => {
   it('reads the server offset via headOffset then PATCHes chunks to file.size, advancing uploadOffset', async () => {
     // Fresh upload from offset 0. The store HEADs the current offset, then
     // PATCHes sequential chunks until the offset reaches Upload-Length
-    // (AC-326). Each accepted PATCH carries the offset it is writing at, in
+    //. Each accepted PATCH carries the offset it is writing at, in
     // strictly increasing order, with no gaps — the upload is contiguous.
     const size = 5 * 1024;
     const file = makeArchive(size);
@@ -430,7 +430,7 @@ describe('importJobStore — resumable upload (AC-326)', () => {
   it('resumes from a non-zero server offset reported by headOffset', async () => {
     // Re-attach after an interrupted upload: HEAD reports bytes already on the
     // server, so the store must NOT re-send from 0 — it picks up at the
-    // server's offset (AC-326 resumability).
+    // server's offset (resumability).
     const size = 5 * 1024;
     const startAt = 2 * 1024;
     const file = makeArchive(size);
@@ -449,7 +449,7 @@ describe('importJobStore — resumable upload (AC-326)', () => {
   });
 
   it('re-HEADs and resumes on a 409 UPLOAD_OFFSET_CONFLICT (offset unchanged on the conflicting call)', async () => {
-    // AC-326: a PATCH at a stale offset returns 409 with the offset unchanged
+    // A PATCH at a stale offset returns 409 with the offset unchanged
     // (retry-safe). The store re-HEADs to learn the true offset and resumes;
     // the upload still completes to Upload-Length. We inject a conflict on the
     // first chunk (offset 0) to force at least one re-HEAD.
@@ -501,7 +501,7 @@ describe('importJobStore — resumable upload (AC-326)', () => {
   });
 });
 
-describe('importJobStore — mid-wipe re-auth (AC-330)', () => {
+describe('importJobStore — mid-wipe re-auth', () => {
   it('delegates an SSE-driven 401 refetch to handleSessionExpired without clobbering job', async () => {
     // EXPECTED path, not an error: the import job's users-wipe CASCADE-drops
     // the operator's session mid-run, so a status poll on the old cookie
@@ -510,7 +510,7 @@ describe('importJobStore — mid-wipe re-auth (AC-330)', () => {
     //
     // DatenView's mount-time resume probe (getLatest) re-attaches to this same
     // job AFTER the operator re-authenticates — the account round-trips
-    // through the archive with its original passwordHash (AC-330). No bearer
+    // through the archive with its original passwordHash. No bearer
     // token is minted anywhere in this flow.
     const processing = makeJob({ status: 'running', filesTotal: 8, filesDone: 4 });
     getLatestMock.mockResolvedValueOnce(ok({ job: processing }));

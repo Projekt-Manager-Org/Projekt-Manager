@@ -45,10 +45,10 @@ export const SEED_DEFAULT_PASSWORD = 'changeme';
  * a typo on a consuming site surfaces as a TypeScript error at edit time.
  */
 /**
- * Expected confirmation phrase for a destructive restore (`POST /api/import`
- * with `override=true` into a non-empty target — see `api.md §14.2.4` and
- * `verification.md AC-160`). The phrase is a `[C]` configurable value
- * (architecture.md §12.2); tests pin the default so a deployment that
+ * Expected confirmation phrase for a destructive restore (an import that
+ * replaces business data — see `verification.md AC-592`). The phrase is a
+ * `[C]` configurable value (architecture.md §12.2); tests pin the default so
+ * a deployment that
  * retunes the value surfaces the divergence here instead of across many
  * scattered assertions.
  */

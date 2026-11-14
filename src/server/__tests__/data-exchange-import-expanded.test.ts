@@ -20,7 +20,7 @@
  *   - The envelope version is a hard cut — a stale-stamped envelope rejects.
  *
  * Test fixtures are built in-test rather than via the seed or a full
- * `ExportService` export so the cases can vary independently. The roundtrip AC-141
+ * `ExportService` export so the cases can vary independently. The roundtrip AC-594
  * analog uses the seed + export but skips fields that legitimately change
  * between two snapshots (`exported_at`).
  */
@@ -86,7 +86,7 @@ function isoNow(): string {
  * service throws (carrying `.code` / `.statusCode` / `.details`) rather
  * than returning an HTTP envelope, so failure cases inspect the error
  * directly. ImportService ignores any `attachments` key on the envelope
- * (it never restores attachment rows — AC-253), so fixtures pass the full
+ * (it never restores attachment rows), so fixtures pass the full
  * `Envelope` as-is; no payload massaging is needed.
  */
 async function expectImportRejection(env: Envelope, opts: ImportOptions): Promise<AppError> {
@@ -434,7 +434,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   // invoices / etc.; sessions cascade via the FK; sessionInvalidated is
   // true in the response; the sessions table is empty post-call.
   // -------------------------------------------------------------------
-  describe('override wipe-and-replace sets sessionInvalidated and wipes sessions', () => {
+  describe('AC-597: override wipe-and-replace sets sessionInvalidated and wipes sessions', () => {
     it('returns sessionInvalidated: true and clears sessions table post-call', async () => {
       // Seed a session row so the wipe has something to CASCADE-delete.
       // The text-leg relied on the operator's own login session; the
@@ -479,7 +479,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-312 — numbering continues from the imported peak.
+  // AC-594 — numbering continues from the imported peak.
   //
   // The verbatim-restore half is already pinned above (the expanded
   // import asserts `invoice_sequence.nextValue` round-trips). That does
@@ -491,7 +491,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   // are defects in a legally-numbered invoice series, and neither is
   // visible from the restored counter value alone.
   // -------------------------------------------------------------------
-  describe('invoice_sequence continues numbering after an import (AC-312)', () => {
+  describe('invoice_sequence continues numbering after an import (AC-369)', () => {
     it('allocates the next-number-after-peak, not a restart and not peak+1', async () => {
       await wipeBusinessDataExceptUsers();
       try {
@@ -657,12 +657,13 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
     });
   });
 
-  // Invoice two-pass self-FK (AC-309). The envelope arrives ordered by
-  // the exporter `(cancellation_of NULLS FIRST, id)` but the importer
-  // re-slices on its own. Test both: (a) the documented order, and
+  // Invoice two-pass self-FK (AC-594; the chain rejection is AC-593). The
+  // envelope arrives ordered by the exporter `(cancellation_of NULLS FIRST,
+  // id)` but the importer re-slices on its own. Test both: (a) the documented
+  // order, and
   // (b) a hand-reordered envelope where the Storno comes first.
   // Both must restore without FK error. The Storno-of-Storno chain is
-  // rejected at envelope validation (422), per the same AC.
+  // rejected at envelope validation (422).
   // -------------------------------------------------------------------
   describe('invoice two-pass insert is robust to input ordering', () => {
     it('imports originals → Stornos when the envelope is in documented order', async () => {
@@ -757,11 +758,11 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-386: invoice tax mode, lines and totals pass the §5.15 write rules
+  // AC-593: invoice tax mode, lines and totals pass the §5.15 write rules
   // at envelope validation. Rejections run against an empty target, so a
   // single wipe and reseed covers every case.
   // -------------------------------------------------------------------
-  describe('AC-386: invoice tax mode, lines and totals are validated', () => {
+  describe('AC-593: invoice tax mode, lines and totals are validated', () => {
     type Mutate = (inv: Envelope['invoices'][number]) => void;
     const lineCases: Array<[string, Mutate, string]> = [
       [
@@ -927,7 +928,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   // empty (fresh) at insert time, so a ref absent from the envelope
   // signals a hand-edited or partial source.
   // -------------------------------------------------------------------
-  describe('MISSING_USER_REFS strict semantic — refs resolve ONLY against envelope.users', () => {
+  describe('AC-593: MISSING_USER_REFS strict semantic — refs resolve ONLY against envelope.users', () => {
     it('succeeds when project_workers.userId is in envelope.users', async () => {
       await wipeBusinessDataExceptUsers();
       try {
@@ -1008,7 +1009,8 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // Single-row import audit (AC-311). On a successful commit one audit row lands
+  // Single-row import audit (the ImportService's own row; the import job
+  // suppresses it and writes its own). On a successful commit one audit row lands
   // with `entity_type='data_import'`, `actor_kind='system'`,
   // `actor_reason='data_import'`, `action='import_restored'`,
   // `entity_id=<synthetic batch UUID>`, `entity_label='Import: <N>
@@ -1067,7 +1069,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
 
         // Payload carries the full per-slot counts breakdown — every
         // slot key, zero where empty. `attachments` is structurally
-        // always 0 for the business-data import (AC-253) but the key is
+        // always 0 for the business-data import but the key is
         // present for shape uniformity.
         const expectedCounts = {
           users: env.users.length,
@@ -1091,10 +1093,10 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-253: the business-data import never inserts `attachments` rows.
+  // The business-data import never inserts `attachments` rows.
   // The export envelope carries a metadata-only `attachments[]` slot,
   // but the import ignores it entirely — attachment rows + bytes are
-  // restored only by the server-side import JOB (AC-328), never here.
+  // restored only by the server-side import JOB (AC-594), never here.
   // (The former route-layer wire-reject of a body carrying an
   // `attachments` key went with the removed text-leg route; the
   // invariant is now "ignore the slot, insert nothing".) This locks it:
@@ -1102,7 +1104,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   // restore path would land rows whose wrapped DEKs are unwrappable on
   // the importing instance — a silent-data-loss class.
   // -------------------------------------------------------------------
-  describe('AC-253: import ignores a populated attachments slot', () => {
+  describe('import ignores a populated attachments slot', () => {
     it('inserts zero attachment rows and reports counts.attachments=0 even when the envelope carries descriptors', async () => {
       await wipeBusinessDataExceptUsers();
       await db.execute(
@@ -1213,12 +1215,12 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   // covered by the service-level cases above.
 
   // -------------------------------------------------------------------
-  // AC-141 analog roundtrip. Export the seeded dataset, wipe, override-
+  // AC-594 analog roundtrip. Export the seeded dataset, wipe, override-
   // import the snapshot, re-export, compare. `exported_at` and
   // `users[*].lastLoginAt` legitimately drift between two snapshots; we
   // exclude them from the strict equality check.
   // -------------------------------------------------------------------
-  describe('AC-141 analog — seed → export → wipe → import (override) → export', () => {
+  describe('AC-594 analog — seed → export → wipe → import (override) → export', () => {
     it('preserves every slot byte-for-byte (modulo exported_at and lastLoginAt)', async () => {
       // First export — the seeded baseline.
       const e1 = await exportEnvelope();
@@ -1226,7 +1228,7 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       try {
         // Override-import the snapshot back into the (currently seeded)
         // database — the wipe + restore must reproduce every slot.
-        // ImportService ignores the envelope's `attachments` slot (AC-253).
+        // ImportService ignores the envelope's `attachments` slot.
         await importEnvelope(e1, {
           override: true,
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,

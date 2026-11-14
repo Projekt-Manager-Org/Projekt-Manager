@@ -1,6 +1,6 @@
 /**
  * VollstaendigerImportDialog — deterministic phase-rendering tests for the
- * server-side import-job dialog (ui/daten.md §8.11.2, AC-335 [vis], AC-161).
+ * server-side import-job dialog (ui/daten.md §8.11.2, AC-161).
  *
  * The e2e (`e2e/daten-jobs.spec.ts`) drives the real job end-to-end but races
  * past `uploading`/`processing` on a tiny seed; this file pins each phase
@@ -144,7 +144,7 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     expect(uploadSpy).not.toHaveBeenCalled();
   });
 
-  it('a picked file shows confirm even when a PRIOR terminal job sits in the store', () => {
+  it('AC-605: a picked file shows confirm even when a PRIOR terminal job sits in the store', () => {
     // `latest('import')` keeps returning a finished job row, so without this
     // the second restore was unreachable: every open rendered the old
     // summary and the confirm gate never appeared (found by the two-cycle
@@ -156,7 +156,7 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     expect(screen.queryByTestId('import-job-summary')).not.toBeInTheDocument();
   });
 
-  it('a picked file shows confirm when a PRIOR failed job sits in the store', () => {
+  it('AC-605: a picked file shows confirm when a PRIOR failed job sits in the store', () => {
     useImportJobStore.setState({
       job: makeJob({ id: 'old-job', status: 'failed', errorDetail: 'boom' }),
     });
@@ -166,7 +166,7 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     expect(screen.queryByTestId('import-job-failed')).not.toBeInTheDocument();
   });
 
-  it('re-attach (no file) still resumes onto a terminal job', () => {
+  it('AC-604: re-attach (no file) still resumes onto a terminal job', () => {
     useImportJobStore.setState({ job: makeJob({ id: 'old-job', status: 'ready' }) });
     render(<VollstaendigerImportDialog file={null} onClose={vi.fn()} />);
 
@@ -174,14 +174,19 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
     expect(screen.queryByTestId('import-job-confirm')).not.toBeInTheDocument();
   });
 
-  it('renders the mobile warning below the configured breakpoint', () => {
+  it('AC-606: renders the mobile warning below the configured breakpoint', () => {
     setMatchMedia(true);
     render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
     expect(screen.getByTestId('import-job-mobile-warning')).toBeInTheDocument();
+    // Non-blocking — the phrase still enables Start.
+    fireEvent.change(screen.getByTestId('import-job-phrase-input'), {
+      target: { value: RESTORE_CONFIRMATION_PHRASE },
+    });
+    expect(screen.getByTestId('import-job-start')).toBeEnabled();
   });
 });
 
-describe('VollstaendigerImportDialog — uploading (AC-335)', () => {
+describe('VollstaendigerImportDialog — uploading (AC-602)', () => {
   it('renders the upload byte readout from uploadOffset / bytesTotal', () => {
     // A pending job AT MOUNT = re-attach → tracking → uploading straight away.
     useImportJobStore.setState({
@@ -197,7 +202,7 @@ describe('VollstaendigerImportDialog — uploading (AC-335)', () => {
   });
 });
 
-describe('VollstaendigerImportDialog — processing (AC-335)', () => {
+describe('VollstaendigerImportDialog — processing (AC-602)', () => {
   it('renders the files counter + current item from a running job', () => {
     useImportJobStore.setState({
       job: makeJob({
@@ -219,7 +224,7 @@ describe('VollstaendigerImportDialog — processing (AC-335)', () => {
   });
 });
 
-describe('VollstaendigerImportDialog — summary + failed (AC-335)', () => {
+describe('VollstaendigerImportDialog — summary + failed (AC-607, AC-587)', () => {
   it('renders the restored count from a ready job', () => {
     useImportJobStore.setState({
       job: makeJob({ status: 'ready', filesTotal: 5, filesDone: 5 }),

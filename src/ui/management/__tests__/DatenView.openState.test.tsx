@@ -1,6 +1,7 @@
 /**
  * DatenView derived dialog open-state — the "mirror export" fix
- * ([ui/daten.md §8.11]).
+ * ([ui/daten.md §8.11]). AC-603 (a job in progress reopens its progress),
+ * AC-604 (an ended import shows its result until closed).
  *
  * The branch's load-bearing UX contract, none of which had unit coverage:
  *

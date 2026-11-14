@@ -83,7 +83,7 @@ export function classifyKind(mime: string): AttachmentKind {
  * `attachments_valid_kind` CHECK constraint (schema.ts). Used by the
  * takeout import runner to reject a tampered envelope in Pass-1, before
  * any destructive write — a `kind` outside the enum would otherwise pass
- * validation and only trip the CHECK on the post-wipe insert (AC-327).
+ * validation and only trip the CHECK on the post-wipe insert (AC-593).
  */
 export function validateKind(kind: string): AttachmentKind {
   if (!KIND_VALUES.has(kind)) {

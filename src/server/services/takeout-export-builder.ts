@@ -1,11 +1,10 @@
 /**
- * Full-account takeout EXPORT builder — ADR-0018 / ADR-0024, api.md
- * §14.2.4 "Export job — archive layout + manifest" / "build and
- * lifecycle", data-model.md §5.18.
+ * Full-account takeout EXPORT builder — ADR-0018 / ADR-0024,
+ * data-model.md §5.8, §5.18.
  *
  * Assembles the staged archive a `ready` export job serves:
  *
- *   data.json                                   — the ExportService envelope (AC-135)
+ *   data.json                                   — the ExportService envelope (AC-583)
  *   attachments/<nummer>-<titel>/<id>-<datei>   — every status='ready'
  *                                                 attachment as PLAINTEXT
  *   manifest.json                               — server-computed coverage +
@@ -27,7 +26,7 @@
  * plaintext enters the archive — only authentic bytes are ever written
  * (authenticated-before-release; GCM cannot authenticate a partial stream).
  * A per-row failure (unwrap / fetch / decrypt throws) FAILS THE JOB
- * (AC-325): an archive missing a row is a worthless backup, and shipping
+ * (AC-585): an archive missing a row is a worthless backup, and shipping
  * it as `ready` hands the operator a restore that cannot work. No partial
  * artifact is ever labelled success — the operator re-runs the export.
  *
@@ -141,7 +140,7 @@ export interface BuildExportArchiveDeps {
   jobId: string;
   /**
    * Progress sink. The builder throttles calls (~1/s) so a many-file
-   * job does not emit a frame per file (AC-333). `filesTotal` /
+   * job does not emit a frame per file (AC-602). `filesTotal` /
    * `filesDone` / `bytesTotal` / `bytesDone` count only attachments —
    * `data.json` and `manifest.json` are archive entries, not attachment
    * "files".
@@ -391,7 +390,7 @@ async function loadAttachmentKeys(
  * Decrypt one attachment to plaintext. Any per-row fault (missing wrapped
  * DEK, unwrap failure, storage fetch failure, AES-256-GCM verify failure)
  * is logged and RETHROWN naming the row — it fails the whole build
- * (AC-325). A backup that silently omits a file is not a backup.
+ * (AC-585). A backup that silently omits a file is not a backup.
  *
  * Transient storage faults are already retried inside the S3 client (SDK
  * default: 3 attempts, standard mode with backoff), so reaching this

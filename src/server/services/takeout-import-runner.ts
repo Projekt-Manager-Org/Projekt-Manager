@@ -1,6 +1,6 @@
 /**
- * Full-account takeout IMPORT job runner — ADR-0018 / ADR-0024, api.md
- * §14.2.4 ("Import job — validate before wipe" / "restore"), data-model.md
+ * Full-account takeout IMPORT job runner — ADR-0018 / ADR-0024,
+ * verification.md §15.14, data-model.md
  * §5.18.
  *
  * Owns the asynchronous, fire-and-forget restore that the final upload
@@ -36,30 +36,30 @@
  *     additionally re-checks `schema_version` (throws pre-tx). ANY failure
  *     → `failed` + `import_failed` audit +
  *     ZERO destructive writes — a corrupt / tampered / wrong-version
- *     archive never wipes the target (AC-327).
+ *     archive never wipes the target (AC-593).
  *   RESTORE: `ImportService.import` with `override:true` (a full-account
  *     restore replaces users + company_profile too; the create-time gate
  *     already proved operator intent), `confirmationPhrase` = the canonical
  *     phrase, `writeAuditRow:false` (the job owns the single terminal row),
  *     `caller:null` (no import token — the job re-encrypts server-side under
  *     its own loaded identity). The TRUNCATE cascades into `sessions`,
- *     dropping the operator's cookie mid-job (AC-330) — by design; the
+ *     dropping the operator's cookie mid-job (AC-597) — by design; the
  *     operator re-authenticates and re-attaches via `GET /api/import-jobs`.
  *   PASS 2 — ATTACHMENT RE-ENCRYPT + INSERT: stream once more, buffering one
  *     attachment at a time; per row mint a fresh DEK, AES-256-GCM-encrypt,
  *     wrap the DEK under the instance recipient, PUT ciphertext to B2, and
  *     insert the `attachments` row with `id` / `createdBy` / `createdAt`
- *     preserved (AC-328). The PUT's VersionId is captured into `version_id`
+ *     preserved (AC-594). The PUT's VersionId is captured into `version_id`
  *     / `thumb_version_id` so a restored row round-trips through the
  *     Papierkorb (hide → restore copyFromVersion). Photos also get a
  *     regenerated thumbnail (see below). Progress is throttled (~1/s).
  *     The pass ends by asserting EVERY envelope attachment was inserted —
  *     a restore short of its own envelope fails rather than reporting
  *     `ready`, the import-side mirror of the export builder's coverage
- *     check (AC-325). A backup half-restored under a green label is how
+ *     check (AC-585). A backup half-restored under a green label is how
  *     the operator finds out too late.
  *
- * Photo-thumbnail regeneration (AC-328): the export bundles only originals
+ * Photo-thumbnail regeneration (AC-596): the export bundles only originals
  * (EnvelopeAttachment carries no thumb), so for each `kind='photo'` row the
  * runner re-derives the gallery WebP thumbnail server-side via `sharp`
  * (serverImagePipeline.ts), encrypts it under its own fresh DEK, PUTs the
@@ -72,7 +72,7 @@
  * do fail the job.
  *
  * The staged upload is NOT removed on failure: the route stamped
- * `archiveRef` at `markRunning`, so the staging reaper (data-model.md §6.15)
+ * `archiveRef` at `markRunning`, so the staging reaper (AC-589)
  * sweeps the file for a terminal import (ready OR failed) on its TTL clock.
  * This differs from the export runner, which unlinks its partial build
  * (an export failure leaves `archiveRef` null, so the reaper can't reach it).
@@ -336,7 +336,7 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
     // Closed-enum check against the `attachments` CHECK constraints
     // (kind/label/mime_type). Pass-2 inserts the row AFTER the wipe has
     // committed, so an out-of-enum value would otherwise trip the DB
-    // constraint post-wipe and strand a truncated target (AC-327). The
+    // constraint post-wipe and strand a truncated target (AC-593). The
     // domain validators are the shared source of truth for these enums.
     try {
       validateKind(att.kind);
@@ -373,7 +373,7 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
     // through THIS map, so two ids sharing a path collapse into one and the
     // loser is silently never restored — id-uniqueness above does not catch
     // it. Rejected here, pre-wipe, rather than surviving into a truncated
-    // target (AC-327).
+    // target (AC-593).
     if (attachmentIdByZipPath.has(entry.zipPath)) {
       throw new Error(`duplicate zipPath ${entry.zipPath} in manifest`);
     }
@@ -397,7 +397,7 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
     const { envelope, attachmentById, attachmentIdByZipPath } = await validateArchive(deps);
 
     // RESTORE — business rows via the shared override transaction. This
-    // TRUNCATEs the importable set + users (→ sessions CASCADE, AC-330) and
+    // TRUNCATEs the importable set + users (→ sessions CASCADE, AC-597) and
     // re-inserts with IDs preserved. writeAuditRow:false → the job owns the
     // terminal row; caller:null → no import token minted.
     const importSvc = new ImportService(db, storage);
@@ -593,13 +593,13 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
       );
     }
     // The staged upload is intentionally retained on failure — `archiveRef`
-    // was stamped at markRunning, so the staging reaper (data-model.md §6.15)
+    // was stamped at markRunning, so the staging reaper (AC-589)
     // sweeps it on the TTL clock for both ready and failed import jobs.
     //
     // A failure partway through Pass 2 leaves the already-committed business
     // rows + the attachments inserted so far (`status='ready'`, valid
     // ciphertext on B2). That partial state is recovered by the spec's
-    // re-run-is-a-full-replace model (AC-328): a subsequent override import's
+    // re-run-is-a-full-replace model (AC-594): a subsequent override import's
     // pre-wipe `listAllKeys` hide (ImportService) demotes those keys and the
     // re-run re-PUTs the deterministic `(projectId, id)` keys. No explicit
     // Pass-2 storage rollback is attempted — hiding here would strand the

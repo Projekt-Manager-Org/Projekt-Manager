@@ -199,7 +199,7 @@ export function applySecurity(doc: DocLike, routes: RouteOptions[]): void {
  * It was asserted, and it was false: `@fastify/swagger` drops HEAD
  * routes unless the route opts in (`config.swagger.exposeHeadRoute`),
  * which silently omitted `HEAD /api/import-jobs/:id/archive` — the tus
- * offset probe, normative in api.md §14.2.4 and called by
+ * offset probe, called by
  * `src/api/client.ts`. Nothing failed, because nothing was looking.
  *
  * Two exclusions, both structural rather than a list of names:

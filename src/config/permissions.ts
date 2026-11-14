@@ -42,7 +42,7 @@ export const IS_TEST_ONLY_ROLE: Record<Role, boolean> = {
   bookkeeper: false,
 };
 
-// data:export gates the unified business-data export (api.md §14.2.4).
+// data:export gates the unified business-data export (api.md §14.3).
 // data:restore gates the unified import — owner-only because a restore
 // replaces all business data in a single transaction.
 //

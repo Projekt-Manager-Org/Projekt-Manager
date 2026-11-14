@@ -17,26 +17,19 @@ import { createDatabase } from '../src/server/db/connection.js';
 import { seed } from '../src/server/seed.js';
 
 /**
- * E2E — Daten job-driven UI roundtrip (AC-335 [vis], AC-328 e2e arm, AC-161).
- *
- * RED-BY-DESIGN. This spec drives the job-endpoint Daten UI that does NOT
- * exist yet: the live DatenView still walks the retiring client-streaming
- * flow (`export-all-*` / `import-all-*`). It therefore fails until step 4
- * lands the export/import job stores + dialog rewire. It REPLACES the
- * retiring `daten-vollstaendiger-export.spec.ts` + `daten-vollstaendiger-import.spec.ts`,
- * which step 5 deletes once the client-streaming machinery is removed.
+ * E2E — Daten job-driven UI roundtrip.
  *
  * What it pins (the KEY DELTA from the retiring specs: the UI now drives the
  * JOB endpoints, not client-side byte orchestration):
  *
- *   AC-335  Export dialog: POST /api/export-jobs → progress (files / bytes +
- *           current item) → Range download; mobile-warning below the
- *           configured breakpoint; mount-time resume probe re-surfaces a
- *           `ready` job's download after a page reload. Import dialog: file
- *           pick → confirmation-phrase gate → resumable upload progress →
- *           server processing → re-auth after the user-wipe → restored-counts
- *           summary. Both dialogs drive the job endpoints, not client bytes.
- *   AC-328  Full attachment roundtrip via the JOB path — seed (photo +
+ *   AC-586, AC-606  Export dialog: POST /api/export-jobs → progress
+ *           (files / bytes + current item) → Range download; mobile-warning
+ *           below the configured breakpoint; a `ready` job's download after
+ *           a page reload. Import dialog: file pick → confirmation-phrase
+ *           gate → resumable upload progress → server processing → re-auth
+ *           after the user-wipe → result summary (AC-604). Both dialogs drive the job
+ *           endpoints, not client bytes.
+ *   AC-594  Full attachment roundtrip via the JOB path — seed (photo +
  *           binary) → export job → import job — restores every row at
  *           byte-equal plaintext, `(id, createdBy, createdAt)` preserved,
  *           photo thumbnail regenerated server-side and decodes.
@@ -76,7 +69,7 @@ test.use({ storageState: STORAGE_STATES.owner });
  * Teardown for the destructive roundtrip below.
  *
  * The roundtrip test drives an import JOB that wipes the account (TRUNCATEs
- * `users`, cascading through `sessions` — AC-310) and leaves the seed reshaped
+ * `users`, cascading through `sessions` — AC-597) and leaves the seed reshaped
  * (two extra attachments on the first project). The rest of the serial mutating
  * bucket reuses this file's shared `storageState` cookies and a pristine seed,
  * so this spec MUST restore both.
@@ -362,11 +355,11 @@ async function exportJobZip(page: Page, opts?: { afterImport?: boolean }): Promi
 }
 
 /**
- * Drive the Import dialog with `zipBytes` through to the restored-counts
+ * Drive the Import dialog with `zipBytes` through to the result
  * summary, including the mid-processing re-auth.
  *
  * Flow: file pick → confirmation-phrase gate (AC-161) → resumable upload →
- * server processing. The restore TRUNCATEs `users` mid-processing (AC-310),
+ * server processing. The restore TRUNCATEs `users` mid-processing (AC-597),
  * so the operator's session dies, the next poll 401s, and the app routes to
  * the login screen — there is NO client-held summary before the wipe. After
  * re-login the mount-time resume probe auto-opens the dialog onto the summary
@@ -515,7 +508,7 @@ function readArchive(zipBytes: Buffer): {
 // states. If the wipe ran before a read-only test, that test would open a
 // context with a now-dead cookie and land on the login screen.
 
-test('AC-335: export job surfaces the mobile-warning below the configured breakpoint', async ({
+test('AC-606: export job surfaces the mobile-warning below the configured breakpoint', async ({
   page,
 }) => {
   // Mobile-warning sub-arm. Navigate at the DEFAULT desktop viewport first so
@@ -539,7 +532,7 @@ test('AC-335: export job surfaces the mobile-warning below the configured breakp
   await expect(page.getByTestId('export-job-start')).toBeEnabled();
 });
 
-test('AC-335: export job resume probe re-surfaces the download after a page reload', async ({
+test('AC-586: export job resume probe re-surfaces the download after a page reload', async ({
   page,
 }) => {
   // Resume sub-arm. With a `ready` job present, a page reload must re-attach
@@ -572,7 +565,7 @@ test('AC-335: export job resume probe re-surfaces the download after a page relo
   await expect(page.getByTestId('export-job-dialog')).toHaveCount(0);
 });
 
-test('AC-325: an unreadable attachment fails the export in the UI — no download is offered', async ({
+test('AC-585: an unreadable attachment fails the export in the UI — no download is offered', async ({
   page,
 }) => {
   // A `ready` attachment whose wrapped DEK cannot be unwrapped must abort the
@@ -633,7 +626,7 @@ test('AC-325: an unreadable attachment fails the export in the UI — no downloa
   }
 });
 
-test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import round preserves identity, bytes, and archive parity', async ({
+test('AC-586 / AC-594 / AC-161 / AC-584 / AC-604: export → import → export → import round preserves identity, bytes, and archive parity', async ({
   page,
   request,
 }) => {
@@ -678,7 +671,7 @@ test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import
   expect(cycle2.envelopeAttachmentIds).toEqual(cycle1.envelopeAttachmentIds);
   expect(cycle2.manifestAttachmentIds).toEqual(cycle1.manifestAttachmentIds);
   // Parity within each archive — the invariant the importer enforces
-  // pre-wipe (AC-325). Asserted on both cycles, not just the first.
+  // pre-wipe (AC-584). Asserted on both cycles, not just the first.
   expect(cycle1.manifestAttachmentIds).toEqual(cycle1.envelopeAttachmentIds);
   expect(cycle2.manifestAttachmentIds).toEqual(cycle2.envelopeAttachmentIds);
   // Every attachment this test seeded survives both cycles. Containment,
@@ -698,7 +691,7 @@ test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import
   await importJobZip(page, zipBytes2, '.tmp-daten-job-import-2.zip', { afterImport: true });
 
   // -------------------------------------------------------------
-  // 6. Cross-check restored rows after TWO full cycles (the AC-328
+  // 6. Cross-check restored rows after TWO full cycles (the AC-594
   //    roundtrip verification, identical in shape to the retiring import
   //    spec) — the byte-equality is against the ORIGINAL seed plaintext:
   //    - (id, createdBy, createdAt) per row equals source
@@ -754,7 +747,7 @@ test('AC-335 / AC-328 / AC-161 / AC-325: export → import → export → import
   }
 
   // Photo thumbnail render via the SW-intercepted synthetic-origin URL. The
-  // import JOB regenerates the thumbnail server-side (AC-328), so the gallery
+  // import JOB regenerates the thumbnail server-side (AC-596), so the gallery
   // should mount an `<img>` whose `naturalWidth` decodes successfully — same
   // load-bearing assertion shape as the retiring import spec / AC-416.
   await page.goto(`/projects/${projectId}`);

@@ -3,7 +3,7 @@
  *
  *   - GET  /api/storage-usage — deployment-wide roll-up. Gated by the
  *     same `data:export` scope as the unified Export operation
- *     (api.md §14.2.4), so worker / bookkeeper see 403; owner / office
+ *     (api.md §14.3), so worker / bookkeeper see 403; owner / office
  *     see 200.
  *
  * A pure read; no `audit_log` row, no `Cache-Control`

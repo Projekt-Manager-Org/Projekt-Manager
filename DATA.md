@@ -23,14 +23,14 @@ Each class of data has different size, portability, and durability properties, s
 Human-triggered full-account export/import via the **Daten** view, run as a **server-side asynchronous job** — `data.json` (the unified text envelope) plus every `status='ready'` attachment as a plaintext zip entry, with a `manifest.json` carrying per-entry SHA-256 for offline verification. Restore-only semantics (empty target → proceed; non-empty → refuse unless confirmed with the destructive phrase). IDs preserved; the business-data leg is a single transaction. The server builds the export archive (decrypt → assemble) and processes the import archive (validate → restore → re-encrypt each attachment to B2); the browser triggers, polls, and uploads/downloads over a resumable channel but never handles bulk plaintext crypto. The plaintext archive stages only on the VPS, inside the trust radius — never on B2, per [ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md).
 
 - **Rationale and scope:** [ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md) (text + envelope), [ADR-0024](docs/adr/0024-binary-attachment-e2e-encryption.md) (full-account takeout — server-side attachment re-encryption)
-- **API contract:** [spec api.md §14.2.4 — Unified Data Exchange](docs/spec/api.md#1424-unified-data-exchange)
+- **Behavior:** [spec verification.md §15.14 — Data Exchange](docs/spec/verification.md#1514-data-exchange)
 - **UI:** [spec ui/daten.md — Daten view](docs/spec/ui/daten.md#811-daten-view)
-- **Envelope shape:** [spec data-model.md §5.8](docs/spec/data-model.md#58-export-envelope)
+- **Archive format:** [spec data-model.md §5.8](docs/spec/data-model.md#58-export-archive)
 - **Code:** `src/server/services/{ExportService,ImportService}.ts` (business-data leg, reused by the jobs), `DataExchangeJobService` + the server-side export/import job runners (archive build / restore + re-encrypt). The former browser orchestrators `src/ui/management/{exportAllAsZip,importAllFromZip}.ts` retire with the rewire.
 
-Sessions are excluded by design (per-instance auth state, not portable). Users (including `passwordHash`) ride verbatim in the envelope so a fresh-install restore reproduces the operator's user set without an out-of-band password-reset pass; rationale and threat-model in [ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md). First-install user creation when no envelope is present is handled by admin bootstrap ([ADR-0010](docs/adr/0010-first-run-admin-bootstrap.md)).
+Sessions are excluded by design (per-instance auth state, not portable). Users (including `passwordHash`) ride verbatim in the archive so a fresh-install restore reproduces the operator's user set without an out-of-band password-reset pass; the salted hash is no more sensitive than the addresses and invoice lines the archive already carries ([ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md)). First-install user creation without an import is handled by admin bootstrap ([ADR-0010](docs/adr/0010-first-run-admin-bootstrap.md)).
 
-Layer 1 is portability, not cross-trust-boundary transport — the envelope is plaintext. Moving the file across hosts means encrypting it first; ADR-0020's age recipient is the obvious choice.
+Layer 1 is portability, not cross-trust-boundary transport — the archive is plaintext. Moving the file across hosts means encrypting it first; ADR-0020's age recipient is the obvious choice.
 
 ---
 

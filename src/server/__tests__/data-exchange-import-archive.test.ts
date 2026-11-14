@@ -3,22 +3,22 @@
  * wipe, restore fidelity, session invalidation, and the staging reaper's
  * import leg (TDD red).
  *
- * Drives the server-side full-account IMPORT job (api.md §14.2.4 "Import
- * job — *" design notes) + data-model.md §5.18 / §6.15. The happy-path
- * arms produce a REAL archive by running the WORKING export job
- * (`POST /api/export-jobs` → poll `ready` → `GET :id/download`), then
- * upload that archive to an import job over the resumable protocol. This
- * avoids hand-building a manifest + envelope + per-attachment SHA-256s
- * (which would re-encode, and risk diverging from, the export builder).
+ * Drives the server-side full-account IMPORT job (verification.md §15.14) +
+ * data-model.md §5.8, §5.18. The happy-path arms produce a REAL archive by
+ * running the WORKING export job (`POST /api/export-jobs` → poll `ready` →
+ * `GET :id/download`), then upload that archive to an import job over the
+ * resumable protocol. This avoids hand-building a manifest + envelope +
+ * per-attachment SHA-256s (which would re-encode, and risk diverging from,
+ * the export builder).
  *
- *   - AC-327 — validate before wipe. An archive whose
+ *   - AC-593 — validate before wipe. An archive whose
  *     `data.json` carries a wrong `schema_version` (sibling arms: a broken
  *     `manifest.json` per-entry sha256, an out-of-enum mimeType, an unsafe
  *     fileName, two attachment ids sharing one `zipPath`) terminates the
  *     job `failed` with `error_detail` and performs ZERO writes — the
  *     pre-existing target rows are UNTOUCHED. The destructive wipe never
  *     runs on a corrupt / tampered / wrong-version archive.
- *   - AC-328 — restore + server re-encrypt + byte-equal
+ *   - AC-594 — restore + server re-encrypt + byte-equal
  *     roundtrip + idempotency. seed (with a ready attachment) → export job
  *     → import job (override + phrase) restores the business rows with IDs
  *     preserved AND each attachment row at byte-equal plaintext: the row
@@ -26,13 +26,13 @@
  *     `originalKey` AES-256-GCM-decrypts (via the row's freshly-wrapped
  *     DEK) to the SOURCE plaintext, and re-running the job is idempotent
  *     on attachment `id` (no duplicate rows).
- *   - AC-330 — session invalidation + re-auth. The restore wipes
+ *   - AC-597, AC-598 — session invalidation + re-auth. The restore wipes
  *     `users`, CASCADE-dropping the operator's session mid-job; a status
  *     poll on the OLD cookie returns `401`; the `data_exchange_job` row
  *     survives with `created_by = NULL` (FK `ON DELETE SET NULL`); after
  *     re-auth, `GET /api/import-jobs` (latest) re-attaches to the same
  *     job. No bearer token anywhere in the flow.
- *   - AC-334 — the staging reaper sweeps an ABANDONED/terminal
+ *   - AC-589 — the staging reaper sweeps a terminal
  *     IMPORT upload (not just `ready` export artifacts), deleting the
  *     staged file and nulling `archiveRef`.
  *   - AC-439, AC-440 — every object the job writes (original,
@@ -48,7 +48,7 @@
  *     `attachment_changed` when it ends, ready or failed after the wipe;
  *     neither when Pass 1 fails.
  *
- * SEEDING REAL CIPHERTEXT (AC-328): the export builder unwraps each ready
+ * SEEDING REAL CIPHERTEXT (AC-594): the export builder unwraps each ready
  * attachment's `wrappedDek` against the per-fork binary `age` identity,
  * fetches the ciphertext from object storage, and AES-256-GCM-decrypts —
  * so a fixture needs a real ciphertext object in storage AND a real
@@ -133,7 +133,7 @@ const INVOICE_LOCK_DAYS = 1;
 const POLL_INTERVAL_MS = 100;
 
 // ---------------------------------------------------------------------
-// Takeout staging reaper — contract surface (AC-334 / data-model §6.15).
+// Takeout staging reaper — contract surface (AC-589).
 // The module EXISTS (shipped with the export job, 8f40f1d) but today
 // sweeps only `kind='export'`/`status='ready'`; it is resolved lazily via
 // dynamic import for parity with the export-job test's resolver shape.
@@ -328,7 +328,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
 
   /**
    * The restore wipes `users` partway through the (async) job, CASCADE-
-   * dropping the upload session mid-job (AC-330). For an arm that must poll
+   * dropping the upload session mid-job (AC-597). For an arm that must poll
    * to `ready`, the upload token therefore dies before the job finishes.
    * Mirror the spec's documented re-auth flow: poll the OLD token until it
    * 401s (the wipe committed), then re-authenticate against the restored
@@ -346,7 +346,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
     return login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
   }
 
-  /** Count rows in an importable table (post-wipe assertions, AC-327). */
+  /** Count rows in an importable table (post-wipe assertions, AC-593). */
   async function countRows(table: string): Promise<number> {
     const res = await db.execute(sql.raw(`SELECT COUNT(*)::int AS c FROM ${table}`));
     return (res.rows[0] as { c: number }).c;
@@ -405,18 +405,18 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-328 — restore + server re-encrypt + byte-equal roundtrip
+  // AC-594 — restore + server re-encrypt + byte-equal roundtrip
   // + idempotency. The richest arm: a true seed → export → import → verify
   // loop. Encodes the FINAL fidelity contract; in the red state it fails
   // at `POST /api/import-jobs` (the export half + archive build succeed).
   // -------------------------------------------------------------------
-  describe('AC-328: full roundtrip restores business rows + attachment bytes', () => {
+  describe('AC-594: full roundtrip restores business rows + attachment bytes', () => {
     it('restores the attachment row (id/createdBy/createdAt preserved) at byte-equal plaintext', async () => {
       const plaintext = crypto.randomBytes(2048);
       const seeded = await seedReadyAttachment({ plaintext, fileName: 'angebot.pdf' });
 
       // Capture the source row's preserved fields for the post-restore
-      // comparison (AC-328: id / createdBy / createdAt preserved).
+      // comparison (AC-594: id / createdBy / createdAt preserved).
       const srcRow = (
         await db.execute(sql`
           SELECT id, created_by, created_at FROM attachments WHERE id = ${seeded.id}
@@ -437,7 +437,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // override + phrase, and drive to terminal.
       const jobId = await uploadArchiveToNewJob(ownerToken, archive);
       // The restore wipes `users` mid-job (dropping the upload session). Wait
-      // for that (old cookie → 401), then re-auth and poll to ready (AC-330).
+      // for that (old cookie → 401), then re-auth and poll to ready (AC-598).
       const reauth = await awaitWipeAndReauth(ownerToken, jobId);
       const terminal = await pollImportTerminal(reauth, jobId);
       expect(terminal.status).toBe('ready');
@@ -468,7 +468,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // AES-256-GCM-decrypts (via the row's freshly-wrapped DEK) to the
       // SOURCE plaintext. This is the re-encrypted-server-side proof —
       // a fresh DEK was wrapped under the instance recipient and the
-      // ciphertext PUT to storage (AC-328).
+      // ciphertext PUT to storage (AC-594).
       const dl = await storage.download(row.original_key);
       const ct = Buffer.from(dl.data);
       const svc = new KeyEnvelopeService({ recipient, identity });
@@ -501,7 +501,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // `attachments` then rebuilds from the archive, so the row count for
       // that id stays exactly 1 — operation-level idempotency (a re-run is a
       // deterministic full replace). The wipe prevents duplication, not a
-      // per-row skip (AC-328).
+      // per-row skip (AC-594).
       const job2 = await uploadArchiveToNewJob(token, archive);
       token = await awaitWipeAndReauth(token, job2);
       expect((await pollImportTerminal(token, job2)).status).toBe('ready');
@@ -514,8 +514,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
 
     it('restores business rows with IDs preserved (project id round-trips)', async () => {
       // The project we seeded the attachment against must survive the
-      // wipe-and-restore with the SAME id (AC-254 IDs-preserved, the
-      // business-data leg of AC-328).
+      // wipe-and-restore with the SAME id (AC-594).
       const plaintext = crypto.randomBytes(256);
       await seedReadyAttachment({ plaintext, fileName: 'foto.jpg' });
       const archive = await buildExportArchive(ownerToken);
@@ -530,7 +529,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(proj[0]!.id).toBe(projectId);
     });
 
-    it('regenerates a WebP thumbnail for a restored photo and captures version-ids', async () => {
+    it('AC-596: regenerates a WebP thumbnail for a restored photo and captures version-ids', async () => {
       // A REAL, decodable JPEG (random bytes would not decode) so the server
       // can derive a thumbnail from the restored original. 800×600 keeps the
       // longest edge above the 320px thumb target so the resize is exercised.
@@ -914,13 +913,13 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-327 — validate before wipe. Corrupt a REAL roundtrip
+  // AC-593 — validate before wipe. Corrupt a REAL roundtrip
   // archive (break data.json's schema_version; sibling arm: break a
   // manifest sha256), import into the NON-EMPTY seeded target with
   // override + phrase, and assert the job → `failed` with `error_detail`
   // AND the pre-existing target rows are UNTOUCHED (no wipe ran).
   // -------------------------------------------------------------------
-  describe('AC-327: a corrupt/wrong-version archive fails the job WITHOUT wiping', () => {
+  describe('AC-593: a corrupt/wrong-version archive fails the job WITHOUT wiping', () => {
     /** Re-zip an archive after applying `mutate` to its decoded entries. */
     function remuxArchive(
       archive: Buffer,
@@ -984,7 +983,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(terminal.errorDetail).toBeTruthy();
 
       // ZERO writes: the target counts are unchanged — the destructive
-      // wipe never ran on a wrong-version archive (AC-327). The owner's
+      // wipe never ran on a wrong-version archive (AC-593). The owner's
       // session is also still valid (no users wipe), so the SAME token
       // still works.
       expect(await countRows('customers')).toBe(before.customers);
@@ -1005,7 +1004,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
 
       // Corrupt manifest.json: flip the first file's sha256 so per-entry
       // integrity verification fails (manifest coverage / sha256 check,
-      // AC-327) before any write.
+      // AC-593) before any write.
       const corrupt = remuxArchive(archive, (entries) => {
         const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf-8')) as {
           files: { sha256: string }[];
@@ -1029,7 +1028,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // mimeType is outside the `attachments` CHECK enums. Without that
       // gate the value survives validation, the wipe commits, and the
       // Pass-2 insert trips the DB constraint AFTER the destructive
-      // restore — leaving the target truncated (AC-327 violation).
+      // restore — leaving the target truncated (AC-593 violation).
       await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'evil.pdf' });
       const archive = await buildExportArchive(ownerToken);
 
@@ -1071,7 +1070,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // integrity trip — so the message names the invalid enum value.
       expect(terminal.errorDetail).toContain('invalid enum value');
 
-      // ZERO writes: the wipe never ran (AC-327). Counts unchanged and the
+      // ZERO writes: the wipe never ran (AC-593). Counts unchanged and the
       // owner's session still works (no users wipe).
       expect(await countRows('customers')).toBe(before.customers);
       expect(await countRows('projects')).toBe(before.projects);
@@ -1085,7 +1084,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // Parity with the upload-path `isSafeFileName` guard: the import
       // path must not persist a fileName (path separator / control char)
       // the upload path would reject. Like the enum gate, this fails in
-      // Pass-1 before the destructive wipe (AC-327).
+      // Pass-1 before the destructive wipe (AC-593).
       await seedReadyAttachment({ plaintext: crypto.randomBytes(512), fileName: 'ok.pdf' });
       const archive = await buildExportArchive(ownerToken);
 
@@ -1162,16 +1161,16 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       expect(terminal.status).toBe('failed');
       expect(terminal.errorDetail).toContain('duplicate zipPath');
 
-      // ZERO destructive writes — the wipe never ran (AC-327).
+      // ZERO destructive writes — the wipe never ran (AC-593).
       expect(await countRows('projects')).toBe(before.projects);
       expect(await countRows('attachments')).toBe(before.attachments);
     });
   });
 
   // -------------------------------------------------------------------
-  // AC-330 — session invalidation + re-auth.
+  // AC-597, AC-598 — session invalidation + re-auth.
   // -------------------------------------------------------------------
-  describe('AC-330: users wipe drops the session mid-job; the job row survives', () => {
+  describe('AC-597, AC-598: users wipe drops the session mid-job; the job row survives', () => {
     it('old cookie polls 401, job row gets created_by=NULL, re-auth re-attaches via latest', async () => {
       await seedReadyAttachment({ plaintext: crypto.randomBytes(256), fileName: 'c.pdf' });
       const archive = await buildExportArchive(ownerToken);
@@ -1219,17 +1218,15 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-334 — the staging reaper sweeps an abandoned/terminal
-  // IMPORT upload too (not just ready export artifacts). data-model §6.15:
-  // it sweeps an import job's uploaded archive once the job is terminal
-  // (ready/failed) or its upload was abandoned, deletes the staged FILE,
-  // and nulls archiveRef.
+  // AC-589 — the staging reaper sweeps a terminal IMPORT upload too (not
+  // just ready export artifacts): it deletes the staged FILE and nulls
+  // archiveRef.
   //
   // ttlMinutes is injected directly (the shape data-exchange-export-job's
   // reaper arm uses) — pinning the OBSERVABLE contract (aged import upload
   // swept → archiveRef nulled → staged file gone), not the env wiring.
   // -------------------------------------------------------------------
-  describe('AC-334: staging reaper sweeps an aged import upload', () => {
+  describe('AC-589: staging reaper sweeps an aged import upload', () => {
     it('an aged terminal import upload is swept: staged file deleted, archiveRef nulled', async () => {
       const ttlMinutes = 1440; // §12.2 default (24h) in the _MINUTES unit
 
@@ -1263,7 +1260,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       });
 
       // The reaper deletes the staged file and nulls archiveRef; the row
-      // persists as operational metadata (data-model.md §6.15). Assert the
+      // persists as operational metadata (AC-589). Assert the
       // staged file is gone on disk AND the column was nulled (a direct-DB
       // read, not a wire field).
       expect(existsSync(stagedPath)).toBe(false);
@@ -1370,6 +1367,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
 
       const result = await runImportJob(archive, failingUploads);
 
+      // AC-595: an attachment that cannot be restored fails the job.
       expect(result.status).toBe('failed');
       expect(result.errorDetail).toContain('storage down'); // failed in Pass 2
       expectOneOfEachAtJobEnd(result.events);

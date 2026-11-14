@@ -73,9 +73,9 @@ If you cannot restore the most recent green-labelled backup to a scratch DB per 
 Next steps:
 
 1. Step back one day and retry.
-2. If every available dump fails, prepare for full reconstruction from Layer 1 business-data export ([api.md §14.2.4](../../spec/api.md#1424-unified-data-exchange)) onto a fresh admin bootstrap (see the "First-login ritual" phase in [server-setup.md](../server-setup.md)). The bootstrap-admin user is overwritten by the imported user set during the restore. A customer with a partial address makes the import refuse the archive, naming `customers[i].address`: complete the address or set it to `null` in the archive's data.json, then update that file's `sizeBytes` and `sha256` in its manifest.json.
+2. If every available dump fails, prepare for full reconstruction from Layer 1 business-data export ([data-model.md §5.8](../../spec/data-model.md#58-export-archive)) onto a fresh admin bootstrap (see the "First-login ritual" phase in [server-setup.md](../server-setup.md)). The bootstrap-admin user is overwritten by the imported user set during the restore. A customer with a partial address makes the import refuse the archive, naming `customers[i].address`: complete the address or set it to `null` in the archive's data.json, then update that file's `sizeBytes` and `sha256` in its manifest.json.
 
-The Layer 1 envelope round-trips users, the company-profile singleton, invoices, and the invoice-number sequence. Reconstruction loses only what stays out of the envelope by design: sessions (ephemeral), push subscriptions (device-tied), trigger-maintained storage counters, Layer 2 metadata, notification rules (shipped with code), and the per-instance audit chain (the importing instance's chain starts at the import event). Operator-meaningful business state is preserved.
+The Layer 1 export archive round-trips users, the company-profile singleton, invoices, and the invoice-number sequence. Reconstruction loses only what stays out of it by design: sessions (ephemeral), push subscriptions (device-tied), trigger-maintained storage counters, Layer 2 metadata, notification rules (shipped with code), and the per-instance audit chain (the importing instance's chain starts at the import event). Operator-meaningful business state is preserved.
 
 ## Owner / escalation contact
 

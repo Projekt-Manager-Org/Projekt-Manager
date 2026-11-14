@@ -2,12 +2,11 @@
  * API integration tests — export-job ARCHIVE layout, manifest, and
  * completeness.
  *
- * Drives a server-side full-account EXPORT job (api.md §14.2.4 "Export
- * job — archive layout + manifest" / "build and lifecycle") to `ready`,
+ * Drives a server-side full-account EXPORT job (verification.md §15.14) to `ready`,
  * downloads the staged zip, unzips it, and pins:
  *
- *   - AC-323 — the archive is a zip carrying `data.json` (the
- *     AC-135 envelope; first manifest entry; no attachmentId) and
+ *   - AC-583 — the archive is a zip carrying `data.json` (the
+ *     envelope; first manifest entry; no attachmentId) and
  *     `manifest.json` at root, plus every `status='ready'` attachment as
  *     PLAINTEXT under `attachments/<projektnummer>-<projekt-titel>/
  *     <attachment-id>-<dateiname>` (components sanitised per the data-model.md §5.13 file-name rules).
@@ -17,12 +16,12 @@
  *     totalBytes === sum(sizeBytes), every files[i].sha256 === SHA-256 of
  *     the bytes at its zipPath, and the attachment plaintext byte-equals
  *     what was uploaded.
- *   - AC-325 — export completeness, two arms:
- *     (a) an attachment whose wrapped DEK is corrupt (unwrap fails) FAILS
+ *   - Export completeness, two arms:
+ *     (a) AC-585: an attachment whose wrapped DEK is corrupt (unwrap fails) FAILS
  *         the job: `error_detail` names the row, the download 409s, and no
  *         archive is served. Removing the bad row and re-running yields a
  *         `ready` archive whose envelope↔manifest parity holds.
- *     (b) a row that becomes `ready` AFTER the envelope snapshot but
+ *     (b) AC-584: a row that becomes `ready` AFTER the envelope snapshot but
  *         before the archive is built is excluded from BOTH — the export
  *         is a consistent point-in-time snapshot, not two disagreeing
  *         reads. Arm (b) drives `buildExportArchive` directly because the
@@ -80,7 +79,7 @@ interface ExportJobRow {
 }
 
 // ---------------------------------------------------------------------
-// Manifest wire shape — api.md §14.2.4 / AC-323.
+// Manifest wire shape — data-model.md §5.8 / AC-583.
 // ---------------------------------------------------------------------
 interface ManifestFile {
   zipPath: string;
@@ -178,7 +177,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
    * Seed one `status='ready'` attachment with REAL backing ciphertext.
    * Returns the row id, the original plaintext (for byte-equality), and
    * the row's filename. When `corruptDek` is set the persisted
-   * `wrappedDek` is replaced with bytes that fail to unwrap (AC-325).
+   * `wrappedDek` is replaced with bytes that fail to unwrap (AC-585).
    */
   async function seedReadyAttachment(opts: {
     plaintext: Buffer;
@@ -288,9 +287,9 @@ describe('Export-job archive — layout, manifest, completeness', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-323 — archive layout + server-computed manifest.
+  // AC-583 — archive layout + server-computed manifest.
   // -------------------------------------------------------------------
-  describe('AC-323: archive layout + manifest', () => {
+  describe('AC-583: archive layout + manifest', () => {
     it('carries data.json + manifest.json at root, with data.json the first manifest entry', async () => {
       await seedReadyAttachment({ plaintext: Buffer.from('hello world'), fileName: 'brief.pdf' });
 
@@ -304,7 +303,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
       expect(manifest.files[0]!.zipPath).toBe('data.json');
       expect(manifest.files[0]!.attachmentId).toBeUndefined();
 
-      // data.json parses to the AC-135 export envelope (schema_version
+      // data.json parses to the AC-583 export envelope (schema_version
       // present, business-data slots present). Full envelope shape is
       // pinned by data-exchange-export-envelope.test.ts; here we just
       // confirm the archive embeds the real envelope, not a stub.
@@ -392,7 +391,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-325 — one bad row FAILS the job; no partial archive.
+  // AC-585 — one bad row FAILS the job; no partial archive.
   //
   // This arm crosses the diagonal the old coverage matrix left empty:
   // "≥1 unreadable row" × "the archive is importable". Under the previous
@@ -402,7 +401,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
   // restore time. The operator learned their backup was worthless only
   // when they needed it.
   // -------------------------------------------------------------------
-  describe('AC-325: export completeness (a corrupt DEK fails the job)', () => {
+  describe('AC-585: export completeness (a corrupt DEK fails the job)', () => {
     it('fails the job naming the bad row, serves no archive, and exports cleanly once it is gone', async () => {
       const goodPlain = crypto.randomBytes(512);
       const good = await seedReadyAttachment({ plaintext: goodPlain, fileName: 'good.pdf' });
@@ -422,7 +421,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
       // it without reading server logs.
       expect(failed.errorDetail ?? '').toContain(bad.id);
 
-      // Nothing is downloadable from a failed job (AC-324).
+      // Nothing is downloadable from a failed job (AC-585).
       const dl = await authGet(ownerToken, `/api/export-jobs/${failed.id}/download`);
       expect(dl.statusCode).toBe(409);
 
@@ -444,7 +443,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
       assertEnvelopeManifestParity(entries, manifest);
     });
 
-    it('a healthy build satisfies envelope↔manifest parity for every ready row', async () => {
+    it('AC-584: a healthy build satisfies envelope↔manifest parity for every ready row', async () => {
       await seedReadyAttachment({ plaintext: crypto.randomBytes(128), fileName: 'a.pdf' });
       await seedReadyAttachment({ plaintext: crypto.randomBytes(256), fileName: 'b.pdf' });
 
@@ -468,7 +467,7 @@ describe('Export-job archive — layout, manifest, completeness', () => {
     // to land a ready row the instant the snapshot closes; it cannot be
     // won reliably through the HTTP surface, hence the direct call.
     // -----------------------------------------------------------------
-    it('excludes a row that turns ready after the envelope snapshot from BOTH envelope and manifest', async () => {
+    it('AC-584: excludes a row that turns ready after the envelope snapshot from BOTH envelope and manifest', async () => {
       const original = await seedReadyAttachment({
         plaintext: crypto.randomBytes(256),
         fileName: 'already-there.pdf',

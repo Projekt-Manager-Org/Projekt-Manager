@@ -101,112 +101,112 @@ A person or company the projects are for. Only `name` is required. Behavior: [ve
 - The value is updated by the authenticated user via self-update ([§5.3](#53-user-entity)).
 - The server value is authoritative. Clients may cache the value locally to prevent a flash of the wrong theme on page load, but must replace any cached value with the server value on session hydration.
 
-### 5.8 Export Envelope
+### 5.8 Export Archive
 
-The unified export and import surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)) exchanges a single envelope carrying every row of the business-data layer. `schema_version` is `4`. The wire shape below is normative — server and UI both bind against it.
+The zip file an export produces and an import accepts: the deployment's business data and attachments, in plaintext ([ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md)). Behavior: [verification.md §15.14](verification.md#1514-data-exchange).
 
-Layer 1 is portability, not cross-trust-boundary transport. The envelope is plaintext; moving it across hosts means encrypting it first (`age` is the obvious choice — same recipient pattern as [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). The `passwordHash` field rides verbatim per the rationale below; the encryption is the operational guard.
+| Entry                                                                     | Content                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data.json`                                                               | The business data, below                                                                                                                                                                                                                 |
+| `manifest.json`                                                           | `{ manifestVersion: 1, exportedAt, totalFiles, totalBytes, files: [{ zipPath, sizeBytes, sha256, attachmentId? }] }` — one entry per other file, `data.json` first and without `attachmentId`; `totalFiles` and `totalBytes` sum `files` |
+| `attachments/<projektnummer>-<projekt-titel>/<attachment-id>-<dateiname>` | One file per attachment in `data.json`: its content as uploaded. Each path component follows the file-name rules of [§5.13](#513-attachment)                                                                                             |
 
 ```typescript
-interface ExportEnvelope {
-  schema_version: 4; // monotonic integer; imports reject any mismatch
-  exported_at: string; // ISO 8601 — informational only, not used for import semantics
-  users: EnvelopeUser[]; // every row, including inactive accounts (see below)
-  company_profile: EnvelopeCompanyProfile[]; // singleton-array, length === 1 (see below)
-  customers: EnvelopeCustomer[]; // every row, all fields from §5.6 (including `ustId`) except `version` (§6.4)
-  projects: EnvelopeProject[]; // every row, all fields from §5.1, including archived (deleted = true)
-  project_workers: { projectId: string; userId: string }[]; // every row of the join
-  invoices: EnvelopeInvoice[]; // every row, ordered (cancellation_of NULLS FIRST, id) — see below
-  invoice_sequence: EnvelopeInvoiceSequence[]; // every (year, kind) row
-  attachments: EnvelopeAttachment[]; // every row with status = 'ready' — metadata-only descriptor (see below)
+interface ExportData {
+  schema_version: 4;
+  exported_at: string; // ISO 8601
+  users: EnvelopeUser[]; // every user, inactive ones included
+  company_profile: EnvelopeCompanyProfile[]; // exactly one
+  customers: EnvelopeCustomer[]; // every field of §5.6 except `version`
+  projects: EnvelopeProject[]; // every field of §5.1; archived projects included
+  project_workers: { projectId: string; userId: string }[];
+  invoices: EnvelopeInvoice[]; // every status
+  invoice_sequence: EnvelopeInvoiceSequence[];
+  attachments: EnvelopeAttachment[]; // status `ready` only — not pending, not in the Papierkorb
 }
 
 interface EnvelopeUser {
-  id: string; // UUID — preserved on restore
-  username: string; // unique
+  id: string;
+  username: string;
   displayName: string;
-  passwordHash: string; // salted hash from §5.3; ships verbatim (see below)
-  roles: string[]; // closed set per the role matrix in api.md §14.3
+  passwordHash: string; // §5.3
+  roles: string[];
   email: string | null;
   active: boolean;
-  themePreference: 'light' | 'dark' | 'system'; // §5.7
-  pushMuted: boolean; // §5.3 / §5.12
-  createdAt: string; // ISO 8601 — preserved on restore
-  updatedAt: string; // ISO 8601 — preserved on restore
-  lastLoginAt: string | null; // ISO 8601 — preserved on restore (mutates on login, see roundtrip AC-141)
-  createdBy: string | null; // UserAccount.id — no FK at DB level (§6.6)
-  updatedBy: string | null; // UserAccount.id — no FK at DB level (§6.6)
+  themePreference: 'light' | 'dark' | 'system';
+  pushMuted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
 }
 
 interface EnvelopeCompanyProfile {
-  id: string; // UUID — preserved on restore
+  id: string;
   companyName: string;
-  address: { street: string; zip: string; city: string }; // all three components present on the wire; empty strings on the baseline-seeded row
+  address: { street: string; zip: string; city: string };
   taxId: string;
   ustId: string | null;
   iban: string | null;
   accentColor: string | null;
   footerText: string | null;
-  defaultTaxMode: 'standard' | 'reverse_charge'; // §5.15 TaxMode
-  updatedAt: string; // ISO 8601 — preserved on restore
-  updatedBy: string | null; // UserAccount.id reference
+  defaultTaxMode: 'standard' | 'reverse_charge';
+  updatedAt: string;
+  updatedBy: string | null;
 }
 
 interface EnvelopeInvoice {
-  id: string; // UUID — preserved on restore
-  projectId: string; // FK target restored from `projects[]`
-  status: 'draft' | 'issued' | 'cancelled'; // §5.15 InvoiceStatus
-  number: string | null; // null while draft; matches ^(RE|ST)-\d{4}-\d{4,}$ once issued
-  issueDate: string | null; // ISO 8601 date — set at issuance
-  performanceDate: string | null; // ISO 8601 date — Leistungsdatum per §14 UStG
-  taxMode: 'standard' | 'reverse_charge'; // §5.15
-  profile: 'zugferd-en16931'; // §5.15 InvoiceProfile (v1)
-  issuer: InvoiceIssuerSnapshot; // §5.15 — frozen at issuance
-  recipient: InvoiceRecipientSnapshot; // §5.15 — frozen at issuance
-  lines: InvoiceLine[]; // §5.15 — frozen at issuance
-  totals: InvoiceTotals; // §5.15 — frozen at issuance
-  cancellationOf: string | null; // self-FK; non-null only on Storno rows (see below)
+  id: string;
+  projectId: string;
+  status: 'draft' | 'issued' | 'cancelled';
+  number: string | null;
+  issueDate: string | null;
+  performanceDate: string | null;
+  taxMode: 'standard' | 'reverse_charge';
+  profile: 'zugferd-en16931';
+  issuer: InvoiceIssuerSnapshot; // §5.15
+  recipient: InvoiceRecipientSnapshot; // §5.15
+  lines: InvoiceLine[]; // §5.15
+  totals: InvoiceTotals; // §5.15
+  cancellationOf: string | null; // the cancelled original, on a Storno only
   cancellationReason: string | null;
-  renderedPdfBinaryDescriptorId: string | null; // references an `attachments[]` row carried in the takeout archive (restored server-side by the import job)
-  createdAt: string; // ISO 8601 — preserved on restore
-  updatedAt: string; // ISO 8601 — preserved on restore
-  createdBy: string | null; // UserAccount.id reference
-  updatedBy: string | null; // UserAccount.id reference
+  renderedPdfBinaryDescriptorId: string | null; // an `attachments` entry: the invoice's PDF
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+  updatedBy: string | null;
 }
 
 interface EnvelopeInvoiceSequence {
-  year: number; // calendar year, composite key with `kind`
-  kind: 'invoice' | 'storno'; // §5.16 InvoiceSequenceKind
-  nextValue: number; // bigint on the DB side; serialized as JSON number (well within JS-safe range at expected scale)
-  updatedAt: string; // ISO 8601 — preserved on restore
+  year: number;
+  kind: 'invoice' | 'storno'; // §5.16
+  nextValue: number;
+  updatedAt: string;
 }
 
 interface EnvelopeAttachment {
-  id: string; // UUID — preserved on restore by the import job (api.md §14.2.4)
+  id: string;
   projectId: string;
   kind: 'photo' | 'binary';
-  label: AttachmentLabel; // closed enum, §5.13
+  label: AttachmentLabel; // §5.13
   fileName: string;
-  mimeType: string; // plaintext MIME from the §5.13 whitelist
-  sizeBytes: number; // plaintext byte count
-  createdAt: string; // ISO 8601 — preserved on restore
-  createdBy: string | null; // UserAccount.id reference — preserved on restore
+  mimeType: string;
+  sizeBytes: number; // plaintext
+  status: 'ready';
+  createdAt: string;
+  createdBy: string | null;
 }
 ```
 
-Design notes:
+Fields keep their meaning from their entity in this chapter; timestamps are ISO 8601. Not in the archive: sessions, push subscriptions, storage totals, backup status, notification rules, the audit log and data exchange jobs.
 
-- **Row-level fidelity across the text rows.** Every text-row slot — users, company_profile, customers, projects, project_workers, invoices, invoice_sequence — carries all persisted fields including `id`, `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, archive flags, and any frozen snapshot blocks. Imports preserve IDs exactly (see [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision)).
-- **Archived rows are included.** Projects with `deleted = true` round-trip with their archive state intact (see [§6.9](#69-soft-deletes)).
-- **Users round-trip verbatim — including `passwordHash`.** Every row in the `users` table ships, active and inactive alike. `passwordHash` is the salted hash from [§5.3](#53-user-entity) and rides as-is: a fresh-install import reproduces the operator's user set without an out-of-band password-reset pass. The hash is no more PII-sensitive than the addresses and invoice line items already in the artifact (see [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md) for the threat model); excluding it would break the round-trip. `lastLoginAt` is preserved but its value is the source's last-login moment — a login between consecutive exports advances it (see [AC-141](verification.md#1514-data-exchange)).
-- **`company_profile` is a singleton in an array shape.** The slot is always length `1` — the row is pre-seeded by the baseline migration and the schema enforces a singleton CHECK + UNIQUE ([§5.17](#517-company-profile-entity)). The array shape is for uniformity with the other slots; the importer validates `length === 1`.
-- **`customers.ustId` round-trips.** The field ships and round-trips like every other customer field ([§5.6](#56-customer-entity), [AC-135](verification.md#1514-data-exchange)).
-- **`invoices` ordering is load-bearing — `(cancellation_of NULLS FIRST, id)`.** The export orders the slot so non-Storno rows (null `cancellationOf`) precede Storno rows (non-null `cancellationOf`); within each group, ordering is by `id`. The importer is required to honour the `cancellationOf` self-FK on insert ([§6.6](#66-referential-integrity), [api.md §14.2.4](api.md#1424-unified-data-exchange)); the documented ordering is the wire contract a re-export must reproduce.
-- **`invoice_sequence` restores next-number allocation state.** Every `(year, kind)` row round-trips so allocation continues from the imported peak rather than restarting at 1 on the importing instance. Required by the gapless invariant ([§5.16](#516-invoice-sequence-entity)) — restoring `invoices` without `invoice_sequence` would let a fresh issue collide with a restored number.
-- **Attachments: metadata-only descriptor.** Only rows with `status = 'ready'` are exported; `pending` rows (uncommitted uploads whose backing objects may not exist) and `hidden` rows (the Papierkorb — a TTL-bounded undo buffer reaped per [AC-426](verification.md#1526-attachments), and behind a delete marker on the bucket, so exporting them would need version-pinned reads) are excluded. A full-account restore is consequently also a Papierkorb purge; that consequence is surfaced in the UI on both legs per [AC-432](verification.md#1526-attachments). The envelope carries the per-row metadata fields needed to restore identity and reach the right project on import; it does NOT carry crypto fields (`wrappedDek`, `wrappedThumbDek`, `wrappedDekVersion`), opaque storage keys (`originalKey`, `thumbKey`), or ciphertext sizes (`ciphertextSizeBytes`, `ciphertextThumbSizeBytes`) — those are not consumable on the importing instance. The wrapped envelopes are load-bearing for confidentiality on the exporting instance and are deliberately kept off the takeout artifact.
-- **Restore mechanics are server-driven (import job).** Bytes live in object storage (Layer 3 per [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md)) and ride alongside the envelope as plaintext entries inside the takeout archive ([api.md §14.2.4](api.md#1424-unified-data-exchange) — Export job). On import, the **server** (not the browser) reads each plaintext entry from the staged archive, mints a fresh DEK, AES-256-GCM-encrypts, wraps the DEK under the importing instance's own `BINARY_AGE_RECIPIENT`, and PUTs ciphertext to B2 — preserving the row's `id` / `createdBy` / `createdAt` from this descriptor and capturing the PUT's version-id into `versionId` / `thumbVersionId` so the restored row round-trips through the Papierkorb (hide → restore `copyFromVersion`). For a `photo` row the server regenerates the gallery thumbnail from the restored original (the takeout carries no thumb), encrypts it under a separate fresh DEK, and PUTs it to the `.thumb` key; an undecodable image restores without a thumb (opportunistic). No key material crosses the takeout boundary; plaintext bytes stage only on the VPS, inside the trust radius, never on B2.
-- **Ephemeral, derived, device-tied, and instance-bound rows stay out.** `sessions` (ephemeral tokens), `push_subscriptions` (per-device endpoints), `project_storage_usage` (trigger-maintained derived state), `meta_backup_status` (Layer 2 instance metadata), `notification_rule` (config tied to the closed event catalog per [ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)), `audit_log` (per-instance chain of custody), and `data_exchange_job` (full-account job lifecycle metadata, [§5.18](#518-data-exchange-job-entity)) are excluded by design. The principle is pinned in [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision).
-- **`schema_version` is monotonic.** Imports compare strictly and reject any mismatch — no format migration code. The current value is `4`; any other value rejects with `SCHEMA_VERSION_MISMATCH`.
+**Valid archive.** An import accepts an archive only if:
+
+- `schema_version` is the current one;
+- every file the manifest lists is in the archive and matches its SHA-256, and each attachment of `data.json` has its own listed file;
+- every reference in `data.json` resolves within it — users, customers, projects, invoices, attachments — except a user's own `createdBy` / `updatedBy` ([§6.6](#66-referential-integrity)), and a Storno's original is not itself a Storno;
+- invoices meet the rules of [§5.15](#515-invoice-entity) whatever their status; attachments carry a valid kind, label, MIME type and file name.
 
 ### 5.9 Backup Status Entity
 
@@ -248,7 +248,7 @@ type AuditEntityType =
   | 'attachment'
   | 'invoice'
   | 'company_profile'
-  | 'data_import'; // synthetic; tags the deployment-level import-restore commit (the business-data import) (no physical table)
+  | 'data_import'; // synthetic; tags the export and import job entries (no physical table)
 
 interface AuditLogEntry {
   id: string; // UUID
@@ -271,11 +271,11 @@ interface AuditLogEntry {
 Design notes:
 
 - **Append-only from the application.** The application never updates an `audit_log` row and never deletes one through any API, service, or UI path. The retention cleanup job ([§6.10](#610-audit-log-retention)) is the only path that removes rows and operates as infrastructure, not as a domain mutation — it does not itself produce an `audit_log` row.
-- **Scope is domain-entity state changes.** `project`, `customer`, `user`, `project_worker`, `attachment`, `invoice`, and `company_profile` are the audited domain types. `data_import` is a synthetic type tagging a deployment-level event (one row per import-restore commit — the business-data import; [AC-311](verification.md#1514-data-exchange)) — no physical table backs it. Authentication and session events (login, logout, session reap) are security events and surface through the structured logger, not `audit_log` — per [ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md).
+- **Scope is domain-entity state changes.** `project`, `customer`, `user`, `project_worker`, `attachment`, `invoice`, and `company_profile` are the audited domain types. `data_import` is a synthetic type tagging a deployment-level event (an export or import job ending; [AC-332](verification.md#1514-data-exchange)) — no physical table backs it. Authentication and session events (login, logout, session reap) are security events and surface through the structured logger, not `audit_log` — per [ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md).
 - **Actor kind semantics.**
   - `user` — an authenticated caller performed the mutation. `actorId` references the `UserAccount.id`; `actorReason` is null.
   - `system` — no authenticated caller is present. `actorId` is null; `actorReason` is required and carries a human-readable cue naming the code path (e.g., `"first-run-bootstrap"`). First-run admin bootstrap ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)) is the current domain-entity system-actor path. A system entry with an empty or missing `actorReason` is rejected by the database via a CHECK constraint (defense in depth) — else a system write would be invisible in the activity feed.
-- **Action vocabulary.** `action` is free text so new mutation shapes can record without a schema migration. The current vocabulary is `create`, `update`, `delete`, `archive`, `transition:forward`, `transition:backward`, `purge`, `reactivate`, `deactivate`, `password-reset`, `password-change`, `attachment:add`, `attachment:hide`, `attachment:restore`, `attachment:purge`, `invoice:issue`, `invoice:cancel`, `import_restored`. `archive` is the `entityType = 'project'` soft-delete action (see [ADR-0017](../adr/0017-soft-delete-as-board-archive.md)); `delete` and `purge` remain distinct (generic delete for non-project entities, hard-delete on projects respectively). `attachment:add`, `attachment:hide`, and `attachment:restore` live on `entityType = 'attachment'` and correspond to upload completion (`pending → ready`), user-DELETE (soft-hide per [ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)), and Papierkorb-restore respectively. `attachment:purge` records the system-initiated permanent destruction of a hidden attachment row by the hidden reaper ([AC-426](verification.md#1526-attachments)) — distinct from `attachment:hide`, which is the user-initiated soft-hide that moves the row to the Papierkorb. `import_restored` lives on `entityType = 'data_import'` and tags one row per import-restore commit — the business-data import (deployment-level event; [AC-311](verification.md#1514-data-exchange)). The orphan reaper ([AC-408](verification.md#1526-attachments)) removes rows / objects without producing audit rows — it operates on housekeeping artifacts that never entered the user-visible domain. A free-text field is chosen over an enum because the vocabulary is expected to grow with new features and an enum would churn the schema; uniqueness and casing are enforced by convention and reviewed at PR time. Each entry in the vocabulary maps to exactly one mutation shape.
+- **Action vocabulary.** `action` is free text so new mutation shapes can record without a schema migration. The current vocabulary is `create`, `update`, `delete`, `archive`, `transition:forward`, `transition:backward`, `purge`, `reactivate`, `deactivate`, `password-reset`, `password-change`, `attachment:add`, `attachment:hide`, `attachment:restore`, `attachment:purge`, `invoice:issue`, `invoice:cancel`, `export_built`, `export_failed`, `import_restored`, `import_failed`. `archive` is the `entityType = 'project'` soft-delete action (see [ADR-0017](../adr/0017-soft-delete-as-board-archive.md)); `delete` and `purge` remain distinct (generic delete for non-project entities, hard-delete on projects respectively). `attachment:add`, `attachment:hide`, and `attachment:restore` live on `entityType = 'attachment'` and correspond to upload completion (`pending → ready`), user-DELETE (soft-hide per [ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)), and Papierkorb-restore respectively. `attachment:purge` records the system-initiated permanent destruction of a hidden attachment row by the hidden reaper ([AC-426](verification.md#1526-attachments)) — distinct from `attachment:hide`, which is the user-initiated soft-hide that moves the row to the Papierkorb. The four export and import actions live on `entityType = 'data_import'`, one row per ended job ([AC-332](verification.md#1514-data-exchange)). The orphan reaper ([AC-408](verification.md#1526-attachments)) removes rows / objects without producing audit rows — it operates on housekeeping artifacts that never entered the user-visible domain. A free-text field is chosen over an enum because the vocabulary is expected to grow with new features and an enum would churn the schema; uniqueness and casing are enforced by convention and reviewed at PR time. Each entry in the vocabulary maps to exactly one mutation shape.
 - **Payload shape.** `payload` carries the changed fields only, as `{ before, after }` field-keyed objects — not the full row. For a create, `before` is empty and `after` carries the persisted values for every non-server-managed field. For a delete or purge, `after` is empty. For a state transition, `before` and `after` carry `status` and `statusChangedAt`. Cross-project rendering surfaces (the dock, the global Aktivität view, push payload composition) read the parent project's display name from the row-level `ancestorEntityLabel` snapshot — the payload is reserved for the `{ before, after }` field diff alone. Full-row snapshots are deliberately excluded (see [ADR-0021 — Alternatives Considered](../adr/0021-audit-log-and-notifications-single-write-path.md#alternatives-considered)).
 - **Entity label snapshot.** `entityLabel` is a nullable text column captured at write time (e.g. a project's `"2026-002 Innenraumgestaltung Weber"`, a customer's `"Firma Weber GmbH"`, a user's `displayName`). Frozen with the audit row so the activity feed stays readable after the target is renamed or purged. Write paths that do not have a natural label (import, retention cleanup) leave it null; the UI falls back to `entityId`. This is display metadata — it is not part of the `{ before, after }` diff contract. For `project_worker` rows specifically, `entityId` is the project's id (not the join-row's composite key) and `entityLabel` is the **worker's** displayName — the feed reads "Jan Nowak wurde zugewiesen" under the owning project's header, so the worker name is the meaningful label, while the project id remains the row's target. Pinned by [AC-188](verification.md#1523-audit-log).
 - **Ancestor label snapshot.** `ancestorEntityLabel` is a text column captured at write time alongside the existing `ancestorEntityType` / `ancestorEntityId` pair ([architecture.md §11.12](architecture.md#1112-audit-ancestor-link)). It carries the parent project's `entityLabel` for child-entity rows (`attachment`, `project_worker`, `invoice`) and for `entityType = 'project'` rows (self-ancestor) duplicates the row's own `entityLabel`. Frozen with the audit row so the activity feed surfaces "_who_ did _what_, _where_" without a runtime JOIN against `projects` (which would lose context once a project is purged). Co-populated with `ancestorEntityType` / `ancestorEntityId` — when the ancestor pair is null (top-level entities: `customer`, `user`, `company_profile`, `data_import`), `ancestorEntityLabel` is also null; when the pair is non-null, the service layer always populates the label (projects always carry a `displayName`-derived label, see [architecture.md §11.12](architecture.md#1112-audit-ancestor-link)). Display metadata only — not part of the `{ before, after }` diff contract, and not a substitute for the row's own `entityLabel`. Pinned by [AC-342](verification.md#1532-activity-dock).
@@ -479,7 +479,7 @@ Design notes:
 - **Rendered artifact reference.** `renderedPdfBinaryDescriptorId` references the `attachment` row ([§5.13](#513-attachment)) the ZUGFeRD renderer writes at issuance ([ADR-0026 §Storage](../adr/0026-invoices-immutability-and-zugferd.md#storage-and-retention)); the invoice row holds only that reference. The row lives in the invoice namespace, apart from uploaded attachments:
   - **Off the attachment surface.** No attachment operation lists or addresses it ([AC-364](verification.md#1530-invoices)), so it cannot be hidden, purged, or read without `invoice:read`. Its only read path is `GET /api/invoices/:id/pdf`.
   - **Locked per object.** Its bytes carry their own Compliance Object Lock of `INVOICE_OBJECT_LOCK_DAYS` from the write ([architecture.md §11.14](architecture.md#1114-invoice-domain)), independent of the bucket-default retention.
-  - **Restore keeps both.** The full-account import job restores an attachment that an envelope invoice references into the invoice namespace, with the same lock ([api.md §14.2.4](api.md#1424-unified-data-exchange)).
+  - **Restore keeps both.** The full-account import job restores an attachment that an envelope invoice references into the invoice namespace, with the same lock ([AC-365](verification.md#1514-data-exchange)).
 - **Audit metadata follows §5.5.** `createdBy` / `updatedBy` / `createdAt` / `updatedAt` set by the server. After issuance only the cancellation flip writes `updatedAt`; no other mutation path is reachable.
 - **Audit ancestor.** Invoice rows write `audit_log` entries with `entityType = 'invoice'`, ancestor `('project', projectId)` ([architecture.md §11.12](architecture.md#1112-audit-ancestor-link)) so the project-detail activity feed surfaces invoice events alongside attachment events under the same indexed predicate.
 
@@ -538,40 +538,16 @@ Design notes:
 - **`defaultTaxMode` is a tenant default, not a per-user preference.** Stored on the singleton row, edited by the owner via the company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); it does not live on the user record. New invoice drafts pre-fill `taxMode` from this value; the draft author edits per-invoice as needed (e.g. reverse charge for Bauleistungen performed as a subcontractor). Listed in [architecture.md §12.2](architecture.md#122-company-configurable-settings) as a `[C]` value — the default is set per deployment by the owner, not at deploy time.
 - **Logo is not on this row.** The company logo is a deploy-time branding asset (`BRANDING.mark.logo`, [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)), served from the static build and read by the invoice renderer at issuance. It is not per-installation business data, so it neither lives on this table nor rides the export envelope. See [architecture.md §12.2](architecture.md#122-company-configurable-settings).
 
-### 5.18 Data Exchange Job Entity
+### 5.18 Data Exchange Job
 
-The full-account export / import operations ([api.md §14.2.4](api.md#1424-unified-data-exchange)) run as server-side asynchronous **jobs**; this single table tracks one job's lifecycle and progress so the UI renders a live readout over polling + SSE invalidation. It is instance-bound operational metadata — like [§5.9](#59-backup-status-entity), it never rides the export envelope ([§5.8](#58-export-envelope)). Rationale: [ADR-0018 §Decision](../adr/0018-data-persistence-and-recovery-layered-strategy.md#decision), [ADR-0024 §Full-account takeout](../adr/0024-binary-attachment-e2e-encryption.md).
+One export or import run. Behavior: [verification.md §15.14](verification.md#1514-data-exchange).
 
-```typescript
-interface DataExchangeJob {
-  id: string; // UUID
-  kind: 'export' | 'import';
-  status: 'pending' | 'running' | 'ready' | 'failed'; // pending → running → (ready | failed)
-  filesTotal: number; // serialized as JSON number; bigint in the DB (uniform with bytes)
-  filesDone: number;
-  bytesTotal: number; // bigint in the DB — a multi-GB archive overflows int4
-  bytesDone: number;
-  currentItem: string | null; // human-readable current activity (file being processed); null before the first item
-  archiveRef: string | null; // VPS-local staged-archive location (export output / import upload); NEVER a B2 key; null until staged
-  errorDetail: string | null; // operator-facing failure reason; set only on `failed`
-  createdBy: string | null; // UserAccount.id; FK ON DELETE SET NULL so the job survives the import's own users-wipe
-  createdAt: string; // ISO 8601
-  updatedAt: string; // ISO 8601 — bumped on every mutation
-  startedAt: string | null; // set on pending → running
-  finishedAt: string | null; // set on the terminal transition (ready | failed)
-}
-```
-
-Design notes:
-
-- **State machine.** `pending → running → (ready | failed)`. `create` mints a `pending` row; the runner stamps `startedAt` on `running`; a terminal transition stamps `finishedAt` and sets `archiveRef` (`ready`) or `errorDetail` (`failed`). CHECK constraints pin `kind ∈ {export, import}`, `status ∈ {pending, running, ready, failed}`, and all four counters `≥ 0`. Execution is in-process: on a process restart, a job left `pending` or `running` (its execution abandoned) is reaped to `failed` on boot — freeing the one-active-per-kind slot ([api.md §14.2.4](api.md#1424-unified-data-exchange) "Jobs — one active per kind") so a stale row cannot block a fresh create; the operator retries.
-- **Counters are bigint.** `bytesTotal` / `bytesDone` are `bigint` — a multi-GB archive overflows `int4`; `filesTotal` / `filesDone` share the type for uniformity. They back the live progress readout ([ui/daten.md §8.11](ui/daten.md#811-daten-view)); the runner throttles their advance so a thousand-file job does not emit a thousand SSE frames (Realtime, below).
-- **`archiveRef` stages inside the trust radius.** The plaintext archive — export build output or import upload — lives on a VPS-local path, never on B2 ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md) invariant: B2 holds only per-attachment ciphertext bytes). A scheduled reaper sweeps staged archives past the takeout staging TTL **[C]** ([architecture.md §12.2](architecture.md#122-company-configurable-settings)).
-- **`createdBy` survives the import's own wipe.** The FK is `ON DELETE SET NULL`. An import job wipes `users` mid-run ([api.md §14.2.4](api.md#1424-unified-data-exchange) — "Import job — session invalidation"); SET NULL keeps the job row alive (so the re-authenticated operator's poll resumes) rather than CASCADE-deleting the very job that reports the restore.
-- **Realtime invalidation, not a data carrier.** Every lifecycle transition, and a throttled subset of progress updates, emit a `data_exchange_job_changed` SSE frame ([architecture.md §11.13](architecture.md#1113-realtime-invalidation-channel), [ADR-0025](../adr/0025-realtime-ui-invalidation-via-sse.md)); the client refetches the row over the job's REST surface ([api.md §14.2.4](api.md#1424-unified-data-exchange)). Lifecycle transitions always emit; progress is the only throttled class.
-- **Single audit row, at the terminal transition.** Progress mutations are high-frequency and are not business-entity changes — they do NOT route through the single-write-path helper ([architecture.md §11.3](architecture.md#113-state-layer-behavioral-contract)) and write no `audit_log` rows. The one audit row per job is written at the endpoint / runner layer on the terminal transition, `entityType = 'data_import'` (the synthetic deployment-level type, [§5.10](#510-audit-log-entity)). Pinned by [AC-332](verification.md#1514-data-exchange).
-- **One active job per kind.** At most one `pending`/`running` row per `kind` (single-operator, in-process execution); a create colliding with an active job is rejected at the API ([api.md §14.2.4](api.md#1424-unified-data-exchange) — "Jobs — one active per kind"). This is an application-layer rule, not a DB constraint. Indexed on `status` and `createdAt` so the active-job probe and the most-recent-job lookup stay cheap.
-- **Captured by the full-DB backup, excluded from the envelope.** Instance-bound operational state, like [§5.9](#59-backup-status-entity): it never rides [§5.8](#58-export-envelope), but it is covered by the Layer-2 full-DB backup ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)) like every public table.
+| Field         | Constraint                                                                                                                                                                        |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kind`        | `export` or `import`                                                                                                                                                              |
+| `status`      | `pending` (created; an import's upload not complete) → `running` → `ready`; any in-progress job can end `failed`. In progress: `pending` or `running`; ended: `ready` or `failed` |
+| Progress      | Files and bytes done and in total; the current item                                                                                                                               |
+| `errorDetail` | The failure reason; set only when `failed`                                                                                                                                        |
 
 ---
 
@@ -603,7 +579,7 @@ Low write concurrency is assumed. A write to a versioned entity based on a stale
 - **Check order.** Request-shape validation first — a missing `expectedVersion` is a validation error ([AC-377](verification.md#1517-data-integrity)). Then: not found and archived ([AC-499](verification.md#1512-projects), [AC-513](verification.md#1530-invoices)); the invoice state checks (`INVOICE_FROZEN`, issue on a non-draft); the version check; business-rule checks (e.g. the issuance preconditions in [api.md §14.2.14](api.md#14214-invoice-operations)).
 - **Not versioned.** Project edits (Update project, Update dates) are last-write-wins: the detail page saves one field at a time, so a lost update needs two users on the same field at once — rare, and recoverable from the audit `before`. A project-wide `version` would instead reject an edit to one field whenever anything else on the project moved (a transition, an assignment, the issuance flip), discarding the user's input. Lifecycle operations — project archive / restore / purge, customer delete — act on the row's existence, not its content; their preconditions are state checks ([§6.9](#69-soft-deletes)). Delete draft is versioned: discarding a draft is a judgement on its content. Invoice cancel — its target is frozen. Attachments — own state checks ([verification.md §15.26](verification.md#1526-attachments)). Users and notification rules — low-stakes rows whose stale overwrite freezes nothing.
 - **Customer corrections on drafts.** The draft write a customer edit causes ([§5.15](#515-invoice-entity)) carries no `expectedVersion`. It evaluates each field against the draft's latest committed state and serializes with Update, Delete and Issue on that draft: an override committed first stays, a draft deleted or issued first is untouched, and an operation carrying the pre-correction version is rejected with `VERSION_CONFLICT` ([AC-546](verification.md#1530-invoices)).
-- **Not exported.** `version` is a concurrency token, not business data: the export envelope omits it ([§5.8](#58-export-envelope)) and import sets it fresh. No stale client survives an override import — it drops every session ([api.md §14.2.4](api.md#1424-unified-data-exchange)).
+- **Not exported.** `version` is a concurrency token, not business data: the export archive omits it ([§5.8](#58-export-archive)) and import sets it fresh. No stale client survives an import — it ends every session ([AC-597](verification.md#1514-data-exchange)).
 
 ### 6.5 Schema Evolution
 
@@ -646,23 +622,15 @@ Timestamp ownership rules are defined in section 5.5. Additionally, `statusChang
 - The canonical pattern is a dedicated counter table whose row is allocated by a single `INSERT … ON CONFLICT (key) DO UPDATE SET next_value = next_value + 1 RETURNING next_value` inside the using transaction — Postgres takes a row-exclusive lock equivalent to `SELECT FOR UPDATE` for the duration of the transaction. The lock is held until commit; the row's `nextValue` is incremented and read atomically in the same statement; the first-of-key case (INSERT) and the steady-state case (DO UPDATE) collapse into one race-free path; if the transaction rolls back, the increment never persists.
 - The pattern is reusable for any future counter with gapless semantics. The current consumer is `invoice_sequence` ([§5.16](#516-invoice-sequence-entity)) per [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md); allocations are scoped to `(year, kind)` composite keys.
 - The using transaction commits the counter increment, the using row's insert, the audit row, and any byte-side write (e.g., a rendered artifact's binary descriptor) atomically. Splitting the counter advancement out of the using transaction breaks the gapless guarantee.
-- **Restore to an earlier state.** A Layer 2 restore drops rows committed after the backup snapshot, but their invoice numbers already reached customers. Before issuance resumes, every `invoice_sequence` `(year, kind)` advances past every number that may have been issued since — mechanism in [AC-368](verification.md#1522-backup-and-recovery). A gap is acceptable; a reissued number is not (§14 Abs. 4 Nr. 4 UStG). The business-data import never lowers the counter ([api.md §14.2.4](api.md#1424-unified-data-exchange)).
+- **Restore to an earlier state.** A Layer 2 restore drops rows committed after the backup snapshot, but their invoice numbers already reached customers. Before issuance resumes, every `invoice_sequence` `(year, kind)` advances past every number that may have been issued since — mechanism in [AC-368](verification.md#1522-backup-and-recovery). A gap is acceptable; a reissued number is not (§14 Abs. 4 Nr. 4 UStG). An import never lowers the counter ([AC-369](verification.md#1514-data-exchange)).
 
 ### 6.14 Immutability of Issued Invoices
 
 - An `invoices` row with `status = 'issued'` is **write-once** at the persistence layer. The only field that may transition is `status: 'issued' → 'cancelled'`, paired with the creation of a sibling Storno row ([§5.15](#515-invoice-entity)).
 - The application enforces immutability at every write surface: the API rejects mutations on issued rows ([api.md §14.4](api.md#144-error-handling) `INVOICE_FROZEN`), the service layer refuses to dispatch an update that touches a frozen row, and the persistence layer is the last line of defense — direct DB writes to issued rows other than the cancellation flip are out of contract.
 - Rationale: consistency of the system's own outputs — an issued row must agree with its Object-Locked PDF. Retention and legal obligations stay with the operating company ([ADR-0026 §Compliance boundary](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)). A correction is a fresh `draft → issued` cycle producing a new sibling row, not an edit. See [ADR-0026 §State machine](../adr/0026-invoices-immutability-and-zugferd.md#state-machine).
-- The business-data import never removes an issued or cancelled invoice: an `override` import into a target holding one that the envelope does not carry with the same id and number is rejected ([api.md §14.2.4](api.md#1424-unified-data-exchange)). Drafts carry no number and are not protected.
+- An import never removes an issued or cancelled invoice ([AC-367](verification.md#1514-data-exchange)). Drafts carry no number and are not protected.
 - Object-storage retention on the rendered PDF/A-3 ([architecture.md §11.14](architecture.md#1114-invoice-domain)) is the storage-layer backstop on the artifact bytes; this principle is the row-side counterpart.
-
-### 6.15 Takeout Staging Reaper
-
-- A scheduled job removes staged full-account takeout archives from the VPS-local staging path ([§5.18](#518-data-exchange-job-entity) `archiveRef`) older than the takeout staging TTL **[C]** ([architecture.md §12.2](architecture.md#122-company-configurable-settings)). It sweeps two cases: a `ready` export job's downloadable artifact (the operator had the TTL window to download it) and an import job's uploaded archive once the job is terminal (`ready` / `failed`) or its upload was abandoned. Rationale: plaintext archives stage on the VPS, never on B2 ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)); without a sweep they accumulate on a finite disk.
-- The reaper deletes the staged **file** only; the `data_exchange_job` row persists (it is operational metadata, [§5.18](#518-data-exchange-job-entity)) and its `archiveRef` is set to null, so a later download resolves to `404 NOT_FOUND` ([api.md §14.2.4](api.md#1424-unified-data-exchange) "Export job — download (Range)", [verification.md AC-324](verification.md#1514-data-exchange) / [AC-334](verification.md#1514-data-exchange)).
-- The TTL clock is not the only sweep trigger: a new job create sweeps prior terminal artifacts of its kind up front (delete file + null `archiveRef`, the same operation) so back-to-back jobs cannot accumulate plaintext archives within one TTL window ([api.md §14.2.4](api.md#1424-unified-data-exchange) "Jobs — stale staging swept on create"). Both paths call the one shared sweep helper, and the abandoned-on-restart case is handled separately by the boot reaper ([§5.18](#518-data-exchange-job-entity)).
-- Each run emits exactly one structured operational log line at `info` level with `event = 'takeout-staging-reaper'` (fixed discriminator), `ttl_minutes` (integer — the configured TTL applied), `removed_count` (non-negative integer; `0` on a no-op run), `ran_at` (ISO 8601). No `audit_log` row: a swept staging artifact is housekeeping on a disposable byte cache, not a domain event — the job's own terminal `data_import` audit row ([verification.md AC-332](verification.md#1514-data-exchange)) already records the operation.
-- Sweeps are single-flight (a tick that finds the previous sweep still running is skipped) and an in-flight sweep is drained on graceful shutdown before the database pool closes.
 
 ---
 
@@ -672,7 +640,7 @@ The seed dataset is loaded into the database on initial setup and provides a rea
 
 The seed operation must be safe to run on an empty database. Re-seeding an existing database drops and recreates all seed records. This is a development/demo operation, not a production upgrade path.
 
-The loader is split by shape: users are read from a JSON fixture and inserted via a direct-DB path (users are outside the import envelope contract — see [§5.8](#58-export-envelope) and [api.md §14.2.4](api.md#1424-unified-data-exchange)); business data (customers, projects, project_workers) is assembled into an in-memory envelope and applied through the same import code path that serves [api.md §14.2.4](api.md#1424-unified-data-exchange), so every seed run exercises the import contract.
+The loader assembles users and business data into one in-memory import ([§5.8](#58-export-archive)) and applies it through the same import code path the import job uses, so every seed run exercises the import contract.
 
 ### 7.1 Project Dataset
 

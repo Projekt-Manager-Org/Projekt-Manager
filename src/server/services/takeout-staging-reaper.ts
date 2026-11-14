@@ -1,6 +1,5 @@
 /**
- * Takeout staging reaper — ADR-0018 / ADR-0024, data-model.md §6.15,
- * AC-334.
+ * Takeout staging reaper — ADR-0018 / ADR-0024, AC-589.
  *
  * Sweeps staged full-account takeout archives off the VPS-local staging
  * path once they age past the takeout staging TTL:
@@ -43,7 +42,7 @@ export interface RunTakeoutStagingReaperDeps {
   db: Database;
   /**
    * Storage client — part of the contract surface for parity with the
-   * other reapers (AC-334 test). Staged takeout archives live on a
+   * other reapers (AC-589 test). Staged takeout archives live on a
    * VPS-local filesystem path, not on object storage (ADR-0024:
    * plaintext stages only inside the trust radius), so the sweep deletes
    * a file rather than a storage key; the client is unused today but kept

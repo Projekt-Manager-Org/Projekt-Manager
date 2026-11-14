@@ -2,21 +2,21 @@
  * API integration tests — server-side export JOB lifecycle (TDD red).
  *
  * Drives the operator-facing full-account takeout EXPORT job defined in
- * api.md §14.2.4 ("Export job") + data-model.md §5.18, pinning:
+ * verification.md §15.14 ("Export job") + data-model.md §5.18, pinning:
  *
- *   - AC-322 — create + status + latest endpoints, perm gate,
+ *   - AC-583 — create + status + latest endpoints, perm gate,
  *     async pending → running → ready advance.
- *   - AC-324 — Range-capable download, 409 EXPORT_JOB_NOT_READY
+ *   - Range-capable download, 409 EXPORT_JOB_NOT_READY
  *     before ready, 404 after the staging reaper sweeps the artifact.
  *   - AC-331 — one active export job per kind (409
  *     EXPORT_JOB_ACTIVE carrying the active id); a prior ready/failed
  *     job does not block (export half only — import endpoints unbuilt).
  *   - AC-332 — exactly one audit_log row at the terminal
  *     transition, entity_type='data_import'; progress writes none.
- *   - AC-333 — every lifecycle transition emits a
+ *   - AC-602 — every lifecycle transition emits a
  *     data_exchange_job_changed SSE frame; progress is throttled; the
  *     frame is invalidation-only (no job payload in the body).
- *   - AC-334 — a ready artifact aged past the takeout staging
+ *   - AC-589 — a ready artifact aged past the takeout staging
  *     TTL is swept by the scheduled reaper; the download then 404s.
  *
  * TIMING — `POST /api/export-jobs` fire-and-forgets the build, which on a
@@ -27,7 +27,7 @@
  * be 409/200" rather than a timeout. The not-ready download arm and the
  * AC-331 active-job guard were both fixed for exactly this.
  *
- * The archive-content + completeness arms (AC-323 / AC-325) live in the
+ * The archive-content + completeness arms (AC-583 / AC-584 / AC-585) live in the
  * sibling file `data-exchange-export-archive.test.ts`.
  */
 
@@ -123,7 +123,7 @@ function countJobChanged(conn: SubscribedFake): number {
 }
 
 // ---------------------------------------------------------------------
-// Takeout staging reaper — contract surface (AC-334 / data-model §6.15).
+// Takeout staging reaper — contract surface (AC-589).
 // Resolved lazily via dynamic import (parity with the orphan/hidden reaper
 // tests' `runAttachmentOrphanReaper` resolver shape) so the FILE loads even
 // when only a subset of arms run. The module ships with this export job and
@@ -239,9 +239,9 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-322 — create, status, latest; permission gate.
+  // AC-583 — create, status, latest; permission gate.
   // -------------------------------------------------------------------
-  describe('AC-322: create + status + latest (data:export gated)', () => {
+  describe('AC-583: create + status + latest (data:export gated)', () => {
     it('POST /api/export-jobs unauthenticated → 401', async () => {
       const res = await getApp().inject({ method: 'POST', url: '/api/export-jobs' });
       expect(res.statusCode).toBe(401);
@@ -311,10 +311,10 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-324 — download: not-ready 409, ready stream, Range 206,
-  // perm gate. (The post-reap 404 arm lives under AC-334 below.)
+  // Download: not-ready 409, ready stream, Range 206,
+  // perm gate. (The post-reap 404 arm lives under AC-589 below.)
   // -------------------------------------------------------------------
-  describe('AC-324: Range-capable download', () => {
+  describe('Range-capable download', () => {
     it('download of a not-yet-ready job → 409 EXPORT_JOB_NOT_READY', async () => {
       // The row is minted directly rather than through POST: the create
       // route fire-and-forgets the build, which on a fresh seed (nothing to
@@ -474,10 +474,10 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-333 — realtime: lifecycle transitions emit a frame,
+  // AC-602 — realtime: lifecycle transitions emit a frame,
   // progress is throttled, the frame is invalidation-only.
   // -------------------------------------------------------------------
-  describe('AC-333: realtime invalidation', () => {
+  describe('AC-602: realtime invalidation', () => {
     it('every lifecycle transition emits a data_exchange_job_changed frame', async () => {
       const bus = await loadBus();
       const conn = subscribeFake(bus);
@@ -540,7 +540,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
-  // AC-334 — staging reaper sweeps an aged ready artifact; the
+  // AC-589 — staging reaper sweeps an aged ready artifact; the
   // download then 404s.
   //
   // TTL injection: §12.2 specifies the takeout staging TTL as a [C] value
@@ -552,7 +552,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // OBSERVABLE contract (aged artifact swept → archiveRef nulled →
   // download 404s), not the env wiring.
   // -------------------------------------------------------------------
-  describe('AC-334: staging reaper sweeps the aged ready artifact', () => {
+  describe('AC-589: staging reaper sweeps the aged ready artifact', () => {
     it('a ready artifact older than the TTL is swept and the download then 404s', async () => {
       const ttlMinutes = 1440; // §12.2 default (24h) in the sibling _MINUTES unit
 
@@ -608,7 +608,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   //   (b) null the prior job's archive_ref (so its download 404s),
   //   (c) respond with X-Discarded-Prior-Staged: 1.
   // -------------------------------------------------------------------
-  describe('pre-sweep on new create: prior staged export artifact discarded', () => {
+  describe('AC-590: pre-sweep on new create: prior staged export artifact discarded', () => {
     it('second create sweeps the first ready artifact, nulls archiveRef, sets header', async () => {
       // Build a complete export job (reaches ready and stages a file on disk).
       const first = await createExportJob(ownerToken);
@@ -670,7 +670,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // in-flight job; reap pending/running → failed (freeing the
   // one-active-per-kind slot) and delete the partial staged archive.
   // -------------------------------------------------------------------
-  describe('boot reconciliation of abandoned jobs', () => {
+  describe('AC-600: boot reconciliation of abandoned jobs', () => {
     it('reaps pending/running → failed + deletes their staged files; terminal rows untouched', async () => {
       const stagingDir = getEnv().TAKEOUT_STAGING_DIR;
       const ids = {

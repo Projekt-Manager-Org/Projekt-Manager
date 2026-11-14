@@ -1,6 +1,6 @@
 /**
  * Vollständiger Export dialog — server-side export-job flow
- * (ui/daten.md §8.11.1, AC-335). The browser triggers, polls, and downloads;
+ * (ui/daten.md §8.11.1). The browser triggers, polls, and downloads;
  * the archive is built on the VPS.
  *
  * Four phases, derived from the `exportJobStore` job + a local "tracking" flag:

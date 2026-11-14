@@ -1,6 +1,6 @@
 /**
- * Full-account takeout IMPORT job routes — ADR-0018 / ADR-0024, api.md
- * §14.2.4 ("Import job"), data-model.md §5.18.
+ * Full-account takeout IMPORT job routes — ADR-0018 / ADR-0024,
+ * verification.md §15.14, data-model.md §5.18.
  *
  * Surfaces (all `data:restore`-gated):
  *   - POST /api/import-jobs    — destructive-guard up front (target-emptiness +
@@ -25,12 +25,12 @@
  *
  * Staged file convention: `<TAKEOUT_STAGING_DIR>/import-<jobId>.zip`.
  * archiveRef is set at markRunning (so the reaper can locate the file for
- * terminal jobs — AC-334). The runner sets archiveRef again at markReady.
+ * terminal jobs — AC-589). The runner sets archiveRef again at markReady.
  *
  * One active per kind (AC-331): a second POST while one is `pending`/
  * `running` returns `409 IMPORT_JOB_ACTIVE`.
  *
- * Destructive guard (AC-329): target-emptiness is probed at CREATE, before
+ * Destructive guard (AC-591, AC-592): target-emptiness is probed at CREATE, before
  * any upload slot is allocated — a non-empty target without `override`
  * returns `409 TARGET_NOT_EMPTY`; override with a wrong/absent phrase
  * returns `422 RESTORE_CONFIRMATION_MISMATCH`. Guard failures mint NO row.
@@ -97,7 +97,7 @@ export function importJobRoutes(db: Database) {
     //
     // Gate order (C-SECU): auth preHandler → requirePermission →
     //   one-active gate → target-emptiness probe → phrase check →
-    //   mint row. Guard failures mint NO row (AC-329).
+    //   mint row. Guard failures mint NO row (AC-591, AC-592).
     // ---------------------------------------------------------------
     app.post(
       '/api/import-jobs',
@@ -145,7 +145,7 @@ export function importJobRoutes(db: Database) {
             // Non-empty target without override — 409, no row minted.
             throw targetNotEmpty();
           }
-          // override=true into a non-empty target demands the phrase (AC-329).
+          // override=true into a non-empty target demands the phrase (AC-592).
           if (typeof confirmationPhrase !== 'string' || !restorePhraseMatches(confirmationPhrase)) {
             throw restoreConfirmationMismatch();
           }
@@ -244,7 +244,7 @@ export function importJobRoutes(db: Database) {
         // `@fastify/swagger` drops every HEAD route by default — they are
         // normally Fastify's automatic GET companions, which nobody wants
         // duplicated in the document. This one is declared on purpose and
-        // is part of the protocol clients speak (api.md §14.2.4), so it
+        // is part of the protocol clients speak (verification.md §15.14), so it
         // opts back in. Inert at runtime; only the generator reads it.
         config: { swagger: { exposeHeadRoute: true } },
         preHandler: requirePermission('data:restore'),
@@ -280,7 +280,7 @@ export function importJobRoutes(db: Database) {
     //
     // Bounded memory: streams the body directly to disk. Enforces
     // the Upload-Length cap while streaming (wholesales rejection on
-    // overflow — offset must not move, AC-326).
+    // overflow — offset must not move).
     // ---------------------------------------------------------------
     app.patch(
       '/api/import-jobs/:id/archive',
@@ -334,7 +334,7 @@ export function importJobRoutes(db: Database) {
           // Staged file not created yet — offset stays 0.
         }
 
-        // Offset mismatch — reject, keep the server offset unchanged (AC-326).
+        // Offset mismatch — reject, keep the server offset unchanged.
         if (clientOffset !== currentOffset) {
           throw uploadOffsetConflict();
         }
@@ -355,7 +355,7 @@ export function importJobRoutes(db: Database) {
 
         // Stream body → disk with a byte-cap guard. If the source emits more
         // bytes than `remaining`, we truncate back to `currentOffset` and
-        // throw 413 — the offset must not advance (AC-326).
+        // throw 413 — the offset must not advance.
         let written = 0;
         let overflowed = false;
 
@@ -399,13 +399,13 @@ export function importJobRoutes(db: Database) {
         if (newOffset >= bytesTotal) {
           // Transition pending → running and stamp archiveRef NOW (before the
           // async runner) so the staging reaper can locate the staged upload
-          // for a terminal job — ready OR failed (data-model.md §6.15 / AC-334).
+          // for a terminal job — ready OR failed (AC-589).
           await jobs.markRunning(id, { bytesTotal, archiveRef: stagedPath });
 
           // Fire-and-forget the restore — the PATCH returns 200 immediately
           // (mirrors POST /api/export-jobs). The browser polls
           // GET /api/import-jobs/:id; the runner validates → wipes (dropping
-          // the operator session mid-job, AC-330) → restores → re-encrypts →
+          // the operator session mid-job, AC-597) → restores → re-encrypts →
           // ready, recording any fault on the row (it never throws). A
           // multi-GB restore must NOT block this HTTP response.
           void runTakeoutImport({

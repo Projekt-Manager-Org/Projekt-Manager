@@ -58,17 +58,16 @@ export const AUDIT_ACTION_KEYS = [
   // entity_type='data_import' with a synthetic batch UUID for entity_id;
   // payload carries per-slot counts.
   'import_restored',
-  // Full-account export-job terminal events (ADR-0018, api.md §14.2.4
-  // "Jobs — audit"). One row per job at its terminal transition,
-  // entity_type='data_import' (the synthetic deployment-level type) with
-  // the job id as entity_id; payload carries the file/byte totals
-  // (export_built) or the failure detail (export_failed).
+  // Full-account export-job terminal events (ADR-0018, AC-332). One row per
+  // job at its terminal transition, entity_type='data_import' (the synthetic
+  // deployment-level type) with the job id as entity_id; payload carries the
+  // file/byte totals (export_built) or the failure detail (export_failed).
   'export_built',
   'export_failed',
-  // Full-account IMPORT-job terminal failure (api.md §14.2.4 "Jobs —
-  // audit"). The success path reuses `import_restored` (shared with the
-  // direct `ImportService` path); a job that fails writes one `import_failed`
-  // row, entity_type='data_import', the job id as entity_id.
+  // Full-account IMPORT-job terminal failure (AC-332). The success path
+  // reuses `import_restored` (shared with the direct `ImportService` path); a
+  // job that fails writes one `import_failed` row, entity_type='data_import',
+  // the job id as entity_id.
   'import_failed',
 ] as const;
 

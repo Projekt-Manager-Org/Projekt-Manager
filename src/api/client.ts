@@ -960,7 +960,7 @@ export const invoicesApi = {
 };
 
 /**
- * Data-exchange job DTO (api.md §14.2.4, data-model.md §5.18) — the client-
+ * Data-exchange job DTO (verification.md §15.14, data-model.md §5.18) — the client-
  * facing projection of a `data_exchange_job` row. The server strips
  * `archiveRef` (an absolute VPS staging path) and `createdBy` before sending
  * (Finding F1): the client consumes neither. The counters back the progress
@@ -984,7 +984,7 @@ export interface DataExchangeJobDto {
 }
 
 /**
- * Full-account EXPORT job (api.md §14.2.4 "Export job"). The browser triggers,
+ * Full-account EXPORT job (verification.md §15.14). The browser triggers,
  * polls, and downloads; it never assembles the archive. `downloadPath` is a
  * URL builder (not a fetch) — the dialog renders an `<a href download>` so the
  * browser's native download manager handles the Range-resumable stream
@@ -1016,7 +1016,7 @@ export interface UploadHeadResult extends UploadOffsetResult {
 const OFFSET_OCTET_STREAM = 'application/offset+octet-stream';
 
 /**
- * Full-account IMPORT job (api.md §14.2.4 "Import job"). `create` mints the job
+ * Full-account IMPORT job (verification.md §15.14). `create` mints the job
  * — the destructive guard (target emptiness + override + confirmation phrase)
  * runs server-side AT create, before any upload. `headOffset` / `patchChunk`
  * drive the resumable (tus-style) upload and are RAW fetches: Fastify needs the

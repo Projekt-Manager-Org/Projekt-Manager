@@ -10,7 +10,7 @@
  *
  * Both paths call `sweepStagedArtifact` — the logic is identical.
  *
- * Design notes (data-model.md §6.15 / ADR-0024):
+ * Design notes (AC-589 / ADR-0024):
  *   - `force: true` on rm swallows ENOENT — a file already missing (reaper
  *     won the race, OS crash, etc.) is a no-op, not a fault.
  *   - `archive_ref` is nulled regardless of whether the file delete succeeded.

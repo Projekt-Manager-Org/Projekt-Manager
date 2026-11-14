@@ -12,7 +12,7 @@
  * Scope is intentionally narrow: assertions target the export surface
  * only (no import round-trip). The ImportService side of the same issue
  * is covered in `data-exchange.test.ts` / `data-exchange-import-expanded.test.ts`;
- * AC-141-style byte-stable round-trip coverage lives there.
+ * AC-594 byte-stable round-trip coverage lives there.
  *
  * Drives `ExportService.export` directly (was `GET /api/export`, removed
  * with the text-leg routes once the operator UI moved to the job
@@ -102,7 +102,7 @@ interface ExportEnvelopeShape {
   attachments: Array<{ id: string; [key: string]: unknown }>;
 }
 
-describe('ExportService envelope — Layer 1 (issue #230)', () => {
+describe('AC-583: ExportService envelope — Layer 1 (issue #230)', () => {
   let db: Database;
   let pool: pg.Pool;
 

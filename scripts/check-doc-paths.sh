@@ -246,12 +246,8 @@ ALLOWLIST=(
   # (6) Members of the takeout archive, created at export time.
   "DATA.md|data.json"
   "DATA.md|manifest.json"
-  "docs/spec/api.md|data.json"
-  "docs/spec/api.md|manifest.json"
-  "docs/spec/ui/daten.md|data.json"
-  "docs/spec/ui/daten.md|manifest.json"
-  "docs/spec/verification.md|data.json"
-  "docs/spec/verification.md|manifest.json"
+  "docs/spec/data-model.md|data.json"
+  "docs/spec/data-model.md|manifest.json"
 
   # (6) The backup status object in the R2 bucket.
   "docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md|status/latest.json"

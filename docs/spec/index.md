@@ -17,7 +17,7 @@ The system provides:
 
 - **Workflow views** — Kanban board and Calendar — making inaction visible through board structure, aging indicators, and summary counts.
 - **Management views** — tabular interfaces for projects, customers, and users with full CRUD capabilities.
-- **Data exchange** — unified export of business data and restore-only import from an exported envelope (see [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md) and [api.md §14.2.4](api.md#1424-unified-data-exchange)).
+- **Data exchange** — unified export of business data and restore-only import from an exported archive (see [ADR-0018](../adr/0018-data-persistence-and-recovery-layered-strategy.md) and [verification.md §15.14](verification.md#1514-data-exchange)).
 
 All views are role-gated. The system enforces that every pending action (unanswered inquiry, unscheduled job, unsent invoice) is impossible to overlook.
 
@@ -43,7 +43,7 @@ All views are role-gated. The system enforces that every pending action (unanswe
 ### Data Exchange
 
 - Unified export of the business-data layer (customers, projects, project-worker assignments) for backup and portability, gated by `data:export`.
-- Unified restore-only import from an exported envelope, gated by `data:restore`.
+- Unified restore-only import from an exported archive, gated by `data:restore`.
 - Email-based data intake via LLM extraction (paste email text, review extracted customer and project fields, save).
 
 ### Notifications
