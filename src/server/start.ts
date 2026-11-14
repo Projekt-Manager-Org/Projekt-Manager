@@ -331,6 +331,7 @@ async function start(): Promise<void> {
     storage: attachmentStorageForReaper,
     intervalMinutes: TAKEOUT_STAGING_REAPER_INTERVAL_MINUTES,
     ttlMinutes: env.TAKEOUT_STAGING_TTL_MINUTES,
+    stagingDir: env.TAKEOUT_STAGING_DIR,
     logger: {
       info: (ctx, event) => console.log(event, ctx),
       error: (ctx, event) => console.error(event, ctx),

@@ -28,6 +28,8 @@ export interface StartTakeoutStagingReaperSchedulerOptions {
   storage: AttachmentStorageClient;
   intervalMinutes: number;
   ttlMinutes: number;
+  /** VPS-local staging directory (TAKEOUT_STAGING_DIR). */
+  stagingDir: string;
   logger: ServiceLogger;
 }
 
@@ -48,6 +50,7 @@ export function startTakeoutStagingReaperScheduler(
       runTakeoutStagingReaper({
         db: opts.db,
         storage: opts.storage,
+        stagingDir: opts.stagingDir,
         logger: opts.logger,
         ttlMinutes: opts.ttlMinutes,
       }),

@@ -141,6 +141,7 @@ type ReaperLogFn = (ctx: Record<string, unknown>, event: string) => void;
 interface TakeoutStagingReaperOptions {
   db: Database;
   storage: StorageClient;
+  stagingDir: string;
   logger: { info: ReaperLogFn; error: ReaperLogFn };
   ttlMinutes: number;
   now?: Date;
@@ -583,6 +584,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       await runTakeoutStagingReaper({
         db,
         storage: storageClient(),
+        stagingDir: getEnv().TAKEOUT_STAGING_DIR,
         logger: { info: vi.fn(), error: vi.fn() },
         ttlMinutes,
         now: new Date(),

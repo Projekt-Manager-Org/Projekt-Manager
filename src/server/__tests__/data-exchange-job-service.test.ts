@@ -107,10 +107,8 @@ describe('DataExchangeJobService', () => {
   it('drives the export lifecycle: pending → running → progress → ready', async () => {
     const job = await svc.create('export', null);
 
-    const running = await svc.markRunning(job.id, { filesTotal: 3, bytesTotal: 300 });
+    const running = await svc.markRunning(job.id);
     expect(running.status).toBe('running');
-    expect(running.filesTotal).toBe(3);
-    expect(running.bytesTotal).toBe(300);
     expect(running.startedAt).not.toBeNull();
 
     const progressed = await svc.updateProgress(job.id, {

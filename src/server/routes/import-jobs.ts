@@ -76,6 +76,9 @@ const UPLOAD_BODY_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 
 export function importJobRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
+    /** Ids of import jobs a PATCH is appending to right now. */
+    const uploadsInFlight = new Set<string>();
+
     const jobs = new DataExchangeJobService(db);
     const env = getEnv();
     const storage = createStorageClientFromEnv(env);
@@ -301,127 +304,142 @@ export function importJobRoutes(db: Database) {
         // Reject a non-import id (or unknown) — an export job's id PATCHed here
         // would otherwise flip THAT job to `running` and fire a bogus restore.
         if (!job || job.kind !== 'import') throw notFound(STRINGS.entities.resource);
-        // Only a `pending` job accepts bytes. Once the upload completes the job
-        // leaves `pending` (running → terminal); appending then would corrupt
-        // the staged archive the runner reads, or re-fire a failed job's
-        // restore. The normal client never hits this (its loop ends at
-        // Upload-Length, before the flip) — it guards direct API misuse.
-        if (job.status !== 'pending') throw uploadNotAccepted();
-
-        const clientOffset = Number(request.headers['upload-offset']);
-        if (!Number.isInteger(clientOffset) || clientOffset < 0) {
-          throw uploadHeaderInvalid('Upload-Offset');
-        }
-
-        const stagingDir = env.TAKEOUT_STAGING_DIR;
-        const stagedPath = stagedArtifactPath(stagingDir, 'import', id);
-
-        // Ensure staging directory exists with tight permissions (ADR-0024).
-        await mkdir(stagingDir, { recursive: true, mode: 0o700 });
-        await chmod(stagingDir, 0o700);
-
-        // Authoritative server offset = current on-disk file size. NOTE: the
-        // stat→compare→append below is not serialized, so two PATCHes racing at
-        // the same offset could both append and corrupt the staged archive.
-        // The one-active-job-per-kind gate + the single-operator deployment
-        // (one client uploading sequentially) make that unreachable in practice;
-        // a per-job upload lock is the fix if this ever serves concurrent writers.
-        let currentOffset = 0;
+        // One writer per job: two pages continuing the same upload would both
+        // append at the same offset and corrupt the staged archive. The loser
+        // gets the stale-offset conflict and re-reads the offset.
+        if (uploadsInFlight.has(id)) throw uploadOffsetConflict();
+        uploadsInFlight.add(id);
         try {
-          const s = await stat(stagedPath);
-          currentOffset = s.size;
-        } catch {
-          // Staged file not created yet — offset stays 0.
-        }
+          // Only a `pending` import accepts bytes. Once the upload completes the
+          // job leaves `pending` (running → terminal); appending then would
+          // corrupt the staged archive the runner reads, or re-fire a failed
+          // job's restore. Touching it here also restarts the stall clock, so
+          // the staging reaper cannot fail it while this chunk streams (AC-599).
+          if (!(await jobs.touchUpload(id))) throw uploadNotAccepted();
 
-        // Offset mismatch — reject, keep the server offset unchanged.
-        if (clientOffset !== currentOffset) {
-          throw uploadOffsetConflict();
-        }
+          const clientOffset = Number(request.headers['upload-offset']);
+          if (!Number.isInteger(clientOffset) || clientOffset < 0) {
+            throw uploadHeaderInvalid('Upload-Offset');
+          }
 
-        const bytesTotal = job.bytesTotal;
-        const remaining = bytesTotal - currentOffset;
+          const stagingDir = env.TAKEOUT_STAGING_DIR;
+          const stagedPath = stagedArtifactPath(stagingDir, 'import', id);
 
-        // Guard before streaming: reject immediately when Content-Length
-        // alone proves the chunk would overshoot Upload-Length.
-        const contentLength = Number(request.headers['content-length']);
-        if (Number.isInteger(contentLength) && contentLength > 0 && contentLength > remaining) {
-          throw uploadTooLarge();
-        }
+          // Ensure staging directory exists with tight permissions (ADR-0024).
+          await mkdir(stagingDir, { recursive: true, mode: 0o700 });
+          await chmod(stagingDir, 0o700);
 
-        // Append-mode write stream; mode 0o600 keeps plaintext off other UIDs
-        // (ADR-0024 trust radius, mirrors the export builder).
-        const out = createWriteStream(stagedPath, { flags: 'a', mode: 0o600 });
+          // Authoritative server offset = current on-disk file size; the
+          // per-job lock above serializes the stat→compare→append.
+          let currentOffset = 0;
+          try {
+            const s = await stat(stagedPath);
+            currentOffset = s.size;
+          } catch {
+            // Staged file not created yet — offset stays 0.
+          }
 
-        // Stream body → disk with a byte-cap guard. If the source emits more
-        // bytes than `remaining`, we truncate back to `currentOffset` and
-        // throw 413 — the offset must not advance.
-        let written = 0;
-        let overflowed = false;
+          // Offset mismatch — reject, keep the server offset unchanged.
+          if (clientOffset !== currentOffset) {
+            throw uploadOffsetConflict();
+          }
 
-        const body = request.body as NodeJS.ReadableStream;
+          const bytesTotal = job.bytesTotal;
+          const remaining = bytesTotal - currentOffset;
 
-        try {
-          await pipeline(
-            body,
-            async function* (source) {
-              for await (const raw of source) {
-                const chunk = Buffer.isBuffer(raw)
-                  ? raw
-                  : Buffer.from(raw as unknown as Uint8Array);
-                if (written + chunk.length > remaining) {
-                  overflowed = true;
-                  // Signal pipeline failure — the throw propagates out.
-                  throw uploadTooLarge();
-                }
-                written += chunk.length;
-                yield chunk;
-              }
-            },
-            out,
-          );
-        } catch (err) {
-          if (overflowed) {
-            // Restore the offset: truncate any bytes written in this call.
-            try {
-              await truncate(stagedPath, currentOffset);
-            } catch {
-              // Best-effort — the job will fail validation regardless.
-            }
+          // Guard before streaming: reject immediately when Content-Length
+          // alone proves the chunk would overshoot Upload-Length.
+          const contentLength = Number(request.headers['content-length']);
+          if (Number.isInteger(contentLength) && contentLength > 0 && contentLength > remaining) {
             throw uploadTooLarge();
           }
-          throw err;
+
+          // Append-mode write stream; mode 0o600 keeps plaintext off other UIDs
+          // (ADR-0024 trust radius, mirrors the export builder).
+          const out = createWriteStream(stagedPath, { flags: 'a', mode: 0o600 });
+
+          // Stream body → disk with a byte-cap guard. If the source emits more
+          // bytes than `remaining`, we truncate back to `currentOffset` and
+          // throw 413 — the offset must not advance.
+          let written = 0;
+          let overflowed = false;
+
+          const body = request.body as NodeJS.ReadableStream;
+
+          try {
+            await pipeline(
+              body,
+              async function* (source) {
+                for await (const raw of source) {
+                  const chunk = Buffer.isBuffer(raw)
+                    ? raw
+                    : Buffer.from(raw as unknown as Uint8Array);
+                  if (written + chunk.length > remaining) {
+                    overflowed = true;
+                    // Signal pipeline failure — the throw propagates out.
+                    throw uploadTooLarge();
+                  }
+                  written += chunk.length;
+                  yield chunk;
+                }
+              },
+              out,
+            );
+          } catch (err) {
+            if (overflowed) {
+              // Restore the offset: truncate any bytes written in this call.
+              try {
+                await truncate(stagedPath, currentOffset);
+              } catch {
+                // Best-effort — the job will fail validation regardless.
+              }
+              throw uploadTooLarge();
+            }
+            throw err;
+          }
+
+          const newOffset = currentOffset + written;
+
+          // Record the progress for the stall clock (AC-599) and for pages that
+          // re-attach (AC-611).
+          if (newOffset < bytesTotal) {
+            await jobs.touchUpload(id, newOffset);
+          }
+
+          // Upload complete: reached the declared total.
+          if (newOffset >= bytesTotal) {
+            // Transition pending → running and stamp archiveRef NOW (before the
+            // async runner) so the staging reaper can locate the staged upload
+            // for a terminal job — ready OR failed (AC-589).
+            const running = await jobs.markRunningIfPending(id, {
+              bytesTotal,
+              archiveRef: stagedPath,
+            });
+            if (!running) throw uploadNotAccepted();
+
+            // Fire-and-forget the restore — the PATCH returns 200 immediately
+            // (mirrors POST /api/export-jobs). The browser polls
+            // GET /api/import-jobs/:id; the runner validates → wipes (dropping
+            // the operator session mid-job, AC-597) → restores → re-encrypts →
+            // ready, recording any fault on the row (it never throws). A
+            // multi-GB restore must NOT block this HTTP response.
+            void runTakeoutImport({
+              db,
+              jobs,
+              storage,
+              jobId: id,
+              stagedPath,
+              logger: request.log,
+              binaryAgeRecipient: env.BINARY_AGE_RECIPIENT ?? '',
+              binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
+              invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
+            });
+          }
+
+          return reply.code(200).header('Upload-Offset', String(newOffset)).send();
+        } finally {
+          uploadsInFlight.delete(id);
         }
-
-        const newOffset = currentOffset + written;
-
-        // Upload complete: reached the declared total.
-        if (newOffset >= bytesTotal) {
-          // Transition pending → running and stamp archiveRef NOW (before the
-          // async runner) so the staging reaper can locate the staged upload
-          // for a terminal job — ready OR failed (AC-589).
-          await jobs.markRunning(id, { bytesTotal, archiveRef: stagedPath });
-
-          // Fire-and-forget the restore — the PATCH returns 200 immediately
-          // (mirrors POST /api/export-jobs). The browser polls
-          // GET /api/import-jobs/:id; the runner validates → wipes (dropping
-          // the operator session mid-job, AC-597) → restores → re-encrypts →
-          // ready, recording any fault on the row (it never throws). A
-          // multi-GB restore must NOT block this HTTP response.
-          void runTakeoutImport({
-            db,
-            jobs,
-            storage,
-            jobId: id,
-            stagedPath,
-            logger: request.log,
-            binaryAgeRecipient: env.BINARY_AGE_RECIPIENT ?? '',
-            binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
-            invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
-          });
-        }
-
-        return reply.code(200).header('Upload-Offset', String(newOffset)).send();
       },
     );
   };

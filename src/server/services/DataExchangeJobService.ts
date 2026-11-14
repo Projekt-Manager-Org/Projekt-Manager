@@ -66,17 +66,15 @@ export function toExchangeJobDto(row: DataExchangeJob): DataExchangeJobDto {
   return dto;
 }
 
-/** Totals known at the point the job starts running. */
-export interface RunningInit {
-  filesTotal?: number;
-  bytesTotal?: number;
+/** What an import records when its upload completes. */
+export interface UploadComplete {
+  bytesTotal: number;
   /**
-   * Staged archive path. The import job stamps this at `markRunning` (when
-   * the upload completes) so the staging reaper (AC-589) can
-   * locate the file for a terminal job — ready OR failed. The export job
-   * leaves it unset here and stamps it at `markReady` instead.
+   * Staged archive path, stamped when the upload completes so the staging
+   * reaper (AC-589) can locate the file for a terminal job — ready OR failed.
+   * The export job stamps it at `markReady` instead.
    */
-  archiveRef?: string;
+  archiveRef: string;
 }
 
 /** Incremental progress; `currentItem` is the file/label being processed. */
@@ -130,15 +128,53 @@ export class DataExchangeJobService {
     return row!;
   }
 
-  /** `pending → running`: stamp `startedAt` and any known totals. */
-  async markRunning(id: string, init: RunningInit = {}): Promise<DataExchangeJob> {
-    return this.updateAndEmit(id, {
-      status: 'running',
-      startedAt: new Date(),
-      ...(init.filesTotal !== undefined ? { filesTotal: init.filesTotal } : {}),
-      ...(init.bytesTotal !== undefined ? { bytesTotal: init.bytesTotal } : {}),
-      ...(init.archiveRef !== undefined ? { archiveRef: init.archiveRef } : {}),
-    });
+  /** `pending → running`: stamp `startedAt`. */
+  async markRunning(id: string): Promise<DataExchangeJob> {
+    return this.updateAndEmit(id, { status: 'running', startedAt: new Date() });
+  }
+
+  /**
+   * `pending → running` for an import whose upload completed — only while it
+   * is still `pending`. Returns `null` when the job left `pending` meanwhile
+   * (the staging reaper failed it, AC-599): the caller then fires no restore.
+   */
+  async markRunningIfPending(id: string, done: UploadComplete): Promise<DataExchangeJob | null> {
+    const [row] = await this.db
+      .update(dataExchangeJob)
+      .set({
+        status: 'running',
+        startedAt: new Date(),
+        updatedAt: new Date(),
+        bytesTotal: done.bytesTotal,
+        archiveRef: done.archiveRef,
+      })
+      .where(and(eq(dataExchangeJob.id, id), eq(dataExchangeJob.status, 'pending')))
+      .returning();
+    if (!row) return null;
+    emitDataExchangeJobChanged();
+    return row;
+  }
+
+  /**
+   * Mark upload progress on a `pending` import: bump `updatedAt` — the clock
+   * the staging reaper ends a stalled upload by (AC-599) — and record
+   * `bytesDone` when given (AC-611). Emits nothing: one call per chunk, and
+   * the uploading page tracks its own offset. Returns `null` when the job is
+   * not a `pending` import.
+   */
+  async touchUpload(id: string, bytesDone?: number): Promise<DataExchangeJob | null> {
+    const [row] = await this.db
+      .update(dataExchangeJob)
+      .set({ updatedAt: new Date(), ...(bytesDone !== undefined ? { bytesDone } : {}) })
+      .where(
+        and(
+          eq(dataExchangeJob.id, id),
+          eq(dataExchangeJob.kind, 'import'),
+          eq(dataExchangeJob.status, 'pending'),
+        ),
+      )
+      .returning();
+    return row ?? null;
   }
 
   /** Advance the progress counters / current-item readout. Caller throttles. */

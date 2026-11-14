@@ -147,6 +147,7 @@ type ReaperLogFn = (ctx: Record<string, unknown>, event: string) => void;
 interface TakeoutStagingReaperOptions {
   db: Database;
   storage: StorageClient;
+  stagingDir: string;
   logger: { info: ReaperLogFn; error: ReaperLogFn };
   ttlMinutes: number;
   now?: Date;
@@ -1254,6 +1255,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       await runTakeoutStagingReaper({
         db,
         storage: storageClient(),
+        stagingDir: getEnv().TAKEOUT_STAGING_DIR,
         logger: { info: vi.fn(), error: vi.fn() },
         ttlMinutes,
         now: new Date(),
@@ -1306,7 +1308,10 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       const stagedPath = stagedArtifactPath(stagingDir, 'import', job.id);
       mkdirSync(stagingDir, { recursive: true });
       writeFileSync(stagedPath, archive);
-      await jobs.markRunning(job.id, { bytesTotal: archive.length, archiveRef: stagedPath });
+      await jobs.markRunningIfPending(job.id, {
+        bytesTotal: archive.length,
+        archiveRef: stagedPath,
+      });
 
       const subscriber: FakeSubscriber = {
         chunks: [],
