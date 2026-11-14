@@ -26,7 +26,7 @@
  * frames, and they supply the job-kind-specific terminal audit content.
  */
 
-import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
 import { auditLog, dataExchangeJob } from '../db/schema.js';
 import { emitDataExchangeJobChanged } from '../sse/emitters.js';
@@ -113,6 +113,13 @@ export interface TerminalAuditRow {
   payload: Record<string, unknown>;
 }
 
+/** The terminal audit row of a failed job of `kind` (AC-332). */
+export function failedJobAudit(kind: DataExchangeJobKind, detail: string): TerminalAuditRow {
+  return kind === 'export'
+    ? { action: 'export_failed', entityLabel: 'Export fehlgeschlagen', payload: { error: detail } }
+    : { action: 'import_failed', entityLabel: 'Import fehlgeschlagen', payload: { error: detail } };
+}
+
 export class DataExchangeJobService {
   constructor(private readonly db: Database) {}
 
@@ -170,6 +177,25 @@ export class DataExchangeJobService {
       id,
       { status: 'failed', errorDetail, finishedAt: new Date() },
       audit,
+    );
+  }
+
+  /**
+   * Terminal `failed` for a job the system ends itself (restart, stalled
+   * upload), with its audit row — but only while `stillMatches` holds, so a
+   * job that moved on meanwhile is left alone. Returns `null` then.
+   */
+  async failIfStill(
+    id: string,
+    kind: DataExchangeJobKind,
+    errorDetail: string,
+    stillMatches: SQL,
+  ): Promise<DataExchangeJob | null> {
+    return this.terminalAndEmit(
+      id,
+      { status: 'failed', errorDetail, finishedAt: new Date() },
+      failedJobAudit(kind, errorDetail),
+      stillMatches,
     );
   }
 
@@ -278,20 +304,37 @@ export class DataExchangeJobService {
    * row in ONE transaction, then emit post-commit. The two writes commit
    * together so a poller that observes the terminal status is guaranteed to
    * also see the audit row (AC-332). Throws (rolling back both) if `id`
-   * matched no row.
+   * matched no row; with a `guard`, returns `null` instead when the row no
+   * longer matches it.
    */
   private async terminalAndEmit(
     id: string,
     patch: Partial<typeof dataExchangeJob.$inferInsert>,
     audit: TerminalAuditRow,
-  ): Promise<DataExchangeJob> {
+  ): Promise<DataExchangeJob>;
+  private async terminalAndEmit(
+    id: string,
+    patch: Partial<typeof dataExchangeJob.$inferInsert>,
+    audit: TerminalAuditRow,
+    guard: SQL,
+  ): Promise<DataExchangeJob | null>;
+  private async terminalAndEmit(
+    id: string,
+    patch: Partial<typeof dataExchangeJob.$inferInsert>,
+    audit: TerminalAuditRow,
+    guard?: SQL,
+  ): Promise<DataExchangeJob | null> {
     const row = await this.db.transaction(async (tx) => {
       const [updated] = await tx
         .update(dataExchangeJob)
         .set({ ...patch, updatedAt: new Date() })
-        .where(eq(dataExchangeJob.id, id))
+        .where(guard ? and(eq(dataExchangeJob.id, id), guard) : eq(dataExchangeJob.id, id))
         .returning();
-      if (!updated) throw new Error(`DataExchangeJobService: job ${id} not found`);
+      if (!updated) {
+        // A guarded flip that no longer matches is a no-op, not a bug.
+        if (guard) return null;
+        throw new Error(`DataExchangeJobService: job ${id} not found`);
+      }
       // Constant envelope: a takeout terminal is a deployment-level event with
       // a `system` actor (actor_id NULL ⇒ actor_reason non-empty, the schema's
       // compound CHECK). `data_import` backs no physical table, so it sits
@@ -315,6 +358,7 @@ export class DataExchangeJobService {
         .returning();
       return { updated, auditRow: auditRow! };
     });
+    if (!row) return null;
     emitDataExchangeJobChanged();
     // Written outside `mutate()`, so dispatch by hand: the publisher's
     // subscribers emit `audit_changed` (AC-320).

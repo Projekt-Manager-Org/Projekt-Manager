@@ -87,7 +87,7 @@ import { attachments } from '../db/schema.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { invoicePdfKey } from '../repositories/attachment.js';
 import type { ServiceLogger } from './Logger.js';
-import { DataExchangeJobService } from './DataExchangeJobService.js';
+import { DataExchangeJobService, failedJobAudit } from './DataExchangeJobService.js';
 import { ImportService } from './ImportService.js';
 import { KeyEnvelopeService } from './KeyEnvelopeService.js';
 import { renderWebpThumbnail } from './serverImagePipeline.js';
@@ -577,11 +577,7 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
       'takeout-import-failed',
     );
     try {
-      await jobs.markFailed(jobId, detail, {
-        action: 'import_failed',
-        entityLabel: 'Import fehlgeschlagen',
-        payload: { error: detail },
-      });
+      await jobs.markFailed(jobId, detail, failedJobAudit('import', detail));
     } catch (innerErr) {
       logger.error(
         {
