@@ -7,7 +7,7 @@
  *                                override + confirmation phrase), create a
  *                                `pending` job, return 201 immediately.
  *   - GET  /api/import-jobs    — `{ job: <latest import row> | null }`.
- *   - GET  /api/import-jobs/:id — the job row (`404` on unknown id).
+ *   - GET  /api/import-jobs/:id — the job row (`404` on an unknown or export id).
  *   - HEAD /api/import-jobs/:id/archive — Upload-Offset + Upload-Length
  *                                headers (tus-style offset probe).
  *   - PATCH /api/import-jobs/:id/archive — append chunk (content-type
@@ -225,7 +225,8 @@ export function importJobRoutes(db: Database) {
       async (request, reply) => {
         const { id } = request.params as { id: string };
         const job = await jobs.get(id);
-        if (!job) throw notFound(STRINGS.entities.resource);
+        // An export job's id does not exist in this namespace — 404.
+        if (!job || job.kind !== 'import') throw notFound(STRINGS.entities.resource);
         // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
         return reply.code(200).send(toExchangeJobDto(job));
       },

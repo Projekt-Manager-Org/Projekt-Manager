@@ -467,6 +467,35 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
+  // #890 — the export surfaces answer only for export jobs: an import job's
+  // id is unknown here, as an export job's id is on the import surfaces.
+  // -------------------------------------------------------------------
+  describe('an import job id is not found on the export surfaces (#890)', () => {
+    it('the export surfaces do not serve an import job or its uploaded archive', async () => {
+      const jobs = new DataExchangeJobService(db);
+      const job = await jobs.create('import', null);
+      const stagingDir = getEnv().TAKEOUT_STAGING_DIR;
+      const stagedPath = stagedArtifactPath(stagingDir, 'import', job.id);
+      await mkdir(stagingDir, { recursive: true });
+      await writeFile(stagedPath, Buffer.from('uploaded archive'));
+      await db.execute(sql`
+        UPDATE data_exchange_job
+        SET status = 'ready', archive_ref = ${stagedPath}, finished_at = now()
+        WHERE id = ${job.id}
+      `);
+      try {
+        const download = await authGet(ownerToken, `/api/export-jobs/${job.id}/download`);
+        expect(download.statusCode).toBe(404);
+        expect(download.json().code).toBe('NOT_FOUND');
+        const row = await authGet(ownerToken, `/api/export-jobs/${job.id}`);
+        expect(row.statusCode).toBe(404);
+      } finally {
+        await rm(stagedPath, { force: true });
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
   // AC-331 — one active export job per kind (export half only).
   // -------------------------------------------------------------------
   describe('AC-331: one active export job per kind', () => {
