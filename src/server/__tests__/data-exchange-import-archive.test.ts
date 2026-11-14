@@ -347,6 +347,41 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
     return login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
   }
 
+  /** Issue a draft invoice on a `rechnung_faellig` project; the issue renders its PDF. */
+  async function issueInvoice(
+    token: string,
+  ): Promise<{ id: string; number: string; descriptorId: string }> {
+    const pr = await authGet(token, '/api/projects?status=rechnung_faellig&limit=200');
+    const project = (pr.json() as { data: { id: string }[] }).data[0];
+    if (!project) throw new Error('seed missing a project in rechnung_faellig');
+    const draft = await authPost(token, '/api/invoices', {
+      projectId: project.id,
+      lines: [
+        {
+          description: 'Anstrich Fassade',
+          quantity: 1,
+          unit: 'pauschal',
+          unitPrice: 1500,
+          taxRate: 19,
+        },
+      ],
+      performanceDate: '2026-04-10',
+    });
+    expect(draft.statusCode).toBe(201);
+    const id = (draft.json() as { id: string }).id;
+    const issued = await authPost(
+      token,
+      `/api/invoices/${id}/issue`,
+      await expectedVersion(token, `/api/invoices/${id}`),
+    );
+    expect(issued.statusCode).toBe(200);
+    const { number, renderedPdfBinaryDescriptorId: descriptorId } = issued.json() as {
+      number: string;
+      renderedPdfBinaryDescriptorId: string;
+    };
+    return { id, number, descriptorId };
+  }
+
   /** Count rows in an importable table (post-wipe assertions, AC-593). */
   async function countRows(table: string): Promise<number> {
     const res = await db.execute(sql.raw(`SELECT COUNT(*)::int AS c FROM ${table}`));
@@ -397,6 +432,10 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
     // business data is the NON-EMPTY target the override roundtrip needs;
     // arms that seed attachments clean them first.
     await db.execute(sql`DELETE FROM data_exchange_job`);
+    // The seed's issued / cancelled invoices, and any a prior arm issued,
+    // point at PDFs the line below deletes; an export would carry those
+    // dangling references (data-model.md §5.8). Drafts carry none.
+    await db.execute(sql`DELETE FROM invoices WHERE rendered_pdf_binary_descriptor_id IS NOT NULL`);
     await db.execute(sql`DELETE FROM attachments`);
     // A prior arm's restore wipes `users` (dropping ownerToken's session);
     // re-authenticate so every arm starts from a live token regardless of
@@ -695,40 +734,6 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   // it, or it lands under `attachments/…` and becomes a deletable upload.
   // -------------------------------------------------------------------
   describe('AC-365: import restores a rendered invoice PDF as one', () => {
-    async function issueInvoice(
-      token: string,
-    ): Promise<{ id: string; number: string; descriptorId: string }> {
-      const pr = await authGet(token, '/api/projects?status=rechnung_faellig&limit=200');
-      const project = (pr.json() as { data: { id: string }[] }).data[0];
-      if (!project) throw new Error('seed missing a project in rechnung_faellig');
-      const draft = await authPost(token, '/api/invoices', {
-        projectId: project.id,
-        lines: [
-          {
-            description: 'Anstrich Fassade',
-            quantity: 1,
-            unit: 'pauschal',
-            unitPrice: 1500,
-            taxRate: 19,
-          },
-        ],
-        performanceDate: '2026-04-10',
-      });
-      expect(draft.statusCode).toBe(201);
-      const id = (draft.json() as { id: string }).id;
-      const issued = await authPost(
-        token,
-        `/api/invoices/${id}/issue`,
-        await expectedVersion(token, `/api/invoices/${id}`),
-      );
-      expect(issued.statusCode).toBe(200);
-      const { number, renderedPdfBinaryDescriptorId: descriptorId } = issued.json() as {
-        number: string;
-        renderedPdfBinaryDescriptorId: string;
-      };
-      return { id, number, descriptorId };
-    }
-
     async function invoicePdf(token: string, invoiceId: string): Promise<Buffer> {
       const res = await getApp().inject({
         method: 'GET',
@@ -1165,6 +1170,200 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       // ZERO destructive writes — the wipe never ran (AC-593).
       expect(await countRows('projects')).toBe(before.projects);
       expect(await countRows('attachments')).toBe(before.attachments);
+    });
+
+    // data-model.md §5.8 "Valid archive": every reference in data.json
+    // resolves within it, except a user's own createdBy / updatedBy.
+    describe('references resolve within the archive (#879)', () => {
+      const TARGET_TABLES = [
+        'users',
+        'customers',
+        'projects',
+        'project_workers',
+        'invoices',
+        'attachments',
+      ] as const;
+
+      async function targetCounts(): Promise<Record<string, number>> {
+        const counts: Record<string, number> = {};
+        for (const t of TARGET_TABLES) counts[t] = await countRows(t);
+        return counts;
+      }
+
+      /**
+       * Edit data.json (and, optionally, the other entries) and re-stamp
+       * data.json's manifest digest, so the run gets past the integrity
+       * gate and reaches the reference checks.
+       */
+      function editArchive(
+        archive: Buffer,
+        mutate: (
+          env: Record<string, { [k: string]: unknown }[]>,
+          entries: Record<string, Uint8Array>,
+        ) => void,
+      ): Buffer {
+        return remuxArchive(archive, (entries) => {
+          const env = JSON.parse(Buffer.from(entries['data.json']!).toString('utf-8'));
+          mutate(env, entries);
+          const data = Buffer.from(JSON.stringify(env));
+          entries['data.json'] = new Uint8Array(data);
+          const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf-8')) as {
+            files: { zipPath: string; sha256: string; sizeBytes: number }[];
+          };
+          const entry = manifest.files.find((f) => f.zipPath === 'data.json')!;
+          entry.sizeBytes = data.length;
+          entry.sha256 = crypto.createHash('sha256').update(data).digest('hex');
+          entries['manifest.json'] = new Uint8Array(Buffer.from(JSON.stringify(manifest)));
+        });
+      }
+
+      /**
+       * Poll the job row itself: unlike the API poll, it survives a wipe
+       * that drops the session, so a wrong outcome shows as a status.
+       */
+      async function jobTerminal(
+        jobId: string,
+      ): Promise<{ status: string; errorDetail: string | null }> {
+        const deadline = Date.now() + POLL_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+          const row = (
+            await db.execute(
+              sql`SELECT status, error_detail FROM data_exchange_job WHERE id = ${jobId}`,
+            )
+          ).rows[0] as { status: string; error_detail: string | null };
+          if (row.status === 'ready' || row.status === 'failed') {
+            return { status: row.status, errorDetail: row.error_detail };
+          }
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        }
+        throw new Error(`import job ${jobId} did not reach a terminal status`);
+      }
+
+      it("an attachment's createdBy outside the archive's users → job failed at Pass-1, target untouched", async () => {
+        const seeded = await seedReadyAttachment({
+          plaintext: crypto.randomBytes(512),
+          fileName: 'ghost.pdf',
+        });
+        const archive = await buildExportArchive(ownerToken);
+        const before = await targetCounts();
+        expect(before.attachments).toBe(1);
+
+        const ghost = crypto.randomUUID();
+        const corrupt = editArchive(archive, (env) => {
+          const att = env.attachments!.find((a) => a.id === seeded.id)!;
+          att.createdBy = ghost;
+        });
+
+        const jobId = await uploadArchiveToNewJob(ownerToken, corrupt);
+        const terminal = await jobTerminal(jobId);
+        expect(terminal.status).toBe('failed');
+        expect(terminal.errorDetail).toContain(ghost);
+
+        expect(await targetCounts()).toEqual(before);
+        const stillAuthed = await authGet(ownerToken, '/api/import-jobs');
+        expect(stillAuthed.statusCode).toBe(200);
+      });
+
+      it('a cancelled invoice whose PDF is not in the archive → job failed at Pass-1, target untouched', async () => {
+        // Cancelled, not issued: every invoice's PDF reference must
+        // resolve, whatever its status.
+        const invoice = await issueInvoice(ownerToken);
+        const cancelled = await authPost(ownerToken, `/api/invoices/${invoice.id}/cancel`, {});
+        expect(cancelled.statusCode).toBe(200);
+        const archive = await buildExportArchive(ownerToken);
+        const before = await targetCounts();
+        expect(before.attachments).toBe(2); // the original's PDF + the Storno's
+
+        // Drop the PDF consistently from data.json, the manifest and the
+        // zip, so every integrity and coverage check still holds.
+        const corrupt = editArchive(archive, (env, entries) => {
+          env.attachments = env.attachments!.filter((a) => a.id !== invoice.descriptorId);
+          const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf-8')) as {
+            files: { zipPath: string; attachmentId?: string }[];
+          };
+          const pdf = manifest.files.find((f) => f.attachmentId === invoice.descriptorId)!;
+          delete entries[pdf.zipPath];
+          manifest.files = manifest.files.filter((f) => f !== pdf);
+          entries['manifest.json'] = new Uint8Array(Buffer.from(JSON.stringify(manifest)));
+        });
+
+        const jobId = await uploadArchiveToNewJob(ownerToken, corrupt);
+        const terminal = await jobTerminal(jobId);
+        expect(terminal.status).toBe('failed');
+        expect(terminal.errorDetail).toContain(invoice.id);
+        expect(terminal.errorDetail).toContain(invoice.descriptorId);
+
+        expect(await targetCounts()).toEqual(before);
+        const stillAuthed = await authGet(ownerToken, '/api/import-jobs');
+        expect(stillAuthed.statusCode).toBe(200);
+      });
+
+      it('an issued invoice whose PDF reference is nulled → job failed at Pass-1, target untouched', async () => {
+        // The same loss as a dangling reference, reached by blanking it:
+        // a non-draft invoice always has its PDF (data-model.md §5.15).
+        const invoice = await issueInvoice(ownerToken);
+        const archive = await buildExportArchive(ownerToken);
+        const before = await targetCounts();
+        expect(before.attachments).toBe(1);
+
+        const corrupt = editArchive(archive, (env, entries) => {
+          const inv = env.invoices!.find((i) => i.id === invoice.id)!;
+          inv.renderedPdfBinaryDescriptorId = null;
+          env.attachments = env.attachments!.filter((a) => a.id !== invoice.descriptorId);
+          const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf-8')) as {
+            files: { zipPath: string; attachmentId?: string }[];
+          };
+          const pdf = manifest.files.find((f) => f.attachmentId === invoice.descriptorId)!;
+          delete entries[pdf.zipPath];
+          manifest.files = manifest.files.filter((f) => f !== pdf);
+          entries['manifest.json'] = new Uint8Array(Buffer.from(JSON.stringify(manifest)));
+        });
+
+        const jobId = await uploadArchiveToNewJob(ownerToken, corrupt);
+        const terminal = await jobTerminal(jobId);
+        expect(terminal.status).toBe('failed');
+        expect(terminal.errorDetail).toContain(invoice.id);
+
+        expect(await targetCounts()).toEqual(before);
+      });
+
+      it("AC-594: a user's createdBy / updatedBy outside the archive's users imports as ready, verbatim", async () => {
+        // A hard-deleted creator (data-model.md §6.6) leaves exactly this
+        // in a legitimate export.
+        const archive = await buildExportArchive(ownerToken);
+        const ghostCreator = crypto.randomUUID();
+        const ghostUpdater = crypto.randomUUID();
+        let userId = '';
+        let original: { createdBy: unknown; updatedBy: unknown } = {
+          createdBy: null,
+          updatedBy: null,
+        };
+        const edited = editArchive(archive, (env) => {
+          const user = env.users!.find((u) => u.username !== SEED_USERS.owner.username)!;
+          userId = user.id as string;
+          original = { createdBy: user.createdBy, updatedBy: user.updatedBy };
+          user.createdBy = ghostCreator;
+          user.updatedBy = ghostUpdater;
+        });
+
+        const jobId = await uploadArchiveToNewJob(ownerToken, edited);
+        try {
+          const terminal = await jobTerminal(jobId);
+          expect(terminal).toEqual({ status: 'ready', errorDetail: null });
+
+          const rows = (
+            await db.execute(sql`SELECT created_by, updated_by FROM users WHERE id = ${userId}`)
+          ).rows as { created_by: string; updated_by: string }[];
+          expect(rows).toEqual([{ created_by: ghostCreator, updated_by: ghostUpdater }]);
+        } finally {
+          // Later arms export this user again; give them a clean archive.
+          await db.execute(sql`
+            UPDATE users SET created_by = ${original.createdBy as string | null},
+                             updated_by = ${original.updatedBy as string | null}
+            WHERE id = ${userId}
+          `);
+        }
+      });
     });
   });
 
