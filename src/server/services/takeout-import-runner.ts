@@ -324,14 +324,21 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
       throw new Error(`manifest attachment ${id} absent from envelope`);
   }
 
-  // Attachment → project referential integrity (against the envelope's own projects).
+  // Attachment → project / user referential integrity, against the
+  // envelope's own rows (data-model.md §5.8). Pass 2 inserts attachments
+  // after the wipe, so an unresolved FK would fail post-wipe (AC-593).
   const envelopeProjectIds = new Set(envelope.projects.map((p) => p.id));
+  const envelopeUserIds = new Set(envelope.users.map((u) => u.id));
   for (const att of envelope.attachments) {
     if (!UUID_RE.test(att.id) || !UUID_RE.test(att.projectId)) {
       throw new Error(`attachment ${att.id} has a malformed id or projectId`);
     }
     if (!envelopeProjectIds.has(att.projectId)) {
       throw new Error(`attachment ${att.id} references project ${att.projectId} not in envelope`);
+    }
+    // A null or missing creator carries no reference.
+    if (att.createdBy != null && !envelopeUserIds.has(att.createdBy)) {
+      throw new Error(`attachment ${att.id} references user ${att.createdBy} not in envelope`);
     }
     // Closed-enum check against the `attachments` CHECK constraints
     // (kind/label/mime_type). Pass-2 inserts the row AFTER the wipe has
@@ -357,6 +364,19 @@ async function validateArchive(deps: RunTakeoutImportDeps): Promise<ValidatedArc
     // separators) the upload path would reject.
     if (!isSafeFileName(att.fileName)) {
       throw new Error(`attachment ${att.id} has an unsafe fileName`);
+    }
+  }
+
+  // Invoice → rendered PDF. No FK holds it, so a missing PDF would
+  // otherwise restore as `ready` with the invoice's document gone. Only a
+  // draft has none (data-model.md §5.15).
+  for (const inv of envelope.invoices) {
+    const pdfId = inv.renderedPdfBinaryDescriptorId;
+    if (pdfId == null) {
+      if (inv.status !== 'draft')
+        throw new Error(`invoice ${inv.id} is ${inv.status} but has no PDF`);
+    } else if (!envelopeAttachmentIds.has(pdfId)) {
+      throw new Error(`invoice ${inv.id} references PDF attachment ${pdfId} not in envelope`);
     }
   }
 

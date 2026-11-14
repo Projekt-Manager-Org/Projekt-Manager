@@ -402,18 +402,9 @@ function collectEnvelopeUserRefs(envelope: Envelope): MissingUserReference[] {
     }
   }
 
-  // `users[].createdBy` / `users[].updatedBy` themselves can reference
-  // other users in the envelope — they're checked against the same set,
-  // so listing them here is correct.
-  for (let i = 0; i < envelope.users.length; i++) {
-    const u = envelope.users[i]!;
-    if (u.createdBy !== null && u.createdBy !== undefined) {
-      refs.push({ path: `users[${i}].createdBy`, userId: u.createdBy });
-    }
-    if (u.updatedBy !== null && u.updatedBy !== undefined) {
-      refs.push({ path: `users[${i}].updatedBy`, userId: u.updatedBy });
-    }
-  }
+  // Not `users[].createdBy` / `updatedBy`: they carry no FK, and a
+  // hard-deleted creator leaves them dangling in a legitimate export
+  // (data-model.md §5.8, §6.6).
 
   return refs;
 }
