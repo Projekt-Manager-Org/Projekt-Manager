@@ -27,7 +27,7 @@ import type { Database } from '../db/connection.js';
 import type { AuthUser } from '../middleware/auth.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
-import { DataExchangeJobService } from './DataExchangeJobService.js';
+import { DataExchangeJobService, failedJobAudit } from './DataExchangeJobService.js';
 import { buildExportArchive } from './takeout-export-builder.js';
 import { stagedArtifactPath } from './takeout-staging.js';
 
@@ -109,11 +109,7 @@ export async function runExportBuild(deps: RunExportBuildDeps): Promise<void> {
       'takeout-export-build-failed',
     );
     try {
-      await jobs.markFailed(jobId, detail, {
-        action: 'export_failed',
-        entityLabel: 'Export fehlgeschlagen',
-        payload: { error: detail },
-      });
+      await jobs.markFailed(jobId, detail, failedJobAudit('export', detail));
     } catch (innerErr) {
       // Last-resort: the row could not be moved to failed (e.g. it was
       // deleted). Log and give up — there is no caller to surface this to.

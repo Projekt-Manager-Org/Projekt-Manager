@@ -7,8 +7,11 @@
  *   - `ready` EXPORT jobs whose `finished_at` is older than `now - ttlMinutes`
  *     and whose `archive_ref` is non-null.
  *   - Terminal (`ready` OR `failed`) IMPORT jobs with the same age predicate
- *     and a non-null `archive_ref`. Abandoned `pending`/`running` imports are
- *     flipped to `failed` by the boot reaper first and then swept here.
+ *     and a non-null `archive_ref`.
+ *
+ * It also ends a `pending` import whose upload made no progress for the TTL
+ * (AC-599): `failed` with its audit row (AC-332), partial upload deleted. The
+ * upload route bumps `updated_at` on every chunk, so it is the progress clock.
  *
  * `archive_ref` is nulled after the staged file is deleted — the row
  * PERSISTS as operational metadata so the download surface resolves the
@@ -26,13 +29,18 @@
  * the orphan reaper's storage-delete posture.
  */
 
+import { rm } from 'node:fs/promises';
 import { and, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
 import { dataExchangeJob } from '../db/schema.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
-import { sweepStagedArtifact } from './takeout-staging.js';
+import { DataExchangeJobService } from './DataExchangeJobService.js';
+import { stagedArtifactPath, sweepStagedArtifact } from './takeout-staging.js';
+
+/** Operator-facing reason stamped on a stalled import's `error_detail`. */
+export const STALLED_UPLOAD_DETAIL = 'upload stalled: no progress for the takeout staging TTL';
 
 const MS_PER_MINUTE = 60 * 1000;
 
@@ -50,6 +58,8 @@ export interface RunTakeoutStagingReaperDeps {
    * without a signature change.
    */
   storage: AttachmentStorageClient;
+  /** VPS-local staging directory (TAKEOUT_STAGING_DIR) — a stalled upload's partial file lives here. */
+  stagingDir: string;
   logger: ServiceLogger;
   ttlMinutes: number;
   /**
@@ -97,6 +107,8 @@ export async function runTakeoutStagingReaper(deps: RunTakeoutStagingReaperDeps)
       ),
     );
 
+  const stalled = await failStalledUploads(deps, cutoff);
+
   for (const job of aged) {
     if (job.archiveRef) {
       // Shared sweep helper: best-effort rm + null archive_ref, matching the
@@ -109,9 +121,49 @@ export async function runTakeoutStagingReaper(deps: RunTakeoutStagingReaperDeps)
     {
       event: EVENT_TAKEOUT_STAGING_REAPER,
       ttl_minutes: deps.ttlMinutes,
-      removed_count: aged.length,
+      removed_count: aged.length + stalled,
       ran_at: runAt.toISOString(),
     },
     EVENT_TAKEOUT_STAGING_REAPER,
   );
+}
+
+/**
+ * Fail every `pending` import whose last progress is older than `cutoff`, and
+ * delete its partial upload. The age is re-checked in the flip itself, so a
+ * chunk that lands meanwhile keeps the job. Returns the count failed.
+ */
+async function failStalledUploads(
+  deps: RunTakeoutStagingReaperDeps,
+  cutoff: Date,
+): Promise<number> {
+  const stillStalled = and(
+    eq(dataExchangeJob.status, 'pending'),
+    lt(dataExchangeJob.updatedAt, cutoff),
+  )!;
+  const candidates = await deps.db
+    .select({ id: dataExchangeJob.id })
+    .from(dataExchangeJob)
+    .where(and(eq(dataExchangeJob.kind, 'import'), stillStalled));
+
+  const jobs = new DataExchangeJobService(deps.db);
+  let failed = 0;
+  for (const { id } of candidates) {
+    if (!(await jobs.failIfStill(id, 'import', STALLED_UPLOAD_DETAIL, stillStalled))) continue;
+    failed += 1;
+    const stagedPath = stagedArtifactPath(deps.stagingDir, 'import', id);
+    try {
+      await rm(stagedPath, { force: true });
+    } catch (err) {
+      deps.logger.error(
+        {
+          event: EVENT_TAKEOUT_STAGING_REAPER,
+          error_hint: err instanceof Error ? err.message : String(err),
+          path: stagedPath,
+        },
+        EVENT_TAKEOUT_STAGING_REAPER,
+      );
+    }
+  }
+  return failed;
 }

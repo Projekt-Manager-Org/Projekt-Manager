@@ -186,19 +186,143 @@ describe('VollstaendigerImportDialog — confirm (AC-161)', () => {
   });
 });
 
-describe('VollstaendigerImportDialog — uploading (AC-602)', () => {
-  it('renders the upload byte readout from uploadOffset / bytesTotal', () => {
-    // A pending job AT MOUNT = re-attach → tracking → uploading straight away.
-    useImportJobStore.setState({
-      job: makeJob({ status: 'pending', bytesTotal: 4096 }),
-      uploadOffset: 1536,
-    });
-    render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
+/** Confirm a fresh import; `upload` is the store action the dialog then calls. */
+async function startImport(upload: () => Promise<void>): Promise<void> {
+  const createSpy = vi.fn(async () => {
+    useImportJobStore.setState({ job: makeJob({ status: 'pending', bytesTotal: 2048 }) });
+  });
+  useImportJobStore.setState({ create: createSpy, upload: vi.fn(upload) });
+  render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
+  fireEvent.change(screen.getByTestId('import-job-phrase-input'), {
+    target: { value: RESTORE_CONFIRMATION_PHRASE },
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByTestId('import-job-start'));
+  });
+}
 
-    const uploading = screen.getByTestId('import-job-uploading');
-    const bytes = within(uploading).getByTestId('import-job-upload-bytes');
+describe('VollstaendigerImportDialog — uploading (AC-602)', () => {
+  it('AC-611: while this page uploads, shows `Hochladen …` and the byte readout from uploadOffset', async () => {
+    // The upload is still in flight: it never resolves in this test.
+    await startImport(() => {
+      useImportJobStore.setState({ uploading: true, uploadOffset: 1536 });
+      return new Promise<void>(() => {});
+    });
+
+    const dialog = screen.getByTestId('import-job-dialog');
+    expect(within(dialog).getByRole('heading')).toHaveTextContent('Hochladen …');
+    expect(dialog).not.toHaveTextContent('Upload unterbrochen');
+    const bytes = within(dialog).getByTestId('import-job-upload-bytes');
+    expect(bytes).toHaveAttribute('data-bytes-done', '1536');
+    expect(bytes).toHaveAttribute('data-bytes-total', '2048');
+  });
+});
+
+describe('VollstaendigerImportDialog — stalled upload (AC-609, AC-610, AC-611)', () => {
+  it('AC-611: once this page sent the last chunk, it keeps `Hochladen …` until the restore starts', async () => {
+    // The upload finished; the job row has not reached `running` yet.
+    await startImport(async () => {
+      useImportJobStore.setState({ uploadOffset: 2048 });
+    });
+
+    const dialog = screen.getByTestId('import-job-dialog');
+    expect(within(dialog).getByRole('heading')).toHaveTextContent('Hochladen …');
+    expect(within(dialog).getByTestId('import-job-upload-bytes')).toHaveAttribute(
+      'data-bytes-done',
+      '2048',
+    );
+  });
+
+  it('AC-610: the size check follows the live job — a pending upload that arrives after the dialog opened', () => {
+    render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
+    act(() => {
+      useImportJobStore.setState({ job: makeJob({ status: 'pending', bytesTotal: 4096 }) });
+    });
+    expect(screen.getByTestId('import-job-size-mismatch')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('import-job-phrase-input'), {
+      target: { value: RESTORE_CONFIRMATION_PHRASE },
+    });
+    expect(screen.getByTestId('import-job-start')).toBeDisabled();
+  });
+
+  const INTERRUPTED = 'Upload unterbrochen. Zum Fortsetzen das Archiv über „Import“ erneut wählen.';
+
+  it('AC-611, AC-603: re-attached to a pending upload, it says the upload is interrupted and shows the server progress', () => {
+    useImportJobStore.setState({
+      job: makeJob({ status: 'pending', bytesTotal: 4096, bytesDone: 1536 }),
+    });
+    render(<VollstaendigerImportDialog file={null} onClose={vi.fn()} />);
+
+    const dialog = screen.getByTestId('import-job-dialog');
+    expect(within(dialog).getByRole('heading')).toHaveTextContent(INTERRUPTED);
+    expect(dialog).not.toHaveTextContent('Hochladen …');
+    const bytes = within(dialog).getByTestId('import-job-upload-bytes');
     expect(bytes).toHaveAttribute('data-bytes-done', '1536');
     expect(bytes).toHaveAttribute('data-bytes-total', '4096');
+  });
+
+  it("AC-611: when this page's upload stops before it completes, it says the upload is interrupted", async () => {
+    // The store's upload loop gives up (network gone): it returns, the job stays pending.
+    await startImport(async () => {
+      useImportJobStore.setState({ uploadOffset: 1536 });
+    });
+
+    const dialog = screen.getByTestId('import-job-dialog');
+    expect(within(dialog).getByRole('heading')).toHaveTextContent(INTERRUPTED);
+    expect(dialog).not.toHaveTextContent('Hochladen …');
+  });
+
+  it('AC-609: picking the archive of a pending upload shows the confirmation; Start continues that upload', async () => {
+    const pending = makeJob({ id: 'stalled', status: 'pending', bytesTotal: 2048 });
+    useImportJobStore.setState({ job: pending });
+    // The server answers IMPORT_JOB_ACTIVE; the store re-attaches to the pending job.
+    const createSpy = vi.fn(async () => {
+      useImportJobStore.setState({ job: pending });
+    });
+    const uploadSpy = vi.fn(async () => {});
+    useImportJobStore.setState({ create: createSpy, upload: uploadSpy });
+    const file = makeFile();
+
+    render(<VollstaendigerImportDialog file={file} onClose={vi.fn()} />);
+    expect(screen.getByTestId('import-job-confirm')).toBeInTheDocument();
+    expect(uploadSpy).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByTestId('import-job-phrase-input'), {
+      target: { value: RESTORE_CONFIRMATION_PHRASE },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('import-job-start'));
+    });
+
+    // Continuing goes through create; the server answers IMPORT_JOB_ACTIVE and the store re-attaches.
+    expect(createSpy).toHaveBeenCalledWith({
+      file,
+      override: true,
+      phrase: RESTORE_CONFIRMATION_PHRASE,
+    });
+    await waitFor(() => expect(uploadSpy).toHaveBeenCalledWith(file));
+  });
+
+  it('AC-610: a file whose size differs from the pending upload is refused and nothing uploads', async () => {
+    useImportJobStore.setState({ job: makeJob({ status: 'pending', bytesTotal: 4096 }) });
+    const createSpy = vi.fn(async () => {});
+    const uploadSpy = vi.fn(async () => {});
+    useImportJobStore.setState({ create: createSpy, upload: uploadSpy });
+
+    render(<VollstaendigerImportDialog file={makeFile()} onClose={vi.fn()} />);
+    expect(screen.getByTestId('import-job-size-mismatch')).toHaveTextContent(
+      'Diese Datei gehört nicht zum laufenden Import.',
+    );
+    fireEvent.change(screen.getByTestId('import-job-phrase-input'), {
+      target: { value: RESTORE_CONFIRMATION_PHRASE },
+    });
+    const start = screen.getByTestId('import-job-start');
+    expect(start).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(start);
+    });
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(uploadSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -49,12 +49,13 @@
  * restore-specific, not "any data permission"); `worker` holds neither.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 
@@ -67,6 +68,8 @@ import {
 import { createDatabase, type Database } from '../db/connection.js';
 import { getEnv } from '../config/env.js';
 import { stagedArtifactPath } from '../services/takeout-staging.js';
+import { runTakeoutStagingReaper } from '../services/takeout-staging-reaper.js';
+import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -496,6 +499,33 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       expect(advanced.startedAt).not.toBeNull();
     });
 
+    it('two PATCHes at once (two pages continuing one upload): one lands, the other gets the offset conflict', async () => {
+      const id = await freshUploadSlot(4096);
+      const chunk = crypto.randomBytes(1000);
+
+      // The first body stalls before its first byte, so both requests see offset 0.
+      const slowBody = new Readable({ read() {} });
+      setTimeout(() => {
+        slowBody.push(chunk);
+        slowBody.push(null);
+      }, 300);
+      const first = getApp().inject({
+        method: 'PATCH',
+        url: `/api/import-jobs/${id}/archive`,
+        headers: {
+          cookie: `session=${ownerToken}`,
+          'upload-offset': '0',
+          'content-type': UPLOAD_OCTET_STREAM,
+        },
+        payload: slowBody,
+      });
+      await new Promise((r) => setTimeout(r, 100));
+      const [a, b] = await Promise.all([first, patchArchive(ownerToken, id, 0, chunk)]);
+
+      expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
+      expect((await headArchive(ownerToken, id)).headers['upload-offset']).toBe('1000');
+    });
+
     it('resumable: interrupt mid-upload, HEAD to read the offset, resume to completion', async () => {
       // The load-bearing reliability property: a dropped upload
       // resumes from the server's offset rather than restarting at zero.
@@ -779,6 +809,96 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       const firstRowAfter = await authGet(ownerToken, `/api/import-jobs/${firstId}`);
       expect(firstRowAfter.statusCode).toBe(200);
       expect((firstRowAfter.json() as ImportJobRow).id).toBe(firstId);
+    });
+  });
+  // -------------------------------------------------------------------
+  // AC-599 — an upload that stops (tab closed, network gone) must not hold
+  // the one-active slot or its partial plaintext forever. The staging
+  // reaper ends a `pending` import whose upload made no progress for the
+  // TTL. Ageing the job's timestamps stands in for the TTL passing.
+  // -------------------------------------------------------------------
+  describe('AC-599: a stalled import upload ends failed after the TTL', () => {
+    const ttlMinutes = 1440;
+
+    async function startPartialUpload(): Promise<{ id: string; stagedPath: string }> {
+      const created = await createImportJob(ownerToken, 4096, {
+        override: true,
+        confirmation_phrase: EXPECTED_RESTORE_PHRASE,
+      });
+      expect(created.statusCode).toBe(201);
+      const id = (created.json() as ImportJobRow).id;
+      return { id, stagedPath: stagedArtifactPath(getEnv().TAKEOUT_STAGING_DIR, 'import', id) };
+    }
+
+    async function ageJob(id: string): Promise<void> {
+      const past = new Date(Date.now() - (ttlMinutes + 60) * 60 * 1000).toISOString();
+      await db.execute(
+        sql`UPDATE data_exchange_job SET created_at = ${past}, updated_at = ${past} WHERE id = ${id}`,
+      );
+    }
+
+    async function runReaper(): Promise<void> {
+      await runTakeoutStagingReaper({
+        db,
+        storage: createStorageClientFromEnv(getEnv()),
+        stagingDir: getEnv().TAKEOUT_STAGING_DIR,
+        logger: { info: vi.fn(), error: vi.fn() },
+        ttlMinutes,
+        now: new Date(),
+      });
+    }
+
+    it('ends it failed with one audit entry (AC-332), deletes the partial upload, frees the slot', async () => {
+      const { id, stagedPath } = await startPartialUpload();
+      expect((await patchArchive(ownerToken, id, 0, crypto.randomBytes(1000))).statusCode).toBe(
+        200,
+      );
+      expect(existsSync(stagedPath)).toBe(true);
+      await ageJob(id);
+
+      await runReaper();
+
+      const row = (await authGet(ownerToken, `/api/import-jobs/${id}`)).json() as ImportJobRow;
+      expect(row.status).toBe('failed');
+      expect(row.errorDetail).toBeTruthy();
+      const audit = await db.execute(
+        sql`SELECT action FROM audit_log WHERE entity_type = 'data_import' AND entity_id = ${id}`,
+      );
+      expect(audit.rows).toEqual([{ action: 'import_failed' }]);
+      expect(existsSync(stagedPath)).toBe(false);
+
+      const next = await createImportJob(ownerToken, 1024, {
+        override: true,
+        confirmation_phrase: EXPECTED_RESTORE_PHRASE,
+      });
+      expect(next.statusCode).toBe(201);
+    });
+
+    it('ends an import whose upload never started', async () => {
+      // A tab closed right after Start: the job exists, no byte arrived.
+      const { id } = await startPartialUpload();
+      await ageJob(id);
+
+      await runReaper();
+
+      const row = (await authGet(ownerToken, `/api/import-jobs/${id}`)).json() as ImportJobRow;
+      expect(row.status).toBe('failed');
+    });
+
+    it('keeps an upload whose last chunk arrived within the TTL', async () => {
+      const { id, stagedPath } = await startPartialUpload();
+      await ageJob(id);
+      // Progress after the job aged: the TTL counts from this chunk.
+      expect((await patchArchive(ownerToken, id, 0, crypto.randomBytes(1000))).statusCode).toBe(
+        200,
+      );
+
+      await runReaper();
+
+      const row = (await authGet(ownerToken, `/api/import-jobs/${id}`)).json() as ImportJobRow;
+      expect(row.status).toBe('pending');
+      expect(existsSync(stagedPath)).toBe(true);
+      expect((await headArchive(ownerToken, id)).headers['upload-offset']).toBe('1000');
     });
   });
 });

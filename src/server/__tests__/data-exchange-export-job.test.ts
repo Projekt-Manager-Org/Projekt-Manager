@@ -141,6 +141,7 @@ type ReaperLogFn = (ctx: Record<string, unknown>, event: string) => void;
 interface TakeoutStagingReaperOptions {
   db: Database;
   storage: StorageClient;
+  stagingDir: string;
   logger: { info: ReaperLogFn; error: ReaperLogFn };
   ttlMinutes: number;
   now?: Date;
@@ -583,6 +584,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       await runTakeoutStagingReaper({
         db,
         storage: storageClient(),
+        stagingDir: getEnv().TAKEOUT_STAGING_DIR,
         logger: { info: vi.fn(), error: vi.fn() },
         ttlMinutes,
         now: new Date(),
@@ -735,6 +737,34 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       // The slot is free: a fresh create succeeds (no 409 from the stale row).
       const created = await authPost(ownerToken, '/api/export-jobs');
       expect(created.statusCode).toBe(201);
+    });
+
+    it('AC-332: records exactly one failed audit entry per reaped job, export and import', async () => {
+      const jobs = [
+        { id: crypto.randomUUID(), kind: 'export', status: 'pending', action: 'export_failed' },
+        { id: crypto.randomUUID(), kind: 'export', status: 'running', action: 'export_failed' },
+        { id: crypto.randomUUID(), kind: 'import', status: 'pending', action: 'import_failed' },
+        { id: crypto.randomUUID(), kind: 'import', status: 'running', action: 'import_failed' },
+      ] as const;
+      for (const j of jobs) {
+        await db.execute(sql`
+          INSERT INTO data_exchange_job (id, kind, status) VALUES (${j.id}, ${j.kind}, ${j.status})
+        `);
+      }
+
+      const reaped = await reapAbandonedDataExchangeJobs({
+        db,
+        stagingDir: getEnv().TAKEOUT_STAGING_DIR,
+        logger: { info: vi.fn(), error: vi.fn() },
+      });
+      expect(reaped).toBe(jobs.length);
+
+      for (const j of jobs) {
+        const res = await db.execute(
+          sql`SELECT action FROM audit_log WHERE entity_type = 'data_import' AND entity_id = ${j.id}`,
+        );
+        expect(res.rows).toEqual([{ action: j.action }]);
+      }
     });
 
     it('is a no-op (returns 0) when nothing is abandoned', async () => {

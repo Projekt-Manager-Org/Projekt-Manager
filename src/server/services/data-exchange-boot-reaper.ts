@@ -1,22 +1,22 @@
 /**
  * Data-exchange job boot reconciliation — data-model.md §5.18,
- * AC-331, AC-600.
+ * AC-331, AC-600, AC-332.
  *
  * Export/import jobs run in-process (ADR-0021) and their build/restore is
  * fire-and-forget — a process restart abandons any job left `pending` or
  * `running`. Left untouched, such a row keeps the one-active-per-kind slot
  * occupied forever: every later create returns `409 *_JOB_ACTIVE`, bricking
  * the feature with no API recovery path. On boot we mark every abandoned job
- * `failed` (freeing the slot — the operator retries) and delete its
- * partially-staged plaintext archive: a crash leaves a half-written
- * `<jobId>.zip` on the VPS-local staging path, and the TTL reaper only sweeps
- * `ready` artifacts (`archive_ref IS NOT NULL`), so without this the partial
- * plaintext superset (all business data + every `passwordHash`) would persist
- * past the staging TTL.
+ * `failed` with its terminal audit row (freeing the slot — the operator
+ * retries) and delete its partially-staged plaintext archive: a crash leaves
+ * a half-written `<jobId>.zip` on the VPS-local staging path, and the TTL
+ * reaper sweeps only ended jobs' archives, so without this the partial
+ * plaintext superset (all business data + every `passwordHash`) would persist.
  *
  * One-shot: run after `migrate` and before `app.listen`, parity with the boot
- * session cleanup (`deleteExpiredSessions`). NOT a scheduled sweep — a job can
- * only be abandoned by a restart, so boot is the only moment it occurs.
+ * session cleanup (`deleteExpiredSessions`). Only a restart abandons a running
+ * job; an import upload that stalls while the server runs is the staging
+ * reaper's (AC-599).
  *
  * Operational-log contract mirrors the staging reaper (AC-589): exactly one
  * info line with `event`, `reaped_count` (non-negative; 0 on no-op), `ran_at`
@@ -31,6 +31,7 @@ import { inArray } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
 import { dataExchangeJob } from '../db/schema.js';
 import type { ServiceLogger } from './Logger.js';
+import { DataExchangeJobService } from './DataExchangeJobService.js';
 import { stagedArtifactPath } from './takeout-staging.js';
 
 export const EVENT_DATA_EXCHANGE_BOOT_REAPER = 'data-exchange-boot-reaper';
@@ -54,11 +55,19 @@ export async function reapAbandonedDataExchangeJobs(
   deps: ReapAbandonedDataExchangeJobsDeps,
 ): Promise<number> {
   const now = new Date();
-  const reaped = await deps.db
-    .update(dataExchangeJob)
-    .set({ status: 'failed', errorDetail: BOOT_REAP_DETAIL, finishedAt: now, updatedAt: now })
-    .where(inArray(dataExchangeJob.status, ['pending', 'running']))
-    .returning({ id: dataExchangeJob.id, kind: dataExchangeJob.kind });
+  const inProgress = inArray(dataExchangeJob.status, ['pending', 'running']);
+  const abandoned = await deps.db
+    .select({ id: dataExchangeJob.id, kind: dataExchangeJob.kind })
+    .from(dataExchangeJob)
+    .where(inProgress);
+
+  // Each through the service, so each ended job gets its one audit row (AC-332).
+  const jobs = new DataExchangeJobService(deps.db);
+  const reaped: typeof abandoned = [];
+  for (const job of abandoned) {
+    const kind = job.kind === 'import' ? 'import' : 'export';
+    if (await jobs.failIfStill(job.id, kind, BOOT_REAP_DETAIL, inProgress)) reaped.push(job);
+  }
 
   for (const job of reaped) {
     // Staged archive name is deterministic and KIND-specific (stagedArtifactPath).
