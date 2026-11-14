@@ -373,6 +373,70 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       expect(Buffer.compare(partial, fullBytes.subarray(start, end + 1))).toBe(0);
     });
 
+    // AC-588 — a browser resumes an interrupted download only against a
+    // strong validator, re-requesting the rest with `Range` + `If-Range`.
+    describe('AC-588: an interrupted download resumes where it stopped', () => {
+      function download(jobId: string, headers: Record<string, string> = {}) {
+        return getApp().inject({
+          method: 'GET',
+          url: `/api/export-jobs/${jobId}/download`,
+          headers: { cookie: `session=${ownerToken}`, ...headers },
+        });
+      }
+
+      async function readyExport(): Promise<string> {
+        const created = await createExportJob(ownerToken);
+        expect((await pollUntilTerminal(ownerToken, created.id)).status).toBe('ready');
+        return created.id;
+      }
+
+      it('the download carries a strong ETag, stable per archive and distinct across archives', async () => {
+        const first = await readyExport();
+        const a = await download(first);
+        const again = await download(first);
+        const etag = a.headers.etag as string;
+        expect(etag).toMatch(/^"[^"]+"$/); // strong: quoted, no W/ prefix
+        expect(again.headers.etag).toBe(etag);
+
+        const second = await readyExport();
+        expect((await download(second)).headers.etag).not.toBe(etag);
+      });
+
+      it('a ranged GET whose If-Range matches returns 206 with the rest of the archive', async () => {
+        const jobId = await readyExport();
+        const full = await download(jobId);
+        const fullBytes = full.rawPayload as Buffer;
+        const start = Math.floor(fullBytes.length / 2);
+
+        const rest = await download(jobId, {
+          range: `bytes=${start}-`,
+          'if-range': full.headers.etag as string,
+        });
+        expect(rest.statusCode).toBe(206);
+        expect(rest.headers.etag).toBe(full.headers.etag);
+        expect(rest.headers['content-range']).toBe(
+          `bytes ${start}-${fullBytes.length - 1}/${fullBytes.length}`,
+        );
+        expect(Buffer.compare(rest.rawPayload as Buffer, fullBytes.subarray(start))).toBe(0);
+      });
+
+      it('a ranged GET whose If-Range does not match returns 200 with the whole archive', async () => {
+        const other = await readyExport();
+        const otherEtag = (await download(other)).headers.etag as string;
+        const jobId = await readyExport();
+        const fullBytes = (await download(jobId)).rawPayload as Buffer;
+
+        // A stale validator, its weak form, or a date (none is ours) must
+        // not splice another representation's bytes onto a partial file.
+        const ours = (await download(jobId)).headers.etag as string;
+        for (const ifRange of [otherEtag, `W/${ours}`, new Date().toUTCString()]) {
+          const res = await download(jobId, { range: 'bytes=4-', 'if-range': ifRange });
+          expect(res.statusCode, `If-Range: ${ifRange}`).toBe(200);
+          expect(Buffer.compare(res.rawPayload as Buffer, fullBytes)).toBe(0);
+        }
+      });
+    });
+
     it('a well-formed but unsatisfiable range → 416 with Content-Range bytes */size', async () => {
       const created = await createExportJob(ownerToken);
       await pollUntilTerminal(ownerToken, created.id);
