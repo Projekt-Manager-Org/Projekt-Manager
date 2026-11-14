@@ -9,7 +9,8 @@
  *   - GET  /api/export-jobs           — `{ job: <latest export row> | null }`.
  *   - GET  /api/export-jobs/:id       — the job row (`404` on unknown id).
  *   - GET  /api/export-jobs/:id/download — stream the VPS-staged archive,
- *                                       Range-capable (`206` on a byte range).
+ *                                       Range-capable (`206` on a byte range),
+ *                                       resumable via `ETag` + `If-Range`.
  *
  * Build lifecycle: the create handler advances the row through the
  * `DataExchangeJobService` (`pending → running → ready | failed`) and the
@@ -92,6 +93,26 @@ function parseRange(header: string | undefined, size: number): RangeResult {
   // first-byte-pos at or beyond the representation length → 416.
   if (start >= size || end < start) return { kind: 'unsatisfiable' };
   return { kind: 'range', start, end };
+}
+
+/**
+ * Strong validator for a job's archive. A `ready` archive is never
+ * rewritten and each job stages its own file, so the job id identifies
+ * its bytes. Browsers resume an interrupted download only against a
+ * strong validator (AC-588).
+ */
+function archiveEtag(jobId: string): string {
+  return `"${jobId}"`;
+}
+
+/**
+ * `If-Range` (RFC 9110 §13.1.5): serve the range only if the client's
+ * validator still names these bytes, by strong comparison. A weak tag or
+ * a date never matches (no `Last-Modified` is sent), so the client gets
+ * the whole archive instead of splicing a different one onto its part.
+ */
+function ifRangeAllows(header: string | string[] | undefined, etag: string): boolean {
+  return header === undefined || (typeof header === 'string' && header.trim() === etag);
 }
 
 export function exportJobRoutes(db: Database) {
@@ -242,7 +263,10 @@ export function exportJobRoutes(db: Database) {
           throw notFound(STRINGS.entities.resource);
         }
 
-        const range = parseRange(request.headers.range, size);
+        const etag = archiveEtag(job.id);
+        const range = ifRangeAllows(request.headers['if-range'], etag)
+          ? parseRange(request.headers.range, size)
+          : ({ kind: 'full' } as const);
         if (range.kind === 'unsatisfiable') {
           // RFC 7233 §4.4 — 416 carries the total size so the client can
           // re-issue a satisfiable range.
@@ -258,6 +282,7 @@ export function exportJobRoutes(db: Database) {
             .code(206)
             .header('Content-Type', 'application/zip')
             .header('Accept-Ranges', 'bytes')
+            .header('ETag', etag)
             .header('Content-Range', `bytes ${range.start}-${range.end}/${size}`)
             .header('Content-Length', String(length))
             .send(createReadStream(job.archiveRef, { start: range.start, end: range.end }));
@@ -267,6 +292,7 @@ export function exportJobRoutes(db: Database) {
           .code(200)
           .header('Content-Type', 'application/zip')
           .header('Accept-Ranges', 'bytes')
+          .header('ETag', etag)
           .header('Content-Length', String(size))
           .send(createReadStream(job.archiveRef));
       },
