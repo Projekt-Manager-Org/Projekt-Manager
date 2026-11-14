@@ -667,6 +667,49 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   });
 
   // -------------------------------------------------------------------
+  // AC-608 — the job tells the client whether its archive still exists,
+  // and an open Daten view learns of the sweep without a reload.
+  // -------------------------------------------------------------------
+  describe('AC-608: the job reports whether its archive is still available', () => {
+    it('a ready export reports its archive; after the sweep it reports none and signals the change', async () => {
+      const ttlMinutes = 1440;
+      const created = await createExportJob(ownerToken);
+      expect((await pollUntilTerminal(ownerToken, created.id)).status).toBe('ready');
+
+      const byId = await authGet(ownerToken, `/api/export-jobs/${created.id}`);
+      expect(byId.json()).toMatchObject({ archiveAvailable: true });
+
+      await db.execute(sql`
+        UPDATE data_exchange_job
+        SET finished_at = ${new Date(Date.now() - (ttlMinutes + 60) * 60 * 1000).toISOString()}
+        WHERE id = ${created.id}
+      `);
+      const bus = await loadBus();
+      const conn = subscribeFake(bus);
+      try {
+        await runTakeoutStagingReaper({
+          db,
+          storage: storageClient(),
+          stagingDir: getEnv().TAKEOUT_STAGING_DIR,
+          logger: { info: vi.fn(), error: vi.fn() },
+          ttlMinutes,
+          now: new Date(),
+        });
+        expect(countJobChanged(conn)).toBeGreaterThanOrEqual(1);
+      } finally {
+        bus.unsubscribe(conn);
+      }
+
+      const afterById = await authGet(ownerToken, `/api/export-jobs/${created.id}`);
+      expect(afterById.json()).toMatchObject({ status: 'ready', archiveAvailable: false });
+      const latest = await authGet(ownerToken, '/api/export-jobs');
+      expect(latest.json()).toMatchObject({
+        job: { id: created.id, status: 'ready', archiveAvailable: false },
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------
   // Pre-sweep on new create — back-to-back export jobs must NOT accumulate
   // staged plaintext archives on disk. When a prior ready export exists with
   // a staged file, a new POST /api/export-jobs must:

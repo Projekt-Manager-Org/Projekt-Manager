@@ -40,9 +40,12 @@ export type DataExchangeJob = typeof dataExchangeJob.$inferSelect;
 
 /**
  * The client-facing projection of a job row — the full row MINUS `archiveRef`
- * and `createdBy`.
+ * and `createdBy`, PLUS `archiveAvailable`: whether the job's staged archive
+ * exists — false before it is built and after a sweep deletes it (AC-608).
  */
-export type DataExchangeJobDto = Omit<DataExchangeJob, 'archiveRef' | 'createdBy'>;
+export type DataExchangeJobDto = Omit<DataExchangeJob, 'archiveRef' | 'createdBy'> & {
+  archiveAvailable: boolean;
+};
 
 /**
  * Project a job row to the wire DTO the job routes return (Finding F1).
@@ -62,8 +65,8 @@ export type DataExchangeJobDto = Omit<DataExchangeJob, 'archiveRef' | 'createdBy
  * row's `archiveRef` and must NOT use this projection.
  */
 export function toExchangeJobDto(row: DataExchangeJob): DataExchangeJobDto {
-  const { archiveRef: _archiveRef, createdBy: _createdBy, ...dto } = row;
-  return dto;
+  const { archiveRef, createdBy: _createdBy, ...dto } = row;
+  return { ...dto, archiveAvailable: archiveRef !== null };
 }
 
 /** What an import records when its upload completes. */

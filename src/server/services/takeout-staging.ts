@@ -16,9 +16,10 @@
  *   - `archive_ref` is nulled regardless of whether the file delete succeeded.
  *     Metadata-cleanliness (so the download surface 404s) trumps a missing
  *     backing file — same posture as the attachment orphan reaper.
- *   - NOT routed through DataExchangeJobService's SSE emitter: a sweep is not
- *     a lifecycle transition the UI re-attaches to; the reaper deliberately
- *     does a bare DB update, and this helper matches that.
+ *   - The sweep is not a lifecycle transition (status stays), so it bypasses
+ *     DataExchangeJobService, but it does change what the client shows: the
+ *     job's archive is no longer available (AC-608). It emits the
+ *     invalidation frame so an open Daten view refetches.
  */
 
 import { rm } from 'node:fs/promises';
@@ -27,6 +28,7 @@ import { eq } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
 import { dataExchangeJob } from '../db/schema.js';
+import { emitDataExchangeJobChanged } from '../sse/emitters.js';
 import type { ServiceLogger } from './Logger.js';
 
 export const EVENT_TAKEOUT_SWEEP = 'takeout-staged-sweep';
@@ -77,10 +79,10 @@ export async function sweepStagedArtifact(
   }
 
   // Null the reference + bump updatedAt; the row stays as operational
-  // metadata. NOT routed through the job service's emitter — a sweep is
-  // not a lifecycle transition the UI re-attaches to.
+  // metadata. The client now sees `archiveAvailable: false` (AC-608).
   await db
     .update(dataExchangeJob)
     .set({ archiveRef: null, updatedAt: new Date() })
     .where(eq(dataExchangeJob.id, job.id));
+  emitDataExchangeJobChanged();
 }

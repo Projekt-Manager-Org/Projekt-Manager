@@ -19,7 +19,7 @@ An Export section with the `Export` action. It opens the Export dialog:
 | Ready       | `Export bereit`; `Herunterladen`                                                                                                                                                                             |
 | Failed      | The failure reason                                                                                                                                                                                           |
 
-The dialog is open while an export is in progress. Once it is closed, the Export section shows the latest export's download or failure reason inline. The download is named `projekt-manager-export-<YYYY-MM-DD>T<HH-mm-ss>.zip`.
+The dialog is open while an export is in progress. Once it is closed, the Export section shows the latest export's download or failure reason inline; once its archive is deleted ([AC-589](../verification.md#1514-data-exchange)), `Das Archiv ist nicht mehr verfügbar. Starten Sie einen neuen Export.` instead of the download. The download is named `projekt-manager-export-<YYYY-MM-DD>T<HH-mm-ss>.zip`.
 
 ### 8.11.2 Import
 

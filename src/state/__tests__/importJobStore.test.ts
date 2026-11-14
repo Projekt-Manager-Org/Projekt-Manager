@@ -57,6 +57,7 @@ interface DataExchangeJobDto {
   updatedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  archiveAvailable: boolean;
 }
 
 type LatestResult = ApiResult<{ job: DataExchangeJobDto | null }>;
@@ -205,6 +206,7 @@ function makeJob(overrides: Partial<DataExchangeJobDto> = {}): DataExchangeJobDt
     updatedAt: '2026-05-25T10:00:00.000Z',
     startedAt: null,
     finishedAt: null,
+    archiveAvailable: true,
     ...overrides,
   };
 }

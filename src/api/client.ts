@@ -981,6 +981,8 @@ export interface DataExchangeJobDto {
   updatedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  /** Whether the job's staged archive exists: false before it is built and after it is deleted (AC-608). */
+  archiveAvailable: boolean;
 }
 
 /**

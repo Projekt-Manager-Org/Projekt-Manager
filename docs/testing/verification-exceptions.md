@@ -264,4 +264,3 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
-| AC-608 | gap     | code lags: an expired export still offers its download (#881)                                            |

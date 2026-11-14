@@ -15,6 +15,7 @@ import { clickView } from './nav-helpers';
 import { reseedAllStorageStates } from './auth-helpers';
 import { createDatabase } from '../src/server/db/connection.js';
 import { seed } from '../src/server/seed.js';
+import { sweepStagedArtifact } from '../src/server/services/takeout-staging.js';
 
 /**
  * E2E — Daten job-driven UI roundtrip.
@@ -563,6 +564,49 @@ test('AC-586: export job resume probe re-surfaces the download after a page relo
   await expect(inlineStatus.getByTestId('export-job-download')).toBeVisible();
   // No modal re-popped over the surface.
   await expect(page.getByTestId('export-job-dialog')).toHaveCount(0);
+});
+
+test('AC-608: an export whose archive was swept offers a new export, not its download', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await clickView(page, 'daten');
+  await expect(page.getByTestId('daten-view')).toBeVisible();
+
+  await page.getByTestId('data-export-button').click();
+  await expect(page.getByTestId('export-job-preflight')).toBeVisible();
+  await page.getByTestId('export-job-start').click();
+  await expect(page.getByTestId('export-job-ready')).toBeVisible({ timeout: 60_000 });
+
+  // Sweep the archive the way the staging reaper does once its TTL passed
+  // (AC-589); the reaper runs in the server process, so this test calls the
+  // same helper instead of waiting a day.
+  const { db, pool } = createDatabase();
+  try {
+    const res = await db.execute(sql`
+      SELECT id, archive_ref FROM data_exchange_job
+      WHERE kind = 'export' AND status = 'ready' AND archive_ref IS NOT NULL
+      ORDER BY created_at DESC LIMIT 1
+    `);
+    const job = res.rows[0] as { id: string; archive_ref: string } | undefined;
+    if (!job) throw new Error('no ready export with a staged archive');
+    await sweepStagedArtifact(
+      db,
+      { id: job.id, archiveRef: job.archive_ref },
+      { info: () => {}, error: () => {} },
+    );
+  } finally {
+    await pool.end();
+  }
+
+  await page.reload();
+  await expect(page.getByTestId('daten-view')).toBeVisible();
+  const inlineStatus = page.getByTestId('export-job-status');
+  await expect(inlineStatus).toHaveText(
+    'Das Archiv ist nicht mehr verfügbar. Starten Sie einen neuen Export.',
+  );
+  await expect(page.getByTestId('export-job-download')).toHaveCount(0);
+  await expect(page.getByTestId('data-export-button')).toBeEnabled();
 });
 
 test('AC-585: an unreadable attachment fails the export in the UI — no download is offered', async ({

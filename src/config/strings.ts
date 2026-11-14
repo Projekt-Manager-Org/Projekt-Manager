@@ -527,6 +527,7 @@ export const STRINGS = {
     exportPapierkorbNotice: 'Der Papierkorb wird nicht mit exportiert.',
     exportReadyTitle: 'Export bereit',
     exportDownloadAction: 'Herunterladen',
+    exportArchiveGone: 'Das Archiv ist nicht mehr verfügbar. Starten Sie einen neuen Export.',
     importUploadingTitle: 'Hochladen …',
     importUploadInterruptedTitle:
       'Upload unterbrochen. Zum Fortsetzen das Archiv über „Import“ erneut wählen.',
