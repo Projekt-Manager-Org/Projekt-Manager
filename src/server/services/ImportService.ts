@@ -296,7 +296,7 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     }
   }
 
-  // AC-386: invoice tax mode, lines and totals pass the write rules
+  // AC-593: invoice tax mode, lines and totals pass the write rules
   // (data-model.md §5.15). An issued row is frozen as imported, so a
   // violation is rejected, never re-derived.
   for (let i = 0; i < envelope.invoices.length; i++) {
@@ -339,9 +339,9 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
   }
 
   // The business-data import is metadata-only. It never inserts
-  // attachment rows and ignores any `attachments` key on the envelope
-  // (see api.md §14.2.4 and AC-253). The import job restores
-  // attachments (AC-328).
+  // attachment rows and ignores any `attachments` key on the envelope.
+  // The import job restores
+  // attachments (AC-594).
 
   return issues;
 }
@@ -349,7 +349,7 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
 /**
  * Collect every envelope reference site whose user-id field must resolve
  * against `envelope.users`. Null / missing audit-field values are skipped
- * — they carry no reference, per api.md §14.2.4 and AC-387.
+ * — they carry no reference, per AC-593.
  * `project_workers[].userId` is non-nullable by schema so it is always a
  * reference. Pure; unit-testable without a DB.
  *
@@ -618,7 +618,7 @@ export class ImportService {
   /**
    * Whether the importable target carries any data — the EXISTS probe
    * `import()` runs, exposed for the import JOB's create-time
-   * destructive guard (api.md §14.2.4, AC-329). `users` and `company_profile`
+   * destructive guard (AC-591). `users` and `company_profile`
    * are excluded (they always carry the bootstrap admin + the baseline-seeded
    * singleton), so a fresh install reads as empty (issue #230).
    */
@@ -698,7 +698,7 @@ export class ImportService {
     const userRefs = collectEnvelopeUserRefs(envelope);
     const uniqueReferencedIds = Array.from(new Set(userRefs.map((r) => r.userId)));
 
-    // AC-389: commit-path ordering. Intra-envelope integrity is reported
+    // Commit-path ordering. Intra-envelope integrity is reported
     // first; the missing-user check runs only on an intra-consistent
     // envelope. Never both codes in one response.
     if (validationIssues.length > 0) {
@@ -713,9 +713,7 @@ export class ImportService {
 
     // Pre-map before opening the tx — pure transformation, no reason to hold
     // a write lock while building the row objects. Issue #163: attachment
-    // rows are NOT inserted here; they are created via the per-attachment
-    // `init` + presigned PUT + `complete` pipeline driven by the client
-    // orchestrator (AC-253).
+    // rows are NOT inserted here; the import job restores them (AC-594).
     const userRows = envelope.users.map(toUserInsert);
     const companyProfileRows = envelope.company_profile.map(toCompanyProfileInsert);
     const customerRows = envelope.customers.map(toCustomerInsert);
@@ -745,7 +743,7 @@ export class ImportService {
       // TRUNCATE takes ACCESS EXCLUSIVE anyway.
       //
       // `usersExisted` is sampled separately because the session-invalidation
-      // flag (AC-310) is keyed on pre-wipe `users` presence — an empty-users
+      // flag (AC-597) is keyed on pre-wipe `users` presence — an empty-users
       // override path performs no CASCADE on `sessions` and must return
       // `sessionInvalidated: false`. Folding it into the same SELECT keeps
       // the probe a single round trip.
@@ -767,7 +765,7 @@ export class ImportService {
         throw targetNotEmpty();
       }
 
-      // AC-160: destructive path (override into a non-empty target) demands
+      // AC-592: destructive path (override into a non-empty target) demands
       // a typed confirmation phrase in the request body. The shared
       // `restorePhraseMatches` predicate keeps this check identical to the
       // client-side UX gate. The empty-target path never reaches here.
@@ -792,7 +790,7 @@ export class ImportService {
           await tx.select().from(invoiceSequence),
           invoiceSequenceRows,
         );
-        // AC-254 / issue #230: the wipe is unconditional under override
+        // AC-594 / issue #230: the wipe is unconditional under override
         // and now covers the expanded set. CASCADE handles dependency
         // order — TRUNCATE … CASCADE propagates through every FK
         // reference (including `sessions.user_id → users.id ON DELETE
@@ -935,7 +933,7 @@ export class ImportService {
       // misleads readers into expecting one.
       //
       // `attachments` is included in `counts` with value 0 for shape
-      // uniformity — the text leg never inserts attachment rows (AC-253);
+      // uniformity — the text leg never inserts attachment rows;
       // per-attachment audit on the binary-leg restore is the existing
       // `attachment:add` flow under AC-427.
       //

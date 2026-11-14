@@ -21,9 +21,9 @@ import type { AuditEntityType } from './audit';
 
 /**
  * Shape of the `payload.counts` map the server writes on the single
- * `data_import` audit row (`api.md §14.2.4` — "Single import audit
- * row"). Every slot is required to be present in the payload (zero
- * when the slot was empty); the renderer below tolerates missing keys
+ * `data_import` audit row (the business-data import's own row). Every
+ * slot is required to be present in the payload (zero when the slot was
+ * empty); the renderer below tolerates missing keys
  * as zero for defense in depth.
  */
 interface ImportCounts {
@@ -79,7 +79,7 @@ function describeImportRestored(payload: unknown): string {
     parts.push(STRINGS.audit.dataImportCountInvoices(counts.invoices!));
   if ((counts.invoice_sequence ?? 0) > 0)
     parts.push(STRINGS.audit.dataImportCountInvoiceSequence(counts.invoice_sequence!));
-  // `attachments` is always 0 on the text-leg audit (AC-311); we
+  // `attachments` is always 0 on the text-leg audit; we
   // omit it from the rendered list even when non-zero (defensive).
 
   if (parts.length === 0) return `${prefix}: ${STRINGS.audit.dataImportCountsEmpty}`;

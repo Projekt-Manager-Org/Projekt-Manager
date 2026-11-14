@@ -1,6 +1,6 @@
 /**
- * Full-account takeout EXPORT job routes — ADR-0018 / ADR-0024, api.md
- * §14.2.4 ("Export job"), data-model.md §5.18.
+ * Full-account takeout EXPORT job routes — ADR-0018 / ADR-0024,
+ * verification.md §15.14, data-model.md §5.18.
  *
  * Surfaces (all `data:export`-gated):
  *   - POST /api/export-jobs           — create a `pending` job, kick off the
@@ -14,11 +14,11 @@
  * Build lifecycle: the create handler advances the row through the
  * `DataExchangeJobService` (`pending → running → ready | failed`) and the
  * `buildExportArchive` builder; the browser polls `GET :id` until terminal.
- * A per-row attachment failure fails the build (AC-325) — no partial
+ * A per-row attachment failure fails the build (AC-585) — no partial
  * archive is ever served. At the terminal transition (and only there) the
  * runner writes EXACTLY ONE `audit_log` row with `entityType='data_import'`
  * (AC-332), mirroring the single `data_import` row `ImportService` writes
- * (AC-311). Progress updates write no audit rows.
+ * (the business-data import's own row). Progress updates write no audit rows.
  *
  * One active per kind (AC-331): a create colliding with a `pending`/
  * `running` export job returns `409 EXPORT_JOB_ACTIVE` carrying the active
@@ -139,8 +139,7 @@ export function exportJobRoutes(db: Database) {
         const job = await jobs.create('export', request.user!.id);
 
         // Fire-and-forget the build — the request returns 201 with the
-        // pending row immediately (api.md §14.2.4 "Export job — build and
-        // lifecycle": the build runs asynchronously; the create call has
+        // pending row immediately (the build runs asynchronously; the create call has
         // already returned 2xx by the time processing runs). `request.log`
         // outlives the request for the background write (Fastify's logger
         // is process-scoped); the runner catches every fault internally

@@ -352,13 +352,13 @@ describe('Unified Data Exchange', () => {
   // dropped: the gate is now covered on the live job routes
   // (`data-exchange-export-job.test.ts` asserts 401 + 403 NOT_PERMITTED
   // for `data:export`). The import's empty-DB success arm is covered by
-  // AC-137 below.
+  // AC-594 below.
   // ---------------------------------------------------------------
 
   // ---------------------------------------------------------------
-  // AC-135: export envelope shape and row-level fidelity
+  // AC-583: export envelope shape and row-level fidelity
   // ---------------------------------------------------------------
-  describe('AC-135: export envelope shape', () => {
+  describe('AC-583: export envelope shape', () => {
     let archivedProjectId: string;
 
     // Soft-delete one seeded project so the "archived rows are included"
@@ -381,7 +381,7 @@ describe('Unified Data Exchange', () => {
       await reseed();
     });
 
-    // AC-135: top-level envelope contains schema_version, exported_at,
+    // AC-583: top-level envelope contains schema_version, exported_at,
     // customers[], projects[], project_workers[] — every field present.
     it('returns schema_version, exported_at, customers, projects, project_workers', async () => {
       const env = (await exportEnvelope()) as unknown as ExportEnvelope;
@@ -397,14 +397,14 @@ describe('Unified Data Exchange', () => {
       expect(Array.isArray(env.project_workers)).toBe(true);
     });
 
-    // AC-135: customers.length matches the seeded row count (21 per
+    // AC-583: customers.length matches the seeded row count (21 per
     // src/server/seed.ts). Off-by-one = seed drift the test should surface.
     it('exports every seeded customer (21 from seed)', async () => {
       const env = (await exportEnvelope()) as unknown as ExportEnvelope;
       expect(env.customers.length).toBe(21);
     });
 
-    // AC-135: projects count matches seeded count INCLUDING archived rows.
+    // AC-583: projects count matches seeded count INCLUDING archived rows.
     // Seed = 19 projects; none are archived in seed. We soft-deleted one
     // above, so the export must still include 19 (archived = included).
     it('exports every project INCLUDING archived (deleted=true) rows', async () => {
@@ -416,7 +416,7 @@ describe('Unified Data Exchange', () => {
       expect(archived!.deleted).toBe(true);
     });
 
-    // AC-135 (exclusion, post-#230): pre-#230 the envelope explicitly
+    // AC-583 (exclusion, post-#230): pre-#230 the envelope explicitly
     // excluded users/sessions/passwordHash; under v3 (issue #230) users
     // and `passwordHash` ride the envelope verbatim. `sessions` remains
     // out by design (ephemeral, per-deployment). The positive assertion
@@ -428,10 +428,10 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-136: schema_version mismatch is rejected, with no writes
+  // AC-593: schema_version mismatch is rejected, with no writes
   // ---------------------------------------------------------------
-  describe('AC-136: schema_version mismatch rejection', () => {
-    // AC-136: envelope version current+1 → rejected with specific code, no writes.
+  describe('AC-593: schema_version mismatch rejection', () => {
+    // AC-593: envelope version current+1 → rejected with specific code, no writes.
     it('rejects an envelope with a newer schema_version', async () => {
       const baseline = (await exportEnvelope()) as unknown as ExportEnvelope;
 
@@ -450,7 +450,7 @@ describe('Unified Data Exchange', () => {
       expect(post.projects.length).toBe(baseline.projects.length);
     });
 
-    // AC-136: envelope version current-1 → same rejection. No migration.
+    // AC-593: envelope version current-1 → same rejection. No migration.
     it('rejects an envelope with an older schema_version', async () => {
       const bad = buildOverrideEnvelope();
       bad.schema_version = CURRENT_SCHEMA_VERSION - 1;
@@ -465,10 +465,10 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-137: import into empty DB preserves IDs, all-or-nothing
+  // AC-594, AC-593: import into empty DB preserves IDs, all-or-nothing
   // ---------------------------------------------------------------
-  describe('AC-137: import into empty DB', () => {
-    // AC-137 happy path: empty target, valid envelope → IDs match.
+  describe('AC-594, AC-593: import into empty DB', () => {
+    // AC-594 happy path: empty target, valid envelope → IDs match.
     it('imports a valid envelope and preserves row IDs exactly', async () => {
       await wipeBusinessData();
       try {
@@ -490,7 +490,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-137 atomicity: an envelope with a project referencing a customer
+    // AC-593 atomicity: an envelope with a project referencing a customer
     // NOT in `customers` must fail the whole transaction — the earlier,
     // valid rows must not be persisted.
     it('rolls back entirely if any row is invalid (atomic import)', async () => {
@@ -543,7 +543,7 @@ describe('Unified Data Exchange', () => {
   // ---------------------------------------------------------------
   describe('Envelope uniqueness validation', () => {
     // Start from an empty DB so a duplicate-detection failure cannot be
-    // confused with TARGET_NOT_EMPTY (AC-138) or with a collision against
+    // confused with TARGET_NOT_EMPTY (AC-591) or with a collision against
     // the seed. The seed is restored in the finally of each test.
     //
     // Note: `wipeBusinessData()` truncates business tables only — the
@@ -789,10 +789,11 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-138: non-empty target refused without override
+  // Non-empty target refused without override (ImportService guard; the
+  // import job's create-time guard is AC-591)
   // ---------------------------------------------------------------
-  describe('AC-138: non-empty target refused without override', () => {
-    // AC-138: with seed present and no override flag → refused with a
+  describe('non-empty target refused without override', () => {
+    // With seed present and no override flag → refused with a
     // specific error code; no state change.
     it('rejects with a conflict-category error when target is non-empty', async () => {
       // Seed is present from startApp(); confirm baseline.
@@ -818,10 +819,10 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-139: override wipes+restores atomically; invalid input rolls back
+  // AC-594, AC-593: override wipes+restores atomically; invalid input rolls back
   // ---------------------------------------------------------------
-  describe('AC-139: override wipe+restore', () => {
-    // AC-139 happy path: seed + override flag + valid envelope →
+  describe('AC-594, AC-593: override wipe+restore', () => {
+    // AC-594 happy path: seed + override flag + valid envelope →
     // existing rows gone, new rows present, IDs preserved.
     //
     // Issue #230: override now wipes `users` too, which cascades to
@@ -857,7 +858,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-139 atomicity: invalid envelope + override → rollback, seed intact.
+    // AC-593 atomicity: invalid envelope + override → rollback, seed intact.
     it('rolls back entirely on invalid envelope even with override (atomic)', async () => {
       const seeded = (await exportEnvelope()) as unknown as ExportEnvelope;
 
@@ -885,16 +886,16 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-141: roundtrip byte-equivalence (modulo exported_at) for the
+  // AC-594: roundtrip byte-equivalence (modulo exported_at) for the
   // text-row slice. ImportService never restores attachment rows (it
   // ignores the envelope's `attachments` slot); per-attachment
-  // restoration runs through the import job (AC-328).
+  // restoration runs through the import job.
   // Re-exporting the seeded dataset after a re-import therefore returns
   // an empty `attachments` array — matched against the source by
   // construction.
   // ---------------------------------------------------------------
-  describe('AC-141: full roundtrip produces byte-identical content', () => {
-    // AC-141 text-row arm: seed → export1 → override-import → export2 →
+  describe('AC-594: full roundtrip produces byte-identical content', () => {
+    // Text-row arm: seed → export1 → override-import → export2 →
     // customers/projects/project_workers match exactly.
     //
     // Issue #230: the export carries users now, and the seeded users
@@ -902,14 +903,14 @@ describe('Unified Data Exchange', () => {
     // collides on users.id. Override is the right semantic for a
     // self-roundtrip (wipe + replace with the snapshot). A fuller
     // roundtrip pinning every v3 slot lives in
-    // `data-exchange-import-expanded.test.ts` (AC-141 analog).
+    // `data-exchange-import-expanded.test.ts`.
     it('exports → imports → re-exports without drift (exported_at + lastLoginAt excluded)', async () => {
       const e1 = (await exportEnvelope()) as unknown as ExportEnvelope;
 
       try {
         // Override is the right semantic for a self-roundtrip (wipe +
         // replace with the snapshot). ImportService ignores the
-        // envelope's `attachments` slot (AC-253) and never restores
+        // envelope's `attachments` slot and never restores
         // attachment rows. No session is held now, so no re-login.
         await importEnvelope(e1 as unknown as Envelope, {
           override: true,
@@ -935,13 +936,12 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-160: restore confirmation phrase gate
-  // Server-authoritative check on override into a non-empty DB.
-  // AC-160 pins enforcement (missing, case-wrong, trim, happy path).
-  // AC-160 pins the exempt path (empty target).
+  // Restore confirmation phrase gate (ImportService guard; the import
+  // job's create-time guard is AC-592): enforcement (missing, case-wrong,
+  // trim, happy path) and the exempt path (empty target).
   // ---------------------------------------------------------------
-  describe('AC-160: restore confirmation phrase gate', () => {
-    // AC-160 — missing phrase: override into non-empty DB without a
+  describe('restore confirmation phrase gate', () => {
+    // Missing phrase: override into non-empty DB without a
     // `confirmation_phrase` rejects with 422 RESTORE_CONFIRMATION_MISMATCH
     // and leaves the seed untouched.
     it('rejects override into non-empty DB when confirmation_phrase is missing', async () => {
@@ -961,7 +961,7 @@ describe('Unified Data Exchange', () => {
       expect(post.projects.length).toBe(baseline.projects.length);
     });
 
-    // AC-160 — case sensitivity: a phrase that differs only in case is
+    // Case sensitivity: a phrase that differs only in case is
     // rejected. The value is wrapped in whitespace so a permissive
     // implementation that trimmed but ignored case would still fail this
     // test — the assertion isolates "case" from "trim".
@@ -981,7 +981,7 @@ describe('Unified Data Exchange', () => {
       expect(post.customers.length).toBe(baseline.customers.length);
     });
 
-    // AC-160 — happy path: matching phrase commits the atomic wipe+restore.
+    // Happy path: matching phrase commits the atomic wipe+restore.
     // Issue #230: the override wipes users — use a direct-DB assertion.
     it('accepts override with a matching confirmation_phrase', async () => {
       const env = buildOverrideEnvelope();
@@ -1001,7 +1001,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-160 — trim: leading/trailing whitespace around the phrase is tolerated.
+    // Trim: leading/trailing whitespace around the phrase is tolerated.
     it('accepts override when confirmation_phrase has surrounding whitespace', async () => {
       const env = buildOverrideEnvelope();
       try {
@@ -1015,7 +1015,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-160 — empty-target exempt: override into an empty DB succeeds
+    // Empty-target exempt: override into an empty DB succeeds
     // without a phrase (there is nothing to wipe). Issue #230: even
     // an empty-target override wipes users (TRUNCATE users CASCADE
     // sweeps every session), so the post-call assertion uses a direct
@@ -1040,7 +1040,7 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-387 / AC-389: missing-user-reference check
+  // AC-593: missing-user-reference check
   //
   // The envelope carries user-id fields — `customers.createdBy`,
   // `customers.updatedBy`, `projects.createdBy`, `projects.updatedBy`,
@@ -1048,16 +1048,13 @@ describe('Unified Data Exchange', () => {
   // exist in the target's `users` table. If any referenced id is absent,
   // the commit path rejects with 422 `MISSING_USER_REFS`.
   //
-  // AC-387: commit-path rejection + `details` shape.
-  // AC-389: commit-path ordering + single-code guarantee.
-  //
   // Two ghost UUIDs (`GHOST_USER_A`, `GHOST_USER_B`) are valid UUIDs
   // absent from the seed — any reference to them is, by construction,
   // a missing-user reference. House style already uses `UUID_ZERO` for
   // the same idea; distinct ids let "same user at two sites" and
   // "multiple distinct missing users" tests isolate their assertions.
   // ---------------------------------------------------------------
-  describe('AC-387 / AC-389: missing-user references', () => {
+  describe('missing-user references', () => {
     // NB: `uuid()` hex-encodes then slices to 8 chars, so `ghosta`/`ghostb`
     // collide on the prefix — we rely on the `i` counter to differentiate.
     const GHOST_USER_A = uuid('ghosta', 1);
@@ -1104,7 +1101,7 @@ describe('Unified Data Exchange', () => {
       };
     }
 
-    // AC-387 — commit path. Envelope is intra-consistent (projects point
+    // AC-593 — commit path. Envelope is intra-consistent (projects point
     // at envelope customers, assignments point at envelope projects) but
     // the user-id fields reference GHOST_USER_A and GHOST_USER_B — ids
     // that do NOT exist in `users`. Must return 422 MISSING_USER_REFS.
@@ -1114,8 +1111,7 @@ describe('Unified Data Exchange', () => {
         const envelope = buildFreshEnvelope();
         // Two distinct missing users, distributed across the allowed
         // reference sites so the `details.references` array has one
-        // entry per offending site (AC-387 — "one entry per offending
-        // envelope reference site").
+        // entry per offending site.
         envelope.customers[0]!.createdBy = GHOST_USER_A;
         envelope.customers[0]!.updatedBy = GHOST_USER_B;
         envelope.projects[0]!.createdBy = GHOST_USER_B;
@@ -1134,7 +1130,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-387 — `details.missingUserIds` is deduplicated. Envelope references
+    // `details.missingUserIds` is deduplicated. Envelope references
     // GHOST_USER_A at four distinct sites and GHOST_USER_B at one; the
     // deduplicated list must have exactly two entries, regardless of order.
     it('deduplicates missingUserIds across repeat references', async () => {
@@ -1163,7 +1159,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-387 — `details.references` carries one entry per offending site
+    // `details.references` carries one entry per offending site
     // and duplicate user-ids across distinct paths produce separate
     // entries. Four references to GHOST_USER_A mapped to four distinct
     // paths must yield four entries whose paths are all distinct.
@@ -1206,7 +1202,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-387 — null / missing audit-field values MUST NOT trigger the
+    // AC-593 — null / missing audit-field values MUST NOT trigger the
     // check. An envelope that mixes a ghost-user reference with a row
     // whose audit fields are null must produce MISSING_USER_REFS (the
     // ghost case) while leaving no `references[]` entry for the null-
@@ -1269,7 +1265,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-387 — no writes on rejection. Full before/after row-count diff.
+    // AC-593 — no writes on rejection. Full before/after row-count diff.
     it('performs no writes when rejecting MISSING_USER_REFS', async () => {
       await wipeBusinessData();
       try {
@@ -1294,7 +1290,7 @@ describe('Unified Data Exchange', () => {
       }
     });
 
-    // AC-389 — commit-path ordering and single-code guarantee. Folded
+    // Commit-path ordering and single-code guarantee. Folded
     // into a single test so the follow-up assertion (intra-consistent
     // envelope with a ghost reference returns MISSING_USER_REFS) fails
     // today — otherwise the "dual-class returns VALIDATION_ERROR only"
@@ -1350,26 +1346,14 @@ describe('Unified Data Exchange', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-253 (DELETED): "/api/import rejects bodies carrying an
-  // `attachments` key" was a ROUTE BODY-SCHEMA rejection (the route
-  // declared `attachments: { not: {} }`). ImportService has NO
-  // equivalent structural guard — it simply never inserts attachment
-  // rows and ignores any `attachments` key on the envelope. With the
-  // route gone there is no service-level analog to assert, so the whole
-  // describe was removed. The "no attachment rows are restored" invariant
-  // is covered by AC-254 below (post-override truncate count is 0) and the
-  // AC-141 roundtrip.
-  // ---------------------------------------------------------------
-
-  // ---------------------------------------------------------------
-  // AC-254: an `override` business-data import atomically truncates the
+  // AC-594: an `override` business-data import atomically truncates the
   // `attachments` table alongside the customer / project / project-
   // worker wipe. After a successful override-import, the table is
   // empty regardless of envelope content (the import ignores the
-  // envelope's `attachments` slot per AC-253; the import job restores
-  // attachments, AC-328).
+  // envelope's `attachments` slot; the import job restores
+  // attachments).
   // ---------------------------------------------------------------
-  describe('AC-254: an override business-data import truncates the attachments table', () => {
+  describe('AC-594: an override business-data import truncates the attachments table', () => {
     /**
      * Seed a single `pending` attachment row directly so the truncate
      * has something to remove. A `pending` row is enough — the AC is
@@ -1425,7 +1409,7 @@ describe('Unified Data Exchange', () => {
       try {
         await clearSeededInvoices();
         // ImportService never restores attachment rows (it ignores the
-        // envelope's `attachments` slot). The load-bearing AC-254
+        // envelope's `attachments` slot). The load-bearing AC-594
         // assertion is that the override truncate ran AND no path
         // re-inserted attachment rows — the post-call count is 0.
         const envelope = buildOverrideEnvelope();
@@ -1434,7 +1418,7 @@ describe('Unified Data Exchange', () => {
           confirmationPhrase: EXPECTED_RESTORE_PHRASE,
         });
 
-        // The whole point of AC-254: the table is empty post-call.
+        // The whole point of AC-594: the table is empty post-call.
         expect(await countAttachments()).toBe(0);
       } finally {
         await reseed();
@@ -1599,7 +1583,7 @@ describe('Unified Data Exchange', () => {
 
       try {
         // Force a validation rejection — same trick as the existing
-        // AC-254 atomicity test: a project pointing at a missing
+        // AC-593 atomicity test: a project pointing at a missing
         // customer in the same envelope.
         const broken = buildOverrideEnvelope();
         broken.projects[0]!.customerId = UUID_ZERO;

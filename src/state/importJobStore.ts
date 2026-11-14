@@ -12,14 +12,14 @@
  *     client-known; once the upload completes the server flips the job to
  *     `running` and the per-attachment restore progress arrives over the job
  *     row (SSE-refetched).
- *   - **Mid-wipe re-auth (AC-330).** The restore wipes `users`, so the
+ *   - **Mid-wipe re-auth (AC-597).** The restore wipes `users`, so the
  *     operator's session dies mid-run. The SSE-driven refetch then 401s — this
  *     is the EXPECTED path: delegate to `handleSessionExpired` (route to login).
  *     After re-login, DatenView's mount-time resume probe (`getLatest`)
  *     re-attaches to the same job. No bearer token is involved.
  *
  * The destructive guard (emptiness + override + confirmation phrase) runs
- * server-side AT create (AC-329); `create` maps its rejections to `createError`.
+ * server-side AT create (AC-591, AC-592); `create` maps its rejections to `createError`.
  */
 
 import { create } from 'zustand';
@@ -88,7 +88,7 @@ async function refetch(): Promise<void> {
     useImportJobStore.setState({ job: result.data.job });
     return;
   }
-  // EXPECTED mid-wipe path (AC-330): the users-wipe CASCADE-dropped the
+  // EXPECTED mid-wipe path (AC-597): the users-wipe CASCADE-dropped the
   // operator's session, so this poll 401s. Delegate to the shared handler
   // (route to login); keep the last-good `job`. DatenView's mount-time resume
   // probe re-attaches after re-login. Non-auth failures leave state untouched.
@@ -141,7 +141,7 @@ export const useImportJobStore = create<ImportJobStore>((set, get) => ({
       set({ job: result.data, createError: null, uploadOffset: 0 });
       return;
     }
-    // Destructive guard rejections (AC-329) — surfaced for the dialog to act on,
+    // Destructive guard rejections (AC-591, AC-592) — surfaced for the dialog to act on,
     // no job minted server-side.
     if (result.error.code === 'TARGET_NOT_EMPTY') {
       set({ createError: 'target_not_empty' });
@@ -170,7 +170,7 @@ export const useImportJobStore = create<ImportJobStore>((set, get) => ({
     const total = file.size;
 
     // Resume from the server's authoritative offset (HEAD) — a re-attached
-    // upload must not re-send bytes the VPS already holds (AC-326). A failed
+    // upload must not re-send bytes the VPS already holds. A failed
     // HEAD (transient blip) keeps the last-known offset rather than snapping to
     // 0 — re-sending from 0 would 409 on the first chunk and yo-yo the
     // progress bar; the in-loop re-HEAD recovers the true offset either way.

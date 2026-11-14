@@ -1,6 +1,5 @@
 /**
- * Periodic takeout staging reaper scheduler — data-model.md §6.15,
- * AC-334.
+ * Periodic takeout staging reaper scheduler — AC-589.
  *
  * Thin caller over `createPeriodicSweeper` (see
  * `src/server/periodicSweeper.ts`): the timer drive, sustained-failure
@@ -11,7 +10,7 @@
  * need a lease at this caller site.
  *
  * The reaper service (`runTakeoutStagingReaper`) is the contract surface
- * the AC-334 test drives directly; this module only drives the schedule.
+ * the AC-589 test drives directly; this module only drives the schedule.
  */
 
 import type { Database } from './db/connection.js';

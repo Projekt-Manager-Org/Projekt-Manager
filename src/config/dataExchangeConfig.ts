@@ -1,6 +1,6 @@
 /**
  * Deployment-level configuration for the unified data-exchange surface.
- * See api.md §14.2.4, architecture.md §12.2, and verification.md AC-160.
+ * See architecture.md §12.2 and verification.md AC-592.
  */
 
 /**
@@ -13,7 +13,7 @@
  *
  * Comparison on the server trims leading/trailing whitespace on the typed
  * value before comparing; the comparison is case-sensitive. See
- * ImportService for the gate logic and AC-160 for the testable contract.
+ * ImportService for the gate logic and AC-592 for the testable contract.
  */
 export const RESTORE_CONFIRMATION_PHRASE = 'LOESCHEN';
 

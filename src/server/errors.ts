@@ -37,7 +37,7 @@ export const ERROR_CODES = [
   'TARGET_NOT_EMPTY',
   'RESTORE_CONFIRMATION_MISMATCH',
   'MISSING_USER_REFS',
-  // Full-account takeout jobs (ADR-0018, api.md §14.2.4 / §14.4.1).
+  // Full-account takeout jobs (ADR-0018, api.md §14.4.1).
   'EXPORT_JOB_ACTIVE',
   'IMPORT_JOB_ACTIVE',
   'EXPORT_JOB_NOT_READY',
@@ -151,7 +151,7 @@ export function restoreConfirmationMismatch(): AppError {
 
 /**
  * Envelope carries user-id references that do not exist in the target
- * database. See api.md §14.2.4 / §14.4.1. `details.missingUserIds` is the
+ * database. See api.md §14.4.1. `details.missingUserIds` is the
  * deduplicated list of absent ids; `details.references` carries one entry
  * per offending envelope reference site.
  */
@@ -166,7 +166,7 @@ export function missingUserRefs(details: MissingUserRefsDetails): AppError {
 
 /**
  * A full-account export/import job create collided with one already
- * `pending`/`running` (api.md §14.2.4 "Jobs — one active per kind").
+ * `pending`/`running` (verification.md §15.14).
  * The active job's id rides in `details.activeJobId` so the UI
  * re-attaches to the running build rather than starting a second.
  */
@@ -180,7 +180,7 @@ export function importJobActive(activeJobId: string): AppError {
 
 /**
  * Download requested on an export job that has not reached `ready`
- * (api.md §14.2.4 "Export job — download"). 409 (not 404): the job
+ * (verification.md §15.14). 409 (not 404): the job
  * exists, the artifact is simply not built yet — the client polls and
  * retries.
  */
@@ -198,7 +198,7 @@ export type UploadHeader = keyof typeof UPLOAD_HEADER_MESSAGES;
 
 /**
  * A tus protocol header is absent or is not a non-negative integer
- * (api.md §14.2.4 "Import job — resumable upload").
+ * (routes/import-jobs.ts).
  *
  * 400, not the 422 `validationError()` mints: the rejection is
  * protocol-level — it fires before any body schema applies, and the tus
@@ -212,7 +212,7 @@ export function uploadHeaderInvalid(header: UploadHeader): AppError {
 
 /**
  * Resumable-upload chunk PATCHed at an offset other than the server's
- * current one (api.md §14.2.4 "Import job — resumable upload"). 409: the
+ * current one (routes/import-jobs.ts). 409: the
  * server offset is unchanged, so a retried chunk at the correct offset is
  * safe (idempotent retry).
  */
@@ -222,7 +222,7 @@ export function uploadOffsetConflict(): AppError {
 
 /**
  * Resumable-upload chunk whose bytes would extend past the declared
- * `Upload-Length` (api.md §14.2.4). 413: the write is rejected wholesale
+ * `Upload-Length` (routes/import-jobs.ts). 413: the write is rejected wholesale
  * and the server offset does not advance.
  */
 export function uploadTooLarge(): AppError {

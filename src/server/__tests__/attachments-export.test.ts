@@ -31,7 +31,7 @@
  *
  * Bytes stay in storage per ADR-0018 and are NOT part of the envelope.
  * The import job restores them server-side; the byte-equality round-trip
- * is AC-328.
+ * is AC-594.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -213,7 +213,7 @@ describe('Attachment export envelope (AC-431)', () => {
   // ciphertext sizes MUST NOT appear on envelope entries. They are not
   // consumable on the importing instance and the wrapped envelopes
   // additionally remain inside the exporting instance's confidentiality
-  // boundary. The import job re-encrypts server-side (AC-328), so these
+  // boundary. The import job re-encrypts server-side, so these
   // fields would be dead weight on the wire and a confidentiality leak.
   // -------------------------------------------------------------------
   it('drops crypto fields, storage keys, and ciphertext sizes from envelope entries', async () => {
@@ -266,6 +266,6 @@ describe('Attachment export envelope (AC-431)', () => {
   // `POST /api/import` route schema. The attachments-key rejection was a
   // route-schema guard with no service-layer equivalent (ImportService
   // ignores the key — it never inserts attachment rows), and the override
-  // truncate (AC-254) is owned by `data-exchange.test.ts`. Both went with
+  // truncate (AC-594) is owned by `data-exchange.test.ts`. Both went with
   // the route; this file is now purely the AC-431 export envelope.
 });

@@ -32,7 +32,7 @@ export const STRINGS = {
     invalidInput: 'Ungültige Eingabe.',
     notFound: (entity: string) => `${entity} nicht gefunden.`,
     routeNotFound: 'Die angeforderte URL existiert nicht.',
-    // Resumable-upload (tus) header rejections — api.md §14.2.4. The
+    // Resumable-upload (tus) header rejections — verification.md §15.14. The
     // header names stay untranslated: they are protocol tokens the
     // client sends verbatim, not prose.
     uploadLengthRequired: 'Der Header „Upload-Length" fehlt oder ist keine gültige Bytezahl.',
@@ -77,7 +77,7 @@ export const STRINGS = {
       'Genau eines von „ids" oder „filter" angeben — nicht beides und nicht keines.',
     exportTooLarge: (total: number, cap: number) =>
       `Der Filter trifft ${total} Rechnungen — Export ist auf ${cap} pro Anfrage begrenzt. Bitte den Filter eingrenzen (z. B. nach Jahr).`,
-    // Full-account takeout jobs (ADR-0018 / api.md §14.2.4).
+    // Full-account takeout jobs (ADR-0018 / verification.md §15.14).
     exportJobActive:
       'Es läuft bereits ein Export-Auftrag. Bitte warten Sie, bis dieser abgeschlossen ist.',
     importJobActive:
@@ -771,7 +771,7 @@ export const STRINGS = {
      * `describeAuditRow` helper composes a single line —
      * `"Daten importiert: 3 Benutzer, 5 Kunden, …"` — from the
      * `payload.counts` map the server writes (one slot per envelope
-     * table; see [api.md §14.2.4](../docs/spec/api.md#1424-unified-data-exchange) "Single import audit row").
+     * table).
      * Plural-aware so n=1 reads correctly in German. `company_profile`
      * is always 0 or 1 (singleton); 1 renders as the bare entity name.
      * `attachments` is always 0 in the text-leg path (per-attachment

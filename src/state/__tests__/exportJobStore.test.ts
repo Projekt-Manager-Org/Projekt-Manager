@@ -16,11 +16,11 @@
  * mocks, and `__resetForTests()` in `beforeEach`.
  *
  * Coverage references:
- *   - AC-322 — export-job lifecycle + REST contract (resume probe via getLatest).
- *   - AC-331 — one active job per kind (409 EXPORT_JOB_ACTIVE re-attach on start).
- *   - AC-333 — `data_exchange_job_changed` SSE frame is invalidation-only;
+ *   - AC-603 — resume probe via getLatest.
+ *   - AC-601: 409 EXPORT_JOB_ACTIVE re-attaches on start.
+ *   - AC-602 — the `data_exchange_job_changed` SSE frame is invalidation-only;
  *              consumers refetch the row over REST.
- *   - AC-335 (E2E) — the dialog/resume behaviour these store actions back.
+ *   - `e2e/daten-jobs.spec.ts` — the dialog/resume behaviour these store actions back.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -178,12 +178,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('exportJobStore — resume probe (AC-322)', () => {
+describe('exportJobStore — resume probe (AC-603)', () => {
   it('runs the resume probe via exportJobApi.getLatest() on first subscribe and stores the job', async () => {
     // DatenView mounts → first subscriber → the store probes for an existing
     // job so a page reload re-attaches to an in-flight / ready export
-    // (AC-335 resume). `getLatest` is the export-kind REST surface (AC-322:
-    // `GET /api/export-jobs` → `{ job | null }`).
+    // (AC-603). `getLatest` is the export-kind REST surface
+    // (`GET /api/export-jobs` → `{ job | null }`).
     const running = makeJob({ status: 'running', filesTotal: 3, filesDone: 1 });
     getLatestMock.mockResolvedValue(ok({ job: running }));
 
@@ -227,7 +227,7 @@ describe('exportJobStore — resume probe (AC-322)', () => {
   });
 });
 
-describe('exportJobStore — SSE refetch (AC-333)', () => {
+describe('exportJobStore — SSE refetch (AC-602)', () => {
   it('registers an onSseEvent(data_exchange_job_changed) handler on first subscribe', () => {
     getLatestMock.mockResolvedValue(ok({ job: null }));
 
@@ -239,7 +239,7 @@ describe('exportJobStore — SSE refetch (AC-333)', () => {
   });
 
   it('refetches via getLatest and updates job when a data_exchange_job_changed frame fires', async () => {
-    // The frame is invalidation-only (AC-333 / ADR-0025) — it carries no job
+    // The frame is invalidation-only (AC-602 / ADR-0025) — it carries no job
     // payload, so the store refetches the row over REST and adopts the
     // advanced state.
     const pending = makeJob({ status: 'pending' });
@@ -267,9 +267,9 @@ describe('exportJobStore — SSE refetch (AC-333)', () => {
   });
 });
 
-describe('exportJobStore — start() (AC-322, AC-331)', () => {
+describe('exportJobStore — start() (AC-583, AC-601)', () => {
   it('calls exportJobApi.create() and stores the returned pending row', async () => {
-    // Preflight "Start" → POST /api/export-jobs → 201 pending row (AC-322).
+    // Preflight "Start" → POST /api/export-jobs → 201 pending row (AC-583).
     getLatestMock.mockResolvedValue(ok({ job: null }));
     const unsubscribe = useExportJobStore.getState().subscribe();
     await vi.waitFor(() => expect(getLatestMock).toHaveBeenCalledTimes(1));
@@ -286,7 +286,7 @@ describe('exportJobStore — start() (AC-322, AC-331)', () => {
   });
 
   it('re-attaches via getLatest (no throw) when create() returns 409 EXPORT_JOB_ACTIVE', async () => {
-    // AC-331: a second create while a job is pending/running is rejected with
+    // AC-601: a second create while a job is pending/running is rejected with
     // 409 EXPORT_JOB_ACTIVE carrying the active id. The store must NOT surface
     // this as an error — it re-attaches to the already-running job by probing
     // getLatest, so the dialog jumps straight to the progress phase.

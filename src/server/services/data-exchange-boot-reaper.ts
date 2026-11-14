@@ -1,6 +1,6 @@
 /**
- * Data-exchange job boot reconciliation — data-model.md §5.18, api.md
- * §14.2.4 ("Jobs — one active per kind").
+ * Data-exchange job boot reconciliation — data-model.md §5.18,
+ * AC-331, AC-600.
  *
  * Export/import jobs run in-process (ADR-0021) and their build/restore is
  * fire-and-forget — a process restart abandons any job left `pending` or
@@ -18,7 +18,7 @@
  * session cleanup (`deleteExpiredSessions`). NOT a scheduled sweep — a job can
  * only be abandoned by a restart, so boot is the only moment it occurs.
  *
- * Operational-log contract mirrors the staging reaper (§6.15): exactly one
+ * Operational-log contract mirrors the staging reaper (AC-589): exactly one
  * info line with `event`, `reaped_count` (non-negative; 0 on no-op), `ran_at`
  * (ISO 8601). A per-file unlink fault is logged on the error channel and the
  * row stays `failed` — the slot-freeing UPDATE is the load-bearing effect; a

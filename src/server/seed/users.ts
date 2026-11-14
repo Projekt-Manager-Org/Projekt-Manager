@@ -1,10 +1,10 @@
 /**
  * Seed users fixture loader — fixture shape validation + id resolution.
  *
- * Issue #230: users are part of the Layer 1 envelope (data-model.md §5.8;
- * api.md §14.2.4), so the seed assembles them into the envelope alongside
- * customers / projects / company_profile and ships everything through
- * `ImportService` in a single call (see `business.ts`). This module owns
+ * Issue #230: users are part of the Layer 1 envelope (data-model.md §5.8), so
+ * the seed assembles them into the envelope alongside customers / projects /
+ * company_profile and ships everything through `ImportService` in a single
+ * call (see `business.ts`). This module owns
  * fixture parsing and seeded-id resolution; envelope assembly is in
  * `business.ts`.
  *

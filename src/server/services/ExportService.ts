@@ -38,7 +38,7 @@ export class ExportService {
 
   /**
    * Export every row of the business-data layer as a single envelope.
-   * Deterministic ordering across all tables so AC-141 can byte-compare
+   * Deterministic ordering across all tables so AC-594 can byte-compare
    * successive exports after a roundtrip.
    *
    * Issue #230: `users`, `company_profile`, `invoices`, and
@@ -240,7 +240,7 @@ export class ExportService {
       // Metadata-only descriptor. Crypto fields, opaque storage keys,
       // and ciphertext sizes are NOT consumable on the importing
       // instance and are therefore omitted; the import job re-encrypts
-      // server-side (api.md §14.2.4, AC-431, AC-328).
+      // server-side (AC-431, AC-594).
       attachments: attachmentRows.map((a) => ({
         id: a.id,
         projectId: a.projectId,

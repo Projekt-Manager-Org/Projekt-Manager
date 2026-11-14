@@ -208,7 +208,7 @@ export function invalidInputLineFields(
 /**
  * `invalidInputLineFields` for a stored line, which must also carry the
  * derived `lineTotal` (AC-384). Shared by the issue preconditions and the
- * import (AC-386): a stored mismatch is rejected, never re-derived.
+ * import (AC-593): a stored mismatch is rejected, never re-derived.
  */
 export function invalidStoredLineFields(
   line: unknown,
@@ -319,7 +319,7 @@ export function invoiceTotalsAreFinite(totals: InvoiceTotals): boolean {
 
 /**
  * True when stored `totals` equal the `derived` ones (§5.15 "Totals are
- * server-computed"; AC-386). An overflowing derived amount never matches.
+ * server-computed"; AC-593). An overflowing derived amount never matches.
  * `===` treats a negated zero on a Storno as zero.
  */
 export function invoiceTotalsMatch(totals: unknown, derived: InvoiceTotals): boolean {

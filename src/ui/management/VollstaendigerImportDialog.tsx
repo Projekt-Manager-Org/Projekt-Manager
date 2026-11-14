@@ -1,6 +1,6 @@
 /**
  * Vollständiger Import dialog — server-side import-job flow
- * (ui/daten.md §8.11.2, AC-335/AC-161). The browser confirms, uploads the
+ * (ui/daten.md §8.11.2, AC-161). The browser confirms, uploads the
  * archive to the VPS, then polls; the restore runs on the VPS.
  *
  * Five phases, derived from the `importJobStore` job + the picked `file`:
@@ -26,7 +26,7 @@
  * and letting it render its summary made the restore usable exactly once per
  * deployment.
  *
- * Mid-wipe re-auth (AC-330) needs NO code here: the restore wipes `users`, the
+ * Mid-wipe re-auth (AC-597) needs NO code here: the restore wipes `users`, the
  * store's SSE-driven refetch 401s → `handleSessionExpired` routes to login;
  * after re-login DatenView's resume probe re-attaches.
  *

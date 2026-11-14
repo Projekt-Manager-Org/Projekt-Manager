@@ -535,7 +535,7 @@ describe('Project storage usage tracking', () => {
     });
 
     it('AC-576: returns 403 NOT_PERMITTED for a worker (lacks data:export)', async () => {
-      // Mirrors the unified Export gate (api.md §14.2.4).
+      // Mirrors the unified Export gate (api.md §14.3).
       const res = await authGet(workerToken, '/api/storage-usage');
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe('NOT_PERMITTED');

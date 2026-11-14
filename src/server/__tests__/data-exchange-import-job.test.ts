@@ -3,18 +3,17 @@
  * upload protocol (TDD red).
  *
  * Drives the operator-facing full-account takeout IMPORT job defined in
- * api.md §14.2.4 ("Import job" table + "Import job — *" / "Jobs — *"
- * design notes) + data-model.md §5.18, pinning the create / upload /
+ * verification.md §15.14 + data-model.md §5.18, pinning the create / upload /
  * status / one-active / audit surface:
  *
- *   - AC-326 — create + resumable (tus-style) upload:
+ *   - create + resumable (tus-style) upload:
  *     `POST /api/import-jobs` (`Upload-Length` header) → `pending`;
  *     `HEAD :id/archive` → `Upload-Offset` + `Upload-Length`;
  *     `PATCH :id/archive` at the server offset appends + returns the new
  *     offset; a stale-offset PATCH → `409 UPLOAD_OFFSET_CONFLICT`
  *     (offset unchanged — retry-safe); bytes past `Upload-Length` →
  *     `413`; reaching `Upload-Length` transitions `pending → running`.
- *   - AC-329 — override + confirmation phrase UP FRONT: a
+ *   - AC-591, AC-592 — override + confirmation phrase UP FRONT: a
  *     non-empty target without `override: true` → `409 TARGET_NOT_EMPTY`;
  *     with `override: true` but a wrong/missing `confirmation_phrase` →
  *     `422 RESTORE_CONFIRMATION_MISMATCH`; both reject at CREATE, before
@@ -27,7 +26,7 @@
  *     terminal transition; progress writes none.
  *
  * The restore-fidelity / validate-before-wipe / session-invalidation /
- * staging-reaper arms (AC-327 / AC-328 / AC-330 / AC-334) live in the
+ * staging-reaper arms (AC-593 / AC-594 / AC-597 / AC-589) live in the
  * sibling file `data-exchange-import-archive.test.ts` — they need a real
  * roundtrip archive (built by the WORKING export job) and are heavier.
  *
@@ -231,7 +230,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
     // place (a NON-EMPTY target) — the override/phrase arms below rely on
     // that; the empty-target arm wipes explicitly.
     await db.execute(sql`DELETE FROM data_exchange_job`);
-    // Cross-arm isolation for AC-332's audit-count arm: the AC-326
+    // Cross-arm isolation for AC-332's audit-count arm: the
     // upload-completion arms return as soon as the job leaves `pending`,
     // leaving a detached runner that settles to `failed` and writes one
     // `data_import` audit row. Clear those here so a straggler cannot land
@@ -240,23 +239,22 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   });
 
   // -------------------------------------------------------------------
-  // AC-329 — override + confirmation phrase UP FRONT.
+  // AC-591, AC-592 — override + confirmation phrase UP FRONT.
   //
   // The seed leaves a NON-EMPTY target (customers / projects / invoices).
-  // api.md §14.2.4 "Import job — override + confirmation up front": the
-  // server checks target-emptiness at CREATE and fails fast —
+  // The server checks target-emptiness at CREATE and fails fast —
   // TARGET_NOT_EMPTY (missing override) or RESTORE_CONFIRMATION_MISMATCH
   // (wrong/missing phrase) — BEFORE the upload, never after a multi-GB
   // transfer. errors.ts pins TARGET_NOT_EMPTY=409, the phrase mismatch=422.
   // -------------------------------------------------------------------
-  describe('AC-329: destructive guard precedes the upload (non-empty target)', () => {
+  describe('AC-591, AC-592: destructive guard precedes the upload (non-empty target)', () => {
     it('create without override into a non-empty target → 409 TARGET_NOT_EMPTY and no upload slot', async () => {
       const res = await createImportJob(ownerToken, 1024 /* bytes */);
       expect(res.statusCode).toBe(409);
       expect(res.json().code).toBe('TARGET_NOT_EMPTY');
 
       // No job row was minted — the latest probe is still null. (If a
-      // slot HAD been allocated, AC-329's "no upload slot is usable"
+      // slot HAD been allocated, AC-591's "no upload slot is usable"
       // assertion would fail; a null latest is the cleanest proof.)
       const latest = await authGet(ownerToken, '/api/import-jobs');
       expect(latest.statusCode).toBe(200);
@@ -330,7 +328,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
 
   // -------------------------------------------------------------------
   // Permission gate — every import-job endpoint is data:restore-gated
-  // (api.md §14.2.4 "Jobs — error paths"). office holds data:export but
+  // (verification.md §15.14). office holds data:export but
   // NOT data:restore (the strong arm); worker holds neither.
   // -------------------------------------------------------------------
   describe('data:restore gate on every endpoint', () => {
@@ -386,17 +384,17 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   });
 
   // -------------------------------------------------------------------
-  // AC-326 — create + resumable (tus-style) upload protocol.
+  // create + resumable (tus-style) upload protocol.
   //
   // The protocol arms operate on a NON-EMPTY target (the seed), so every
-  // create carries override + the matching phrase to clear the AC-329
+  // create carries override + the matching phrase to clear the AC-592
   // guard. The bytes uploaded are arbitrary here — these arms pin the
   // OFFSET PROTOCOL (Upload-Length / Upload-Offset / 409 / 413 / the
   // pending→running transition at full length), not archive validity.
   // The validity path (validate-before-wipe, real roundtrip) lives in
   // the sibling archive file.
   // -------------------------------------------------------------------
-  describe('AC-326: resumable offset-based upload', () => {
+  describe('resumable offset-based upload', () => {
     /** Create a pending import job over a non-empty target; return its id. */
     async function freshUploadSlot(uploadLength: number): Promise<string> {
       const res = await createImportJob(ownerToken, uploadLength, {
@@ -454,7 +452,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
 
       // Replay the first chunk at offset 0 — the server is already at
       // `first.length`. The mismatch is rejected; the offset must not move
-      // (idempotent retry safety, AC-326).
+      // (idempotent retry safety).
       const replay = await patchArchive(ownerToken, id, 0, first);
       expect(replay.statusCode).toBe(409);
       expect(replay.json().code).toBe('UPLOAD_OFFSET_CONFLICT');
@@ -482,7 +480,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
       // flips pending → running and begins async processing. The bytes are
       // not a valid archive, so the job will ultimately go `failed` (the
       // validity path is covered in the archive file) — but the
-      // pending→running transition AC-326 pins fires regardless of content.
+      // pending→running transition fires regardless of content.
       const total = 2048;
       const payload = crypto.randomBytes(total);
       const id = await freshUploadSlot(total);
@@ -499,7 +497,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
     });
 
     it('resumable: interrupt mid-upload, HEAD to read the offset, resume to completion', async () => {
-      // The load-bearing reliability property (AC-326): a dropped upload
+      // The load-bearing reliability property: a dropped upload
       // resumes from the server's offset rather than restarting at zero.
       const total = 6000;
       const full = crypto.randomBytes(total);
@@ -580,7 +578,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   });
 
   // -------------------------------------------------------------------
-  // Status + latest endpoints (api.md §14.2.4 Import-job table).
+  // Status + latest endpoints.
   // -------------------------------------------------------------------
   describe('status + latest', () => {
     it('GET /api/import-jobs returns { job: null } on a fresh deployment', async () => {
@@ -738,7 +736,7 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   // is set at markRunning (upload completion), so a failed job has a staged
   // file. Use override + phrase to pass the destructive guard on both creates.
   // -------------------------------------------------------------------
-  describe('pre-sweep on new create: prior staged import artifact discarded', () => {
+  describe('AC-590: pre-sweep on new create: prior staged import artifact discarded', () => {
     it('second create sweeps the first failed artifact, nulls archiveRef, sets header', async () => {
       // Drive the first import to terminal (failed) by uploading invalid bytes.
       const total = 1024;

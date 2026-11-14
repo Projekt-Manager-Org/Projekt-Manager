@@ -481,7 +481,7 @@ Workers hold no `invoice:*` permission, so every invoice route refuses them (403
 
 ## Design Decisions (Not ADR-Worthy)
 
-- **Export format**: JSON only, one envelope ([data-model.md §5.8](docs/spec/data-model.md#58-export-envelope)). Import preserves IDs and wipes-then-restores — no merge semantics ([ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md)).
+- **Export format**: one zip archive holding the data, a manifest and the attachment files ([data-model.md §5.8](docs/spec/data-model.md#58-export-archive)). Import preserves IDs and wipes-then-restores — no merge semantics ([ADR-0018](docs/adr/0018-data-persistence-and-recovery-layered-strategy.md)).
 - **Project number format**: configurable `[C]`, enforced only for uniqueness.
 - **Site vs billing address**: `projects.siteAddress` (Baustelle) beside `customers.address` (Rechnung) — the standard ERP split; null means "at the billing address". No `addresses` table: no need for several per customer.
 - **Bulk transitions**: not supported.

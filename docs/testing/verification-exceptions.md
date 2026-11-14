@@ -105,7 +105,13 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-132 | retired | —                                                                                                        |
 | AC-133 | retired | —                                                                                                        |
 | AC-134 | retired | —                                                                                                        |
+| AC-135 | retired | —                                                                                                        |
+| AC-136 | retired | —                                                                                                        |
+| AC-137 | retired | —                                                                                                        |
+| AC-138 | retired | —                                                                                                        |
+| AC-139 | retired | —                                                                                                        |
 | AC-140 | retired | —                                                                                                        |
+| AC-141 | retired | —                                                                                                        |
 | AC-143 | retired | —                                                                                                        |
 | AC-144 | retired | —                                                                                                        |
 | AC-145 | retired | —                                                                                                        |
@@ -121,6 +127,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-157 | retired | —                                                                                                        |
 | AC-158 | retired | —                                                                                                        |
 | AC-159 | retired | —                                                                                                        |
+| AC-160 | retired | —                                                                                                        |
 | AC-162 | retired | —                                                                                                        |
 | AC-163 | retired | —                                                                                                        |
 | AC-172 | infra   | compose-file review                                                                                      |
@@ -166,6 +173,8 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-250 | retired | —                                                                                                        |
 | AC-251 | retired | —                                                                                                        |
 | AC-252 | retired | —                                                                                                        |
+| AC-253 | retired | —                                                                                                        |
+| AC-254 | retired | —                                                                                                        |
 | AC-255 | retired | —                                                                                                        |
 | AC-256 | retired | —                                                                                                        |
 | AC-257 | retired | —                                                                                                        |
@@ -195,9 +204,25 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-306 | retired | —                                                                                                        |
 | AC-307 | retired | —                                                                                                        |
 | AC-308 | retired | —                                                                                                        |
+| AC-309 | retired | —                                                                                                        |
+| AC-310 | retired | —                                                                                                        |
+| AC-311 | retired | —                                                                                                        |
+| AC-312 | retired | —                                                                                                        |
 | AC-313 | retired | —                                                                                                        |
 | AC-314 | retired | —                                                                                                        |
 | AC-315 | retired | —                                                                                                        |
+| AC-322 | retired | —                                                                                                        |
+| AC-323 | retired | —                                                                                                        |
+| AC-324 | retired | —                                                                                                        |
+| AC-325 | retired | —                                                                                                        |
+| AC-326 | retired | —                                                                                                        |
+| AC-327 | retired | —                                                                                                        |
+| AC-328 | retired | —                                                                                                        |
+| AC-329 | retired | —                                                                                                        |
+| AC-330 | retired | —                                                                                                        |
+| AC-333 | retired | —                                                                                                        |
+| AC-334 | retired | —                                                                                                        |
+| AC-335 | retired | —                                                                                                        |
 | AC-348 | infra   | CI `lint` — lychee, `lychee.toml`                                                                        |
 | AC-350 | retired | —                                                                                                        |
 | AC-368 | infra   | review of `docs/ops/backup/recovery.md`                                                                  |
@@ -205,7 +230,10 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-373 | retired | —                                                                                                        |
 | AC-374 | infra   | monthly binary-key drill — `docs/ops/binary-key/drills.md`                                               |
 | AC-385 | retired | —                                                                                                        |
+| AC-386 | retired | —                                                                                                        |
+| AC-387 | retired | —                                                                                                        |
 | AC-388 | retired | —                                                                                                        |
+| AC-389 | retired | —                                                                                                        |
 | AC-401 | gap     | needs an e2e asserting the stored object is not the uploaded plaintext                                   |
 | AC-405 | gap     | no test drives the client-side cap block or the missing retry action                                     |
 | AC-423 | gap     | no test drives a restore whose storage copy fails with a non-410 error                                   |
@@ -236,3 +264,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
+| AC-588 | gap     | code lags: no strong validator on the download, so desktop Chrome restarts it (#880)                     |
+| AC-599 | gap     | code lags: a stalled import upload stays `pending` until a restart and blocks new imports (#878)         |
+| AC-608 | gap     | code lags: an expired export still offers its download (#881)                                            |

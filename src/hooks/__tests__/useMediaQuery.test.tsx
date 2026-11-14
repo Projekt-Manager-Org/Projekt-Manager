@@ -2,7 +2,7 @@
  * `useMediaQuery` — pins the subscription contract, including the window
  * between the render-time read and the post-mount subscription.
  *
- * That window is why this suite exists (issue #327 — unrelated to AC-327). A
+ * That window is why this suite exists (issue #327). A
  * hook that reads the query during render and subscribes in a passive effect
  * drops any `change` landing in between: the subscription does come up, one
  * beat late, so the value stays wrong until the NEXT transition. For a dialog

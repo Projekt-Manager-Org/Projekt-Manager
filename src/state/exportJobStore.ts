@@ -11,9 +11,9 @@
  *
  * Triggers:
  *   1. First subscriber mount — the resume probe (`getLatest`) re-attaches to
- *      an in-flight / `ready` job so a page reload loses nothing (AC-335).
- *   2. `data_exchange_job_changed` SSE frame — refetch the advanced row (AC-333).
- *   3. `start()` — POST a new job (AC-322); a 409 `EXPORT_JOB_ACTIVE` re-attaches
+ *      an in-flight / `ready` job so a page reload loses nothing (AC-603).
+ *   2. `data_exchange_job_changed` SSE frame — refetch the advanced row (AC-602).
+ *   3. `start()` — POST a new job (AC-583); a 409 `EXPORT_JOB_ACTIVE` re-attaches
  *      to the already-running build rather than surfacing an error (AC-331).
  *
  * Auth-gating: `subscribe()` opens the shared `/api/events` EventSource via

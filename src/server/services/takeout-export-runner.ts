@@ -1,6 +1,6 @@
 /**
- * Full-account takeout EXPORT job runner — ADR-0018 / ADR-0024, api.md
- * §14.2.4 ("Export job — build and lifecycle"), data-model.md §5.18.
+ * Full-account takeout EXPORT job runner — ADR-0018 / ADR-0024,
+ * verification.md §15.14, data-model.md §5.18.
  *
  * Owns the asynchronous, fire-and-forget build a `POST /api/export-jobs`
  * kicks off: it advances the `data_exchange_job` row through
@@ -84,7 +84,7 @@ export async function runExportBuild(deps: RunExportBuildDeps): Promise<void> {
 
     // Stamp the final totals, then flip to ready with the staged archive
     // location. markReady stamps finishedAt — the staging reaper's age
-    // anchor (AC-334). Re-assert the terminal counts here so a throttled
+    // anchor (AC-589). Re-assert the terminal counts here so a throttled
     // frame that dropped the last increment cannot leave a stale readout.
     await jobs.updateProgress(jobId, {
       filesTotal: result.filesTotal,

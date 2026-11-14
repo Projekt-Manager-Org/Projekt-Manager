@@ -121,7 +121,7 @@ describe('validateKind', () => {
   it('rejects a kind outside the closed enum', () => {
     // Mirrors the `attachments_valid_kind` CHECK. The import runner's
     // Pass-1 gate relies on this throwing so a tampered envelope fails
-    // before the destructive wipe (AC-327).
+    // before the destructive wipe (AC-593).
     expect(() => validateKind('document')).toThrow();
     expect(() => validateKind('Photo')).toThrow();
     expect(() => validateKind('')).toThrow();

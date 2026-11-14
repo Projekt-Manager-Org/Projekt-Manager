@@ -1,6 +1,6 @@
 /**
  * VollstaendigerExportDialog — deterministic phase-rendering tests for the
- * server-side export-job dialog (ui/daten.md §8.11.1, AC-335 [vis]).
+ * server-side export-job dialog (ui/daten.md §8.11.1).
  *
  * The e2e (`e2e/daten-jobs.spec.ts`) drives the real job end-to-end but races
  * past `progress` on a tiny seed; this file pins the readout deterministically
@@ -58,7 +58,7 @@ afterEach(() => {
   useExportJobStore.getState().__resetForTests();
 });
 
-describe('VollstaendigerExportDialog — preflight (AC-335)', () => {
+describe('VollstaendigerExportDialog — preflight', () => {
   it('a fresh open (no job) shows the preflight with an enabled Start action', () => {
     render(<VollstaendigerExportDialog onClose={vi.fn()} />);
     expect(screen.getByTestId('export-job-preflight')).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe('VollstaendigerExportDialog — preflight (AC-335)', () => {
     expect(screen.getByTestId('export-job-papierkorb-notice')).toHaveTextContent(/Papierkorb/);
   });
 
-  it('renders the mobile warning below the configured breakpoint', () => {
+  it('AC-606: renders the mobile warning below the configured breakpoint', () => {
     setMatchMedia(true);
     render(<VollstaendigerExportDialog onClose={vi.fn()} />);
     expect(screen.getByTestId('export-job-mobile-warning')).toBeInTheDocument();
@@ -96,7 +96,7 @@ describe('VollstaendigerExportDialog — preflight (AC-335)', () => {
   });
 });
 
-describe('VollstaendigerExportDialog — progress (AC-335)', () => {
+describe('VollstaendigerExportDialog — progress (AC-602)', () => {
   it('renders files/bytes/current-item from a running job (resume open)', () => {
     // A running job AT MOUNT = resume → tracking → progress straight away.
     useExportJobStore.setState({
@@ -124,7 +124,7 @@ describe('VollstaendigerExportDialog — progress (AC-335)', () => {
   });
 });
 
-describe('VollstaendigerExportDialog — ready + failed (AC-335)', () => {
+describe('VollstaendigerExportDialog — ready + failed (AC-586, AC-587)', () => {
   it('transitions running → ready and exposes a Range download link to the job archive', () => {
     useExportJobStore.setState({ job: makeJob({ status: 'running' }) });
     render(<VollstaendigerExportDialog onClose={vi.fn()} />);
