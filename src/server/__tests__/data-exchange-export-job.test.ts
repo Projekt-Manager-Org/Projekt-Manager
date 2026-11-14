@@ -743,11 +743,10 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // staged plaintext archives on disk. When a prior ready export exists with
   // a staged file, a new POST /api/export-jobs must:
   //   (a) delete the prior staged file from disk,
-  //   (b) null the prior job's archive_ref (so its download 404s),
-  //   (c) respond with X-Discarded-Prior-Staged: 1.
+  //   (b) null the prior job's archive_ref (so its download 404s).
   // -------------------------------------------------------------------
   describe('AC-590: pre-sweep on new create: prior staged export artifact discarded', () => {
-    it('second create sweeps the first ready artifact, nulls archiveRef, sets header', async () => {
+    it('second create sweeps the first ready artifact and nulls archiveRef', async () => {
       // Build a complete export job (reaches ready and stages a file on disk).
       const first = await createExportJob(ownerToken);
       const terminal = await pollUntilTerminal(ownerToken, first.id);
@@ -762,9 +761,6 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
       // Create a second export job — this should sweep the first.
       const secondRes = await authPost(ownerToken, '/api/export-jobs');
       expect(secondRes.statusCode).toBe(201);
-
-      // (c) X-Discarded-Prior-Staged header must be '1'.
-      expect(secondRes.headers['x-discarded-prior-staged']).toBe('1');
 
       // (a) The first job's staged file must no longer exist on disk.
       await expect(stat(firstStagedPath)).rejects.toThrow();

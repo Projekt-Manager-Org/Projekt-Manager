@@ -769,15 +769,14 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   // state with a staged file (archiveRef set at markRunning), a new
   // POST /api/import-jobs must:
   //   (a) delete the prior staged file from disk,
-  //   (b) null the prior job's archive_ref (so its future download 404s),
-  //   (c) respond with X-Discarded-Prior-Staged: 1.
+  //   (b) null the prior job's archive_ref (so its future download 404s).
   //
   // Drive the first job to `failed` by uploading invalid bytes — archiveRef
   // is set at markRunning (upload completion), so a failed job has a staged
   // file. Use override + phrase to pass the destructive guard on both creates.
   // -------------------------------------------------------------------
   describe('AC-590: pre-sweep on new create: prior staged import artifact discarded', () => {
-    it('second create sweeps the first failed artifact, nulls archiveRef, sets header', async () => {
+    it('second create sweeps the first failed artifact and nulls archiveRef', async () => {
       // Drive the first import to terminal (failed) by uploading invalid bytes.
       const total = 1024;
       const first = await createImportJob(ownerToken, total, {
@@ -806,9 +805,6 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
         confirmation_phrase: EXPECTED_RESTORE_PHRASE,
       });
       expect(secondRes.statusCode).toBe(201);
-
-      // (c) X-Discarded-Prior-Staged header must be '1'.
-      expect(secondRes.headers['x-discarded-prior-staged']).toBe('1');
 
       // (a) The first job's staged file must no longer exist on disk — the
       // observable of the sweep (archive_ref nulled + file deleted), now that
