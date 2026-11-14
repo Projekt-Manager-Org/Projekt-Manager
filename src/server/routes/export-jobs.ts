@@ -7,14 +7,15 @@
  *                                       async server-side build, return 201
  *                                       immediately (build is NOT awaited).
  *   - GET  /api/export-jobs           — `{ job: <latest export row> | null }`.
- *   - GET  /api/export-jobs/:id       — the job row (`404` on unknown id).
+ *   - GET  /api/export-jobs/:id       — the job row (`404` on an unknown or import id).
  *   - GET  /api/export-jobs/:id/download — stream the VPS-staged archive,
  *                                       Range-capable (`206` on a byte range),
  *                                       resumable via `ETag` + `If-Range`.
  *
  * Build lifecycle: the create handler advances the row through the
  * `DataExchangeJobService` (`pending → running → ready | failed`) and the
- * `buildExportArchive` builder; the browser polls `GET :id` until terminal.
+ * `buildExportArchive` builder; the browser follows it through `GET` latest,
+ * refetched on each `data_exchange_job_changed` frame.
  * A per-row attachment failure fails the build (AC-585) — no partial
  * archive is ever served. At the terminal transition (and only there) the
  * runner writes EXACTLY ONE `audit_log` row with `entityType='data_import'`
@@ -221,7 +222,8 @@ export function exportJobRoutes(db: Database) {
       async (request, reply) => {
         const { id } = request.params as { id: string };
         const job = await jobs.get(id);
-        if (!job) throw notFound(STRINGS.entities.resource);
+        // An import job's id does not exist in this namespace — 404.
+        if (!job || job.kind !== 'export') throw notFound(STRINGS.entities.resource);
         // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
         return reply.code(200).send(toExchangeJobDto(job));
       },
@@ -245,7 +247,8 @@ export function exportJobRoutes(db: Database) {
       async (request, reply) => {
         const { id } = request.params as { id: string };
         const job = await jobs.get(id);
-        if (!job) throw notFound(STRINGS.entities.resource);
+        // An import job's id does not exist in this namespace — 404.
+        if (!job || job.kind !== 'export') throw notFound(STRINGS.entities.resource);
         // Not ready → 409 (the job exists; the artifact is not built yet).
         if (job.status !== 'ready') throw exportJobNotReady();
         // Ready but the staged artifact is gone (reaper swept it, or the

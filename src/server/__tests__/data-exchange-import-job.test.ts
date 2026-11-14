@@ -563,7 +563,17 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
   // restore — and (b) a job that has left `pending` (append would corrupt the
   // staged archive the runner reads, or re-fire a failed job's restore).
   // -------------------------------------------------------------------
-  describe('upload surface rejects cross-kind / non-pending jobs', () => {
+  describe('import surfaces reject cross-kind / non-pending jobs', () => {
+    it('GET with an EXPORT job id → 404 (not an import job) (#890)', async () => {
+      const created = await createExportJob(ownerToken);
+      expect(created.statusCode).toBe(201);
+      const exportId = (created.json() as ImportJobRow).id;
+
+      const row = await authGet(ownerToken, `/api/import-jobs/${exportId}`);
+      expect(row.statusCode).toBe(404);
+      expect(row.json().code).toBe('NOT_FOUND');
+    });
+
     it('HEAD with an EXPORT job id → 404 (not an import job)', async () => {
       const created = await createExportJob(ownerToken);
       expect(created.statusCode).toBe(201);
