@@ -137,7 +137,14 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-173 | infra   | provider-side review against the recovery runbook                                                        |
 | AC-175 | infra   | repo scan of `scripts/backup/load-drill-key.sh` (tmpfs-only); runbook review                             |
 | AC-176 | retired | —                                                                                                        |
+| AC-177 | retired | —                                                                                                        |
+| AC-178 | retired | —                                                                                                        |
+| AC-179 | retired | —                                                                                                        |
+| AC-180 | retired | —                                                                                                        |
 | AC-181 | retired | —                                                                                                        |
+| AC-184 | retired | —                                                                                                        |
+| AC-185 | retired | —                                                                                                        |
+| AC-187 | retired | —                                                                                                        |
 | AC-189 | retired | —                                                                                                        |
 | AC-191 | retired | —                                                                                                        |
 | AC-194 | retired | —                                                                                                        |
@@ -215,6 +222,8 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-313 | retired | —                                                                                                        |
 | AC-314 | retired | —                                                                                                        |
 | AC-315 | retired | —                                                                                                        |
+| AC-318 | retired | —                                                                                                        |
+| AC-319 | retired | —                                                                                                        |
 | AC-322 | retired | —                                                                                                        |
 | AC-323 | retired | —                                                                                                        |
 | AC-324 | retired | —                                                                                                        |
@@ -227,6 +236,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-333 | retired | —                                                                                                        |
 | AC-334 | retired | —                                                                                                        |
 | AC-335 | retired | —                                                                                                        |
+| AC-339 | retired | —                                                                                                        |
+| AC-340 | retired | —                                                                                                        |
+| AC-342 | retired | —                                                                                                        |
 | AC-348 | infra   | CI `lint` — lychee, `lychee.toml`                                                                        |
 | AC-350 | retired | —                                                                                                        |
 | AC-368 | infra   | review of `docs/ops/backup/recovery.md`                                                                  |
@@ -268,3 +280,4 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
+| AC-642 | gap     | needs a test that no route changes or deletes an audit entry                                             |

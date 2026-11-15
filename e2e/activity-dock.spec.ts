@@ -4,32 +4,20 @@ import { clickView } from './nav-helpers';
 import { SEED_USERS } from '../src/test/seedAssumptions';
 
 /**
- * E2E — app-shell live activity dock (AC-317 + AC-318).
+ * E2E — app-shell live activity dock (docs/spec/verification.md §15.32):
  *
- * Pins the dock criteria from `docs/spec/verification.md §15.32`, a
- * privileged-only realtime consumer of the audit feed docked above the
- * Footer in the authenticated layout (ui/index.md §8.1.2):
- *
- *   - AC-317 [vis] — while EXPANDED, an audit event committed by ANOTHER
- *     session appears in the dock within 2 seconds with no manual refresh
- *     on the observing session, driven by the `audit_changed` SSE event
- *     (api.md §14.2.13) + a refetch of api.md §14.2.8. Parity with AC-277
- *     (project lifecycle) and storage usage. The multi-session
- *     "always-open observer" structure mirrors
- *     `storage-usage-multi-user.spec.ts` precisely: a long-lived office
- *     context (the observer) plus a one-shot owner request context for
- *     the mutation, with an `expect.poll({ timeout: 2_000 })` gate.
- *
- *   - AC-318 [vis] — the dock is collapsible and default-COLLAPSED; its
- *     collapse state PERSISTS across view navigation within a session (it
- *     does NOT reset on a view switch); it is DESKTOP-ONLY (hidden on
- *     phones, parity with the Footer, hidden at max-width:768px); it exposes an "Ältere anzeigen" affordance to page older
- *     entries; and its default list is the caller's recipient-scoped set
- *     per AC-200.
+ *   - AC-317 — while expanded, an audit entry from another session appears
+ *     within 2 seconds. The multi-session "always-open observer" mirrors
+ *     `storage-usage-multi-user.spec.ts`: a long-lived office context plus
+ *     a one-shot owner request context, gated by `expect.poll`.
+ *   - AC-634 (starts collapsed), AC-635 (state survives view switches),
+ *     AC-636 (absent on phones), AC-637 (full readable feed, not the
+ *     recipient-scoped one), AC-628 ("Ältere anzeigen"), AC-640 (Alt+A),
+ *     AC-341 (absent on the Aktivität view).
  *
  * ── Testid contract (the implementer must provide these) ──────────────
  *   - `activity-dock`            — outer container; rendered ONLY for
- *                                  `audit:read` holders on desktop (AC-319).
+ *                                  `audit:read` holders on desktop (AC-638).
  *   - `activity-dock-toggle`     — collapse/expand control.
  *   - `activity-dock-panel`      — expanded feed region; ABSENT/hidden
  *                                  when collapsed.
@@ -57,7 +45,7 @@ import { SEED_USERS } from '../src/test/seedAssumptions';
  */
 const SSE_PROPAGATION_TIMEOUT_MS = 2_000;
 
-/** Phone viewport — below the 768px Footer/dock breakpoint (AC-318). */
+/** Phone viewport — below the 768px Footer/dock breakpoint (AC-636). */
 const PHONE_VIEWPORT = { width: 390, height: 844 } as const;
 
 /** Count the entry rows currently rendered inside the expanded dock panel. */
@@ -150,19 +138,12 @@ test.describe('AC-317: activity dock reflects a cross-session audit commit withi
     );
 
     // ── Cross-session mutation (owner request context) ─────────────────
-    // The dock defaults to the office caller's recipient-scoped set
-    // (AC-200 / AC-318). Office is NOT a default recipient of any seed
-    // rule (transition/assignment → assigned workers; archived/backup/disk
-    // → owner; src/server/seed/notificationRules.ts), so an arbitrary
-    // owner mutation would NOT surface in office's recipient-scoped dock.
-    //
-    // To drive a row office IS a recipient for, the owner context posts an
-    // explicit `project.assignment_changed → userIds:[officeId]` rule, then
-    // creates a project and assigns a worker to it — the resulting
-    // `project_worker.create` audit row resolves to office under that rule
-    // (mirrors the userIds arm of e2e/.. audit-recipient-scope coverage).
-    // All three writes originate from the owner session, distinct from the
-    // office observer, satisfying AC-317's "another session" clause.
+    // The dock lists every entry office may read (AC-637), so any owner
+    // mutation surfaces. The rule posted below dates from when the dock was
+    // recipient-scoped; it is no longer needed for visibility and is kept
+    // so this flow stays unchanged. All writes come from the owner
+    // session, distinct from the office observer — AC-317's "another
+    // session".
     const ownerContext = await browser.newContext({ storageState: STORAGE_STATES.owner });
     try {
       const officeId = await resolveUserId(ownerContext, SEED_USERS.office.username);
@@ -232,7 +213,7 @@ test.describe('AC-317: activity dock reflects a cross-session audit commit withi
   });
 });
 
-test.describe('AC-318: activity dock collapse default, session persistence, responsive posture, scope', () => {
+test.describe('AC-634, AC-635, AC-636, AC-637: activity dock collapse default, session persistence, responsive posture, scope', () => {
   test.use({ storageState: STORAGE_STATES.office });
 
   test('default-collapsed: dock present but panel hidden on a fresh page', async ({ page }) => {
@@ -240,7 +221,7 @@ test.describe('AC-318: activity dock collapse default, session persistence, resp
     await expect(page.getByTestId('kanban-board')).toBeVisible();
 
     // The container is present (office holds audit:read), but the feed
-    // region is hidden until the caller expands it — AC-318 "default-
+    // region is hidden until the caller expands it — AC-634 "default-
     // collapsed". A toggle control is offered to expand.
     await expect(page.getByTestId('activity-dock')).toBeVisible();
     await expect(page.getByTestId('activity-dock-toggle')).toBeVisible();
@@ -255,7 +236,7 @@ test.describe('AC-318: activity dock collapse default, session persistence, resp
     const toggle = page.getByTestId('activity-dock-toggle');
 
     // Expand, then navigate to another view — the dock must STAY expanded
-    // (AC-318 "does not reset on a view switch"). A naive per-view remount
+    // (AC-635 "stays expanded or collapsed as it was"). A naive per-view remount
     // that re-reads the default would collapse here.
     await toggle.click();
     await expect(panel).toBeVisible();
@@ -289,7 +270,7 @@ test.describe('AC-318: activity dock collapse default, session persistence, resp
   test('default list is the full RBAC-scoped feed, NOT the recipient-scoped subset', async ({
     page,
   }) => {
-    // AC-318 (revised): the dock fetches every audit row the caller may
+    // AC-637: the dock fetches every audit row the caller may
     // read. Recipient-scoping is a notifications concern (AC-200) and
     // is exercised only on the Aktivität page via its "Alles anzeigen"
     // toggle — NOT on the dock. The dock surface is "everything the
@@ -315,9 +296,9 @@ test.describe('AC-318: activity dock collapse default, session persistence, resp
 });
 
 /**
- * AC-318 — the "Ältere anzeigen" pager. Isolated in its own block
+ * AC-628 — the "Ältere anzeigen" pager. Isolated in its own block
  * because it must MANUFACTURE its data: even with the dock now fetching
- * the full RBAC-scoped feed (AC-318 — no recipient narrowing), the
+ * the full RBAC-scoped feed (AC-637 — no recipient narrowing), the
  * seed traffic under office's scope is below the default page size, so
  * `hasMore` is false and `ActivityFeed` renders no pager. The
  * `beforeAll` drives > the audit page size of audit rows visible to
@@ -328,7 +309,7 @@ test.describe('AC-318: activity dock collapse default, session persistence, resp
  * residual from the recipient-scope era; under the new dock contract
  * it is a no-op but harmless and kept to minimise spec churn.
  */
-test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', () => {
+test.describe('AC-628: activity dock "Ältere anzeigen" pages older entries', () => {
   test.use({ storageState: STORAGE_STATES.office });
 
   /**
@@ -363,13 +344,13 @@ test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', ()
       createdRuleId = (await ruleRes.json()).id as string;
 
       const custRes = await ownerContext.request.post('/api/customers', {
-        data: { name: `AC-318 pager fixture ${Date.now()}` },
+        data: { name: `AC-628 pager fixture ${Date.now()}` },
       });
       expect(custRes.ok(), `pager customer POST failed: ${custRes.status()}`).toBe(true);
       const customerId = (await custRes.json()).id as string;
 
       const projRes = await ownerContext.request.post('/api/projects', {
-        data: { number: `AC318-${Date.now()}`, title: 'AC-318 pager fixture', customerId },
+        data: { number: `AC628-${Date.now()}`, title: 'AC-628 pager fixture', customerId },
       });
       expect(projRes.ok(), `pager project POST failed: ${projRes.status()}`).toBe(true);
       const projectId = (await projRes.json()).id as string;
@@ -419,9 +400,9 @@ test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', ()
     const before = await rows.count();
 
     await loadOlder.click();
-    // Appending older entries grows the rendered set (AC-318 pager). The
+    // Appending older entries grows the rendered set (AC-628 pager). The
     // append-vs-replace semantics of the pager itself are pinned for the
-    // shared feed by AC-185 (e2e/activity-feed.spec.ts); here we assert
+    // shared feed by AC-628 (e2e/activity-feed.spec.ts); here we assert
     // only that the dock surfaces the pager and it grows the count, to
     // avoid duplicating that machinery (T-REDU).
     await expect.poll(async () => rows.count(), { timeout: 5_000 }).toBeGreaterThan(before);
@@ -429,13 +410,13 @@ test.describe('AC-318: activity dock "Ältere anzeigen" pages older entries', ()
 });
 
 /**
- * AC-340 — global `Alt+A` shortcut. The shortcut is wired at the shell
+ * AC-640 — global `Alt+A` shortcut. The shortcut is wired at the shell
  * (App.tsx via ActivityDock) so it works from any view; the focus-in-
  * input suppression is unit-tested in `useGlobalShortcut.test.tsx`.
  * This e2e pin asserts only the cross-view + preventDefault behaviour,
  * which JSDOM cannot honestly verify.
  */
-test.describe('AC-340: Alt+A global toggle for the activity dock', () => {
+test.describe('AC-640: Alt+A global toggle for the activity dock', () => {
   test.use({ storageState: STORAGE_STATES.office });
 
   test('Alt+A toggles the dock from Kanban — header hint is visible', async ({ page }) => {
@@ -445,7 +426,7 @@ test.describe('AC-340: Alt+A global toggle for the activity dock', () => {
     const toggle = page.getByTestId('activity-dock-toggle');
     const panel = page.getByTestId('activity-dock-panel');
 
-    // The hint is rendered inline next to the title — AC-340.
+    // The hint is rendered inline next to the title — AC-640.
     await expect(toggle).toContainText('Aktivität');
     await expect(toggle).toContainText('(Alt+A)');
 

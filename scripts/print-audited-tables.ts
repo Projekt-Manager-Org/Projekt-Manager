@@ -2,7 +2,7 @@
  * Prints audited-table identifiers derived from `AUDIT_ENTITY_TO_TABLE`
  * (src/server/db/schema.ts) for `scripts/check-audit-mutations.sh`.
  *
- * AC-179 requires the check's audited-table set to follow
+ * By the check's design (`scripts/check-audit-mutations.sh` header), the audited-table set follows
  * `AuditEntityType`: a new entity type whose table is not wired into
  * the check must fail CI. This helper is the read path — the shell
  * check calls it via `npx tsx` to obtain a space-separated list.

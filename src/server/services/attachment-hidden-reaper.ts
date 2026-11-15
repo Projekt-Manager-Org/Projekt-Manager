@@ -4,7 +4,7 @@
  * Hard-deletes `attachment` rows at `status = 'hidden'` whose age past
  * `hiddenAt` exceeds the configured TTL. Each removed row produces
  * exactly one `audit_log` row with `action = 'attachment:purge'`,
- * written through the single-write-path helper (`mutate()`, AC-177) so
+ * written through the single-write-path helper (`mutate()`, AC-623) so
  * the DELETE and the audit row commit atomically.
  *
  * Operational-log contract: exactly one info line per run with fields

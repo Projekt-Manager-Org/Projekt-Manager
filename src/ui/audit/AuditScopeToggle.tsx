@@ -1,6 +1,6 @@
 /**
  * "Alles anzeigen" toggle for the global Aktivität view (AC-200,
- * ui/management.md §8.13.1).
+ * ui/management.md §8.13).
  *
  * Purely presentational: the parent owns the boolean state and the
  * filter-wiring decision. Unchecked (default) = recipient-scoped mode;

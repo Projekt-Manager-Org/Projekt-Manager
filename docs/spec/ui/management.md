@@ -84,40 +84,22 @@ Shows the username (read-only), display name, roles, email and status. Editable 
 
 ## 8.13 Audit View
 
-A global, read-only tabular view of the `audit_log` ([data-model.md §5.10](../data-model.md#510-audit-log-entity)). Backed by [api.md §14.2.8](../api.md#1428-audit-log). Available to every caller holding `audit:read`; the per-role visible row set is narrowed server-side via the scope predicates — clients do not filter audit rows.
+The `Aktivität` view ([index.md §8.7.1](index.md#871-views)): a table of audit entries ([data-model.md §5.10](../data-model.md#510-audit-log-entity)). Behavior: [verification.md §15.23](../verification.md#1523-audit-log); its default, recipient-scoped mode and the `Alles anzeigen` toggle: [AC-200](../verification.md#1524-notifications).
 
-Navigation: exposed via the shell navigation matrix ([index.md §8.7.1](index.md#871-views)) as the `Aktivität` tab. Access is gated on `audit:read`, held by owner and office under the default matrix. Worker and bookkeeper do not hold `audit:read` and do not see the tab. The tab is hidden for users without the permission.
+Columns, in order:
 
-### 8.13.1 List
+| Column    | Shows                                                                                           |
+| --------- | ----------------------------------------------------------------------------------------------- |
+| Zeitpunkt | Time, as in the activity feed ([workflow-views.md §8.4.1](workflow-views.md#841-activity-feed)) |
+| Akteur    | Actor, as in the activity feed                                                                  |
+| Projekt   | The entry's project, or `—` ([AC-641](../verification.md#1523-audit-log))                       |
+| Objekt    | Entity type and recorded label — the entity's id when it has no label                           |
+| Aktion    | German label of the action                                                                      |
+| Details   | `Details anzeigen` ([AC-186](../verification.md#1523-audit-log)), or `—`                        |
 
-- Default view shows only events the caller is a recipient of per the resolved notification-rule set ([data-model.md §5.11](../data-model.md#511-notification-rule)). A `"Alles anzeigen"` toggle switches to the full RBAC-scoped feed (governed by `audit:read` and the destructive-action predicate per §8.13.3). Toggle state is local-only; navigation or reload restores the default. RBAC scoping ([ADR-0019](../../adr/0019-worker-data-scoping-repository-layer-predicate.md)) remains authoritative under either state.
-- Columns: timestamp (`createdAt`, German locale `DD.MM.YYYY HH:mm`), actor, **project**, entity (type + human-readable label resolved server-side), action (German label derived from the action vocabulary), payload indicator.
-- Project cell: the parent project's label snapshot for child entities (`project_worker`, `attachment`, `invoice`) — sourced from `ancestorEntityLabel` ([data-model.md §5.10](../data-model.md#510-audit-log-entity)). For `entityType = 'project'` rows it duplicates the row's own `entityLabel` so the column reads uniformly across the project's own lifecycle and its nested entities. For entity types with no project ancestor (`customer`, `user`, `company_profile`, `data_import`) the cell renders an em dash. Pinned by [verification.md AC-342](../verification.md#1532-activity-dock).
-- Actor cell: `displayName` for user-actor entries. When the authoring user has been hard-deleted the API returns null `actorId` (per AC-567's SET NULL cascade); the UI renders the neutral German label `"Benutzer"` on those rows. System-actor entries render `"System"` with the `actorReason` as supporting text.
-- Payload indicator: a `Details` affordance opening a drawer that shows actor display-name, timestamp, and the payload diff (before/after for update; after for create; before for delete). Rendered only when the API response for the row includes a non-null `payload` ([api.md §14.2.8](../api.md#1428-audit-log)).
-- Default sort: `createdAt` descending, with `id` as a stable tiebreaker.
-- Pagination follows the configurable page size **[C]**.
-- Empty result: `"Keine Aktivität"`.
+Filters, each optional ([AC-629](../verification.md#1523-audit-log)): entity type (one), entity name (at least 3 characters; entries whose recorded label contains it, ignoring case), actor (one user), date from / to (both days included), action (one). `Filter aufheben` clears them all.
 
-### 8.13.2 Filters
-
-A filter bar AND-composing the following criteria, applied via the API:
-
-- Entity type — multi-select over the configured `AuditEntityType` set ([data-model.md §5.10](../data-model.md#510-audit-log-entity)).
-- Entity name — optional case-insensitive substring match against the frozen `entityLabel` snapshot ([data-model.md §5.10](../data-model.md#510-audit-log-entity)). Minimum three characters so the server's pg_trgm index can serve the query; below-minimum or empty input is ignored. Rows with a null `entityLabel` (import / retention paths) are not matchable by name.
-- Actor — optional single-select over users the caller may already list via `user:read` (owner and office under the default matrix).
-- Date range (`from` / `to`) — `to < from` is a client-side validation error; the form blocks submit.
-- Action — optional multi-select over the action vocabulary.
-- A `"Filter aufheben"` control clears every filter.
-
-### 8.13.3 Destructive-Action Visibility
-
-Rows whose `action` is `purge` (any entity type), `delete` on `user`, or `update` on `user` touching `roles` are admitted only to callers for whom the `auditDestructiveScopeForCaller` predicate ([api.md §14.2.8](../api.md#1428-audit-log)) returns null (owner under the default matrix). For every other role with `audit:read` the predicate contributes a `WHERE` fragment at the repository layer that excludes these entries — they are never returned by the API. The UI's role-aware rendering is a secondary surface; the server is authoritative.
-
-### 8.13.4 Cross-Links
-
-- Clicking an `entity` cell navigates to the referenced entity's detail view (project or customer) when it still exists, subject to the caller's own read permission on that entity. For purged targets, the cell renders the persisted identifier label without a link.
-- Clicking the `Details` affordance expands a drawer inline — no route change.
+Below the table: `Ältere anzeigen` ([AC-628](../verification.md#1523-audit-log)).
 
 ---
 

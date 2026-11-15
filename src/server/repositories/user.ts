@@ -234,7 +234,7 @@ export async function findById(db: TransactionalDatabase, id: string): Promise<U
 // are security events, not domain audit") are outside the audit-log write
 // path. This signature intentionally takes `Database` rather than
 // `MutatingDatabase` so the write does not require a `mutate()` wrapper.
-// Do not widen other write paths to `Database` — the AC-179 type-level
+// Do not widen other write paths to `Database` — the ADR-0021 type-level
 // guarantee depends on them requiring a transaction handle.
 export async function updateLastLogin(db: Database, id: string): Promise<void> {
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, id));

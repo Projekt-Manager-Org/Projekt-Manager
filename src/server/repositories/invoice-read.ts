@@ -3,8 +3,8 @@
  *
  * Reads accept `Database | TransactionalDatabase`. Writes accept
  * `MutatingDatabase` (a transaction handle only) so a caller bypassing
- * the service-layer `mutate()` helper fails at tsc — AC-179's primary
- * build-time seam (ADR-0021). The service layer captures
+ * the service-layer `mutate()` helper fails at tsc — ADR-0021's primary
+ * build-time seam. The service layer captures
  * `payload.before` / `payload.after` and feeds it to `mutate()`; the
  * repo functions own the raw Drizzle calls and return the row(s) the
  * service needs for the audit payload (ADR-0026 §Audit and realtime).

@@ -67,19 +67,12 @@ Contents:
 
 ### 8.4.1 Activity Feed
 
-The detail panel surfaces the project's activity history — a reverse-chronological list of `audit_log` entries whose ancestor is this project (`ancestorType = 'project'` for this `ancestorId`). Every row scoped to the project is returned, regardless of its own `entityType`: the project itself self-ancestors, and nested entities (`project_worker`, `attachment`, `invoice`, and any future nested type) set the ancestor triple to `('project', projectId, projectLabel)` at write time ([architecture.md §11.12](../architecture.md#1112-audit-ancestor-link)). The `projectLabel` slot of the ancestor triple is unused on this per-project surface (the panel header already names the project) but is load-bearing for the cross-project surfaces — the dock and the global Aktivität view. See [data-model.md §5.10](../data-model.md#510-audit-log-entity) and [api.md §14.2.8](../api.md#1428-audit-log).
+The detail panel lists the project's audit entries ([AC-631](../verification.md#1523-audit-log)) to callers holding `audit:read`. Each row shows:
 
-**Content per row (newest first):**
+- a German description of the change **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)), e.g. `Status geändert: Geplant → In Arbeit`;
+- the actor: the user's current display name, `Benutzer` once that user is deleted, or `System` with its reason;
+- the entity type;
+- the time: date as in [AC-468](../verification.md#151-workflow-board), then `HH:mm`;
+- `Details anzeigen` — the change's details ([AC-186](../verification.md#1523-audit-log)).
 
-- A German one-line description derived from `action` and `payload` — e.g. `"Status geändert: Geplant → In Arbeit"`, `"Termine aktualisiert"`, `"Mitarbeiter zugewiesen: Jan Nowak"`. Mapping from `(action, payload)` to string is configured **[C]**.
-- Actor display: `displayName` for `user`-actor entries, resolved server-side. When the actor has been hard-deleted (AC-567 sets `actor_id` to null) the UI renders a neutral German label `"Benutzer"`. `system`-actor entries display the German label `"System"` and the `actorReason` as supporting text.
-- Timestamp — `createdAt` in German locale (`DD.MM.YYYY HH:mm`).
-- Payload drawer — a disclosure toggle (`Details anzeigen`) revealing the field-level `{ before, after }` diff. Rendered only when the API response for the entry includes a non-null `payload` ([api.md §14.2.8](../api.md#1428-audit-log)); client-side hiding is defense-in-depth, not the authoritative gate.
-
-**Pagination:** default page size matches the list endpoints. A `"Ältere anzeigen"` action fetches the next page and appends; a page-boundary does not collapse already-visible rows.
-
-**Empty-state:** `"Keine Aktivität"` when the scoped result set is empty.
-
-**Permission:** the activity feed is rendered whenever the caller can open the project detail panel and holds `audit:read` — owner and office under the default matrix. The drawer is rendered on any entry carrying a payload.
-
-**Destructive-action rows:** entries whose `action` is `purge`, `delete` on `entityType = 'user'`, or `update` on `entityType = 'user'` touching `roles` are admitted only to callers for whom the `auditDestructiveScopeForCaller` predicate ([api.md §14.2.8](../api.md#1428-audit-log)) returns null (owner under the default matrix). Every other role with `audit:read` has the predicate contribute a repository-layer `WHERE` fragment that excludes these rows — they are never returned by the API. Client-side hiding is defense-in-depth, not the authoritative gate.
+Below the rows, while older entries exist: `Ältere anzeigen` ([AC-628](../verification.md#1523-audit-log)). Empty: `Keine Aktivität`.

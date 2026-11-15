@@ -5,29 +5,16 @@ import { clickView, expectViewReachable } from './nav-helpers';
 /**
  * E2E — Activity feed / global Aktivität view.
  *
- * Pins:
- *   - AC-185 [vis] — project detail panel activity feed: reverse-chrono
- *     ordering, paginated via "Ältere anzeigen", empty state "Keine
- *     Aktivität".
- *   - AC-186 [vis] — payload drawer renders on any entry carrying a
- *     non-null payload. Owner and office both receive full payloads.
- *   - AC-187 [crit] — destructive-action entries (purge, user-delete,
- *     roles-update): owner sees them in the global Aktivität view,
- *     office does not. The API boundary is pinned by AC-182
- *     (src/server/__tests__/audit-log.test.ts); this spec walks the
- *     UI so a reviewer can watch the visibility split in UI mode
- *     (ADR-0014 [vis] contract).
- *
- * Role coverage:
- *   - AC-185: owner only (project-detail feed mechanics — pagination,
- *     ordering, empty state — are role-invariant; the role split is
- *     pinned by AC-186 / AC-187 below).
- *   - AC-186: owner and office walks (drawer visibility per role).
- *   - AC-187: owner positive arm; the office negative arm is pinned
- *     at the API by `src/server/__tests__/audit-log.test.ts` (AC-182).
- *   - Worker and bookkeeper lack `audit:read` (api.md §14.3) — both
- *     the nav tab and the deep-link path are denied, asserted as
- *     separate cases above the AC blocks.
+ * Pins (docs/spec/verification.md §15.23):
+ *   - AC-626, AC-627, AC-628 — project activity feed: newest first,
+ *     "Ältere anzeigen", "Keine Aktivität". Owner only: role-invariant.
+ *   - AC-186 — Details opens in place on entries with a recorded change;
+ *     owner and office walks.
+ *   - AC-625 — owner sees a project purge in the Aktivität view (positive
+ *     arm); the office negative arm (AC-182) is pinned at the API by
+ *     `src/server/__tests__/audit-log.test.ts`.
+ *   - AC-75 — worker and bookkeeper lack `audit:read`: the nav tab and
+ *     the deep link are denied.
  *
  * Auth: each describe uses the pre-authenticated storage state for its
  * target role (see e2e/auth.setup.ts). No per-test login — that path
@@ -65,7 +52,7 @@ async function assertDrawerOpensInline(
  * `NotificationEventClass` AND at least one rule admits the caller). The
  * four payload-drawer / destructive-action tests below were authored
  * against the pre-iter-8 "full feed by default" behaviour and need to
- * assert over the full RBAC-scoped feed (AC-180, unchanged).
+ * assert over the full RBAC-scoped feed (AC-625).
  *
  * This helper flips the `Alles anzeigen` toggle after the caller has
  * already navigated to the view, then waits for the next `GET /api/audit`
@@ -85,9 +72,9 @@ async function showAllActivity(page: Page): Promise<void> {
 }
 
 // ---------------------------------------------------------------
-// AC-186 — Aktivität nav presence per role (precondition for everything)
+// AC-75 — Aktivität nav presence per role (precondition for everything)
 // ---------------------------------------------------------------
-test.describe('AC-186: Aktivität nav visibility per role', () => {
+test.describe('AC-75: Aktivität nav visibility per role', () => {
   // Owner + office see the Aktivität entry (inside the Verwaltung menu
   // for both — their secondary bucket has ≥2 items).
   for (const role of ['owner', 'office'] as const) {
@@ -116,9 +103,9 @@ test.describe('AC-186: Aktivität nav visibility per role', () => {
 });
 
 // ---------------------------------------------------------------
-// AC-185 — Project-detail activity feed
+// AC-626, AC-627, AC-628 — Project-detail activity feed
 // ---------------------------------------------------------------
-test.describe('AC-185: project activity feed (reverse-chrono, paginated, empty state)', () => {
+test.describe('AC-626, AC-627, AC-628: project activity feed (newest first, paginated, empty state)', () => {
   test.use({ storageState: STORAGE_STATES.owner });
 
   test('owner — newest-first, "Ältere anzeigen" appends older entries without collapsing current set', async ({
@@ -153,7 +140,7 @@ test.describe('AC-185: project activity feed (reverse-chrono, paginated, empty s
     const mutationCount = 52;
     for (let i = 0; i < mutationCount; i++) {
       const res = await page.request.patch(`/api/projects/${projectId}`, {
-        data: { notes: `AC-185 mutation ${i} ${Date.now()}` },
+        data: { notes: `AC-628 mutation ${i} ${Date.now()}` },
       });
       expect(res.ok(), `PATCH ${i} failed with ${res.status()}`).toBe(true);
     }
@@ -222,7 +209,7 @@ test.describe('AC-185: project activity feed (reverse-chrono, paginated, empty s
     // (ActivityFeed.tsx). Scope the match explicitly to that container
     // so a stray empty-state elsewhere in the DOM cannot satisfy the
     // assertion. The exact German copy is pinned by
-    // ui/workflow-views.md §8.4.1 and ui/management.md §8.13.1.
+    // ui/workflow-views.md §8.4.1 and ui/management.md §8.13.
     const list = page.getByTestId('audit-list');
     const emptyState = list.getByTestId('audit-empty-state');
     await expect(emptyState).toBeVisible();
@@ -234,7 +221,7 @@ test.describe('AC-185: project activity feed (reverse-chrono, paginated, empty s
 // AC-186 — Payload drawer visibility per role
 // ---------------------------------------------------------------
 //
-// Drawer semantics (ui/workflow-views.md §8.4.1, ui/management.md §8.13.1):
+// Drawer semantics (ui/workflow-views.md §8.4.1, ui/management.md §8.13):
 //   - owner/office callers: drawer rendered for every payload-bearing entry.
 //   - worker callers: drawer rendered only on rows where the worker is
 //     the actor (self-authored). On every other row the API strips the
@@ -251,7 +238,7 @@ test.describe('AC-185: project activity feed (reverse-chrono, paginated, empty s
 // → assigned workers, but office has audit:read so rows are visible in
 // the full feed; the default view needs a rule that resolves to office).
 // Rather than rely on the seed state, we drive a `project.archived` event
-// via the fixture in AC-187's beforeAll — the seed rule for
+// via the fixture in AC-625's beforeAll — the seed rule for
 // `project.archived` resolves to owner, so owner's default view has rows.
 // For office, the full-feed path is tested; a seed rule for
 // `project.transition_forward` resolves to assigned workers so office's
@@ -378,14 +365,14 @@ test.describe('AC-186: payload drawer visibility per role — office', () => {
 });
 
 // ---------------------------------------------------------------
-// AC-187 — Destructive-action row visibility differs by role
+// AC-625 — Destructive-action row visibility differs by role
 // ---------------------------------------------------------------
 // Shared fixture drives a purge (owner-only) so there is a known
 // destructive row every per-role test can look for. Driven via API
 // rather than the UI — a 7-step UI chain is brittle and a mid-chain
 // failure leaves the canary unable to distinguish "role filter wrong"
 // from "fixture never ran".
-test.describe('AC-187: destructive entries — owner sees them, others do not', () => {
+test.describe('AC-625: destructive entries — owner sees them, others do not', () => {
   test.beforeAll(async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: STORAGE_STATES.owner });
     try {
@@ -393,31 +380,31 @@ test.describe('AC-187: destructive entries — owner sees them, others do not', 
         data: { name: `Destructive-fixture ${Date.now()}` },
       });
       if (!custRes.ok()) {
-        throw new Error(`AC-187 fixture: customer POST returned ${custRes.status()}`);
+        throw new Error(`AC-625 fixture: customer POST returned ${custRes.status()}`);
       }
       const custId = (await custRes.json()).id as string;
 
       const projRes = await ctx.request.post('/api/projects', {
         data: {
-          number: `AC187-${Date.now()}`,
-          title: 'AC-187 purge fixture',
+          number: `AC625-${Date.now()}`,
+          title: 'AC-625 purge fixture',
           customerId: custId,
         },
       });
       if (!projRes.ok()) {
-        throw new Error(`AC-187 fixture: project POST returned ${projRes.status()}`);
+        throw new Error(`AC-625 fixture: project POST returned ${projRes.status()}`);
       }
       const projId = (await projRes.json()).id as string;
 
       // Archive (soft-delete) — precondition for purge per projects.ts:343.
       const archiveRes = await ctx.request.delete(`/api/projects/${projId}`);
       if (!archiveRes.ok()) {
-        throw new Error(`AC-187 fixture: archive DELETE returned ${archiveRes.status()}`);
+        throw new Error(`AC-625 fixture: archive DELETE returned ${archiveRes.status()}`);
       }
 
       const purgeRes = await ctx.request.delete(`/api/projects/${projId}/purge`);
       if (!purgeRes.ok()) {
-        throw new Error(`AC-187 fixture: purge DELETE returned ${purgeRes.status()}`);
+        throw new Error(`AC-625 fixture: purge DELETE returned ${purgeRes.status()}`);
       }
 
       // Canary (M7): verify a purge audit row actually landed for THIS
@@ -425,11 +412,11 @@ test.describe('AC-187: destructive entries — owner sees them, others do not', 
       // silently pass every subsequent `toHaveCount(0)` role assertion.
       const auditRes = await ctx.request.get(`/api/audit?action=purge&entityId=${projId}`);
       if (!auditRes.ok()) {
-        throw new Error(`AC-187 fixture: audit GET returned ${auditRes.status()}`);
+        throw new Error(`AC-625 fixture: audit GET returned ${auditRes.status()}`);
       }
       const audit = (await auditRes.json()) as { data: unknown[] };
       if (!audit.data || audit.data.length === 0) {
-        throw new Error(`AC-187 fixture: no purge audit row emitted for project ${projId}`);
+        throw new Error(`AC-625 fixture: no purge audit row emitted for project ${projId}`);
       }
     } finally {
       await ctx.close();
@@ -443,7 +430,7 @@ test.describe('AC-187: destructive entries — owner sees them, others do not', 
       await clickView(page, 'aktivitaet');
       // AC-200: `purge` has no mapped NotificationEventClass, so the
       // recipient-scoped default hides the fixture's purge row even for
-      // owner. Flip to the full RBAC feed — AC-187's visibility split
+      // owner. Flip to the full RBAC feed — AC-625's visibility split
       // is asserted over the unscoped set.
       await showAllActivity(page);
       // A row with action=purge must exist (the fixture above drove

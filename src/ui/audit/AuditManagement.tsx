@@ -3,7 +3,7 @@
  *
  * Read-only tabular view over the audit log. Filters AND-compose and
  * are applied via the API (no client-side slicing — server is
- * authoritative per api.md §14.2.8).
+ * authoritative per verification.md §15.23).
  *
  * Permission gate: the route's `canAccess` predicate covers nav
  * visibility + URL-guard. This component reruns `usePermission('audit:read')`
@@ -21,7 +21,7 @@
  * the input rather than removing it, so the filter bar's shape is
  * invariant across roles.
  *
- * Recipient-scope toggle (AC-200, §8.13.1): default mode narrows the
+ * Recipient-scope toggle (AC-200, §8.13): default mode narrows the
  * feed to rows the caller would receive per the resolved notification-
  * rule set — `recipientScope = true` on the wire. The `"Alles anzeigen"`
  * toggle flips the client to the full RBAC-scoped feed (`recipientScope`
@@ -158,7 +158,7 @@ export function AuditManagement() {
   const updateLocal = (patch: Partial<LocalFilters>) => {
     setLocal((prev) => {
       const next = { ...prev, ...patch };
-      // Date-range validation (api.md §14.2.8 inverts on the server
+      // Date-range validation (the server rejects an inverted range
       // too, but a client check blocks the submit before the round-trip).
       if (next.from && next.to) {
         const fromTs = Date.parse(next.from);
@@ -206,7 +206,7 @@ export function AuditManagement() {
   }
 
   // Empty-state copy selection:
-  //   - `Alles anzeigen` (showAll) → always `"Keine Aktivität"` (AC-185).
+  //   - `Alles anzeigen` (showAll) → always `"Keine Aktivität"` (AC-627).
   //   - Default recipient-scoped mode with NO user-applied filters → the
   //     distinctive AC-200 literal so the user learns why the feed is
   //     empty and what the toggle does.

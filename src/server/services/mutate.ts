@@ -3,7 +3,7 @@
  *
  * Every domain-entity mutation routes through `mutate()` so that the
  * state change and its `audit_log` row commit in one transaction
- * (AC-177). A mutation without its audit row is not possible; an audit
+ * (AC-623). A mutation without its audit row is not possible; an audit
  * row without its state change is not possible.
  *
  * Shape:
@@ -112,11 +112,11 @@ export interface MutateResult<T> {
    */
   entityLabel?: string | null;
   /**
-   * Ancestor-link snapshot (architecture.md §11.12). Populated at write
+   * Ancestor-link snapshot (see `auditLog` in schema.ts). Populated at write
    * time so the per-parent activity feed can fetch every row scoped to a
    * project in one indexed predicate, and so the cross-project surfaces
-   * (the dock + the global Aktivität view's Projekt column — AC-339 /
-   * AC-342) render the parent project's name from `ancestorEntityLabel`
+   * (the dock + the global Aktivität view's Projekt column — AC-641) render
+   * the parent project's name from `ancestorEntityLabel`
    * without a runtime JOIN. Services return all three fields — or all
    * three omitted, for top-level entities (`customer`, `user`,
    * `company_profile`, `data_import`).
@@ -147,7 +147,7 @@ export interface MutateResult<T> {
  * Concurrency: relies on Postgres default isolation (READ COMMITTED).
  * `payload.before` reflects the row read inside this transaction before
  * the write. Concurrent writers produce their own serialized audit rows
- * (AC-177). A write-after-write race on the same row can leave a stale
+ * (AC-623). A write-after-write race on the same row can leave a stale
  * `before` in the loser's log entry — acceptable per the audit contract
  * which pins per-transaction observation, not global serialisability.
  * Upgrade to REPEATABLE READ if stricter semantics become load-bearing.
@@ -162,7 +162,7 @@ export async function mutate<T>(db: Database, ctx: MutateContext, spec: MutateSp
 
   // Both the domain work and the audit insert run inside the same
   // transaction. A throw anywhere below rolls back both; that is the
-  // AC-177 atomicity invariant. We capture the returned audit row so
+  // AC-623 atomicity invariant. We capture the returned audit row so
   // we can hand it to the publisher after commit.
   const { value, auditRow } = await db.transaction(async (tx) => {
     const { value: domainValue, auditRow: row } = await mutateInTx(tx, ctx, spec);
@@ -284,7 +284,7 @@ export async function dispatchAuditRows(rows: AuditLogRow[]): Promise<void> {
  * `audit_log_ancestor_pair` is the backstop on `(type, id)`; this
  * function additionally requires `ancestorEntityLabel` whenever the
  * pair is set, since the label is load-bearing for the cross-project
- * Projekt column (AC-342) and the dock's single-line row (AC-339). The
+ * Projekt column and the dock's single-line row (AC-641). The
  * DB column is unconstrained so legacy rows would not break a query,
  * but any new write going through `mutate()` must carry the label —
  * projects always have a displayName-derived label, so missing it is a

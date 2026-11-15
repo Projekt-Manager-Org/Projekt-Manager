@@ -709,10 +709,10 @@ export class AttachmentService {
     // `payload.after` carries `label` / `mimeType` / `sizeBytes` off the
     // pending row, plus the structural `attachmentId` / `projectId` for
     // parent-linkage. The owning project's display name is NOT in the
-    // payload — the row-level `ancestorEntityLabel` snapshot (AC-339 /
-    // AC-342) is the single source of the project label for the push
-    // composer (AC-211), the dock (AC-339), and the /audit Projekt
-    // column (AC-342). The `wrappedDek` / `wrappedThumbDek` columns are
+    // payload — the row-level `ancestorEntityLabel` snapshot (AC-641) is the
+    // single source of the project label for the push
+    // composer (AC-211), the dock (AC-641), and the /audit Projekt
+    // column (AC-641). The `wrappedDek` / `wrappedThumbDek` columns are
     // stripped at the schema layer (AUDIT_EXCLUDED_FIELDS) — they are
     // not in `value`/`after` here, and `mutate()` would strip them anyway
     // (AC-240).
@@ -747,7 +747,7 @@ export class AttachmentService {
               mimeType: flipped.mimeType,
               sizeBytes: flipped.sizeBytes,
             },
-            // Nested entity: ancestor = project (architecture.md §11.12)
+            // Nested entity: ancestor = project (see `auditLog` in schema.ts)
             // so the per-project activity feed picks this row up and the
             // push composer resolves `/projects/:id` from the ancestor.
             ancestorEntityType: 'project',

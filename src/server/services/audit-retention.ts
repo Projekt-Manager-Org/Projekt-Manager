@@ -1,5 +1,5 @@
 /**
- * Audit-log retention cleanup — data-model.md §6.10, AC-184.
+ * Audit-log retention cleanup — AC-632.
  *
  * Removes `audit_log` rows older than the configured rolling window
  * (90 days [C] by default). This is the *only* path that deletes from
@@ -8,7 +8,7 @@
  * in `scripts/check-audit-mutations.sh` allowlists this file for that
  * reason.
  *
- * Contract with operators (AC-184):
+ * Contract with operators (AC-633):
  *   - Emits exactly one structured operational log line per run, at
  *     `info` level, with fields `event`, `window_days`, `removed_count`
  *     (non-negative integer; 0 on a no-op), and `ran_at` (ISO 8601).
@@ -59,7 +59,7 @@ export interface AuditRetentionCleanupResult {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * AC-184 pins this exact event discriminator — operators grep the
+ * AC-633 pins this exact event discriminator — operators grep the
  * operational log for it. Exported so the scheduler (and tests) can
  * reference the same literal without drift.
  */
@@ -101,8 +101,8 @@ export async function runAuditRetentionCleanup(
   const removedCount = deleted.length;
   const ranAt = runAt.toISOString();
 
-  // Exactly one structured log line per run (AC-184). Fields match the
-  // contract in data-model.md §6.10 — snake_case because this is an
+  // Exactly one structured log line per run (AC-633). Fields match the
+  // contract (AC-633) — snake_case because this is an
   // operational-log field, not an API wire field.
   deps.logger.info(
     {

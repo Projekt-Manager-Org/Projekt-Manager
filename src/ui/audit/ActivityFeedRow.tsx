@@ -9,13 +9,13 @@
  *   - Disclosure drawer with the `{ before, after }` diff — rendered
  *     only when the API returned a non-null `payload`.
  *
- * E2E contract (AC-185 / AC-187):
+ * E2E contract (AC-626 / AC-182):
  *   - `data-has-payload` — `"true"` iff the API returned a non-null
  *     payload.
  *   - `data-action`      — the raw action string (purge-visibility
- *     assertion in AC-187).
+ *     assertion in AC-182).
  *   - `data-created-at`  — the ISO timestamp for the newest-first
- *     check in AC-185.
+ *     check in AC-626.
  */
 
 import { useState } from 'react';

@@ -985,7 +985,7 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // ciphertext + a real wrapped DEK so the build streams each file into
   // the archive (the throttle arm needs the build to actually process
   // many files). Raw-SQL attachment seeding is allowlisted under
-  // __tests__/ per the AC-179 architecture check.
+  // __tests__/ per the audit-mutation architecture check (ADR-0021).
   //
   // Inlined rather than imported from data-exchange-export-all.ts (that
   // file is scheduled for retirement). The crypto wire shape mirrors

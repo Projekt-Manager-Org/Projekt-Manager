@@ -1,5 +1,5 @@
 /**
- * Unit tests for the audit-retention scheduler — AC-184 forwarding
+ * Unit tests for the audit-retention scheduler — AC-633 forwarding
  * plus the sustained-failure backoff state machine.
  *
  * Uses vitest fake timers (end-to-end wall-clock tests would be flaky).
@@ -40,7 +40,7 @@ describe('startAuditRetentionScheduler', () => {
     vi.restoreAllMocks();
   });
 
-  it('forwards exactly one AC-184 cleanup info line per successful tick', async () => {
+  it('forwards exactly one AC-633 cleanup info line per successful tick', async () => {
     const logger = makeLogger();
     const scheduler = startAuditRetentionScheduler({
       db: fakeDb([{ id: 'd1' }]),
@@ -51,7 +51,7 @@ describe('startAuditRetentionScheduler', () => {
     // Just under the interval — no sweep.
     await vi.advanceTimersByTimeAsync(60 * MINUTE_MS - 1);
     expect(logger.info).not.toHaveBeenCalled();
-    // Crossing the boundary fires exactly once with the AC-184 field set.
+    // Crossing the boundary fires exactly once with the AC-633 field set.
     await vi.advanceTimersByTimeAsync(1);
     expect(logger.info).toHaveBeenCalledTimes(1);
     const [ctx, event] = logger.info.mock.calls[0]!;

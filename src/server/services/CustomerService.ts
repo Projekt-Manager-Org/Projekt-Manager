@@ -356,7 +356,7 @@ export class CustomerService {
               value: null,
               before: { number: row.number, title: row.title, customerId: row.customerId },
               after: {},
-              // Self-ancestor (architecture.md §11.12) — purged-project
+              // Self-ancestor (see `auditLog` in schema.ts) — purged-project
               // rows remain available under the project's activity feed
               // filter until audit retention sweeps them.
               ancestorEntityType: 'project',

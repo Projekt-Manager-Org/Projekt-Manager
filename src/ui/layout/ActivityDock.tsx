@@ -7,31 +7,31 @@
  * privileged user can leave it open (e.g. on the Kanban board) and watch
  * the business unfold in real time.
  *
- * - Permission gate (AC-319): rendered ONLY for callers holding
+ * - Permission gate (AC-638): rendered ONLY for callers holding
  *   `audit:read` (owner / office under the default matrix). The gate runs
  *   before any render so worker / bookkeeper get `null` — the container is
  *   absent from the DOM, not merely hidden. Defense in depth on top of the
  *   server's 403 on the read endpoint.
  *
- * - Default-collapsed (AC-318): `expanded` starts `false`. The toggle
+ * - Default-collapsed (AC-634): `expanded` starts `false`. The toggle
  *   flips it. Because the dock is mounted in the app SHELL (App.tsx, a
  *   sibling of the routed `<main>`), a client-side view switch does NOT
  *   remount it — so this plain component state survives navigation, which
- *   is exactly the AC-318 "collapse state persists across view navigation"
+ *   is exactly the AC-635 "collapse state persists across view navigation"
  *   guarantee. (It may reset on a full page reload; the AC only requires
  *   persistence across view switches.)
  *
- * - Full RBAC-scoped feed (AC-318): the dock fetches every audit row the
+ * - Full RBAC-scoped feed (AC-637): the dock fetches every audit row the
  *   caller may read — `recipientScope` narrowing is a notifications
  *   concern (AC-200) and is exercised only on the Aktivität page. The
  *   dock surface is "everything the caller may read".
  *
- * - Single-line compact rows (AC-339): rows render as a single
+ * - Single-line compact rows (AC-639): rows render as a single
  *   `Aktor · Projekt · Beschreibung` line with the timestamp aligned
  *   right (see `ActivityFeedRowCompact`). No detail drawer — the
  *   detailed payload view lives on the Aktivität page.
  *
- * - Global `Alt+A` shortcut (AC-340): from any view, `Alt+A` toggles the
+ * - Global `Alt+A` shortcut (AC-640): from any view, `Alt+A` toggles the
  *   dock. The handler calls `preventDefault()` and is suppressed in
  *   editable-affordance focus (see `useGlobalShortcut`). The toggle
  *   button label includes the hint `(Alt+A)` so the shortcut is
@@ -42,7 +42,7 @@
  *   handler is suppressed while `/audit` is active so the keystroke is
  *   not silently swallowed by a stale handler.
  *
- * - Desktop-only (AC-318): hidden on phones via the CSS-module media query
+ * - Desktop-only (AC-636): hidden on phones via the CSS-module media query
  *   at `max-width: 768px`, parity with the Footer (mobile users reach the
  *   same history through Verwaltung → Aktivität).
  *
@@ -61,7 +61,7 @@ import { ActivityFeed } from '@/ui/audit/ActivityFeed';
 import styles from './ActivityDock.module.css';
 
 /**
- * Full RBAC-scoped feed (AC-318). The dock shows every audit row the
+ * Full RBAC-scoped feed (AC-637). The dock shows every audit row the
  * caller may read; recipient-scoped narrowing is a notifications
  * concern (AC-200) and is exercised only on the Aktivität page.
  *
@@ -94,14 +94,14 @@ export function ActivityDock() {
     setExpanded((prev) => !prev);
   }, []);
 
-  // AC-340: install the global `Alt+A` shortcut for `audit:read`
+  // AC-640: install the global `Alt+A` shortcut for `audit:read`
   // holders. Suppressed while the Aktivität view is active (AC-341),
   // so the keystroke is not silently swallowed by a handler whose
   // target dock is hidden.
   const shortcutDisabled = !canReadAudit || activeView === AUDIT_VIEW_KEY;
   useGlobalShortcut({ key: 'a', alt: true }, toggle, { disabled: shortcutDisabled });
 
-  // AC-319: callers without `audit:read` never get the dock in the DOM.
+  // AC-638: callers without `audit:read` never get the dock in the DOM.
   if (!canReadAudit) return null;
 
   // AC-341: hide the dock on `/audit`. The collapse state persists in
@@ -138,7 +138,7 @@ export function ActivityDock() {
       </button>
 
       {/* The panel element is always present so its test-id is a stable
-          target; CSS collapses it when not expanded (AC-318
+          target; CSS collapses it when not expanded (AC-634
           default-collapsed → `toBeHidden`). The feed is mounted only while
           expanded so the first `/api/audit` fetch fires on expand. */}
       <div

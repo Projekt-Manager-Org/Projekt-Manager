@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Architecture check — audit-log single-write-path (AC-179, ADR-0021).
+# Architecture check — audit-log single-write-path (ADR-0021).
 #
 # Fails CI when a file under src/server/ authors a raw
 # INSERT/UPDATE/DELETE against an audited table from outside the
@@ -8,7 +8,7 @@
 # legitimate writer; every other path must go through it so the audit
 # row is produced atomically with the state change (ADR-0021 §Decision).
 #
-# Audited-table derivation (AC-179 Part 2):
+# Audited-table derivation:
 #   The audited-table set is sourced from `AUDIT_ENTITY_TO_TABLE` in
 #   `src/server/db/schema.ts`, read via `scripts/print-audited-tables.ts`.
 #   That TS mapping carries a `satisfies Record<AuditEntityType, …>`
@@ -102,7 +102,7 @@ fi
 # would allowlist a malicious `src/server/routes/src/server/repositories/x.ts`
 # bypass — see regression test for M4.
 #
-# See AC-179 for the review contract: adding to this list is a
+# See ADR-0021 §Consequences for the review contract: adding to this list is a
 # reviewed line in the check configuration — not a reflexive escape
 # hatch.
 ALLOWLIST=(
@@ -171,7 +171,7 @@ ALLOWLIST=(
   #     for every attachment (AC-332: exactly ONE data_import row, not N).
   "src/server/services/takeout-import-runner.ts"
   # Any `__tests__/` directory anywhere under the scan root — the
-  # AC-179 carve-out for tests. The nested-glob form covers both
+  # carve-out for tests. The nested-glob form covers both
   # top-level `src/server/__tests__/` and any future subtree's local
   # `__tests__/` without a separate line per location.
   "*/__tests__/*"

@@ -132,19 +132,19 @@ async function countAuditRows(db: Database): Promise<number> {
 }
 
 // ---------------------------------------------------------------------
-// Mutation and audit row are committed atomically (AC-177)
+// Mutation and audit row are committed atomically (AC-623)
 // ---------------------------------------------------------------------
 //
 // Covers the core invariant of ADR-0021: every domain-entity mutation
 // emits exactly one `audit_log` row in the same transaction as the
 // state change. A failure on either side aborts both.
 //
-// Four entity types are exercised because AC-177 names all four. They
+// Four entity types are exercised as a representative sample (AC-623). They
 // live in separate `it()` blocks rather than one mega-block so a
 // regression in only `customer` is not masked by a passing `project`
 // arm (see T-ACBS). The forced-failure branch is separate again so
 // the atomic-rollback assertion does not pile onto a happy-path test.
-describe('Mutation + audit row atomicity (AC-177)', () => {
+describe('Mutation + audit row atomicity (AC-623, AC-624, AC-630)', () => {
   let ownerToken: string;
   let seededCustomerId: string;
 
@@ -155,7 +155,7 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
     const custList = await authGet(ownerToken, '/api/customers?limit=1');
     const customers = custList.json().customers as { id: string }[];
     if (!customers || customers.length === 0) {
-      throw new Error('Seed produced no customers — cannot run AC-177 fixtures');
+      throw new Error('Seed produced no customers — cannot run AC-623 fixtures');
     }
     seededCustomerId = customers[0]!.id;
   });
@@ -164,7 +164,7 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
     await stopApp();
   });
 
-  // AC-177 — create on `project`
+  // AC-623 — create on `project`
   it('create on project produces exactly one audit_log row (actorKind=user, action=create)', async () => {
     const { db, pool } = createDatabase();
     try {
@@ -174,7 +174,7 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
         // number is varchar(20) — keep the generated string short so a
         // unique suffix still fits the schema. Uses base36 for density.
         number: `AT89C-${Date.now().toString(36)}`,
-        title: 'AC-177 create project',
+        title: 'AC-623 create project',
         customerId: seededCustomerId,
       });
       expect(createRes.statusCode).toBe(201);
@@ -200,13 +200,13 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
       // entity_label snapshot — captured at write time from the
       // service-returned project row. Must include the title the
       // caller supplied so the feed stays readable after a rename.
-      expect(row.entity_label).toContain('AC-177 create project');
+      expect(row.entity_label).toContain('AC-623 create project');
     } finally {
       await pool.end();
     }
   });
 
-  // AC-177 — update on `customer`
+  // AC-623 — update on `customer`
   it('update on customer produces exactly one audit_log row (action=update)', async () => {
     const { db, pool } = createDatabase();
     try {
@@ -241,7 +241,7 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
     }
   });
 
-  // AC-177 — transition on `project`
+  // AC-623 — transition on `project`
   it('state transition on project produces a transition-action audit row', async () => {
     const { db, pool } = createDatabase();
     try {
@@ -294,7 +294,7 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
     }
   });
 
-  // AC-177 — delete on `project_worker`
+  // AC-623 — delete on `project_worker`
   it('delete on project_worker produces one audit_log row per dropped assignment (action=delete)', async () => {
     // Snapshot taken before the mutation so the lookup below can filter
     // by `created_at >= before`. Without this filter a sibling test (or
@@ -336,7 +336,7 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
 
       const auditAfter = await countAuditRows(db);
       // Exactly `assignedCount` delete rows — one per dropped assignment,
-      // per AC-177's "every mutation produces exactly one audit_log row".
+      // per AC-623's "every mutation produces exactly one audit_log row".
       expect(auditAfter - auditBefore).toBe(assignedCount);
 
       const rows = await db.execute(
@@ -359,12 +359,12 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
     }
   });
 
-  // AC-177 — forced failure path: rollback leaves neither artifact
+  // AC-623 — forced failure path: rollback leaves neither artifact
   it('a failed mutation rolls back BOTH the state change and the audit row', async () => {
     const { db, pool } = createDatabase();
     try {
       const projectsBefore = await db.execute(
-        sql`SELECT COUNT(*)::int AS c FROM projects WHERE number = 'AC-177-ROLLBACK'`,
+        sql`SELECT COUNT(*)::int AS c FROM projects WHERE number = 'AC-623-ROLLBACK'`,
       );
       expect((projectsBefore.rows[0] as { c: number }).c).toBe(0);
 
@@ -378,7 +378,7 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
       let res;
       try {
         res = await authPost(ownerToken, '/api/projects', {
-          number: 'AC-177-ROLLBACK',
+          number: 'AC-623-ROLLBACK',
           title: 'should never persist',
           customerId: seededCustomerId,
           assignedWorkerIds: [workerId],
@@ -390,7 +390,7 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
 
       // Neither the project nor its audit row persisted.
       const projectsAfter = await db.execute(
-        sql`SELECT COUNT(*)::int AS c FROM projects WHERE number = 'AC-177-ROLLBACK'`,
+        sql`SELECT COUNT(*)::int AS c FROM projects WHERE number = 'AC-623-ROLLBACK'`,
       );
       expect((projectsAfter.rows[0] as { c: number }).c).toBe(0);
 
@@ -403,16 +403,15 @@ describe('Mutation + audit row atomicity (AC-177)', () => {
 });
 
 // ---------------------------------------------------------------------
-// First-run bootstrap writes a system-actor audit row (AC-178)
+// First-run bootstrap writes a system-actor audit row (AC-624)
 // ---------------------------------------------------------------------
 //
 // Drives `bootstrapAdminIfEmpty` directly (same pattern as
 // `bootstrap.test.ts`) against a scratch database so the resulting
 // audit row can be observed in isolation. A separate assertion proves
 // the DB CHECK constraint rejects a `system` row with empty
-// `actorReason` — defense-in-depth for the "invisible bootstrap"
-// failure mode AC-178 explicitly calls out.
-describe('Bootstrap emits system-actor audit row + CHECK constraint (AC-178)', () => {
+// `actorReason` — defense in depth for AC-624.
+describe('Bootstrap emits system-actor audit row + CHECK constraint (AC-623, AC-624)', () => {
   let db: Database;
   let pool: pg.Pool;
 
@@ -446,7 +445,7 @@ describe('Bootstrap emits system-actor audit row + CHECK constraint (AC-178)', (
       {
         username: 'admin-at-90',
         password: 'SecurePass2026!',
-        displayName: 'Admin AC-178',
+        displayName: 'Admin AC-624',
       },
       makeLogger(),
     );
@@ -462,7 +461,7 @@ describe('Bootstrap emits system-actor audit row + CHECK constraint (AC-178)', (
     expect(row.actor_kind).toBe('system');
     expect(row.actor_id).toBeNull();
     // Non-empty actor_reason — this is the field that makes the
-    // bootstrap visible in the Aktivität feed. AC-178 rationale.
+    // bootstrap visible in the Aktivität feed. AC-624 rationale.
     expect(row.actor_reason).toBeTruthy();
     expect((row.actor_reason ?? '').length).toBeGreaterThan(0);
     // A recognisable cue naming the code path, per data-model.md §5.10:
@@ -508,13 +507,13 @@ describe('Bootstrap emits system-actor audit row + CHECK constraint (AC-178)', (
 });
 
 // ---------------------------------------------------------------------
-// AC-180 — Audit-list access matrix
+// AC-625 — Audit-list access matrix
 // ---------------------------------------------------------------------
 //
 // Owner + office hold `audit:read`; both are unscoped for reachability.
 // Worker + bookkeeper lack the permission and are denied at the
 // permission middleware before reaching the repository.
-describe('AC-180: Audit-list access matrix', () => {
+describe('AC-625: Audit-list access matrix', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -542,7 +541,7 @@ describe('AC-180: Audit-list access matrix', () => {
       );
       const ownerRow = ownerLookup.rows[0] as { id: string } | undefined;
       if (!ownerRow) {
-        throw new Error('AC-180 fixture: owner user missing from seed');
+        throw new Error('AC-625 fixture: owner user missing from seed');
       }
 
       // Drive a user-entity audit row authored by owner: owner updates
@@ -554,10 +553,10 @@ describe('AC-180: Audit-list access matrix', () => {
       );
       const officeRow = officeLookup.rows[0] as { id: string } | undefined;
       if (!officeRow) {
-        throw new Error('AC-180 fixture: office user missing from seed');
+        throw new Error('AC-625 fixture: office user missing from seed');
       }
       const adminPatch = await authPatch(ownerToken, `/api/users/${officeRow.id}`, {
-        displayName: `${SEED_USERS.office.displayName} (AC-180 fixture)`,
+        displayName: `${SEED_USERS.office.displayName} (AC-625 fixture)`,
       });
       expect(adminPatch.statusCode).toBe(200);
 
@@ -569,7 +568,7 @@ describe('AC-180: Audit-list access matrix', () => {
       const ownerAuditRow = ownerAuditLookup.rows[0] as { id: string } | undefined;
       if (!ownerAuditRow) {
         throw new Error(
-          'AC-180 fixture: no owner-authored user audit row — admin PATCH did not emit one',
+          'AC-625 fixture: no owner-authored user audit row — admin PATCH did not emit one',
         );
       }
       ownerAuthoredUserRowId = ownerAuditRow.id;
@@ -622,7 +621,7 @@ describe('AC-180: Audit-list access matrix', () => {
 });
 
 // ---------------------------------------------------------------------
-// Destructive-action predicate gates visibility (AC-182, AC-187)
+// Destructive-action predicate gates visibility (AC-182, AC-625)
 // ---------------------------------------------------------------------
 //
 // `auditDestructiveScopeForCaller` narrows the list + get-by-id result
@@ -634,7 +633,7 @@ describe('AC-180: Audit-list access matrix', () => {
 //
 // Fixture strategy: seed the three destructive rows directly via raw
 // SQL against `audit_log`. This test file is in the `__tests__/`
-// allowlist per AC-179, and the direct-insert path is the same one
+// allowlist per the audit-mutation check (ADR-0021), and the direct-insert path is the same one
 // `audit-retention.test.ts` uses for the retention fixture.
 //
 // Rationale for the raw-SQL fixture over API-driven mutations (the
@@ -649,8 +648,8 @@ describe('AC-180: Audit-list access matrix', () => {
 // test proves the read-side destructive-scope predicate without
 // depending on the not-yet-implemented write-side helper. Mutation-
 // pipeline coverage (atomic-commit, rollback) is pinned separately by
-// AC-177; AC-182's scope is the visibility predicate.
-describe('Destructive-action visibility (AC-182, AC-187)', () => {
+// AC-623; AC-182's scope is the visibility predicate.
+describe('Destructive-action visibility (AC-182, AC-625)', () => {
   let ownerToken: string;
   let officeToken: string;
   /** An audit row matching `action='purge'` — owner-visible, office hidden. */
@@ -743,7 +742,7 @@ describe('Destructive-action visibility (AC-182, AC-187)', () => {
       // Proves the destructive predicate keys specifically off the
       // `roles` diff: a user-entity update whose diff omits `roles` is
       // NOT destructive. Owner and office must both see it (office is
-      // unscoped on reachability per api.md §14.2.8; the destructive
+      // unscoped on reachability per verification.md §15.23; the destructive
       // predicate admits this row because the diff does not touch roles).
       const emailUpdateEntityId = '00000000-0000-0000-0000-0000000a7934';
       const emailUpdateInsert = await fixtureDb.execute(sql`
@@ -788,7 +787,7 @@ describe('Destructive-action visibility (AC-182, AC-187)', () => {
     expect(ids.has(userRolesUpdateAuditId)).toBe(false);
     // Negative control: the email-update row has no `roles` diff and is
     // therefore NOT destructive. Office reachability is null (unscoped
-    // per api.md §14.2.8), so the row must be admitted — proving the
+    // per verification.md §15.23), so the row must be admitted — proving the
     // destructive predicate keys off `roles` specifically, not any
     // user-entity update.
     expect(ids.has(userEmailUpdateAuditId)).toBe(true);
@@ -833,8 +832,7 @@ describe('Throwing post-commit subscriber does not roll back (AC-183)', () => {
   });
 
   it('a subscriber that throws leaves the mutation and audit row committed and surfaces the error in the operational logger', async () => {
-    // Import the publisher surface spec'd in api.md §14.2.8
-    // (`Post-commit publisher contract`). Until the module exists this
+    // Import the publisher surface (audit-publisher.ts). Until the module exists this
     // throws MODULE_NOT_FOUND at runtime — the recognizable failing
     // state step 3 wants. The `/* @vite-ignore */` comment and the
     // string-literal path mirror the pattern in `seed.test.ts` (AC-390)
@@ -846,7 +844,7 @@ describe('Throwing post-commit subscriber does not roll back (AC-183)', () => {
 
     // The subscriber surface — `onAuditCommitted(handler)` returning
     // an unsubscribe function, and `setOperationalLogger(logger)` for
-    // test-side injection — is pinned by api.md §14.2.8.
+    // test-side injection — is pinned by audit-publisher.ts.
     const errorSpy = vi.fn();
     const fakeLogger = {
       info: vi.fn(),
@@ -1108,7 +1106,7 @@ describe('Self-preference carve-out (AC-204)', () => {
       expect(res.statusCode).toBe(200);
 
       // Narrow to rows written AFTER this test started so sibling
-      // describe blocks (AC-180 also patches the office user) do not
+      // describe blocks (AC-625 also patches the office user) do not
       // inflate the count.
       const rows = await db.execute(
         sql`SELECT entity_type, action FROM audit_log
@@ -1128,7 +1126,7 @@ describe('Self-preference carve-out (AC-204)', () => {
 
 // ---------------------------------------------------------------------
 // Ancestor-scoped filter on GET /api/audit
-// (architecture.md §11.12; pins #124)
+// (data-model.md §5.10; pins #124)
 // ---------------------------------------------------------------------
 //
 // `ancestorType` + `ancestorId` return every row whose write-time
@@ -1136,7 +1134,7 @@ describe('Self-preference carve-out (AC-204)', () => {
 // nested entities (project_worker, attachment) set their ancestor to
 // the owning project's id. The feed therefore unions every entity
 // type scoped to the project in one indexed predicate.
-describe('Ancestor-scoped filter unions project + nested entities', () => {
+describe('Ancestor-scoped filter unions project + nested entities (AC-631)', () => {
   let ownerToken: string;
   let seededCustomerId: string;
   let projectId: string;
@@ -1250,7 +1248,7 @@ describe('Ancestor-scoped filter unions project + nested entities', () => {
     expect(attachmentEntry).toBeDefined();
   });
 
-  it('AND-composes with action + actor filters', async () => {
+  it('AND-composes with action + actor filters (AC-629)', async () => {
     // The project create emits a single `create` row on entity_type=project.
     // Narrowing the ancestor-scoped feed to action=create should include
     // that row AND the worker-assignment create rows (also action=create

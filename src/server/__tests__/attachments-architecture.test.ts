@@ -1,7 +1,7 @@
 /**
  * Architecture-level invariants for the attachment subsystem.
  *
- *   - AC-179 Part 2: the attachment table is in the audited-table set
+ *   - the audited-table derivation: the attachment table is in the audited-table set
  *     the CI check (`scripts/check-audit-mutations.sh`) scans. The
  *     check derives its set from `AUDIT_ENTITY_TO_TABLE` via
  *     `scripts/print-audited-tables.ts`. `attachment` is a first-class
@@ -9,7 +9,7 @@
  *     entry + derivation carry the table into the scan automatically —
  *     no special-case append needed. A new audited table that ships
  *     without observing the mutation surface is exactly the fail-open
- *     that AC-179 forbids.
+ *     the check exists to prevent.
  *
  *   Design-conformance gates for ADR-0024 / ADR-0022 (the VPS stays
  *   out of the attachment bytes path; no AC — the property is not
@@ -21,7 +21,7 @@
  *     list, download-url, bulk-fetch — all JSON control plane.
  *     "No byte traffic through the app" is load-bearing for module
  *     scalability and is pinned by a structural assertion parallel to
- *     AC-179.
+ *     the audit-mutation check.
  *
  *   - No attachment route handler streams ciphertext bytes
  *     to or from object storage. Under e2e (ADR-0024) the server
@@ -49,10 +49,10 @@ function readSource(relativePath: string): string {
 }
 
 // ---------------------------------------------------------------------
-// AC-179 Part 2 — attachment table in the audited-table surface.
+// the audited-table derivation — attachment table in the audited-table surface.
 // ---------------------------------------------------------------------
 
-describe('AC-179: attachment table wired into the audit-mutation architecture check', () => {
+describe('Attachment table wired into the audit-mutation architecture check (ADR-0021)', () => {
   it('the AuditEntityType enum includes `attachment` as a first-class member', async () => {
     // Promoting `attachment` into the enum is what drives the audited-
     // table derivation in scripts/print-audited-tables.ts. Prior to this

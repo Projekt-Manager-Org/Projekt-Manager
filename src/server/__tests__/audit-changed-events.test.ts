@@ -149,7 +149,7 @@ describe('audit_changed: SSE emission per audit-row commit', () => {
     // the bare invalidation envelope `{ "type": "audit_changed" }` and
     // NO audit content (entity ids, labels, payload diff, actor) rides
     // the channel. Audit content is `audit:read`-gated and fetched only
-    // via api.md §14.2.8 — AC-319 depends on this stream being
+    // via the audit list — AC-320 depends on this stream being
     // content-free so a caller lacking `audit:read` learns nothing from
     // it. Expected to PASS (retroactive coverage of a security-relevant
     // claim).

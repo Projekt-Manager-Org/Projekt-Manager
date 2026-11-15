@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Scenario tests for scripts/check-audit-mutations.sh (AC-179).
+# Scenario tests for scripts/check-audit-mutations.sh (ADR-0021).
 #
 # Each scenario stages a fixture source tree in a fresh temp directory
 # and runs the real check script against it via `AUDIT_PROJECT_ROOT`.

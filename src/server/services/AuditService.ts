@@ -1,11 +1,11 @@
 /**
- * Audit service — read-only surface (api.md §14.2.8).
+ * Audit service — read-only surface (verification.md §15.23).
  *
  * Responsibilities:
  *  - Delegate scoped reads to the audit repository.
  *  - Apply response shaping:
  *      - `actorDisplayName` exposed on user-actor rows only.
- *      - `actorReason` exposed on system-actor rows (required for AC-178
+ *      - `actorReason` exposed on system-actor rows (required for AC-624
  *        bootstrap visibility).
  *      - `payload` exposed as-is.
  *
@@ -70,10 +70,10 @@ export interface AuditEntry {
   entityLabel: string | null;
   /**
    * Snapshot of the parent project's human-readable label at write time
-   * (architecture.md §11.12). Null for top-level entities (`customer`,
+   * (data-model.md §5.10). Null for top-level entities (`customer`,
    * `user`, `company_profile`, `data_import`). Powers the activity dock's
-   * single-line row (AC-339) and the global Aktivität view's `Projekt`
-   * column (AC-342) without a runtime JOIN against `projects`.
+   * single-line row (AC-641) and the global Aktivität view's `Projekt`
+   * column (AC-641) without a runtime JOIN against `projects`.
    */
   ancestorEntityLabel: string | null;
   action: string;
@@ -111,7 +111,7 @@ function shapeEntry(row: AuditRow): AuditEntry {
     actorKind: row.actorKind,
     actorReason: row.actorReason,
     // Display name applies only to user-actor rows. System rows rely on
-    // actorReason for reader context (AC-178).
+    // actorReason for reader context (AC-624).
     actorDisplayName: row.actorKind === 'user' ? row.actorDisplayName : null,
     entityType: row.entityType,
     entityId: row.entityId,

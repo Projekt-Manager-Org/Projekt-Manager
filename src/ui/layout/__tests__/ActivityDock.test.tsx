@@ -1,6 +1,6 @@
 /**
  * App-shell activity dock — fast supplementary coverage for the
- * permission gate (AC-319) and the collapse state machine (AC-318).
+ * permission gate (AC-638) and the collapse state machine (AC-634).
  *
  * The full behavioral gate is the e2e suite (e2e/activity-dock.spec.ts,
  * e2e/activity-dock-visibility.spec.ts): live SSE propagation, the
@@ -77,7 +77,7 @@ afterEach(() => {
   useAuthStore.setState({ authUser: null, authError: null, sessionChecked: true });
 });
 
-describe('ActivityDock — permission gate (AC-319)', () => {
+describe('ActivityDock — permission gate (AC-638)', () => {
   it('renders nothing for a caller without audit:read (worker)', () => {
     setAuthRoles(['worker']);
 
@@ -116,7 +116,7 @@ describe('ActivityDock — permission gate (AC-319)', () => {
   });
 });
 
-describe('ActivityDock — collapse state machine (AC-318)', () => {
+describe('ActivityDock — collapse state machine (AC-634)', () => {
   it('is default-collapsed: the panel exists but the feed is not mounted', () => {
     setAuthRoles(['owner']);
 
@@ -162,7 +162,7 @@ describe('ActivityDock — collapse state machine (AC-318)', () => {
   });
 });
 
-describe('ActivityDock — Alt+A global shortcut (AC-340)', () => {
+describe('ActivityDock — Alt+A global shortcut (AC-640)', () => {
   it('toggles expand/collapse on Alt+A for an audit:read holder', () => {
     setAuthRoles(['owner']);
     render(<ActivityDock />);
@@ -183,7 +183,7 @@ describe('ActivityDock — Alt+A global shortcut (AC-340)', () => {
     setAuthRoles(['worker']);
     render(<ActivityDock />);
 
-    // The dock is absent (AC-319). Pressing Alt+A must NOT bring it
+    // The dock is absent (AC-638). Pressing Alt+A must NOT bring it
     // into the DOM — there is no state to toggle.
     fireEvent.keyDown(window, { key: 'a', altKey: true });
     expect(screen.queryByTestId('activity-dock')).not.toBeInTheDocument();
@@ -252,7 +252,7 @@ describe('ActivityDock — hidden on /audit (AC-341)', () => {
   });
 });
 
-describe('ActivityDock — compact row layout (AC-339)', () => {
+describe('ActivityDock — compact row layout (AC-639)', () => {
   it('mounts the feed with layout="compact" when expanded', () => {
     setAuthRoles(['owner']);
     // The fetched feed populated with a row that we can pin the
@@ -279,7 +279,7 @@ describe('ActivityDock — compact row layout (AC-339)', () => {
     fireEvent.click(screen.getByTestId('activity-dock-toggle'));
 
     // Detail drawer affordance must NOT render in the dock — payload
-    // detail lives on the /audit page (AC-339). The list/table row
+    // detail lives on the /audit page (ui/index.md §8.1.2). The list/table row
     // components emit `activity-feed-drawer-toggle`; the compact row
     // does not.
     expect(screen.queryByTestId('activity-feed-drawer-toggle')).not.toBeInTheDocument();

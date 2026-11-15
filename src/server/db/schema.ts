@@ -66,8 +66,8 @@ export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
  * representation: the SQL table name (used by raw-SQL scanners) and the
  * Drizzle export name (used by builder-call scanners). The architecture
  * check at `scripts/check-audit-mutations.sh` reads this map via
- * `scripts/print-audited-tables.ts` — AC-179 requires the audited-table
- * set to be derived from `AuditEntityType`, not hand-maintained.
+ * `scripts/print-audited-tables.ts` — by the check's design, the audited-table
+ * set is derived from `AuditEntityType`, not hand-maintained.
  *
  * Synthetic entity types (e.g. `data_import`) have no physical row
  * backing the audit entry — they describe deployment-level events. They
@@ -354,7 +354,7 @@ export const dataExchangeJob = pgTable(
 //   - actor_kind='system' → actor_id NULL,     actor_reason non-empty
 //
 // The non-empty `actor_reason` is the defense-in-depth backstop for
-// AC-178: without it a bootstrap entry would be invisible in the
+// AC-624: without it a bootstrap entry would be invisible in the
 // activity feed.
 // ---------------------------------------------------------------
 export const auditLog = pgTable(
@@ -378,12 +378,12 @@ export const auditLog = pgTable(
     // cannot supply a label (import, retention cleanup); the client
     // falls back to the UUID.
     entityLabel: text('entity_label'),
-    // Ancestor denormalization (architecture.md §11.12). Per-parent
+    // Ancestor denormalization — the write-time convention lives here. Per-parent
     // activity feeds (project detail) need rows for the project itself
     // AND for its nested entities (`project_worker`, `attachment`,
     // `invoice`). The `ancestorEntityLabel` snapshot additionally powers
     // the cross-project surfaces (the activity dock and the global
-    // Aktivität view's `Projekt` column — AC-339 / AC-342) without a
+    // Aktivität view's `Projekt` column — AC-641) without a
     // runtime JOIN against `projects`.
     // Write-time convention:
     //   - `project` rows self-ancestor: ancestor = (project, entityId, entityLabel).
@@ -417,7 +417,7 @@ export const auditLog = pgTable(
       table.id.desc(),
     ),
     // GIN trigram index powers the Aktivität view's substring search on
-    // entity_label (ui/management.md §8.13.2). Without it, `ILIKE '%q%'`
+    // entity_label (ui/management.md §8.13). Without it, `ILIKE '%q%'`
     // falls back to a seq scan. The pg_trgm extension itself is enabled
     // in src/server/db/baseline/head/ — drizzle-kit does not emit
     // CREATE EXTENSION statements.
@@ -445,7 +445,7 @@ export const auditLog = pgTable(
       sql`(${table.ancestorEntityType} IS NULL AND ${table.ancestorEntityId} IS NULL)
           OR (${table.ancestorEntityType} IS NOT NULL AND ${table.ancestorEntityId} IS NOT NULL)`,
     ),
-    // Compound invariant — AC-178 defense in depth. Missing this CHECK
+    // Compound invariant — AC-624 defense in depth. Missing this CHECK
     // would let a bootstrap write land with actor_reason=NULL, making
     // the first-admin creation invisible to the activity feed.
     //

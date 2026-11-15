@@ -2,7 +2,7 @@
  * One-line German description of an audit row derived from `(action,
  * payload)`. Pure function — no React, no i18n runtime.
  *
- * See ui/workflow-views.md §8.4.1 and ui/management.md §8.13.1 for the
+ * See ui/workflow-views.md §8.4.1 and ui/management.md §8.13 for the
  * UX target:
  *   - "Status geändert: Geplant → In Arbeit" for forward transitions
  *   - "Termine aktualisiert" for date updates

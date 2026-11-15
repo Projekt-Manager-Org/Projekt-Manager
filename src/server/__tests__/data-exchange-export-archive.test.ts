@@ -43,7 +43,7 @@
  * `seedReadyAttachments` (that file is scheduled for retirement, and its
  * helper seeds the row WITHOUT real backing bytes — it would never
  * decrypt). Raw-SQL attachment seeding is allowlisted under __tests__/
- * per the AC-179 architecture check.
+ * per the audit-mutation architecture check (ADR-0021).
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';

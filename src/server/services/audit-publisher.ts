@@ -1,5 +1,5 @@
 /**
- * Post-commit audit publisher — api.md §14.2.8.
+ * Post-commit audit publisher — ADR-0021, AC-183.
  *
  * ADR-0021 splits the audit-write path from subscriber dispatch: the
  * `mutate()` helper writes the domain mutation and the `audit_log` row
@@ -7,7 +7,7 @@
  * helper invoke `dispatch()` here. A throwing subscriber therefore cannot
  * roll back the originating mutation — AC-183.
  *
- * Surface (pinned by api.md §14.2.8 "Post-commit publisher contract"):
+ * Surface (ADR-0021; failure isolation is AC-183):
  *
  *   onAuditCommitted(handler) → unsubscribe
  *     Handlers are invoked once per commit, in registration order
@@ -43,7 +43,7 @@ export interface AuditLogRow {
   /** Human-readable label snapshot (data-model.md §5.10). */
   entityLabel: string | null;
   /**
-   * Ancestor-link snapshot (architecture.md §11.12). Populated at write
+   * Ancestor-link snapshot (see `auditLog` in schema.ts). Populated at write
    * time for nested entities (project_worker, attachment, invoice) and
    * for project rows (self-ancestor) so the per-parent activity feed
    * can fetch every row scoped to a project in one indexed query, and
@@ -83,7 +83,7 @@ export interface OperationalLogger {
 export const EVENT_HANDLER_ERROR = 'audit-publisher-handler-error';
 
 // Module-level registry. A Set preserves insertion order in ES2015+,
-// which is the registration-order guarantee api.md §14.2.8 pins.
+// which is the registration-order guarantee this module pins.
 const handlers = new Set<AuditHandler>();
 let logger: OperationalLogger | null = null;
 

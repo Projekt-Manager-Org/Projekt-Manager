@@ -1,7 +1,7 @@
 /**
  * Tests for `describeAuditRow` — the one-line German description of an
  * audit row shown in the project detail feed and the global Aktivität
- * view (ui/workflow-views.md §8.4.1, ui/management.md §8.13.1).
+ * view (ui/workflow-views.md §8.4.1, ui/management.md §8.13).
  *
  * Pins the three exemplars listed in the spec:
  *   - "Status geändert: Geplant → In Arbeit"

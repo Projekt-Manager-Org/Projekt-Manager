@@ -1,12 +1,12 @@
 /**
  * Audit-log client state — list fetching, pagination, filtering.
  *
- * The audit surface is read-only (api.md §14.2.8), so this store
+ * The audit surface is read-only (AC-642), so this store
  * exposes no mutation actions — only fetchers and local filter state.
  * Pagination uses an offset window with append-on-next-page semantics
  * so "Ältere anzeigen" can extend the current result without collapsing
  * already-rendered rows (ui/workflow-views.md §8.4.1,
- * ui/management.md §8.13.1).
+ * ui/management.md §8.13).
  *
  * **Factory, not singleton.** Two surfaces render the feed — the global
  * Aktivität view and the per-project detail panel overlay — and the
@@ -45,7 +45,7 @@ interface AuditState {
   /**
    * Fetch the next page (older rows) using the current `limit` and an
    * offset derived from `entries.length`. Appends to `entries`; does
-   * not collapse or reorder already-rendered rows (AC-185).
+   * not collapse or reorder already-rendered rows (AC-628).
    */
   appendNextPage: () => Promise<void>;
 
