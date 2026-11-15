@@ -364,13 +364,14 @@ The database backup the [kickoff](../project/kickoff.md#done-when-final-product)
 - **AC-174** `[crit]`: Two backups of the same database state carry equal manifests.
 - **AC-366** `[crit]`: If the database runs without page checksums, a backup run fails before producing a backup and names the missing checksums.
 - **AC-167** `[crit]`: The off-site store receives no backup or manifest readable without the operator's private identity ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)); a run that cannot encrypt fails and uploads nothing.
-- **AC-345** `[crit]`: Every step of a backup or drill run is bounded in time; a step exceeding its bound fails the run, and the status record names the step and why — the container log does, when that step is the status write itself.
+- **AC-345** `[crit]`: Every step of a backup or drill run is bounded in time; a step exceeding its bound fails the run, and the status record names the step and why — the container log does, when that step is the status write itself. The status-mirror write is the exception: exceeding its bound fails only that write ([AC-618](#1522-backup-and-recovery)).
 - **AC-346** `[crit]`: If a tool a backup or drill run drives exits before taking all its input, the run fails with the reason recorded, and later scheduled runs still start.
 - **AC-619** `[crit]`: When a drill runs with the operator's private identity loaded, the system restores the latest uploaded backup from the off-site store and records in the drill fields whether it matches its manifest.
 - **AC-168** `[crit]`: While the operator's private identity is not loaded, a drill is skipped and leaves the status record unchanged; a skip is not a failure.
-- **AC-370** `[crit]`: A backup run changes only the backup fields of the status record and a drill only the drill fields, plus `updatedAt`.
+- **AC-370** `[crit]`: A backup run changes only the backup fields of the status record and a drill only the drill fields, plus `mirrorError` and `updatedAt`.
 - **AC-617** `[crit]`: When a backup or drill run records its outcome, the system then rewrites the status mirror to match.
-- **AC-618** `[crit]`: If writing the status mirror fails, the system appends that failure to the writing run's error field and leaves its outcome unchanged.
+- **AC-618** `[crit]`: If writing the status mirror fails, the system records that failure in `mirrorError` and leaves the run's outcome and error field unchanged.
+- **AC-622** `[crit]`: When writing the status mirror succeeds, the system clears `mirrorError`.
 - **AC-620** `[crit]`: The status record carries no credential.
 - **AC-614** `[crit]`: The system discloses the status record to no caller except an owner.
 - **AC-612** `[crit]`: While an owner is signed in, the system shows on every view the backup badge in the first state of the badge table ([ui/index.md §8.1.2](ui/index.md#812-authenticated-state)) whose condition holds.

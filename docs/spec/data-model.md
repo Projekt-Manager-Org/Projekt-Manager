@@ -210,19 +210,20 @@ Fields keep their meaning from their entity in this chapter; timestamps are ISO 
 
 ### 5.9 Backup Status
 
-The outcome of the latest backup run and the latest drill that was not skipped; earlier outcomes are not kept. Behavior: [verification.md §15.22](verification.md#1522-backup-and-recovery).
+The outcome of the latest backup run, of the latest drill that was not skipped, and of the latest status-mirror write; earlier outcomes are not kept. Behavior: [verification.md §15.22](verification.md#1522-backup-and-recovery).
 
-| Field             | Meaning                                                                                   |
-| ----------------- | ----------------------------------------------------------------------------------------- |
-| `lastBackupAt`    | Time of the last backup run, whatever its outcome; `null` before the first                |
-| `lastBackupOk`    | `true` when the last backup run uploaded a verified backup; `false` before the first      |
-| `lastBackupError` | Why the last backup run, or the mirror write after it, failed; `null` when both succeeded |
-| `lastDrillAt`     | Time of the last drill; `null` before the first                                           |
-| `lastDrillOk`     | `true` when the last drill's restore matched its manifest; `null` before the first        |
-| `lastDrillError`  | Why the last drill, or the mirror write after it, failed; `null` when both succeeded      |
-| `updatedAt`       | Time of the last write                                                                    |
+| Field             | Meaning                                                                                |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `lastBackupAt`    | Time of the last backup run, whatever its outcome; `null` before the first             |
+| `lastBackupOk`    | `true` when the last backup run uploaded a verified backup; `false` before the first   |
+| `lastBackupError` | Why the last backup run failed; `null` when it succeeded                               |
+| `lastDrillAt`     | Time of the last drill; `null` before the first                                        |
+| `lastDrillOk`     | `true` when the last drill's restore matched its manifest; `null` before the first     |
+| `lastDrillError`  | Why the last drill failed; `null` when it succeeded                                    |
+| `mirrorError`     | Why the last status-mirror write failed; `null` before the first and once one succeeds |
+| `updatedAt`       | Time of the last write                                                                 |
 
-**Status mirror.** An unencrypted object in the off-site store, readable without the application ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). It is a JSON object holding every field above, `null` when unset, times in ISO 8601; an error field names only the failing step and, for a mismatch, the table.
+**Status mirror.** An unencrypted object in the off-site store, readable without the application ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). It is a JSON object holding every field above except `mirrorError`, `null` when unset, times in ISO 8601; an error field names only the failing step and, for a mismatch, the table.
 
 ### 5.10 Audit Log Entity
 
