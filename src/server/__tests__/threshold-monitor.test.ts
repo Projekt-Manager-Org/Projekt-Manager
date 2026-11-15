@@ -139,6 +139,8 @@ describe('threshold monitor — backup condition', () => {
       'backup-never-run',
     ],
     ['drill never run', { ...greenStatus(), lastDrillOk: null }, 'red', 'drill-never-run'],
+    // AC-621: fresh timestamps, failed verdict.
+    ['failed drill', { ...greenStatus(), lastDrillOk: false }, 'red', 'drill-failed'],
     // The dead-runner case: nothing wrote a failure because nothing ran,
     // the row just ages. This is the coverage the badge alone could not
     // give — it required the owner to look.
