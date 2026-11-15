@@ -71,13 +71,10 @@ describe('#122: amber reasons are distinguishable', () => {
     if (s.kind === 'amber') expect(s.reason).toBe('drill-stale');
   });
 
-  it('gives drill staleness precedence when both the backup and the drill are amber', () => {
-    // Both dimensions past their amber line. The ordering is documented
-    // in `deriveBadgeState` but was unpinned — and getting it wrong is
-    // not merely a swapped label: hoisting the backup-age check above
-    // the drill-age checks turns a 3-day backup with a 40-day drill from
-    // red/backup-stale into amber/backup-aging, which is exactly the
-    // misleading-state class AC-612 forbids.
+  it('gives backup aging precedence when both the backup and the drill are amber', () => {
+    // Both dimensions past their amber line. The drill-amber label reads
+    // "Backup: aktuell, …", true only when every backup row ranks above it
+    // (#909): with drill-stale first, a 3-day backup was reported current.
     const status: BackupStatus = {
       lastBackupOk: true,
       lastBackupAt: daysAgo(3),
@@ -87,8 +84,7 @@ describe('#122: amber reasons are distinguishable', () => {
       updatedAt: daysAgo(0),
     };
     const s = deriveBadgeState(status, NOW, THRESHOLDS);
-    expect(s.kind).toBe('amber');
-    if (s.kind === 'amber') expect(s.reason).toBe('drill-stale');
+    expect(s).toMatchObject({ kind: 'amber', reason: 'backup-aging' });
   });
 
   it('stays red when the backup is amber-aged but the drill is past its red line', () => {
