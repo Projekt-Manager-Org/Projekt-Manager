@@ -171,6 +171,7 @@ CREATE TABLE "meta_backup_status" (
 	"last_drill_at" timestamp with time zone,
 	"last_drill_ok" boolean,
 	"last_drill_error" text,
+	"mirror_error" text,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "meta_backup_status_singleton" CHECK ("meta_backup_status"."singleton" = true)
 );

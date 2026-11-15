@@ -273,6 +273,7 @@ export const metaBackupStatus = pgTable(
     // null is the authoritative "never-run" signal, distinct from "skipped".
     lastDrillOk: boolean('last_drill_ok'),
     lastDrillError: text('last_drill_error'),
+    mirrorError: text('mirror_error'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [check('meta_backup_status_singleton', sql`${table.singleton} = true`)],

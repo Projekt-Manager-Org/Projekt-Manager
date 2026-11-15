@@ -179,6 +179,7 @@ describe('composePushPayload — AC-211', () => {
       ['backup-aging', 'Backup: wird alt'],
       ['drill-expired', 'Drill: überfällig'],
       ['drill-stale', 'Backup: aktuell, Drill-Schlüssel neu laden'],
+      ['mirror-failed', 'Backup: Statuskopie fehlgeschlagen'],
     ];
     for (const [reason, expected] of cases) {
       const out = composePushPayload('backup.failed', null, { reason });

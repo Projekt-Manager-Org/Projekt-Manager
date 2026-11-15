@@ -466,3 +466,45 @@ describe('AC-621: a failed drill shows red', () => {
     expect(s.kind === 'red' && s.reason).toBe('drill-failed');
   });
 });
+
+describe('AC-612: a failed status-mirror write shows amber', () => {
+  const fresh: BackupStatus = {
+    lastBackupOk: true,
+    lastBackupAt: daysAgo(0),
+    lastDrillAt: daysAgo(0),
+    lastDrillOk: true,
+    mirrorError: 'AccessDenied: The object is locked by the bucket policy.',
+    updatedAt: daysAgo(0),
+  };
+
+  it('renders amber / mirror-failed when the mirror write failed and everything else is fresh', () => {
+    const s = deriveBadgeState(fresh, NOW, THRESHOLDS);
+    expect(s.kind).toBe('amber');
+    if (s.kind === 'amber') {
+      expect(s.reason).toBe('mirror-failed');
+      expect(s.lastBackupAt).toBe(fresh.lastBackupAt);
+    }
+  });
+
+  it('ranks a failed mirror write below every red row', () => {
+    const s = deriveBadgeState(
+      { ...fresh, lastDrillAt: daysAgo(THRESHOLDS.drillRedDays + 1) },
+      NOW,
+      THRESHOLDS,
+    );
+    expect(s.kind === 'red' && s.reason).toBe('drill-expired');
+  });
+
+  it('ranks a failed mirror write above the amber age rows', () => {
+    const s = deriveBadgeState(
+      {
+        ...fresh,
+        lastBackupAt: daysAgo(THRESHOLDS.backupAmberDays + 1),
+        lastDrillAt: daysAgo(THRESHOLDS.drillAmberDays + 1),
+      },
+      NOW,
+      THRESHOLDS,
+    );
+    expect(s.kind === 'amber' && s.reason).toBe('mirror-failed');
+  });
+});

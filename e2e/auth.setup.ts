@@ -86,6 +86,7 @@ setup('reseed database and storage', async () => {
           last_drill_at = now() - interval '1 day',
           last_backup_error = NULL,
           last_drill_error = NULL,
+          mirror_error = NULL,
           updated_at = now()
       `);
     }
