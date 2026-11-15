@@ -20,6 +20,7 @@ import type pg from 'pg';
 import { createDatabase } from '../db/connection.js';
 import type { Database } from '../db/connection.js';
 import { runAuditRetentionCleanup } from '../services/audit-retention.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -64,7 +65,7 @@ describe('Audit retention cleanup (AC-632, AC-633)', () => {
   beforeEach(async () => {
     // Start each case with an empty audit_log so fixture rows inserted
     // below are the only rows the cleanup sees.
-    await db.execute(sql`TRUNCATE TABLE audit_log`);
+    await withAuditLogRemoval(db, (tx) => tx.execute(sql`TRUNCATE TABLE audit_log`));
   });
 
   it('removes rows older than the 90-day window and keeps rows inside it', async () => {

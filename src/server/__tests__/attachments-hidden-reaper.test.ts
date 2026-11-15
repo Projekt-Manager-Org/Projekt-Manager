@@ -57,6 +57,7 @@ import type { Database } from '../db/connection.js';
 import { seed } from '../seed.js';
 import { validateEnvRuntime } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
 /**
  * Contract surface — resolved lazily via dynamic import so the test
@@ -253,7 +254,7 @@ describe('Attachment hidden reaper (AC-426)', () => {
     // by `seed()` would otherwise pollute counts. Order respects the
     // FK direction: audit_log has no FK on attachments (entity_id is
     // an unconstrained UUID per §5.10), so order is incidental.
-    await db.execute(sql`DELETE FROM audit_log`);
+    await withAuditLogRemoval(db, (tx) => tx.execute(sql`DELETE FROM audit_log`));
     await db.execute(sql`DELETE FROM attachments`);
   });
 

@@ -61,6 +61,7 @@ import {
 } from '../db/schema.js';
 import type { Database } from '../db/connection.js';
 import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -436,7 +437,9 @@ describe('Bootstrap emits system-actor audit row + CHECK constraint (AC-623, AC-
     // pointing at users (including the audit_log FK on actor_id), so
     // one statement is sufficient — two TRUNCATEs raced pre-impl when
     // audit_log did not yet exist.
-    await db.execute(sql`TRUNCATE TABLE audit_log, sessions, projects, users CASCADE`);
+    await withAuditLogRemoval(db, (tx) =>
+      tx.execute(sql`TRUNCATE TABLE audit_log, sessions, projects, users CASCADE`),
+    );
   });
 
   it('bootstrap run on empty DB produces actorKind=system, null actorId, non-empty actorReason', async () => {

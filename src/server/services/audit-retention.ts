@@ -2,11 +2,9 @@
  * Audit-log retention cleanup — AC-632.
  *
  * Removes `audit_log` rows older than the configured rolling window
- * (90 days [C] by default). This is the *only* path that deletes from
- * `audit_log`: every other application path is append-only and the
- * single-write helper `mutate()` never deletes. The architecture check
- * in `scripts/check-audit-mutations.sh` allowlists this file for that
- * reason.
+ * (90 days [C] by default). This is the only production path that
+ * deletes from `audit_log` (AC-642); the audit_log triggers reject
+ * any other.
  *
  * Contract with operators (AC-633):
  *   - Emits exactly one structured operational log line per run, at
@@ -18,8 +16,9 @@
  * Concurrency: a single `DELETE WHERE created_at < :cutoff` runs under
  * Postgres default isolation (READ COMMITTED). Rows inserted after the
  * cutoff is computed are not eligible for this run; they roll into the
- * next run. No explicit transaction is opened — the DELETE is
- * self-contained and idempotent.
+ * next run. The DELETE runs in its own transaction only so the
+ * removal allowance stays local to it (`withAuditLogRemoval`); it is
+ * still self-contained and idempotent.
  *
  * Dependency-injected logger: the service accepts the logger at call
  * time rather than reading from module state so
@@ -31,6 +30,7 @@
 import { lt } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
 import { auditLog } from '../db/schema.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 import type { ServiceLogger } from './Logger.js';
 
 export interface RunAuditRetentionCleanupDeps {
@@ -87,16 +87,11 @@ export async function runAuditRetentionCleanup(
   const runAt = deps.now ?? new Date();
   const cutoff = new Date(runAt.getTime() - deps.windowDays * MS_PER_DAY);
 
-  // Drizzle builder path — keeps us inside the static architecture
-  // check's scanned surface (`scripts/check-audit-mutations.sh`). The
-  // file is allowlisted; this comment documents *why* we use the
-  // builder here rather than a raw `sql`DELETE FROM audit_log` ``
-  // template: future maintainers should not need to re-prove the
-  // allowlist applies.
-  const deleted = await deps.db
-    .delete(auditLog)
-    .where(lt(auditLog.createdAt, cutoff))
-    .returning({ id: auditLog.id });
+  // The audit_log triggers accept the DELETE only under
+  // `withAuditLogRemoval` (AC-642).
+  const deleted = await withAuditLogRemoval(deps.db, (tx) =>
+    tx.delete(auditLog).where(lt(auditLog.createdAt, cutoff)).returning({ id: auditLog.id }),
+  );
 
   const removedCount = deleted.length;
   const ranAt = runAt.toISOString();

@@ -23,6 +23,7 @@
 import { sql } from 'drizzle-orm';
 
 import type { Database } from './db/connection.js';
+import { withAuditLogRemoval } from './db/auditLogRemoval.js';
 import { users } from './db/schema.js';
 import { loadBusiness } from './seed/business.js';
 import { loadInvoices } from './seed/invoices.js';
@@ -69,8 +70,13 @@ export async function seed(db: Database, opts: { force?: boolean } = {}): Promis
   // `RE-YYYY-0001` numbering. The cascade from `projects` already
   // empties `invoices`, but the sequence table has no FK and would
   // otherwise carry forward the high-water mark of every prior run.
-  await db.execute(
-    sql`TRUNCATE TABLE notification_rule, project_workers, sessions, projects, customers, users, invoice_sequence CASCADE`,
+  //
+  // The cascade over `users` reaches `audit_log`, which only accepts a
+  // TRUNCATE under `withAuditLogRemoval` (AC-642).
+  await withAuditLogRemoval(db, (tx) =>
+    tx.execute(
+      sql`TRUNCATE TABLE notification_rule, project_workers, sessions, projects, customers, users, invoice_sequence CASCADE`,
+    ),
   );
 
   // Reference moment for every relative date downstream. Captured once so

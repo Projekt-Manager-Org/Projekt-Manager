@@ -58,6 +58,7 @@ import { verifyPassword } from '../password.js';
 import { seed } from '../seed.js';
 import type { Database } from '../db/connection.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -112,8 +113,8 @@ describe('Seed', () => {
   // precondition both tests depend on and matches the bootstrap.test.ts
   // per-test TRUNCATE pattern (bootstrap.test.ts:75-79).
   beforeEach(async () => {
-    await db.execute(
-      sql`TRUNCATE TABLE project_workers, sessions, projects, customers, users CASCADE`,
+    await withAuditLogRemoval(db, (tx) =>
+      tx.execute(sql`TRUNCATE TABLE project_workers, sessions, projects, customers, users CASCADE`),
     );
   });
 
