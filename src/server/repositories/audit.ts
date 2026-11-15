@@ -1,5 +1,5 @@
 /**
- * Audit-log repository — read-only (api.md §14.2.8).
+ * Audit-log repository — read-only (AC-642).
  *
  * The audit surface is append-only (data-model.md §5.10); no create,
  * update, or delete path is exposed. Writes happen exclusively through
@@ -160,7 +160,7 @@ export interface AuditRow {
   entityLabel: string | null;
   /**
    * Snapshot of the parent project's human-readable label at write time
-   * (architecture.md §11.12). Null for top-level entities. Powers the
+   * (data-model.md §5.10). Null for top-level entities. Powers the
    * dock and the /audit Projekt column without a JOIN.
    */
   ancestorEntityLabel: string | null;
@@ -177,7 +177,7 @@ export interface ListAuditOpts {
   entityType?: AuditEntityType;
   entityId?: string;
   /**
-   * Ancestor-scoped filter (architecture.md §11.12). When set, narrows
+   * Ancestor-scoped filter (see `auditLog` in schema.ts). When set, narrows
    * to rows whose `ancestorEntityType` / `ancestorEntityId` equal the
    * given pair. Powers the per-project activity feed: one indexed
    * predicate returns the project row plus every nested-entity row
@@ -208,7 +208,7 @@ export interface ListAuditOpts {
    * set would have included the caller (verification.md AC-200 — the
    * Aktivität default view). Composes AND with every other filter and
    * is applied BEFORE offset/limit so pagination never drops matching
-   * rows. Default false preserves the full RBAC-scoped feed (AC-180).
+   * rows. Default false preserves the full RBAC-scoped feed (AC-625).
    */
   recipientScope?: boolean;
 }

@@ -1,5 +1,5 @@
 /**
- * Filter bar for the global Aktivität view — `ui/management.md §8.13.2`.
+ * Filter bar for the global Aktivität view — `ui/management.md §8.13`.
  *
  * Split from `AuditManagement.tsx` so the parent stays under the C-SIZE
  * budget. The parent owns the `LocalFilters` state and the derived

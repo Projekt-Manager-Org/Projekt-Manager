@@ -1,5 +1,5 @@
 /**
- * Single-line compact row for the activity dock (AC-339).
+ * Single-line compact row for the activity dock (AC-639).
  *
  * The dock is a glanceable strip docked at the bottom of the shell; it
  * is NOT a detail view. So a row collapses to one line:
@@ -13,7 +13,7 @@
  *   - Beschreibung: one-line German description from `describeAuditRow`.
  *
  * No drawer / no payload toggle — the detailed payload view lives on
- * the Aktivität page (ui/management.md §8.13.1). The dock-row drops the
+ * the Aktivität page (ui/management.md §8.13). The dock-row drops the
  * `data-has-payload` data-attribute that the other layouts expose for
  * the same reason: there is no drawer to gate.
  *

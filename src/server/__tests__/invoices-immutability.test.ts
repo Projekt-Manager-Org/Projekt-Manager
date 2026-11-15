@@ -71,7 +71,7 @@ describe('AC-294: issued invoice rows are write-once at the persistence layer', 
     testProjectId = (projects.rows[0] as { id: string }).id;
 
     // Direct-insert one issued row to UPDATE against. Raw SQL is
-    // allowlisted under `__tests__/` per AC-179.
+    // allowlisted under `__tests__/` per the audit-mutation check (ADR-0021).
     issuedInvoiceId = crypto.randomUUID();
     const number = `RE-${year}-9501`;
     const issuer = {

@@ -1,8 +1,8 @@
 /**
  * Audit-log domain types (frontend view).
  *
- * Mirrors the API-facing `AuditEntry` contract from `api.md §14.2.8`
- * and `data-model.md §5.10`. Pure types + type guards — no state, no
+ * Mirrors the API-facing `AuditEntry` contract (data-model.md §5.10;
+ * wire shape in `AuditService.ts`). Pure types + type guards — no state, no
  * API calls. This module is safe to import from config, state, and
  * UI layers.
  *
@@ -62,12 +62,12 @@ export interface AuditEntry {
    */
   entityLabel: string | null;
   /**
-   * Parent project's label snapshot at write time (architecture.md
-   * §11.12). Non-null for project rows (self-ancestor) and child-entity
+   * Parent project's label snapshot at write time (data-model.md §5.10).
+   * Non-null for project rows (self-ancestor) and child-entity
    * rows (`project_worker`, `attachment`, `invoice`); null for top-level
    * entities (`customer`, `user`, `company_profile`, `data_import`).
-   * Powers the activity dock's single-line row (AC-339) and the global
-   * Aktivität view's `Projekt` column (AC-342) without a JOIN.
+   * Powers the activity dock's single-line row (AC-641) and the global
+   * Aktivität view's `Projekt` column (AC-641) without a JOIN.
    */
   ancestorEntityLabel: string | null;
   /**
@@ -93,7 +93,7 @@ export interface AuditListResponse {
 /**
  * Filter / pagination parameters accepted by `GET /api/audit`. All
  * fields are optional; inversely-ordered date bounds (`to < from`)
- * are a validation error on the server (api.md §14.2.8).
+ * are a validation error on the server.
  */
 export interface AuditListParams {
   offset?: number;
@@ -101,7 +101,7 @@ export interface AuditListParams {
   entityType?: AuditEntityType;
   entityId?: string;
   /**
-   * Ancestor-scoped filter (architecture.md §11.12). Returns every row
+   * Ancestor-scoped filter (see `auditLog` in schema.ts). Returns every row
    * whose write-time ancestor link equals `(ancestorType, ancestorId)`.
    * Used by the project-detail activity feed so the one call returns
    * project rows plus nested entities (worker assignments, attachments).
@@ -110,7 +110,7 @@ export interface AuditListParams {
   ancestorId?: string;
   /**
    * Case-insensitive substring match on `entityLabel`. Min 3 chars so
-   * the server's GIN trigram index can serve the query (api.md §14.2.8).
+   * the server's GIN trigram index can serve the query.
    * Rows with a null label are excluded.
    */
   entityLabelQuery?: string;
@@ -121,7 +121,7 @@ export interface AuditListParams {
   to?: string;
   action?: string;
   /**
-   * Recipient-scoped narrowing (AC-200, ui/management.md §8.13.1). When
+   * Recipient-scoped narrowing (AC-200, ui/management.md §8.13). When
    * `true` the server is expected to return only rows the caller would
    * receive per the resolved notification-rule set (rule-match across
    * enabled rules → recipient resolution includes the caller). When
@@ -180,8 +180,8 @@ export const AUDIT_NO_PROJECT_LABEL = '—';
 
 /**
  * Display value for the project slot — `ancestorEntityLabel` when set,
- * em dash otherwise. AC-339 (dock single-line row) and AC-342 (audit
- * table Projekt column) share this; centralising avoids drift.
+ * em dash otherwise. AC-641: the dock row and the audit
+ * table Projekt column share this; centralising avoids drift.
  */
 export function auditProjectSlot(entry: Pick<AuditEntry, 'ancestorEntityLabel'>): string {
   return entry.ancestorEntityLabel ?? AUDIT_NO_PROJECT_LABEL;

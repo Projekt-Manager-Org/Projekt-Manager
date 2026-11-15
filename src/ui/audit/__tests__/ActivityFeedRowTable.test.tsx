@@ -1,12 +1,12 @@
 /**
- * Aktivität view table row — Projekt column (AC-342) and existing
+ * Aktivität view table row — Projekt column (AC-641) and existing
  * actor / entity / action / payload cells.
  *
  * The full /audit page lives in `AuditManagement.tsx` and is exercised
  * end-to-end by `e2e/audit-management.spec.ts`; this unit-level test
  * pins the row's column-vs-data wiring without dragging in the
  * filter-bar, store, or SSE subscription. Each `it(…)` covers exactly
- * one column-level claim from AC-342 — per the project's one-AC-per-
+ * one column-level claim from AC-641 — per the project's one-AC-per-
  * test convention (review/conventions-tests.md, T-REDU / T-ACBS).
  */
 
@@ -49,7 +49,7 @@ function renderRow(entry: AuditEntry) {
   );
 }
 
-describe('ActivityFeedRowTable — Projekt column (AC-342)', () => {
+describe('ActivityFeedRowTable — Projekt column (AC-641)', () => {
   it('renders the ancestorEntityLabel snapshot in the project cell for a child entity (attachment)', () => {
     renderRow(
       makeEntry({

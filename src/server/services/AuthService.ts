@@ -100,7 +100,7 @@ export class AuthService {
    * drown out the actor-on-entity traffic the activity feed is tuned
    * for (ADR-0021 "high-signal activity feed"). A transaction is still
    * opened so MutatingDatabase's type-gate on the repo write is satisfied
-   * (AC-179's carve-out is expressed as an allowlisted write site, not
+   * (ADR-0021's carve-out is expressed as an allowlisted write site, not
    * a general bypass of the single-write-path helper).
    */
   async updateSelfPreferences(

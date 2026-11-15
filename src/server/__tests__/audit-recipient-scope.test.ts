@@ -347,7 +347,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 / AC-318 — attachment_added rows surface in the scoped feed
+  // AC-200 — attachment_added rows surface in the scoped feed
   // ---------------------------------------------------------------
   //
   // The recipient-scope predicate maps (entity_type, action) to an event
@@ -355,7 +355,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   // completed upload writes an `attachment:add` row on entity_type
   // 'attachment'; with a rule targeting office for
   // `project.attachment_added`, office's scoped feed must include that
-  // row — it is the row the activity dock (AC-318) surfaces live. A
+  // row — it is the row the activity dock (AC-317) surfaces live. A
   // missing CASE arm drops it (fails closed), so the dock would never
   // show file uploads.
   it('includes a completed upload attachment:add row for a configured recipient', async () => {
@@ -475,7 +475,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — recipientScope omitted / 'false' preserves AC-180 feed
+  // AC-200 — recipientScope omitted / 'false' preserves AC-625 feed
   // ---------------------------------------------------------------
   //
   // When `recipientScope` is not 'true', the response must mirror the

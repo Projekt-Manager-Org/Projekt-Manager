@@ -15,7 +15,7 @@
  *     `removed_count` (non-negative; 0 on no-op), `ran_at` (ISO 8601).
  *   - No `audit_log` row is produced — orphans never entered the
  *     domain, so their removal is housekeeping, not a domain event
- *     (AC-179 allowlist clause).
+ *     (audit-mutation check allowlist).
  *   - A storage delete that fails (object already gone, transient
  *     provider error) is logged with `error_hint` and the row is still
  *     removed — the metadata-table cleanliness goal trumps a missing
@@ -31,7 +31,7 @@
  * import).
  *
  * Raw-SQL attachment-row seeding is permitted under `__tests__/` per
- * the AC-179 architecture-check allowlist.
+ * the audit-mutation check allowlist (ADR-0021).
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
@@ -337,7 +337,7 @@ describe('Attachment orphan reaper (AC-408)', () => {
 
   // -------------------------------------------------------------------
   // Audit invariant — reaper does NOT write an audit_log row.
-  // AC-179 allowlists the reaper; AC-407: an upload that never
+  // The audit-mutation check allowlists the reaper; AC-407: an upload that never
   // completes leaves no audit entry.
   // -------------------------------------------------------------------
   it('does not produce an audit_log row for reaped rows', async () => {

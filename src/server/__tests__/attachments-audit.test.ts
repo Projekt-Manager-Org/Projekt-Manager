@@ -1,7 +1,7 @@
 /**
  * API integration tests — attachment audit contract (AC-427, AC-407, AC-240).
  *
- * Pins the single-write-path invariant (AC-177, ADR-0021) as it
+ * Pins the single-write-path invariant (AC-623, ADR-0021) as it
  * applies to the attachment entity:
  *
  *   - Complete (the `pending → ready` finalize) writes exactly one
@@ -9,7 +9,7 @@
  *     `entityId=attachmentId`, and a payload `after` naming attachmentId,
  *     projectId, label, mimeType, sizeBytes. The owning project's
  *     display name is captured in `ancestor_entity_label` (not in the
- *     payload — AC-339 / AC-342), which is the single source consumed
+ *     payload — AC-641), which is the single source consumed
  *     by the push composer (AC-211), the dock, and the /audit Projekt
  *     column. This is the attachment's authoritative entry into the
  *     project.
@@ -43,7 +43,7 @@
  * attachments-architecture.test.ts.
  *
  * Raw-SQL attachment-row seeding is permitted here — the `__tests__/`
- * prefix is allowlisted by the architecture check (AC-179).
+ * prefix is allowlisted by the architecture check (ADR-0021).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -248,7 +248,7 @@ describe('Attachment audit contract (AC-427)', () => {
     expect(row!.actor_kind).toBe('user');
     expect(row!.actor_id).not.toBeNull();
 
-    // Ancestor link (architecture.md §11.12). Attachment rows carry
+    // Ancestor link (see `auditLog` in schema.ts). Attachment rows carry
     // `('project', projectId)` so the per-project activity feed's
     // ancestor-scoped filter picks them up alongside project and
     // project_worker rows in one indexed query.
@@ -265,7 +265,7 @@ describe('Attachment audit contract (AC-427)', () => {
 
     // The owning project's display name is NOT in payload.after — the
     // single source is `ancestor_entity_label` on the audit row itself
-    // (AC-339 / AC-342). The push composer, dock, and /audit
+    // (AC-641). The push composer, dock, and /audit
     // Projekt column all read from there. Assert the absence so a
     // regression that re-duplicates it into the payload is caught.
     expect(payload.after).not.toHaveProperty('projectLabel');
@@ -344,10 +344,10 @@ describe('Attachment audit contract (AC-427)', () => {
     expect(row!.entity_id).toBe(attachmentId);
     expect(row!.action).toBe('attachment:hide');
     expect(row!.actor_kind).toBe('user');
-    // Ancestor link (architecture.md §11.12).
+    // Ancestor link (see `auditLog` in schema.ts).
     expect(row!.ancestor_entity_type).toBe('project');
     expect(row!.ancestor_entity_id).toBe(projectId);
-    // AC-339 / AC-342: ancestor label snapshot equals
+    // AC-641: ancestor label snapshot equals
     // `projectAuditLabel(project)` so the dock and /audit Projekt column
     // render the project name without a JOIN. Regression-guard the change
     // under test (the hide leg was previously asserted only on type+id).
@@ -410,7 +410,7 @@ describe('Attachment audit contract (AC-427)', () => {
   // Snapshot survival — ancestor_entity_label is frozen at write time.
   //
   // The whole point of denormalizing the parent project's label onto
-  // every audit row (architecture.md §11.12) is that the activity feed
+  // every audit row (data-model.md §5.10) is that the activity feed
   // stays readable AFTER the project is renamed or purged. This test
   // pins that guarantee: write an audit row, rename the project, fetch
   // the SAME audit row, assert the label still shows the original

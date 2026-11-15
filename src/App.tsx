@@ -251,7 +251,7 @@ export function App() {
         {/* App-shell activity dock (AC-317/318/319). Mounted as a shell
             sibling — not inside the routed `<main>` — so a view switch
             does not remount it and its collapse state persists across
-            navigation (AC-318). Gated to `audit:read` holders internally. */}
+            navigation (AC-635). Gated to `audit:read` holders internally. */}
         <ActivityDock />
         <Footer />
         <MobileTabBar />

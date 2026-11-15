@@ -397,7 +397,7 @@ export const STRINGS = {
     activityDockTitle: 'Aktivität',
     /**
      * Shortcut hint rendered next to the title in the toggle button so
-     * the affordance is self-documenting (AC-340). Kept in sync with the
+     * the affordance is self-documenting (AC-640). Kept in sync with the
      * Alt+A binding installed via `useGlobalShortcut` in
      * `ActivityDock.tsx`.
      */
@@ -737,7 +737,7 @@ export const STRINGS = {
      */
     emptyStateRecipient:
       'Keine Benachrichtigungen für Sie. Alles anzeigen für den vollständigen Aktivitätsverlauf.',
-    /** Label on the "Alles anzeigen" toggle (AC-200, §8.13.1). */
+    /** Label on the "Alles anzeigen" toggle (AC-200, §8.13). */
     toggleShowAll: 'Alles anzeigen',
     detailsShow: 'Details anzeigen',
     detailsHide: 'Details ausblenden',

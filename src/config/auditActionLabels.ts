@@ -1,7 +1,7 @@
 /**
  * German labels for audit-log actions.
  *
- * Mapping from the API's action vocabulary (api.md §14.2.8, data-model.md
+ * Mapping from the API's action vocabulary (verification.md §15.23, data-model.md
  * §5.10) to a user-facing German label rendered in both the project-
  * detail activity feed (ui/workflow-views.md §8.4.1) and the global
  * Aktivität view (ui/management.md §8.13).

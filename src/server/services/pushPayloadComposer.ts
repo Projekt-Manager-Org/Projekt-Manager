@@ -143,12 +143,12 @@ export function composePushPayload(
 
     case 'project.attachment_added': {
       // Body identifies the affected project via the row-level
-      // `ancestorEntityLabel` snapshot (AC-211 / AC-339) so the
+      // `ancestorEntityLabel` snapshot (AC-211 / AC-641) so the
       // notification names the project even after a later rename /
       // archive. The click target is the project — resolved from the
       // audit row's ANCESTOR link, NOT `entityId`: an `attachment` row's
       // `entityId` is the attachment, the ancestor is `('project',
-      // projectId, projectLabel)` (architecture.md §11.12).
+      // projectId, projectLabel)` (data-model.md §5.10).
       const projectLabel = auditRow?.ancestorEntityLabel ?? null;
       const body = projectLabel ? `Neue Datei in ${projectLabel}` : 'Neue Datei hinzugefügt';
       return { title, body, url: projectUrlFromAncestor(auditRow) };
@@ -200,7 +200,7 @@ function projectUrl(row: AuditLogRow | null): string {
  * (`ancestorEntityId`) rather than `entityId`. Required for
  * `project.attachment_added`: an `attachment` row's `entityId` is the
  * attachment, while the ancestor is `('project', projectId)`
- * (architecture.md §11.12, AC-211). Falls back to `/` only when the
+ * (data-model.md §5.10, AC-211). Falls back to `/` only when the
  * ancestor is absent — a defensive branch the catalog should never hit,
  * since every `attachment:add` row carries a project ancestor (AC-427).
  */

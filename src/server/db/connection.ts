@@ -30,8 +30,8 @@ export type TransactionalDatabase = Database | TxHandle;
 /**
  * Transaction handle ONLY — **not** a plain `Database`. Repository WRITE
  * functions on audited tables accept this so the type system enforces
- * AC-179: a mutation can only be authored from inside a transaction,
- * i.e. from inside `mutate()` / `mutateInTx()` (ADR-0021). Attempting to
+ * ADR-0021: a mutation can only be authored from inside a transaction,
+ * i.e. from inside `mutate()` / `mutateInTx()`. Attempting to
  * call a write with a plain `Database` fails `tsc` — the bypass the
  * static arch check can't reliably detect (the scan can't distinguish
  * `db.insert(...)` from `tx.insert(...)`).

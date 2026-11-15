@@ -193,8 +193,8 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
       const getRes = await authGet(ownerToken, `/api/projects/${id}`);
       expect(getRes.json().siteAddress).toEqual(SITE_BERLIN);
 
-      // AC-177 ties the mutation to the single-write-path helper
-      // (mutate(), AC-177): a successful PATCH that changes
+      // AC-623 ties the mutation to the single-write-path helper
+      // (mutate(), AC-623): a successful PATCH that changes
       // siteAddress must produce an `update` audit row scoped to this
       // project. Pattern mirrors the audit-row test in projects-restore.test.ts.
       const auditRes = await authGet(
@@ -228,7 +228,7 @@ describe('Project siteAddress (Baustelle) — POST + PATCH', () => {
       const getRes = await authGet(ownerToken, `/api/projects/${id}`);
       expect(getRes.json().siteAddress).toBeNull();
 
-      // Clearing changes the stored value, so AC-177 owes an audit row
+      // Clearing changes the stored value, so AC-623 owes an audit row
       // here too — one `update`, recording the set → null transition.
       const auditRes = await authGet(
         ownerToken,

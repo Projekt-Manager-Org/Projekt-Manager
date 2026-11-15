@@ -9,7 +9,7 @@
  * Separate from the session reaper because:
  *   - cadence differs (reaper = minutes; retention = daily by default);
  *   - log shape differs (reaper = `info(msg: string)`; retention =
- *     `ServiceLogger.info(ctx, event)` per AC-184);
+ *     `ServiceLogger.info(ctx, event)` per AC-633);
  *   - the failure-counter state is per-job by design — a sustained
  *     session-reap failure should not silence retention, and vice
  *     versa.
@@ -33,7 +33,7 @@ import type { ServiceLogger } from './services/Logger.js';
 /**
  * Operational-log event names emitted by the scheduler. Kebab-case to
  * stay consistent with the audit subsystem's AC-pinned events
- * `audit-retention-cleanup` (AC-184) and `audit-publisher-handler-error`
+ * `audit-retention-cleanup` (AC-633) and `audit-publisher-handler-error`
  * (AC-183). Not AC-pinned themselves — rename with care regardless,
  * operators grep the log for these strings.
  */
@@ -62,7 +62,7 @@ export function startAuditRetentionScheduler(
       sustainedFailure: EVENT_SUSTAINED_FAILURE,
       recovered: EVENT_RECOVERED,
     },
-    // The service emits its own AC-184 log line. The shared sweeper
+    // The service emits its own AC-633 log line. The shared sweeper
     // only adds recovery/failure lines around it. Wrapper drops the
     // non-void return so it matches the factory's `Promise<void>`
     // contract — the result object is consumed by the service's own

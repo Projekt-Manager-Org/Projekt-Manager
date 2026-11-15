@@ -1,5 +1,5 @@
 /**
- * Audit routes — read-only (api.md §14.2.8).
+ * Audit routes — read-only (AC-642).
  *
  * The audit surface has only two operations:
  *   - GET /api/audit        → list with filters, offset/limit, deterministic order.
@@ -52,7 +52,7 @@ export function auditRoutes(db: Database) {
               limit: { type: 'integer', minimum: 1, maximum: 1000 },
               entityType: { type: 'string', enum: [...AUDIT_ENTITY_TYPES] },
               entityId: { type: 'string', format: 'uuid' },
-              // Ancestor-scoped filter (architecture.md §11.12) — powers
+              // Ancestor-scoped filter (see `auditLog` in schema.ts) — powers
               // the project-detail activity feed by pulling every row
               // scoped to a project in one indexed predicate.
               ancestorType: { type: 'string', enum: [...AUDIT_ENTITY_TYPES] },
@@ -67,7 +67,7 @@ export function auditRoutes(db: Database) {
               to: { type: 'string', format: 'date-time' },
               action: { type: 'string', enum: [...AUDIT_ACTIONS] },
               // verification.md AC-200 — "Alles anzeigen" toggle. Absent
-              // or 'false' = full RBAC-scoped feed (AC-180); 'true' =
+              // or 'false' = full RBAC-scoped feed (AC-625); 'true' =
               // only rows whose resolved dispatch recipient set would
               // include the caller. A value outside the enum fails
               // schema validation → 422 VALIDATION_ERROR, matching the
@@ -97,8 +97,7 @@ export function auditRoutes(db: Database) {
         const from = query.from !== undefined ? new Date(query.from) : undefined;
         const to = query.to !== undefined ? new Date(query.to) : undefined;
         if (from !== undefined && to !== undefined && from.getTime() > to.getTime()) {
-          // Inverted date range is a validation failure per api.md §14.2.8
-          // ("from/to inverted (to < from) → 422 VALIDATION_ERROR").
+          // An inverted date range (to < from) is a validation failure.
           throw validationError(STRINGS.errors.invalidInput);
         }
 

@@ -1,6 +1,6 @@
 /**
  * Table-row variant of the audit-log row, used by the global Aktivität
- * view (ui/management.md §8.13.1 — prescriptive column list).
+ * view (ui/management.md §8.13 — prescriptive column list).
  *
  * Renders the same information as `ActivityFeedRow` but split across
  * `<td>` cells so the columns line up across rows. The drawer content
@@ -11,7 +11,7 @@
  * cleaner sibling-row form. CSS gives the open drawer enough width
  * via a negative right margin.
  *
- * E2E data-* contract (AC-185 / AC-187): `data-action`,
+ * E2E data-* contract (AC-626 / AC-182): `data-action`,
  * `data-has-payload`, `data-created-at`.
  */
 
@@ -94,11 +94,11 @@ export function ActivityFeedRowTable({ entry }: Props) {
         {actor.label}
         {actor.reason && <span className={styles.actorReason}> ({actor.reason})</span>}
       </td>
-      {/* AC-342: parent project's label snapshot for child entities,
+      {/* AC-641: parent project's label snapshot for child entities,
           duplicated from `entityLabel` for project rows, em dash for
           rows without a project ancestor (customer, user,
           company_profile, data_import). Shared with the dock's
-          compact row via `auditProjectSlot` (AC-339). */}
+          compact row via `auditProjectSlot` (AC-641). */}
       <td className={tableStyles.project} data-testid="audit-row-project">
         {auditProjectSlot(entry)}
       </td>

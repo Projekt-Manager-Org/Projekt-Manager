@@ -9,7 +9,7 @@
  *     are hard-DELETEd. Rows at `status='ready'` or `'pending'` of any
  *     age are untouched — the hidden reaper's lane is `'hidden'` only.
  *   - Each removed row produces exactly one `audit_log` entry written
- *     through `mutate()` (single-write-path, AC-177): `actorKind='system'`,
+ *     through `mutate()` (single-write-path, AC-623): `actorKind='system'`,
  *     `action='attachment:purge'`, `actorReason='hidden-reaper'`,
  *     `entityType='attachment'`, `payload.before` carries the pre-purge
  *     row state per §5.10's payload-shape rules, `payload.after = {}`
@@ -31,7 +31,7 @@
  * of `attachments-reaper.test.ts`).
  *
  * Raw-SQL attachment-row seeding is permitted under `__tests__/` per
- * the AC-179 architecture-check allowlist. We need raw SQL to backdate
+ * the audit-mutation check allowlist (ADR-0021). We need raw SQL to backdate
  * `hidden_at` — the service surface won't let us.
  *
  * NOTE for the implementer: `'attachment:purge'` is not yet a member of
@@ -374,12 +374,12 @@ describe('Attachment hidden reaper (AC-426)', () => {
       expect(row!.actor_kind).toBe('system');
       expect(row!.actor_id).toBeNull();
       expect(row!.actor_reason).toBe('hidden-reaper');
-      // Ancestor link (architecture.md §11.12) — attachment rows carry
+      // Ancestor link (see `auditLog` in schema.ts) — attachment rows carry
       // (project, projectId) so the per-project activity feed picks them
       // up alongside project + project_worker rows in one indexed query.
       expect(row!.ancestor_entity_type).toBe('project');
       expect(row!.ancestor_entity_id).toBe(seeded.projectId);
-      // AC-339 / AC-342: the reaper also snapshots the owning project's
+      // AC-641: the reaper also snapshots the owning project's
       // canonical `<number> <title>` label so the dock + audit table can
       // render the Projekt slot without a runtime JOIN even for
       // system-actor `attachment:purge` rows.

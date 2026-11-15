@@ -1,4 +1,4 @@
-/* Single-line dock row (AC-339). Truncates with ellipsis on overflow. */
+/* Single-line dock row (AC-639). Truncates with ellipsis on overflow. */
 
 .row {
   display: flex;

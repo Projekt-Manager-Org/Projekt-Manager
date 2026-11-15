@@ -158,7 +158,7 @@ export async function bootstrapAdminIfEmpty(
   // Per ADR-0021, every domain-entity write — including the first-run
   // admin — must emit an atomic audit row. The `system` actor kind with
   // `first-run-bootstrap` reason makes the bootstrap visible in the
-  // activity feed (AC-178). The DB CHECK constraint rejects an empty
+  // activity feed (AC-624). The DB CHECK constraint rejects an empty
   // `actor_reason` for safety in depth.
   // ---------------------------------------------------------------
   const displayName = config.displayName?.trim() || username;

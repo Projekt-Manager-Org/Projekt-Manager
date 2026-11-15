@@ -248,7 +248,7 @@ const ROUTE_DEFINITIONS: readonly RouteDefinition[] = [
     // View gated on `audit:read` per ui/index.md §8.7.1 — owner and
     // office under the default matrix. Worker and bookkeeper lack
     // `audit:read` and do not see the tab. The per-role visible row set
-    // is narrowed server-side (api.md §14.2.8) by the destructive-action
+    // is narrowed server-side (verification.md §15.23) by the destructive-action
     // scope, so this gate is the nav-visibility concern; data exposure
     // is authoritative on the server.
     view: 'aktivitaet',

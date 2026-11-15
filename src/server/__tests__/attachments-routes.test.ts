@@ -2579,7 +2579,7 @@ interface SeedReadySpec {
  * Insert N `ready` attachment rows directly against the DB so the
  * bulk-fetch / download-url arms have predictable fixtures without
  * going through the init→complete flow. Returns the new ids in order.
- * `__tests__/` is allowlisted for AC-179's architecture check.
+ * `__tests__/` is allowlisted for the audit-mutation architecture check.
  *
  * Each row carries a REAL `wrapped_dek` (and `wrapped_thumb_dek` for
  * photos) — the routes that unwrap on read (`download-url`,

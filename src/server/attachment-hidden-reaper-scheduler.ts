@@ -9,7 +9,7 @@
  * Single-process invariant (ADR-0021). Multi-replica deployments
  * would need a lease at this caller site.
  *
- * The reaper service routes deletions through `mutate()` (AC-177);
+ * The reaper service routes deletions through `mutate()` (AC-623);
  * the architecture-check allowlist in `scripts/check-audit-mutations.sh`
  * therefore does not name this module nor the reaper service — both
  * write through the helper like any other audited path.

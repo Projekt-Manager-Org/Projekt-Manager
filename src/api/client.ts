@@ -550,7 +550,7 @@ export const extractApi = {
 };
 
 /**
- * Audit read surface (api.md §14.2.8).
+ * Audit read surface (verification.md §15.23).
  *
  * Read-only: `list` and `get` only. The per-role response shaping and
  * scope filtering happen server-side; the client receives the already-

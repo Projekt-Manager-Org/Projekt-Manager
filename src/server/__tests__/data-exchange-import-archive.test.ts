@@ -184,7 +184,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   // it). Mirrors data-exchange-export-archive.test.ts's helper. Returns
   // the row id + the original plaintext for the byte-equality check.
   // Raw-SQL attachment seeding is allowlisted under __tests__/ per the
-  // AC-179 architecture check.
+  // ADR-0021 architecture check.
   // -------------------------------------------------------------------
   async function seedReadyAttachment(opts: {
     plaintext: Buffer;

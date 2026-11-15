@@ -1,6 +1,6 @@
 /**
  * `useGlobalShortcut` — Vitest + React Testing Library coverage for the
- * primitive that powers the dock's Alt+A toggle (AC-340) and any future
+ * primitive that powers the dock's Alt+A toggle (AC-640) and any future
  * shell-level shortcut. The hook's contract:
  *
  *   - Fires the callback only when modifier flags match exactly.

@@ -2,7 +2,7 @@
  * Install a window-level `keydown` shortcut, suppressed while focus is
  * inside an editable affordance.
  *
- * Pinned by [verification.md AC-340](../../docs/spec/verification.md#1532-activity-dock):
+ * Pinned by [verification.md AC-640](../../docs/spec/verification.md#1532-activity-dock):
  *   - Handler fires only when ALL the modifier flags match exactly
  *     (`alt`, `shift`, `ctrl`, `meta`).
  *   - Handler calls `event.preventDefault()` BEFORE invoking the
@@ -36,7 +36,7 @@ export interface GlobalShortcut {
 }
 
 /**
- * Editable-affordance focus detector (AC-340). A return of `true`
+ * Editable-affordance focus detector (AC-640). A return of `true`
  * suppresses the shortcut.
  *
  * Notes:

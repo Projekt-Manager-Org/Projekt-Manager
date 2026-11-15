@@ -191,7 +191,7 @@ export async function isCustomerInScope(
 //     Owner sees every audit entry. Office (the only other role that
 //     holds `audit:read` under the current matrix) does NOT see
 //     purges / user-deletes / user-role-mutations — those are owner-
-//     only per AC-182 / AC-187.
+//     only per AC-182.
 //
 // The reachability predicate that used to carve out worker-visible
 // rows was removed when workers lost `audit:read`. Audit is an

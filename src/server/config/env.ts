@@ -199,10 +199,10 @@ export const envSchema = z.object({
   // environments that want tighter revocation latency.
   SESSION_CLEANUP_INTERVAL_MINUTES: z.coerce.number().int().positive().default(60),
   // Audit-log retention window in days — [C] per architecture.md §12.2
-  // and data-model.md §6.10. When unset, the build-time default in
+  // and AC-632, AC-633. When unset, the build-time default in
   // `src/config/auditRetention.ts` (90 d) applies. Coerced to integer
   // because a fractional day window makes no sense for a rolling
-  // cleanup and the AC-184 log line types `window_days` as integer.
+  // cleanup and the AC-633 log line types `window_days` as integer.
   // preprocess: compose forwards this as `${AUDIT_RETENTION_WINDOW_DAYS:-}`,
   // so an unset var arrives as "" — which `z.coerce.number()` turns into 0
   // and `.positive()` then rejects. Map "" → undefined so .optional() takes

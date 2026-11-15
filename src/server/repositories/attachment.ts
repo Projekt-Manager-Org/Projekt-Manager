@@ -3,8 +3,8 @@
  *
  * Writes take `MutatingDatabase` (a transaction handle only; see
  * `src/server/db/connection.ts`) so a caller bypassing the service-
- * layer `mutate()` helper fails at tsc — AC-179's primary build-time
- * seam (ADR-0021). Reads accept `Database | TxHandle` via the
+ * layer `mutate()` helper fails at tsc — ADR-0021's primary build-time
+ * seam. Reads accept `Database | TxHandle` via the
  * `TransactionalDatabase` alias for parity with other repos.
  *
  * The `attachmentScopeForCaller` predicate in `scope.ts` lets worker-

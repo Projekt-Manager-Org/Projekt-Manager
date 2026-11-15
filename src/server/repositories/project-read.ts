@@ -478,7 +478,7 @@ export async function getProject(
  * Insert a single project row. Does NOT insert project_workers — the
  * service layer splits the worker-assignment writes into individual
  * `project_worker` audit events via `addProjectWorker` so each
- * assignment produces its own audit row (AC-177 grain).
+ * assignment produces its own audit row (AC-623 grain).
  *
  * Runs against the provided transactional handle so the insert shares
  * the caller's transaction (ProjectCrudService.runCreateWithAudit).
@@ -532,7 +532,7 @@ export async function insertProject(
  * Apply the project-level field update (title, siteAddress, estimatedValue, notes).
  * Does NOT handle worker reassignment — that is split out into a separate
  * `replaceProjectWorkers` call so each add/remove can produce its own
- * audit row (AC-177 "every mutation produces exactly one audit_log row",
+ * audit row (AC-623 "every mutation produces exactly one audit_log row",
  * applied at the project_worker grain).
  *
  * Returns null when the project does not exist or is soft-deleted. The

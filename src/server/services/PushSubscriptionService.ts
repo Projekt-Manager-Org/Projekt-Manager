@@ -13,7 +13,7 @@
  *
  * Writes land outside `mutate()` because push subscriptions are NOT in
  * `AuditEntityType` — they're transport state, not a domain entity. The
- * AC-179 type-gate is still honoured (a transaction is required for the
+ * ADR-0021 type-gate is still honoured (a transaction is required for the
  * MutatingDatabase handle).
  */
 

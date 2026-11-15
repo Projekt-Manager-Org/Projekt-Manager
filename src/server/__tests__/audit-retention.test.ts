@@ -1,5 +1,5 @@
 /**
- * Audit retention cleanup — integration test for AC-184.
+ * Audit retention cleanup — integration test for AC-632, AC-633.
  *
  * Pins the cleanup contract against a real Postgres instance:
  *   - removes `audit_log` rows older than the configured window (90 d [C]);
@@ -28,7 +28,7 @@ const migrationsFolder = path.resolve(__dirname, '../db/migrations');
  * Insert a synthetic audit row with an explicit `created_at`. Bypasses
  * the service layer deliberately — the retention test needs control of
  * the timestamp, and `src/server/__tests__/**` is in the allowlist
- * defined by AC-179 / the architecture-check script.
+ * defined by the architecture-check script (ADR-0021).
  */
 async function insertRowAt(db: Database, createdAt: Date, entityId: string): Promise<void> {
   await db.execute(sql`
@@ -45,7 +45,7 @@ async function countAuditRows(db: Database): Promise<number> {
   return (res.rows[0] as { c: number }).c;
 }
 
-describe('Audit retention cleanup (AC-184)', () => {
+describe('Audit retention cleanup (AC-632, AC-633)', () => {
   let db: Database;
   let pool: pg.Pool;
 
@@ -105,7 +105,7 @@ describe('Audit retention cleanup (AC-184)', () => {
     // Post-conditions on the table: two rows remain (inside window);
     // two were deleted (outside window). The cleanup must NOT itself
     // write an audit row — that would break the "append-only from the
-    // application" invariant documented in data-model.md §6.10.
+    // application" invariant (ADR-0021).
     const remaining = await countAuditRows(db);
     expect(remaining).toBe(2);
 
@@ -152,7 +152,7 @@ describe('Audit retention cleanup (AC-184)', () => {
     // Event discriminator is fixed — operators grep for it.
     expect(eventName).toBe('audit-retention-cleanup');
 
-    // Structured fields per data-model.md §6.10.
+    // Structured fields per AC-633.
     const ctx = context as Record<string, unknown>;
     expect(ctx.event).toBe('audit-retention-cleanup');
     expect(ctx.window_days).toBe(90);

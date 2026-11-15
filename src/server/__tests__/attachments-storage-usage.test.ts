@@ -20,9 +20,9 @@
  *     archived, zero when there are no attachments.
  *
  * Raw-SQL attachment-row seeding is permitted under `__tests__/` per
- * the AC-179 architecture-check allowlist (mirrors the pattern in
+ * the audit-mutation check allowlist (ADR-0021); mirrors the pattern in
  * `attachments-hidden-reaper.test.ts` which also drives raw SQL inserts
- * to backdate row timestamps the service surface won't allow).
+ * to backdate row timestamps the service surface won't allow.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';

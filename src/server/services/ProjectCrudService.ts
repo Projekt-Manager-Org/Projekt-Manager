@@ -193,7 +193,7 @@ export class ProjectCrudService {
    * Creates the project + optional worker assignments inside a single
    * transaction, emitting one `create` audit row for the project and
    * one `create` row per assigned worker. All commits happen atomically;
-   * audit dispatch runs after commit (AC-177, AC-183).
+   * audit dispatch runs after commit (AC-623, AC-183).
    */
   private async runCreateWithAudit(
     data: {
@@ -255,7 +255,7 @@ export class ProjectCrudService {
               estimatedValue: row.estimatedValue,
               notes: row.notes,
             },
-            // Project rows self-ancestor (architecture.md §11.12).
+            // Project rows self-ancestor (see `auditLog` in schema.ts).
             ancestorEntityType: 'project',
             ancestorEntityId: row.id,
             ancestorEntityLabel: projectAuditLabel(row),
@@ -282,7 +282,7 @@ export class ProjectCrudService {
               value: null,
               before: {},
               after: { projectId: inserted.id, userId: workerId, displayName },
-              // Nested entity: ancestor = project (architecture.md §11.12).
+              // Nested entity: ancestor = project (see `auditLog` in schema.ts).
               ancestorEntityType: 'project',
               ancestorEntityId: inserted.id,
               ancestorEntityLabel: projectAuditLabel(inserted),
@@ -441,7 +441,7 @@ export class ProjectCrudService {
    * only `assignedWorkerIds` without touching other fields, NO
    * `update` audit row is emitted for the project itself; only the
    * `project_worker` audit rows land. This matches the grain pinned
-   * in AC-177 (count(project_worker audit rows) == count of changes).
+   * in AC-623 (count(project_worker audit rows) == count of changes).
    */
   async updateProject(
     id: string,
@@ -531,7 +531,7 @@ export class ProjectCrudService {
                 value: updated,
                 before,
                 after,
-                // Self-ancestor for a project row (architecture.md §11.12).
+                // Self-ancestor for a project row (see `auditLog` in schema.ts).
                 ancestorEntityType: 'project',
                 ancestorEntityId: id,
                 ancestorEntityLabel: projectAuditLabel(updated),

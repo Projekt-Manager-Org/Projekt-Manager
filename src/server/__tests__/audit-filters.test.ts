@@ -2,7 +2,7 @@
  * API integration tests: Audit list filter `entityLabelQuery`.
  *
  * Covers the substring filter on `audit_log.entity_label` exposed at
- * `GET /api/audit` (api.md §14.2.8, ui/management.md §8.13.2). The filter
+ * `GET /api/audit` (verification.md §15.23, ui/management.md §8.13). The filter
  * replaces the UUID `entityId` input in the Aktivität view — the API still
  * accepts `entityId` for the project-detail contextual feed, but the
  * filter-bar surface is now substring-based.

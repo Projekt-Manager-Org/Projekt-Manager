@@ -246,7 +246,7 @@ async function start(): Promise<void> {
     },
   });
 
-  // Schedule audit-log retention cleanup (AC-184). Default cadence is
+  // Schedule audit-log retention cleanup (AC-632). Default cadence is
   // daily (1440 min) — retention is a cleanup, not a latency-sensitive
   // sweep, and the DELETE rides the `audit_log_created_at_idx` so cost
   // stays flat. Window is the [C] default unless

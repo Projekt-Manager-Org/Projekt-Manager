@@ -7,8 +7,8 @@
  * module owns the singleton UPDATE that powers the `PUT` upsert
  * (data-model.md §5.17, api.md §14.2.15, ADR-0026).
  *
- * Writes accept `MutatingDatabase` so AC-179's build-time seam holds
- * (ADR-0021): only a caller routing through the service-layer
+ * Writes accept `MutatingDatabase` so ADR-0021's build-time seam holds:
+ * only a caller routing through the service-layer
  * `mutate()` helper can author the UPDATE.
  */
 

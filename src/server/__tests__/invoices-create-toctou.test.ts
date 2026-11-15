@@ -252,7 +252,7 @@ describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup 
     // And no audit row was committed for the failed call either —
     // AC-285 audit-row promise pairs to the SUCCESSFUL `mutate()` path
     // only; a rejection inside `run(tx)` rolls back both the domain
-    // INSERT and the audit INSERT (mutate.ts AC-177 atomicity).
+    // INSERT and the audit INSERT (mutate.ts AC-623 atomicity).
     const { db: db2, pool: pool2 } = createDatabase();
     try {
       const r = await db2.execute(

@@ -46,7 +46,7 @@ export const IS_TEST_ONLY_ROLE: Record<Role, boolean> = {
 // data:restore gates the unified import — owner-only because a restore
 // replaces all business data in a single transaction.
 //
-// audit:read gates the audit surface (api.md §14.2.8). Owner and office
+// audit:read gates the audit surface (verification.md §15.23). Owner and office
 // hold it; worker and bookkeeper do not. The destructive-action predicate
 // in scope.ts narrows office-visible rows further (purges, user deletes,
 // roles mutations are owner-only). The reachability predicate for workers

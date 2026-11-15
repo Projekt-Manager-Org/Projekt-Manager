@@ -1,5 +1,5 @@
 /**
- * Activity dock compact row — AC-339.
+ * Activity dock compact row — AC-639 (one line), AC-641 (project slot).
  *
  * The dock surfaces the live audit feed as a glanceable strip — one
  * line per row, no payload drawer. This unit suite pins the row's
@@ -40,7 +40,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe('ActivityFeedRowCompact — AC-339 single-line shape', () => {
+describe('ActivityFeedRowCompact — AC-639 single-line shape, AC-641 project slot', () => {
   it('renders Aktor · Projekt · Beschreibung in one row with the actor display name', () => {
     render(<ActivityFeedRowCompact entry={makeEntry()} />);
     const row = screen.getByTestId('activity-feed-row-audit-1');

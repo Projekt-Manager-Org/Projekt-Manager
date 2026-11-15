@@ -36,7 +36,7 @@
   font-weight: 600;
 }
 
-/* Shortcut affordance hint rendered inline next to the title — AC-340.
+/* Shortcut affordance hint rendered inline next to the title — AC-640.
    Lighter weight so the title still anchors the visual hierarchy. */
 .shortcutHint {
   font-weight: 400;

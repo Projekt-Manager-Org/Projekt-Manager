@@ -50,7 +50,7 @@ export function extractProjectId(
   //     project id as entity id so the feed renders "Projekt X ·
   //     Mitarbeiter Y zugewiesen" without a second lookup).
   //   - `attachment` rows: entityId is the ATTACHMENT id; the project id
-  //     lives in the ancestor link (architecture.md §11.12). Use it so
+  //     lives in the ancestor link (see `auditLog` in schema.ts). Use it so
   //     `includeAssignedWorkers` rules resolve against the right project.
   return row.entityType === 'attachment' ? row.ancestorEntityId : row.entityId;
 }

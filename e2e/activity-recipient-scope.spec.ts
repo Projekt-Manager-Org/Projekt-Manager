@@ -6,14 +6,14 @@ import { clickView } from './nav-helpers';
  * E2E — Aktivität view's recipient-scoped default + "Alles anzeigen" toggle.
  *
  * Pins AC-200 from `docs/spec/verification.md §15.24` and the default
- * rendering rules in `docs/spec/ui/management.md §8.13.1`.
+ * rendering rules in `docs/spec/ui/management.md §8.13`.
  *
  * Default view: only rows where the caller is a resolved notification-
  * rule recipient. `Alles anzeigen` toggle switches to the full RBAC-
  * scoped feed. Toggle state is local-only; navigation away and back
  * restores the default.
  *
- * Empty-state copy differs from AC-185:
+ * Empty-state copy differs from AC-627:
  *   - Rules exist + caller is not a recipient → `"Keine
  *     Benachrichtigungen für Sie. `Alles anzeigen` für den vollständigen
  *     Aktivitätsverlauf."`

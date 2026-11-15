@@ -2,7 +2,7 @@
  * Audit-log retention window.
  *
  * Rolling age (days) at which `audit_log` rows are removed by the
- * scheduled cleanup job (data-model.md §6.10, AC-184). The cleanup
+ * scheduled cleanup job (AC-632). The cleanup
  * is the table's only delete path — every other application path is
  * append-only.
  *

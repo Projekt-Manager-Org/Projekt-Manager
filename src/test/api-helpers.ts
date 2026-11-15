@@ -256,7 +256,7 @@ export async function createExpiredSession(userId: string): Promise<string> {
  * updatedBy to be null for system/test-fixture actions (data-model.md §5.5).
  */
 export async function deactivateUser(userId: string): Promise<void> {
-  // The repo write requires a tx handle (AC-179 type gate — see
+  // The repo write requires a tx handle (ADR-0021 type gate — see
   // connection.ts MutatingDatabase). Test fixtures may bypass the
   // service-layer `mutate()` wrapper but still must execute inside a
   // transaction for type safety.
@@ -268,7 +268,7 @@ export async function deactivateUser(userId: string): Promise<void> {
 /**
  * Make every `project_workers` insert for `userId` fail inside its
  * transaction — after the project row and its audit row are written — so
- * a rollback test has something to undo (AC-99, AC-177). The user must be
+ * a rollback test has something to undo (AC-99, AC-623). The user must be
  * an active worker to pass the assignability check (AC-515). Returns the
  * cleanup. Safe here: each test file owns its database.
  */

@@ -1,13 +1,13 @@
 /**
  * Shared activity-feed container — used by both the project-detail
  * panel (stacked list per ui/workflow-views.md §8.4.1) and the global
- * Aktivität view (table per ui/management.md §8.13.1).
+ * Aktivität view (table per ui/management.md §8.13).
  *
  * Responsibilities:
  *  - Instantiate a per-mount audit store (see `createAuditStore()`).
  *  - Trigger a fetch with the passed-in filter on mount and on filterKey change.
  *  - Render the empty state when the result set is empty — default
- *    "Keine Aktivität" (AC-185) or the caller-supplied override used by
+ *    "Keine Aktivität" (AC-627) or the caller-supplied override used by
  *    the global Aktivität view's recipient-scoped mode (AC-200).
  *  - Render rows in the requested layout.
  *  - Offer an "Ältere anzeigen" action when more rows remain.
@@ -35,8 +35,8 @@ import tableStyles from './AuditTable.module.css';
 interface Props {
   /**
    * Filter applied to the first fetch. For the project-detail feed this
-   * is `{ ancestorType: 'project', ancestorId: '…' }` (architecture.md
-   * §11.12); for the global view it is the set of active filters.
+   * is `{ ancestorType: 'project', ancestorId: '…' }` (AC-631); for the
+   * global view it is the set of active filters.
    */
   filters: AuditListParams;
   /**
@@ -57,10 +57,10 @@ interface Props {
    * Row layout. `list` is the stacked form used by the project-detail
    * panel (ui/workflow-views.md §8.4.1 describes a one-line-per-entry
    * list). `table` is the column form used by the global Aktivität view
-   * (ui/management.md §8.13.1 names columns: timestamp, actor, project,
+   * (ui/management.md §8.13 names columns: timestamp, actor, project,
    * entity, action, payload). `compact` is the single-line glanceable
    * form used by the app-shell activity dock (ui/index.md §8.1.2,
-   * AC-339) — `Aktor · Projekt · Beschreibung` with the timestamp
+   * AC-639) — `Aktor · Projekt · Beschreibung` with the timestamp
    * aligned right, no detail drawer.
    */
   layout?: 'list' | 'table' | 'compact';
@@ -69,7 +69,7 @@ interface Props {
    * under recipient-scoped mode (AC-200) to distinguish "rules exist but
    * none admit the caller" from "genuinely empty feed". When omitted the
    * feed falls back to the default `"Keine Aktivität"` copy pinned by
-   * AC-185 — the per-project feed and the `Alles anzeigen` branch of the
+   * AC-627 — the per-project feed and the `Alles anzeigen` branch of the
    * global view both rely on the default.
    */
   emptyState?: { testId: string; message: string };
@@ -78,7 +78,7 @@ interface Props {
    * omitted the button carries no test-id (the project-detail feed and
    * the global Aktivität view do not target it). The app-shell activity
    * dock sets `activity-dock-load-older` so its e2e contract can page
-   * older entries (AC-318) without changing the existing consumers.
+   * older entries (AC-628) without changing the existing consumers.
    */
   loadOlderTestId?: string;
 }
