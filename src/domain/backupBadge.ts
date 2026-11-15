@@ -28,10 +28,10 @@
  *                                        the backup; see the reason split below)
  *   - `mirrorError` set              → { kind: 'amber', reason: 'mirror-failed' }
  *                                       (the out-of-band status copy is stale)
- *   - drill age > drillAmberDays     → { kind: 'amber', reason: 'drill-stale' }
  *   - backup age > backupAmberDays   → { kind: 'amber', reason: 'backup-aging' }
- *                                       (only reachable when the drill is green —
- *                                        drill amber takes precedence above)
+ *   - drill age > drillAmberDays     → { kind: 'amber', reason: 'drill-stale' }
+ *                                       (only reachable when the backup is fresh —
+ *                                        its label claims "Backup: aktuell")
  *   - otherwise                      → { kind: 'green' }
  *
  * The label on the 'unknown' branch is a German UI string per AC-612 —
@@ -206,22 +206,20 @@ export function deriveBadgeState(
     return { kind: 'amber', reason: 'mirror-failed', lastBackupAt: status.lastBackupAt };
   }
 
-  if (drillAgeDays > thresholds.drillAmberDays) {
-    return { kind: 'amber', reason: 'drill-stale', lastBackupAt: status.lastBackupAt };
-  }
-
-  // Amber backup-age window — only applies when drill is green. Drill
-  // age in amber takes precedence (documented above).
+  // Amber backup-age window, ranked above drill amber: the 'drill-stale'
+  // label reads "Backup: aktuell, …", which holds only once this row has
+  // ruled out an aging backup.
   if (status.lastBackupAt !== undefined) {
     const backupAgeDays = daysBetween(new Date(status.lastBackupAt), now);
     if (backupAgeDays > thresholds.backupAmberDays) {
-      // Distinct from 'drill-stale': the backup itself is aging while the
-      // drill is still fresh. The two shared a reason string while the
-      // reason only fed a badge tooltip, but the threshold monitor now
-      // renders it into a push body — collapsing them would tell the
-      // owner the drill is overdue when the backup is the problem.
+      // Distinct from 'drill-stale': the reason is rendered into a push
+      // body, so a shared one would send the owner to the wrong subsystem.
       return { kind: 'amber', reason: 'backup-aging', lastBackupAt: status.lastBackupAt };
     }
+  }
+
+  if (drillAgeDays > thresholds.drillAmberDays) {
+    return { kind: 'amber', reason: 'drill-stale', lastBackupAt: status.lastBackupAt };
   }
 
   return { kind: 'green', lastBackupAt: status.lastBackupAt };

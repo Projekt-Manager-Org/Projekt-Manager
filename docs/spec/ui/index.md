@@ -58,8 +58,8 @@ The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `A
   | The last backup run is more full days old than the backup red threshold       | red    | `Backup: veraltet`                           |
   | The last drill is more full days old than the drill red threshold             | red    | `Drill: überfällig`                          |
   | The last status-mirror write failed                                           | amber  | `Backup: Statuskopie fehlgeschlagen`         |
-  | The last drill is more full days old than the drill amber threshold           | amber  | `Backup: aktuell, Drill-Schlüssel neu laden` |
   | The last backup run is more full days old than the backup amber threshold     | amber  | `Backup: wird alt`                           |
+  | The last drill is more full days old than the drill amber threshold           | amber  | `Backup: aktuell, Drill-Schlüssel neu laden` |
   | Otherwise                                                                     | green  | `Backup: aktuell`                            |
 
 - **User indicator**: displays the authenticated user's `displayName`. Clicking reveals a dropdown — see [§8.7.2](#872-user-menu).
