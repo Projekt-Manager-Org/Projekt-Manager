@@ -6,16 +6,16 @@ const POLL_INTERVAL_MS = 60_000;
 /**
  * Keep the owner badge fresh without a full reload.
  *
- * The backup-status row is only written by the nightly cron, so the
- * natural staleness window is hours — a 60s polling cadence while the
+ * The backup-status row is only written by the scheduled backup and
+ * drill runs, so the natural staleness window is hours — a 60s polling cadence while the
  * tab is visible is plenty to turn "green" into "red" after an
  * incident, and the visibility-change refresh catches a laptop waking
  * from sleep.
  *
- * No-op for non-owners: their profile omits `backupStatus` (api.md
- * §14.2.7) so a round-trip would just return a payload the client
- * discards. The hook piggybacks on the existing `checkSession` rather
- * than adding a narrower action — the /me response already carries
+ * No-op for non-owners: their profile omits `backupStatus` (AC-614),
+ * so a round-trip would just return a payload the client discards.
+ * The hook piggybacks on the existing `checkSession` rather than
+ * adding a narrower action — the /me response already carries
  * everything the store needs, and an extra store action is strictly
  * more surface to keep consistent.
  */

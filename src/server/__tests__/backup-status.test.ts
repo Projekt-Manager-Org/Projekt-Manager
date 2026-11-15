@@ -2,12 +2,12 @@
  * API integration tests: Layer 2 status dual-write + manifest determinism.
  *
  * Covers the status-surface and determinism slice of verification.md §15.22:
- *   - AC-169 [crit]: Every run, whatever its outcome, upserts
+ *   - AC-617 [crit]: Every run, whatever its outcome, upserts
  *     `meta_backup_status` AND writes the unencrypted status mirror object
- *     with the same field values. If the mirror write throws, the failure
- *     is appended to `lastBackupError` and any uploaded artifacts remain in
- *     place (R2 immutability window — no rollback of immutable objects).
- *     The drill half of AC-169 lives in `backup-drill.test.ts`.
+ *     with the same field values (error fields cut to their stage).
+ *   - AC-618 [crit]: If the mirror write throws, the failure is appended
+ *     to `lastBackupError` and the outcome stays as it was.
+ *     The drill half of AC-617 and AC-618 lives in `backup-drill.test.ts`.
  *   - AC-370 [crit]: A backup run writes only the backup fields and a
  *     drill only the drill fields, so neither erases the other's cue.
  *   - AC-174 [crit]: The per-table manifest checksum is deterministic
@@ -159,10 +159,10 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
   });
 
   // --------------------------------------------------------------
-  // AC-169: the mirror equals the DB row after every run, success or
+  // AC-617: the mirror equals the DB row after every run, success or
   // failure; a failed mirror write is appended to `lastBackupError`.
   // --------------------------------------------------------------
-  describe('AC-169: status dual-write', () => {
+  describe('AC-617, AC-618: status dual-write', () => {
     const rowAsMirror = (): Promise<BackupStatusMirror> => readStatusRowAsMirror(db);
 
     const fail = async (): Promise<never> => {
@@ -257,7 +257,7 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
   // --------------------------------------------------------------
   // AC-370: each cycle owns its fields. The drill follows every
   // backup, so neither may touch the other's outcome or error cue —
-  // and the mirror cuts the other cycle's cue too (AC-169).
+  // and the mirror cuts the other cycle's cue too (AC-617).
   // --------------------------------------------------------------
   describe('AC-370: each cycle owns its fields', () => {
     const SIDECAR: Manifest = { users: { rowCount: 1, checksum: 'a' } };

@@ -5,10 +5,11 @@
  * private identity is absent from tmpfs, the Tier 2 drill is skipped.
  * A skip is NOT a failure — `lastDrillAt` and `lastDrillOk` are left
  * unchanged from their prior values, so freshness derivation reads
- * "stale" rather than "failed". Also the drill half of AC-169 [crit]:
- * a drill that writes the status row writes the mirror with it; a skip
- * writes neither. And the drill half of AC-345 [crit]: a failure while
- * fetching or opening the artifacts is recorded like any other.
+ * "stale" rather than "failed". AC-619 [crit]: a drill records whether
+ * its restore matched. Also the drill half of AC-617 [crit] and AC-618
+ * [crit]: a drill that writes the status row writes the mirror with it;
+ * a skip writes neither (AC-168). And the drill half of AC-345 [crit]:
+ * a failure while fetching or opening the artifacts is recorded like any other.
  *
  * Separated from `backup.test.ts` because the drill exercises a
  * distinct code path (decrypt-side / operator-key surface), and
@@ -49,7 +50,7 @@ const artifacts = async (
 });
 const passthrough = async (ciphertext: Uint8Array): Promise<Uint8Array> => ciphertext;
 
-describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () => {
+describe('Layer 2 drill — AC-168 skip, AC-619 outcome, AC-617 mirror, AC-345 failure cue', () => {
   let db: Database;
   let pool: pg.Pool;
   let keyDir: string;
@@ -176,7 +177,7 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () 
 
     expect(postIso).toBe(priorIso);
     expect(postOk).toBe(priorOk);
-    // A skip is not a write, so there is nothing to mirror (AC-169).
+    // A skip is not a write, so there is nothing to mirror (AC-168, AC-617).
     expect(mirrorCalls).toHaveLength(0);
   });
 
@@ -253,25 +254,28 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () 
   it.each([
     ['passes', true, { users: { rowCount: 1, checksum: 'a' } }],
     ['fails', false, { users: { rowCount: 2, checksum: 'b' } }],
-  ])('writes the mirror equal to the DB row when the drill %s', async (_, ok, restored) => {
-    const identity = path.join(keyDir, 'present.key');
-    await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
-    const { uploader, mirrorCalls } = makeStubUploader();
+  ])(
+    'records the outcome and mirrors it when the drill %s (AC-619, AC-617)',
+    async (_, ok, restored) => {
+      const identity = path.join(keyDir, 'present.key');
+      await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
+      const { uploader, mirrorCalls } = makeStubUploader();
 
-    const result = await runDrill({
-      db,
-      uploader,
-      identityPath: identity,
-      download: async () => artifacts({ users: { rowCount: 1, checksum: 'a' } }),
-      decrypt: passthrough,
-      verifyManifest: async () => restored,
-    });
+      const result = await runDrill({
+        db,
+        uploader,
+        identityPath: identity,
+        download: async () => artifacts({ users: { rowCount: 1, checksum: 'a' } }),
+        decrypt: passthrough,
+        verifyManifest: async () => restored,
+      });
 
-    expect(result.outcome).toBe(ok ? 'ok' : 'failed');
-    const row = await readStatusRowAsMirror(db);
-    expect(row.lastDrillOk).toBe(ok);
-    expect(mirrorCalls).toEqual([row]);
-  });
+      expect(result.outcome).toBe(ok ? 'ok' : 'failed');
+      const row = await readStatusRowAsMirror(db);
+      expect(row.lastDrillOk).toBe(ok);
+      expect(mirrorCalls).toEqual([row]);
+    },
+  );
 
   // AC-345: the status row records why a drill failed — including the
   // steps before verify: fetching the artifacts and opening the sidecar.
@@ -336,7 +340,7 @@ describe('Layer 2 drill — AC-168 skip, AC-169 mirror, AC-345 failure cue', () 
     expect(mirrorCalls).toEqual([{ ...row, lastDrillError: mirrorCue }]);
   });
 
-  it('appends a mirror-write failure to lastDrillError, not the backup field (AC-169)', async () => {
+  it('appends a mirror-write failure to lastDrillError, not the backup field (AC-618)', async () => {
     const identity = path.join(keyDir, 'present.key');
     await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
     const putStatusMirror = vi.fn(async () => {

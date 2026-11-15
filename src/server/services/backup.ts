@@ -1,7 +1,7 @@
 /**
  * Layer 2 backup service — Tier 1 verify-on-create + upload.
  *
- * Implements verification.md §15.22 AC-165, AC-166, AC-167, AC-169, AC-174,
+ * Implements verification.md §15.22 AC-165, AC-166, AC-167, AC-174, AC-617, AC-618, AC-620,
  * AC-344, AC-345, AC-366
  * and ADR-0020. This service:
  *
@@ -27,7 +27,7 @@
  *   6. Uploads `daily/<iso>.dump.age` and `daily/<iso>.manifest.json.age`.
  *   7. Records the outcome — success or a failure at any step — via
  *      `recordBackupStatus`: the `meta_backup_status` row, then the
- *      status mirror carrying the same values (AC-169).
+ *      status mirror carrying the same values (AC-617).
  *
  * Architecture layering (architecture.md §11.2): this service orchestrates
  * the repository (`backupStatus`) and the external-subprocess surface
@@ -445,7 +445,7 @@ export interface CycleOutcome {
 
 /**
  * Write the status row, then the status mirror with the row's values
- * (AC-169). Every status write — backup or drill — goes through here,
+ * (AC-617). Every status write — backup or drill — goes through here,
  * and touches only the writing cycle's fields (AC-370).
  *
  * A failed mirror write is appended to that cycle's error field, keeping
@@ -554,7 +554,7 @@ export function errorMessage(err: unknown): string {
  * which this module and the drill write as fixed strings. The detail
  * after it can echo subprocess stderr, and `pg_restore` stderr can
  * quote row contents; the mirror is plaintext off-site (ADR-0020:
- * destination is untrusted). The DB row keeps the full text (AC-169).
+ * destination is untrusted). The DB row keeps the full text (data-model.md §5.9).
  */
 function toMirror(status: BackupStatus): BackupStatusMirror {
   return {

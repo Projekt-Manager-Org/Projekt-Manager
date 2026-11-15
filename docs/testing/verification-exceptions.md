@@ -130,9 +130,13 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-160 | retired | —                                                                                                        |
 | AC-162 | retired | —                                                                                                        |
 | AC-163 | retired | —                                                                                                        |
-| AC-172 | infra   | compose-file review                                                                                      |
+| AC-169 | retired | —                                                                                                        |
+| AC-170 | retired | —                                                                                                        |
+| AC-171 | retired | —                                                                                                        |
+| AC-172 | retired | —                                                                                                        |
 | AC-173 | infra   | provider-side review against the recovery runbook                                                        |
 | AC-175 | infra   | repo scan of `scripts/backup/load-drill-key.sh` (tmpfs-only); runbook review                             |
+| AC-176 | retired | —                                                                                                        |
 | AC-181 | retired | —                                                                                                        |
 | AC-189 | retired | —                                                                                                        |
 | AC-191 | retired | —                                                                                                        |
@@ -264,3 +268,4 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
+| AC-621 | gap     | `deriveBadgeState` has no failed-drill branch or label; AC-612's table row for it is unmet until then    |

@@ -1,6 +1,6 @@
 /**
  * Behaviour tests for useBackupStatusRefresh — the piece that keeps
- * the owner badge fresh between full reloads (api.md §14.2.7).
+ * the owner badge fresh between full reloads (AC-615).
  *
  * Covers:
  *   - non-owner: no polling, no visibility handler (zero calls)

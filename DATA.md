@@ -36,10 +36,10 @@ Layer 1 is portability, not cross-trust-boundary transport — the archive is pl
 
 ## Layer 2 — Full DB state (the DR anchor)
 
-Scheduled encrypted `pg_dump` → R2. Every run is verified on-create (Tier 1); whenever the operator's decryption key is loaded on the VPS, every run is also verified on-cycle (Tier 2). A freshness badge on the login screen and the owner's landing view surfaces failure loudly.
+Scheduled encrypted `pg_dump` → R2. Every run is verified on-create (Tier 1); whenever the operator's decryption key is loaded on the VPS, every run is also verified on-cycle (Tier 2). A freshness badge on every view of a signed-in owner surfaces failure loudly.
 
 - **Design rationale:** [ADR-0020](docs/adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)
-- **Contract:** [spec architecture.md §11.10](docs/spec/architecture.md#1110-full-state-backup-layer-2), [verification.md §15.22](docs/spec/verification.md#1522-backup-and-recovery)
+- **Contract:** [spec verification.md §15.22](docs/spec/verification.md#1522-backup-and-recovery)
 - **Operator procedures:** [docs/ops/backup/](docs/ops/backup/overview.md) — setup, recovery, drills, troubleshooting
 - **Code:** `src/server/services/{backup,backup-drill,ephemeralPg,r2Uploader}.ts`; shell wrappers in `scripts/backup/`
 

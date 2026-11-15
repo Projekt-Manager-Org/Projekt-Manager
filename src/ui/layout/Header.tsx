@@ -106,16 +106,16 @@ export function Header() {
     ? secondaryRoutes.some((r) => r.view === activeView)
     : false;
 
-  // AC-170 + AC-171: the backup-freshness badge renders on every
+  // AC-612 + AC-613: the backup-freshness badge renders on every
   // authenticated surface for role `owner`. The login screen stays
   // badge-free because it renders no Header at all (see App.tsx).
   // Non-owners never see the badge — the server also omits
   // `backupStatus` for them, so the state would be `unknown`, but
-  // hiding the surface entirely matches AC-170's "not rendered"
-  // wording.
+  // hiding the surface entirely matches AC-613's "show no backup
+  // badge" wording.
   //
   // `backupStatus === undefined` for an owner means the server could
-  // not read the row (DB down). AC-171 forbids silently hiding the
+  // not read the row (DB down). AC-612 forbids silently hiding the
   // badge in that case — `deriveBadgeState(undefined, …)` returns the
   // `unknown` branch, which the component renders as "Status unbekannt".
   // Do NOT gate on `backupStatus !== undefined` here; that would

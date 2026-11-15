@@ -125,7 +125,7 @@ describe('Authentication & Session Management', () => {
       expect(body.user).not.toHaveProperty('passwordHash');
     });
 
-    // Parity with GET /api/auth/me (api.md §14.2.7): the login response
+    // Parity with GET /api/auth/me (AC-614): the login response
     // also carries `backupStatus` for owner callers. Before this, a
     // deliberate log-out/log-in by the owner left the badge on the
     // stale value set at initial session check, because the login
@@ -147,7 +147,7 @@ describe('Authentication & Session Management', () => {
       expect(typeof body.backupStatus.lastBackupOk).toBe('boolean');
     });
 
-    it('omits backupStatus for non-owner callers', async () => {
+    it('omits backupStatus for non-owner callers (AC-614)', async () => {
       const res = await getApp().inject({
         method: 'POST',
         url: '/api/auth/login',
@@ -324,11 +324,11 @@ describe('Authentication & Session Management', () => {
       expect(body.user).not.toHaveProperty('passwordHash');
     });
 
-    // AC-176: the freshness badge's only source is the owner-only
+    // AC-614: the freshness badge's only source is the owner-only
     // `backupStatus` field on this response — there is no public
     // `/api/backup/status` endpoint to fall back to. Scope here is the
     // security-relevant half: an owner gets the field, nobody else does.
-    it('carries backupStatus for owner callers and omits it for others (AC-176)', async () => {
+    it('carries backupStatus for owner callers and omits it for others (AC-614)', async () => {
       const ownerRes = await authGet(
         await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD),
         '/api/auth/me',

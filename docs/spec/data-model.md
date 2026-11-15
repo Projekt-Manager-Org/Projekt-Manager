@@ -208,30 +208,21 @@ Fields keep their meaning from their entity in this chapter; timestamps are ISO 
 - every reference in `data.json` resolves within it — users, customers, projects, invoices, attachments — except a user's own `createdBy` / `updatedBy` ([§6.6](#66-referential-integrity)), and a Storno's original is not itself a Storno;
 - invoices meet the rules of [§5.15](#515-invoice-entity) whatever their status; attachments carry a valid kind, label, MIME type and file name.
 
-### 5.9 Backup Status Entity
+### 5.9 Backup Status
 
-The Layer 2 backup-and-drill cycle ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)) publishes its last-run result into a single-row table so the application — and, via the status mirror object, an out-of-app reader — can render backup freshness without polling the scheduler.
+The outcome of the latest backup run and the latest drill that was not skipped; earlier outcomes are not kept. Behavior: [verification.md §15.22](verification.md#1522-backup-and-recovery).
 
-```typescript
-interface BackupStatus {
-  lastBackupAt?: string; // ISO 8601 — timestamp of the last completed run (success or failure)
-  lastBackupOk: boolean; // true when the last run produced an uploaded, Tier-1-verified artifact
-  lastDrillAt?: string; // ISO 8601 — timestamp of the last Tier-2 drill attempt
-  lastDrillOk: boolean | null; // true when the last Tier-2 drill succeeded; false when it failed; null before any Tier-2 drill has been attempted
-  lastBackupError?: string; // short machine-readable cue of the last run's failure; null when the run and its mirror write succeeded
-  lastDrillError?: string; // short machine-readable cue of the last Tier-2 drill's failure; null when the drill and its mirror write succeeded
-  updatedAt: string; // ISO 8601 — set by the backup service on every write
-}
-```
+| Field             | Meaning                                                                                   |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| `lastBackupAt`    | Time of the last backup run, whatever its outcome; `null` before the first                |
+| `lastBackupOk`    | `true` when the last backup run uploaded a verified backup; `false` before the first      |
+| `lastBackupError` | Why the last backup run, or the mirror write after it, failed; `null` when both succeeded |
+| `lastDrillAt`     | Time of the last drill; `null` before the first                                           |
+| `lastDrillOk`     | `true` when the last drill's restore matched its manifest; `null` before the first        |
+| `lastDrillError`  | Why the last drill, or the mirror write after it, failed; `null` when both succeeded      |
+| `updatedAt`       | Time of the last write                                                                    |
 
-Design notes:
-
-- **Single row, denormalized by design.** Only the most recent result is observable; history lives in the off-site object store's object timestamps and in container logs. The row is created by migration and is never deleted.
-- **Mutation semantics: upsert only.** The backup service writes via upsert on a fixed primary key; the application never mutates this row.
-- **Dual-write mirror.** Every write of this row is followed by a write of an unencrypted status mirror object in the off-site object store with the same fields ([AC-169](verification.md#1522-backup-and-recovery)). The mirror exists so backup health is readable when the database is unreachable ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)).
-- **Each cycle owns its fields.** A backup run writes only the `lastBackup*` fields and a drill only the `lastDrill*` fields (plus `updatedAt`), so neither outcome erases the other's failure cue ([AC-370](verification.md#1522-backup-and-recovery)).
-- **`lastDrillOk` semantics.** `lastDrillOk` is `null` before any Tier 2 drill has succeeded OR failed. A null value is not equivalent to "skipped" — skipped runs leave both `lastDrillAt` and `lastDrillOk` unchanged from the previous run, so freshness is derived from `lastDrillAt` rather than coerced to a boolean.
-- **Cross-references.** Freshness thresholds for the owner-only badge are defined under [architecture.md §12.2](architecture.md#122-company-configurable-settings); acceptance criteria in [verification.md §15.22](verification.md#1522-backup-and-recovery).
+**Status mirror.** An unencrypted object in the off-site store, readable without the application ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). It is a JSON object holding every field above, `null` when unset, times in ISO 8601; an error field names only the failing step and, for a mismatch, the table.
 
 ### 5.10 Audit Log Entity
 
@@ -531,7 +522,7 @@ interface CompanyProfile {
 
 Design notes:
 
-- **Singleton invariant.** Exactly one row exists. The row is pre-seeded by the baseline migration with empty mandatory fields so write paths are always upserts rather than first-writes. The DB enforces the singleton via a CHECK constraint on a constant primary key (parity with [§5.9](#59-backup-status-entity)).
+- **Singleton invariant.** Exactly one row exists. The row is pre-seeded by the baseline migration with empty mandatory fields so write paths are always upserts rather than first-writes. The DB enforces the singleton via a CHECK constraint on a constant primary key.
 - **Owner-only mutation surface.** Every authenticated role may read; writes are owner-only, enforced by the route-layer role check (no dedicated `company_profile:read` / `company_profile:write` keys are introduced). The CRUD shape is `GET` + `PUT` (upsert), no `POST` / `DELETE`. The mutation goes through the single-write-path helper ([architecture.md §11.3](architecture.md#113-state-layer-behavioral-contract)); the audit entity type is `'company_profile'` (added to `AuditEntityType` alongside `'invoice'` — [§5.10](#510-audit-log-entity)).
 - **Required fields.** `companyName`, `address.{street,zip,city}`, `taxId` and `ustId`, all non-empty. Enforced at upsert ([AC-303](verification.md#1531-company-profile)) and at issuance ([AC-305](verification.md#1531-company-profile), [api.md §14.4](api.md#144-error-handling) `COMPANY_PROFILE_REQUIRED`). The stored row can still be incomplete: pre-seeded empty, or restored by import. Rationale for `ustId`: [ADR-0026 § Compliance boundary](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary).
 - **Snapshot at issuance, not at draft creation.** Drafts read the live row for pre-fill (default tax mode), but the actual `Invoice.issuer` block is snapshotted at the issue call — never earlier. A draft created today and issued next month carries next month's company profile, not today's. This matches the standard ERP "as of the issue date" expectation.
@@ -622,7 +613,7 @@ Timestamp ownership rules are defined in section 5.5. Additionally, `statusChang
 - The canonical pattern is a dedicated counter table whose row is allocated by a single `INSERT … ON CONFLICT (key) DO UPDATE SET next_value = next_value + 1 RETURNING next_value` inside the using transaction — Postgres takes a row-exclusive lock equivalent to `SELECT FOR UPDATE` for the duration of the transaction. The lock is held until commit; the row's `nextValue` is incremented and read atomically in the same statement; the first-of-key case (INSERT) and the steady-state case (DO UPDATE) collapse into one race-free path; if the transaction rolls back, the increment never persists.
 - The pattern is reusable for any future counter with gapless semantics. The current consumer is `invoice_sequence` ([§5.16](#516-invoice-sequence-entity)) per [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md); allocations are scoped to `(year, kind)` composite keys.
 - The using transaction commits the counter increment, the using row's insert, the audit row, and any byte-side write (e.g., a rendered artifact's binary descriptor) atomically. Splitting the counter advancement out of the using transaction breaks the gapless guarantee.
-- **Restore to an earlier state.** A Layer 2 restore drops rows committed after the backup snapshot, but their invoice numbers already reached customers. Before issuance resumes, every `invoice_sequence` `(year, kind)` advances past every number that may have been issued since — mechanism in [AC-368](verification.md#1522-backup-and-recovery). A gap is acceptable; a reissued number is not (§14 Abs. 4 Nr. 4 UStG). An import never lowers the counter ([AC-369](verification.md#1514-data-exchange)).
+- **Restore to an earlier state.** A database restore ([AC-368](verification.md#1522-backup-and-recovery)) drops rows committed after the backup snapshot, but their invoice numbers already reached customers. Before issuance resumes, every `invoice_sequence` `(year, kind)` advances past every number that may have been issued since — mechanism in [AC-368](verification.md#1522-backup-and-recovery). A gap is acceptable; a reissued number is not (§14 Abs. 4 Nr. 4 UStG). An import never lowers the counter ([AC-369](verification.md#1514-data-exchange)).
 
 ### 6.14 Immutability of Issued Invoices
 

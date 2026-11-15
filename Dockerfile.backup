@@ -27,7 +27,7 @@
 # Alpine base ships postgresql17 server + client packages
 # directly, so initdb / postgres / pg_restore / pg_isready / pg_dump /
 # psql are all available for the Tier 1 verify-on-create path
-# (ADR-0020 §Decision, docs/spec/architecture.md §11.10) without
+# (ADR-0020 §Decision) without
 # multi-stage binary shuffling.
 # No default: callers (scripts/deploy.sh via the CI `docker` job,
 # or an operator-run `docker build --build-arg`) MUST supply the tag.

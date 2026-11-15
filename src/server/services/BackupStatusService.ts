@@ -20,7 +20,7 @@ import { getBackupStatus, type BackupStatus } from '../repositories/backupStatus
  * bubbling up to a 500. Expressed as an exhaustive allowlist so a
  * programmer error (e.g., missing table, schema drift) doesn't silently
  * decay into "status unknown" and mislead operators into trusting a
- * broken deploy (AC-171).
+ * broken deploy (AC-612).
  *
  * References:
  *   - https://www.postgresql.org/docs/current/errcodes-appendix.html
@@ -87,8 +87,8 @@ export class BackupStatusService {
    * Any other failure mode — missing table (programmer error / migration
    * not applied), schema drift, permissions, corrupted row — is NOT
    * coerced to `null`. Swallowing those would dress a programmer error
-   * up as "status unknown", which is the misleading-state class AC-171
-   * forbids: an operator looking at a red/green/unknown badge should
+   * up as "status unknown", which is the misleading-state class ADR-0014
+   * rules out: an operator looking at a red/green/unknown badge should
    * never see "unknown" when the real story is "your deploy is broken".
    * Those failures propagate; the caller surfaces them as a 500 so
    * monitoring and logs actually catch them.

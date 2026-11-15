@@ -46,6 +46,21 @@ The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `A
 
 - **Insecure banner**: non-dismissible, visually prominent warning shown when the page loaded over plain HTTP on a non-localhost host. Covers both login and authenticated layout. See [AC-45](../verification.md#156-deployment) and [ADR-0013](../../adr/0013-http-only-evaluation-mode.md).
 - **Header**: app name **[C]**, navigation ([§8.7](#87-navigation)).
+- **Backup badge** (owners only, [AC-612](../verification.md#1522-backup-and-recovery), [AC-613](../verification.md#1522-backup-and-recovery)): one icon in the header whose colour shows the state; hovering or tapping it shows the label, followed by the last backup run's time (`lastBackupAt`, `HH:mm EEE dd.MM.yyyy`) when there is one. The first row whose condition holds wins; fields are the backup status ([data-model.md §5.9](../data-model.md#59-backup-status)), thresholds are **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)):
+
+  | Condition                                                                     | Colour | Label                                        |
+  | ----------------------------------------------------------------------------- | ------ | -------------------------------------------- |
+  | The database holding the backup status is unreachable                         | grey   | `Status unbekannt`                           |
+  | No backup run yet                                                             | red    | `Backup: noch nie ausgeführt`                |
+  | The last backup run failed                                                    | red    | `Backup: fehlgeschlagen`                     |
+  | The last drill failed ([AC-621](../verification.md#1522-backup-and-recovery)) | red    | `Drill: fehlgeschlagen`                      |
+  | No drill yet                                                                  | red    | `Drill: noch nie ausgeführt`                 |
+  | The last backup run is more full days old than the backup red threshold       | red    | `Backup: veraltet`                           |
+  | The last drill is more full days old than the drill red threshold             | red    | `Drill: überfällig`                          |
+  | The last drill is more full days old than the drill amber threshold           | amber  | `Backup: aktuell, Drill-Schlüssel neu laden` |
+  | The last backup run is more full days old than the backup amber threshold     | amber  | `Backup: wird alt`                           |
+  | Otherwise                                                                     | green  | `Backup: aktuell`                            |
+
 - **User indicator**: displays the authenticated user's `displayName`. Clicking reveals a dropdown — see [§8.7.2](#872-user-menu).
 - **Mutation error banner**: appears when the most recent mutation failed. German message from the API error category (see [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior)), dismiss button. Cleared on next successful mutation or by dismissal.
 - **Default view**: Meine Projekte for worker; Kanban for owner and office; Rechnungen for bookkeeper (see [§8.7.1](#871-views)).

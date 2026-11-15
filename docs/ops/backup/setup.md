@@ -34,7 +34,7 @@ Runtime versions are not pinned here — [CONTRIBUTING.md § Runtime Requirement
 
 ### 1.2 Configure retention (bucket lock)
 
-R2 does not offer native object versioning or S3 Object Lock Compliance Mode. A bucket lock rule over timestamped filenames gives us the practical immutability window ([ADR-0020 §Alternatives](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#alternatives-considered)) — within the window, no destructive op on locked-prefix keys succeeds via the data-plane S3 token. Scope the rule to the `daily/` prefix — the `status/latest.json` mirror is overwritten every cycle and must stay outside the lock, or the badge freezes at its day-1 value. The rule UI exposes Rule Name, Prefix, Retention period; there is no Compliance/Governance mode toggle.
+R2 does not offer native object versioning or S3 Object Lock Compliance Mode. A bucket lock rule over timestamped filenames gives us the practical immutability window ([ADR-0020 §Alternatives](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#alternatives-considered)) — within the window, no destructive op on locked-prefix keys succeeds via the data-plane S3 token. Scope the rule to the `daily/` prefix — the `status/latest.json` mirror is overwritten every cycle and must stay outside the lock, or the mirror freezes at its day-1 value. The rule UI exposes Rule Name, Prefix, Retention period; there is no Compliance/Governance mode toggle.
 
 Let **D** be the immutable-window value from [ADR-0020 §Retention](../../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention).
 
@@ -165,7 +165,7 @@ First-run expectations, in order (next scheduled tick — see [overview.md § Ca
 1. The in-process croner schedule inside the `backup` container logs a `backup-runner: schedule: registered backup-weekday next=…` line at startup and a `backup tick` line at the next scheduled hour.
 2. A run writes a row into `meta_backup_status` with `lastBackupOk = true` and a fresh `lastBackupAt`.
 3. Three R2 objects appear under `projekt-manager-backups`: `daily/<iso>.dump.age`, `daily/<iso>.manifest.json.age`, and `status/latest.json`.
-4. The freshness badge on the login screen turns green (amber if no Tier 2 drill has run yet — that is expected until the drill key is loaded per [drills.md](drills.md)).
+4. Signed in as an owner, the freshness badge in the header turns green — or red `Drill: noch nie ausgeführt` until the first Tier 2 drill runs, which is expected until the drill key is loaded per [drills.md](drills.md).
 
 Sanity-check the status mirror from the operator workstation, using the new token. The bucket is private — unsigned calls return 401, so every fetch is signed:
 
@@ -179,7 +179,7 @@ AWS_DEFAULT_REGION=auto \
 jq '.' /tmp/latest.json
 ```
 
-Expected shape (from [data-model.md §5.9](../../spec/data-model.md#59-backup-status-entity)):
+Expected shape (from [data-model.md §5.9](../../spec/data-model.md#59-backup-status)):
 
 ```json
 {

@@ -276,7 +276,7 @@ services:
 
   backup:
     # Layer 2 encrypted backup service — see ADR-0020 and
-    # docs/spec/architecture.md §11.10. Runs an in-process croner
+    # docs/spec/verification.md §15.22. Runs an in-process croner
     # schedule (src/server/backup-runner.ts → `schedule` subcommand)
     # that fires runBackup five times on weekdays (09/12/15/18/21
     # Europe/Berlin) and once on weekends (12:00), with runDrill at a
