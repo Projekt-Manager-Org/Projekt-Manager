@@ -17,7 +17,7 @@ Forces:
 
 ## Decision
 
-Route every domain-entity mutation through a single transactional `mutate()` service-layer helper that writes an audit row atomically with the state change. Notifications are a projection over the audit stream via an in-process publisher. Bypass is prevented in two layers — a compile-time type gate (the primary guarantee) backed by a CI-enforced static architecture test (belt-and-braces for dynamically constructed SQL the type system cannot see). No runtime DB trigger.
+Route every domain-entity mutation through a single transactional `mutate()` service-layer helper that writes an audit row atomically with the state change. Notifications are a projection over the audit stream via an in-process publisher. Bypass is prevented in two layers — a compile-time type gate (the primary guarantee) backed by a CI-enforced static architecture test (belt-and-braces for dynamically constructed SQL the type system cannot see). No runtime DB trigger on audited tables (see [Amendments](#amendments)).
 
 Shape:
 
@@ -76,3 +76,9 @@ Ruled out: storage growth is unbounded; the diff is what both viewers and notifi
 - [ADR-0019](0019-worker-data-scoping-repository-layer-predicate.md) — RBAC predicate reused for the audit view
 - [ADR-0020](0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md) — retention window the audit table aligns to
 - [CONTRIBUTING.md §Security audit](../../CONTRIBUTING.md#security-audit) — trigger satisfied
+
+## Amendments
+
+### 2026-11-15 — `audit_log` append-only at the database
+
+`audit_log` rejects UPDATE, DELETE and TRUNCATE below the services, except a user delete clearing `actor_id` and removal via `withAuditLogRemoval` (AC-642; `src/server/db/baseline/tail/60-audit-log-append-only.sql`). It guards the log, not the audited tables: the paired-audit-row belt stays ruled out. Cost: test fixtures that clear `audit_log` go through `withAuditLogRemoval`.

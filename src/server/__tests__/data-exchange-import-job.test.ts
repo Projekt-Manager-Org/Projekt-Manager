@@ -70,6 +70,7 @@ import { getEnv } from '../config/env.js';
 import { stagedArtifactPath } from '../services/takeout-staging.js';
 import { runTakeoutStagingReaper } from '../services/takeout-staging-reaper.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -238,7 +239,9 @@ describe('Import job — create, resumable upload, perms, one-active, audit', ()
     // leaving a detached runner that settles to `failed` and writes one
     // `data_import` audit row. Clear those here so a straggler cannot land
     // inside AC-332's before/after window.
-    await db.execute(sql`DELETE FROM audit_log WHERE entity_type = 'data_import'`);
+    await withAuditLogRemoval(db, (tx) =>
+      tx.execute(sql`DELETE FROM audit_log WHERE entity_type = 'data_import'`),
+    );
   });
 
   // -------------------------------------------------------------------

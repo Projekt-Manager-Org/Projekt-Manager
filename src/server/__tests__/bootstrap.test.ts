@@ -37,6 +37,7 @@ import { users } from '../db/schema.js';
 import { verifyPassword } from '../password.js';
 import { bootstrapAdminIfEmpty } from '../bootstrap.js';
 import type { Database } from '../db/connection.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -74,8 +75,10 @@ afterAll(async () => {
 
 beforeEach(async () => {
   // Bootstrap tests require a truly empty users table. CASCADE handles
-  // the FK from sessions and projects.
-  await db.execute(sql`TRUNCATE TABLE sessions, projects, users CASCADE`);
+  // the FK from sessions and projects, and reaches audit_log (AC-642).
+  await withAuditLogRemoval(db, (tx) =>
+    tx.execute(sql`TRUNCATE TABLE sessions, projects, users CASCADE`),
+  );
 });
 
 // -----------------------------------------------------------------------

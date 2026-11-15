@@ -25,10 +25,13 @@ function makeLogger() {
   };
 }
 
-/** Fake DB mimicking `db.delete(...).where(...).returning(...)`. */
+/** Fake DB mimicking retention's `withAuditLogRemoval` + `delete(...).where(...).returning(...)`. */
 function fakeDb(rows: unknown[] | (() => Promise<unknown[]> | unknown[])): Database {
   const returning = () => (typeof rows === 'function' ? Promise.resolve(rows()) : rows);
-  return { delete: () => ({ where: () => ({ returning }) }) } as unknown as Database;
+  const tx = { execute: async () => {}, delete: () => ({ where: () => ({ returning }) }) };
+  return {
+    transaction: (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
+  } as unknown as Database;
 }
 
 const MINUTE_MS = 60 * 1000;

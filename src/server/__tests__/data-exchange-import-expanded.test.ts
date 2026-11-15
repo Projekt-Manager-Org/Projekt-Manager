@@ -54,6 +54,7 @@ import { allocateInvoiceNumber } from '../repositories/invoice-read.js';
 import type { Database } from '../db/connection.js';
 import type { Envelope, ImportOptions, ValidationIssue } from '../../domain/dataExchange.js';
 import { AppError } from '../errors.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -1030,8 +1031,10 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
       // pass (`loadBusiness` runs through ImportService and emits its
       // own audit row). Without this, the assertion below picks up
       // both the seed's row AND the test's row.
-      await db.execute(
-        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
+      await withAuditLogRemoval(db, (tx) =>
+        tx.execute(
+          sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
+        ),
       );
       try {
         const env = buildExpandedEnvelope();
@@ -1107,8 +1110,10 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   describe('import ignores a populated attachments slot', () => {
     it('inserts zero attachment rows and reports counts.attachments=0 even when the envelope carries descriptors', async () => {
       await wipeBusinessDataExceptUsers();
-      await db.execute(
-        sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
+      await withAuditLogRemoval(db, (tx) =>
+        tx.execute(
+          sql`DELETE FROM audit_log WHERE actor_kind = 'system' AND actor_reason = 'data_import'`,
+        ),
       );
       try {
         const env = buildExpandedEnvelope();

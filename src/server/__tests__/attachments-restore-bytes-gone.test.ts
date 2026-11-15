@@ -39,6 +39,7 @@ import { StorageObjectNotFoundError, type AttachmentStorageClient } from '../sto
 import { AppError } from '../errors.js';
 import type { AuthUser } from '../middleware/auth.js';
 import type { ServiceLogger } from '../services/Logger.js';
+import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -151,7 +152,7 @@ describe('AttachmentService.restoreAttachment — bytes-gone race (AC-424)', () 
   beforeEach(async () => {
     // Tests below seed their own row; clear so audit-log assertions
     // would be deterministic if added in the future.
-    await db.execute(sql`DELETE FROM audit_log`);
+    await withAuditLogRemoval(db, (tx) => tx.execute(sql`DELETE FROM audit_log`));
     await db.execute(sql`DELETE FROM attachments`);
   });
 
