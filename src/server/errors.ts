@@ -6,13 +6,14 @@
  */
 
 import { STRINGS } from '../config/strings.js';
+import type { MissingUserRefsPayload } from '../domain/dataExchange.js';
 
 /**
- * Every machine-readable error code the API can put on the wire —
- * the single form of the set (AC-354). An array rather than a bare
- * union, with `ErrorCode` derived from it below: a union has no runtime
- * form, so nothing can read it, publish it into api.md §14.4.1, or emit
- * it as an OpenAPI enum.
+ * Every machine-readable error code the server raises — the single form
+ * of the set (AC-354). Most reach a response; the import-only ones only
+ * fail an import job (api.md §14.4.1). An array rather than a bare union,
+ * with `ErrorCode` derived from it below: a union has no runtime form, so
+ * nothing could read it or publish it into api.md §14.4.1.
  *
  * api.md §14.4.1's `CHECKED:error-codes` block mirrors this array and is
  * pinned to it by `__tests__/error-codes.test.ts` — edit both together.
@@ -150,17 +151,11 @@ export function restoreConfirmationMismatch(): AppError {
 }
 
 /**
- * Envelope carries user-id references that do not exist in the target
- * database. See api.md §14.4.1. `details.missingUserIds` is the
- * deduplicated list of absent ids; `details.references` carries one entry
- * per offending envelope reference site.
+ * Envelope references users outside its `users`. `details.missingUserIds`
+ * is the deduplicated list of absent ids; `details.references` carries one
+ * entry per offending envelope reference site.
  */
-export interface MissingUserRefsDetails {
-  missingUserIds: string[];
-  references: { path: string; userId: string }[];
-}
-
-export function missingUserRefs(details: MissingUserRefsDetails): AppError {
+export function missingUserRefs(details: MissingUserRefsPayload): AppError {
   return new AppError('MISSING_USER_REFS', STRINGS.errors.missingUserRefs, 422, details);
 }
 

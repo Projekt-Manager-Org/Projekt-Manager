@@ -101,8 +101,12 @@ import {
   validateMime,
 } from '../../domain/attachments.js';
 import { RESTORE_CONFIRMATION_PHRASE } from '../../config/dataExchangeConfig.js';
-import { AppError, type MissingUserRefsDetails } from '../errors.js';
-import type { Envelope, EnvelopeAttachment } from '../../domain/dataExchange.js';
+import { AppError } from '../errors.js';
+import type {
+  Envelope,
+  EnvelopeAttachment,
+  MissingUserRefsPayload,
+} from '../../domain/dataExchange.js';
 
 export interface RunTakeoutImportDeps {
   db: Database;
@@ -169,7 +173,7 @@ function failureDetail(err: unknown): string {
   if (!(err instanceof AppError)) return err.message;
   let sites: string[] = [];
   if (err.code === 'MISSING_USER_REFS') {
-    sites = (err.details as MissingUserRefsDetails).references.map(
+    sites = (err.details as MissingUserRefsPayload).references.map(
       (ref) => `${ref.path}: ${ref.userId}`,
     );
   } else if (Array.isArray(err.details)) {

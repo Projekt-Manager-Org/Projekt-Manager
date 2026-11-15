@@ -267,8 +267,8 @@ export interface ValidationIssue {
 }
 
 /**
- * One envelope reference site whose `userId` is absent from the target
- * `users` table. `path` follows the same shape as `ValidationIssue.path`
+ * One envelope reference site whose `userId` is absent from the
+ * envelope's `users`. `path` follows the same shape as `ValidationIssue.path`
  * (e.g. `customers[0].createdBy`, `project_workers[2].userId`).
  */
 export interface MissingUserReference {
@@ -277,8 +277,9 @@ export interface MissingUserReference {
 }
 
 /**
- * Payload for the `MISSING_USER_REFS` error code.
- * See api.md §14.4.1.
+ * Payload of the `MISSING_USER_REFS` error: archive references to users
+ * outside the archive's `users` (data-model.md §5.8). A failed import job
+ * names them in its `errorDetail` (AC-593).
  */
 export interface MissingUserRefsPayload {
   missingUserIds: string[];
