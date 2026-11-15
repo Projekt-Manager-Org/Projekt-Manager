@@ -1044,9 +1044,9 @@ describe('Unified Data Exchange', () => {
   //
   // The envelope carries user-id fields — `customers.createdBy`,
   // `customers.updatedBy`, `projects.createdBy`, `projects.updatedBy`,
-  // `project_workers.userId`. On restore, those user ids must already
-  // exist in the target's `users` table. If any referenced id is absent,
-  // the commit path rejects with 422 `MISSING_USER_REFS`.
+  // `project_workers.userId`. On restore, those user ids must resolve
+  // within the envelope's `users`; otherwise the commit path throws
+  // `MISSING_USER_REFS`.
   //
   // Two ghost UUIDs (`GHOST_USER_A`, `GHOST_USER_B`) are valid UUIDs
   // absent from the seed — any reference to them is, by construction,
@@ -1061,9 +1061,9 @@ describe('Unified Data Exchange', () => {
     const GHOST_USER_B = uuid('ghostb', 2);
 
     /**
-     * Shape we assert against for the MISSING_USER_REFS error body. The
-     * keys are `details.missingUserIds` and `details.references` per
-     * api.md §14.4.1 (error details keys are camelCase). The path string
+     * Shape we assert against for the MISSING_USER_REFS error. The keys
+     * are `details.missingUserIds` and `details.references`
+     * (`MissingUserRefsPayload`, src/domain/dataExchange.ts). The path string
      * mirrors the intra-envelope validation-error path shape — e.g.
      * `project_workers[0].userId`.
      */
@@ -1188,7 +1188,7 @@ describe('Unified Data Exchange', () => {
         const paths = matching.map((r) => r.path);
         expect(new Set(paths).size).toBe(paths.length);
         // And each expected path shape is represented — the shape mirrors
-        // intra-envelope validation paths (api.md §14.4.1).
+        // intra-envelope validation paths (`ValidationIssue.path`).
         expect(paths).toEqual(
           expect.arrayContaining([
             'customers[0].createdBy',

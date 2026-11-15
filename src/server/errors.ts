@@ -6,6 +6,7 @@
  */
 
 import { STRINGS } from '../config/strings.js';
+import type { MissingUserRefsPayload } from '../domain/dataExchange.js';
 
 /**
  * Every machine-readable error code the API can put on the wire —
@@ -150,17 +151,11 @@ export function restoreConfirmationMismatch(): AppError {
 }
 
 /**
- * Envelope carries user-id references that do not exist in the target
- * database. See api.md §14.4.1. `details.missingUserIds` is the
- * deduplicated list of absent ids; `details.references` carries one entry
- * per offending envelope reference site.
+ * Envelope references users outside its `users`. `details.missingUserIds`
+ * is the deduplicated list of absent ids; `details.references` carries one
+ * entry per offending envelope reference site.
  */
-export interface MissingUserRefsDetails {
-  missingUserIds: string[];
-  references: { path: string; userId: string }[];
-}
-
-export function missingUserRefs(details: MissingUserRefsDetails): AppError {
+export function missingUserRefs(details: MissingUserRefsPayload): AppError {
   return new AppError('MISSING_USER_REFS', STRINGS.errors.missingUserRefs, 422, details);
 }
 

@@ -417,7 +417,7 @@ function collectEnvelopeUserRefs(envelope: Envelope): MissingUserReference[] {
  *
  * `missingUserIds` is deduplicated (insertion-ordered); `references`
  * retains one entry per offending site (duplicates across distinct paths
- * produce distinct entries — per api.md §14.4.1).
+ * produce distinct entries).
  */
 function deriveMissingUserRefsPayload(
   refs: MissingUserReference[],
