@@ -91,6 +91,7 @@ const BACKUP_REASON_BODY: Readonly<Record<BackupBadgeReason, string>> = {
   'backup-aging': STRINGS.backup.backupAging,
   'drill-expired': STRINGS.backup.drillExpired,
   'drill-stale': STRINGS.backup.drillStale,
+  'mirror-failed': STRINGS.backup.mirrorFailed,
 };
 
 function readStringField(payload: Record<string, unknown> | null, key: string): string | null {

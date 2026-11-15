@@ -5,11 +5,14 @@
  *   - AC-617 [crit]: Every run, whatever its outcome, upserts
  *     `meta_backup_status` AND writes the unencrypted status mirror object
  *     with the same field values (error fields cut to their stage).
- *   - AC-618 [crit]: If the mirror write throws, the failure is appended
- *     to `lastBackupError` and the outcome stays as it was.
+ *   - AC-618 [crit]: If the mirror write throws, the failure goes to
+ *     `mirrorError`; the run's outcome and error field stay as they were.
  *     The drill half of AC-617 and AC-618 lives in `backup-drill.test.ts`.
+ *   - AC-622 [crit]: The next successful mirror write, from either cycle,
+ *     clears `mirrorError`.
  *   - AC-370 [crit]: A backup run writes only the backup fields and a
- *     drill only the drill fields, so neither erases the other's cue.
+ *     drill only the drill fields, plus `mirrorError`, so neither erases
+ *     the other's cue.
  *   - AC-174 [crit]: The per-table manifest checksum is deterministic
  *     across runs on identical data. Non-deterministic checksums would
  *     invalidate Tier 1 and Tier 2 comparison.
@@ -36,6 +39,7 @@ import {
   makeStubUploader,
   fakeEncrypt,
   readStatusRowAsMirror,
+  readMirrorError,
   type BackupUploader,
 } from '../../test/backupTestHarness.js';
 
@@ -160,9 +164,10 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
 
   // --------------------------------------------------------------
   // AC-617: the mirror equals the DB row after every run, success or
-  // failure; a failed mirror write is appended to `lastBackupError`.
+  // failure. AC-618, AC-622: a failed mirror write is recorded in
+  // `mirrorError` until the next one succeeds.
   // --------------------------------------------------------------
-  describe('AC-617, AC-618: status dual-write', () => {
+  describe('AC-617, AC-618, AC-622: status dual-write', () => {
     const rowAsMirror = (): Promise<BackupStatusMirror> => readStatusRowAsMirror(db);
 
     const fail = async (): Promise<never> => {
@@ -218,10 +223,13 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
       },
     );
 
-    it('appends a mirror-write failure to lastBackupError after artifacts uploaded', async () => {
-      const putStatusMirror = vi.fn(async () => {
+    const failingMirror = () =>
+      vi.fn(async () => {
         throw new Error('mirror write failed (test simulation)');
       });
+
+    it('records a mirror-write failure in mirrorError, not in the run fields', async () => {
+      const putStatusMirror = failingMirror();
       const { uploader, uploads } = makeStubUploader({ putStatusMirror });
 
       const result = await runBackup({ db, uploader, encrypt: fakeEncrypt });
@@ -232,25 +240,34 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
       expect(uploads).toHaveLength(2);
       const row = await rowAsMirror();
       expect(row.lastBackupOk).toBe(true);
-      expect(row.lastBackupError).toBe('mirror: mirror write failed (test simulation)');
+      expect(row.lastBackupError).toBeNull();
+      expect(await readMirrorError(db)).toMatch(/mirror write failed \(test simulation\)/);
       // The follow-up write recording the failure is not mirrored.
       expect(putStatusMirror).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps the run's own failure cue when the mirror write also fails", async () => {
-      const { uploader } = makeStubUploader({
-        putStatusMirror: async () => {
-          throw new Error('mirror write failed (test simulation)');
-        },
-      });
+    it("keeps the run's own failure cue alone when the mirror write also fails", async () => {
+      const { uploader } = makeStubUploader({ putStatusMirror: failingMirror() });
 
       await runBackup({ db, uploader, encrypt: fail });
 
       const row = await rowAsMirror();
       expect(row.lastBackupOk).toBe(false);
-      expect(row.lastBackupError ?? '').toMatch(
-        /^encrypt: stage failure.*mirror: mirror write failed/,
-      );
+      expect(row.lastBackupError).toBe('encrypt: stage failure (test simulation)');
+      expect(await readMirrorError(db)).toMatch(/mirror write failed/);
+    });
+
+    it('clears mirrorError on the next successful mirror write', async () => {
+      await runBackup({
+        db,
+        uploader: makeStubUploader({ putStatusMirror: failingMirror() }).uploader,
+        encrypt: fakeEncrypt,
+      });
+      expect(await readMirrorError(db)).not.toBeNull();
+
+      await runBackup({ db, uploader: makeStubUploader().uploader, encrypt: fakeEncrypt });
+
+      expect(await readMirrorError(db)).toBeNull();
     });
   });
 
@@ -315,6 +332,25 @@ describe('Layer 2 backup — status dual-write + manifest determinism', () => {
       expect(after.lastDrillOk).toBe(true);
       expect(backupFields(after)).toEqual(backupFields(before));
       expect((mirrorCalls[0] as BackupStatusMirror).lastBackupError).toBe('encrypt');
+    });
+
+    it('a passing drill clears the mirror failure a backup recorded (AC-622)', async () => {
+      // The mirror is one object: once the drill rewrites it, the backup's
+      // failed write no longer describes it, whatever the backup fields say.
+      await runBackup({
+        db,
+        uploader: makeStubUploader({
+          putStatusMirror: async () => {
+            throw new Error('mirror write failed (test simulation)');
+          },
+        }).uploader,
+        encrypt: fakeEncrypt,
+      });
+      expect(await readMirrorError(db)).not.toBeNull();
+
+      expect((await drill(makeStubUploader().uploader)).outcome).toBe('ok');
+
+      expect(await readMirrorError(db)).toBeNull();
     });
 
     it("a passing backup leaves a failed drill's fields in place", async () => {

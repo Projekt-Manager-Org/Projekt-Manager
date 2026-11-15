@@ -26,6 +26,8 @@
  *                                        unverified cycle as worse than a stale one —
  *                                        but it is the DRILL that is overdue, not
  *                                        the backup; see the reason split below)
+ *   - `mirrorError` set              → { kind: 'amber', reason: 'mirror-failed' }
+ *                                       (the out-of-band status copy is stale)
  *   - drill age > drillAmberDays     → { kind: 'amber', reason: 'drill-stale' }
  *   - backup age > backupAmberDays   → { kind: 'amber', reason: 'backup-aging' }
  *                                       (only reachable when the drill is green —
@@ -66,6 +68,8 @@ export interface BackupStatus {
   lastBackupError?: string;
   /** Short machine-readable cue of the last Tier-2 drill's failure. */
   lastDrillError?: string;
+  /** Why the last status-mirror write failed; absent once one succeeds. */
+  mirrorError?: string;
   /** ISO 8601 — set by the backup service on every write (never on skip). */
   updatedAt: string;
 }
@@ -73,7 +77,11 @@ export interface BackupStatus {
 export type BackupBadgeState =
   | { kind: 'unknown'; label: string }
   | { kind: 'green'; lastBackupAt?: string }
-  | { kind: 'amber'; reason: 'drill-stale' | 'backup-aging'; lastBackupAt?: string }
+  | {
+      kind: 'amber';
+      reason: 'mirror-failed' | 'drill-stale' | 'backup-aging';
+      lastBackupAt?: string;
+    }
   | {
       kind: 'red';
       reason:
@@ -191,6 +199,13 @@ export function deriveBadgeState(
   if (drillAgeDays > thresholds.drillRedDays) {
     return { kind: 'red', reason: 'drill-expired', lastBackupAt: status.lastBackupAt };
   }
+
+  // Failed mirror write: backups are fine, but the off-site status copy an
+  // operator reads during a DB outage is stale. First among the amber rows.
+  if (status.mirrorError !== undefined) {
+    return { kind: 'amber', reason: 'mirror-failed', lastBackupAt: status.lastBackupAt };
+  }
+
   if (drillAgeDays > thresholds.drillAmberDays) {
     return { kind: 'amber', reason: 'drill-stale', lastBackupAt: status.lastBackupAt };
   }

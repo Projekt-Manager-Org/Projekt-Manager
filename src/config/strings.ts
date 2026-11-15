@@ -1007,6 +1007,7 @@ export const STRINGS = {
     green: 'Backup: aktuell',
     drillStale: 'Backup: aktuell, Drill-Schlüssel neu laden',
     backupAging: 'Backup: wird alt',
+    mirrorFailed: 'Backup: Statuskopie fehlgeschlagen',
     backupStale: 'Backup: veraltet',
     drillExpired: 'Drill: überfällig',
     lastRunFailed: 'Backup: fehlgeschlagen',

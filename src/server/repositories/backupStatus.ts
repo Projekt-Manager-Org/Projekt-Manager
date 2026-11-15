@@ -30,7 +30,7 @@ export type { BackupStatus } from '../../domain/backupBadge.js';
  * timestamp from an earlier read.
  *
  * Nullable fields (`lastBackupAt`, `lastBackupError`, `lastDrillAt`,
- * `lastDrillOk`, `lastDrillError`) accept `null` explicitly so a caller can distinguish
+ * `lastDrillOk`, `lastDrillError`, `mirrorError`) accept `null` explicitly so a caller can distinguish
  * "clear this field" from "omit this field" (the latter leaves the
  * column untouched). See `updateBackupStatus`.
  */
@@ -41,6 +41,7 @@ export interface BackupStatusPatch {
   lastDrillAt?: string | null;
   lastDrillOk?: boolean | null;
   lastDrillError?: string | null;
+  mirrorError?: string | null;
 }
 
 /**
@@ -93,6 +94,7 @@ export async function updateBackupStatus(
   if ('lastDrillAt' in patch) setClause.lastDrillAt = toDateOrNull(patch.lastDrillAt);
   if ('lastDrillOk' in patch) setClause.lastDrillOk = patch.lastDrillOk ?? null;
   if ('lastDrillError' in patch) setClause.lastDrillError = patch.lastDrillError ?? null;
+  if ('mirrorError' in patch) setClause.mirrorError = patch.mirrorError ?? null;
 
   const rows = await db
     .update(metaBackupStatus)
@@ -129,6 +131,7 @@ function rowToStatus(row: MetaBackupStatusRow): BackupStatus {
     lastDrillAt: row.lastDrillAt ? row.lastDrillAt.toISOString() : undefined,
     lastDrillOk: row.lastDrillOk,
     lastDrillError: row.lastDrillError ?? undefined,
+    mirrorError: row.mirrorError ?? undefined,
     updatedAt: row.updatedAt.toISOString(),
   };
 }

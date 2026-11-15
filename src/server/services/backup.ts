@@ -2,7 +2,7 @@
  * Layer 2 backup service — Tier 1 verify-on-create + upload.
  *
  * Implements verification.md §15.22 AC-165, AC-166, AC-167, AC-174, AC-617, AC-618, AC-620,
- * AC-344, AC-345, AC-366
+ * AC-622, AC-344, AC-345, AC-366
  * and ADR-0020. This service:
  *
  *   0. Refuses a source without page checksums (AC-366) — without them
@@ -446,11 +446,12 @@ export interface CycleOutcome {
 /**
  * Write the status row, then the status mirror with the row's values
  * (AC-617). Every status write — backup or drill — goes through here,
- * and touches only the writing cycle's fields (AC-370).
+ * and touches only the writing cycle's fields plus `mirrorError` (AC-370).
  *
- * A failed mirror write is appended to that cycle's error field, keeping
- * the run's own cue; that follow-up row write is not mirrored. Artifacts
- * already uploaded stay (R2 immutability window) — the verdict stands.
+ * The mirror write's outcome goes to `mirrorError`, never to the cycle's
+ * error field: a failure sets it (AC-618), a success clears it (AC-622).
+ * That follow-up row write is not mirrored. Artifacts already uploaded
+ * stay (R2 immutability window) — the verdict stands.
  */
 export async function recordBackupStatus(
   db: Database,
@@ -469,9 +470,11 @@ export async function recordBackupStatus(
   try {
     await mirror.putStatusMirror(toMirror(status));
   } catch (err) {
-    const cue = `mirror: ${errorMessage(err)}`;
-    const prior = cycle === 'backup' ? status.lastBackupError : status.lastDrillError;
-    await updateBackupStatus(db, errorPatch(prior ? `${prior}; ${cue}` : cue));
+    await updateBackupStatus(db, { mirrorError: errorMessage(err) });
+    return;
+  }
+  if (status.mirrorError !== undefined) {
+    await updateBackupStatus(db, { mirrorError: null });
   }
 }
 
@@ -548,7 +551,8 @@ export function errorMessage(err: unknown): string {
 /**
  * Convert a `BackupStatus` into the explicit-null mirror shape. Keeps
  * the mirror object's JSON stable across runs — same keys always
- * present, never a mix of missing / null.
+ * present, never a mix of missing / null. `mirrorError` is left out:
+ * the object would describe its own write (data-model.md §5.9).
  *
  * Both error fields are cut to their stage cue — the text before the first `:`,
  * which this module and the drill write as fixed strings. The detail

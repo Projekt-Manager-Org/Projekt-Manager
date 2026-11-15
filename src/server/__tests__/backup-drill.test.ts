@@ -35,7 +35,11 @@ import type { Database } from '../db/connection.js';
 
 import { runDrill } from '../services/backup-drill.js';
 import type { Manifest } from '../services/backup.js';
-import { makeStubUploader, readStatusRowAsMirror } from '../../test/backupTestHarness.js';
+import {
+  makeStubUploader,
+  readMirrorError,
+  readStatusRowAsMirror,
+} from '../../test/backupTestHarness.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
@@ -340,7 +344,7 @@ describe('Layer 2 drill — AC-168 skip, AC-619 outcome, AC-617 mirror, AC-345 f
     expect(mirrorCalls).toEqual([{ ...row, lastDrillError: mirrorCue }]);
   });
 
-  it('appends a mirror-write failure to lastDrillError, not the backup field (AC-618)', async () => {
+  it('records a mirror-write failure in mirrorError, not the drill fields (AC-618)', async () => {
     const identity = path.join(keyDir, 'present.key');
     await fs.writeFile(identity, 'AGE-SECRET-KEY-1-not-a-real-key');
     const putStatusMirror = vi.fn(async () => {
@@ -360,8 +364,9 @@ describe('Layer 2 drill — AC-168 skip, AC-619 outcome, AC-617 mirror, AC-345 f
     expect(result.outcome).toBe('ok');
     const row = await readStatusRowAsMirror(db);
     expect(row.lastDrillOk).toBe(true);
-    expect(row.lastDrillError).toBe('mirror: mirror write failed (test simulation)');
+    expect(row.lastDrillError).toBeNull();
     expect(row.lastBackupError).toBeNull();
+    expect(await readMirrorError(db)).toMatch(/mirror write failed \(test simulation\)/);
     // The follow-up write recording the failure is not mirrored.
     expect(putStatusMirror).toHaveBeenCalledTimes(1);
   });

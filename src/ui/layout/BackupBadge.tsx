@@ -82,14 +82,17 @@ function labelForRedReason(reason: Extract<BackupBadgeState, { kind: 'red' }>['r
 
 /**
  * German label for an amber reason. Mirrors `labelForRedReason` — the
- * two amber cases are distinct problems ('drill-stale' = the verifier
- * is late, 'backup-aging' = the backup itself is getting old) and read
- * as different sentences to the operator.
+ * three amber cases are distinct problems ('mirror-failed' = the off-site
+ * status copy is stale, 'drill-stale' = the verifier is late,
+ * 'backup-aging' = the backup itself is getting old) and read as
+ * different sentences to the operator.
  */
 function labelForAmberReason(
   reason: Extract<BackupBadgeState, { kind: 'amber' }>['reason'],
 ): string {
   switch (reason) {
+    case 'mirror-failed':
+      return STRINGS.backup.mirrorFailed;
     case 'drill-stale':
       return STRINGS.backup.drillStale;
     case 'backup-aging':

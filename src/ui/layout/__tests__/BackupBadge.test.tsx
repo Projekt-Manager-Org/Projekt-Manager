@@ -42,6 +42,11 @@ const ROWS: ReadonlyArray<[BackupBadgeState, string, string]> = [
   [{ kind: 'red', reason: 'backup-stale', lastBackupAt: AT }, 'stateRed', `Backup: veraltet${T}`],
   [{ kind: 'red', reason: 'drill-expired', lastBackupAt: AT }, 'stateRed', `Drill: überfällig${T}`],
   [
+    { kind: 'amber', reason: 'mirror-failed', lastBackupAt: AT },
+    'stateAmber',
+    `Backup: Statuskopie fehlgeschlagen${T}`,
+  ],
+  [
     { kind: 'amber', reason: 'drill-stale', lastBackupAt: AT },
     'stateAmber',
     `Backup: aktuell, Drill-Schlüssel neu laden${T}`,

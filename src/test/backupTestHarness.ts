@@ -91,6 +91,12 @@ export function startsWith(data: Uint8Array, magic: string): boolean {
   return true;
 }
 
+/** The row's `mirror_error` column, which the mirror object leaves out (data-model.md §5.9). */
+export async function readMirrorError(db: Database): Promise<string | null> {
+  const rows = await db.execute(sql`SELECT mirror_error FROM meta_backup_status`);
+  return (rows.rows[0] as { mirror_error: string | null }).mirror_error;
+}
+
 /**
  * The `meta_backup_status` row in the status mirror's explicit-null
  * shape. Raw SQL on purpose: AC-617 assertions compare the mirror to
