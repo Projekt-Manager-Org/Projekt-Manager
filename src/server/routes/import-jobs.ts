@@ -181,13 +181,6 @@ export function importJobRoutes(db: Database) {
         // so the response reflects it without a second read.
         const fresh = await jobs.updateProgress(job.id, { bytesTotal: uploadLength });
 
-        // When prior staged artifacts were swept, advertise the count on the
-        // response so the caller can observe it (e.g. in tests / logging).
-        // Omit the header entirely when count is 0 — present only when
-        // something was actually discarded.
-        if (priorStaged.length > 0) {
-          reply.header('X-Discarded-Prior-Staged', String(priorStaged.length));
-        }
         // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
         return reply.code(201).send(toExchangeJobDto(fresh));
       },

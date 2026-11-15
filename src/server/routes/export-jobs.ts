@@ -178,13 +178,6 @@ export function exportJobRoutes(db: Database) {
           stagingDir: env.TAKEOUT_STAGING_DIR,
         });
 
-        // When prior staged artifacts were swept, advertise the count on the
-        // response so the caller can observe it (e.g. in tests / logging).
-        // Omit the header entirely when count is 0 — present only when
-        // something was actually discarded.
-        if (priorStaged.length > 0) {
-          reply.header('X-Discarded-Prior-Staged', String(priorStaged.length));
-        }
         // Strip server-internal fields (archiveRef / createdBy) — Finding F1.
         return reply.code(201).send(toExchangeJobDto(job));
       },
