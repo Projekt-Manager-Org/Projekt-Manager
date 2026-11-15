@@ -93,7 +93,7 @@ export function startsWith(data: Uint8Array, magic: string): boolean {
 
 /**
  * The `meta_backup_status` row in the status mirror's explicit-null
- * shape. Raw SQL on purpose: AC-169 assertions compare the mirror to
+ * shape. Raw SQL on purpose: AC-617 assertions compare the mirror to
  * the DB independently of the service's own row-to-mirror conversion.
  */
 export async function readStatusRowAsMirror(db: Database): Promise<BackupStatusMirror> {

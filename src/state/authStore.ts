@@ -26,7 +26,7 @@ interface AuthState {
   /**
    * Backup-freshness status attached to the authenticated session. The
    * server only includes this for callers with role `owner`
-   * (verification.md AC-170). `undefined` means either "not an owner"
+   * (verification.md AC-614). `undefined` means either "not an owner"
    * or "status source unreachable"; the badge component treats the
    * latter as the "Status unbekannt" branch and non-owner UI never
    * reads this field.
@@ -193,7 +193,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       authUser: normalizeAuthUser(result.data.user),
       authError: null,
       // `backupStatus` is only included by the server for owner callers
-      // (verification.md AC-170). The envelope is typed as optional, so
+      // (verification.md AC-614). The envelope is typed as optional, so
       // a missing field lands here as `undefined` and the badge
       // component stays hidden for non-owners without a second branch.
       backupStatus: result.data.backupStatus,

@@ -12,14 +12,14 @@
  * bare dot in the healthy case and a full pill when degraded — the
  * size change read as a button that wasn't clickable and drew the eye
  * away from the affordance row on phones). Colour is the only signal
- * carrying state: green (healthy), amber (drill stale), red (action
+ * carrying state: green (healthy), amber (aging), red (action
  * required), muted (unknown).
  *
  * Spec pins ([verification.md §15.22](../../../docs/spec/verification.md#1522-backup-and-recovery)):
- *   - AC-170 — rendered on the owner's landing view only (not on the
+ *   - AC-612, AC-613 — rendered for owners only (not on the
  *     login screen, not on other roles' surfaces). Caller gates the
  *     render; this component renders unconditionally when asked.
- *   - AC-171 — never silently hidden; an `unknown` state still paints
+ *   - AC-612 — never silently hidden; an `unknown` state still paints
  *     the icon in the muted colour and carries "Status unbekannt" in
  *     the tooltip / aria-label, so an unreachable status source is
  *     discoverable by hover and announced to assistive tech.

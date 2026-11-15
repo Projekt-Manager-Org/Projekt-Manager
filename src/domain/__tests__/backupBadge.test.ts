@@ -1,12 +1,10 @@
 /**
  * Unit tests for the backup-freshness badge derive-state function.
  *
- * Covers verification.md §15.22 AC-171 [crit]: misleading state is
- * a critical defect class (ADR-0014). The badge MUST render an
- * explicit "status unbekannt" surface when the status source is
- * unreachable, and MUST render the red / drill-stale state when
- * `lastDrillAt` is absent — never silently hidden, never a stale-
- * but-green reading.
+ * Covers verification.md §15.22 AC-612 [crit]: the badge shows the
+ * first matching row of the ui/index.md §8.1.2 badge table — an
+ * explicit "Status unbekannt" when the status source is unreachable,
+ * never silently hidden, never a stale-but-green reading (ADR-0014).
  *
  * Pure-function test: no network, no DB, no React. The Phase 3
  * module exports a single function that takes a `BackupStatus` (or
@@ -114,7 +112,7 @@ describe('#122: amber reasons are distinguishable', () => {
     // not merely a swapped label: hoisting the backup-age check above
     // the drill-age checks turns a 3-day backup with a 40-day drill from
     // red/backup-stale into amber/backup-aging, which is exactly the
-    // misleading-state class AC-171 forbids.
+    // misleading-state class AC-612 forbids.
     const status: BackupStatus = {
       lastBackupOk: true,
       lastBackupAt: daysAgo(3),
@@ -185,13 +183,13 @@ describe('#122: amber reasons are distinguishable', () => {
   });
 });
 
-describe('AC-171: backup badge — unreachable + never-drilled states', () => {
+describe('AC-612: backup badge — unreachable + never-drilled states', () => {
   it("renders 'Status unbekannt' when the status source is unreachable", () => {
     // `undefined` models the DB-down + mirror-unavailable branch.
     const s = deriveBadgeState(undefined, NOW, THRESHOLDS);
     expect(s.kind).toBe('unknown');
     if (s.kind === 'unknown') {
-      // German UI string — AC-171 names the surface explicitly.
+      // German UI string — AC-612 names the surface explicitly.
       // Case-insensitive match so the component is free to
       // sentence-case it during rendering.
       expect(s.label.toLowerCase()).toContain('status unbekannt');
@@ -199,9 +197,9 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
   });
 
   it('renders red / drill-never-run when lastDrillAt is absent and lastDrillOk is null', () => {
-    // Backup is fresh, but no Tier 2 drill has ever run. AC-171 is
-    // explicit that this is the red threshold, not amber, because
-    // an unverified backup cycle is worse than a stale verified one.
+    // Backup is fresh, but no Tier 2 drill has ever run. The §8.1.2
+    // badge table (AC-612) makes this red, not amber: an unverified
+    // backup cycle is worse than a stale verified one.
     // `lastDrillOk: null` is the authoritative "never-run" signal per
     // data-model.md §5.9 — the badge MUST read the null value as a
     // distinct state rather than coerce it to `undefined`.
@@ -270,7 +268,7 @@ describe('AC-171: backup badge — unreachable + never-drilled states', () => {
     // Last run was within the fresh window, but `lastBackupOk === false`.
     // The badge must not read green on a failed run even if the
     // timestamp is recent. "Stale-but-green" is the misleading case
-    // AC-171 explicitly forbids.
+    // AC-612 explicitly forbids.
     const status: BackupStatus = {
       lastBackupOk: false,
       lastBackupAt: daysAgo(0),

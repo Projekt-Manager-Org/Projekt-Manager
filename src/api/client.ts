@@ -248,7 +248,7 @@ interface AuthUser {
  * Response envelope for /api/auth/login and /api/auth/me.
  *
  * The server includes `backupStatus` only when the caller holds the
- * `owner` role (verification.md AC-170). Other roles
+ * `owner` role (verification.md AC-614). Other roles
  * get an envelope without the key — absence drives the UI's "no badge
  * on this surface" branch without requiring a separate role check.
  */

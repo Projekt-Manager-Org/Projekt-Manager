@@ -14,7 +14,7 @@
  *     surface must be an encrypted envelope. A run that cannot encrypt
  *     fails and uploads no artifact.
  *
- * AC-169 (status dual-write) and AC-174 (manifest determinism) live in
+ * AC-617 (status mirror) and AC-174 (manifest determinism) live in
  * `backup-status.test.ts`.
  *
  * Shared test harness (fixtures + stub uploader + fake encrypt) lives in
@@ -106,7 +106,7 @@ describe('Layer 2 backup — Tier 1 run contract (§15.22 AC-165/166/167)', () =
       }
 
       // The critical behavioral assertion: no artifact is uploaded on
-      // mismatch. The status mirror is not an artifact (AC-169).
+      // mismatch. The status mirror is not an artifact (AC-617).
       expect(uploadSpy).not.toHaveBeenCalled();
       expect(uploads).toHaveLength(0);
     });

@@ -64,7 +64,7 @@ export async function getBackupStatus(db: TransactionalDatabase): Promise<Backup
  * columns (the error fields, `lastDrillOk`) — the patch differentiates
  * "omit this field" (no key) from "clear this field" (key set to null).
  *
- * Returns the row as written, so a caller mirroring it (AC-169) gets
+ * Returns the row as written, so a caller mirroring it (AC-617) gets
  * exactly these values rather than a later read that a concurrent
  * writer could have changed.
  */

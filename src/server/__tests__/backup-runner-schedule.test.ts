@@ -1,6 +1,7 @@
 /**
  * Unit tests for the croner schedule wiring in `backup-runner.ts`
- * (#199 — replaces dcron + `scripts/backup/crontab`).
+ * (#199 — replaces dcron + `scripts/backup/crontab`). AC-616 [crit]:
+ * backups and drills start at their scheduled times.
  *
  * Covers what a typo in the cron expression or a swapped handler
  * dispatch would silently break:

@@ -64,7 +64,7 @@ const STORAGE_EVENT_URL = '/daten';
 /**
  * Click target for the backup warning. There is no backup *page*: the
  * badge renders in the header of every authenticated surface
- * (`Header.tsx`, AC-170), so the relevant destination is simply an
+ * (`Header.tsx`, AC-612), so the relevant destination is simply an
  * authenticated view with the badge in it. `/kanban` is the owner's
  * landing view (`LANDING_ORDER` in src/config/routes.ts) and both
  * system events are seeded owner-only, so this is where the tap would

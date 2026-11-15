@@ -19,7 +19,7 @@ export function authRoutes(db: Database) {
     const authenticate = createAuthMiddleware(db);
     const authService = new AuthService(db);
     // Pass the app logger so the service can emit structured warnings on
-    // DB-unreachable vs programmer-error reads (AC-171 misleading-state
+    // DB-unreachable vs programmer-error reads (AC-612 misleading-state
     // guard — see BackupStatusService.read).
     const backupStatusService = new BackupStatusService(db, {
       warn: (obj, msg) => app.log.warn(obj, msg),
@@ -68,7 +68,7 @@ export function authRoutes(db: Database) {
         // "Status unbekannt" until the next /me refresh (full page
         // reload). Keeping the two establishment paths symmetric
         // removes the cross-path staleness. The omission/presence
-        // contract (AC-170 owner-only, AC-176 omit-when-unreachable) is
+        // contract (AC-614 owner-only; omitted when unreachable) is
         // identical.
         const response: { user: typeof result.user; backupStatus?: BackupStatus } = {
           user: result.user,
@@ -98,9 +98,9 @@ export function authRoutes(db: Database) {
     //
     // Returns the authenticated user profile. For callers with role
     // `owner`, the response also carries the current `backupStatus`
-    // (verification.md AC-170 — badge visible only to owner on the
-    // authenticated landing surface; other roles get no `backupStatus`
-    // key, and absence drives the client's "no badge here" branch).
+    // (verification.md AC-614 — the status reaches owners only; other
+    // roles get no `backupStatus` key, and absence drives the client's
+    // "no badge here" branch).
     // ---------------------------------------------------------------
     app.get('/api/auth/me', { preHandler: authenticate }, async (request, reply) => {
       const { id, username, displayName, roles, email, themePreference, pushMuted } = request.user!;
@@ -124,9 +124,9 @@ export function authRoutes(db: Database) {
         if (status !== null) {
           response.backupStatus = status;
         }
-        // Misleading-state guard (AC-176): if the status row is
+        // Misleading-state guard (AC-612): if the status row is
         // unreachable, the omitted `backupStatus` field drives the
-        // client-side `deriveBadgeState(undefined, ...)` branch (AC-171) which
+        // client-side `deriveBadgeState(undefined, ...)` branch which
         // renders "Status unbekannt" — the unknown state surfaces
         // explicitly rather than silently hiding the badge.
       }

@@ -42,16 +42,6 @@ Design notes:
 - **Upstream failures are mapped to error categories.** Missing upstream configuration, a non-OK response from the external service, an empty response, or an unparseable response all resolve to a server error (see [§14.4.1](#1441-error-categories)). Internal details (service name, upstream status codes, stack traces) are not exposed.
 - **Every field may be null.** The LLM returns `null` for information it could not find in the input. Clients must handle nulls across all fields.
 
-#### 14.2.7 Backup Status
-
-The Layer 2 backup-freshness badge ([verification.md §15.22](verification.md#1522-backup-and-recovery), [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)) is consumed only by the authenticated owner. The status fields piggyback on the two session-establishment responses, `POST /api/auth/login` and `GET /api/auth/me` — no dedicated route. The earlier unauthenticated `GET /api/backup/status` endpoint was removed together with the login-screen badge surface.
-
-Design notes:
-
-- **Owner-only payload.** Both `/api/auth/login` and `/api/auth/me` include the `backupStatus` field for callers with role `owner`; the field is omitted for every other role. Absence drives the client's "no badge on this surface" branch. The two session-establishment paths are kept symmetric on purpose — a log-out/log-in without this parity leaves the badge stuck on the last `/me`-hydrated value until a full reload, which is the class of staleness AC-171 rules out.
-- **Unreachable source → field omitted, not silence.** Misleading state is a critical defect class ([ADR-0014](../adr/0014-ac-tier-system-critical-vs-design.md)). When the status row is unreachable, the server omits the field; the client maps `undefined` to the explicit "Status unbekannt" badge state ([AC-171](verification.md#1522-backup-and-recovery)).
-- **No errors on absence of prior runs.** The pre-seed row from the baseline migration is always present. The service reports `lastBackupOk=false` with `lastBackupAt=null` for a DB that has never run a backup; the client derives the `backup-never-run` badge reason from that shape.
-
 #### 14.2.8 Audit Log
 
 A read-only surface over [`audit_log`](data-model.md#510-audit-log-entity). The table is append-only ([data-model.md §6.10](data-model.md#610-audit-log-retention)); no create, update, or delete operation is exposed.
@@ -288,6 +278,7 @@ Every operation on protected data needs an active session ([AC-574](verification
 |                    | read, preferences, sign out, push subscription, realtime events | —                                                                                                                       |
 | Data               | export, storage totals                                          | `data:export`                                                                                                           |
 |                    | import                                                          | `data:restore`                                                                                                          |
+| Backup status      | read                                                            | role `owner` ([AC-614](verification.md#1522-backup-and-recovery))                                                       |
 | Audit log          | read                                                            | `audit:read`; office sees no destructive entries ([AC-182](verification.md#1523-audit-log))                             |
 | Notification rules | list, read, create, edit, delete                                | `notifications:manage`                                                                                                  |
 

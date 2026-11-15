@@ -1,8 +1,8 @@
 /**
  * Layer 2 drill service — Tier 2 verify-on-cycle.
  *
- * Implements verification.md §15.22 AC-168 and the drill half of
- * AC-169. Downloads the latest
+ * Implements verification.md §15.22 AC-168, AC-619 and the drill half
+ * of AC-617 and AC-618. Downloads the latest
  * encrypted dump + manifest, decrypts with the operator-loaded tmpfs
  * identity, restores into an ephemeral Postgres, and compares the
  * restore-side manifest against the sidecar manifest.
@@ -17,7 +17,7 @@
  *     reason: 'key-absent' } so the caller can log it distinctly.
  *
  * Every other outcome is recorded via `recordBackupStatus`: the status
- * row, then the status mirror (AC-169).
+ * row, then the status mirror (AC-617).
  *
  * Production wires the downloader + decrypt against R2 + `age -d`.
  * Tests pass stubs; the skip-branch never calls them (the test asserts
@@ -54,7 +54,7 @@ export interface DrillResult {
 
 export interface DrillOptions {
   db: Database;
-  /** Receives the status mirror after every status write (AC-169). */
+  /** Receives the status mirror after every status write (AC-617). */
   uploader: StatusMirrorWriter;
   /**
    * Path to the tmpfs-resident decryption identity. Resolution rule:

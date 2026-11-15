@@ -3,11 +3,12 @@
  *
  * Given a `BackupStatus` (or `undefined` for "unreachable") and a set
  * of freshness thresholds, derives the badge state rendered on the
- * owner's authenticated landing view.
+ * every view of a signed-in owner.
  *
- * Mapping rules (verification.md §15.22, AC-170 / AC-171):
+ * Mapping rules (ui/index.md §8.1.2 badge table, AC-612;
+ * the failed-drill row, AC-621, is not implemented yet):
  *   - `status === undefined`         → { kind: 'unknown' }
- *                                       (DB down AND mirror unavailable)
+ *                                       (status DB unreachable)
  *   - `lastBackupOk === false`
  *     AND `lastBackupAt === undefined`
  *                                     → { kind: 'red', reason: 'backup-never-run' }
@@ -20,8 +21,8 @@
  *   - backup age > backupRedDays     → { kind: 'red', reason: 'backup-stale' }
  *   - drill age > drillRedDays       → { kind: 'red', reason: 'drill-expired' }
  *                                       (drill staleness is a red signal at the red
- *                                        threshold — AC-171 treats an unverified
- *                                        backup cycle as worse than a stale one —
+ *                                        threshold — the badge table treats an
+ *                                        unverified cycle as worse than a stale one —
  *                                        but it is the DRILL that is overdue, not
  *                                        the backup; see the reason split below)
  *   - drill age > drillAmberDays     → { kind: 'amber', reason: 'drill-stale' }
@@ -30,7 +31,7 @@
  *                                        drill amber takes precedence above)
  *   - otherwise                      → { kind: 'green' }
  *
- * The label on the 'unknown' branch is a German UI string per AC-171 —
+ * The label on the 'unknown' branch is a German UI string per AC-612 —
  * "Status unbekannt". Rendering code may sentence-case it; tests match
  * case-insensitively so the component is free to choose.
  *
@@ -109,7 +110,7 @@ export interface BadgeThresholds {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * AC-171 calls out "Status unbekannt" by name. Centralized here so the
+ * AC-612 calls out "Status unbekannt" by name. Centralized here so the
  * renderer never forges a label by itself and drift between backends and
  * the client can't happen silently.
  */
@@ -125,7 +126,7 @@ export function deriveBadgeState(
   now: Date,
   thresholds: BadgeThresholds,
 ): BackupBadgeState {
-  // Misleading-state guard (AC-171): the unreachable branch must NEVER
+  // Misleading-state guard (AC-612): the unreachable branch must NEVER
   // silently hide the badge. It renders as an explicit unknown state.
   if (status === undefined) {
     return { kind: 'unknown', label: UNKNOWN_LABEL };
@@ -142,8 +143,8 @@ export function deriveBadgeState(
   }
 
   // A failed run outranks every other signal: a recent timestamp with
-  // `lastBackupOk === false` is the "stale-but-green" trap AC-171
-  // explicitly forbids. Check this before the age thresholds.
+  // `lastBackupOk === false` is the "stale-but-green" trap the
+  // badge table (AC-612) rules out. Check this before the age thresholds.
   if (status.lastBackupOk === false) {
     return { kind: 'red', reason: 'last-run-failed', lastBackupAt: status.lastBackupAt };
   }

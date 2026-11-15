@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 
 import { sanitizeErrorMessage } from '../services/backup.js';
 
-describe('sanitizeErrorMessage (C1)', () => {
+describe('sanitizeErrorMessage (C1, AC-620)', () => {
   it('strips password from a pasted connection string', () => {
     const raw =
       'pg_dump: error: connection to server at "db" failed: ' +
