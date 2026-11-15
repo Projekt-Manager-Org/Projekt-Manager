@@ -5,48 +5,13 @@
  * first matching row of the ui/index.md §8.1.2 badge table — an
  * explicit "Status unbekannt" when the status source is unreachable,
  * never silently hidden, never a stale-but-green reading (ADR-0014).
+ * AC-621 [crit]: a failed drill shows red.
  *
- * Pure-function test: no network, no DB, no React. The Phase 3
- * module exports a single function that takes a `BackupStatus` (or
- * a sentinel for "unreachable") and returns the derived badge
- * state. Rendering lives elsewhere — this test pins the semantic
- * mapping that rendering must follow.
+ * Pure-function test: no network, no DB, no React. Pins condition →
+ * state; state → rendered label and colour lives in
+ * `src/ui/layout/__tests__/BackupBadge.test.tsx`.
  *
- * Module contract Phase 3 must provide:
- *
- *   src/domain/backupBadge.ts
- *     export type BackupBadgeState =
- *       | { kind: 'unknown'; label: string }
- *       | { kind: 'green' }
- *       | { kind: 'amber'; reason: 'drill-stale' }
- *       | { kind: 'red'; reason: 'backup-stale' | 'drill-never-run' | 'last-run-failed' };
- *     export interface BackupStatus {
- *       lastBackupAt?: string;
- *       lastBackupOk: boolean;
- *       lastDrillAt?: string;
- *       // Explicit null = "no Tier 2 drill has ever succeeded or
- *       // failed" (data-model.md §5.9). `undefined` is not a valid
- *       // variant — callers hand through the raw DB row.
- *       lastDrillOk: boolean | null;
- *       lastBackupError?: string;
- *       lastDrillError?: string;
- *       updatedAt: string;
- *     }
- *     export interface BadgeThresholds {
- *       backupAmberDays: number;
- *       backupRedDays: number;
- *       drillAmberDays: number;
- *       drillRedDays: number;
- *     }
- *     export function deriveBadgeState(
- *       status: BackupStatus | undefined,
- *       now: Date,
- *       thresholds: BadgeThresholds,
- *     ): BackupBadgeState;
- *
- * `status === undefined` models the "unreachable" case (DB down AND
- * mirror not retrievable). Callers fetch both surfaces and pass
- * `undefined` only when neither yielded a row.
+ * `status === undefined` models the "unreachable" case (DB down).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -451,5 +416,53 @@ describe('lastBackupAt propagation', () => {
       expect(s.reason).toBe('backup-never-run');
       expect(s.lastBackupAt).toBeUndefined();
     }
+  });
+});
+
+describe('AC-621: a failed drill shows red', () => {
+  it('renders red / drill-failed when the last drill failed and everything else is fresh', () => {
+    // Fresh backup, fresh drill timestamp — only the drill verdict is bad.
+    // A failed drill means the latest backup did not restore, so a green
+    // reading here is the misleading state AC-612 forbids.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(0),
+      lastDrillAt: daysAgo(0),
+      lastDrillOk: false,
+      lastDrillError: 'verify',
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind).toBe('red');
+    if (s.kind === 'red') {
+      expect(s.reason).toBe('drill-failed');
+      expect(s.lastBackupAt).toBe(status.lastBackupAt);
+    }
+  });
+
+  it('ranks a failed drill below a failed backup run', () => {
+    // ui/index.md §8.1.2: "The last backup run failed" is the row above.
+    const status: BackupStatus = {
+      lastBackupOk: false,
+      lastBackupAt: daysAgo(0),
+      lastDrillAt: daysAgo(0),
+      lastDrillOk: false,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind === 'red' && s.reason).toBe('last-run-failed');
+  });
+
+  it('ranks a failed drill above a stale backup and an expired drill', () => {
+    // Both age rows sit below the failed-drill row in the table.
+    const status: BackupStatus = {
+      lastBackupOk: true,
+      lastBackupAt: daysAgo(THRESHOLDS.backupRedDays + 1),
+      lastDrillAt: daysAgo(THRESHOLDS.drillRedDays + 1),
+      lastDrillOk: false,
+      updatedAt: daysAgo(0),
+    };
+    const s = deriveBadgeState(status, NOW, THRESHOLDS);
+    expect(s.kind === 'red' && s.reason).toBe('drill-failed');
   });
 });

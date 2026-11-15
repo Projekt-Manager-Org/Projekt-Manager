@@ -84,6 +84,7 @@ const BACKUP_EVENT_URL = '/kanban';
  */
 const BACKUP_REASON_BODY: Readonly<Record<BackupBadgeReason, string>> = {
   'last-run-failed': STRINGS.backup.lastRunFailed,
+  'drill-failed': STRINGS.backup.drillFailed,
   'backup-never-run': STRINGS.backup.backupNeverRun,
   'drill-never-run': STRINGS.backup.drillNeverRun,
   'backup-stale': STRINGS.backup.backupStale,

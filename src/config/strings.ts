@@ -1010,6 +1010,7 @@ export const STRINGS = {
     backupStale: 'Backup: veraltet',
     drillExpired: 'Drill: überfällig',
     lastRunFailed: 'Backup: fehlgeschlagen',
+    drillFailed: 'Drill: fehlgeschlagen',
     backupNeverRun: 'Backup: noch nie ausgeführt',
     drillNeverRun: 'Drill: noch nie ausgeführt',
     unknown: 'Status unbekannt',

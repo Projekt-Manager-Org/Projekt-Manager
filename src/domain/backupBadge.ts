@@ -5,8 +5,7 @@
  * of freshness thresholds, derives the badge state rendered on the
  * every view of a signed-in owner.
  *
- * Mapping rules (ui/index.md §8.1.2 badge table, AC-612;
- * the failed-drill row, AC-621, is not implemented yet):
+ * Mapping rules (ui/index.md §8.1.2 badge table, AC-612):
  *   - `status === undefined`         → { kind: 'unknown' }
  *                                       (status DB unreachable)
  *   - `lastBackupOk === false`
@@ -15,6 +14,8 @@
  *                                       (pre-seed row — no run has ever happened)
  *   - `lastBackupOk === false`       → { kind: 'red', reason: 'last-run-failed' }
  *                                       (a real run failed — `lastBackupAt` is set)
+ *   - `lastDrillOk === false`        → { kind: 'red', reason: 'drill-failed' }
+ *                                       (the latest backup did not restore, AC-621)
  *   - `lastDrillOk === null`         → { kind: 'red', reason: 'drill-never-run' }
  *                                       (no Tier 2 drill has ever succeeded or failed —
  *                                        data-model.md §5.9 authoritative null signal)
@@ -78,6 +79,7 @@ export type BackupBadgeState =
       reason:
         | 'backup-stale'
         | 'drill-expired'
+        | 'drill-failed'
         | 'drill-never-run'
         | 'last-run-failed'
         | 'backup-never-run';
@@ -147,6 +149,12 @@ export function deriveBadgeState(
   // badge table (AC-612) rules out. Check this before the age thresholds.
   if (status.lastBackupOk === false) {
     return { kind: 'red', reason: 'last-run-failed', lastBackupAt: status.lastBackupAt };
+  }
+
+  // Failed drill (AC-621): the latest backup did not restore, so fresh
+  // timestamps must not read green. Ranked below a failed backup run.
+  if (status.lastDrillOk === false) {
+    return { kind: 'red', reason: 'drill-failed', lastBackupAt: status.lastBackupAt };
   }
 
   // Never-run drill. `null` (not `undefined`) is the authoritative

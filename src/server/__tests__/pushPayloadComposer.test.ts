@@ -172,6 +172,7 @@ describe('composePushPayload — AC-211', () => {
     // the badge the owner lands on cannot disagree (#122).
     const cases: ReadonlyArray<[string, string]> = [
       ['last-run-failed', 'Backup: fehlgeschlagen'],
+      ['drill-failed', 'Drill: fehlgeschlagen'],
       ['backup-never-run', 'Backup: noch nie ausgeführt'],
       ['drill-never-run', 'Drill: noch nie ausgeführt'],
       ['backup-stale', 'Backup: veraltet'],
