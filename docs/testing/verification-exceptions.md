@@ -295,9 +295,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
-| AC-645 | gap     | needs a test that every registered device of a recipient is pushed                                       |
-| AC-647 | gap     | needs a test that a failing device does not stop pushes to the others                                    |
 | AC-653 | gap     | needs a test of the opt-in failure message and the kept button                                           |
-| AC-670 | gap     | needs a test that an upload past the warn band is accepted                                               |
 | AC-674 | gap     | needs a test that activation with permission granted registers the device on the server                  |
 | AC-675 | gap     | needs a test that Gerät abmelden removes only this device's registration                                 |
