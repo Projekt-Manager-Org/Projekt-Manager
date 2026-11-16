@@ -229,8 +229,9 @@ export async function subscribeToPush(): Promise<PushSubscribeOutcome> {
  * server. Keeps the service worker registered (the user may opt in
  * again) — spec ui/index.md §8.7.2 "Gerät abmelden" scope.
  *
- * Throws on server error so the caller (PushSubscriptionControls
- * handleUnsubscribe) can catch and show the AC-673 error notification.
+ * Throws on server error so PushSubscriptionControls' handleUnsubscribe
+ * can show the AC-673 error notification; sign-out (`authStore.logout`,
+ * AC-655) swallows it.
  * The browser-side subscription is revoked first so the browser stops
  * forwarding pushes even if the server call fails; the server row is
  * reconciled on the next successful unsubscribe (the DELETE is
@@ -246,4 +247,19 @@ export async function unsubscribeFromPush(): Promise<void> {
   if (!result.ok) {
     throw new Error(result.error.message);
   }
+}
+
+/**
+ * On sign-in, revoke a browser subscription that is not registered for
+ * the signed-in user (AC-679): another user's, or one whose registration
+ * a password change removed. The controls then offer `aktivieren`.
+ * Fails closed — a failed check revokes too, so a shared device never
+ * keeps delivering a previous user's pushes.
+ */
+export async function dropSubscriptionNotRegisteredForUser(): Promise<void> {
+  const subscription = await getCurrentSubscription();
+  if (!subscription) return;
+  const result = await pushApi.registrationStatus(subscription.endpoint);
+  if (result.ok && result.data.registered) return;
+  await subscription.unsubscribe();
 }

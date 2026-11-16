@@ -502,7 +502,7 @@ export const notificationRule = pgTable('notification_rule', {
 // Push subscriptions (data-model.md §5.12, ADR-0023)
 //
 // Per-device push subscription. A user may hold multiple rows (phone,
-// desktop). Unique on (user_id, endpoint) so re-subscribe upserts.
+// desktop). Unique on endpoint: one user per device (AC-656).
 // Hard-delete of the user cascades; deactivation retains rows (mute is
 // a delivery-time filter).
 // ---------------------------------------------------------------
@@ -520,7 +520,8 @@ export const pushSubscriptions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('push_subscriptions_user_endpoint_uq').on(table.userId, table.endpoint),
+    // One user per device (AC-656): registering moves the row.
+    uniqueIndex('push_subscriptions_endpoint_uq').on(table.endpoint),
     index('push_subscriptions_user_id_idx').on(table.userId),
   ],
 );

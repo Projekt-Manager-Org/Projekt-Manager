@@ -107,6 +107,11 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 1024
+                  },
+                  "pushEndpoint": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048
                   }
                 }
               }
@@ -1555,6 +1560,27 @@
             },
             "in": "path",
             "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ]
+      }
+    },
+    "/api/push-subscriptions/status": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "in": "query",
+            "name": "endpoint",
             "required": true
           }
         ],

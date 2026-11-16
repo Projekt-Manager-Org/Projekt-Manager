@@ -12,6 +12,7 @@ import { createAuthMiddleware, requirePermission } from '../middleware/auth.js';
 import { AUTH_CONFIG, getRateLimit, getCookieSecure } from '../config/index.js';
 import { AuthService } from '../services/AuthService.js';
 import { BackupStatusService } from '../services/BackupStatusService.js';
+import { PUSH_ENDPOINT_MAX_LENGTH } from '../services/PushSubscriptionService.js';
 import type { BackupStatus } from '../../domain/backupBadge.js';
 
 export function authRoutes(db: Database) {
@@ -217,6 +218,9 @@ export function authRoutes(db: Database) {
               // Schema maxLength counts characters, not bytes — see the
               // commit that added this comment for the full story.
               newPassword: { type: 'string', minLength: 1, maxLength: 1024 },
+              // This device's push endpoint: its registration survives the
+              // change (AC-676).
+              pushEndpoint: { type: 'string', minLength: 1, maxLength: PUSH_ENDPOINT_MAX_LENGTH },
             },
           },
         },
@@ -225,9 +229,10 @@ export function authRoutes(db: Database) {
         },
       },
       async (request, reply) => {
-        const { currentPassword, newPassword } = request.body as {
+        const { currentPassword, newPassword, pushEndpoint } = request.body as {
           currentPassword: string;
           newPassword: string;
+          pushEndpoint?: string;
         };
 
         await authService.changePassword(
@@ -238,6 +243,7 @@ export function authRoutes(db: Database) {
           request.ip,
           request.log,
           request.id ?? null,
+          pushEndpoint,
         );
 
         return reply.code(200).send({ success: true });

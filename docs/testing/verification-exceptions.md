@@ -298,12 +298,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-645 | gap     | needs a test that every registered device of a recipient is pushed                                       |
 | AC-647 | gap     | needs a test that a failing device does not stop pushes to the others                                    |
 | AC-653 | gap     | needs a test of the opt-in failure message and the kept button                                           |
-| AC-655 | gap     | sign-out keeps the device subscribed — code follow-up                                                    |
-| AC-656 | gap     | a second user registering a device keeps the first user's pushes — code follow-up                        |
 | AC-670 | gap     | needs a test that an upload past the warn band is accepted                                               |
 | AC-674 | gap     | needs a test that activation with permission granted registers the device on the server                  |
 | AC-675 | gap     | needs a test that Gerät abmelden removes only this device's registration                                 |
-| AC-676 | gap     | needs a test that a password change removes the other devices' registrations                             |
-| AC-677 | gap     | needs a test that an expired session keeps its devices registered                                        |
-| AC-678 | gap     | needs a test that a password reset removes all the user's device registrations                           |
-| AC-679 | gap     | needs a test that signing in drops a device registration that is not the user's                          |

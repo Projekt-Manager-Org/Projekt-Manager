@@ -307,10 +307,10 @@ export const authApi = {
 
   me: () => apiCall<LoginResponse>('/api/auth/me'),
 
-  changePassword: (currentPassword: string, newPassword: string) =>
+  changePassword: (currentPassword: string, newPassword: string, pushEndpoint?: string) =>
     apiCall<{ success: boolean }>('/api/auth/change-password', {
       method: 'POST',
-      body: { currentPassword, newPassword },
+      body: { currentPassword, newPassword, pushEndpoint },
     }),
 
   updateSelf: (patch: { themePreference?: ThemePreference; pushMuted?: boolean }) =>
@@ -620,6 +620,11 @@ export const pushApi = {
   unsubscribeByEndpoint: (endpoint: string) => {
     const qs = toQuery({ endpoint });
     return apiCall<null>('/api/push-subscriptions' + qs, { method: 'DELETE' });
+  },
+
+  registrationStatus: (endpoint: string) => {
+    const qs = toQuery({ endpoint });
+    return apiCall<{ registered: boolean }>('/api/push-subscriptions/status' + qs);
   },
 };
 

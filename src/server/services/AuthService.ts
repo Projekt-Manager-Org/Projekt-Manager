@@ -27,6 +27,7 @@ import {
   findSession,
 } from '../repositories/session.js';
 import { isSessionExpired } from '../../domain/session.js';
+import { deletePushSubscriptionsByUserId } from '../repositories/pushSubscription.js';
 import { hashPassword, verifyPassword } from '../password.js';
 import { checkPasswordPolicy } from '../config/password-policy.js';
 import { STRINGS } from '../../config/strings.js';
@@ -165,6 +166,7 @@ export class AuthService {
     ip: string,
     log: ServiceLogger,
     correlationId?: string | null,
+    keepPushEndpoint?: string,
   ) {
     // The caller supplies `userId` only — the username is derived from
     // the current user record. Passing both parameters was redundant and
@@ -222,6 +224,9 @@ export class AuthService {
           if (!current) throw notFound(STRINGS.entities.user);
           await changePasswordRepo(tx, userId, newHash, userId);
           await deleteSessionsByUserId(tx, userId, currentToken);
+          // The other devices stop receiving pushes; the one the change
+          // was made on stays registered (AC-676).
+          await deletePushSubscriptionsByUserId(tx, userId, keepPushEndpoint);
           return {
             entityId: userId,
             entityLabel: current.displayName,
