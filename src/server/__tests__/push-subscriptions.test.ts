@@ -1,13 +1,13 @@
 /**
  * Push subscription integration tests — Iteration 8, issue #112.
  *
- * Pins AC-654 / AC-657 in §15.24.
+ * Pins AC-654 / AC-657 / AC-674 in §15.24.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
-import { startApp, stopApp, login, authPost, authDelete } from '../../test/api-helpers.js';
+import { startApp, stopApp, login, authGet, authPost, authDelete } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 
@@ -80,6 +80,22 @@ describe('Push subscription subscribe + unsubscribe', () => {
     });
     expect(ok.statusCode).toBeLessThan(300);
     expect(await subscriptionUserId(endpoint)).toBe(ownerUserId);
+  });
+
+  it('AC-674: the registration the client sends registers the device for the user', async () => {
+    // The body `subscribeToPush` posts (pushClient.test.ts pins it).
+    const endpoint = `https://push.test.example/ac674-${Date.now().toString(36)}`;
+    const res = await authPost(ownerToken, '/api/push-subscriptions', {
+      endpoint,
+      keys: { p256dh: '-_8', auth: 'AQ' },
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64)',
+    });
+    expect(res.statusCode).toBeLessThan(300);
+
+    const statusPath = `/api/push-subscriptions/status?endpoint=${encodeURIComponent(endpoint)}`;
+    const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
+    expect((await authGet(ownerToken, statusPath)).json()).toEqual({ registered: true });
+    expect((await authGet(officeToken, statusPath)).json()).toEqual({ registered: false });
   });
 
   it('re-subscribing an existing endpoint updates the row (no duplicate)', async () => {

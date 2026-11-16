@@ -1,22 +1,25 @@
 /**
- * What this device's push client does on unregistering (the device half
- * of AC-655) and on sign-in (AC-679). The auth store calls both:
+ * What this device's push client does on registering (AC-674, AC-653), on
+ * unregistering (AC-675, and the device half of AC-655) and on sign-in
+ * (AC-679). The auth store calls the last two:
  * `pushRegistrationOnAuth.test.ts`.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+const subscribeMock = vi.fn();
 const unsubscribeByEndpointMock = vi.fn();
 const registrationStatusMock = vi.fn();
 
 vi.mock('@/api/client', () => ({
   pushApi: {
+    subscribe: (body: unknown) => subscribeMock(body),
     unsubscribeByEndpoint: (endpoint: string) => unsubscribeByEndpointMock(endpoint),
     registrationStatus: (endpoint: string) => registrationStatusMock(endpoint),
   },
 }));
 
-const { unsubscribeFromPush, dropSubscriptionNotRegisteredForUser } =
+const { subscribeToPush, unsubscribeFromPush, dropSubscriptionNotRegisteredForUser } =
   await import('@/pwa/pushClient');
 
 const ENDPOINT = 'https://push.example/this-device';
@@ -42,7 +45,45 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('AC-655: unregistering this device', () => {
+describe('activating with permission granted', () => {
+  const browserSubscribe = vi.fn();
+
+  beforeEach(() => {
+    subscribeMock.mockReset().mockResolvedValue({ ok: true, data: {} });
+    browserSubscribe.mockReset().mockResolvedValue({
+      endpoint: ENDPOINT,
+      // 0xfb 0xff encodes to `-_8` in base64url and `+/8=` in base64.
+      getKey: (name: string) => new Uint8Array(name === 'p256dh' ? [0xfb, 0xff] : [1]).buffer,
+      unsubscribe: browserUnsubscribe,
+    });
+    vi.stubGlobal('Notification', { requestPermission: async () => 'granted' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ vapidPublicKey: 'AQAB' }))),
+    );
+    vi.stubGlobal('navigator', {
+      userAgent: 'test-agent',
+      serviceWorker: { ready: Promise.resolve({ pushManager: { subscribe: browserSubscribe } }) },
+    });
+  });
+
+  it("AC-674: registers the browser's subscription with the server", async () => {
+    await expect(subscribeToPush()).resolves.toEqual({ ok: true });
+    expect(subscribeMock).toHaveBeenCalledWith({
+      endpoint: ENDPOINT,
+      keys: { p256dh: '-_8', auth: 'AQ' },
+      userAgent: 'test-agent',
+    });
+  });
+
+  it('AC-653: reports a failure, not a throw, when the browser refuses the subscription', async () => {
+    browserSubscribe.mockRejectedValue(new DOMException('push service error', 'AbortError'));
+    await expect(subscribeToPush()).resolves.toEqual({ ok: false, reason: 'subscribe-failed' });
+    expect(subscribeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('AC-655, AC-675: unregistering this device', () => {
   it('revokes the browser subscription and removes the server registration', async () => {
     await unsubscribeFromPush();
     expect(browserUnsubscribe).toHaveBeenCalledTimes(1);

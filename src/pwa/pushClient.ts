@@ -179,10 +179,16 @@ export async function subscribeToPush(): Promise<PushSubscribeOutcome> {
   }
 
   const registration = await ensureServiceWorker();
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToArrayBuffer(vapid),
-  });
+  let subscription: PushSubscription | null;
+  try {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToArrayBuffer(vapid),
+    });
+  } catch {
+    // The browser refused, e.g. its push service is unreachable (AC-653).
+    return { ok: false, reason: 'subscribe-failed' };
+  }
 
   // The Push API spec says `subscribe()` either resolves with a
   // `PushSubscription` or rejects — null is not a valid resolution. A

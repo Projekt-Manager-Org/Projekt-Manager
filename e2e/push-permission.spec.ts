@@ -1,11 +1,12 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Response } from '@playwright/test';
 import { STORAGE_STATES } from './storage-states';
+import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../src/test/seedAssumptions';
 
 /**
  * E2E — Push permission + Stummschalten toggle.
  *
  * Pins AC-201's "no auto-prompt on page load" clause and AC-658
- * (Stummschalten toggle reflects `pushMuted` and persists).
+ * (Stummschalten toggle reflects `pushMuted`, the same on every device).
  *
  * AC-201's second clause — "activation triggers exactly one prompt" —
  * is NOT exercised here. Headless Chromium pins
@@ -73,6 +74,9 @@ test.describe('AC-201: push permission is user-initiated, not auto-requested', (
 // ---------------------------------------------------------------
 // AC-658 — Stummschalten persists and reflects pushMuted
 // ---------------------------------------------------------------
+const isMuteSave = (r: Response): boolean =>
+  r.url().endsWith('/api/auth/me') && r.request().method() === 'PATCH';
+
 test.describe('AC-658: Stummschalten reflects pushMuted and persists', () => {
   test.use({ storageState: STORAGE_STATES.owner });
 
@@ -96,6 +100,44 @@ test.describe('AC-658: Stummschalten reflects pushMuted and persists', () => {
     await page.reload();
     await page.getByTestId('user-menu-trigger').click();
     await expect(page.getByTestId('push-mute-toggle')).toBeChecked();
+  });
+
+  test('a mute set on one device shows on another the user signs in on, and back', async ({
+    page,
+    browser,
+  }) => {
+    const reset = await page.request.patch('/api/auth/me', { data: { pushMuted: false } });
+    expect(reset.ok()).toBe(true);
+
+    // First device: the stored owner session mutes.
+    await page.goto('/');
+    await page.getByTestId('user-menu-trigger').click();
+    const muted = page.waitForResponse(isMuteSave);
+    await page.getByTestId('push-mute-toggle').check();
+    expect((await muted).ok()).toBe(true);
+
+    // Second device: a fresh browser, signed in through the login form.
+    const secondDevice = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    try {
+      const second = await secondDevice.newPage();
+      await second.goto('/');
+      await second.getByTestId('login-username').fill(SEED_USERS.owner.username);
+      await second.getByTestId('login-password').fill(SEED_DEFAULT_PASSWORD);
+      await second.getByTestId('login-submit').click();
+      await second.getByTestId('user-menu-trigger').click();
+      const secondToggle = second.getByTestId('push-mute-toggle');
+      await expect(secondToggle).toBeChecked();
+
+      // Unmuting there shows on the first device.
+      const unmuted = second.waitForResponse(isMuteSave);
+      await secondToggle.uncheck();
+      expect((await unmuted).ok()).toBe(true);
+    } finally {
+      await secondDevice.close();
+    }
+    await page.reload();
+    await page.getByTestId('user-menu-trigger').click();
+    await expect(page.getByTestId('push-mute-toggle')).not.toBeChecked();
   });
 
   test('failed mutation reverts the optimistic toggle', async ({ page }) => {

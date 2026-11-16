@@ -389,3 +389,15 @@ test.describe('AC-562: the user view needs user:manage', () => {
     await expect(page.getByTestId('user-table')).toHaveCount(0);
   });
 });
+
+test.describe('AC-149: the notification rules view needs notifications:manage', () => {
+  test.use({ storageState: STORAGE_STATES.office });
+
+  test('office is refused on a direct URL and the URL stays', async ({ page }) => {
+    await page.goto('/benachrichtigungen');
+
+    await expect(page.getByTestId('not-permitted-view')).toBeVisible();
+    await expect(page).toHaveURL(/\/benachrichtigungen$/);
+    await expect(page.getByTestId('notification-rules-view')).toHaveCount(0);
+  });
+});
