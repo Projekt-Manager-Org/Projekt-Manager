@@ -110,10 +110,10 @@ export function PushSubscriptionControls() {
         return;
       }
       if (result.reason === 'subscribe-failed') {
-        // Off-spec subscribe behaviour (notably mobile-Firefox returning
-        // null instead of a subscription). pushClient already rolled
-        // back any partial state — surface an actionable error so the
-        // user can retry instead of seeing a silent no-op.
+        // The browser refused the subscription (e.g. its push service is
+        // unreachable) or returned one without keys. pushClient already
+        // rolled back any partial state — surface an actionable error so
+        // the user can retry instead of seeing a silent no-op (AC-653).
         setErrorMessage(STRINGS.push.subscribeFailed);
         return;
       }

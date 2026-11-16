@@ -49,9 +49,9 @@
  *      (handler wiring, busy-gate against double-click).
  *
  * Human judgement gate (the `[vis]` reviewer) still applies: the
- * opt-in affordance's visual rendering, disabled state, and error
- * surface live in the e2e specs that run under real conditions (mute
- * toggle, failure-path tests). This file covers only the browser-API
+ * opt-in affordance's failure surface lives in
+ * `e2e/push-opt-in-failure.spec.ts` (AC-653), the mute toggle in
+ * `e2e/push-permission.spec.ts`. This file covers only the browser-API
  * call contract.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';

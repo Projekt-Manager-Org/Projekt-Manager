@@ -1,5 +1,5 @@
 /**
- * What this device's push client does on registering (AC-674), on
+ * What this device's push client does on registering (AC-674, AC-653), on
  * unregistering (AC-675, and the device half of AC-655) and on sign-in
  * (AC-679). The auth store calls the last two:
  * `pushRegistrationOnAuth.test.ts`.
@@ -74,6 +74,12 @@ describe('activating with permission granted', () => {
       keys: { p256dh: '-_8', auth: 'AQ' },
       userAgent: 'test-agent',
     });
+  });
+
+  it('AC-653: reports a failure, not a throw, when the browser refuses the subscription', async () => {
+    browserSubscribe.mockRejectedValue(new DOMException('push service error', 'AbortError'));
+    await expect(subscribeToPush()).resolves.toEqual({ ok: false, reason: 'subscribe-failed' });
+    expect(subscribeMock).not.toHaveBeenCalled();
   });
 });
 
