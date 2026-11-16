@@ -1,23 +1,11 @@
 /**
- * Notification publisher integration tests — Iteration 8, issue #112.
+ * Notification publisher integration tests.
  *
- * Pins AC-192 / AC-195 in §15.24.
+ * Pins AC-192, AC-195, AC-203, AC-321, AC-371 and AC-646 in §15.24.
  *
- * Failing-state expectations (step 3):
- *   - `src/server/services/notification-publisher.ts` does not exist
- *     yet, so the dynamic import fails with MODULE_NOT_FOUND — the
- *     recognizable "implementation missing" failure mode (mirrors the
- *     AC-183 pattern in `audit-log.test.ts`).
- *   - Once the module ships, the subscribe surface must expose
- *     `onEventDispatched(handler)` so tests can observe recipient
- *     resolution without touching the push transport.
- *
- * Rationale for the subscribe-spy approach over an end-to-end push
- * delivery assertion: push delivery involves the browser-side VAPID
- * handshake, which is not present under `inject()`. The publisher's
- * recipient-resolution contract is what AC-192/195 actually pin; the
- * transport layer is out of scope here and verified separately at the
- * integration level once a real push sandbox exists.
+ * Tests observe the publisher through `onEventDispatched(handler)`
+ * rather than an end-to-end push: delivery needs the browser-side VAPID
+ * handshake, which is not present under `inject()`.
  */
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
@@ -62,9 +50,6 @@ interface Publisher {
   }) => Promise<void>;
 }
 
-// Dynamic import so TS --noEmit does not block the file. The module
-// does not exist at step-3 time; the import fails at runtime with
-// MODULE_NOT_FOUND — the intended failure surface.
 async function loadPublisher(): Promise<Publisher> {
   const path = '../services/notification-publisher.js';
   return (await import(/* @vite-ignore */ path)) as unknown as Publisher;
@@ -411,37 +396,32 @@ describe('Publisher resolves recipients as deduplicated union (AC-192)', () => {
 });
 
 // ---------------------------------------------------------------------
-// Dispatch-latency budget
+// AC-646 — dispatch latency
 // ---------------------------------------------------------------------
 //
-// AC-646 fixes the budget at 5 s; the test reads it from
-// `src/config/pushDispatch.ts`, whose env override is a code follow-up.
-describe('AC-646: push dispatch within the latency budget', () => {
+// Office drives the transition while owner is the recipient: an actor
+// is never pushed (AC-321), so owner-as-actor would time a dispatch that
+// sends nothing. Owner registers a device so the push goes through the
+// transport (the no-op one under test, i.e. every push service answering).
+const AC_646_BUDGET_MS = 5000;
+
+describe('AC-646: pushes go out within 5 s of the event', () => {
   let ownerToken: string;
+  let officeToken: string;
 
   beforeAll(async () => {
     await startApp();
     ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+    officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
   });
 
   afterAll(async () => {
     await stopApp();
   });
 
-  it('push transport is invoked within the configured latency budget of the triggering commit', async () => {
+  it('pushes a non-actor recipient within 5 s of the triggering commit', async () => {
     const pub = await loadPublisher();
 
-    // Read the configured latency budget from the config module — the
-    // config module does not exist yet (step-3 gap), so the import
-    // fails with MODULE_NOT_FOUND and surfaces as an implementation
-    // gap rather than a hardcoded timing assertion.
-    const cfgPath = '../../config/pushDispatch.js';
-    const cfg = (await import(/* @vite-ignore */ cfgPath)) as {
-      PUSH_DISPATCH_LATENCY_BUDGET_MS: number;
-    };
-    expect(typeof cfg.PUSH_DISPATCH_LATENCY_BUDGET_MS).toBe('number');
-
-    // Create a rule naming owner so we have a non-empty recipient set.
     const { db, pool } = createDatabase();
     let ownerId: string;
     try {
@@ -453,6 +433,13 @@ describe('AC-646: push dispatch within the latency budget', () => {
       await pool.end();
     }
 
+    const endpoint = `https://push.test.example/ac646-${Date.now().toString(36)}`;
+    const subRes = await authPost(ownerToken, '/api/push-subscriptions', {
+      endpoint,
+      keys: { p256dh: 'p', auth: 'a' },
+    });
+    expect(subRes.statusCode).toBeLessThan(300);
+
     const ruleRes = await authPost(ownerToken, '/api/notification-rules', {
       eventClass: 'project.transition_forward',
       recipientSpec: { roles: [], includeAssignedWorkers: false, userIds: [ownerId] },
@@ -460,28 +447,31 @@ describe('AC-646: push dispatch within the latency budget', () => {
     });
     expect(ruleRes.statusCode).toBe(201);
 
-    let dispatchAt: number | null = null;
-    const unsubscribe = pub.onEventDispatched(() => {
-      dispatchAt = Date.now();
+    let pushedAt: number | null = null;
+    const unsubscribe = pub.onEventDispatched((o) => {
+      if (o.pushAttemptedUserIds.includes(ownerId)) pushedAt = Date.now();
     });
 
     try {
-      const list = await authGet(ownerToken, '/api/projects?limit=200');
+      const list = await authGet(officeToken, '/api/projects?limit=200');
       const target = (list.json().data as { id: string; status: string }[]).find(
         (p) => p.status === 'beauftragt',
       );
       expect(target).toBeDefined();
       const commitAt = Date.now();
-      const res = await authPost(ownerToken, `/api/projects/${target!.id}/transition/forward`, {
+      const res = await authPost(officeToken, `/api/projects/${target!.id}/transition/forward`, {
         expectedStatus: 'beauftragt',
       });
       expect(res.statusCode).toBe(200);
 
-      expect(dispatchAt).not.toBeNull();
-      const delta = dispatchAt! - commitAt;
-      expect(delta).toBeLessThanOrEqual(cfg.PUSH_DISPATCH_LATENCY_BUDGET_MS);
+      expect(pushedAt).not.toBeNull();
+      expect(pushedAt! - commitAt).toBeLessThanOrEqual(AC_646_BUDGET_MS);
     } finally {
       unsubscribe();
+      await authDelete(
+        ownerToken,
+        `/api/push-subscriptions?endpoint=${encodeURIComponent(endpoint)}`,
+      );
     }
   });
 });

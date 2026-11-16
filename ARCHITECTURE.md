@@ -217,7 +217,6 @@ Maps spec `[C]` markers (values that vary per deployment) to files. For how oper
 | Audit action → German label map                                                     | `src/config/auditActionLabels.ts`      |
 | Audit list page size                                                                | `src/config/auditPageSize.ts`          |
 | Notification event catalog + German labels (ADR-0023)                               | `src/config/notificationEvents.ts`     |
-| Push-dispatch latency budget                                                        | `src/config/pushDispatch.ts`           |
 | Role keys (typed `AccountRoleKey` enum)                                             | `src/config/roleKeys.ts`               |
 | Attachment server caps (size, bulk, reaper TTL, worker self-delete grace)           | `src/config/attachmentConfig.ts`       |
 | Attachment client pipeline params (resize, quality, thumbnail dimension)            | `src/config/attachmentPipeline.ts`     |

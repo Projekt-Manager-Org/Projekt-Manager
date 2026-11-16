@@ -11,15 +11,9 @@
  *
  *   - AC-269: a connection held idle observes a `:` keepalive comment
  *     line within the configured heartbeat window. The interval is
- *     fixed at 25 s in the spec (api.md §14.2.13, ADR-0025); the
- *     implementer is asked to make it injectable so this test can run
- *     against a 100 ms cadence rather than waiting >25 s of wall-clock
- *     time. Surface guess: `SSE_HEARTBEAT_INTERVAL_MS` env override
- *     consumed by `buildApp`'s SSE wiring (parallel to
- *     `PUSH_DISPATCH_LATENCY_BUDGET_MS` in `notification-publisher.test.ts`).
- *     If the implementer chooses a different mechanism (constructor arg,
- *     dedicated module export, …), the implementer rewrites the
- *     heartbeat-arm fixture; the assertion stays the same.
+ *     fixed at 25 s in the spec (api.md §14.2.13, ADR-0025); the test
+ *     sets `SSE_HEARTBEAT_INTERVAL_MS` (read by `routes/events.ts`) to
+ *     1 s rather than waiting >25 s of wall-clock time.
  *
  * Streaming response handling under `inject()`: Fastify's `inject()` is
  * built on `light-my-request`, which exposes `payloadAsStream: true` to
@@ -159,9 +153,9 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
-    // The implementer is asked to honor SSE_HEARTBEAT_INTERVAL_MS so
-    // the heartbeat assertion runs in seconds rather than >25 s of
-    // wall-clock. Set it BEFORE buildApp() reads env. The 1000 ms
+    // SSE_HEARTBEAT_INTERVAL_MS makes the heartbeat assertion run in
+    // seconds rather than >25 s of wall-clock. Set it BEFORE buildApp()
+    // reads env. The 1000 ms
     // floor matches the schema's documented lower bound (1 s minimum;
     // see env.ts and architecture.md §12.2).
     process.env.SSE_HEARTBEAT_INTERVAL_MS = '1000';
