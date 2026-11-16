@@ -1,5 +1,5 @@
 /**
- * Push dispatch across a recipient's devices — AC-645 and AC-647 in §15.24.
+ * Push dispatch across a recipient's devices — AC-645, AC-647 and AC-675 in §15.24.
  *
  * A recording transport replaces the no-op one for this file, so the test
  * sees each device the publisher pushes to. A `backup.failed` system event
@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 
-import { startApp, stopApp, login, authPost } from '../../test/api-helpers.js';
+import { startApp, stopApp, login, authPost, authDelete } from '../../test/api-helpers.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { createDatabase } from '../db/connection.js';
 import {
@@ -116,5 +116,20 @@ describe('AC-647: a failing device does not stop pushes to the others', () => {
     await publishSystemEvent({ eventClass: 'backup.failed', payload: { reason: 'backup-stale' } });
 
     expect([...attempted].sort()).toEqual(devices);
+  });
+});
+
+describe('AC-675: unregistering a device stops pushes to it, not to the others', () => {
+  it("pushes only the user's remaining device", async () => {
+    const [removed, kept] = await registerDevices(ownerToken, 'old-phone', 'tablet');
+    const res = await authDelete(
+      ownerToken,
+      `/api/push-subscriptions?endpoint=${encodeURIComponent(removed!)}`,
+    );
+    expect(res.statusCode).toBeLessThan(300);
+
+    await publishSystemEvent({ eventClass: 'backup.failed', payload: { reason: 'backup-stale' } });
+
+    expect(attempted).toEqual([kept]);
   });
 });
