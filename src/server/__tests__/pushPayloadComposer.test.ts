@@ -73,14 +73,20 @@ describe('composePushPayload — AC-648, AC-649, AC-652', () => {
     expect(out.url).toBe('/projects/project-42');
   });
 
-  it('renders project.assignment_changed with entityLabel as the body', () => {
+  it('renders project.assignment_changed with the project label, not the worker name', () => {
     const out = composePushPayload(
       'project.assignment_changed',
+      // The row ProjectCrudService writes: entityId is the project id,
+      // entityLabel the worker's display name, the project label is the ancestor's.
       row({
         entityType: 'project_worker',
         action: 'create',
-        // entityId remains the projectId — see ProjectCrudService convention.
         entityId: 'project-42',
+        entityLabel: 'Lukas Becker',
+        payload: {
+          before: {},
+          after: { projectId: 'project-42', userId: 'user-9', displayName: 'Lukas Becker' },
+        },
       }),
       null,
     );

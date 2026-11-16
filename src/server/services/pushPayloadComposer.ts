@@ -16,8 +16,10 @@
  * Label sources:
  *   - Title: `NOTIFICATION_EVENT_LABELS` (config/notificationEvents.ts).
  *   - Status name in transition body: `STATE_CONFIGS` (config/stateConfig.ts).
- *   - Project identifier in body: `entityLabel` (snapshotted at write time
- *     via `projectAuditLabel` — survives rename / archive).
+ *   - Project identifier in body: `entityLabel` on `project` rows,
+ *     `ancestorEntityLabel` on nested rows (`project_worker`, `attachment`);
+ *     both snapshotted at write time via `projectAuditLabel` — survive
+ *     rename / archive.
  *   - Backup-condition body: `STRINGS.backup` (config/strings.ts), the
  *     same catalog the badge renders from.
  */
@@ -138,7 +140,9 @@ export function composePushPayload(
     }
 
     case 'project.assignment_changed': {
-      const label = auditRow?.entityLabel ?? PROJECT_FALLBACK_BODY;
+      // A `project_worker` row's `entityLabel` is the worker's name; the
+      // project label is the ancestor's (data-model.md §5.10, AC-649).
+      const label = auditRow?.ancestorEntityLabel ?? PROJECT_FALLBACK_BODY;
       return { title, body: label, url: projectUrl(auditRow) };
     }
 
