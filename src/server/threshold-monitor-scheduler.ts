@@ -25,6 +25,8 @@ import type { ServiceLogger } from './services/Logger.js';
 export const EVENT_SWEEP_FAILED = 'threshold-monitor-sweep-failed';
 export const EVENT_SUSTAINED_FAILURE = 'threshold-monitor-sustained-failure';
 export const EVENT_RECOVERED = 'threshold-monitor-recovered';
+/** Logged once at startup when no storage capacity is declared (AC-669). */
+export const EVENT_STORAGE_CHECK_DISABLED = 'threshold-monitor-storage-check-disabled';
 
 export interface StartThresholdMonitorSchedulerOptions {
   db: Database;
@@ -39,6 +41,9 @@ export type ThresholdMonitorScheduler = PeriodicSweeperHandle;
 export function startThresholdMonitorScheduler(
   opts: StartThresholdMonitorSchedulerOptions,
 ): ThresholdMonitorScheduler {
+  if (opts.quotaBytes === null) {
+    opts.logger.info({ reason: 'STORAGE_QUOTA_GB unset' }, EVENT_STORAGE_CHECK_DISABLED);
+  }
   return createPeriodicSweeper({
     intervalMs: opts.intervalMinutes * 60 * 1000,
     logger: opts.logger,

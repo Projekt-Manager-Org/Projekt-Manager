@@ -9,7 +9,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Database } from '../db/connection.js';
-import { startThresholdMonitorScheduler } from '../threshold-monitor-scheduler.js';
+import {
+  EVENT_STORAGE_CHECK_DISABLED,
+  startThresholdMonitorScheduler,
+} from '../threshold-monitor-scheduler.js';
 
 const runMonitor = vi.hoisted(() =>
   vi.fn<(opts: unknown) => Promise<void>>().mockResolvedValue(undefined),
@@ -102,5 +105,39 @@ describe('startThresholdMonitorScheduler', () => {
     await scheduler.stop();
     await vi.advanceTimersByTimeAsync(60 * MINUTE_MS);
     expect(runMonitor).toHaveBeenCalledTimes(1);
+  });
+
+  it('AC-669: says once at startup that the storage check is off when no capacity is declared', async () => {
+    const logger = makeLogger();
+    const scheduler = startThresholdMonitorScheduler({
+      db: FAKE_DB,
+      intervalMinutes: 15,
+      quotaBytes: null,
+      logger,
+    });
+    const disabledLines = () =>
+      logger.info.mock.calls.filter(([, event]) => event === EVENT_STORAGE_CHECK_DISABLED);
+
+    expect(disabledLines()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(45 * MINUTE_MS);
+    expect(disabledLines()).toHaveLength(1);
+
+    await scheduler.stop();
+  });
+
+  it('AC-669: says nothing about the storage check when a capacity is declared', async () => {
+    const logger = makeLogger();
+    const scheduler = startThresholdMonitorScheduler({
+      db: FAKE_DB,
+      intervalMinutes: 15,
+      quotaBytes: 1024,
+      logger,
+    });
+
+    expect(logger.info.mock.calls.filter(([, e]) => e === EVENT_STORAGE_CHECK_DISABLED)).toEqual(
+      [],
+    );
+
+    await scheduler.stop();
   });
 });

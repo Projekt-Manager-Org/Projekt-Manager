@@ -371,9 +371,6 @@ async function start(): Promise<void> {
   // backup half runs regardless, since it needs no capacity figure.
   const storageQuotaBytes =
     env.STORAGE_QUOTA_GB === undefined ? null : env.STORAGE_QUOTA_GB * BYTES_PER_GB;
-  if (storageQuotaBytes === null) {
-    console.log('threshold-monitor: STORAGE_QUOTA_GB unset — storage warnings disabled');
-  }
   const thresholdMonitor = startThresholdMonitorScheduler({
     db,
     intervalMinutes: THRESHOLD_MONITOR.intervalMinutes,
