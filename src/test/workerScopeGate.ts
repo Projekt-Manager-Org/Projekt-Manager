@@ -107,6 +107,7 @@ export const WORKER_ROUTE_SCOPE: Record<string, RouteScope> = {
   'PATCH /api/auth/me': { exempt: "the caller's own user row" },
   'POST /api/auth/logout': { exempt: "the caller's own session" },
   'POST /api/auth/change-password': { exempt: "the caller's own credentials" },
+  'GET /api/push-subscriptions/status': { exempt: "the caller's own subscriptions" },
   'POST /api/push-subscriptions': { exempt: "the caller's own subscriptions" },
   'DELETE /api/push-subscriptions': { exempt: "the caller's own subscriptions" },
   'DELETE /api/push-subscriptions/:id': {

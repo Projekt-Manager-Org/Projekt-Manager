@@ -10,6 +10,11 @@ import { authApi, type AuthUser } from '@/api/client';
 import { STRINGS } from '@/config/strings';
 import { THEME_PREFERENCE_KEY, type ThemePreference } from '@/config/themeStorage';
 import { applyThemePreference } from '@/styles/themeRuntime';
+import {
+  dropSubscriptionNotRegisteredForUser,
+  getCurrentSubscription,
+  unsubscribeFromPush,
+} from '@/pwa/pushClient';
 import type { BackupStatus } from '@/domain/backupBadge';
 import { useProjectStore } from './projectStore';
 import { useUIStore } from './uiStore';
@@ -189,6 +194,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     writeCachedPreference(result.data.user.themePreference);
     applyThemePreference(result.data.user.themePreference);
 
+    // Before the user is shown, so the push controls read the reconciled
+    // subscription (AC-679). A failure never blocks signing in.
+    await dropSubscriptionNotRegisteredForUser().catch(() => undefined);
+
     set({
       authUser: normalizeAuthUser(result.data.user),
       authError: null,
@@ -201,6 +210,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    // Unregister this device while the session still authorizes the
+    // server call (AC-655). Revoking the browser subscription alone stops
+    // the pushes, so a failure here never blocks signing out.
+    await unsubscribeFromPush().catch(() => undefined);
     await authApi.logout();
     set({
       authUser: null,
@@ -382,7 +395,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
  * instead of reaching for @/api/client directly.
  */
 export async function changePassword(currentPassword: string, newPassword: string) {
-  const result = await authApi.changePassword(currentPassword, newPassword);
+  // This device keeps its push registration; the others lose theirs (AC-676).
+  const subscription = await getCurrentSubscription().catch(() => null);
+  const result = await authApi.changePassword(currentPassword, newPassword, subscription?.endpoint);
   if (!result.ok && result.sessionExpired) {
     useAuthStore.getState().handleSessionExpired();
   }

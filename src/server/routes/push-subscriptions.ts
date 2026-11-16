@@ -3,7 +3,8 @@
  *
  * Authenticated self-scope. `userId` is derived from the session (AC-654).
  *
- * Three operations:
+ * Operations:
+ *   GET    /api/push-subscriptions/status     — is ?endpoint= mine (AC-679)
  *   POST   /api/push-subscriptions            — subscribe (upsert)
  *   DELETE /api/push-subscriptions            — unsubscribe by endpoint
  *                                               (?endpoint= query param)
@@ -14,13 +15,35 @@ import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
 import { requireSession } from '../middleware/auth.js';
 import { getRateLimit } from '../config/index.js';
-import { PushSubscriptionService } from '../services/PushSubscriptionService.js';
+import {
+  PushSubscriptionService,
+  PUSH_ENDPOINT_MAX_LENGTH,
+} from '../services/PushSubscriptionService.js';
 
 export function pushSubscriptionRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
     const service = new PushSubscriptionService(db);
 
     requireSession(app, db);
+
+    app.get(
+      '/api/push-subscriptions/status',
+      {
+        schema: {
+          querystring: {
+            type: 'object',
+            required: ['endpoint'],
+            properties: {
+              endpoint: { type: 'string', minLength: 1, maxLength: PUSH_ENDPOINT_MAX_LENGTH },
+            },
+          },
+        },
+      },
+      async (request) => {
+        const { endpoint } = request.query as { endpoint: string };
+        return { registered: await service.isRegistered(request.user!.id, endpoint) };
+      },
+    );
 
     app.post(
       '/api/push-subscriptions',
@@ -31,7 +54,12 @@ export function pushSubscriptionRoutes(db: Database) {
             required: ['endpoint', 'keys'],
             additionalProperties: false,
             properties: {
-              endpoint: { type: 'string', minLength: 1, maxLength: 2048, format: 'uri' },
+              endpoint: {
+                type: 'string',
+                minLength: 1,
+                maxLength: PUSH_ENDPOINT_MAX_LENGTH,
+                format: 'uri',
+              },
               keys: {
                 type: 'object',
                 required: ['p256dh', 'auth'],

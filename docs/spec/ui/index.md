@@ -126,7 +126,7 @@ The user menu (accessible from the header area) provides:
 
 - Display of the authenticated user's `displayName`
 - "Darstellung" — a 3-way theme selector with options "Hell" (light), "Dunkel" (dark), "Systemstandard" (system). Selecting an option applies immediately and persists server-side (see [behavior.md §9.6](behavior.md#96-theme-handling)).
-- "Push-Benachrichtigungen" — for this device ([verification.md §15.24](../verification.md#1524-notifications)): `Push-Benachrichtigungen aktivieren` while the device is not registered and the browser does not block push; `Gerät abmelden` while it is registered; the `Stummschalten` toggle. A hint takes the place of `Push-Benachrichtigungen aktivieren` when the browser blocks push, and of the whole group when it lacks push; after activation, a hint names a failure, e.g. no push keys configured on the server.
+- "Push-Benachrichtigungen" — for this device ([verification.md §15.24](../verification.md#1524-notifications)): `Push-Benachrichtigungen aktivieren` while the device is not registered for the user and the browser does not block push; `Gerät abmelden` while it is; the `Stummschalten` toggle. A hint takes the place of `Push-Benachrichtigungen aktivieren` when the browser blocks push, and of the whole group when it lacks push; after activation, a hint names a failure, e.g. no push keys configured on the server.
 - "Passwort ändern" — opens a password change form (current password, new password, confirmation)
 - "Abmelden" — logs out and returns to the login screen
 

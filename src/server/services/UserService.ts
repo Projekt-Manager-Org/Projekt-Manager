@@ -30,6 +30,7 @@ import {
   lockInvoicesReferencingUser,
 } from '../repositories/invoice-read.js';
 import { deleteSessionsByUserId } from '../repositories/session.js';
+import { deletePushSubscriptionsByUserId } from '../repositories/pushSubscription.js';
 import { hashPassword } from '../password.js';
 import { checkPasswordPolicy } from '../config/password-policy.js';
 import { STRINGS } from '../../config/strings.js';
@@ -354,6 +355,7 @@ export class UserService {
           if (!prior) throw notFound(STRINGS.entities.user);
           await changePasswordRepo(tx, id, newHash, actorId);
           await deleteSessionsByUserId(tx, id);
+          await deletePushSubscriptionsByUserId(tx, id); // AC-678
           return {
             entityId: id,
             entityLabel: prior.displayName,

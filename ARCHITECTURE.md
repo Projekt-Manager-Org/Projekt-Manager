@@ -123,7 +123,7 @@ Entries are cited by partial path (`routes/auth.ts`), so the citation check (AC-
 - `routes/audit.ts` — read-only list + get-by-id
 - `routes/extract.ts` — LLM email-to-structured-data via OpenRouter (ADR-0016)
 - `routes/notification-rules.ts` — notification rule CRUD (ADR-0023)
-- `routes/push-subscriptions.ts` — Web Push subscribe / unsubscribe
+- `routes/push-subscriptions.ts` — Web Push subscribe / unsubscribe / registration status
 - `routes/push.ts` — VAPID public key
 - `routes/health.ts` — `GET /api/health`
 - `routes/attachments.ts` — init / complete / delete / list / download-url / bulk-fetch

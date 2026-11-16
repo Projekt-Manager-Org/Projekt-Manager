@@ -2,14 +2,16 @@
  * Push subscription service — AC-654, ADR-0023.
  *
  * Self-scope CRUD: `userId` is always derived from the authenticated
- * session (AC-654). A client-supplied id or endpoint that belongs to
+ * session (AC-654). Unsubscribing an id or endpoint that belongs to
  * another user is treated as unknown — the server returns the same
  * idempotent no-op that a truly-unknown input produces, so an attacker
  * cannot enumerate other users' subscriptions.
  *
- * Re-subscribing an endpoint UPDATES the existing row (ON CONFLICT)
- * rather than duplicating — the `push_subscriptions_user_endpoint_uq`
- * unique index enforces the invariant at the DB level.
+ * Registering an endpoint UPDATES the existing row (ON CONFLICT) rather
+ * than duplicating — the `push_subscriptions_endpoint_uq` unique index
+ * enforces one user per device. An endpoint another user holds moves to
+ * the caller (AC-656): only the browser holding the subscription knows
+ * its endpoint.
  *
  * Writes land outside `mutate()` because push subscriptions are NOT in
  * `AuditEntityType` — they're transport state, not a domain entity. The
@@ -35,6 +37,9 @@ export interface PushSubscriptionResponse {
   createdAt: string;
 }
 
+/** Upper bound on a push endpoint URL, wherever a request carries one. */
+export const PUSH_ENDPOINT_MAX_LENGTH = 2048;
+
 export class PushSubscriptionService {
   constructor(private db: Database) {}
 
@@ -53,9 +58,9 @@ export class PushSubscriptionService {
       throw validationError(STRINGS.notifications.invalidPushSubscription);
     }
 
-    // Upsert on (user_id, endpoint). If the row exists, update key
-    // material + userAgent so the caller can rotate keys without
-    // re-registering.
+    // Upsert on endpoint. If the row exists, it moves to this user and
+    // takes the new key material + userAgent (key rotation needs no
+    // re-registration).
     const rows = await this.db
       .insert(pushSubscriptions)
       .values({
@@ -66,8 +71,9 @@ export class PushSubscriptionService {
         userAgent: input.userAgent ?? null,
       })
       .onConflictDoUpdate({
-        target: [pushSubscriptions.userId, pushSubscriptions.endpoint],
+        target: pushSubscriptions.endpoint,
         set: {
+          userId,
           p256dh: input.keys.p256dh,
           auth: input.keys.auth,
           userAgent: input.userAgent ?? null,
@@ -116,6 +122,19 @@ export class PushSubscriptionService {
     await this.db
       .delete(pushSubscriptions)
       .where(and(eq(pushSubscriptions.id, subscriptionId), eq(pushSubscriptions.userId, userId)));
+  }
+
+  /**
+   * Whether `endpoint` is registered to `userId` (AC-679). Self-scoped:
+   * another user's endpoint answers `false`, same as an unknown one.
+   */
+  async isRegistered(userId: string, endpoint: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: pushSubscriptions.id })
+      .from(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.userId, userId), eq(pushSubscriptions.endpoint, endpoint)))
+      .limit(1);
+    return row !== undefined;
   }
 
   /** Count the caller's subscriptions — used by tests for assertions. */

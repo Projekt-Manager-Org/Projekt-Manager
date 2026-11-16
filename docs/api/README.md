@@ -63,6 +63,7 @@ Both read the routes through `scripts/lib/route-introspection.ts`. An access gat
 | POST    | `/api/notification-rules`                           | session | `notifications:manage` | none          |
 | PATCH   | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
 | DELETE  | `/api/notification-rules/:id`                       | session | `notifications:manage` | none          |
+| GET     | `/api/push-subscriptions/status`                    | session | —                      | none          |
 | POST    | `/api/push-subscriptions`                           | session | —                      | 20 / 1 minute |
 | DELETE  | `/api/push-subscriptions`                           | session | —                      | 20 / 1 minute |
 | DELETE  | `/api/push-subscriptions/:id`                       | session | —                      | 20 / 1 minute |
