@@ -4,10 +4,7 @@
  *
  * The configuration loader (`src/server/config/env.ts`) parses
  * `process.env` once via Zod and exposes a typed, validated `Env`. Every
- * other consumer is meant to go through `getEnv()` (or, for build-time
- * defaults, the `src/config/*.ts` config modules that read from the
- * validated env at call-time — see `src/server/config/index.ts` header
- * comment). Direct `process.env.X` reads outside the loader are a
+ * other consumer is meant to go through `getEnv()`. Direct `process.env.X` reads outside the loader are a
  * documented foot-gun: they bypass the schema, miss type coercion, miss
  * dev-default credential rejection, and leave operator forgetfulness
  * (issue #139) silent until production manifests it.
@@ -20,17 +17,14 @@
  *   - `const { X } = process.env` (destructured)
  *   - `const env = process.env`   (aliased)
  *
- * STATUS: Passes today. Two of the three pre-existing bypasses moved
- * into the Zod schema — `LOGIN_RATE_LIMIT_MAX` is now a typed schema
- * field consumed via `getEnv()` in `src/server/config/index.ts`, and
- * `start.ts`'s `rejectDevCredentials` was folded into `validateEnvRuntime()`
- * as `assertNoDevCredentials`. The third (`src/config/pushDispatch.ts`,
- * `PUSH_DISPATCH_LATENCY_BUDGET_MS`) is allowlisted because the file
- * is in the isomorphic `src/config/` tree which by layering rule must
- * not import from `src/server/` — see the allowlist entry below for
- * details. Two further pre-existing categorical exceptions
- * (`services/backup.ts` for spawn-env propagation, `config/routes.ts`
- * for the build-time NODE_ENV guard) are also allowlisted.
+ * STATUS: Passes today. The pre-existing bypasses moved into the Zod
+ * schema — `LOGIN_RATE_LIMIT_MAX` is now a typed schema field consumed
+ * via `getEnv()` in `src/server/config/index.ts`, and `start.ts`'s
+ * `rejectDevCredentials` was folded into `validateEnvRuntime()` as
+ * `assertNoDevCredentials`. The categorical exceptions are allowlisted
+ * below: `services/backup.ts` for spawn-env propagation,
+ * `config/routes.ts` for the build-time NODE_ENV guard, and the deploy
+ * pre-flight CLI.
  *
  * Allowlist policy: each entry carries a non-empty `reason` string
  * documenting why the bypass is admissible. New entries require explicit
@@ -50,8 +44,7 @@ const repoRoot = path.resolve(__dirname, '../../..');
 //
 // `LOADER_PATH` is the configuration boundary — `process.env` is parsed
 // here exactly once, into the typed `Env`. The rest of the codebase
-// reads from `getEnv()` or from build-time config modules (`src/config/`)
-// that themselves resolve via `getEnv()` at call time.
+// reads from `getEnv()`.
 //
 // The exceptions below are reads of `process.env` that are categorically
 // not configuration reads (parent-to-child env propagation for `spawn()`,
@@ -80,11 +73,6 @@ const KNOWN_EXCEPTIONS: ReadonlyArray<KnownException> = [
     file: 'src/config/routes.ts',
     reason:
       'Dev-only `process.env.NODE_ENV` guard inside an isomorphic config module that runs both as a Vite-bundled client artifact (where Vite static-replaces NODE_ENV at build time) and as a server-side module. Routing this through the schema loader would couple a build-time-replaceable client constant to a runtime server contract.',
-  },
-  {
-    file: 'src/config/pushDispatch.ts',
-    reason:
-      "Build-time-default-with-env-override module under src/config/, which by layering rule must not import from src/server/. Routing this through getEnv() would force src/config/ to depend on the server's Zod loader. Same exception class as src/config/routes.ts above; the override stays a thin parseInt wrapper with the schema-style empty-string handling.",
   },
   {
     file: 'src/server/deploy-preflight-cli.ts',
