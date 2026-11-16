@@ -64,6 +64,9 @@ export default defineConfig({
             // Everything under `src/server/__tests__/` is integration and
             // stays in that project.
             'src/server/middleware/__tests__/**/*.test.ts',
+            // Project-local ESLint rules (`eslint-rules/`, wired in
+            // eslint.config.js).
+            'eslint-rules/__tests__/**/*.test.mjs',
           ],
           exclude: ['src/state/__tests__/storageUsageStore.test.ts'],
         },
