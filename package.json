@@ -84,6 +84,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@eslint/js": "10.0.1",
     "@fastify/swagger": "9.9.4",
     "@playwright/test": "1.65.1",
