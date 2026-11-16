@@ -79,7 +79,7 @@ const AUDIT_TO_EVENT_MAP = new Map<AuditMapKey, NotificationEventClass>([
   [key({ entityType: 'project_worker', action: 'delete' }), 'project.assignment_changed'],
   // Attachment `complete` (pending → ready) writes the `attachment:add`
   // row (AC-427); that row is the dispatch trigger for the
-  // `project.attachment_added` event (AC-316). Init writes no row, so an
+  // `project.attachment_added` event (AC-643). Init writes no row, so an
   // abandoned upload publishes nothing.
   [key({ entityType: 'attachment', action: 'attachment:add' }), 'project.attachment_added'],
 ]);

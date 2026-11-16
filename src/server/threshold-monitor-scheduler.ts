@@ -1,5 +1,5 @@
 /**
- * Periodic threshold monitor scheduler — architecture.md §11.15.
+ * Periodic threshold monitor scheduler — verification.md §15.33.
  *
  * Thin caller over `createPeriodicSweeper` (see
  * `src/server/periodicSweeper.ts`): the timer drive, sustained-failure

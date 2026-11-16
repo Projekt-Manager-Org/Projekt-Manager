@@ -1,8 +1,8 @@
 /**
- * Push subscription service — api.md §14.2.10, ADR-0023.
+ * Push subscription service — AC-654, ADR-0023.
  *
  * Self-scope CRUD: `userId` is always derived from the authenticated
- * session (AC-196). A client-supplied id or endpoint that belongs to
+ * session (AC-654). A client-supplied id or endpoint that belongs to
  * another user is treated as unknown — the server returns the same
  * idempotent no-op that a truly-unknown input produces, so an attacker
  * cannot enumerate other users' subscriptions.

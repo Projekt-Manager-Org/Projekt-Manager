@@ -1,6 +1,6 @@
 /**
- * Service Worker push + notificationclick handlers (spec
- * ui/behavior.md §9.8). Wired into the bundled SW entry at
+ * Service Worker push + notificationclick handlers (AC-648, AC-649,
+ * AC-652). Wired into the bundled SW entry at
  * `src/sw/index.ts`.
  *
  * Scope is deliberately minimal:

@@ -56,7 +56,7 @@ export interface PushDispatcher {
  * `auditEntryId` are diagnostic aids visible in browser devtools and
  * useful for any future click-routing or telemetry.
  *
- * AC-211 pins title/body/url as user-facing strings — the publisher
+ * AC-648, AC-649 and AC-652 pin title/body/url as user-facing strings — the publisher
  * composes them via `pushPayloadComposer` before dispatch.
  */
 export interface PushPayload {
@@ -77,7 +77,7 @@ export const noopPushDispatcher: PushDispatcher = {
 /**
  * Resolve every subscription row owned by the given user ids, then ask
  * the dispatcher to deliver the payload. Dead subscriptions (410/404)
- * are pruned in-place — AC-196 "dispatch-time pruning".
+ * are pruned in place.
  *
  * Returns the per-subscription results so the caller (publisher) can
  * log, or a future adapter can resurrect a rate-limited endpoint.

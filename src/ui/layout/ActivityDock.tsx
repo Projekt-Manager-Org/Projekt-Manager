@@ -23,7 +23,7 @@
  *
  * - Full RBAC-scoped feed (AC-637): the dock fetches every audit row the
  *   caller may read — `recipientScope` narrowing is a notifications
- *   concern (AC-200) and is exercised only on the Aktivität page. The
+ *   concern (AC-660) and is exercised only on the Aktivität page. The
  *   dock surface is "everything the caller may read".
  *
  * - Single-line compact rows (AC-639): rows render as a single
@@ -63,7 +63,7 @@ import styles from './ActivityDock.module.css';
 /**
  * Full RBAC-scoped feed (AC-637). The dock shows every audit row the
  * caller may read; recipient-scoped narrowing is a notifications
- * concern (AC-200) and is exercised only on the Aktivität page.
+ * concern (AC-660) and is exercised only on the Aktivität page.
  *
  * Module-level constant so the reference is stable across renders —
  * ActivityFeed keys its refetch effect off `filterKey`, not off the

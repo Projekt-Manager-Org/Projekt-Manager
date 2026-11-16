@@ -253,7 +253,7 @@ export const STRINGS = {
 
   /**
    * Push-notifications group in the user menu (spec ui/index.md §8.7.2,
-   * ui/behavior.md §9.8). Labels pinned by the spec and the e2e contract
+   * verification.md §15.24). Labels pinned by the spec and the e2e contract
    * in e2e/push-permission.spec.ts.
    *
    * The permission-denied copy intentionally does NOT offer an in-app
@@ -730,14 +730,14 @@ export const STRINGS = {
     emptyState: 'Keine Aktivität',
     /**
      * Recipient-scoped empty-state copy on the global Aktivität view
-     * (AC-200). Rendered when the default (recipient-scoped) mode is
+     * (AC-662). Rendered when the default (recipient-scoped) mode is
      * active and the filtered set is empty because rules exist but
      * none admit the caller as recipient. The plain "Keine Aktivität"
      * fallback applies only under "Alles anzeigen".
      */
     emptyStateRecipient:
       'Keine Benachrichtigungen für Sie. Alles anzeigen für den vollständigen Aktivitätsverlauf.',
-    /** Label on the "Alles anzeigen" toggle (AC-200, §8.13). */
+    /** Label on the "Alles anzeigen" toggle (AC-660, §8.13). */
     toggleShowAll: 'Alles anzeigen',
     detailsShow: 'Details anzeigen',
     detailsHide: 'Details ausblenden',
@@ -806,9 +806,9 @@ export const STRINGS = {
   },
 
   /**
-   * Notification rule editor + validation messages (api.md §14.2.9,
-   * data-model.md §5.11). Each message maps to one AC-190 rejection
-   * branch so a regression surfaces the specific validator that broke.
+   * Notification rule editor + validation messages (data-model.md §5.11).
+   * Each message maps to one rule constraint (AC-190) so a regression
+   * surfaces the specific validator that broke.
    */
   notifications: {
     invalidEventClass: 'Unbekannte Ereignisklasse.',

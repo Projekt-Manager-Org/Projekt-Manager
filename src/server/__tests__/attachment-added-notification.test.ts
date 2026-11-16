@@ -1,8 +1,8 @@
 /**
  * Notification publisher integration test — `project.attachment_added`
- * dispatch on completed upload. Pins AC-316 (verification.md §15.24).
+ * dispatch on completed upload. Pins AC-643 (verification.md §15.24).
  *
- * Coupling (AC-316 + AC-427 / AC-407, data-model.md §5.11):
+ * Coupling (AC-643 + AC-427 / AC-407, data-model.md §5.11):
  *   - The event fires off the `attachment:add` audit row, which the
  *     system writes at COMPLETE (pending → ready), not at init (AC-427).
  *   - `audit-publisher` maps that row to an event class via
@@ -90,7 +90,7 @@ async function loadPublisher(): Promise<Publisher> {
   return (await import(/* @vite-ignore */ path)) as unknown as Publisher;
 }
 
-describe('AC-316: project.attachment_added dispatch on completed upload', () => {
+describe('AC-643: project.attachment_added dispatch on completed upload', () => {
   let ownerToken: string;
   let seededCustomerId: string;
   let ownerId: string;
@@ -106,7 +106,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
     const number = `AC316-${Date.now().toString(36)}-${fixtureCounter}`;
     const res = await authPost(ownerToken, '/api/projects', {
       number,
-      title: `AC-316 fixture #${fixtureCounter}`,
+      title: `AC-643 fixture #${fixtureCounter}`,
       customerId: seededCustomerId,
     });
     expect(res.statusCode).toBe(201);
@@ -164,7 +164,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
   /**
    * Resolve the `audit_log.id` of the latest `attachment:add` row for an
    * attachment. Used to partition publisher observations by the specific
-   * event the test drove (per AC-316 / AC-192 the row is the dispatch
+   * event the test drove (per AC-643 / AC-192 the row is the dispatch
    * trigger). Returns null when no such row exists (the abandoned-upload
    * arm relies on this).
    */
@@ -367,7 +367,7 @@ describe('AC-316: project.attachment_added dispatch on completed upload', () => 
   // complete, so an init-only (abandoned) upload writes NO such row and
   // therefore drives NO dispatch. At step-3 the row is still written at
   // INIT, so `countAttachmentAddRows` returns 1 → the count assertion
-  // fails (correctly pinning the AC-407 / AC-316 coupling).
+  // fails (correctly pinning the AC-407 / AC-643 coupling).
   // -------------------------------------------------------------------
   it('an upload abandoned before complete publishes no event', async () => {
     const pub = await loadPublisher();

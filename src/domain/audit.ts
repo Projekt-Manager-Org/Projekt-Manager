@@ -121,7 +121,7 @@ export interface AuditListParams {
   to?: string;
   action?: string;
   /**
-   * Recipient-scoped narrowing (AC-200, ui/management.md §8.13). When
+   * Recipient-scoped narrowing (AC-660, ui/management.md §8.13). When
    * `true` the server is expected to return only rows the caller would
    * receive per the resolved notification-rule set (rule-match across
    * enabled rules → recipient resolution includes the caller). When

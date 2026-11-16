@@ -8,7 +8,7 @@
  *   - other       → `'error'`        (429, 5xx, network, timeout)
  *
  * `send()` must never throw — the publisher's fan-out loop relies on
- * infallibility (architecture.md §11.11).
+ * infallibility, so one failing device cannot block the others.
  *
  * Scope: we mock `web-push.sendNotification` via `vi.mock`. No real
  * HTTP, no real VAPID crypto. A full integration test against a live
@@ -48,7 +48,7 @@ const target = {
   auth: 'auth-key',
 };
 
-// AC-211 — payload now carries the user-facing strings the SW reads
+// AC-648 / AC-649 — payload carries the user-facing strings the SW reads
 // alongside the diagnostic eventClass / auditEntryId fields.
 const payload = {
   title: 'Projekt-Statuswechsel vorwärts',

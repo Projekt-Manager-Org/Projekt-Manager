@@ -151,7 +151,7 @@ services:
       ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES: ${ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES:-}
       ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES: ${ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES:-}
       ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES: ${ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES:-}
-      # Storage capacity declaration (#122, architecture.md §12.2 / §11.15).
+      # Storage capacity declaration (#122, architecture.md §12.2).
       # Drives the threshold monitor's storage warning. `app` only — the
       # monitor runs in this process because the notification publisher
       # binds here; the `backup` container never reads it. Unset disables

@@ -21,7 +21,7 @@
  * the input rather than removing it, so the filter bar's shape is
  * invariant across roles.
  *
- * Recipient-scope toggle (AC-200, §8.13): default mode narrows the
+ * Recipient-scope toggle (AC-660, §8.13): default mode narrows the
  * feed to rows the caller would receive per the resolved notification-
  * rule set — `recipientScope = true` on the wire. The `"Alles anzeigen"`
  * toggle flips the client to the full RBAC-scoped feed (`recipientScope`
@@ -108,7 +108,7 @@ export function AuditManagement() {
   const [entityLabelError, setEntityLabelError] = useState<string | null>(null);
   const [actorIdError, setActorIdError] = useState<string | null>(null);
   /**
-   * `showAll = false` is the default recipient-scoped mode (AC-200). A
+   * `showAll = false` is the default recipient-scoped mode (AC-660). A
    * fresh mount always starts in the default; navigating away and back
    * unmounts/remounts this component, so the toggle resets without any
    * bespoke lifecycle handling.
@@ -208,10 +208,10 @@ export function AuditManagement() {
   // Empty-state copy selection:
   //   - `Alles anzeigen` (showAll) → always `"Keine Aktivität"` (AC-627).
   //   - Default recipient-scoped mode with NO user-applied filters → the
-  //     distinctive AC-200 literal so the user learns why the feed is
+  //     distinctive AC-662 literal so the user learns why the feed is
   //     empty and what the toggle does.
   //   - Default recipient-scoped mode WITH user-applied filters → fall
-  //     back to `"Keine Aktivität"`. AC-200's distinctive copy is for
+  //     back to `"Keine Aktivität"`. AC-662's distinctive copy is for
   //     "rules exist but none admit the caller"; when a filter is
   //     narrowing the result set the user already has context, and the
   //     recipient-scoping wording is misleading.

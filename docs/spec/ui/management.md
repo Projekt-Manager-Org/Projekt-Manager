@@ -84,7 +84,7 @@ Shows the username (read-only), display name, roles, email and status. Editable 
 
 ## 8.13 Audit View
 
-The `Aktivität` view ([index.md §8.7.1](index.md#871-views)): a table of audit entries ([data-model.md §5.10](../data-model.md#510-audit-log-entity)). Behavior: [verification.md §15.23](../verification.md#1523-audit-log); its default, recipient-scoped mode and the `Alles anzeigen` toggle: [AC-200](../verification.md#1524-notifications).
+The `Aktivität` view ([index.md §8.7.1](index.md#871-views)): a table of audit entries ([data-model.md §5.10](../data-model.md#510-audit-log-entity)). Behavior: [verification.md §15.23](../verification.md#1523-audit-log); its default, recipient-scoped mode and the `Alles anzeigen` toggle: [AC-660](../verification.md#1524-notifications), [AC-672](../verification.md#1524-notifications), [AC-661](../verification.md#1524-notifications), [AC-662](../verification.md#1524-notifications).
 
 Columns, in order:
 
@@ -105,36 +105,16 @@ Below the table: `Ältere anzeigen` ([AC-628](../verification.md#1523-audit-log)
 
 ## 8.14 Notification Rules View
 
-Admin view over [`notification_rule`](../data-model.md#511-notification-rule). Backed by [api.md §14.2.9](../api.md#1429-notification-rules), gated on `notifications:manage`; edits are a direct repository write — rule configuration is not surfaced on the activity feed.
+The `Benachrichtigungen` view ([index.md §8.7.1](index.md#871-views)): the notification rules ([data-model.md §5.11](../data-model.md#511-notification-rule)). Behavior: [verification.md §15.24](../verification.md#1524-notifications).
 
-Navigation: the `Benachrichtigungen` tab in the administration group ([index.md §8.7.1](index.md#871-views)). Hidden without `notifications:manage`.
+Columns, in order, one row per rule; `Keine Regeln` when there is none:
 
-### 8.14.1 List
+| Column    | Shows                                                                               |
+| --------- | ----------------------------------------------------------------------------------- |
+| Ereignis  | Label of the event class                                                            |
+| Filter    | Label of the `Ziel-Status`, or `—`                                                  |
+| Empfänger | The recipients, e.g. `Rollen: Inhaber, Büro · Zugewiesene Mitarbeiter · 2 Benutzer` |
+| Aktiv     | `Aktiv` or `Deaktiviert`                                                            |
+| Aktionen  | `Bearbeiten`; `Löschen`, which asks `Regel wirklich löschen?` first                 |
 
-- Columns: `Ereignis` (German label from event-class mapping **[C]**), `Filter` (`stateFilter` label or blank when null), `Empfänger` (compact `recipientSpec` summary — e.g. `"Rollen: Inhaber, Büro · Zugewiesene Mitarbeiter · 2 Benutzer"`), `Aktiv` (toggle indicator), `Aktionen` (edit + delete).
-- Pagination: configurable page size **[C]**.
-- Empty result: `"Keine Regeln"`.
-
-### 8.14.2 Create / Edit Rule
-
-Single form for both create and edit.
-
-Fields:
-
-- **Ereignis (event)** — required. Single-select over the catalog ([data-model.md §5.11](../data-model.md#511-notification-rule)), German labels via the event-class mapping **[C]**.
-- **Ziel-Status (state filter)** — single-select. Rendered only for `project.transition_forward` / `project.transition_backward`; otherwise hidden and sent as null. Values are workflow-state labels; empty = null.
-- **Empfänger (recipient spec)** — three additive sub-sections:
-  - **Rollen** — multi-select over the configured role set ([index.md §4.2](../index.md#42-roles)).
-  - **Zugewiesene Mitarbeiter** — toggle `"Zugewiesene Mitarbeiter benachrichtigen"`. Disabled and forced `false` for `backup.failed` / `disk.threshold_reached`.
-  - **Einzelne Benutzer** — autocomplete over active users; selection adds a chip with a remove affordance.
-- **Aktiv** — boolean toggle.
-
-Validation errors follow [api.md §14.2.9](../api.md#1429-notification-rules); an empty recipient spec or a non-null state filter on a non-transition event is rejected via the mutation error banner ([index.md §8.1.2](index.md#812-authenticated-state)), and the form is restored.
-
-### 8.14.3 Delete Rule
-
-Row action or edit-form action. Yes / No confirmation. On success the rule disappears.
-
-### 8.14.4 Permission and Hiding
-
-Access is gated on `notifications:manage`. Users without it do not see the nav tab; manual URL entry presents the not-permitted surface per [AC-149](../verification.md#1521-role-scoping). All UI controls are hidden without the permission per [AC-121](../verification.md#1521-role-scoping).
+`Regel erstellen` opens the rule form; `Bearbeiten` opens it on the rule. Fields: `Ereignis` (one class), `Ziel-Status` (one status, or `Beliebig`), `Rollen` (any number), `Zugewiesene Mitarbeiter benachrichtigen` (toggle), `Einzelne Benutzer` (search over active users; each pick a removable chip), `Aktiv` (toggle). Which fields a class admits: [AC-199](../verification.md#1524-notifications).

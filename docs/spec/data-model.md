@@ -258,74 +258,32 @@ One entry per recorded change to an audited entity — the `entityType` values b
 
 ### 5.11 Notification Rule
 
-Admin-editable configuration mapping a closed event catalog to recipient specs. Rule writes are direct repository writes; rule configuration is not surfaced on the activity feed. Rationale and alternatives: [ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md).
+A rule names an event class and who receives a push when an event of it fires. The event classes are closed: users choose among them and never define one ([ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)). Behavior: [verification.md §15.24](verification.md#1524-notifications).
 
-```typescript
-type NotificationEventClass =
-  | 'project.transition_forward'
-  | 'project.transition_backward'
-  | 'project.archived'
-  | 'project.assignment_changed'
-  | 'project.attachment_added'
-  | 'backup.failed'
-  | 'disk.threshold_reached';
+| Field                    | Meaning                                                                  | Constraint                                                                             |
+| ------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `eventClass`             | What the rule fires on                                                   | One of the classes below                                                               |
+| `stateFilter`            | `Ziel-Status`: the status a project moved to; empty = any                | Status-move classes only; a workflow state ([index.md §3](index.md#3-workflow-states)) |
+| `roles`                  | Recipients: the users holding any of these roles                         | Roles of the role set ([index.md §4.2](index.md#42-roles))                             |
+| `includeAssignedWorkers` | Recipients: the workers assigned to the event's project after the change | Project classes only                                                                   |
+| `userIds`                | Recipients: these users                                                  | Active users                                                                           |
+| `enabled`                | Only an enabled rule fires                                               | —                                                                                      |
 
-interface NotificationRecipientSpec {
-  roles: AccountRole[]; // additive — every user holding any of these roles
-  includeAssignedWorkers: boolean; // additive — only meaningful for project-scoped events
-  userIds: string[]; // additive — UserAccount.id values
-}
+A rule names at least one recipient: a role, the assigned workers, or a user. Rules may overlap; a user is still a recipient once ([AC-192](verification.md#1524-notifications)).
 
-interface NotificationRule {
-  id: string; // UUID
-  eventClass: NotificationEventClass;
-  stateFilter?: WorkflowState | null; // only meaningful for transition events; null = no filter
-  recipientSpec: NotificationRecipientSpec;
-  enabled: boolean;
-  createdAt: string; // ISO 8601
-  updatedAt: string; // ISO 8601
-  createdBy?: string; // UserAccount.id
-  updatedBy?: string; // UserAccount.id
-}
-```
-
-Design notes:
-
-- **Closed event catalog.** `NotificationEventClass` is the shipping set. Adding a class is a code change plus a migration ([ADR-0023](../adr/0023-notification-rules-db-stored-closed-event-catalog.md)); users never author event classes.
-- **Event source mapping.** `project.transition_forward` / `project.transition_backward` → `entityType = 'project'` AND `action = 'transition:forward' | 'transition:backward'`. `project.archived` → `entityType = 'project'` AND `action = 'archive'` (soft-delete = archive — distinct from `purge` (hard-delete) and the generic `delete` used for other entity types, see [ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). `project.assignment_changed` → `entityType = 'project_worker'` with `action` in `create` or `delete`. `backup.failed` and `disk.threshold_reached` are non-mutation system events — they publish to the in-process bus without an `audit_log` row, per [ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md). `project.attachment_added` → `entityType = 'attachment'` AND `action = 'attachment:add'`; that audit row is written when the upload completes (`pending → ready`, [§5.13](#513-attachment)), so the event fires only on a byte-confirmed upload — an abandoned upload produces neither the row nor the event.
-- **`stateFilter` semantics.** Non-null only on the two transition event classes. Matches when `after.status` equals the filter; null means match regardless of target state. A non-null filter on a non-transition class is rejected at validation time.
-- **`recipientSpec` is additive.** `roles`, `includeAssignedWorkers`, and `userIds` are unioned. An empty spec is rejected at validation so an enabled rule always has a non-empty candidate set before dedup.
-- **`includeAssignedWorkers` scope.** Only meaningful when the event carries a `projectId` (`project.transition_*`, `project.archived`, `project.assignment_changed`, `project.attachment_added`). Rejected at validation for `backup.failed` and `disk.threshold_reached`.
-- **No templates in the model.** Per-event German message templates are code-owned in the config layer. See [ADR-0023 Alternatives](../adr/0023-notification-rules-db-stored-closed-event-catalog.md#freeform-predicate-dsl-over-payload).
-- **No priority / no override.** Multiple matches produce a recipient **union**, deduplicated by `UserAccount.id`. No priority field, override flag, or AND/OR tree — see [ADR-0023 Alternatives](../adr/0023-notification-rules-db-stored-closed-event-catalog.md#rule-matching-with-priority--override).
-- **Invalid-recipient resilience.** A resolved recipient whose `UserAccount` is missing or `active = false` is skipped at dispatch; remaining recipients proceed. Zero live recipients completes without error.
-- **Rule take-effect.** A rule change affects the next event committed after the change; in-flight events use the rule set read at their own commit.
-- **Configuration layering.** Each mutation-sourced `NotificationEventClass`'s German activity-feed description lives in the `[C]` catalogue ([architecture.md §12.2](architecture.md#122-company-configurable-settings)) under the audit activity-feed rendering entry — already keyed on `(action, payload)`, the per-event identity the publisher emits.
+| Event class                   | Label **[C]**                    | Fires when                                                                                   | Project class |
+| ----------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------- | ------------- |
+| `project.transition_forward`  | `Projekt-Statuswechsel vorwärts` | A project's status moves forward (status move)                                               | yes           |
+| `project.transition_backward` | `Projekt-Statuswechsel zurück`   | A project's status moves backward (status move)                                              | yes           |
+| `project.archived`            | `Projekt archiviert`             | A project is archived                                                                        | yes           |
+| `project.assignment_changed`  | `Mitarbeiter-Zuweisung geändert` | A worker is assigned to or removed from a project                                            | yes           |
+| `project.attachment_added`    | `Datei hinzugefügt`              | An upload to a project completes ([AC-407](verification.md#1526-attachments))                | yes           |
+| `backup.failed`               | `Backup-Warnung`                 | The backup badge is amber or red([AC-663](verification.md#1533-threshold-monitor))           | no            |
+| `disk.threshold_reached`      | `Speichergrenze erreicht`        | Stored data reaches the storage warn band ([AC-667](verification.md#1533-threshold-monitor)) | no            |
 
 ### 5.12 Push Subscription
 
-Per-device push subscription. A user may register multiple devices (phone, desktop); unsubscribing one does not affect the others.
-
-```typescript
-interface PushSubscription {
-  id: string; // UUID
-  userId: string; // references UserAccount.id (ON DELETE CASCADE)
-  endpoint: string; // opaque browser-provided endpoint — unique within a user
-  p256dh: string; // opaque key material delivered by the browser push API
-  auth: string; // opaque key material delivered by the browser push API
-  userAgent?: string; // nullable — captured at subscribe time so the user can identify a device in their subscription list
-  createdAt: string; // ISO 8601
-}
-```
-
-Design notes:
-
-- **Per-device identity.** `endpoint` is unique within a user (`(userId, endpoint)` uniqueness); re-subscribing an existing endpoint updates the row. Rows are deleted either by the server on a permanent-error dispatch or by the user via unsubscribe.
-- **Ownership.** `userId` is set from the authenticated caller at subscribe time; a caller-supplied user id is refused ([api.md §14.4.2](api.md#1442-error-principles)).
-- **Denormalized key material.** `p256dh` and `auth` are the two opaque tokens the browser push API returns at subscribe time. They are stored as two named text fields rather than a single JSONB blob so the dispatcher reads them directly without an additional unpacking step. The field names `p256dh` and `auth` are the browser push API's own externally-defined names — not implementation details — and round-trip verbatim between the client, the server, and the push service. Neither field is ever rendered in the UI.
-- **Mute interaction.** When the owner's `pushMuted` is `true`, the dispatcher skips every subscription they own. Rows are retained — mute is a delivery-time filter, so unmuting restores delivery without a re-subscribe.
-- **User deactivation / deletion.** Deactivation (`active = false`) suspends dispatch to the user's subscriptions. Hard-delete cascades `push_subscription` rows (parity with session cleanup; see [§6.9](#69-soft-deletes)).
-- **No retention window.** Rows live until unsubscribed or cascaded by user deletion; stale endpoints are pruned at dispatch time via permanent-error handling. There is no elapsed-time garbage collection — rows are removed only by unsubscribe, user cascade, or a permanent dispatch error (e.g., a gone-endpoint response from the push service).
+A device a user registered for their pushes. A user may register several devices; a device belongs to one user at a time ([AC-656](verification.md#1524-notifications)). Behavior: [verification.md §15.24](verification.md#1524-notifications).
 
 ### 5.13 Attachment
 

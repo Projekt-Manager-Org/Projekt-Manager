@@ -1,7 +1,7 @@
 /**
- * Push subscription routes — api.md §14.2.10, ADR-0023.
+ * Push subscription routes — AC-654, ADR-0023.
  *
- * Authenticated self-scope. `userId` is derived from the session (AC-196).
+ * Authenticated self-scope. `userId` is derived from the session (AC-654).
  *
  * Three operations:
  *   POST   /api/push-subscriptions            — subscribe (upsert)

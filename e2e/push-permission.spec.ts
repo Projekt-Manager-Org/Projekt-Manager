@@ -4,7 +4,7 @@ import { STORAGE_STATES } from './storage-states';
 /**
  * E2E — Push permission + Stummschalten toggle.
  *
- * Pins AC-201's "no auto-prompt on page load" clause and AC-202
+ * Pins AC-201's "no auto-prompt on page load" clause and AC-658
  * (Stummschalten toggle reflects `pushMuted` and persists).
  *
  * AC-201's second clause — "activation triggers exactly one prompt" —
@@ -17,7 +17,7 @@ import { STORAGE_STATES } from './storage-states';
  * documented exception from the `[vis]` → E2E-only rule. See that
  * file's header for the full rationale.
  *
- * AC-202 uses `chromium-mutating` because `Stummschalten` persists via
+ * AC-658 uses `chromium-mutating` because `Stummschalten` persists via
  * the self-update mutation.
  */
 
@@ -71,9 +71,9 @@ test.describe('AC-201: push permission is user-initiated, not auto-requested', (
 });
 
 // ---------------------------------------------------------------
-// AC-202 — Stummschalten persists and reflects pushMuted
+// AC-658 — Stummschalten persists and reflects pushMuted
 // ---------------------------------------------------------------
-test.describe('AC-202: Stummschalten reflects pushMuted and persists', () => {
+test.describe('AC-658: Stummschalten reflects pushMuted and persists', () => {
   test.use({ storageState: STORAGE_STATES.owner });
 
   test('toggling Stummschalten persists across a reload', async ({ page }) => {
@@ -128,7 +128,7 @@ test.describe('AC-202: Stummschalten reflects pushMuted and persists', () => {
 
     await toggle.click();
 
-    // AC-202 contract — two halves to pin:
+    // AC-658 / AC-53 contract — two halves to pin:
     //  1. The optimistic flip is observable BEFORE the server responds.
     //  2. The flip reverts after the 500 lands.
     await expect.poll(async () => toggle.isChecked()).toBe(!before);

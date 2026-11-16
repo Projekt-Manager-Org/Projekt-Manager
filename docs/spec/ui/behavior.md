@@ -37,12 +37,3 @@ All modals close on Escape (equivalent to the cancel action). Form modals submit
 Form modals and confirmation dialogs do not close on backdrop click — only via Escape or the explicit cancel action. Non-editing side panels close on backdrop click as the cancel equivalent.
 
 While a mutation is in flight, close paths (Escape, explicit cancel, close button, backdrop) are suspended per the in-flight mutation lock in [§9.5](#95-asynchronous-mutation-behavior).
-
-### 9.8 Push Notifications
-
-The application never auto-requests the browser push permission. The prompt is raised only as the direct result of a user activation on the opt-in affordance ([index.md §8.7.2](index.md#872-user-menu)). Auto-request on page load is forbidden — a denied permission has no in-app remediation (the user must reset it via browser settings), so the request surface must be deliberate.
-
-- **Opt-in flow.** The user activates `Push-Benachrichtigungen aktivieren`. The client requests browser permission, obtains the device's subscription handle, and posts it via subscribe ([api.md §14.2.10](../api.md#14210-push-subscription)). On success, the affordance re-renders as a registered-device indicator with `Gerät abmelden`. If registration fails (network error, server 5xx), the button remains, an error notification appears, and the user can retry.
-- **Mute toggle.** `Stummschalten` reflects `pushMuted`. Applied optimistically via self-update ([data-model.md §5.3](../data-model.md#53-user-entity)); reverts on failure per [§9.5](#95-asynchronous-mutation-behavior). Mute retains the subscription — unmuting restores delivery without another browser prompt.
-- **Unsubscribe.** `Gerät abmelden` removes the current device's subscription ([api.md §14.2.10](../api.md#14210-push-subscription)). Other registered devices remain subscribed. Optimistic UI hides the affordance on click; on failure (network error, 5xx) it returns with an error notification, the subscription remains registered, and a retry succeeds per [§9.5](#95-asynchronous-mutation-behavior).
-- **Permission denied / unsupported.** If the browser denies permission or web push is unsupported, the affordance is replaced by an informational German cue pointing at browser settings; no retry, no re-prompt on later sessions.

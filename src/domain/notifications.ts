@@ -38,7 +38,7 @@ export interface NotificationRule {
 /**
  * Create / update input for a rule. Validation (event class closed set,
  * stateFilter only on transitions, active userIds) is authoritative on
- * the server per api.md §14.2.9.
+ * the server per AC-190.
  */
 export interface NotificationRuleInput {
   eventClass: NotificationEventClass;

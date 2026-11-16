@@ -52,7 +52,7 @@ interface RoleCase {
   canExportData: boolean;
   /** `data:restore` — gates the import form inside the Daten view. */
   canRestoreData: boolean;
-  /** `notifications:manage` — gates Benachrichtigungen tab visibility (AC-198). */
+  /** `notifications:manage` — gates Benachrichtigungen tab visibility (AC-75). */
   canManageNotifications: boolean;
   /** `invoice:read` — gates Rechnungen tab visibility (ui/invoices.md §8.16.1). */
   canReadInvoices: boolean;
@@ -167,7 +167,7 @@ test.describe('AC-121: permission-based UI visibility', () => {
         await expectViewReachable(page, 'rechnungen', c.canReadInvoices);
         // AC-562: the nav offers the user view only with `user:manage`.
         await expectViewReachable(page, 'benutzer', c.canReadUsers);
-        // AC-198 — Notification Rules view (Benachrichtigungen tab)
+        // AC-75 — Notification Rules view (Benachrichtigungen tab)
         // gated on notifications:manage (owner only under default matrix).
         await expectViewReachable(page, 'benachrichtigungen', c.canManageNotifications);
         await expect(page.getByTestId('extract-button')).toHaveCount(c.canExtract ? 1 : 0);

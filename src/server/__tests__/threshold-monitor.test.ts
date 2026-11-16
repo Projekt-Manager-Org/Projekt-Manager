@@ -105,7 +105,7 @@ function run(overrides: RunOverrides) {
   });
 }
 
-describe('threshold monitor — backup condition', () => {
+describe('AC-663: threshold monitor — backup condition', () => {
   beforeEach(() => {
     __resetThresholdMonitorState();
     readBackupStatus.mockReset().mockResolvedValue(greenStatus());
@@ -119,7 +119,7 @@ describe('threshold monitor — backup condition', () => {
     expect(publish).not.toHaveBeenCalled();
   });
 
-  // AC-355 says "anything other than green", so every non-green state
+  // AC-663 says "not green", so every non-green state
   // has to reach `publish` — not just the red ones. Driven as a table
   // because the amber rows are the ones that would otherwise go
   // untested: with only red cases, disabling amber warnings entirely
@@ -173,7 +173,7 @@ describe('threshold monitor — backup condition', () => {
     },
   );
 
-  it('stays silent when the status row is unreadable', async () => {
+  it('AC-664: stays silent when the status row is unreadable', async () => {
     // DB unreachable → `unknown`. The publisher needs the same DB to
     // resolve rules and recipients, so there is no path to a push.
     readBackupStatus.mockResolvedValue(null);
@@ -188,7 +188,7 @@ describe('threshold monitor — backup condition', () => {
   });
 });
 
-describe('AC-357: threshold monitor — re-notify policy', () => {
+describe('threshold monitor — re-notify policy', () => {
   beforeEach(() => {
     __resetThresholdMonitorState();
     readBackupStatus.mockReset().mockResolvedValue({ ...greenStatus(), lastBackupOk: false });
@@ -196,7 +196,7 @@ describe('AC-357: threshold monitor — re-notify policy', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('does not re-notify an unchanged condition within the repeat window', async () => {
+  it('AC-665: does not re-notify an unchanged condition within the repeat window', async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish });
     // 15 minutes later — one sweep interval, far inside the 24h window.
@@ -204,14 +204,14 @@ describe('AC-357: threshold monitor — re-notify policy', () => {
     expect(publish).toHaveBeenCalledTimes(1);
   });
 
-  it('re-notifies once the repeat window has elapsed', async () => {
+  it('AC-665: re-notifies once the repeat window has elapsed', async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish });
     await run({ publish, now: new Date(NOW.getTime() + 24 * 60 * 60 * 1000) });
     expect(publish).toHaveBeenCalledTimes(2);
   });
 
-  it('re-notifies immediately when the condition changes', async () => {
+  it('AC-666: re-notifies immediately when the condition changes', async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish });
     // Same non-green condition, different reason — new information, so
@@ -229,7 +229,7 @@ describe('AC-357: threshold monitor — re-notify policy', () => {
     });
   });
 
-  it('notifies again after the condition clears and returns', async () => {
+  it('AC-663: notifies again after the condition clears and returns', async () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish });
     readBackupStatus.mockResolvedValue(greenStatus());
@@ -243,7 +243,7 @@ describe('AC-357: threshold monitor — re-notify policy', () => {
   });
 });
 
-describe('AC-356: threshold monitor — storage condition', () => {
+describe('threshold monitor — storage condition', () => {
   beforeEach(() => {
     __resetThresholdMonitorState();
     readBackupStatus.mockReset().mockResolvedValue(greenStatus());
@@ -251,7 +251,7 @@ describe('AC-356: threshold monitor — storage condition', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('skips the storage check entirely when no quota is declared', async () => {
+  it('AC-669: skips the storage check entirely when no quota is declared', async () => {
     getGlobalUsage.mockResolvedValue(usage(100 * GB));
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish, quotaBytes: null });
@@ -259,14 +259,14 @@ describe('AC-356: threshold monitor — storage condition', () => {
     expect(getGlobalUsage).not.toHaveBeenCalled();
   });
 
-  it('stays silent below the warn band', async () => {
+  it('AC-667: stays silent below the warn band', async () => {
     getGlobalUsage.mockResolvedValue(usage(79 * GB));
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish, quotaBytes: 100 * GB });
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it('publishes disk.threshold_reached at the warn band with the fill percentage', async () => {
+  it('AC-667: publishes disk.threshold_reached at the warn band with the fill percentage', async () => {
     getGlobalUsage.mockResolvedValue(usage(80 * GB));
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish, quotaBytes: 100 * GB });
@@ -276,7 +276,7 @@ describe('AC-356: threshold monitor — storage condition', () => {
     });
   });
 
-  it('counts hidden ciphertext — those bytes still occupy the bucket', async () => {
+  it('AC-667: counts hidden ciphertext — those bytes still occupy the bucket', async () => {
     // 60 ready + 25 hidden = 85% of the cap. Counting ready alone would
     // read 60% and stay silent while the bucket is nearly full.
     getGlobalUsage.mockResolvedValue(usage(60 * GB, 25 * GB));
@@ -288,7 +288,7 @@ describe('AC-356: threshold monitor — storage condition', () => {
     });
   });
 
-  it('does not re-notify a standing overage within the repeat window', async () => {
+  it('AC-665: does not re-notify a standing overage within the repeat window', async () => {
     getGlobalUsage.mockResolvedValue(usage(85 * GB));
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish, quotaBytes: 100 * GB });
@@ -303,7 +303,7 @@ describe('AC-356: threshold monitor — storage condition', () => {
     expect(publish).toHaveBeenCalledTimes(1);
   });
 
-  it('does not re-notify when usage dips inside the hysteresis band and returns', async () => {
+  it('AC-668: does not re-notify when usage dips inside the hysteresis band and returns', async () => {
     // The flapping case. Warn 80, clear 78. A reap drops usage to 79 and
     // the next upload puts it back over. Without hysteresis the dip
     // forgets the condition and the return reads as a fresh crossing,
@@ -322,7 +322,7 @@ describe('AC-356: threshold monitor — storage condition', () => {
     expect(publish).toHaveBeenCalledTimes(1);
   });
 
-  it('re-notifies once usage genuinely clears below the hysteresis band and returns', async () => {
+  it('AC-668: re-notifies once usage genuinely clears below the hysteresis band and returns', async () => {
     getGlobalUsage.mockResolvedValue(usage(85 * GB));
     const publish = vi.fn().mockResolvedValue(undefined);
     await run({ publish, quotaBytes: 100 * GB });
@@ -366,7 +366,7 @@ describe('threshold monitor — production publisher path', () => {
   });
 });
 
-describe('AC-359: threshold monitor — failure isolation', () => {
+describe('AC-671: threshold monitor — failure isolation', () => {
   beforeEach(() => {
     __resetThresholdMonitorState();
     readBackupStatus.mockReset().mockResolvedValue(greenStatus());

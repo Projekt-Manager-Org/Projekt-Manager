@@ -448,7 +448,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
         // Post-commit hook fires after the create transaction commits.
         // Allow the microtask queue to drain in case the implementer
         // chooses a `setImmediate` post-commit shape (parity with
-        // architecture.md §11.11's notification publisher).
+        // the notification publisher, ADR-0021).
         await new Promise<void>((r) => setImmediate(r));
 
         expect(countProjectChanged(conn)).toBe(1);

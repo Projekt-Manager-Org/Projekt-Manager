@@ -1,5 +1,6 @@
 /**
- * pushPayloadComposer unit tests — AC-211.
+ * pushPayloadComposer unit tests — AC-648 (title), AC-649 (project body),
+ * AC-650 / AC-651 (system body), AC-652 (click target).
  *
  * Pin the wire format the service worker reads back. The composer is
  * pure (no I/O), so each event class gets a dedicated case plus a
@@ -31,7 +32,7 @@ function row(overrides: Partial<AuditLogRow> = {}): AuditLogRow {
   };
 }
 
-describe('composePushPayload — AC-211', () => {
+describe('composePushPayload — AC-648, AC-649, AC-652', () => {
   it('renders project.transition_forward with entityLabel and target status', () => {
     const out = composePushPayload('project.transition_forward', row(), null);
     expect(out.title).toBe('Projekt-Statuswechsel vorwärts');
@@ -89,7 +90,7 @@ describe('composePushPayload — AC-211', () => {
   });
 
   it('renders project.attachment_added with the project-label snapshot from ancestorEntityLabel and an ancestor-resolved url', () => {
-    // AC-211 for this class: the body names the affected project via the
+    // AC-649 / AC-652 for this class: the body names the affected project via the
     // row-level `ancestorEntityLabel` snapshot AND indicates a file was
     // added; the click target is `/projects/:id` resolved from the
     // audit row's ANCESTOR link, NOT `entityId` — an `attachment` row's
@@ -167,7 +168,7 @@ describe('composePushPayload — AC-211', () => {
     expect(out.url).toBe('/kanban');
   });
 
-  it('AC-358: renders the badge reason into the backup.failed body when the monitor supplies one', () => {
+  it('AC-650: renders the badge reason into the backup.failed body when the monitor supplies one', () => {
     // Each reason maps to the badge's own German label so the push and
     // the badge the owner lands on cannot disagree (#122).
     const cases: ReadonlyArray<[string, string]> = [
@@ -187,7 +188,7 @@ describe('composePushPayload — AC-211', () => {
     }
   });
 
-  it('AC-358: falls back to the generic backup body on an unknown reason', () => {
+  it('AC-650: falls back to the generic backup body on an unknown reason', () => {
     const out = composePushPayload('backup.failed', null, { reason: 'not-a-real-reason' });
     expect(out.body).toBe('Backup konnte nicht abgeschlossen werden.');
   });
@@ -218,7 +219,7 @@ describe('composePushPayload — AC-211', () => {
     }
   });
 
-  it('renders the fill percentage into the disk.threshold_reached body', () => {
+  it('AC-651: renders the fill percentage into the disk.threshold_reached body', () => {
     const out = composePushPayload('disk.threshold_reached', null, {
       percent: 82,
       usedBytes: 1,
@@ -234,7 +235,7 @@ describe('composePushPayload — AC-211', () => {
 
   it('never produces an empty title or body — every code path renders strings', () => {
     // Defensive: the SW falls back to `BRANDING.appName` / "" when keys
-    // are missing. AC-211 pins that the server always sends both, so a
+    // are missing. AC-648 and AC-649 need both, so a
     // regression that drops one would surface as an empty assertion
     // here rather than a silent UI fallback.
     const out = composePushPayload(

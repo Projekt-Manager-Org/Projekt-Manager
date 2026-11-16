@@ -1,28 +1,25 @@
 /**
  * Push client — encapsulates browser-side push subscription plumbing.
  *
- * Responsibilities (spec ui/behavior.md §9.8, ui/index.md §8.7.2):
+ * Responsibilities (spec verification.md §15.24, ui/index.md §8.7.2):
  *   - Feature detection (`serviceWorker` + `PushManager`).
  *   - `Notification.requestPermission()` is called ONLY from inside a
- *     user-click handler (spec §9.8 "Auto-request on page load is
- *     forbidden"). This module exposes primitives; the caller is
- *     responsible for invoking them from a user-activation handler.
+ *     user-click handler (AC-201). This module exposes primitives; the
+ *     caller is responsible for invoking them from a user-activation
+ *     handler.
  *   - Subscribe / unsubscribe against the browser's push manager and
- *     forward the result to the self-scope server endpoints
- *     (api.md §14.2.10).
+ *     forward the result to the self-scope server endpoints (AC-654).
  *
  * Service Worker registration: eager at SPA boot (`src/main.tsx`).
  * The SW intercepts `/encrypted-storage/*` requests for binary
  * attachment decryption (ADR-0024) and must be active before any
- * `<img src="/encrypted-storage/...">` renders. Spec §9.8's "forbidden
- * on page load" rule applies to the OS permission prompt, not to
- * `register()`, which is silent.
+ * `<img src="/encrypted-storage/...">` renders. AC-201's rule applies to
+ * the OS permission prompt, not to `register()`, which is silent.
  *
- * VAPID public-key source: `GET /api/push/vapid-public-key`
- * (api.md §14.2.10) at subscribe time. The server derives the public
- * key from `VAPID_PRIVATE_KEY` at boot, so the operator maintains a
- * single env var. A missing or empty key surfaces as the
- * `notConfigured` branch in the UI.
+ * VAPID public-key source: `GET /api/push/vapid-public-key` at subscribe
+ * time. The server derives the public key from `VAPID_PRIVATE_KEY` at
+ * boot, so the operator maintains a single env var. A missing or empty
+ * key surfaces as the `notConfigured` branch in the UI.
  */
 
 import { pushApi } from '@/api/client';
@@ -31,7 +28,7 @@ const SERVICE_WORKER_PATH = '/sw.js';
 
 /**
  * True when the runtime supports Web Push. Controls whether the opt-in
- * affordance is rendered at all (spec §9.8: iOS and feature-poor
+ * affordance is rendered at all (ui/index.md §8.7.2: iOS and feature-poor
  * browsers fall under the "unsupported" branch).
  */
 export function isPushSupported(): boolean {
@@ -147,10 +144,10 @@ export interface PushSubscribeOutcome {
 /**
  * Full opt-in flow: request permission, register the service worker,
  * subscribe to the browser's push manager, forward the subscription to
- * the server. MUST be invoked from a user-click handler — spec §9.8.
+ * the server. MUST be invoked from a user-click handler — AC-201.
  *
  * Ordering note: we call `Notification.requestPermission()` BEFORE
- * validating the VAPID key. The spec (§9.8, AC-201) is that the
+ * validating the VAPID key. AC-201 requires that the
  * permission prompt fires only inside a user-click handler — i.e. the
  * user action is a prerequisite for the prompt. Skipping the prompt
  * because the server is not yet configured would silently swallow the
@@ -163,7 +160,7 @@ export async function subscribeToPush(): Promise<PushSubscribeOutcome> {
     return { ok: false, reason: 'unsupported' };
   }
 
-  // User-initiated permission request (spec §9.8). A browser that
+  // User-initiated permission request (AC-201). A browser that
   // already has `permission === 'denied'` returns that value without a
   // prompt; the caller is expected to hide the affordance in that case,
   // but we still branch defensively.
@@ -233,11 +230,11 @@ export async function subscribeToPush(): Promise<PushSubscribeOutcome> {
  * again) — spec ui/index.md §8.7.2 "Gerät abmelden" scope.
  *
  * Throws on server error so the caller (PushSubscriptionControls
- * handleUnsubscribe) can catch and show the AC-205 error notification.
+ * handleUnsubscribe) can catch and show the AC-673 error notification.
  * The browser-side subscription is revoked first so the browser stops
  * forwarding pushes even if the server call fails; the server row is
- * reconciled on the next successful unsubscribe or via dispatch-time
- * pruning (api.md §14.2.10 idempotent DELETE).
+ * reconciled on the next successful unsubscribe (the DELETE is
+ * idempotent) or by dispatch-time pruning.
  */
 export async function unsubscribeFromPush(): Promise<void> {
   const subscription = await getCurrentSubscription();

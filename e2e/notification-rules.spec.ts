@@ -14,7 +14,7 @@ import { clickView } from './nav-helpers';
  * serializes it after read-only specs (shared DB fixture, no isolation
  * between specs within a project).
  *
- * Role coverage: AC-198 (URL-gated access by role) is asserted in
+ * Role coverage: AC-75 / AC-149 (nav and URL-gated access by role) are asserted in
  * `permission-visibility.spec.ts` — that spec owns the role-matrix walk.
  *
  * Auth: pre-authenticated storage states per e2e/auth.setup.ts.

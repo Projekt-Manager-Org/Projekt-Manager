@@ -414,10 +414,9 @@ describe('Publisher resolves recipients as deduplicated union (AC-192)', () => {
 // Dispatch-latency budget
 // ---------------------------------------------------------------------
 //
-// Read the configured latency budget rather than hardcoding a number —
-// The budget is `[C]`-configurable, and testing against a
-// literal would defeat the configurability contract.
-describe('Push dispatch within configured latency budget', () => {
+// AC-646 fixes the budget at 5 s; the test reads it from
+// `src/config/pushDispatch.ts`, whose env override is a code follow-up.
+describe('AC-646: push dispatch within the latency budget', () => {
   let ownerToken: string;
 
   beforeAll(async () => {

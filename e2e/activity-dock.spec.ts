@@ -73,7 +73,7 @@ async function expandDock(page: Page): Promise<void> {
  * Resolve a seeded user's id by username via an owner request context.
  * Owner holds `user:read`, so `GET /api/users` returns the full list
  * `{ users: [{ id, username, ... }], total }` (repositories/user.ts).
- * Used to target the office observer in the AC-200 recipient rule below.
+ * Used to target the office observer in the AC-660 recipient rule below.
  */
 async function resolveUserId(context: BrowserContext, username: string): Promise<string> {
   const res = await context.request.get('/api/users?limit=200');
@@ -271,7 +271,7 @@ test.describe('AC-634, AC-635, AC-636, AC-637: activity dock collapse default, s
     page,
   }) => {
     // AC-637: the dock fetches every audit row the caller may
-    // read. Recipient-scoping is a notifications concern (AC-200) and
+    // read. Recipient-scoping is a notifications concern (AC-660) and
     // is exercised only on the Aktivität page via its "Alles anzeigen"
     // toggle — NOT on the dock. The dock surface is "everything the
     // caller may read", so a freshly written audit row (e.g. a project

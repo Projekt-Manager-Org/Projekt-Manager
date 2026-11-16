@@ -10,7 +10,7 @@
  *     firing twice is a no-op on the second call").
  *   - A subscriber whose write throws does NOT affect dispatch to the
  *     other subscribers, and is removed by the bus on the failure
- *     (same posture as architecture.md §11.11's notification publisher;
+ *     (same posture as the notification publisher, AC-183;
  *     pinned by AC-270 final clause).
  *
  * Pre-impl red state: the bus module does not exist yet. The dynamic

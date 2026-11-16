@@ -1,7 +1,7 @@
 /**
  * Push-notifications group for the user menu.
  *
- * Rendering contract (spec ui/index.md §8.7.2, ui/behavior.md §9.8):
+ * Rendering contract (spec ui/index.md §8.7.2, verification.md §15.24):
  *   - The opt-in affordance appears iff (browser permission !== 'denied'
  *     AND no subscription is registered on this device).
  *   - The `Stummschalten` toggle is always visible; it reflects
@@ -18,7 +18,7 @@
  *
  * Hard rules:
  *   - `Notification.requestPermission()` is triggered ONLY from the
- *     click handler of the opt-in button (spec §9.8). We do NOT call it
+ *     click handler of the opt-in button (AC-201). We do NOT call it
  *     on mount, on user menu open, or on hover.
  *   - The Service Worker is registered eagerly at SPA boot
  *     (`src/main.tsx`) because it also intercepts
