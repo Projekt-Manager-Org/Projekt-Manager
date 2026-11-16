@@ -47,7 +47,7 @@ async function assertDrawerOpensInline(
 }
 
 /**
- * AC-200 opt-out — the Aktivität view now defaults to a recipient-scoped
+ * AC-660 opt-out — the Aktivität view now defaults to a recipient-scoped
  * feed (only audit rows whose `(entity_type, action)` maps to a
  * `NotificationEventClass` AND at least one rule admits the caller). The
  * four payload-drawer / destructive-action tests below were authored
@@ -296,7 +296,7 @@ test.describe('AC-186: payload drawer visibility per role — owner', () => {
   }) => {
     await page.goto('/');
     await clickView(page, 'aktivitaet');
-    // AC-200: widen from the recipient-scoped default to the full RBAC
+    // AC-660: widen from the recipient-scoped default to the full RBAC
     // feed so the first rendered row is drawn from the same set this
     // test was written against (every owner-visible payload-bearing
     // row, not only those matching a notification-rule recipient).
@@ -349,7 +349,7 @@ test.describe('AC-186: payload drawer visibility per role — office', () => {
   }) => {
     await page.goto('/');
     await clickView(page, 'aktivitaet');
-    // AC-200: widen from the recipient-scoped default to the full RBAC
+    // AC-660: widen from the recipient-scoped default to the full RBAC
     // feed — office's payload visibility (AC-186) is asserted over the
     // same row set as pre-iter-8.
     await showAllActivity(page);
@@ -428,7 +428,7 @@ test.describe('AC-625: destructive entries — owner sees them, others do not', 
     test('purge entries are visible in the global Aktivität view', async ({ page }) => {
       await page.goto('/');
       await clickView(page, 'aktivitaet');
-      // AC-200: `purge` has no mapped NotificationEventClass, so the
+      // AC-660: `purge` has no mapped NotificationEventClass, so the
       // recipient-scoped default hides the fixture's purge row even for
       // owner. Flip to the full RBAC feed — AC-625's visibility split
       // is asserted over the unscoped set.

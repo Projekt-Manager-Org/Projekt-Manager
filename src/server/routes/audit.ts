@@ -66,7 +66,7 @@ export function auditRoutes(db: Database) {
               from: { type: 'string', format: 'date-time' },
               to: { type: 'string', format: 'date-time' },
               action: { type: 'string', enum: [...AUDIT_ACTIONS] },
-              // verification.md AC-200 — "Alles anzeigen" toggle. Absent
+              // verification.md AC-660 — "Alles anzeigen" toggle. Absent
               // or 'false' = full RBAC-scoped feed (AC-625); 'true' =
               // only rows whose resolved dispatch recipient set would
               // include the caller. A value outside the enum fails

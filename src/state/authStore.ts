@@ -331,7 +331,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   /**
    * Self-update the user's push-mute flag.
    *
-   * Spec ui/behavior.md §9.8 + §9.5: applied optimistically, reverts on
+   * AC-658 + ui/behavior.md §9.5: applied optimistically, reverts on
    * failure. Same shape as `updateThemePreference` above — the only
    * fields that diverge are the local-cache side effects (pushMuted has
    * none; the server value is the single source of truth).

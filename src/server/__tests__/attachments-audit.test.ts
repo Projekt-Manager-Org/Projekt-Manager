@@ -10,7 +10,7 @@
  *     projectId, label, mimeType, sizeBytes. The owning project's
  *     display name is captured in `ancestor_entity_label` (not in the
  *     payload — AC-641), which is the single source consumed
- *     by the push composer (AC-211), the dock, and the /audit Projekt
+ *     by the push composer (AC-649), the dock, and the /audit Projekt
  *     column. This is the attachment's authoritative entry into the
  *     project.
  *   - Init creates the `pending` row and writes NO audit row (an

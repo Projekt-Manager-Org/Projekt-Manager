@@ -1,5 +1,5 @@
 /**
- * Public push-configuration routes — api.md §14.2.10, ADR-0023.
+ * Public push-configuration routes — ADR-0023.
  *
  * This plugin is unauthenticated on purpose: the VAPID public key is
  * intentionally public (the private half never leaves the server). A

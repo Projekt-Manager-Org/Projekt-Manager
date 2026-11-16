@@ -1,5 +1,6 @@
 /**
- * Push payload composer — server-side template renderer (AC-211, ADR-0023).
+ * Push payload composer — server-side template renderer (AC-648, AC-649, AC-650,
+ * AC-651, AC-652, ADR-0023).
  *
  * Pure function. No I/O, no DB lookups. Operates only on the audit row
  * (already snapshotted via `entityLabel`) and the system-event payload.
@@ -143,7 +144,7 @@ export function composePushPayload(
 
     case 'project.attachment_added': {
       // Body identifies the affected project via the row-level
-      // `ancestorEntityLabel` snapshot (AC-211 / AC-641) so the
+      // `ancestorEntityLabel` snapshot (AC-649 / AC-641) so the
       // notification names the project even after a later rename /
       // archive. The click target is the project — resolved from the
       // audit row's ANCESTOR link, NOT `entityId`: an `attachment` row's
@@ -200,7 +201,7 @@ function projectUrl(row: AuditLogRow | null): string {
  * (`ancestorEntityId`) rather than `entityId`. Required for
  * `project.attachment_added`: an `attachment` row's `entityId` is the
  * attachment, while the ancestor is `('project', projectId)`
- * (data-model.md §5.10, AC-211). Falls back to `/` only when the
+ * (data-model.md §5.10, AC-652). Falls back to `/` only when the
  * ancestor is absent — a defensive branch the catalog should never hit,
  * since every `attachment:add` row carries a project ancestor (AC-427).
  */

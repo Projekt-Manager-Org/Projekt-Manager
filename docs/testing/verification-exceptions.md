@@ -147,11 +147,20 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-187 | retired | —                                                                                                        |
 | AC-189 | retired | —                                                                                                        |
 | AC-191 | retired | —                                                                                                        |
+| AC-193 | retired | —                                                                                                        |
 | AC-194 | retired | —                                                                                                        |
+| AC-196 | retired | —                                                                                                        |
+| AC-197 | retired | —                                                                                                        |
+| AC-198 | retired | —                                                                                                        |
+| AC-200 | retired | —                                                                                                        |
+| AC-202 | retired | —                                                                                                        |
+| AC-204 | retired | —                                                                                                        |
+| AC-205 | retired | —                                                                                                        |
 | AC-206 | retired | —                                                                                                        |
 | AC-208 | retired | —                                                                                                        |
 | AC-209 | retired | —                                                                                                        |
 | AC-210 | retired | —                                                                                                        |
+| AC-211 | retired | —                                                                                                        |
 | AC-212 | retired | —                                                                                                        |
 | AC-213 | retired | —                                                                                                        |
 | AC-214 | retired | —                                                                                                        |
@@ -222,6 +231,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-313 | retired | —                                                                                                        |
 | AC-314 | retired | —                                                                                                        |
 | AC-315 | retired | —                                                                                                        |
+| AC-316 | retired | —                                                                                                        |
 | AC-318 | retired | —                                                                                                        |
 | AC-319 | retired | —                                                                                                        |
 | AC-322 | retired | —                                                                                                        |
@@ -241,6 +251,11 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-342 | retired | —                                                                                                        |
 | AC-348 | infra   | CI `lint` — lychee, `lychee.toml`                                                                        |
 | AC-350 | retired | —                                                                                                        |
+| AC-355 | retired | —                                                                                                        |
+| AC-356 | retired | —                                                                                                        |
+| AC-357 | retired | —                                                                                                        |
+| AC-358 | retired | —                                                                                                        |
+| AC-359 | retired | —                                                                                                        |
 | AC-368 | infra   | review of `docs/ops/backup/recovery.md`                                                                  |
 | AC-372 | retired | —                                                                                                        |
 | AC-373 | retired | —                                                                                                        |
@@ -280,3 +295,11 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
+| AC-645 | gap     | needs a test that every registered device of a recipient is pushed                                       |
+| AC-647 | gap     | needs a test that a failing device does not stop pushes to the others                                    |
+| AC-653 | gap     | needs a test of the opt-in failure message and the kept button                                           |
+| AC-655 | gap     | sign-out keeps the device subscribed — code follow-up                                                    |
+| AC-656 | gap     | a second user registering a device keeps the first user's pushes — code follow-up                        |
+| AC-670 | gap     | needs a test that an upload past the warn band is accepted                                               |
+| AC-674 | gap     | needs a test that activation with permission granted registers the device on the server                  |
+| AC-675 | gap     | needs a test that Gerät abmelden removes only this device's registration                                 |

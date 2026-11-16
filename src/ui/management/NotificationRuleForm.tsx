@@ -1,5 +1,5 @@
 /**
- * Notification rule form — create + edit (`ui/management.md §8.14.2`).
+ * Notification rule form — create + edit (`ui/management.md §8.14`).
  *
  * AC-199 conditional rendering lives here:
  *   - `Ziel-Status` is rendered only for transition events.
@@ -12,7 +12,7 @@
  * user picker lives in a sibling component (`NotificationRuleUserPicker`)
  * to keep this file under the C-SIZE guideline.
  *
- * Server-side validation is authoritative (api.md §14.2.9). The form
+ * Server-side validation is authoritative (AC-190). The form
  * masks disallowed fields at submit time (state filter null on non-
  * transition events; assigned-workers false on non-project events) so
  * a stale-state UI never posts a payload the server will 422-reject on

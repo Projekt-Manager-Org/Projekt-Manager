@@ -8,7 +8,7 @@
  *  - Trigger a fetch with the passed-in filter on mount and on filterKey change.
  *  - Render the empty state when the result set is empty — default
  *    "Keine Aktivität" (AC-627) or the caller-supplied override used by
- *    the global Aktivität view's recipient-scoped mode (AC-200).
+ *    the global Aktivität view's recipient-scoped mode (AC-660).
  *  - Render rows in the requested layout.
  *  - Offer an "Ältere anzeigen" action when more rows remain.
  *
@@ -66,7 +66,7 @@ interface Props {
   layout?: 'list' | 'table' | 'compact';
   /**
    * Override for the empty-state cell. Used by the global Aktivität view
-   * under recipient-scoped mode (AC-200) to distinguish "rules exist but
+   * under recipient-scoped mode (AC-662) to distinguish "rules exist but
    * none admit the caller" from "genuinely empty feed". When omitted the
    * feed falls back to the default `"Keine Aktivität"` copy pinned by
    * AC-627 — the per-project feed and the `Alles anzeigen` branch of the

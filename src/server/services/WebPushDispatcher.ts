@@ -14,7 +14,7 @@
  *
  * `send()` never throws: the publisher's per-recipient loop relies on
  * the dispatcher being infallible so one bad subscription cannot block
- * the remaining recipients (architecture.md §11.11).
+ * the remaining recipients (AC-647).
  */
 
 import webpush, { WebPushError, type PushSubscription as WebPushSubscription } from 'web-push';

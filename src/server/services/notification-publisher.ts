@@ -1,11 +1,11 @@
 /**
- * Notification publisher — ADR-0023, api.md §14.2.9.
+ * Notification publisher — ADR-0023, verification.md §15.24.
  *
  * Consumes two input streams: audit-log commits (via
  * `audit-publisher.onAuditCommitted`) and system bus events (via
  * `publishSystemEvent` — `backup.failed`, `disk.threshold_reached`).
  * For each event: reads the enabled-rule set AT dispatch time
- * (AC-193), applies stateFilter, resolves a deduplicated recipient
+ * (AC-644), applies stateFilter, resolves a deduplicated recipient
  * union (AC-192), drops muted users from the push attempt (AC-195),
  * and fans out a `DispatchObservation` per trigger.
  *
@@ -162,7 +162,7 @@ async function handleEvent(ctx: {
 
   const { eventClass, auditRow } = ctx;
 
-  // AC-193: read the rule set at dispatch time so a rule toggle that
+  // AC-644: read the rule set at dispatch time so a rule toggle that
   // commits before this function reads affects this event, and a rule
   // toggle that commits after does not.
   const rules = await listEnabledRulesForEventClass(boundDb, eventClass);
@@ -187,7 +187,7 @@ async function handleEvent(ctx: {
   const pushCandidates =
     actorUserId === null ? unmuted : unmuted.filter((id) => id !== actorUserId);
 
-  // Compose the user-facing payload once per event (AC-211). The
+  // Compose the user-facing payload once per event (AC-648, AC-649). The
   // service worker reads `title` / `body` / `url`; without these
   // server-rendered strings the SW falls back to a generic notification
   // with an empty body — the iter-8 wiring gap that prompted this fix.

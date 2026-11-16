@@ -33,7 +33,7 @@ function escapeLike(value: string): string {
 /**
  * SQL predicate restricting the audit feed to rows whose resolved
  * notification-dispatch recipient set would have included `caller`
- * (verification.md AC-200 — the Aktivität "Meine Benachrichtigungen"
+ * (verification.md AC-660 — the Aktivität "Meine Benachrichtigungen"
  * default view).
  *
  * Structure — a single EXISTS subquery over `notification_rule`:
@@ -205,7 +205,7 @@ export interface ListAuditOpts {
   action?: string;
   /**
    * When true, narrow the feed to rows whose resolved dispatch recipient
-   * set would have included the caller (verification.md AC-200 — the
+   * set would have included the caller (verification.md AC-660 — the
    * Aktivität default view). Composes AND with every other filter and
    * is applied BEFORE offset/limit so pagination never drops matching
    * rows. Default false preserves the full RBAC-scoped feed (AC-625).

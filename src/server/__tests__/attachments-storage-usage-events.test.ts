@@ -412,7 +412,7 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
         // Post-commit hook fires synchronously after `markReady` commits.
         // Allow the microtask queue to drain in case the implementer
         // chooses a `setImmediate` post-commit shape (parity with
-        // architecture.md §11.11's notification publisher).
+        // the notification publisher, ADR-0021).
         await new Promise<void>((r) => setImmediate(r));
 
         expect(countStorageUsageEvents(conn)).toBe(1);

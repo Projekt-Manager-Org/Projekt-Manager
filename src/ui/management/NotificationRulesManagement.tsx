@@ -1,7 +1,7 @@
 /**
  * Notification Rules admin view — `ui/management.md §8.14`.
  *
- * Owner-only surface (gated on `notifications:manage` per AC-198).
+ * Owner-only surface (gated on `notifications:manage` per AC-75).
  * Lists every rule with a compact recipient summary, opens a single
  * form for create / edit, and deletes through the shared confirm
  * dialog (AC-199 form conditionals live in `NotificationRuleForm`).

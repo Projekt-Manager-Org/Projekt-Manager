@@ -5,7 +5,7 @@
  * (the live `/api/events` reply); `broadcast(eventName)` fans out one
  * SSE frame to every registered writer. A failing writer is removed
  * silently — same posture as the notification publisher's post-commit
- * fan-out (architecture.md §11.11). The originating mutation has already
+ * fan-out (AC-183). The originating mutation has already
  * committed by the time we reach this code; emission failures cannot
  * roll it back.
  *

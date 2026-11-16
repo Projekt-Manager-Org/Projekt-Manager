@@ -1,5 +1,5 @@
 /**
- * API integration tests: audit list `recipientScope` filter (AC-200).
+ * API integration tests: audit list `recipientScope` filter (AC-660).
  *
  * Covers the "Meine Benachrichtigungen" default view on `GET /api/audit`:
  * narrows the feed to rows whose resolved notification-dispatch recipient
@@ -144,7 +144,7 @@ async function stageAndComplete(token: string, projectId: string): Promise<strin
   return body.attachment.id;
 }
 
-describe('GET /api/audit recipientScope (AC-200)', () => {
+describe('GET /api/audit recipientScope (AC-660)', () => {
   let ownerToken: string;
   let officeToken: string;
   let officeId: string;
@@ -169,7 +169,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — no matching rules → empty list
+  // AC-660 — no matching rules → empty list
   // ---------------------------------------------------------------
   //
   // Rules are wiped in `beforeEach`. With zero rules, the EXISTS
@@ -185,7 +185,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — role-match clause
+  // AC-660 — role-match clause
   // ---------------------------------------------------------------
   //
   // A rule targeting `roles: ['owner']` on `project.assignment_changed`
@@ -244,7 +244,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — includeAssignedWorkers clause
+  // AC-660 — includeAssignedWorkers clause
   // ---------------------------------------------------------------
   //
   // The rule names no roles and no userIds — only `includeAssignedWorkers
@@ -302,7 +302,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — explicit userIds clause
+  // AC-660 — explicit userIds clause
   // ---------------------------------------------------------------
   //
   // Rule targets the caller's id directly via `recipientSpec.userIds`.
@@ -347,7 +347,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — attachment_added rows surface in the scoped feed
+  // AC-660 — attachment_added rows surface in the scoped feed
   // ---------------------------------------------------------------
   //
   // The recipient-scope predicate maps (entity_type, action) to an event
@@ -399,7 +399,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — pagination correctness
+  // AC-660 — pagination correctness
   // ---------------------------------------------------------------
   //
   // With N > page_size audit rows spread across matching and non-matching
@@ -475,7 +475,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — recipientScope omitted / 'false' preserves AC-625 feed
+  // AC-672 / AC-625 — recipientScope omitted / 'false' preserves the full feed
   // ---------------------------------------------------------------
   //
   // When `recipientScope` is not 'true', the response must mirror the
@@ -504,7 +504,7 @@ describe('GET /api/audit recipientScope (AC-200)', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-200 — an invalid recipientScope value is a 422
+  // An invalid recipientScope value is a 422
   // ---------------------------------------------------------------
   //
   // Schema enum is `['true', 'false']`. Anything else fails JSON-schema

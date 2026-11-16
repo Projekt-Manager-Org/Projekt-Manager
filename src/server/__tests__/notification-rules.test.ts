@@ -1,7 +1,7 @@
 /**
  * Notification rules CRUD integration tests — Iteration 8, issue #112.
  *
- * Pins AC-190 / AC-193 / AC-203 / AC-393 in §15.24, and AC-576.
+ * Pins AC-190 / AC-644 / AC-203 / AC-393 in §15.24, and AC-576.
  *
  * Failing-state expectations (step 3 of the workflow — tests land ahead
  * of implementation):
@@ -260,13 +260,12 @@ describe('Notification-rule validation branches (AC-190)', () => {
     expect(await ruleCount()).toBe(before);
   });
 
-  // AC-199 positive — stateFilter=null on a non-transition event is
-  // accepted and persisted as NULL. This is the server-side mirror of
-  // the form-field-hidden clause: the UI hides the field so the POST
-  // carries `stateFilter: null`, and the API must accept that shape
+  // AC-190 positive — stateFilter=null on a non-transition event is
+  // accepted and persisted as NULL. The form (AC-199) hides the field
+  // so the POST carries `stateFilter: null`, and the API must accept that shape
   // (only a non-null stateFilter on a non-transition class is
   // rejected).
-  it('(AC-199) accepts stateFilter=null on a non-transition event and persists NULL', async () => {
+  it('AC-190: accepts stateFilter=null on a non-transition event and persists NULL', async () => {
     const res = await authPost(ownerToken, '/api/notification-rules', {
       eventClass: 'project.archived',
       stateFilter: null,
@@ -436,18 +435,16 @@ describe('Notification-rule CRUD produces no audit_log rows (AC-393)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-193 — Rule take-effect: events in-flight use prior rule set
+// AC-644 — Rule take-effect: a rule change applies to events fired after it
 // ---------------------------------------------------------------------
 //
-// A rule enable/disable or recipient-spec change affects only events
-// committed AFTER the change. An event whose domain commit precedes the
-// rule-change commit must dispatch under the rule set read at its own
-// commit — not the later one.
+// An event fired before a rule change dispatches under the old rule set;
+// one fired after it, under the new one.
 //
 // Note: the notification publisher routing `audit_log` rows to
 // subscribers does not exist yet. This test captures subscriber calls
 // and asserts the recipient set reflects the rule state at commit time.
-describe('Rule changes apply to events committed after the change (AC-193)', () => {
+describe('Rule changes apply to events fired after the change (AC-644)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {

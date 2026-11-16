@@ -1038,7 +1038,7 @@ describe('entity_label is frozen at event time (AC-188)', () => {
 });
 
 // ---------------------------------------------------------------------
-// Self-preference carve-out produces zero audit rows (AC-204)
+// Self-preference carve-out produces zero audit rows (AC-659)
 // ---------------------------------------------------------------------
 //
 // data-model.md §5.10 "Non-audited self-preference paths": PATCH
@@ -1046,9 +1046,9 @@ describe('entity_label is frozen at event time (AC-188)', () => {
 // produce an audit_log row — these are self-controlled delivery/display
 // preferences, not domain state changes. By contrast, PATCH /api/users/:id
 // changing another user's `displayName` via admin management MUST still
-// emit exactly one audit row (AC-204 confirms the carve-out is scoped
-// to self-preference fields only, not to the whole user-update surface).
-describe('Self-preference carve-out (AC-204)', () => {
+// emit exactly one audit row (AC-623): the carve-out covers only the
+// self-preference fields, not the whole user-update surface.
+describe('Self-preference carve-out (AC-659)', () => {
   let ownerToken: string;
   let officeUserId: string;
 
@@ -1062,7 +1062,7 @@ describe('Self-preference carve-out (AC-204)', () => {
         sql`SELECT id FROM users WHERE username = ${SEED_USERS.office.username} LIMIT 1`,
       );
       const officeRow = row.rows[0] as { id: string } | undefined;
-      if (!officeRow) throw new Error('AC-204 fixture: office user missing from seed');
+      if (!officeRow) throw new Error('AC-659 fixture: office user missing from seed');
       officeUserId = officeRow.id;
     } finally {
       await fixturePool.end();
@@ -1104,7 +1104,7 @@ describe('Self-preference carve-out (AC-204)', () => {
     const { db, pool } = createDatabase();
     try {
       const res = await authPatch(ownerToken, `/api/users/${officeUserId}`, {
-        displayName: `${SEED_USERS.office.displayName} (AC-204)`,
+        displayName: `${SEED_USERS.office.displayName} (AC-659)`,
       });
       expect(res.statusCode).toBe(200);
 

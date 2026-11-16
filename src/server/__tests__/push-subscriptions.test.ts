@@ -1,7 +1,7 @@
 /**
  * Push subscription integration tests — Iteration 8, issue #112.
  *
- * Pins AC-196 / AC-197 in §15.24.
+ * Pins AC-654 / AC-657 in §15.24.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -12,9 +12,9 @@ import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js
 import { createDatabase } from '../db/connection.js';
 
 // ---------------------------------------------------------------------
-// AC-196 — Subscribe / unsubscribe semantics
+// AC-654 — Subscribe / unsubscribe semantics
 // ---------------------------------------------------------------------
-describe('Push subscription subscribe + unsubscribe (AC-196)', () => {
+describe('Push subscription subscribe + unsubscribe', () => {
   let ownerToken: string;
   let ownerUserId: string;
 
@@ -61,7 +61,7 @@ describe('Push subscription subscribe + unsubscribe (AC-196)', () => {
     }
   }
 
-  it('subscribe sets userId from session; client-supplied userId is rejected (AC-516)', async () => {
+  it('AC-654: subscribe sets userId from session; client-supplied userId is rejected (AC-516)', async () => {
     const endpoint = `https://push.test.example/at104-sess-${Date.now().toString(36)}`;
     const res = await authPost(ownerToken, '/api/push-subscriptions', {
       endpoint,
@@ -111,7 +111,7 @@ describe('Push subscription subscribe + unsubscribe (AC-196)', () => {
     expect(res.statusCode).toBeLessThan(300);
   });
 
-  it('subscribe without a session → 401 UNAUTHENTICATED', async () => {
+  it('AC-574: subscribe without a session → 401 UNAUTHENTICATED', async () => {
     const res = await authPost('', '/api/push-subscriptions', {
       endpoint: 'https://push.test.example/no-session',
       keys: { p256dh: 'p', auth: 'a' },
@@ -120,7 +120,7 @@ describe('Push subscription subscribe + unsubscribe (AC-196)', () => {
     expect(res.json().code).toBe('UNAUTHENTICATED');
   });
 
-  it('unsubscribe without a session → 401 UNAUTHENTICATED', async () => {
+  it('AC-574: unsubscribe without a session → 401 UNAUTHENTICATED', async () => {
     const res = await authDelete('', '/api/push-subscriptions?endpoint=foo');
     expect(res.statusCode).toBe(401);
     expect(res.json().code).toBe('UNAUTHENTICATED');
@@ -128,9 +128,9 @@ describe('Push subscription subscribe + unsubscribe (AC-196)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-197 — Cascade on user hard-delete / deactivate retention
+// AC-657 — Cascade on user hard-delete / deactivate retention
 // ---------------------------------------------------------------------
-describe('User lifecycle interacts with push_subscriptions (AC-197)', () => {
+describe('User lifecycle interacts with push_subscriptions', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -154,12 +154,12 @@ describe('User lifecycle interacts with push_subscriptions (AC-197)', () => {
     }
   }
 
-  it('hard-deleting a user cascades every owned push_subscription row', async () => {
+  it('AC-657: hard-deleting a user cascades every owned push_subscription row', async () => {
     // Create a dedicated user so the cascade effect is observable
     // without touching seeded accounts.
     const createUser = await authPost(ownerToken, '/api/users', {
       username: `at105_casc_${Date.now().toString(36)}`,
-      displayName: 'AC-197 cascade target',
+      displayName: 'AC-657 cascade target',
       password: 'SecurePass2026!',
       roles: ['worker'],
     });
@@ -167,7 +167,7 @@ describe('User lifecycle interacts with push_subscriptions (AC-197)', () => {
     const user = createUser.json() as { id: string };
 
     // Log in as that user to register their own subscription (subscribe
-    // derives userId from the session — see AC-196).
+    // derives userId from the session — see AC-654).
     const userToken = await login(
       (createUser.json() as { username: string }).username,
       'SecurePass2026!',
@@ -191,7 +191,7 @@ describe('User lifecycle interacts with push_subscriptions (AC-197)', () => {
     // Create a dedicated user and register a subscription.
     const createUser = await authPost(ownerToken, '/api/users', {
       username: `at105_deact_${Date.now().toString(36)}`,
-      displayName: 'AC-197 deactivate target',
+      displayName: 'Deactivate target',
       password: 'SecurePass2026!',
       roles: ['worker'],
     });

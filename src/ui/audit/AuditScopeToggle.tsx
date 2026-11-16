@@ -1,5 +1,5 @@
 /**
- * "Alles anzeigen" toggle for the global Aktivität view (AC-200,
+ * "Alles anzeigen" toggle for the global Aktivität view (AC-660,
  * ui/management.md §8.13).
  *
  * Purely presentational: the parent owns the boolean state and the

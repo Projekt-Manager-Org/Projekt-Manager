@@ -1,5 +1,5 @@
 /**
- * VAPID public-key endpoint tests — ADR-0023 / api.md §14.2.10.
+ * VAPID public-key endpoint tests — ADR-0023.
  *
  * The endpoint returns the public key captured at plugin-registration
  * time (resolved once at boot in `buildApp`). These tests pin:

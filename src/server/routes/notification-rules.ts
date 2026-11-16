@@ -1,5 +1,5 @@
 /**
- * Notification rule routes — api.md §14.2.9, ADR-0023.
+ * Notification rule routes — data-model.md §5.11, ADR-0023.
  *
  * Admin-only CRUD gated by `notifications:manage`. Validation lives in
  * `NotificationRuleService.validate()` so the route layer stays a thin

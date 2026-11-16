@@ -571,7 +571,7 @@ interface NotificationRuleListResponse {
 }
 
 /**
- * Notification rules CRUD (api.md §14.2.9). Every endpoint is admin-only
+ * Notification rules CRUD (data-model.md §5.11). Every endpoint is admin-only
  * and gated server-side by `notifications:manage`; the UI layer mirrors
  * the gate via `usePermission('notifications:manage')` for nav + surface
  * hiding only.
@@ -603,7 +603,7 @@ export interface PushSubscriptionRecord {
 }
 
 /**
- * Push-subscription endpoints (api.md §14.2.10). Self-scope — the server
+ * Push-subscription endpoints (AC-654). Self-scope — the server
  * derives `userId` from the session, so the client never sends one.
  */
 export const pushApi = {

@@ -185,7 +185,7 @@ export function deriveBadgeState(
   // owner their backup is out of date while it is fresh and succeeding,
   // which is the same collapse the 'drill-stale' / 'backup-aging' split
   // exists to prevent, one severity level up. It matters more here: the
-  // reason is rendered into a push body (architecture.md §11.15), so a
+  // reason is rendered into a push body (AC-650), so a
   // wrong reason sends the operator to the wrong subsystem.
   //
   // `lastDrillAt === undefined` alongside `lastDrillOk !== null` is an

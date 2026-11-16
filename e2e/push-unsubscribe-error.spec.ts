@@ -4,7 +4,7 @@ import { STORAGE_STATES } from './storage-states';
 /**
  * E2E — `Gerät abmelden` failure path.
  *
- * Pins AC-205 from `docs/spec/verification.md §15.24` and the
+ * Pins AC-673 from `docs/spec/verification.md §15.24` and the
  * optimistic-UI revert contract in `docs/spec/ui/behavior.md §9.5`.
  *
  * Contract: when the DELETE `/api/push-subscriptions` call fails (5xx),
@@ -37,9 +37,9 @@ import { STORAGE_STATES } from './storage-states';
 test.describe.configure({ mode: 'serial' });
 
 // ---------------------------------------------------------------
-// AC-205 — Gerät abmelden failure path: revert + error + retry
+// AC-673 — Gerät abmelden failure path: revert + error + retry
 // ---------------------------------------------------------------
-test.describe('AC-205: Gerät abmelden failure reverts affordance and shows error', () => {
+test.describe('AC-673: Gerät abmelden failure reverts affordance and shows error', () => {
   test.use({ storageState: STORAGE_STATES.owner });
 
   const MOCK_ENDPOINT = 'https://push.test.example/mock-subscription-endpoint';

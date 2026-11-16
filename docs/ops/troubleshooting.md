@@ -70,7 +70,7 @@ docker compose logs app --no-log-prefix | grep config-feature-manifest | tail -1
 
 If the manifest reports `push: enabled` but the UI still shows "nicht konfiguriert", the issue is downstream of the env (network, service-worker, cache); the rest of this section does not apply.
 
-**Root cause:** `VAPID_PRIVATE_KEY` is unset in the VPS deploy environment. The server's `/api/push/vapid-public-key` endpoint correctly returns `{"vapidPublicKey": null}`, which the client accurately renders as "not configured" (pushClient.ts `resolveVapidPublicKey` → `{ reason: 'not-configured' }`). The permission prompt fires first because spec §9.8 / AC-201 require the prompt to live inside the user gesture — the server round-trip happens afterwards.
+**Root cause:** `VAPID_PRIVATE_KEY` is unset in the VPS deploy environment. The server's `/api/push/vapid-public-key` endpoint correctly returns `{"vapidPublicKey": null}`, which the client accurately renders as "not configured" (pushClient.ts `resolveVapidPublicKey` → `{ reason: 'not-configured' }`). The permission prompt fires first because AC-201 requires the prompt to live inside the user gesture — the server round-trip happens afterwards.
 
 **Workaround (actually the fix):**
 

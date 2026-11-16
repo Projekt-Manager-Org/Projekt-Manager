@@ -126,10 +126,7 @@ The user menu (accessible from the header area) provides:
 
 - Display of the authenticated user's `displayName`
 - "Darstellung" — a 3-way theme selector with options "Hell" (light), "Dunkel" (dark), "Systemstandard" (system). Selecting an option applies immediately and persists server-side (see [behavior.md §9.6](behavior.md#96-theme-handling)).
-- "Push-Benachrichtigungen" — grouped control for browser push delivery (see [behavior.md §9.8](behavior.md#98-push-notifications)). Exposes:
-  - **Push-Benachrichtigungen aktivieren** — user-initiated opt-in affordance that requests browser permission and registers the current device. Rendered only when the device is unregistered AND the browser permission is not denied. The app MUST NOT auto-request on page load — every prompt is user-initiated from this affordance.
-  - **Stummschalten** — boolean toggle mirroring `UserAccount.pushMuted` ([data-model.md §5.3](../data-model.md#53-user-entity)). `true` suppresses push across every subscription the user owns; activity feed unaffected. Optimistic; reverts on failed mutation per [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior).
-  - **Gerät abmelden** — shown when the current device has an active subscription. Removes the current device's subscription; other devices remain subscribed.
+- "Push-Benachrichtigungen" — for this device ([verification.md §15.24](../verification.md#1524-notifications)): `Push-Benachrichtigungen aktivieren` while the device is not registered and the browser does not block push; `Gerät abmelden` while it is registered; the `Stummschalten` toggle. A hint takes the place of `Push-Benachrichtigungen aktivieren` when the browser blocks push, and of the whole group when it lacks push; after activation, a hint names a failure, e.g. no push keys configured on the server.
 - "Passwort ändern" — opens a password change form (current password, new password, confirmation)
 - "Abmelden" — logs out and returns to the login screen
 

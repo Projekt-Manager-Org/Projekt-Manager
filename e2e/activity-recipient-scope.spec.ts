@@ -5,8 +5,8 @@ import { clickView } from './nav-helpers';
 /**
  * E2E — Aktivität view's recipient-scoped default + "Alles anzeigen" toggle.
  *
- * Pins AC-200 from `docs/spec/verification.md §15.24` and the default
- * rendering rules in `docs/spec/ui/management.md §8.13`.
+ * Pins AC-660, AC-661 and AC-662 from `docs/spec/verification.md §15.24`
+ * and the default rendering rules in `docs/spec/ui/management.md §8.13`.
  *
  * Default view: only rows where the caller is a resolved notification-
  * rule recipient. `Alles anzeigen` toggle switches to the full RBAC-
@@ -52,9 +52,9 @@ async function clearRulesForEvent(request: APIRequestContext, eventClass: string
 }
 
 // ---------------------------------------------------------------
-// AC-200 — Default is recipient-scoped; toggle switches to full view
+// AC-660 — Default is recipient-scoped; toggle switches to full view
 // ---------------------------------------------------------------
-test.describe('AC-200: Aktivität defaults to recipient-scoped; Alles anzeigen switches to full feed', () => {
+test.describe('AC-660: Aktivität defaults to recipient-scoped; Alles anzeigen switches to full feed', () => {
   test.describe('owner', () => {
     test.use({ storageState: STORAGE_STATES.owner });
 
@@ -77,7 +77,9 @@ test.describe('AC-200: Aktivität defaults to recipient-scoped; Alles anzeigen s
       }
     });
 
-    test('toggle state is local-only: navigation returns to the default', async ({ page }) => {
+    test('AC-661: toggle state is local-only: navigation returns to the default', async ({
+      page,
+    }) => {
       await page.goto('/');
       await clickView(page, 'aktivitaet');
 
@@ -97,7 +99,7 @@ test.describe('AC-200: Aktivität defaults to recipient-scoped; Alles anzeigen s
       await expect(page.getByTestId('activity-recipient-toggle')).not.toBeChecked();
     });
 
-    test('distinctive empty-state when rules exist but caller is not a recipient', async ({
+    test('AC-662: distinctive empty-state when rules exist but caller is not a recipient', async ({
       page,
     }) => {
       // Fixture isolation: remove every existing `project.archived` rule
@@ -125,14 +127,14 @@ test.describe('AC-200: Aktivität defaults to recipient-scoped; Alles anzeigen s
       await clickView(page, 'aktivitaet');
 
       // Default recipient-scoped view empty → the distinctive copy
-      // appears. The exact German literal is spec-pinned by AC-200.
+      // appears. The exact German literal is spec-pinned by AC-662.
       const empty = page.getByTestId('activity-recipient-empty-state');
       await expect(empty).toBeVisible();
       await expect(empty).toContainText('Keine Benachrichtigungen für Sie');
       await expect(empty).toContainText('Alles anzeigen');
     });
 
-    test('Alles anzeigen switches to the full feed; empty copy reverts to "Keine Aktivität"', async ({
+    test('AC-627: Alles anzeigen switches to the full feed; empty copy reverts to "Keine Aktivität"', async ({
       page,
     }) => {
       await page.goto('/');

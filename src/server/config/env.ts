@@ -317,7 +317,7 @@ export const envSchema = z.object({
    * runbook do not need to set this explicitly. */
   BINARY_AGE_IDENTITY_PATH: z.string().default('/run/binary-key/identity'),
   // ---------------------------------------------------------------
-  // Web Push / VAPID (architecture.md §11.11). The public key is derived
+  // Web Push / VAPID (ADR-0023). The public key is derived
   // from the private half at startup (P-256 ECDSA — `src/server/config/vapid.ts`),
   // so the operator only maintains the private key. In production,
   // missing `VAPID_PRIVATE_KEY` falls back to `noopPushDispatcher` with

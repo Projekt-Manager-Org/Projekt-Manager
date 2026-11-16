@@ -1,5 +1,5 @@
 /**
- * Notification rule service — admin CRUD (ADR-0023, api.md §14.2.9).
+ * Notification rule service — admin CRUD (ADR-0023, data-model.md §5.11).
  *
  * Rule mutations do NOT route through `mutate()` (ADR-0023 §Decision:
  * rule changes are administrative config, not audited domain events).
