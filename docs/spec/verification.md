@@ -438,9 +438,13 @@ Devices:
 - **AC-653** `[vis]`: If registering the device fails, the system shows a message naming the failure — e.g. `Anmeldung für Push-Benachrichtigungen fehlgeschlagen.` or `Push-Benachrichtigungen sind auf diesem Server nicht konfiguriert.` — and keeps offering `Push-Benachrichtigungen aktivieren`.
 - **AC-675** `[crit]`: When a user activates `Gerät abmelden`, the system stops pushing to that device; the user's other devices stay registered.
 - **AC-673** `[vis]`: If removing the device's registration fails, the system shows an error message and keeps offering `Gerät abmelden`.
-- **AC-654** `[crit]`: No caller can register a device for another user, or remove another user's device.
+- **AC-654** `[crit]`: No caller can register or remove a device's registration on another user's behalf; registering a device another user holds moves it to the caller ([AC-656](#1524-notifications)).
 - **AC-655** `[crit]`: When a user signs out on a device, the system stops pushing to that device.
+- **AC-677** `[crit]`: When a user's session expires, their devices stay registered.
+- **AC-676** `[crit]`: When a user changes their own password, the system removes the registrations of that user's other devices ([AC-549](#154-authentication)).
+- **AC-678** `[crit]`: When an owner resets a user's password, the system removes the registrations of all that user's devices ([AC-557](#1513-user-management)).
 - **AC-656** `[crit]`: A device receives the pushes of only the user who registered it last.
+- **AC-679** `[crit]`: When a user signs in on a device that is not registered for them, the system stops pushing to the device and offers `Push-Benachrichtigungen aktivieren`.
 - **AC-657** `[crit]`: When a user is deleted, the system removes their devices' registrations.
 - **AC-658** `[vis]`: The `Stummschalten` toggle shows and sets the user's push mute ([AC-195](#1524-notifications)), the same on every device they sign in on.
 - **AC-659** `[crit]`: When a user changes their own theme or push mute, the system records no audit entry ([ADR-0021](../adr/0021-audit-log-and-notifications-single-write-path.md)).
