@@ -1,3 +1,4 @@
+import { createECDH } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
 import { STORAGE_STATES } from './storage-states';
 import { STRINGS } from '../src/config/strings';
@@ -9,9 +10,11 @@ import { STRINGS } from '../src/config/strings';
  * Headless Chromium has no push service and pins notification permission
  * to `denied`, so the browser side is replaced: permission starts at
  * `default` and the prompt grants it; the push manager holds no
- * subscription and accepts or refuses a new one. The server side is real
- * unless a case says otherwise. Granted permission is the AC's
- * precondition, not its subject: the prompt itself (AC-201) is not
+ * subscription and accepts or refuses a new one. The E2E server may run
+ * without a VAPID key (CI does), so a case that subscribes stubs the key
+ * endpoint too (`serveVapidKey`); the replaced browser ignores the key. The rest of the
+ * server side is real unless a case says otherwise. Granted permission is
+ * the AC's precondition, not its subject: the prompt itself (AC-201) is not
  * asserted here.
  */
 
@@ -57,6 +60,19 @@ async function installGrantingPushBrowser(page: Page, subscribe: BrowserSubscrib
   }, subscribe);
 }
 
+// A real P-256 public key, in the encoding the server serves.
+const STUB_VAPID_PUBLIC_KEY = createECDH('prime256v1').generateKeys().toString('base64url');
+
+async function serveVapidKey(page: Page): Promise<void> {
+  await page.route('**/api/push/vapid-public-key', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ vapidPublicKey: STUB_VAPID_PUBLIC_KEY }),
+    }),
+  );
+}
+
 async function activatePush(page: Page): Promise<void> {
   await page.goto('/');
   await page.getByTestId('user-menu-trigger').click();
@@ -74,6 +90,7 @@ test.describe('AC-653: a failed device registration is named and opt-in stays of
 
   test('the browser refuses the subscription', async ({ page }) => {
     await installGrantingPushBrowser(page, 'refuse');
+    await serveVapidKey(page);
     await activatePush(page);
     await expectFailureShownAndOptInKept(page, STRINGS.push.subscribeFailed);
   });
@@ -89,6 +106,7 @@ test.describe('AC-653: a failed device registration is named and opt-in stays of
 
   test('the server refuses the registration', async ({ page }) => {
     await installGrantingPushBrowser(page, 'accept');
+    await serveVapidKey(page);
     await page.route('**/api/push-subscriptions', (route) =>
       route.request().method() === 'POST'
         ? route.fulfill({
