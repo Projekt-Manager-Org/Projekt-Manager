@@ -65,16 +65,16 @@ Seven responsibility layers. Dependency flows left-to-right only, never reversed
                         <--  state   <--  ui
 
   src/config/         src/domain/    src/server/repositories/   src/server/services/   src/server/routes/
-                                     src/server/storage/                               src/server/middleware/
+  src/server/config/                 src/server/storage/                               src/server/middleware/
                                                                                        src/state/
                                                                                        src/ui/
 ```
 
-- **Config** and **Domain** are shared: both server and client import them.
+- **Config** and **Domain** are shared: both server and client import them; `src/server/config/` is Config's server-only part.
 - **Storage**, **Services**, **Routes** run server-side only.
 - **State**, **UI** run client-side only.
 
-**Enforcement**: `no-restricted-imports` zones in [`eslint.config.js`](eslint.config.js) fail lint on any import against the arrows (e.g. `src/ui/**` → `src/server/**`, routes → repositories). Routes may type-import `Database` from `src/server/db/connection`. Repositories may import only packages, `src/server/db/`, `src/domain/`, `src/config/` and each other; type-only imports are exempt. `local/no-direct-db-access` ([`eslint-rules/`](eslint-rules/)) fails lint on database access in `src/server/` outside `repositories/` and the exemptions named in `eslint.config.js`, and on a repository handing out a table; no inline comment may disable it. Its suppression baseline, `eslint-suppressions.json`, is empty, and `scripts/check-eslint-suppressions.sh` fails CI on any new entry; `scripts/check-db-access-coverage.mjs` fails CI on any other exemption.
+**Enforcement**: `no-restricted-imports` zones in [`eslint.config.js`](eslint.config.js) fail lint on any import against the arrows (e.g. `src/ui/**` → `src/server/**`, routes → repositories). Routes may type-import `Database` from `src/server/db/connection`. Repositories may import only packages, `src/server/db/`, `src/domain/`, `src/config/` and each other; `src/server/storage/` also `repositories/` and `src/server/config/`. Type-only imports are exempt. `local/no-direct-db-access` ([`eslint-rules/`](eslint-rules/)) fails lint on database access in `src/server/` outside `repositories/` and the exemptions named in `eslint.config.js`, and on a repository handing out a table; no inline comment may disable it. Its suppression baseline, `eslint-suppressions.json`, is empty, and `scripts/check-eslint-suppressions.sh` fails CI on any new entry; `scripts/check-db-access-coverage.mjs` fails CI on any other exemption.
 
 ---
 

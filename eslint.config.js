@@ -16,7 +16,8 @@ import noDirectDbAccess from './eslint-rules/no-direct-db-access.mjs';
 //   config   → imports nothing application-internal
 //   domain   → never imports state, ui, server, api, hooks
 //   storage  → imports from domain, config; never from services/routes/ui
-//              (repositories: only domain, config, db/ and each other)
+//              repositories/: only domain, config, db/ and each other
+//              storage/: also repositories/ and src/server/config/
 //   services → imports from storage, domain, config; never from routes
 //   routes   → imports from services, middleware, errors, config;
 //              NOT from repositories/db directly (must go via services)
@@ -37,6 +38,13 @@ const ROUTES_BANNED = ['**/repositories/**', '**/db/schema*', '**/db/connection*
 const REPOSITORIES_BANNED_REGEX = [
   String.raw`^\.(?!/[^.]|\./db/|\./\.\./(?:domain|config)/)`,
   String.raw`^@/(?!(?:domain|config|server/(?:db|repositories))/)`,
+];
+
+// storage/ (#974): the same, plus `../repositories/` (same layer) and
+// `../config/` (src/server/config/: `STORAGE_CONFIG`).
+const STORAGE_BANNED_REGEX = [
+  String.raw`^\.(?!/[^.]|\./(?:repositories|db|config)/|\./\.\./(?:domain|config)/)`,
+  String.raw`^@/(?!(?:domain|config|server/(?:storage|repositories|db|config))/)`,
 ];
 
 const UI_BANNED_CLIENT_API = ['@/api/*', '**/src/api/**', '../../api/**', '../api/**'];
@@ -194,7 +202,7 @@ export default tseslint.config(
   // Repositories import only db/, domain, config and each other — never a
   // service, route, middleware or anything else in src/server/. Type-only
   // imports are allowed: the read-scope predicates take `AuthUser` from
-  // middleware/auth. Scenarios: scripts/__tests__/check-repository-imports.test.sh.
+  // middleware/auth. Scenarios: scripts/__tests__/check-server-import-zones.test.sh.
   {
     files: ['src/server/repositories/**/*.ts'],
     ignores: ['src/server/repositories/**/__tests__/**'],
@@ -207,6 +215,27 @@ export default tseslint.config(
             caseSensitive: true,
             message:
               'Repositories may import only db/, src/domain/, src/config/ and other repositories. Type-only imports are allowed. See ARCHITECTURE.md § Architecture Overview.',
+            allowTypeImports: true,
+          })),
+        },
+      ],
+    },
+  },
+  // storage/ imports only siblings, repositories/, db/, src/server/config/,
+  // domain and config — never a service, route or middleware. Type-only
+  // imports are allowed. Scenarios: scripts/__tests__/check-server-import-zones.test.sh.
+  {
+    files: ['src/server/storage/**/*.ts'],
+    ignores: ['src/server/storage/**/__tests__/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: STORAGE_BANNED_REGEX.map((regex) => ({
+            regex,
+            caseSensitive: true,
+            message:
+              'storage/ may import only siblings, repositories/, db/, src/server/config/, src/domain/ and src/config/. Type-only imports are allowed. See ARCHITECTURE.md § Architecture Overview.',
             allowTypeImports: true,
           })),
         },
