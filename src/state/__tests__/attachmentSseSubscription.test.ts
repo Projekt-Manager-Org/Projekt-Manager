@@ -1,6 +1,6 @@
 /**
  * attachmentSseSubscription — wires the attachment caches to refresh on
- * every `attachment_changed` SSE frame (api.md §14.2.13, AC-337, #237).
+ * every `attachment_changed` SSE frame (ADR-0025, AC-337, #237).
  *
  * Unit contract (the AC-337 two-browser value test lives in e2e):
  *   1. Subscribing registers a handler under `attachment_changed`.

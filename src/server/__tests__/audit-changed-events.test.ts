@@ -13,13 +13,13 @@
  * filter; the audit store's `fetchSeq` guard collapses concurrent
  * fetches into one rendered result.
  *
- * This file pins the server side:
+ * This file pins the server side of AC-681:
  *   - a mutation that writes an audit row emits exactly one
  *     `audit_changed` frame on the SSE bus, post-commit;
- *   - a transaction that aborts emits no event (parity with the
- *     `project_changed` AC-276 tx-abort arm and AC-270's
- *     storage_usage_changed posture);
- *   - a takeout job's terminal audit row emits one event too (AC-320).
+ *   - a takeout job's terminal audit row emits one event too.
+ *
+ * Regression guard: a transaction that aborts emits no event (parity
+ * with the `project_changed` and `storage_usage_changed` tx-abort arms).
  *
  * Strategy mirrors `project-changed-events.test.ts`: subscribe a fake
  * connection directly to the in-process bus, drive a happy-path
@@ -132,7 +132,7 @@ describe('audit_changed: SSE emission per audit-row commit', () => {
 
       // Post-commit hook fires after the create tx commits. Drain the
       // microtask queue in case the audit publisher chooses a
-      // setImmediate post-commit shape (parity with AC-276).
+      // setImmediate post-commit shape (parity with the project_changed test).
       await new Promise<void>((r) => setImmediate(r));
 
       // createProject writes exactly one audit row (the project's
@@ -143,16 +143,11 @@ describe('audit_changed: SSE emission per audit-row commit', () => {
     }
   });
 
-  it('the audit_changed frame is the contentless envelope and carries no audit content', async () => {
-    // AC-320's emission shipped in 31961a7; this arm pins the
-    // previously-untested contentless contract: the `data:` payload is
-    // the bare invalidation envelope `{ "type": "audit_changed" }` and
-    // NO audit content (entity ids, labels, payload diff, actor) rides
-    // the channel. Audit content is `audit:read`-gated and fetched only
-    // via the audit list — AC-320 depends on this stream being
-    // content-free so a caller lacking `audit:read` learns nothing from
-    // it. Expected to PASS (retroactive coverage of a security-relevant
-    // claim).
+  it('AC-680: the audit_changed frame is the contentless envelope and carries no audit content', async () => {
+    // The `data:` payload is the bare invalidation envelope
+    // `{ "type": "audit_changed" }`; no audit content (entity ids,
+    // labels, payload diff, actor) rides the channel. Audit content is
+    // `audit:read`-gated, so a caller lacking it learns nothing here.
     const bus = await loadBus();
     const customerId = await seededCustomerIdAny(ownerToken);
 
@@ -193,8 +188,8 @@ describe('audit_changed: SSE emission per audit-row commit', () => {
     const bus = await loadBus();
     const customerId = await seededCustomerIdAny(ownerToken);
 
-    // Same Proxy-rejection injection point AC-276 uses for the
-    // project_changed tx-abort arm: db.transaction() rejects, so no
+    // Same Proxy-rejection injection point as the project_changed
+    // tx-abort arm: db.transaction() rejects, so no
     // audit row commits, so no frame should fire.
     const flakyDb = new Proxy(db, {
       get(target, prop, receiver) {

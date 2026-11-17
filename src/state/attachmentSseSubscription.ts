@@ -1,7 +1,7 @@
 /**
  * Cross-cutting subscription that refreshes the attachment caches on
- * every `attachment_changed` SSE frame (api.md §14.2.13, ADR-0025,
- * AC-336 / AC-337). Closes the gallery cross-user view-sync gap (#237):
+ * every `attachment_changed` SSE frame (ADR-0025,
+ * AC-337). Closes the gallery cross-user view-sync gap (#237):
  * before this, `attachmentStore` fetched once on mount and never again,
  * so an always-open gallery never saw another user's add / hide /
  * restore / purge.
@@ -11,8 +11,7 @@
  *   - `hiddenByProject` — the Papierkorb (owner / office only),
  *     populated lazily on tab open.
  *
- * The event carries no payload (architecture.md §11.13 — invalidation
- * hint only, per-project scoping deliberately out of scope), so the
+ * The event names no project (AC-680), so the
  * handler refetches every project the user has already loaded. Trash is
  * refetched only for projects whose Papierkorb has been opened (a key
  * exists in `hiddenByProject`); a 403 for a non-privileged caller is

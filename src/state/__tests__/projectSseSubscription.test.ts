@@ -1,6 +1,6 @@
 /**
  * projectSseSubscription — wires both project stores to refresh on
- * every `project_changed` SSE frame (api.md §14.2.13, AC-277).
+ * every `project_changed` SSE frame (ADR-0025, AC-277).
  *
  * The unit-level contract (the AC-277 e2e is the value test):
  *   1. Subscribing registers a handler under the `project_changed`

@@ -11,7 +11,7 @@
  * Reads carry `projectArchived`, the state the `/rechnungen` surfaces gate
  * their changes on (api.md §14.2.14). Archive and restore flip it, and a
  * purge — direct or through customer delete — cascades the drafts away, so
- * each emits `invoice_changed` (api.md §14.2.13).
+ * each emits `invoice_changed` (ADR-0025).
  */
 
 import crypto from 'node:crypto';

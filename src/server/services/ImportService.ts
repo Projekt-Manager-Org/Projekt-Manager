@@ -847,11 +847,11 @@ export class ImportService {
       } // end writeAuditRow guard
     });
 
-    // Post-commit project-list invalidation (AC-276). Both branches write
+    // Post-commit project-list invalidation (AC-277). Both branches write
     // project rows: override TRUNCATEs and re-inserts (replacing the
     // corpus); empty-target inserts into empty tables (establishing the
     // corpus). One coarse signal is sufficient for every consumer to
-    // refetch (architecture.md §11.13).
+    // refetch.
     emitProjectChanged();
 
     // Post-commit storage cleanup. A failure here does not abort the

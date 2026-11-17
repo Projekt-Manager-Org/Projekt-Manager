@@ -132,7 +132,7 @@ export function ActivityFeed({
   });
 
   useEffect(() => {
-    // Subscribe to `audit_changed` (api.md §14.2.13). The audit
+    // Subscribe to `audit_changed` (ADR-0025). The audit
     // publisher dispatches per-row post-commit (ADR-0021), so a tx
     // with N rows produces N frames — the store's `fetchSeq` guard
     // collapses concurrent refetches into one rendered result, which

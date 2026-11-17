@@ -2,11 +2,12 @@
  * API integration tests — `storage_usage_changed` emission per call site
  * (issue #171, ADR-0025).
  *
- * Pins AC-270 from verification.md §15.28: each of the v1 emitters sends
- * exactly one `storage_usage_changed` event post-commit to a subscribed
- * `/api/events` connection — and a tx that aborts emits nothing.
+ * The emit half of AC-450 (open sessions show a changed storage total):
+ * each emitter sends exactly one `storage_usage_changed` event
+ * post-commit to a subscribed `/api/events` connection. Regression
+ * guard, not AC-450: a tx that aborts emits nothing.
  *
- * v1 emitters under test (architecture.md §11.13):
+ * Emitters under test:
  *
  *   1. AttachmentService.completeUpload (pending → ready)
  *   2. AttachmentService.hideAttachment (ready → hidden)
@@ -18,19 +19,19 @@
  * The orphan reaper is intentionally NOT in the emitter list — it
  * deletes only `pending` rows, which contribute zero to every counter
  * per data-model.md §5.14, so emission would be a wasted refetch with
- * identical bytes. Pinned by architecture.md §11.13 + AC-270. The two
+ * identical bytes. The two
  * cascade emitters (5, 6) gate emission on whether the cascade actually
  * removed byte-bearing rows for the same reason — purges of empty
  * projects, or pending-only projects, must stay silent.
  *
- * Failure isolation arm (architecture.md §11.13, AC-270 final clause):
+ * Failure isolation arm:
  * a subscriber whose write throws does not break the originating
  * mutation — by the time the bus fires, the tx has already committed.
  *
  * Strategy:
  *   - Subscribe a fake `Connection` directly to the in-process bus
- *     (no need for the held HTTP stream — the bus contract is what AC-270
- *     pins; the route plumbing is covered in `attachments-events-route.test.ts`).
+ *     (no need for the held HTTP stream — the bus is what these arms
+ *     pin; the route plumbing is covered in `attachments-events-route.test.ts`).
  *   - Drive each happy-path emitter via the existing service / route
  *     surface, then assert the fake connection observed exactly one
  *     `storage_usage_changed` frame.
@@ -369,7 +370,7 @@ async function seedPendingBackdated(
 // Tests.
 // ---------------------------------------------------------------------
 
-describe('storage_usage_changed emission per call site (AC-270)', () => {
+describe('storage_usage_changed emission per call site (AC-450)', () => {
   let ownerToken: string;
   let db: Database;
   let pool: ReturnType<typeof createDatabase>['pool'];
@@ -390,7 +391,7 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   // -------------------------------------------------------------------
   // (1) AttachmentService.completeUpload — pending → ready.
   // -------------------------------------------------------------------
-  describe('AC-270: AttachmentService.completeUpload (pending → ready) emits exactly one event', () => {
+  describe('AC-450: AttachmentService.completeUpload (pending → ready) emits exactly one event', () => {
     it('a subscribed connection observes one storage_usage_changed event after a successful complete', async () => {
       const bus = await loadBus();
       const conn = subscribeFake(bus);
@@ -400,7 +401,7 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
         const { attachmentId } = await initAndUploadPending(ownerToken, projectId);
         // Pre-condition: init does NOT emit storage_usage_changed —
         // pending rows do not affect the counters (data-model.md §5.14),
-        // so AC-270's emitter list deliberately excludes init.
+        // so init deliberately does not emit.
         expect(countStorageUsageEvents(conn)).toBe(0);
 
         const completeRes = await authPost(
@@ -425,7 +426,7 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   // -------------------------------------------------------------------
   // (2) AttachmentService.hideAttachment — ready → hidden.
   // -------------------------------------------------------------------
-  describe('AC-270: AttachmentService.hideAttachment (ready → hidden) emits exactly one event', () => {
+  describe('AC-450: AttachmentService.hideAttachment (ready → hidden) emits exactly one event', () => {
     it('a subscribed connection observes one storage_usage_changed event after a successful hide', async () => {
       const bus = await loadBus();
       const projectId = await projectIdAny(ownerToken);
@@ -454,7 +455,7 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   // -------------------------------------------------------------------
   // (3) AttachmentService.restoreAttachment — hidden → ready.
   // -------------------------------------------------------------------
-  describe('AC-270: AttachmentService.restoreAttachment (hidden → ready) emits exactly one event', () => {
+  describe('AC-450: AttachmentService.restoreAttachment (hidden → ready) emits exactly one event', () => {
     it('a subscribed connection observes one storage_usage_changed event after a successful restore', async () => {
       const bus = await loadBus();
       const projectId = await projectIdAny(ownerToken);
@@ -482,9 +483,9 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   //
   // The orphan reaper is intentionally not tested as an emitter — it
   // deletes only `pending` rows, which contribute zero to every counter,
-  // so emission would be wasted (architecture.md §11.13).
+  // so emission would be wasted (data-model.md §5.14).
   // -------------------------------------------------------------------
-  describe('AC-270: attachment-hidden-reaper (hidden delete) emits exactly one event per purged row', () => {
+  describe('AC-450: attachment-hidden-reaper (hidden delete) emits exactly one event per purged row', () => {
     it('a subscribed connection observes one storage_usage_changed event after each hidden delete', async () => {
       const bus = await loadBus();
       const runHiddenReaper = await loadHiddenReaper();
@@ -514,13 +515,12 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   });
 
   // -------------------------------------------------------------------
-  // Orphan reaper — the negative case AC-270 names explicitly:
-  // "The orphan reaper deletes only `pending` rows, which contribute
-  // zero to every counter — no event is emitted."  Without an explicit
-  // assertion, a regression that wires the same hook into the orphan
-  // reaper would pass green.
+  // Orphan reaper — the negative case: it deletes only `pending` rows,
+  // which contribute zero to every counter, so it emits nothing.
+  // Without an explicit assertion, a regression that wires the same
+  // hook into the orphan reaper would pass green.
   // -------------------------------------------------------------------
-  describe('AC-270: attachment-orphan-reaper (pending delete) emits no event', () => {
+  describe('attachment-orphan-reaper (pending delete) emits no event', () => {
     it('a subscribed connection observes zero storage_usage_changed events after the sweep', async () => {
       const bus = await loadBus();
       const runOrphanReaper = await loadOrphanReaper();
@@ -556,12 +556,13 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   // -------------------------------------------------------------------
   // (5) ProjectCrudService.purgeProject — FK-cascade attachment removal.
   //
-  // AC-270 requires emission whenever the cascade removes byte-bearing
-  // rows (`ready` or `hidden`), and silence when it removes nothing
+  // A storage total changes, so the cascade must emit, whenever it
+  // removes byte-bearing rows (`ready` or `hidden`), and stays silent
+  // when it removes nothing
   // counter-moving (zero attachments, or `pending`-only). Three arms
   // pin the trichotomy.
   // -------------------------------------------------------------------
-  describe('AC-270: ProjectCrudService.purgeProject (cascade) emits exactly one event when bytes moved', () => {
+  describe('AC-450: ProjectCrudService.purgeProject (cascade) emits exactly one event when bytes moved', () => {
     it('a subscribed connection observes one storage_usage_changed event after a purge that cascades a ready attachment', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -637,14 +638,14 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   // (6) CustomerService.deleteCustomer — atomic archived-project purge.
   //
   // AC-531 says the customer-delete cascade purges every archived project
-  // atomically. AC-270 says a single event fires when at least one of
+  // atomically. A single event fires when at least one of
   // those projects carried a byte-bearing row, and zero events fire
   // otherwise (no archived projects, or archived projects had only
   // pending / no attachments). Fan-in collapses to a single event even
   // when multiple archived projects are purged atomically — observers
   // refetch the global figure once per commit, not per project.
   // -------------------------------------------------------------------
-  describe('AC-270: CustomerService.deleteCustomer (cascade) emits exactly one event when bytes moved', () => {
+  describe('AC-450: CustomerService.deleteCustomer (cascade) emits exactly one event when bytes moved', () => {
     it('a subscribed connection observes one event after deleting a customer whose archived project carried a ready attachment', async () => {
       const bus = await loadBus();
       const customerId = await createCustomer(ownerToken);
@@ -709,10 +710,10 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
   // Post-commit ordering — a tx that aborts emits NO event. Pinned for
   // completeUpload via a Proxy db whose `transaction()` rejects;
   // mutate()-based paths (hide / restore) and the reapers ride on the
-  // same hook so the same ordering rule applies (AC-270 "Emission is
-  // post-commit"). Pinning one path is sufficient under T-REDU.
+  // same hook so the same ordering rule applies (emission is
+  // post-commit). Pinning one path is sufficient under T-REDU.
   // -------------------------------------------------------------------
-  describe('AC-270: a transaction that aborts emits no storage_usage_changed event', () => {
+  describe('a transaction that aborts emits no storage_usage_changed event', () => {
     it('completeUpload that throws inside the markReady transaction emits no event', async () => {
       const bus = await loadBus();
       const env = getEnv();
@@ -761,7 +762,7 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
         await new Promise<void>((r) => setImmediate(r));
 
         // Post-commit ordering: a tx that aborts MUST NOT emit
-        // (architecture.md §11.13 + verification.md AC-270). A
+        // (ADR-0025). A
         // regression that calls broadcast() before the transaction
         // commits — or in a `try` block that swallows the rollback
         // — would land an event on `conn` here.
@@ -774,11 +775,10 @@ describe('storage_usage_changed emission per call site (AC-270)', () => {
 
   // -------------------------------------------------------------------
   // Failure isolation at the emission boundary — a subscriber that
-  // throws on write does not break the originating mutation. AC-270
-  // final clause + architecture.md §11.13 "the originating mutation
-  // has already committed and is unaffected".
+  // throws on write does not break the originating mutation, which has
+  // already committed.
   // -------------------------------------------------------------------
-  describe('AC-270: a throwing subscriber does not affect the originating mutation', () => {
+  describe('a throwing subscriber does not affect the originating mutation', () => {
     it('completeUpload completes successfully when a subscribed connection throws on write', async () => {
       const bus = await loadBus();
       const projectId = await projectIdAny(ownerToken);

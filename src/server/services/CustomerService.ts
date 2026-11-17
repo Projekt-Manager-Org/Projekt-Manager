@@ -268,7 +268,7 @@ export class CustomerService {
       }),
     );
     await dispatchAuditRows([auditRow, ...draftAuditRows]);
-    // Post-commit: project reads carry the nested customer (architecture.md §11.13).
+    // Post-commit: project reads carry the nested customer (AC-277).
     emitProjectChanged();
     if (draftAuditRows.length > 0) emitInvoiceChanged();
     log.info({ customerId: id }, 'customer_updated');
@@ -287,11 +287,11 @@ export class CustomerService {
     // this delete.
     const collectedAudit: AuditLogRow[] = [];
     // Collected before the FK cascade removes the rows, for the post-commit
-    // storage cleanup (AC-540) and the storage-usage emitter (AC-270).
+    // storage cleanup (AC-540) and the storage-usage emitter (AC-450).
     const collectedKeys: Awaited<ReturnType<typeof listKeysForProject>> = [];
     // Tracked across the tx boundary so the post-commit emitter only
     // fires `project_changed` when the cascade actually purged at least
-    // one archived project (AC-276 — no event for a customer-delete
+    // one archived project (AC-277 — no event for a customer-delete
     // with zero archived projects, since project rows visible to
     // subscribers do not change).
     let purgedArchivedProjects = false;
@@ -411,17 +411,17 @@ export class CustomerService {
     // Publisher dispatch runs after the transaction commits — AC-183.
     await dispatchAuditRows(collectedAudit);
 
-    // Post-commit project-list invalidation (AC-276). The cascade
+    // Post-commit project-list invalidation (AC-277). The cascade
     // purged at least one archived project — observers refetch the
     // project list once. Skip when the customer had no archived
     // projects: the rows visible to subscribers did not change.
     if (purgedArchivedProjects) {
       emitProjectChanged();
-      // The FK cascade removed the purged projects' drafts (api.md §14.2.13).
+      // The FK cascade removed the purged projects' drafts (AC-531).
       emitInvoiceChanged();
     }
 
-    // Post-commit storage-usage invalidation (AC-270). The atomic
+    // Post-commit storage-usage invalidation (AC-450). The atomic
     // archived-project purge cascaded each project's attachments away;
     // observers' Footer badge / DatenView row need to refetch. Skip
     // when no byte-bearing rows were touched — pending rows or empty

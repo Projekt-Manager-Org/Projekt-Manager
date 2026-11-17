@@ -6,14 +6,14 @@
  * the same constants so a typo at any emit or subscribe site fails
  * compilation rather than silently dropping invalidation.
  *
- * Spec contract: api.md §14.2.13, architecture.md §11.13, ADR-0025.
+ * Design: ADR-0025. The frames carry no data (AC-680).
  */
 
 export const STORAGE_USAGE_CHANGED = 'storage_usage_changed' as const;
 
 /**
  * Fired post-commit from every attachment mutation that changes a
- * project's attachment list (api.md §14.2.13, ADR-0025). Invalidates
+ * project's attachment list (ADR-0025). Invalidates
  * the per-project `attachmentStore` caches (the gallery / binary list
  * and the Papierkorb) so the always-open observer's view refreshes
  * cross-session. Invalidation-only like the rest of the catalog.
@@ -37,8 +37,9 @@ export const DATA_EXCHANGE_JOB_CHANGED = 'data_exchange_job_changed' as const;
 /**
  * The runtime list of every event name in the catalog — the single
  * source of truth for both the `SseEventName` union (derived below) and
- * the subscribe-side coverage guard (AC-338), which asserts every
- * member has ≥1 client subscriber so a new event cannot ship emit-only
+ * the subscribe-side coverage guard (`sseSubscriberCoverage.test.ts`),
+ * which asserts every member has ≥1 client subscriber so a new event
+ * cannot ship emit-only
  * (the gallery-gap failure mode, #237). Adding a constant above without
  * adding it here is a compile error at every `SseEventName` use site.
  */

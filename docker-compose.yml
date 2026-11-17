@@ -172,8 +172,8 @@ services:
       # The boot-time bucket-safety probe refuses to start when the
       # deployed bucket retention envelope is less than this value.
       INVOICE_OBJECT_LOCK_DAYS: ${INVOICE_OBJECT_LOCK_DAYS:-}
-      # Realtime invalidation channel heartbeat (ADR-0025,
-      # api.md §14.2.13). Defaults to 25 s; integration tests override
+      # Realtime invalidation channel heartbeat (ADR-0025).
+      # Defaults to 25 s; integration tests override
       # to drive heartbeat assertions in milliseconds.
       SSE_HEARTBEAT_INTERVAL_MS: ${SSE_HEARTBEAT_INTERVAL_MS:-}
       # Web Push / VAPID (ADR-0023). Both optional — when unset the

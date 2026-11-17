@@ -1,10 +1,10 @@
 /**
  * Cross-cutting subscription that refreshes every invoice store on
- * every `invoice_changed` SSE frame (api.md §14.2.13, ADR-0026).
+ * every `invoice_changed` SSE frame (ADR-0025, ADR-0026).
  *
  * Three stores ride this channel:
  *   - `useInvoiceStore` — per-project cache, keyed by `projectId`. The
- *     SSE event carries no payload (architecture.md §11.13 —
+ *     SSE event carries no payload (ADR-0025 —
  *     invalidation hint only), so the handler refreshes every project
  *     the user has already loaded.
  *   - `useInvoiceListStore` — cross-project list view. Refreshed only

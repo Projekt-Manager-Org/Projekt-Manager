@@ -327,11 +327,11 @@ This is not a zero-code-change operation.
 
 **Pattern to copy**: `INVOICE_CHANGED` — `src/config/sseEvents.ts`, `emitInvoiceChanged` in `src/server/sse/emitters.ts`, `src/state/invoiceSseSubscription.ts`.
 
-1. Add the event constant to `src/config/sseEvents.ts` and to `SSE_EVENT_NAMES` — backs the `SseEventName` union and the AC-338 coverage guard.
-2. Add a typed `emitXChanged()` helper in `src/server/sse/emitters.ts`; call it post-commit from the mutation call site, never inside the transaction ([spec §11.13](docs/spec/architecture.md#1113-realtime-invalidation-channel)).
-3. Add ≥1 client subscriber under `src/state/` via `onSseEvent` (`src/sse/client.ts`) — an emit-only event fails `src/state/__tests__/sseSubscriberCoverage.test.ts` (AC-338).
+1. Add the event constant to `src/config/sseEvents.ts` and to `SSE_EVENT_NAMES` — backs the `SseEventName` union and the coverage guard of step 3.
+2. Add a typed `emitXChanged()` helper in `src/server/sse/emitters.ts`; call it post-commit from the mutation call site, never inside the transaction ([ADR-0025](docs/adr/0025-realtime-ui-invalidation-via-sse.md)).
+3. Add ≥1 client subscriber under `src/state/` via `onSseEvent` (`src/sse/client.ts`) — an emit-only event fails `src/state/__tests__/sseSubscriberCoverage.test.ts`.
 4. Wire the subscription into the auth-gated `useEffect` in `src/App.tsx`, alongside the existing SSE subscriptions.
-5. **Spec**: add the event to the v1 catalog and emitter list in `docs/spec/architecture.md §11.13` and `docs/spec/api.md §14.2.13`.
+5. **Spec**: a view that starts refreshing live gets an AC in its feature's section; [verification.md §15.28](docs/spec/verification.md#1528-realtime-events) links them.
 
 ### Seeding modes
 
@@ -430,11 +430,12 @@ sequenceDiagram
 
 ## Realtime Invalidation
 
-Contract: [architecture.md §11.13](docs/spec/architecture.md#1113-realtime-invalidation-channel); design: [ADR-0025](docs/adr/0025-realtime-ui-invalidation-via-sse.md). One SSE channel (`src/server/routes/events.ts`) carries payload-free invalidation hints; clients refetch.
+Contract: [verification.md §15.28](docs/spec/verification.md#1528-realtime-events); design: [ADR-0025](docs/adr/0025-realtime-ui-invalidation-via-sse.md). One SSE channel (`src/server/routes/events.ts`) carries payload-free invalidation hints; clients refetch.
 
 - **Server:** in-process bus `src/server/sse/bus.ts`; one typed emitter per event in `src/server/sse/emitters.ts`, called post-commit.
 - **Catalogue:** `src/config/sseEvents.ts`.
 - **Client:** `src/sse/client.ts` (`onSseEvent`); stores subscribe and refetch.
+- **Session end:** each heartbeat re-validates the stream's session through `AuthService`; an ended session's stream closes (`src/server/routes/events.ts`).
 
 ## Edit Concurrency
 

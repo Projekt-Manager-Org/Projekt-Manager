@@ -28,7 +28,7 @@ import { STORAGE_STATES } from './storage-states';
  * `project:create`, `project:update`, `project:delete`, `project:dates`,
  * or `customer:write` per the permission matrix in `src/config/permissions.ts`
  * (mirrored in api.md §14.3 and pinned by `auth.test.ts` AC-29). None of
- * the AC-276 project-mutation sites are worker-reachable, so a worker
+ * the project mutations are worker-reachable, so a worker
  * session adds no value here. Contrast with storage usage (`storage-usage-multi-user.spec.ts`),
  * where workers DO hold `attachment:write` / `attachment:hide` and a
  * worker arm is meaningful.
@@ -38,7 +38,7 @@ import { STORAGE_STATES } from './storage-states';
  * ui/workflow-views.md §8.2, Calendar per ui/workflow-views.md §8.3)
  * must reflect the change within 2 seconds with NO manual refresh —
  * driven by the `project_changed` event over `/api/events`
- * (api.md §14.2.13) and the project store's SSE refresh trigger that
+ * (ADR-0025) and the project store's SSE refresh trigger that
  * re-issues the project reads.
  *
  * This is the value test the realtime channel exists to deliver for
@@ -415,8 +415,8 @@ test.describe('AC-277: project lifecycle propagates from owner mutations to offi
   // 5. Owner edits an assigned-worker set.
   //
   // Target: `-010` (in_arbeit, seeded with arbeiter2 only). Adding
-  // arbeiter1 produces a `project_changed` event per AC-276 (the
-  // assigned-worker-only branch). The Project Management list renders
+  // arbeiter1 produces a `project_changed` event (an assignment is
+  // part of the project, AC-277). The Project Management list renders
   // the assigned-worker names inline, so the row-text diff catches the
   // new worker landing in the office surface — same shape as the
   // transition / dates / archive arms above.

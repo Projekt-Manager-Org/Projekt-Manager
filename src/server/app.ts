@@ -339,10 +339,9 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     app.register(invoiceRoutes(opts.db));
     app.register(companyProfileRoutes(opts.db));
     // Wire the SSE bus singleton with the Fastify logger BEFORE registering
-    // the route — otherwise the bus runs without a logger and the spec-
-    // required structured-output on subscriber-write failures
-    // (architecture.md §11.13) is silently dead. Same composition shape
-    // as registerNotificationPublisher below.
+    // the route — otherwise the bus runs without a logger and the
+    // structured output on subscriber-write failures is silently dead.
+    // Same composition shape as registerNotificationPublisher below.
     configureSseBus({
       logger: {
         error: (ctx, msg) => app.log.error(ctx, msg),
@@ -367,7 +366,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     // parent project's `updatedAt`. The notification publisher is the
     // first subscriber and remains independent; the audit publisher
     // uses a Set for fan-out, so adding this second subscriber cannot
-    // interfere with that path (architecture.md §11.13, ADR-0021).
+    // interfere with that path (ADR-0021).
     onAuditCommitted(() => {
       emitAuditChanged();
     });

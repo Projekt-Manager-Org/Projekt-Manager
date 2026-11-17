@@ -1,25 +1,27 @@
 /**
  * API integration tests — `/api/events` SSE route (issue #171, ADR-0025).
  *
- * Pins AC-268 + AC-269 from verification.md §15.28:
+ * Pins:
  *
- *   - AC-268: authenticated GET returns 200 with `Content-Type:
- *     text/event-stream`, no `Cache-Control` directive, an open response
- *     stream that does not close on its own. Unauthenticated GET returns
- *     401 UNAUTHENTICATED / SESSION_EXPIRED with no stream. A subscribed
- *     connection observes synthetic broadcasts as `event: <name>` frames.
+ *   - AC-574: an unauthenticated GET returns 401 UNAUTHENTICATED /
+ *     SESSION_EXPIRED with no stream.
+ *   - AC-275: a held stream ends within one heartbeat after its session
+ *     ends.
  *
- *   - AC-269: a connection held idle observes a `:` keepalive comment
- *     line within the configured heartbeat window. The interval is
- *     fixed at 25 s in the spec (api.md §14.2.13, ADR-0025); the test
- *     sets `SSE_HEARTBEAT_INTERVAL_MS` (read by `routes/events.ts`) to
- *     1 s rather than waiting >25 s of wall-clock time.
+ * Regression guards for the route's mechanics: an authenticated GET
+ * returns 200 with `Content-Type: text/event-stream`, no `Cache-Control`
+ * directive, and a stream that does not close on its own; a subscribed
+ * connection observes broadcasts as `event: <name>` frames; an idle
+ * connection observes a `:` keepalive comment line within the heartbeat
+ * window. The heartbeat defaults to 25 s (ADR-0025); the test sets
+ * `SSE_HEARTBEAT_INTERVAL_MS` (read by `routes/events.ts`) to 1 s rather
+ * than waiting >25 s of wall-clock time.
  *
  * Streaming response handling under `inject()`: Fastify's `inject()` is
  * built on `light-my-request`, which exposes `payloadAsStream: true` to
  * surface the response body as a Node `Readable` rather than a buffered
  * string. Without this, the test would deadlock waiting for the held
- * connection to close — which by the AC-268 contract it never does.
+ * connection to close — which it never does.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -101,7 +103,7 @@ function closeStream(stream: Readable): void {
 /**
  * Module-level bus accessors — the route subscribes against the
  * singleton bus, so tests assert subscriber count there. Loaded
- * dynamically through the same path the AC-268 broadcast arm uses.
+ * dynamically through the same path the broadcast arm uses.
  */
 async function loadBus(): Promise<{ size: () => number }> {
   const path = '../sse/bus.js';
@@ -148,7 +150,7 @@ async function loadBroadcast(): Promise<(eventName: string, payload?: unknown) =
   return mod.broadcast;
 }
 
-describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
+describe('GET /api/events — SSE route', () => {
   let app: FastifyInstance;
   let ownerToken: string;
 
@@ -170,30 +172,28 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-268 — authentication gate.
+  // AC-574 — authentication gate.
   // -------------------------------------------------------------------
-  describe('AC-268: authentication gate', () => {
+  describe('AC-574: authentication gate', () => {
     it('returns 401 UNAUTHENTICATED with no stream when the session cookie is missing', async () => {
       const res = await app.inject({ method: 'GET', url: '/api/events' });
       expect(res.statusCode).toBe(401);
       const body = res.json() as { code?: string };
       // The session middleware uses UNAUTHENTICATED for missing-session
       // and SESSION_EXPIRED for an expired session row — both are valid
-      // 401 codes per api.md §14.2.13. We accept either at the
+      // 401 codes. We accept either at the
       // missing-cookie boundary (no session row exists at all).
       expect(['UNAUTHENTICATED', 'SESSION_EXPIRED']).toContain(body.code);
       // The body MUST NOT carry a `text/event-stream` content-type —
-      // the rejection happens BEFORE the stream begins (api.md §14.2.13
-      // "rejected with 401 UNAUTHENTICATED / SESSION_EXPIRED for
-      // unauthenticated callers ... no stream begins").
+      // the rejection happens BEFORE the stream begins.
       expect(String(res.headers['content-type'] ?? '')).not.toContain('text/event-stream');
     });
   });
 
   // -------------------------------------------------------------------
-  // AC-268 — content-type + cache directive on the authenticated branch.
+  // Content-type + cache directive on the authenticated branch.
   // -------------------------------------------------------------------
-  describe('AC-268: response-stream shape on the authenticated branch', () => {
+  describe('response-stream shape on the authenticated branch', () => {
     it('returns 200 with Content-Type: text/event-stream and no Cache-Control directive', async () => {
       const { statusCode, headers, stream } = await injectStream(
         app,
@@ -204,8 +204,8 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
       try {
         expect(statusCode).toBe(200);
         expect(String(headers['content-type'] ?? '')).toContain('text/event-stream');
-        // api.md §14.2.13: "No Cache-Control directive — text/event-stream
-        // is non-cacheable per the WHATWG SSE protocol." A regression
+        // No Cache-Control directive: text/event-stream is non-cacheable
+        // per the WHATWG SSE protocol. A regression
         // that mounted the global static-cache hook on /api/events would
         // surface as a `Cache-Control` header on the response.
         expect(headers['cache-control']).toBeUndefined();
@@ -215,7 +215,7 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
     });
 
     it('the response stream stays open (does not terminate on its own)', async () => {
-      // AC-268: "an open response stream that does not close on its own".
+      // The response stream does not close on its own.
       // We sample for 200 ms and assert the stream has not ended — a
       // route that returned a single string and closed (the Fastify
       // default for a sync handler) would fire `end` immediately.
@@ -234,9 +234,9 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-268 — broadcast reaches a subscribed connection.
+  // Broadcast reaches a subscribed connection.
   // -------------------------------------------------------------------
-  describe('AC-268: broadcast delivery', () => {
+  describe('broadcast delivery', () => {
     it('a synthetic broadcast lands as an `event: storage_usage_changed` frame on the held stream', async () => {
       const broadcast = await loadBroadcast();
       const { stream } = await injectStream(app, '/api/events', 'GET', `session=${ownerToken}`);
@@ -250,12 +250,8 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
         broadcast('storage_usage_changed');
         const body = await readPromise;
 
-        // api.md §14.2.13 "Payload shape" leaves the data: line shape
-        // open: empty `data:`, `data: {}`, or
-        // `data: {"type":"storage_usage_changed"}` are all conformant.
-        // We pin the event line and let the implementer choose the
-        // payload shape. A regression that omits the `event:` line
-        // would land as an unnamed frame and break the EventSource
+        // Pins the `event:` line only. A regression that omits the
+        // `event:` line would land as an unnamed frame and break the EventSource
         // dispatch on the consumer.
         expect(body).toMatch(/event: storage_usage_changed/);
         // SSE record terminator — a frame must end with a blank line
@@ -269,11 +265,11 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-269 — heartbeat.
+  // Heartbeat.
   // -------------------------------------------------------------------
-  describe('AC-269: heartbeat keepalive', () => {
+  describe('heartbeat keepalive', () => {
     it('an idle connection observes a `:` SSE comment line within the configured heartbeat window', async () => {
-      // Per api.md §14.2.13: 25 s default. The schema bounds the
+      // 25 s default (ADR-0025). The schema bounds the
       // configurable interval at 1 s minimum (env.ts), so the test
       // cadence is 1 s and the read deadline budget is 1.5 s — a
       // single heartbeat with margin.
@@ -301,7 +297,7 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
   // keep receiving frames until the client disconnects. The route
   // re-runs `findSession()` at every heartbeat tick and ends the
   // response when the session is no longer valid; the test cadence is
-  // 1 s (matching AC-269), so the bound is "stream ends within ~1.5 s
+  // 1 s (as in the heartbeat arm), so the bound is "stream ends within ~1.5 s
   // of the invalidating mutation".
   //
   // Three arms cover the three independent invalidation modes — the
@@ -311,7 +307,7 @@ describe('GET /api/events — SSE route (AC-268, AC-269)', () => {
   // would surface here.
   //
   // Each arm logs in / mints a fresh session so the arms cannot
-  // interfere with each other or with the AC-268/269 arms above.
+  // interfere with each other or with the arms above.
   // -------------------------------------------------------------------
   describe('AC-275: session re-validation on held streams', () => {
     it('removes the subscriber within one heartbeat after the session row is deleted', async () => {

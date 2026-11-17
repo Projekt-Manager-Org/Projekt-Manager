@@ -6,7 +6,7 @@
         respond "ok" 200
     }
 
-    # Realtime invalidation channel (ADR-0025, api.md §14.2.13).
+    # Realtime invalidation channel (ADR-0025).
     # `flush_interval -1` keeps the buffering posture explicit so a
     # regression on the upstream content-type does not silently buffer
     # the SSE stream until the connection closes.

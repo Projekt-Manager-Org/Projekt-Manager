@@ -5,7 +5,7 @@
  * Owns the `data_exchange_job` row's state machine
  * (`pending → running → ready | failed`) and the progress counters that
  * back the live readout. Every mutation emits `data_exchange_job_changed`
- * AFTER the write resolves (architecture.md §11.13 post-commit
+ * AFTER the write resolves (ADR-0025 post-commit
  * discipline) so the UI refetches the row over its REST endpoint — the
  * SSE frame is an invalidation hint, never a data carrier.
  *
@@ -361,7 +361,7 @@ export class DataExchangeJobService {
     if (!row) return null;
     emitDataExchangeJobChanged();
     // Written outside `mutate()`, so dispatch by hand: the publisher's
-    // subscribers emit `audit_changed` (AC-320).
+    // subscribers emit `audit_changed` (AC-681).
     await dispatchAuditRows([toAuditLogRow(row.auditRow)]);
     return row.updated;
   }

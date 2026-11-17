@@ -642,7 +642,7 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
     // committed rows' still-valid bytes in the window before a re-run.
   } finally {
     // One coarse frame each at the job's end, once the wipe committed
-    // (AC-450, AC-336, architecture.md §11.13). Not at the restore commit:
+    // (AC-450, AC-337, ADR-0025). Not at the restore commit:
     // Pass 2 keeps changing the totals and the attachment lists after it.
     if (restoreCommitted) {
       emitStorageUsageChanged();
