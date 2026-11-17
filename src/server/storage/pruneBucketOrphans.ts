@@ -92,9 +92,9 @@
  * `npm run dev`.
  */
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
-import { sql } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
+import { listAllKeys } from '../repositories/attachment.js';
 import type { AttachmentStorageClient } from './client.js';
 import { isReservedKey } from './keyNamespaces.js';
 
@@ -243,14 +243,10 @@ export async function pruneBucketOrphans(
   // Ordering matters: the listing is taken BEFORE this read, so a row
   // that commits between the two is still seen as referenced. The
   // reverse order would manufacture orphans.
-  const referencedRows = await db.execute<{ key: string }>(sql`
-    SELECT original_key AS key FROM attachments
-    UNION
-    SELECT thumb_key AS key FROM attachments WHERE thumb_key IS NOT NULL
-  `);
   const referencedKeys = new Set<string>();
-  for (const row of referencedRows.rows) {
-    if (typeof row.key === 'string') referencedKeys.add(row.key);
+  for (const row of await listAllKeys(db)) {
+    referencedKeys.add(row.originalKey);
+    if (row.thumbKey !== null) referencedKeys.add(row.thumbKey);
   }
 
   // 3. Orphans = listed − referenced − too-recent.

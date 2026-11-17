@@ -15,9 +15,7 @@
  */
 
 import crypto from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import type { Database, MutatingDatabase } from '../db/connection.js';
-import { attachments } from '../db/schema.js';
 import { WRAPPED_DEK_CURRENT_VERSION } from '../../domain/attachments.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { StorageObjectNotFoundError } from '../storage/client.js';
@@ -28,7 +26,11 @@ import { encryptInvoicePayload, decryptInvoicePayload } from './invoice/payloadC
 import { KeyEnvelopeService, KeyEnvelopeUnwrapError } from './KeyEnvelopeService.js';
 import { notFound, invoiceNotIssued, dekUnwrapFailed } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
-import { insertRenderedInvoiceBinary, invoicePdfKey } from '../repositories/attachment.js';
+import {
+  getByIdIncludingInvoicePdf,
+  insertRenderedInvoiceBinary,
+  invoicePdfKey,
+} from '../repositories/attachment.js';
 
 /**
  * Binary-pipeline dependencies. `persistRendered` uses these to
@@ -200,12 +202,7 @@ export class InvoiceBinaryService {
       throw notFound(STRINGS.entities.resource);
     }
 
-    const rows = await this.db
-      .select()
-      .from(attachments)
-      .where(eq(attachments.id, descriptorId))
-      .limit(1);
-    const row = rows[0];
+    const row = await getByIdIncludingInvoicePdf(this.db, descriptorId);
     if (!row || !row.wrappedDek) {
       throw notFound(STRINGS.entities.resource);
     }

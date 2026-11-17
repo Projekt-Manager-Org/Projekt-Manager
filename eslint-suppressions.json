@@ -1,32 +1,7 @@
 {
-  "src/server/services/InvoiceBinaryService.ts": {
-    "local/no-direct-db-access": {
-      "count": 2
-    }
-  },
-  "src/server/services/StorageUsageService.ts": {
-    "local/no-direct-db-access": {
-      "count": 1
-    }
-  },
   "src/server/services/backup.ts": {
     "local/no-direct-db-access": {
       "count": 7
-    }
-  },
-  "src/server/services/takeout-export-builder.ts": {
-    "local/no-direct-db-access": {
-      "count": 5
-    }
-  },
-  "src/server/services/takeout-import-runner.ts": {
-    "local/no-direct-db-access": {
-      "count": 1
-    }
-  },
-  "src/server/storage/pruneBucketOrphans.ts": {
-    "local/no-direct-db-access": {
-      "count": 1
     }
   }
 }

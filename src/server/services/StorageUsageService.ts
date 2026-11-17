@@ -13,9 +13,8 @@
  *     the default pg driver) into the API's `number` byte counts.
  */
 
-import { sql } from 'drizzle-orm';
-
 import type { Database } from '../db/connection.js';
+import { sumStorageUsage } from '../repositories/attachment.js';
 
 /**
  * API-facing shape (totals: data-model.md §5.14). Each
@@ -41,20 +40,7 @@ export class StorageUsageService {
    * row-missing branch to handle here: no attachments read as zeros.
    */
   async getGlobalUsage(): Promise<StorageUsageDto> {
-    const r = await this.db.execute(sql`
-      SELECT
-        COALESCE(SUM(space_ready_bytes), 0)::bigint AS ready_plain,
-        COALESCE(SUM(space_hidden_bytes), 0)::bigint AS hidden_plain,
-        COALESCE(SUM(ciphertext_ready_bytes), 0)::bigint AS ready_cipher,
-        COALESCE(SUM(ciphertext_hidden_bytes), 0)::bigint AS hidden_cipher
-      FROM project_storage_usage
-    `);
-    const row = r.rows[0] as {
-      ready_plain: string | number;
-      hidden_plain: string | number;
-      ready_cipher: string | number;
-      hidden_cipher: string | number;
-    };
+    const row = await sumStorageUsage(this.db);
     return {
       ready: {
         plaintext: Number(row.ready_plain),

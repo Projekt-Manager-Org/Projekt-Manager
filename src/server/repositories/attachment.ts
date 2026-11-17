@@ -12,7 +12,7 @@
  * module composes it into list / get-by-id queries.
  */
 
-import { and, desc, eq, inArray, lt, notLike } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, notLike, sql } from 'drizzle-orm';
 import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
 import { attachments, users } from '../db/schema.js';
 import type { AttachmentKind, AttachmentLabel, AttachmentStatus } from '../../domain/types.js';
@@ -398,11 +398,66 @@ export async function listKeysForProject(
 }
 
 /**
+ * Get a single attachment row by id, rendered invoice PDFs included
+ * (unlike `getById`). Returns null when absent.
+ */
+export async function getByIdIncludingInvoicePdf(
+  db: Database,
+  id: string,
+): Promise<AttachmentRow | null> {
+  const rows = await db.select().from(attachments).where(eq(attachments.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * The storage key and wrapped DEK of exactly these attachment ids, with
+ * no status or invoice-PDF filter.
+ */
+export async function listKeysByIds(
+  db: Database,
+  ids: string[],
+): Promise<Array<{ id: string; originalKey: string; wrappedDek: string | null }>> {
+  return db
+    .select({
+      id: attachments.id,
+      originalKey: attachments.originalKey,
+      wrappedDek: attachments.wrappedDek,
+    })
+    .from(attachments)
+    .where(inArray(attachments.id, ids));
+}
+
+/** The trigger-maintained `project_storage_usage` totals, summed across every project. */
+export async function sumStorageUsage(db: Database): Promise<{
+  ready_plain: string | number;
+  hidden_plain: string | number;
+  ready_cipher: string | number;
+  hidden_cipher: string | number;
+}> {
+  const r = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(space_ready_bytes), 0)::bigint AS ready_plain,
+      COALESCE(SUM(space_hidden_bytes), 0)::bigint AS hidden_plain,
+      COALESCE(SUM(ciphertext_ready_bytes), 0)::bigint AS ready_cipher,
+      COALESCE(SUM(ciphertext_hidden_bytes), 0)::bigint AS hidden_cipher
+    FROM project_storage_usage
+  `);
+  return r.rows[0] as {
+    ready_plain: string | number;
+    hidden_plain: string | number;
+    ready_cipher: string | number;
+    hidden_cipher: string | number;
+  };
+}
+
+/**
  * Collect every attachment key in the table. Used by the override-import
  * path so the bytes left over from the prior dataset can be hidden after
  * the TRUNCATE commits — without this, the orphaned objects sit as
  * current versions of unreferenced keys and the lifecycle policy
- * (which only reaps noncurrent versions) leaves them forever.
+ * (which only reaps noncurrent versions) leaves them forever. The bucket
+ * orphan prune reads it too: it must return every status, or the prune
+ * would hide keys still in use.
  */
 export async function listAllKeys(
   db: TransactionalDatabase,
@@ -552,6 +607,18 @@ export async function insertRenderedInvoiceBinary(
     hiddenAt: null,
     createdBy: fields.createdBy,
   });
+}
+
+/**
+ * INSERT one attachment row restored from a takeout archive, its id,
+ * `createdBy` and `createdAt` preserved. The caller holds the `restore`
+ * audit exemption: the restore records one `data_import` row (AC-332).
+ */
+export async function insertRestored(
+  db: MutatingDatabase,
+  row: typeof attachments.$inferInsert,
+): Promise<void> {
+  await db.insert(attachments).values(row);
 }
 
 export type { AttachmentStatus };

@@ -83,12 +83,12 @@ import { createReadStream } from 'node:fs';
 import { Unzip, UnzipInflate, UnzipPassThrough } from 'fflate';
 
 import type { Database } from '../db/connection.js';
-import { attachments } from '../db/schema.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
-import { invoicePdfKey } from '../repositories/attachment.js';
+import { insertRestored, invoicePdfKey } from '../repositories/attachment.js';
 import type { ServiceLogger } from './Logger.js';
 import { DataExchangeJobService, failedJobAudit } from './DataExchangeJobService.js';
 import { ImportService } from './ImportService.js';
+import { exemptFromAudit } from './mutate.js';
 import { KeyEnvelopeService } from './KeyEnvelopeService.js';
 import { renderWebpThumbnail } from './serverImagePipeline.js';
 import { encryptInvoicePayload } from './invoice/payloadCrypto.js';
@@ -558,28 +558,30 @@ export async function runTakeoutImport(deps: RunTakeoutImportDeps): Promise<void
         // `versionId` / `thumbVersionId` come from the PUT response (the
         // bucket is versioned, ADR-0022) so the restored row can later
         // hide → restore via copyFromVersion; null on an unversioned bucket.
-        await db.insert(attachments).values({
-          id: att.id,
-          projectId: att.projectId,
-          status: 'ready',
-          kind: att.kind,
-          label: att.label,
-          filename: att.fileName,
-          mimeType: att.mimeType,
-          sizeBytes: att.sizeBytes,
-          originalKey,
-          versionId: originalUpload.versionId ?? null,
-          hasThumbnail,
-          thumbKey,
-          ciphertextSizeBytes: ciphertext.byteLength,
-          ciphertextThumbSizeBytes,
-          wrappedDek: Buffer.from(wrapped).toString('base64'),
-          wrappedThumbDek,
-          wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,
-          thumbVersionId,
-          createdBy: att.createdBy,
-          createdAt: new Date(att.createdAt),
-        });
+        await db.transaction((tx) =>
+          insertRestored(exemptFromAudit(tx, 'restore'), {
+            id: att.id,
+            projectId: att.projectId,
+            status: 'ready',
+            kind: att.kind,
+            label: att.label,
+            filename: att.fileName,
+            mimeType: att.mimeType,
+            sizeBytes: att.sizeBytes,
+            originalKey,
+            versionId: originalUpload.versionId ?? null,
+            hasThumbnail,
+            thumbKey,
+            ciphertextSizeBytes: ciphertext.byteLength,
+            ciphertextThumbSizeBytes,
+            wrappedDek: Buffer.from(wrapped).toString('base64'),
+            wrappedThumbDek,
+            wrappedDekVersion: WRAPPED_DEK_CURRENT_VERSION,
+            thumbVersionId,
+            createdBy: att.createdBy,
+            createdAt: new Date(att.createdAt),
+          }),
+        );
 
         filesDone += 1;
         bytesDone += plaintext.length;
