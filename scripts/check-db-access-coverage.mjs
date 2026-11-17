@@ -56,6 +56,8 @@ const GUARD = {
     2,
     RULE,
     'local/audit-write-gate',
+    '@typescript-eslint/ban-ts-comment',
+    '@typescript-eslint/no-explicit-any',
     '@eslint-community/eslint-comments/*',
   ],
   '@eslint-community/eslint-comments/no-unlimited-disable': [2],

@@ -99,10 +99,14 @@ export function validateKind(kind: string): AttachmentKind {
  * (pre-upload UX gate).
  */
 export function validateLabel(label: string): AttachmentLabel {
-  if (!LABEL_VALUES.has(label)) {
+  if (!isAttachmentLabel(label)) {
     throw new Error(`validateLabel: '${label}' is not a valid AttachmentLabel`);
   }
-  return label as AttachmentLabel;
+  return label;
+}
+
+export function isAttachmentLabel(label: string): label is AttachmentLabel {
+  return LABEL_VALUES.has(label);
 }
 
 /**

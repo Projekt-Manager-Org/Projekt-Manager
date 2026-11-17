@@ -14,7 +14,9 @@
 //     outside the repositories. Comments are stripped first. A target that is
 //     neither a name nor a db/schema import (a call, a parameter, text appended
 //     later) fails closed. Runs only with the `sqlTables` option.
-//   - `cast`: an assertion to `MutatingDatabase`, which forges the brand.
+//   - `cast`: an assertion to `MutatingDatabase`, which forges the brand;
+//   - `never`: an assertion to `never`, which fits every parameter, so it
+//     forges the brand too (#964).
 //
 // Typed linting is off, so "is a `MutatingDatabase`" means: a type reference
 // that resolves to the `MutatingDatabase` import from db/connection, and the
@@ -145,6 +147,8 @@ export default {
       write:
         'Audited-table write through a handle that is not a `MutatingDatabase` parameter. Take `MutatingDatabase`, so callers must be inside mutate(), or an exception named in exemptFromAudit (services/mutate.ts). ADR-0021.',
       cast: 'Assertion to `MutatingDatabase` forges the audit gate. Get the handle from mutate() / mutateInTx(), or name an exception in exemptFromAudit (services/mutate.ts). ADR-0021.',
+      never:
+        'Assertion to `never` fits every type, `MutatingDatabase` included, so it can forge the audit gate. Type the value instead; get a handle from mutate() / mutateInTx(), or name an exception in exemptFromAudit (services/mutate.ts). ADR-0021.',
     },
   },
 
@@ -231,7 +235,9 @@ export default {
     }
 
     function checkCast(node) {
-      if (isBrand(node.typeAnnotation)) context.report({ node, messageId: 'cast' });
+      if (node.typeAnnotation.type === 'TSNeverKeyword')
+        context.report({ node, messageId: 'never' });
+      else if (isBrand(node.typeAnnotation)) context.report({ node, messageId: 'cast' });
     }
 
     return {

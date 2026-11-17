@@ -1,4 +1,4 @@
-// Unit tests for the `local/audit-write-gate` rule (#938, #946).
+// Unit tests for the `local/audit-write-gate` rule (#938, #946, #964).
 //
 // Where the rule runs, and its table list, are tested in
 // audit-write-gate-config.test.mjs.
@@ -11,7 +11,7 @@ import rule from '../audit-write-gate.mjs';
 // The message is the guard at the moment of failure: it must name the two
 // legitimate ways to get the handle.
 it('names mutate() and the named exceptions as the way out', () => {
-  for (const id of ['write', 'rawWrite', 'cast']) {
+  for (const id of ['write', 'rawWrite', 'cast', 'never']) {
     expect(rule.meta.messages[id]).toMatch(/mutate\(\)/);
     expect(rule.meta.messages[id]).toMatch(/exemptFromAudit/);
   }
@@ -30,6 +30,7 @@ const SERVER = { sqlTables: REPOSITORY.sqlTables };
 const write = { messageId: 'write' };
 const rawWrite = { messageId: 'rawWrite' };
 const cast = { messageId: 'cast' };
+const never = { messageId: 'never' };
 const IMPORTS = [
   "import { sql } from 'drizzle-orm';",
   "import { projects, attachments, projectWorkers, sessions } from '../db/schema.js';",
@@ -453,6 +454,21 @@ ruleTester.run('audit-write-gate', rule, {
         'export function f(tx: TxHandle) { return tx as M; }',
       ].join('\n'),
       errors: [cast],
+    },
+    {
+      name: 'the #964 reproduction: `as never` into a write that takes a MutatingDatabase',
+      code: repo(
+        [
+          "import { deleteCustomer } from '../repositories/customer.js';",
+          'export async function f(tx: TxHandle, id: string) { await deleteCustomer(tx as never, id); }',
+        ].join('\n'),
+      ),
+      errors: [never],
+    },
+    {
+      name: '`never` as an angle-bracket assertion and at the end of a chain',
+      code: repo('export function f(tx: TxHandle) { return [<never>tx, tx as unknown as never]; }'),
+      errors: [never, never],
     },
     {
       name: 'an assertion inside a repository, where the write check also runs',
