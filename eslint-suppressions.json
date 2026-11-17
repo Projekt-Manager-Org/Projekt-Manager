@@ -4,11 +4,6 @@
       "count": 2
     }
   },
-  "src/server/services/CompanyProfileService.ts": {
-    "local/no-direct-db-access": {
-      "count": 2
-    }
-  },
   "src/server/services/CustomerService.ts": {
     "local/no-direct-db-access": {
       "count": 7
