@@ -64,11 +64,6 @@
       "count": 1
     }
   },
-  "src/server/services/audit-retention.ts": {
-    "local/no-direct-db-access": {
-      "count": 3
-    }
-  },
   "src/server/services/backup.ts": {
     "local/no-direct-db-access": {
       "count": 7
@@ -77,11 +72,6 @@
   "src/server/services/data-exchange-boot-reaper.ts": {
     "local/no-direct-db-access": {
       "count": 4
-    }
-  },
-  "src/server/services/mutate.ts": {
-    "local/no-direct-db-access": {
-      "count": 1
     }
   },
   "src/server/services/notificationRecipientResolver.ts": {

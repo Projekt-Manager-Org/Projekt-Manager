@@ -19,10 +19,8 @@
 #   extends this check's scan. Neither direction lets a new audited
 #   entity ship with its mutation surface unobserved.
 #
-# `audit_log` itself is NOT in the audited-table set — `mutate()` is
-# its legitimate writer, and retention is its only production deleter —
-# enforced at runtime by the DB triggers (AC-642). Both are allowlisted
-# below.
+# `audit_log` itself is NOT in the audited-table set. The DB triggers
+# accept a delete of its rows only under `withAuditLogRemoval` (AC-642).
 #
 # Allowlist (ALLOW): files that legitimately author raw mutations
 # against audited tables — kept intentionally small and reviewed per
@@ -147,10 +145,6 @@ ALLOWLIST=(
   # seed steps outside the machine on purpose to compose a varied dev
   # landscape. TRUNCATE has just run — no users observe the moves.
   "src/server/seed/invoices.ts"
-  # Audit retention — the only production deleter of audit_log rows (AC-642).
-  # (audit_log is not in the audited-table set, but this job is the
-  # archetypal allowlist case for parity with the helper.)
-  "src/server/services/audit-retention.ts"
   # Full-account takeout IMPORT job runner — writes raw audit_log rows at
   # its terminal transition (AC-332) and raw INSERT into `attachments` for
   # each restored binary (Pass 2). Both are reviewed bulk-write sites:

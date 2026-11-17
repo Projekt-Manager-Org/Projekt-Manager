@@ -40,6 +40,7 @@
 import type { Database, MutatingDatabase, TxHandle } from '../db/connection.js';
 import type { AuditEntityType } from '../db/schema.js';
 import { auditLog, AUDIT_EXCLUDED_FIELDS } from '../db/schema.js';
+import { insertAuditEntry } from '../repositories/audit.js';
 import { dispatch, type AuditLogRow } from './audit-publisher.js';
 import type { AuditAction } from '../../config/auditActionLabels.js';
 
@@ -221,30 +222,25 @@ export async function mutateInTx<T>(
     after: stripAuditExcluded(domainResult.after ?? {}),
   };
 
-  const rows = await tx
-    .insert(auditLog)
-    .values({
-      actorId: ctx.actorKind === 'user' ? (ctx.actorId ?? null) : null,
-      actorKind: ctx.actorKind,
-      actorReason: ctx.actorKind === 'system' ? (ctx.actorReason ?? null) : null,
-      entityType: spec.entityType,
-      entityId: domainResult.entityId,
-      entityLabel: domainResult.entityLabel ?? null,
-      ancestorEntityType: domainResult.ancestorEntityType ?? null,
-      ancestorEntityId: domainResult.ancestorEntityId ?? null,
-      ancestorEntityLabel: domainResult.ancestorEntityLabel ?? null,
-      action: spec.action,
-      // Drizzle's `jsonb()` column serializes the JS value automatically
-      // via the pg driver. The earlier `sql\`${JSON.stringify(...)}::jsonb\``
-      // wrapper duplicated that work and produced a different path into
-      // the driver (parameterized literal vs SQL fragment), which masked
-      // a latent issue with embedded single quotes in payload strings.
-      payload,
-      correlationId: ctx.correlationId ?? null,
-    })
-    .returning();
-
-  const inserted = rows[0];
+  const inserted = await insertAuditEntry(tx, {
+    actorId: ctx.actorKind === 'user' ? (ctx.actorId ?? null) : null,
+    actorKind: ctx.actorKind,
+    actorReason: ctx.actorKind === 'system' ? (ctx.actorReason ?? null) : null,
+    entityType: spec.entityType,
+    entityId: domainResult.entityId,
+    entityLabel: domainResult.entityLabel ?? null,
+    ancestorEntityType: domainResult.ancestorEntityType ?? null,
+    ancestorEntityId: domainResult.ancestorEntityId ?? null,
+    ancestorEntityLabel: domainResult.ancestorEntityLabel ?? null,
+    action: spec.action,
+    // Drizzle's `jsonb()` column serializes the JS value automatically
+    // via the pg driver. The earlier `sql\`${JSON.stringify(...)}::jsonb\``
+    // wrapper duplicated that work and produced a different path into
+    // the driver (parameterized literal vs SQL fragment), which masked
+    // a latent issue with embedded single quotes in payload strings.
+    payload,
+    correlationId: ctx.correlationId ?? null,
+  });
   if (!inserted) {
     throw new Error('mutateInTx(): audit_log insert returned no rows');
   }
