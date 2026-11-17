@@ -42,7 +42,7 @@ import {
   META_WRAPPED_DEK,
   META_WRAPPED_DEK_VERSION,
 } from '../../test/storageObjectMetadata.js';
-import { recoverObjects, type RecoveryIndexEntry } from '../storage/recoverObjects.js';
+import { recoverObjects, type RecoveryIndexEntry } from '../services/recoverObjects.js';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');

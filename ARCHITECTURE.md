@@ -420,7 +420,7 @@ sequenceDiagram
 | DEK wrap / unwrap                                                | `src/server/services/KeyEnvelopeService.ts`                                                        |
 | Decrypt-on-fetch and push, one Service Worker                    | `src/sw/index.ts`                                                                                  |
 | Storage client; internal vs browser-facing endpoint              | `src/server/storage/client.ts`                                                                     |
-| Self-describing objects; DB-less recovery (AC-439, AC-441)       | `src/server/storage/objectMetadata.ts`, `src/server/storage/recoverObjects.ts`                     |
+| Self-describing objects; DB-less recovery (AC-439, AC-441)       | `src/server/storage/objectMetadata.ts`, `src/server/services/recoverObjects.ts`                    |
 | Boot probes: bucket shape, credential capability, `age` identity | `src/server/storage/safety.ts`, `src/server/storage/binaryIdentity.ts`                             |
 | No version-destroying delete anywhere (ADR-0022)                 | `src/server/__tests__/storage-architecture-detector.ts`                                            |
 | Pending-row reaper                                               | `src/server/services/attachment-orphan-reaper.ts`                                                  |

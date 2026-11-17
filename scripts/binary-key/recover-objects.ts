@@ -22,7 +22,7 @@
  */
 
 import { parseArgs } from 'node:util';
-import { recoverObjects } from '../../src/server/storage/recoverObjects.js';
+import { recoverObjects } from '../../src/server/services/recoverObjects.js';
 
 const EXIT_FAILED_VERSIONS = 1;
 const EXIT_USAGE = 2;

@@ -26,11 +26,11 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { isKnownWrappedDekVersion } from '../../domain/attachments.js';
-import { decryptInvoicePayload } from '../services/invoice/payloadCrypto.js';
-import { KeyEnvelopeService } from '../services/KeyEnvelopeService.js';
-import { AGE_KEYGEN_BIN } from './binaryIdentity.js';
-import { fromObjectMetadata } from './objectMetadata.js';
-import { isReservedKey } from './keyNamespaces.js';
+import { decryptInvoicePayload } from './invoice/payloadCrypto.js';
+import { KeyEnvelopeService } from './KeyEnvelopeService.js';
+import { AGE_KEYGEN_BIN } from '../storage/binaryIdentity.js';
+import { fromObjectMetadata } from '../storage/objectMetadata.js';
+import { isReservedKey } from '../storage/keyNamespaces.js';
 
 const execFileAsync = promisify(execFile);
 
