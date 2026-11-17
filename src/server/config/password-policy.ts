@@ -11,7 +11,7 @@
  * rationale and ADR-0010 (bootstrap) for the reason a shared module exists.
  */
 
-import { isCommonPassword } from '../data/common-passwords.js';
+import { isCommonPassword } from './common-passwords.js';
 
 /** Minimum password length, counted in JavaScript characters. */
 export const MIN_PASSWORD_LENGTH = 8;

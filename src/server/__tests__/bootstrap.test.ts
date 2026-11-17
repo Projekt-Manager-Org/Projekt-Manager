@@ -337,7 +337,7 @@ describe('AC-569 (AC-B5): password policy applies', () => {
   it('throws a blocklist error for a different blocklist entry ("qwerty123")', async () => {
     // Confirms the blocklist is actually consulted, not just hardcoded to
     // reject the single string "password". "qwerty123" is a separate
-    // entry in src/server/data/common-passwords.ts.
+    // entry in src/server/config/common-passwords.ts.
     await expect(
       bootstrapAdminIfEmpty(
         db,
