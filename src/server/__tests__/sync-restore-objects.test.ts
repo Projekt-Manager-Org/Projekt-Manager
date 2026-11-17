@@ -53,7 +53,7 @@ import { getEnv } from '../config/env.js';
 import { attachments } from '../db/schema.js';
 import { storageConfigFromEnv } from '../storage/fromEnv.js';
 import { RESERVED_KEY_PREFIXES } from '../storage/keyNamespaces.js';
-import { recoverObjects } from '../storage/recoverObjects.js';
+import { recoverObjects } from '../services/recoverObjects.js';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');

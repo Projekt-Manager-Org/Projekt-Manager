@@ -4,7 +4,7 @@
  * format version and — for a rendered invoice PDF — its invoice number,
  * as S3 user metadata (`x-amz-meta-<name>`). With the binary identity the
  * object decrypts without its `attachments` row; the recovery tool
- * (`recoverObjects.ts`) reads these fields back.
+ * (`services/recoverObjects.ts`) reads these fields back.
  *
  * This module owns the wire names and the encode/decode pair so the write
  * paths and the recovery path cannot drift apart.
