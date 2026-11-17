@@ -24,10 +24,9 @@
 
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
-import { dataExchangeJob } from '../db/schema.js';
+import { updateDataExchangeJob } from '../repositories/dataExchangeJob.js';
 import { emitDataExchangeJobChanged } from '../sse/emitters.js';
 import type { ServiceLogger } from './Logger.js';
 
@@ -80,9 +79,6 @@ export async function sweepStagedArtifact(
 
   // Null the reference + bump updatedAt; the row stays as operational
   // metadata. The client now sees `archiveAvailable: false` (AC-608).
-  await db
-    .update(dataExchangeJob)
-    .set({ archiveRef: null, updatedAt: new Date() })
-    .where(eq(dataExchangeJob.id, job.id));
+  await updateDataExchangeJob(db, job.id, { archiveRef: null, updatedAt: new Date() });
   emitDataExchangeJobChanged();
 }

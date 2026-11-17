@@ -26,17 +26,24 @@
  * frames, and they supply the job-kind-specific terminal audit content.
  */
 
-import { and, desc, eq, inArray, isNotNull, or, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
-import { auditLog, dataExchangeJob } from '../db/schema.js';
+import { insertAuditEntry } from '../repositories/audit.js';
+import {
+  findDataExchangeJob,
+  findLatestDataExchangeJob,
+  findStagedDataExchangeJobsOfKind,
+  insertDataExchangeJob,
+  updateDataExchangeJob,
+  type DataExchangeJobFilter,
+  type DataExchangeJobKind,
+  type DataExchangeJobPatch,
+  type DataExchangeJobRow,
+} from '../repositories/dataExchangeJob.js';
 import { emitDataExchangeJobChanged } from '../sse/emitters.js';
 import { dispatchAuditRows, toAuditLogRow } from './mutate.js';
 
-export type DataExchangeJobKind = 'export' | 'import';
-export type DataExchangeJobStatus = 'pending' | 'running' | 'ready' | 'failed';
-
 /** Row shape as selected from the DB (counters are plain numbers). */
-export type DataExchangeJob = typeof dataExchangeJob.$inferSelect;
+export type DataExchangeJob = DataExchangeJobRow;
 
 /**
  * The client-facing projection of a job row — the full row MINUS `archiveRef`
@@ -126,7 +133,7 @@ export class DataExchangeJobService {
 
   /** Create a fresh `pending` job and emit one invalidation frame. */
   async create(kind: DataExchangeJobKind, createdBy: string | null): Promise<DataExchangeJob> {
-    const [row] = await this.db.insert(dataExchangeJob).values({ kind, createdBy }).returning();
+    const row = await insertDataExchangeJob(this.db, { kind, createdBy });
     emitDataExchangeJobChanged();
     return row!;
   }
@@ -142,17 +149,18 @@ export class DataExchangeJobService {
    * (the staging reaper failed it, AC-599): the caller then fires no restore.
    */
   async markRunningIfPending(id: string, done: UploadComplete): Promise<DataExchangeJob | null> {
-    const [row] = await this.db
-      .update(dataExchangeJob)
-      .set({
+    const row = await updateDataExchangeJob(
+      this.db,
+      id,
+      {
         status: 'running',
         startedAt: new Date(),
         updatedAt: new Date(),
         bytesTotal: done.bytesTotal,
         archiveRef: done.archiveRef,
-      })
-      .where(and(eq(dataExchangeJob.id, id), eq(dataExchangeJob.status, 'pending')))
-      .returning();
+      },
+      { status: 'pending' },
+    );
     if (!row) return null;
     emitDataExchangeJobChanged();
     return row;
@@ -166,17 +174,12 @@ export class DataExchangeJobService {
    * not a `pending` import.
    */
   async touchUpload(id: string, bytesDone?: number): Promise<DataExchangeJob | null> {
-    const [row] = await this.db
-      .update(dataExchangeJob)
-      .set({ updatedAt: new Date(), ...(bytesDone !== undefined ? { bytesDone } : {}) })
-      .where(
-        and(
-          eq(dataExchangeJob.id, id),
-          eq(dataExchangeJob.kind, 'import'),
-          eq(dataExchangeJob.status, 'pending'),
-        ),
-      )
-      .returning();
+    const row = await updateDataExchangeJob(
+      this.db,
+      id,
+      { updatedAt: new Date(), ...(bytesDone !== undefined ? { bytesDone } : {}) },
+      { kind: 'import', status: 'pending' },
+    );
     return row ?? null;
   }
 
@@ -221,14 +224,15 @@ export class DataExchangeJobService {
 
   /**
    * Terminal `failed` for a job the system ends itself (restart, stalled
-   * upload), with its audit row — but only while `stillMatches` holds, so a
-   * job that moved on meanwhile is left alone. Returns `null` then.
+   * upload), with its audit row — but only while it still matches
+   * `stillMatches`, so a job that moved on meanwhile is left alone. Returns
+   * `null` then.
    */
   async failIfStill(
     id: string,
     kind: DataExchangeJobKind,
     errorDetail: string,
-    stillMatches: SQL,
+    stillMatches: DataExchangeJobFilter,
   ): Promise<DataExchangeJob | null> {
     return this.terminalAndEmit(
       id,
@@ -240,11 +244,7 @@ export class DataExchangeJobService {
 
   /** Fetch a single job, or `null` if absent. */
   async get(id: string): Promise<DataExchangeJob | null> {
-    const [row] = await this.db
-      .select()
-      .from(dataExchangeJob)
-      .where(eq(dataExchangeJob.id, id))
-      .limit(1);
+    const row = await findDataExchangeJob(this.db, id);
     return row ?? null;
   }
 
@@ -255,17 +255,7 @@ export class DataExchangeJobService {
    * `desc(createdAt)` is a defensive tiebreaker.
    */
   async activeOfKind(kind: DataExchangeJobKind): Promise<DataExchangeJob | null> {
-    const [row] = await this.db
-      .select()
-      .from(dataExchangeJob)
-      .where(
-        and(
-          eq(dataExchangeJob.kind, kind),
-          inArray(dataExchangeJob.status, ['pending', 'running']),
-        ),
-      )
-      .orderBy(desc(dataExchangeJob.createdAt))
-      .limit(1);
+    const row = await findLatestDataExchangeJob(this.db, kind, ['pending', 'running']);
     return row ?? null;
   }
 
@@ -286,36 +276,16 @@ export class DataExchangeJobService {
   async priorStagedOfKind(
     kind: DataExchangeJobKind,
   ): Promise<{ id: string; archiveRef: string }[]> {
-    const terminalCondition =
-      kind === 'export'
-        ? eq(dataExchangeJob.status, 'ready')
-        : or(eq(dataExchangeJob.status, 'ready'), eq(dataExchangeJob.status, 'failed'))!;
+    const rows = await findStagedDataExchangeJobsOfKind(this.db, kind);
 
-    const rows = await this.db
-      .select({ id: dataExchangeJob.id, archiveRef: dataExchangeJob.archiveRef })
-      .from(dataExchangeJob)
-      .where(
-        and(
-          eq(dataExchangeJob.kind, kind),
-          terminalCondition,
-          isNotNull(dataExchangeJob.archiveRef),
-        ),
-      )
-      .orderBy(desc(dataExchangeJob.createdAt));
-
-    // archiveRef is guaranteed non-null by the isNotNull filter above;
+    // archiveRef is guaranteed non-null by the repository's filter;
     // the cast is safe — Drizzle infers string | null from the column type.
     return rows.filter((r): r is { id: string; archiveRef: string } => r.archiveRef !== null);
   }
 
   /** Most recently created job of a kind — the UI's "active job" probe. */
   async latest(kind: DataExchangeJobKind): Promise<DataExchangeJob | null> {
-    const [row] = await this.db
-      .select()
-      .from(dataExchangeJob)
-      .where(eq(dataExchangeJob.kind, kind))
-      .orderBy(desc(dataExchangeJob.createdAt))
-      .limit(1);
+    const row = await findLatestDataExchangeJob(this.db, kind);
     return row ?? null;
   }
 
@@ -324,15 +294,8 @@ export class DataExchangeJobService {
    * the fresh row. Throws if `id` matched no row — a caller holding a job
    * id that has vanished is a bug, not a silent no-op.
    */
-  private async updateAndEmit(
-    id: string,
-    patch: Partial<typeof dataExchangeJob.$inferInsert>,
-  ): Promise<DataExchangeJob> {
-    const [row] = await this.db
-      .update(dataExchangeJob)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(eq(dataExchangeJob.id, id))
-      .returning();
+  private async updateAndEmit(id: string, patch: DataExchangeJobPatch): Promise<DataExchangeJob> {
+    const row = await updateDataExchangeJob(this.db, id, { ...patch, updatedAt: new Date() });
     if (!row) throw new Error(`DataExchangeJobService: job ${id} not found`);
     emitDataExchangeJobChanged();
     return row;
@@ -348,27 +311,28 @@ export class DataExchangeJobService {
    */
   private async terminalAndEmit(
     id: string,
-    patch: Partial<typeof dataExchangeJob.$inferInsert>,
+    patch: DataExchangeJobPatch,
     audit: TerminalAuditRow,
   ): Promise<DataExchangeJob>;
   private async terminalAndEmit(
     id: string,
-    patch: Partial<typeof dataExchangeJob.$inferInsert>,
+    patch: DataExchangeJobPatch,
     audit: TerminalAuditRow,
-    guard: SQL,
+    guard: DataExchangeJobFilter,
   ): Promise<DataExchangeJob | null>;
   private async terminalAndEmit(
     id: string,
-    patch: Partial<typeof dataExchangeJob.$inferInsert>,
+    patch: DataExchangeJobPatch,
     audit: TerminalAuditRow,
-    guard?: SQL,
+    guard?: DataExchangeJobFilter,
   ): Promise<DataExchangeJob | null> {
     const row = await this.db.transaction(async (tx) => {
-      const [updated] = await tx
-        .update(dataExchangeJob)
-        .set({ ...patch, updatedAt: new Date() })
-        .where(guard ? and(eq(dataExchangeJob.id, id), guard) : eq(dataExchangeJob.id, id))
-        .returning();
+      const updated = await updateDataExchangeJob(
+        tx,
+        id,
+        { ...patch, updatedAt: new Date() },
+        guard,
+      );
       if (!updated) {
         // A guarded flip that no longer matches is a no-op, not a bug.
         if (guard) return null;
@@ -379,22 +343,19 @@ export class DataExchangeJobService {
       // compound CHECK). `data_import` backs no physical table, so it sits
       // outside the single-write-path scan; `entity_id` is the (synthetic) job
       // id. Progress updates write none of this — only this terminal flip does.
-      const [auditRow] = await tx
-        .insert(auditLog)
-        .values({
-          actorKind: 'system',
-          actorId: null,
-          actorReason: 'data_import',
-          entityType: 'data_import',
-          entityId: id,
-          entityLabel: audit.entityLabel,
-          action: audit.action,
-          payload: audit.payload,
-          ancestorEntityType: null,
-          ancestorEntityId: null,
-          correlationId: null,
-        })
-        .returning();
+      const auditRow = await insertAuditEntry(tx, {
+        actorKind: 'system',
+        actorId: null,
+        actorReason: 'data_import',
+        entityType: 'data_import',
+        entityId: id,
+        entityLabel: audit.entityLabel,
+        action: audit.action,
+        payload: audit.payload,
+        ancestorEntityType: null,
+        ancestorEntityId: null,
+        correlationId: null,
+      });
       return { updated, auditRow: auditRow! };
     });
     if (!row) return null;
