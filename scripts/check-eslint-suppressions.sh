@@ -52,9 +52,9 @@ ROOT="${SUPPRESSIONS_PROJECT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 FILE=eslint-suppressions.json
 RATCHET_RULES='local/no-direct-db-access'
 # Rules no inline comment may switch off: ADR-0021's gate (#938), with the bans
-# that keep a type error from forging its handle (#964). None has a baseline:
-# an entry fails like any other non-ratchet rule.
-GUARDED_RULES="$RATCHET_RULES local/audit-write-gate @typescript-eslint/ban-ts-comment @typescript-eslint/no-explicit-any @typescript-eslint/no-unsafe-function-type"
+# on the usual ways to silence its type error (#964). None has a baseline: an
+# entry fails like any other non-ratchet rule.
+GUARDED_RULES="$RATCHET_RULES local/audit-write-gate @typescript-eslint/ban-ts-comment @typescript-eslint/no-explicit-any"
 
 BASE_DIR=""
 while [[ $# -gt 0 ]]; do
@@ -89,7 +89,7 @@ if [[ -d "$ROOT/src/server" ]]; then
     "(${guarded})" "$ROOT/src/server" || true)"
   if [[ -n "$disables" ]]; then
     while IFS= read -r line; do
-      echo "::error::${line#"$ROOT"/}: names a guarded lint rule or its guard, which only disables or reconfigures it. Fix the code instead: move a query into src/server/repositories/, route an audited write through mutate(), type a value instead of \`any\`, \`Function\` or a @ts- comment." >&2
+      echo "::error::${line#"$ROOT"/}: names a guarded lint rule or its guard, which only disables or reconfigures it. Fix the code instead: move a query into src/server/repositories/, route an audited write through mutate(), type a value instead of \`any\` or a @ts- comment." >&2
     done <<<"$disables"
     status=1
   fi

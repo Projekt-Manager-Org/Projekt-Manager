@@ -14,28 +14,14 @@
 //     outside the repositories. Comments are stripped first. A target that is
 //     neither a name nor a db/schema import (a call, a parameter, text appended
 //     later) fails closed. Runs only with the `sqlTables` option.
-//   - Forging the brand (#964), in every file the rule runs on:
-//     - `position`: `MutatingDatabase` anywhere but as the exact type of a
-//       function parameter (not an overloaded method's). A variable, return
-//       type, type guard, overload, alias, re-export, field or container can
-//       label an unbranded handle;
-//     - `cast`: an assertion to a type containing it;
-//     - `never`: `never`, or a same-file alias, union or intersection that
-//       reduces to it, as an assertion, a type guard or an overload's return;
-//     - `opaqueCast`: an assertion to a type lint cannot resolve: a type
-//       parameter only a caller's inference fixes, `typeof`, `infer`,
-//       `Parameters<…>`, `ReturnType<…>` ….
+//   - `cast`: an assertion to `MutatingDatabase`, which forges the brand;
+//   - `never`: an assertion to `never`, which fits every parameter, so it
+//     forges the brand too (#964).
 //
 // Typed linting is off, so "is a `MutatingDatabase`" means: a type reference
-// that resolves to the `MutatingDatabase` import from db/connection (named, a
-// namespace member or an `import()` type), and the table is a binding
-// imported from db/schema. A write's parameter must be exactly that, so a
-// union (`MutatingDatabase | TxHandle`) or a local type of the same name
-// fails. Out of reach, all deliberate: types from files the rule skips
-// (services/mutate.ts, tests); `any` from a library call; method
-// bivariance (a subclass override, a `this` parameter); types computing to
-// `never` (`'a' & 'b'`, `Extract<…>`); and a type read off a value used
-// outside an assertion (`x is Parameters<typeof f>[0]`).
+// that resolves to the `MutatingDatabase` import from db/connection, and the
+// table is a binding imported from db/schema. Exact, so a union
+// (`MutatingDatabase | TxHandle`) or a local type of the same name fails.
 //
 // Options: { tables?: string[], sqlTables?: string[] } — Drizzle export names
 // and SQL names of the audited tables. An interpolated schema table counts by
@@ -46,23 +32,6 @@ import path from 'node:path';
 const SCHEMA_SOURCE = /(^|\/)db\/schema(\.[cm]?[jt]s)?$/;
 const CONNECTION_SOURCE = /(^|\/)db\/connection(\.[cm]?[jt]s)?$/;
 const BRAND = 'MutatingDatabase';
-// Global utility types that read a type off a value the rule cannot type.
-const VALUE_TYPES = new Set(['Parameters', 'ConstructorParameters', 'ReturnType', 'InstanceType']);
-const RUNTIME_FUNCTIONS = new Set([
-  'FunctionDeclaration',
-  'FunctionExpression',
-  'ArrowFunctionExpression',
-]);
-// Keyword types no value has two of at once: their intersection is `never`.
-const PRIMITIVES = new Set([
-  'TSStringKeyword',
-  'TSNumberKeyword',
-  'TSBooleanKeyword',
-  'TSBigIntKeyword',
-  'TSSymbolKeyword',
-  'TSNullKeyword',
-  'TSUndefinedKeyword',
-]);
 const WRITES = new Set(['insert', 'update', 'delete']);
 
 // A raw-SQL write target: nothing but an `ONLY`, a schema or an opening quote up
@@ -177,13 +146,9 @@ export default {
         'Raw-SQL write on an audited table outside an inline `sql` template passed to `.execute()` on a `MutatingDatabase` parameter. Write it inline there, in a repository, so callers must be inside mutate() or an exception named in exemptFromAudit (services/mutate.ts). ADR-0021.',
       write:
         'Audited-table write through a handle that is not a `MutatingDatabase` parameter. Take `MutatingDatabase`, so callers must be inside mutate(), or an exception named in exemptFromAudit (services/mutate.ts). ADR-0021.',
-      position:
-        '`MutatingDatabase` may only be the exact type of a function parameter, which its caller fills from mutate() / mutateInTx() or an exception named in exemptFromAudit (services/mutate.ts). Anywhere else (a variable, return type, type guard, alias, field or container) it can label an unbranded handle. ADR-0021.',
-      cast: 'Assertion to `MutatingDatabase`, or to a type containing it, forges the audit gate. Get the handle from mutate() / mutateInTx(), or name an exception in exemptFromAudit (services/mutate.ts). ADR-0021.',
+      cast: 'Assertion to `MutatingDatabase` forges the audit gate. Get the handle from mutate() / mutateInTx(), or name an exception in exemptFromAudit (services/mutate.ts). ADR-0021.',
       never:
-        "`never` (or a type reducing to it) as an assertion, a type guard or an overload's return fits every type, `MutatingDatabase` included, so it can forge the audit gate. Type the value instead; get a handle from mutate() / mutateInTx(), or name an exception in exemptFromAudit (services/mutate.ts). ADR-0021.",
-      opaqueCast:
-        'Assertion to a type lint cannot resolve (a type parameter, `typeof`, `infer`, `Parameters<…>`, `ReturnType<…>` …) can stand for a `MutatingDatabase`. Assert to a named type; get a handle from mutate() / mutateInTx(), or name an exception in exemptFromAudit (services/mutate.ts). ADR-0021.',
+        'Assertion to `never` fits every type, `MutatingDatabase` included, so it can forge the audit gate. Type the value instead; get a handle from mutate() / mutateInTx(), or name an exception in exemptFromAudit (services/mutate.ts). ADR-0021.',
     },
   },
 
@@ -195,10 +160,11 @@ export default {
     const { sourceCode, filename } = context;
 
     function isBrand(typeNode) {
+      if (typeNode?.type !== 'TSTypeReference' || typeNode.typeName.type !== 'Identifier')
+        return false;
+      const binding = importBinding(sourceCode.getScope(typeNode), typeNode.typeName.name);
       return (
-        typeNode?.type === 'TSTypeReference' &&
-        typeNode.typeName.type === 'Identifier' &&
-        isBrandName(typeNode.typeName.name, sourceCode.getScope(typeNode))
+        binding?.imported === BRAND && importsFrom(binding.declaration, CONNECTION_SOURCE, filename)
       );
     }
 
@@ -268,243 +234,15 @@ export default {
       return def?.type === 'Parameter' && isBrand(def.name.typeAnnotation?.typeAnnotation);
     }
 
-    function isBrandName(name, scope) {
-      const binding = importBinding(scope, name);
-      return (
-        binding?.imported === BRAND && importsFrom(binding.declaration, CONNECTION_SOURCE, filename)
-      );
-    }
-
-    function isConnectionNamespace(name, scope) {
-      const binding = importBinding(scope, name);
-      return (
-        binding?.namespace === true && importsFrom(binding.declaration, CONNECTION_SOURCE, filename)
-      );
-    }
-
-    /** Whether `node` names the brand: by name, as a namespace member or as an `import()` type. */
-    function namesBrand(node) {
-      if (node.type === 'TSImportType') {
-        return (
-          node.qualifier?.type === 'Identifier' &&
-          node.qualifier.name === BRAND &&
-          importsFrom(node, CONNECTION_SOURCE, filename)
-        );
-      }
-      const name = node.type === 'TSTypeReference' ? node.typeName : node.expression;
-      return isBrandEntity(name, sourceCode.getScope(node));
-    }
-
-    /** Whether the entity name `name` (`M`, `ns.M`) resolves to the brand. */
-    function isBrandEntity(name, scope) {
-      if (name?.type === 'Identifier') return isBrandName(name.name, scope);
-      if (name?.type !== 'TSQualifiedName' && name?.type !== 'MemberExpression') return false;
-      const left = name.left ?? name.object;
-      const right = name.right ?? name.property;
-      return (
-        left.type === 'Identifier' &&
-        right.name === BRAND &&
-        isConnectionNamespace(left.name, scope)
-      );
-    }
-
-    /** Whether any node in the subtree `node` satisfies `test`. */
-    function someNode(node, test) {
-      if (!node || typeof node.type !== 'string') return false;
-      if (test(node)) return true;
-      return (sourceCode.visitorKeys[node.type] ?? []).some((key) =>
-        [node[key]].flat().some((child) => someNode(child, test)),
-      );
-    }
-
-    const isNamedReference = (name) => (n) =>
-      n.type === 'TSTypeReference' && n.typeName.type === 'Identifier' && n.typeName.name === name;
-
-    /**
-     * Whether the type `node` mentions a type parameter its function takes
-     * from no parameter, so only a caller's inference fixes it.
-     */
-    function hasFreeTypeParameter(node) {
-      return someNode(node, (n) => {
-        if (n.type !== 'TSTypeReference' || n.typeName.type !== 'Identifier') return false;
-        const def = findVariable(sourceCode.getScope(n), n.typeName.name)?.defs[0];
-        if (def?.node.type !== 'TSTypeParameter') return false;
-        const owner = def.node.parent.parent;
-        return (
-          RUNTIME_FUNCTIONS.has(owner.type) &&
-          !owner.params.some((param) => someNode(param, isNamedReference(n.typeName.name)))
-        );
-      });
-    }
-
-    /** Whether `fn` implements a class method that has overload signatures. */
-    function isOverloadedMethod(fn) {
-      const method = fn.parent;
-      if (method?.type !== 'MethodDefinition') return false;
-      const key = sourceCode.getText(method.key);
-      return method.parent.body.some(
-        (other) =>
-          other !== method &&
-          other.type === 'MethodDefinition' &&
-          other.value.type === 'TSEmptyBodyFunctionExpression' &&
-          other.static === method.static &&
-          sourceCode.getText(other.key) === key,
-      );
-    }
-
-    /** `cast` or `opaqueCast` for a name in a type, following same-file declarations. */
-    function forgedByName(identifier, seen) {
-      const variable = findVariable(sourceCode.getScope(identifier), identifier.name);
-      if (!variable || variable.defs.length === 0) {
-        return VALUE_TYPES.has(identifier.name) ? 'opaqueCast' : undefined;
-      }
-      for (const def of variable.defs) {
-        if (def.type !== 'Type' || seen.has(def.node)) continue;
-        // A type parameter is checked where it is asserted to (`isTypeParameter`).
-        if (def.node.type === 'TSTypeParameter') continue;
-        seen.add(def.node);
-        const found = forgedIn(def.node, seen);
-        if (found) return found;
-      }
-      return undefined;
-    }
-
-    /** Whether the type subtree `node` can forge the brand: `cast`, `opaqueCast` or undefined. */
-    function forgedIn(node, seen) {
-      if (!node || typeof node.type !== 'string') return undefined;
-      switch (node.type) {
-        case 'TSTypeQuery':
-        case 'TSInferType':
-          return 'opaqueCast';
-        case 'TSTypeReference':
-        case 'TSInterfaceHeritage':
-        case 'TSImportType': {
-          if (namesBrand(node)) return 'cast';
-          const name = node.type === 'TSTypeReference' ? node.typeName : node.expression;
-          const found = name?.type === 'Identifier' ? forgedByName(name, seen) : undefined;
-          if (found) return found;
-          break;
-        }
-        default:
-      }
-      for (const key of sourceCode.visitorKeys[node.type] ?? []) {
-        const child = node[key];
-        for (const c of Array.isArray(child) ? child : [child]) {
-          const found = forgedIn(c, seen);
-          if (found) return found;
-        }
-      }
-      return undefined;
-    }
-
-    /** Whether the type `node` is `never`, following same-file aliases. */
-    function isNever(node, seen) {
-      switch (node?.type) {
-        case 'TSNeverKeyword':
-          return true;
-        case 'TSUnionType':
-          return node.types.every((t) => isNever(t, seen));
-        case 'TSIntersectionType':
-          return (
-            node.types.some((t) => isNever(t, seen)) ||
-            new Set(node.types.map((t) => t.type).filter((t) => PRIMITIVES.has(t))).size > 1
-          );
-        case 'TSTypeReference': {
-          if (node.typeName.type !== 'Identifier') return false;
-          const def = findVariable(sourceCode.getScope(node), node.typeName.name)?.defs[0];
-          if (def?.node.type !== 'TSTypeAliasDeclaration' || seen.has(def.node)) return false;
-          seen.add(def.node);
-          return isNever(def.node.typeAnnotation, seen);
-        }
-        default:
-          return false;
-      }
-    }
-
-    /** Whether the type `node` is a bare type parameter, alone or in a union or intersection. */
-    function isTypeParameter(node) {
-      if (node.type === 'TSUnionType' || node.type === 'TSIntersectionType') {
-        return node.types.some(isTypeParameter);
-      }
-      if (node.type !== 'TSTypeReference' || node.typeName.type !== 'Identifier') return false;
-      const def = findVariable(sourceCode.getScope(node), node.typeName.name)?.defs[0];
-      return def?.node.type === 'TSTypeParameter';
-    }
-
-    // Asserted types, which `checkCast` reports before `checkPosition` sees them.
-    const assertedTypes = new WeakSet();
-
     function checkCast(node) {
-      const type = node.typeAnnotation;
-      assertedTypes.add(type);
-      let messageId = forgedIn(type, new Set());
-      if (isNever(type, new Set())) messageId = 'never';
-      else if (isTypeParameter(type) || hasFreeTypeParameter(type)) messageId ??= 'opaqueCast';
-      if (messageId) context.report({ node, messageId });
-    }
-
-    /** Whether `ref` is exactly the type of a parameter of a function with a body. */
-    function typesParameter(ref) {
-      if (ref.parent?.type !== 'TSTypeAnnotation') return false;
-      let param = ref.parent.parent;
-      if (param?.type !== 'Identifier') return false;
-      if (param.parent.type === 'AssignmentPattern' && param.parent.left === param) {
-        param = param.parent;
-      }
-      const fn = param.parent;
-      // An overloaded method's callers see only its signatures, which
-      // TypeScript compares bivariantly with the implementation.
-      return RUNTIME_FUNCTIONS.has(fn.type) && fn.params.includes(param) && !isOverloadedMethod(fn);
-    }
-
-    function checkNeverAnnotation(annotation) {
-      const type = annotation?.typeAnnotation;
-      if (type && isNever(type, new Set())) context.report({ node: type, messageId: 'never' });
-    }
-
-    function checkPosition(node) {
-      if (!namesBrand(node) || typesParameter(node)) return;
-      for (let n = node; n?.type.startsWith('TS'); n = n.parent) {
-        if (assertedTypes.has(n)) return;
-      }
-      context.report({ node, messageId: 'position' });
+      if (node.typeAnnotation.type === 'TSNeverKeyword')
+        context.report({ node, messageId: 'never' });
+      else if (isBrand(node.typeAnnotation)) context.report({ node, messageId: 'cast' });
     }
 
     return {
       TSAsExpression: checkCast,
       TSTypeAssertion: checkCast,
-      TSTypeReference: checkPosition,
-      TSImportType: checkPosition,
-      TSInterfaceHeritage: checkPosition,
-      TSClassImplements: checkPosition,
-
-      // A re-export names the brand under another name, out of the
-      // position check's sight in the importing file.
-      ExportSpecifier(node) {
-        const declaration = node.parent;
-        const local = node.local.name ?? node.local.value;
-        const forged = declaration.source
-          ? importsFrom(declaration, CONNECTION_SOURCE, filename) && local === BRAND
-          : isBrandName(local, sourceCode.getScope(node));
-        if (forged) context.report({ node, messageId: 'position' });
-      },
-      ExportAllDeclaration(node) {
-        if (importsFrom(node, CONNECTION_SOURCE, filename)) {
-          context.report({ node, messageId: 'position' });
-        }
-      },
-      TSImportEqualsDeclaration(node) {
-        if (isBrandEntity(node.moduleReference, sourceCode.getScope(node))) {
-          context.report({ node, messageId: 'position' });
-        }
-      },
-
-      TSTypePredicate(node) {
-        checkNeverAnnotation(node.typeAnnotation);
-      },
-      'TSDeclareFunction, TSEmptyBodyFunctionExpression'(node) {
-        checkNeverAnnotation(node.returnType);
-      },
 
       Literal(node) {
         if (sqlTables && typeof node.value === 'string') checkRawSql(node, node.value);

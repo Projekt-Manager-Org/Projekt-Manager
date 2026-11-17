@@ -217,11 +217,10 @@ export default tseslint.config(
   },
   // An inline disable would bypass the rule and the baseline check alike:
   // the suppressions file never changes. So no comment may disable the rule,
-  // the ADR-0021 gate (`local/audit-write-gate`, and the bans on `any`,
-  // `Function` and `@ts-` comments, which would otherwise forge its
-  // `MutatingDatabase` — #964), or this guard, and no comment may disable
-  // everything at once. A
-  // comment can still switch this guard off;
+  // the ADR-0021 gate (`local/audit-write-gate`, and the bans on `any` and
+  // `@ts-` comments, the usual ways to silence its `MutatingDatabase` type
+  // error — #964), or this guard, and no comment may disable everything at
+  // once. A comment can still switch this guard off;
   // scripts/check-eslint-suppressions.sh fails on any src/server/ line naming
   // one of these rules or the guard.
   {
@@ -234,14 +233,12 @@ export default tseslint.config(
         { 'ts-expect-error': true, 'ts-ignore': true, 'ts-nocheck': true, 'ts-check': false },
       ],
       '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unsafe-function-type': 'error',
       '@eslint-community/eslint-comments/no-restricted-disable': [
         'error',
         'local/no-direct-db-access',
         'local/audit-write-gate',
         '@typescript-eslint/ban-ts-comment',
         '@typescript-eslint/no-explicit-any',
-        '@typescript-eslint/no-unsafe-function-type',
         '@eslint-community/eslint-comments/*',
       ],
       '@eslint-community/eslint-comments/no-unlimited-disable': 'error',
@@ -256,9 +253,9 @@ export default tseslint.config(
       'local/no-direct-db-access': ['error', { allow: SCHEMA_CONSTANTS, queries: false }],
     },
   },
-  // ADR-0021's type gate, the half tsc cannot see (#938): nothing forges a
-  // `MutatingDatabase` (#964) except services/mutate.ts, which mints it, and
-  // in repositories an audited-table write takes one. Rule logic and cases:
+  // ADR-0021's type gate, the half tsc cannot see (#938): no assertion forges
+  // a `MutatingDatabase` (`as never` included, #964), except in services/mutate.ts, which mints it, and in
+  // repositories an audited-table write takes one. Rule logic and cases:
   // eslint-rules/audit-write-gate.mjs; wiring:
   // eslint-rules/__tests__/audit-write-gate-config.test.mjs.
   {

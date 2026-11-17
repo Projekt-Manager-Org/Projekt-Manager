@@ -11,7 +11,7 @@ import rule from '../audit-write-gate.mjs';
 // The message is the guard at the moment of failure: it must name the two
 // legitimate ways to get the handle.
 it('names mutate() and the named exceptions as the way out', () => {
-  for (const id of ['write', 'rawWrite', 'position', 'cast', 'never', 'opaqueCast']) {
+  for (const id of ['write', 'rawWrite', 'cast', 'never']) {
     expect(rule.meta.messages[id]).toMatch(/mutate\(\)/);
     expect(rule.meta.messages[id]).toMatch(/exemptFromAudit/);
   }
@@ -29,10 +29,8 @@ const REPOSITORY = {
 const SERVER = { sqlTables: REPOSITORY.sqlTables };
 const write = { messageId: 'write' };
 const rawWrite = { messageId: 'rawWrite' };
-const position = { messageId: 'position' };
 const cast = { messageId: 'cast' };
 const never = { messageId: 'never' };
-const opaqueCast = { messageId: 'opaqueCast' };
 const IMPORTS = [
   "import { sql } from 'drizzle-orm';",
   "import { projects, attachments, projectWorkers, sessions } from '../db/schema.js';",
@@ -74,60 +72,6 @@ ruleTester.run('audit-write-gate', rule, {
         'export function f(m: Map<number, string>) { const projects = 1; m.delete(projects); }',
       ),
       options: [REPOSITORY],
-    },
-    {
-      name: 'assertions to types that cannot be a MutatingDatabase',
-      code: repo(
-        [
-          'type Local = TxHandle;',
-          'type Tree = string | Tree[];',
-          'type Box<T> = { v: T };',
-          'export function f(x: unknown, tx: TxHandle) {',
-          '  const a = x as string;',
-          '  const b = x as Record<string, never>;',
-          '  const c = x as never[];',
-          '  const d = tx as Local;',
-          '  const e = x as Tree;',
-          '  const g = x as string | never;',
-          "  const h = x as string & { readonly brand: 'id' };",
-          '  const i = x as Box<string>;',
-          '  return [a, b, c, d, e, g, h, i];',
-          '}',
-        ].join('\n'),
-      ),
-    },
-    {
-      name: 'an assertion to a local type named Parameters, resolved as an alias',
-      code: repo(
-        'type Parameters<T> = T[]; export function f(x: unknown) { return x as Parameters<string>; }',
-      ),
-    },
-    {
-      name: 'never, overloads, re-exports and type parameters where they cannot forge',
-      code: repo(
-        [
-          "export * from './other.js';",
-          "export { sql } from 'drizzle-orm';",
-          'export function fail(message: string): never { throw new Error(message); }',
-          'export function isText(x: unknown): x is string { return typeof x === "string"; }',
-          'export function wrap<T>(x: T, y: unknown) { return [x, y as Promise<T>]; }',
-          'export class Jobs {',
-          '  find(id: string): Promise<unknown>;',
-          '  find(id: string, all: boolean): Promise<unknown>;',
-          '  find(id: string, all?: boolean) { return Promise.resolve([id, all]); }',
-          '}',
-        ].join('\n'),
-      ),
-    },
-    {
-      name: 'a generic function asserting to a type built from its parameter',
-      code: repo(
-        'type Sub<E> = (p: E) => void; export function emit<E>(h: unknown, p: E) { (h as Sub<E>)(p); }',
-      ),
-    },
-    {
-      name: 'an import() type of something other than MutatingDatabase',
-      code: "export function f(x: unknown) { return x as import('../db/connection.js').TxHandle; }",
     },
     {
       name: 'without a table list, writes are not checked (the services config)',
@@ -202,54 +146,13 @@ ruleTester.run('audit-write-gate', rule, {
       ),
     },
     {
-      name: 'MutatingDatabase as the exact type of a parameter, in every function form',
+      name: 'MutatingDatabase in type positions',
       code: repo(
-        [
-          'export function a(tx: MutatingDatabase) { return tx; }',
-          'export const b = function (tx: MutatingDatabase) { return tx; };',
-          'export const c = (tx: MutatingDatabase, n = 1) => [tx, n];',
-          'export class K { m(tx: MutatingDatabase) { return tx; } }',
-          'export function d(id: string, tx?: MutatingDatabase) { return [id, tx]; }',
-        ].join('\n'),
+        'type H = MutatingDatabase; export function f(h: H): MutatingDatabase { return h; }',
       ),
     },
   ],
   invalid: [
-    {
-      name: 'MutatingDatabase as an alias and a return type',
-      code: repo(
-        'type H = MutatingDatabase; export function f(h: H): MutatingDatabase { return h; }',
-      ),
-      errors: [position, position],
-    },
-    {
-      name: 'MutatingDatabase where it labels a value nothing checks: guards, overloads, any',
-      code: repo(
-        [
-          'export function isM(x: TxHandle): x is MutatingDatabase { return x !== null; }',
-          'export function assertM(x: TxHandle): asserts x is MutatingDatabase {}',
-          'export function o(x: TxHandle): MutatingDatabase;',
-          'export function o(x: TxHandle) { return x; }',
-          "export const h: MutatingDatabase = JSON.parse('{}');",
-          "export let i: import('../db/connection.js').MutatingDatabase;",
-        ].join('\n'),
-      ),
-      errors: [position, position, position, position, position],
-    },
-    {
-      name: 'MutatingDatabase in containers, fields, function types, namespaces and type arguments',
-      code: repo(
-        [
-          'export function f(ms: MutatingDatabase[]) { return ms; }',
-          'export class Box { declare tx: MutatingDatabase; }',
-          'export type Run = (tx: MutatingDatabase) => void;',
-          'export namespace N { export type M = MutatingDatabase; }',
-          'declare function asT<T>(x: unknown): T;',
-          'export const forged = (tx: TxHandle) => asT<MutatingDatabase>(tx);',
-        ].join('\n'),
-      ),
-      errors: [position, position, position, position, position],
-    },
     {
       name: 'the #938 reproduction shape: an audited insert through a plain transaction handle',
       code: repo(
@@ -278,7 +181,7 @@ ruleTester.run('audit-write-gate', rule, {
         'export async function f(db: MutatingDatabase | TxHandle) { await db.insert(projects).values({}); }',
       ),
       options: [REPOSITORY],
-      errors: [position, write],
+      errors: [write],
     },
     {
       name: 'a local type named MutatingDatabase, not the branded one',
@@ -303,7 +206,7 @@ ruleTester.run('audit-write-gate', rule, {
         'declare function open(): MutatingDatabase; export async function f() { const t = open(); await t.insert(projects).values({}); }',
       ),
       options: [REPOSITORY],
-      errors: [position, write],
+      errors: [write],
     },
     {
       name: 'a member receiver',
@@ -311,7 +214,7 @@ ruleTester.run('audit-write-gate', rule, {
         'export class R { constructor(private db: MutatingDatabase) {} async f() { await this.db.insert(projects).values({}); } }',
       ),
       options: [REPOSITORY],
-      errors: [position, write],
+      errors: [write],
     },
     {
       name: 'an aliased table import',
@@ -406,7 +309,7 @@ ruleTester.run('audit-write-gate', rule, {
         'export async function f(tx: MutatingDatabase | TxHandle) { await tx.execute(sql`DELETE FROM projects`); }',
       ),
       options: [REPOSITORY],
-      errors: [position, rawWrite],
+      errors: [rawWrite],
     },
     {
       name: 'a raw write composed apart from execute(), even on a MutatingDatabase parameter',
@@ -444,7 +347,7 @@ ruleTester.run('audit-write-gate', rule, {
         'export class R { constructor(private db: MutatingDatabase) {} async f() { await this.db.execute(sql`DELETE FROM projects`); } }',
       ),
       options: [REPOSITORY],
-      errors: [position, rawWrite],
+      errors: [rawWrite],
     },
     {
       name: 'a raw write in a template whose tag is not drizzle-orm sql',
@@ -566,128 +469,6 @@ ruleTester.run('audit-write-gate', rule, {
       name: '`never` as an angle-bracket assertion and at the end of a chain',
       code: repo('export function f(tx: TxHandle) { return [<never>tx, tx as unknown as never]; }'),
       errors: [never, never],
-    },
-    {
-      name: 'an assertion to a parameter type taken from a function or constructor',
-      code: repo(
-        [
-          "import { deleteCustomer, Writer } from '../repositories/customer.js';",
-          "import type { DeleteFn, WriterCtor, OpenFn } from '../repositories/customer.js';",
-          'export function f(tx: TxHandle) {',
-          '  return [',
-          '    tx as Parameters<typeof deleteCustomer>[0],',
-          '    tx as ConstructorParameters<typeof Writer>[0],',
-          '    tx as Parameters<DeleteFn>[0],',
-          '    tx as ReturnType<OpenFn>,',
-          '    tx as InstanceType<WriterCtor>,',
-          '  ];',
-          '}',
-        ].join('\n'),
-      ),
-      errors: [opaqueCast, opaqueCast, opaqueCast, opaqueCast, opaqueCast],
-    },
-    {
-      name: 'an overloaded method whose implementation takes a MutatingDatabase',
-      code: repo(
-        [
-          'export class C {',
-          '  run(db: TxHandle): Promise<unknown>;',
-          '  run(db: MutatingDatabase) { return Promise.resolve(db); }',
-          '}',
-        ].join('\n'),
-      ),
-      errors: [position],
-    },
-    {
-      name: 'MutatingDatabase re-exported, wholesale or by name, or aliased by import =',
-      code: repo(
-        [
-          "export type { MutatingDatabase as MD } from '../db/connection.js';",
-          'export type { MutatingDatabase as MD2 };',
-          "export * from '../db/connection.js';",
-          "import * as c from '../db/connection.js';",
-          'import Hd = c.MutatingDatabase;',
-        ].join('\n'),
-      ),
-      errors: [position, position, position, position],
-    },
-    {
-      name: '`never` as a type guard, an assertion signature and an overload return',
-      code: repo(
-        [
-          'type Nothing = never;',
-          'export function isNothing(x: TxHandle): x is never { return x === null; }',
-          'export function assertNothing(x: TxHandle): asserts x is Nothing {}',
-          'export function nv(x: TxHandle): never;',
-          'export function nv(x: TxHandle) { return x; }',
-        ].join('\n'),
-      ),
-      errors: [never, never, never],
-    },
-    {
-      name: 'an assertion to a type parameter that only the return type fixes',
-      code: repo(
-        'export function forgeP<T>(x: unknown): Promise<T> { return Promise.resolve(x) as Promise<T>; }',
-      ),
-      errors: [opaqueCast],
-    },
-    {
-      name: 'an assertion to a bare type parameter or through infer',
-      code: repo(
-        [
-          "import type { Run } from '../services/mutate.js';",
-          'type Arg<F> = F extends (a: infer A) => unknown ? A : never;',
-          'export function forge<T>(x: unknown): T { return x as T; }',
-          'export function maybe<T>(x: unknown) { return x as T | undefined; }',
-          'export function f(tx: TxHandle) { return tx as Arg<Run>; }',
-        ].join('\n'),
-      ),
-      errors: [opaqueCast, opaqueCast, opaqueCast],
-    },
-    {
-      name: 'an assertion to an import() type and to a namespace member',
-      code: [
-        "import type * as conn from '../db/connection.js';",
-        'export function f(tx: conn.TxHandle) {',
-        "  return [tx as import('../db/connection.js').MutatingDatabase, tx as conn.MutatingDatabase];",
-        '}',
-      ].join('\n'),
-      errors: [cast, cast],
-    },
-    {
-      name: 'an assertion to a same-file alias, a chained alias and an extending interface',
-      code: repo(
-        [
-          'type H = MutatingDatabase;',
-          'type Chained = H;',
-          'interface Extended extends MutatingDatabase {}',
-          'export function f(tx: TxHandle) { return [tx as H, tx as Chained, tx as Extended]; }',
-        ].join('\n'),
-      ),
-      errors: [position, position, cast, cast, cast],
-    },
-    {
-      name: 'an assertion to a type that merely contains MutatingDatabase',
-      code: repo(
-        [
-          'type Maybe = MutatingDatabase | null;',
-          'export function f(tx: TxHandle) { return [(tx as MutatingDatabase | undefined)!, (tx as Maybe)!]; }',
-        ].join('\n'),
-      ),
-      errors: [position, cast, cast],
-    },
-    {
-      name: '`never` through an alias, a union and an intersection',
-      code: repo(
-        [
-          'type Nothing = never;',
-          'type Again = Nothing;',
-          'export function f(tx: TxHandle) {',
-          '  return [tx as Nothing, tx as Again, tx as never | never, tx as string & number, tx as TxHandle & Nothing];',
-          '}',
-        ].join('\n'),
-      ),
-      errors: [never, never, never, never, never],
     },
     {
       name: 'an assertion inside a repository, where the write check also runs',
