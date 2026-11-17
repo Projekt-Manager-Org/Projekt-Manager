@@ -14,16 +14,6 @@
       "count": 7
     }
   },
-  "src/server/services/ExportService.ts": {
-    "local/no-direct-db-access": {
-      "count": 20
-    }
-  },
-  "src/server/services/ImportService.ts": {
-    "local/no-direct-db-access": {
-      "count": 20
-    }
-  },
   "src/server/services/InvoiceBinaryService.ts": {
     "local/no-direct-db-access": {
       "count": 2

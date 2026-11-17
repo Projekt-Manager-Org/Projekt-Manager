@@ -262,7 +262,9 @@ export type AuditExemption =
   /** AC-623: sign-ins are not audited. */
   | 'last-login'
   /** AC-659: a user's own theme or push mute is not audited. */
-  | 'self-preference';
+  | 'self-preference'
+  /** ADR-0018, AC-332: a restore records one `data_import` row, not one per row. */
+  | 'restore';
 
 /**
  * The handle for a write that ADR-0021 exempts from audit. The name is
