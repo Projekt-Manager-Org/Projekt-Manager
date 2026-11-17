@@ -14,11 +14,6 @@
       "count": 7
     }
   },
-  "src/server/services/DataExchangeJobService.ts": {
-    "local/no-direct-db-access": {
-      "count": 32
-    }
-  },
   "src/server/services/ExportService.ts": {
     "local/no-direct-db-access": {
       "count": 20
@@ -69,11 +64,6 @@
       "count": 7
     }
   },
-  "src/server/services/data-exchange-boot-reaper.ts": {
-    "local/no-direct-db-access": {
-      "count": 4
-    }
-  },
   "src/server/services/notificationRecipientResolver.ts": {
     "local/no-direct-db-access": {
       "count": 20
@@ -92,16 +82,6 @@
   "src/server/services/takeout-import-runner.ts": {
     "local/no-direct-db-access": {
       "count": 1
-    }
-  },
-  "src/server/services/takeout-staging-reaper.ts": {
-    "local/no-direct-db-access": {
-      "count": 14
-    }
-  },
-  "src/server/services/takeout-staging.ts": {
-    "local/no-direct-db-access": {
-      "count": 2
     }
   },
   "src/server/start.ts": {

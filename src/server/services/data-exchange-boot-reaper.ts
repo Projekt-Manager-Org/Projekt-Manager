@@ -26,10 +26,12 @@
  */
 
 import { rm } from 'node:fs/promises';
-import { inArray } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
-import { dataExchangeJob } from '../db/schema.js';
+import {
+  findDataExchangeJobIds,
+  type DataExchangeJobFilter,
+} from '../repositories/dataExchangeJob.js';
 import type { ServiceLogger } from './Logger.js';
 import { DataExchangeJobService } from './DataExchangeJobService.js';
 import { stagedArtifactPath } from './takeout-staging.js';
@@ -55,11 +57,8 @@ export async function reapAbandonedDataExchangeJobs(
   deps: ReapAbandonedDataExchangeJobsDeps,
 ): Promise<number> {
   const now = new Date();
-  const inProgress = inArray(dataExchangeJob.status, ['pending', 'running']);
-  const abandoned = await deps.db
-    .select({ id: dataExchangeJob.id, kind: dataExchangeJob.kind })
-    .from(dataExchangeJob)
-    .where(inProgress);
+  const inProgress: DataExchangeJobFilter = { status: ['pending', 'running'] };
+  const abandoned = await findDataExchangeJobIds(deps.db, inProgress);
 
   // Each through the service, so each ended job gets its one audit row (AC-332).
   const jobs = new DataExchangeJobService(deps.db);

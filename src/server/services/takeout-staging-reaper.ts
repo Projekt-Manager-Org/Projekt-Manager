@@ -30,10 +30,13 @@
  */
 
 import { rm } from 'node:fs/promises';
-import { and, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
-import { dataExchangeJob } from '../db/schema.js';
+import {
+  findDataExchangeJobIds,
+  findStagedDataExchangeJobsFinishedBefore,
+  type DataExchangeJobFilter,
+} from '../repositories/dataExchangeJob.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
 import { DataExchangeJobService } from './DataExchangeJobService.js';
@@ -88,24 +91,7 @@ export async function runTakeoutStagingReaper(deps: RunTakeoutStagingReaperDeps)
   //     ready import always has one set by the runner)
   // The DELETE-of-file follows the SELECT and the archive_ref null is the
   // authoritative "swept" signal; a file-delete fault cannot revive the ref.
-  const aged = await deps.db
-    .select({ id: dataExchangeJob.id, archiveRef: dataExchangeJob.archiveRef })
-    .from(dataExchangeJob)
-    .where(
-      and(
-        or(
-          // export: only ever ready when it has an archive
-          and(eq(dataExchangeJob.kind, 'export'), eq(dataExchangeJob.status, 'ready')),
-          // import: both terminal states can carry an archiveRef
-          and(
-            eq(dataExchangeJob.kind, 'import'),
-            inArray(dataExchangeJob.status, ['ready', 'failed']),
-          ),
-        ),
-        isNotNull(dataExchangeJob.archiveRef),
-        lt(dataExchangeJob.finishedAt, cutoff),
-      ),
-    );
+  const aged = await findStagedDataExchangeJobsFinishedBefore(deps.db, cutoff);
 
   const stalled = await failStalledUploads(deps, cutoff);
 
@@ -137,14 +123,8 @@ async function failStalledUploads(
   deps: RunTakeoutStagingReaperDeps,
   cutoff: Date,
 ): Promise<number> {
-  const stillStalled = and(
-    eq(dataExchangeJob.status, 'pending'),
-    lt(dataExchangeJob.updatedAt, cutoff),
-  )!;
-  const candidates = await deps.db
-    .select({ id: dataExchangeJob.id })
-    .from(dataExchangeJob)
-    .where(and(eq(dataExchangeJob.kind, 'import'), stillStalled));
+  const stillStalled: DataExchangeJobFilter = { status: 'pending', updatedBefore: cutoff };
+  const candidates = await findDataExchangeJobIds(deps.db, { ...stillStalled, kind: 'import' });
 
   const jobs = new DataExchangeJobService(deps.db);
   let failed = 0;

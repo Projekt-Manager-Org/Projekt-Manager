@@ -146,14 +146,12 @@ ALLOWLIST=(
   # seed steps outside the machine on purpose to compose a varied dev
   # landscape. TRUNCATE has just run — no users observe the moves.
   "src/server/seed/invoices.ts"
-  # Full-account takeout IMPORT job runner — writes raw audit_log rows at
-  # its terminal transition (AC-332) and raw INSERT into `attachments` for
-  # each restored binary (Pass 2). Both are reviewed bulk-write sites:
-  #   - The audit row is the single job-terminal row (mirrors takeout-
-  #     export-runner's allowlisted terminal audit insert).
-  #   - The attachments insert restores IDs-preserved rows from the takeout
-  #     archive; routing through mutate() would write spurious audit rows
-  #     for every attachment (AC-332: exactly ONE data_import row, not N).
+  # Full-account takeout IMPORT job runner — raw INSERT into `attachments`
+  # for each restored binary (Pass 2), a reviewed bulk-write site: it
+  # restores IDs-preserved rows from the takeout archive, and routing
+  # through mutate() would write an audit row per attachment (AC-332:
+  # exactly ONE data_import row, not N). That row is written by
+  # `DataExchangeJobService` with the terminal status flip.
   "src/server/services/takeout-import-runner.ts"
   # Any `__tests__/` directory anywhere under the scan root — the
   # carve-out for tests. The nested-glob form covers both
@@ -181,9 +179,9 @@ EXEMPTION_SITES=(
 # here; tests and `repositories/audit.ts`, which defines it, aside.
 AUDIT_INSERT_SITES=(
   "src/server/services/mutate.ts"
-  # The job and import audit rows; #945 and #946 move them to
-  # `insertAuditEntry`.
+  # The job-terminal audit row (AC-332), written with the status flip.
   "src/server/services/DataExchangeJobService.ts"
+  # The import audit row; #946 moves it to `insertAuditEntry`.
   "src/server/services/ImportService.ts"
 )
 
