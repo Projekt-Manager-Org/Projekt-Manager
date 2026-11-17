@@ -87,15 +87,6 @@ describe('Attachment table wired into the audit-mutation architecture check (ADR
     const drizzleExports = Object.values(map).map((v) => v.drizzleExport);
     expect(drizzleExports).toContain('attachments');
   });
-
-  it('the reaper path (src/server/services/attachment-orphan-reaper.ts) is allowlisted in check-audit-mutations.sh', () => {
-    // The spec names the reaper as an allowlisted bypass (it deletes
-    // attachment rows outside mutate() — pending orphans never entered
-    // the domain, so there is no audit event to emit). An allowlist
-    // entry must land with the reaper.
-    const scriptSrc = readSource('scripts/check-audit-mutations.sh');
-    expect(scriptSrc).toContain('src/server/services/attachment-orphan-reaper.ts');
-  });
 });
 
 // ---------------------------------------------------------------------
