@@ -106,6 +106,8 @@ Short-lived topic branches off `main`, merged back via PR.
 
 **Types**:
 
-`feat`, `fix`, `refactor`, `test`, `docs`, `chore`
+`feat`, `fix`, `refactor`, `test`, `docs`, `ci`, `chore`
+
+`(<scope>)` is optional and names the area.
 
 One logical change per commit. Don't batch unrelated changes. Batch related changes.

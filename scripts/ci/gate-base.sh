@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# The base `lint`'s vulnerability gates judge a change against (#668), and
-# that base's copies of the files they compare.
+# The base `lint`'s base-relative gates (vulnerability scans, ESLint
+# suppressions) judge a change against (#668), and that base's copies of
+# the files they compare.
 #
 # WHY THIS EXISTS
 #   The gates fail on findings a change introduces, not on what `main`
@@ -31,8 +32,8 @@
 #     anything else      exit 1: no event goes unjudged by accident.
 #
 #   Writes into OUT_DIR the base's package-lock.json (required) and those of
-#   osv-scanner.toml, .trivyignore.yaml, .grype.yaml, exception-register.yaml
-#   it has. On stdout, for `>> "$GITHUB_OUTPUT"`: `sha=<base>` and
+#   osv-scanner.toml, .trivyignore.yaml, .grype.yaml, exception-register.yaml,
+#   eslint-suppressions.json it has. On stdout, for `>> "$GITHUB_OUTPUT"`: `sha=<base>` and
 #   `dir=<OUT_DIR>`.
 #
 # EXIT CODES
@@ -96,7 +97,7 @@ git fetch --no-tags --depth=1 origin "$base" >&2 || die "cannot fetch base $base
 
 mkdir -p "$OUT_DIR"
 git cat-file -e "$base:package-lock.json" 2>/dev/null || die "base $base has no package-lock.json"
-for f in package-lock.json osv-scanner.toml .trivyignore.yaml .grype.yaml exception-register.yaml; do
+for f in package-lock.json osv-scanner.toml .trivyignore.yaml .grype.yaml exception-register.yaml eslint-suppressions.json; do
   if git cat-file -e "$base:$f" 2>/dev/null; then
     git show "$base:$f" >"$OUT_DIR/$f"
   fi

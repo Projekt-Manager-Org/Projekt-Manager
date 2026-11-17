@@ -212,7 +212,7 @@ jobs:
           sudo mv "/tmp/${asset}/rg" /usr/local/bin/rg
           rg --version
 
-      # The base this job's vulnerability gates judge the change against
+      # The base this job's base-relative gates judge the change against
       # (#668, ADR-0027 § 2026-10-31): they fail on what the change
       # introduces, not on what `main` already ships — that blocks no merge
       # and no `promote`, and turns the nightlies red instead. Base per
@@ -484,6 +484,19 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # The bulk-suppression baseline of `local/no-direct-db-access` only
+      # shrinks (#937, #939): ESLint itself accepts a regenerated, bigger
+      # file. Against the base, like the allowlist gates above.
+      - name: Check ESLint suppressions
+        env:
+          BASE_DIR: ${{ steps.base.outputs.dir }}
+        run: bash scripts/check-eslint-suppressions.sh --base-dir "$BASE_DIR"
+
+      # Pins where that rule runs: an exempted file would pass the check
+      # above once its entries are pruned.
+      - name: Check database-access rule coverage
+        run: node scripts/check-db-access-coverage.mjs
 
       # H5 audit: shellcheck on every .sh under scripts/ and
       # .github/actions/ (composite-action procedures live in real script

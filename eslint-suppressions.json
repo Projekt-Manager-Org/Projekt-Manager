@@ -1,0 +1,127 @@
+{
+  "src/server/bootstrap.ts": {
+    "local/no-direct-db-access": {
+      "count": 2
+    }
+  },
+  "src/server/services/CompanyProfileService.ts": {
+    "local/no-direct-db-access": {
+      "count": 2
+    }
+  },
+  "src/server/services/CustomerService.ts": {
+    "local/no-direct-db-access": {
+      "count": 7
+    }
+  },
+  "src/server/services/DataExchangeJobService.ts": {
+    "local/no-direct-db-access": {
+      "count": 32
+    }
+  },
+  "src/server/services/ExportService.ts": {
+    "local/no-direct-db-access": {
+      "count": 20
+    }
+  },
+  "src/server/services/ImportService.ts": {
+    "local/no-direct-db-access": {
+      "count": 20
+    }
+  },
+  "src/server/services/InvoiceBinaryService.ts": {
+    "local/no-direct-db-access": {
+      "count": 2
+    }
+  },
+  "src/server/services/InvoiceIssueService.ts": {
+    "local/no-direct-db-access": {
+      "count": 3
+    }
+  },
+  "src/server/services/InvoiceService.ts": {
+    "local/no-direct-db-access": {
+      "count": 4
+    }
+  },
+  "src/server/services/ProjectCrudService.ts": {
+    "local/no-direct-db-access": {
+      "count": 10
+    }
+  },
+  "src/server/services/PushDispatcher.ts": {
+    "local/no-direct-db-access": {
+      "count": 10
+    }
+  },
+  "src/server/services/PushSubscriptionService.ts": {
+    "local/no-direct-db-access": {
+      "count": 17
+    }
+  },
+  "src/server/services/StorageUsageService.ts": {
+    "local/no-direct-db-access": {
+      "count": 1
+    }
+  },
+  "src/server/services/audit-retention.ts": {
+    "local/no-direct-db-access": {
+      "count": 3
+    }
+  },
+  "src/server/services/backup.ts": {
+    "local/no-direct-db-access": {
+      "count": 7
+    }
+  },
+  "src/server/services/data-exchange-boot-reaper.ts": {
+    "local/no-direct-db-access": {
+      "count": 4
+    }
+  },
+  "src/server/services/mutate.ts": {
+    "local/no-direct-db-access": {
+      "count": 1
+    }
+  },
+  "src/server/services/notificationRecipientResolver.ts": {
+    "local/no-direct-db-access": {
+      "count": 20
+    }
+  },
+  "src/server/services/notificationRuleValidator.ts": {
+    "local/no-direct-db-access": {
+      "count": 4
+    }
+  },
+  "src/server/services/takeout-export-builder.ts": {
+    "local/no-direct-db-access": {
+      "count": 5
+    }
+  },
+  "src/server/services/takeout-import-runner.ts": {
+    "local/no-direct-db-access": {
+      "count": 1
+    }
+  },
+  "src/server/services/takeout-staging-reaper.ts": {
+    "local/no-direct-db-access": {
+      "count": 14
+    }
+  },
+  "src/server/services/takeout-staging.ts": {
+    "local/no-direct-db-access": {
+      "count": 2
+    }
+  },
+  "src/server/start.ts": {
+    "local/no-direct-db-access": {
+      "count": 1
+    }
+  },
+  "src/server/storage/pruneBucketOrphans.ts": {
+    "local/no-direct-db-access": {
+      "count": 1
+    }
+  }
+}

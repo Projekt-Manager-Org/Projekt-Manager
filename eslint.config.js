@@ -2,7 +2,9 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
+import eslintComments from '@eslint-community/eslint-plugin-eslint-comments';
 import globals from 'globals';
+import noDirectDbAccess from './eslint-rules/no-direct-db-access.mjs';
 
 // Layer boundary enforcement for the seven-layer architecture defined in
 // docs/spec/architecture.md §11.2. Each rule below reflects one dependency
@@ -27,6 +29,13 @@ const CLIENT_BANNED_SERVER = ['**/server/**'];
 const ROUTES_BANNED = ['**/repositories/**', '**/db/schema*', '**/db/connection*'];
 
 const UI_BANNED_CLIENT_API = ['@/api/*', '**/src/api/**', '../../api/**', '../api/**'];
+
+// Schema exports that are constants, not tables (`local/no-direct-db-access`
+// cannot tell without typed linting). Pinned in
+// scripts/check-db-access-coverage.mjs, so a table cannot slip in here.
+const SCHEMA_CONSTANTS = ['AUDIT_ENTITY_TYPES', 'AUDIT_EXCLUDED_FIELDS'];
+
+const localPlugin = { rules: { 'no-direct-db-access': noDirectDbAccess } };
 
 const CONFIG_BANNED = [
   '**/domain/**',
@@ -145,6 +154,67 @@ export default tseslint.config(
           })),
         },
       ],
+    },
+  },
+  // Database access lives in src/server/repositories/ (spec §11.2; #937).
+  // Each table reference or query call outside them is one violation, so
+  // the bulk-suppression baseline (eslint-suppressions.json) counts the debt
+  // per file; `scripts/check-eslint-suppressions.sh` keeps it shrink-only.
+  // Rule logic: eslint-rules/no-direct-db-access.mjs. Wiring scenarios:
+  // scripts/__tests__/check-db-access-rule.test.sh.
+  //
+  // Named exemptions, pinned in scripts/check-db-access-coverage.mjs (CI
+  // fails on any other file with the rule off or its options changed):
+  //   - db/: the schema, the connection and the database's own machinery,
+  //     file by file, so a query module dropped into db/ is still caught.
+  //   - health.ts: the liveness probe `SELECT 1` reads no table.
+  //   - services/ephemeralPg.ts: a separate, throwaway database.
+  //   - seed/, seed.ts, tests: not production code paths.
+  {
+    files: ['src/server/**/*.ts'],
+    ignores: [
+      'src/server/repositories/**',
+      'src/server/db/auditLogRemoval.ts',
+      'src/server/db/baseline-guard.ts',
+      'src/server/db/connection.ts',
+      'src/server/db/constraints.ts',
+      'src/server/db/schema.ts',
+      'src/server/seed/**',
+      'src/server/seed.ts',
+      'src/server/**/__tests__/**',
+      'src/server/health.ts',
+      'src/server/services/ephemeralPg.ts',
+    ],
+    plugins: { local: localPlugin },
+    rules: {
+      'local/no-direct-db-access': ['error', { allow: SCHEMA_CONSTANTS }],
+    },
+  },
+  // An inline disable would bypass the rule and the baseline check alike:
+  // the suppressions file never changes. So no comment may disable the rule,
+  // or this guard, and no comment may disable everything at once. A comment
+  // can still switch this guard off; scripts/check-eslint-suppressions.sh
+  // fails on any src/server/ line naming the rule or the guard.
+  {
+    files: ['src/server/**/*.ts'],
+    ignores: ['src/server/**/__tests__/**'],
+    plugins: { '@eslint-community/eslint-comments': eslintComments },
+    rules: {
+      '@eslint-community/eslint-comments/no-restricted-disable': [
+        'error',
+        'local/no-direct-db-access',
+        '@eslint-community/eslint-comments/*',
+      ],
+      '@eslint-community/eslint-comments/no-unlimited-disable': 'error',
+    },
+  },
+  // Repositories may query; they may not hand a table to anyone else.
+  {
+    files: ['src/server/repositories/**/*.ts'],
+    ignores: ['src/server/repositories/**/__tests__/**'],
+    plugins: { local: localPlugin },
+    rules: {
+      'local/no-direct-db-access': ['error', { allow: SCHEMA_CONSTANTS, queries: false }],
     },
   },
   // HTTP routes belong to the app factory, never to the instance it
