@@ -86,6 +86,49 @@ export async function filterAssignableWorkerIds(
   return new Set(rows.map((r) => r.id));
 }
 
+/** The active users holding any of `roles` (Postgres array overlap). */
+export async function findActiveUserIdsByRoles(
+  db: TransactionalDatabase,
+  roles: string[],
+): Promise<{ id: string }[]> {
+  return db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      sql`${users.roles} && ARRAY[${sql.join(
+        roles.map((r) => sql`${r}`),
+        sql`, `,
+      )}]::text[] AND ${eq(users.active, true)}`,
+    );
+}
+
+/** The active users among `ids`; unknown ids are absent. */
+export async function findActiveUserIds(
+  db: TransactionalDatabase,
+  ids: string[],
+): Promise<{ id: string }[]> {
+  return db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, ids), eq(users.active, true)));
+}
+
+/** The active users among `ids` who have not muted push. */
+export async function findUnmutedActiveUserIds(
+  db: TransactionalDatabase,
+  ids: string[],
+): Promise<{ id: string }[]> {
+  return db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, ids), eq(users.pushMuted, false), eq(users.active, true)));
+}
+
+export async function countUsers(db: TransactionalDatabase): Promise<number> {
+  const [row] = await db.select({ count: sql<number>`cast(count(*) as int)` }).from(users);
+  return row?.count ?? 0;
+}
+
 export async function listUsers(
   db: Database,
   opts: { offset?: number; limit?: number } = {},

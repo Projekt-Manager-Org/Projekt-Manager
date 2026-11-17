@@ -1,9 +1,4 @@
 {
-  "src/server/bootstrap.ts": {
-    "local/no-direct-db-access": {
-      "count": 2
-    }
-  },
   "src/server/services/CustomerService.ts": {
     "local/no-direct-db-access": {
       "count": 7
@@ -47,16 +42,6 @@
   "src/server/services/backup.ts": {
     "local/no-direct-db-access": {
       "count": 7
-    }
-  },
-  "src/server/services/notificationRecipientResolver.ts": {
-    "local/no-direct-db-access": {
-      "count": 20
-    }
-  },
-  "src/server/services/notificationRuleValidator.ts": {
-    "local/no-direct-db-access": {
-      "count": 4
     }
   },
   "src/server/services/takeout-export-builder.ts": {
