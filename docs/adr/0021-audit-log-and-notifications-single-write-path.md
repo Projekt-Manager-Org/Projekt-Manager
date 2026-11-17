@@ -91,6 +91,6 @@ Ruled out: storage growth is unbounded; the diff is what both viewers and notifi
 - `orphan-reap` — the reaper removing those rows (AC-407, AC-408);
 - `last-login` — sign-ins;
 - `self-preference` — a user's own theme or push mute (AC-659);
-- `restore` — the business-data restore (`src/server/repositories/businessData.ts`), which replaces the importable set and records one `data_import` row (ADR-0018, AC-332).
+- `restore` — the business-data restore (`src/server/repositories/businessData.ts`) and the takeout restore's attachment rows (`src/server/services/takeout-import-runner.ts`), which together record one `data_import` row (ADR-0018, AC-332).
 
 What `tsc` cannot see, two checks hold: `local/audit-write-gate` (`eslint-rules/audit-write-gate.mjs`; no inline comment may disable it) refuses assertions to `MutatingDatabase` or `never`, in repositories audited-table writes through any other handle, and raw-SQL writes to audited tables anywhere else; server code may not use `any` or a `@ts-` comment, under the same guard; `scripts/check-audit-mutations.sh` pins each exception to its file. A new exception adds a name to `AuditExemption`, a site to `EXEMPTION_SITES` and an entry to this list.

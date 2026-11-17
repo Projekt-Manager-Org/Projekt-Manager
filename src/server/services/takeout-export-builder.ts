@@ -74,10 +74,9 @@ import { createWriteStream } from 'node:fs';
 import { chmod, mkdir } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { ZipArchive } from 'archiver';
-import { inArray } from 'drizzle-orm';
 
 import type { Database } from '../db/connection.js';
-import { attachments } from '../db/schema.js';
+import { listKeysByIds } from '../repositories/attachment.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
 import { ExportService } from './ExportService.js';
@@ -375,14 +374,7 @@ async function loadAttachmentKeys(
   ids: string[],
 ): Promise<Map<string, AttachmentKeys>> {
   if (ids.length === 0) return new Map();
-  const rows = await db
-    .select({
-      id: attachments.id,
-      originalKey: attachments.originalKey,
-      wrappedDek: attachments.wrappedDek,
-    })
-    .from(attachments)
-    .where(inArray(attachments.id, ids));
+  const rows = await listKeysByIds(db, ids);
   return new Map(rows.map((r) => [r.id, { originalKey: r.originalKey, wrappedDek: r.wrappedDek }]));
 }
 

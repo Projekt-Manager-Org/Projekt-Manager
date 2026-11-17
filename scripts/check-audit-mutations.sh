@@ -143,13 +143,6 @@ ALLOWLIST=(
   # seed steps outside the machine on purpose to compose a varied dev
   # landscape. TRUNCATE has just run — no users observe the moves.
   "src/server/seed/invoices.ts"
-  # Full-account takeout IMPORT job runner — raw INSERT into `attachments`
-  # for each restored binary (Pass 2), a reviewed bulk-write site: it
-  # restores IDs-preserved rows from the takeout archive, and routing
-  # through mutate() would write an audit row per attachment (AC-332:
-  # exactly ONE data_import row, not N). That row is written by
-  # `DataExchangeJobService` with the terminal status flip.
-  "src/server/services/takeout-import-runner.ts"
   # Any `__tests__/` directory anywhere under the scan root — the
   # carve-out for tests. The nested-glob form covers both
   # top-level `src/server/__tests__/` and any future subtree's local
@@ -168,6 +161,7 @@ EXEMPTION_SITES=(
   "src/server/services/AuthService.ts:last-login"
   "src/server/services/AuthService.ts:self-preference"
   "src/server/services/ImportService.ts:restore"
+  "src/server/services/takeout-import-runner.ts:restore"
 )
 
 # Audit-row inserts (ADR-0021): an audit_log insert records no state change
