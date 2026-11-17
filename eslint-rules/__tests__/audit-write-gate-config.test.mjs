@@ -1,6 +1,6 @@
-// Where eslint.config.js runs `local/audit-write-gate` (#938), and with which
-// tables. A mistyped glob or an extra `ignores:` entry fails open: lint stays
-// green and the file's audited writes go unchecked. A stale table list fails
+// Where eslint.config.js runs `local/audit-write-gate` (#938, #946), and with
+// which tables. A mistyped glob or an extra `ignores:` entry fails open: lint
+// stays green and the file's audited writes go unchecked. A stale table list fails
 // open the same way, so it is compared with the schema's own map.
 
 import { readdirSync } from 'node:fs';
@@ -14,6 +14,13 @@ const RULE = 'local/audit-write-gate';
 const GUARD = '@eslint-community/eslint-comments/no-restricted-disable';
 // The one file that may assert MutatingDatabase: it mints the handle.
 const MINT = 'src/server/services/mutate.ts';
+// Files whose raw SQL writes audited tables on purpose, unchecked.
+const RAW_EXEMPT = [
+  // The dev seed's wipe (data-model.md §7).
+  'src/server/seed.ts',
+  // The restore wipe, until it moves into a repository (#946).
+  'src/server/services/ImportService.ts',
+];
 
 function serverSources(dir = 'src/server') {
   return readdirSync(path.join(ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
@@ -43,15 +50,29 @@ describe('local/audit-write-gate wiring', () => {
     const audited = Object.values(AUDIT_ENTITY_TO_TABLE)
       .map((t) => t.drizzleExport)
       .sort();
+    const auditedSql = Object.values(AUDIT_ENTITY_TO_TABLE)
+      .map((t) => t.sqlName)
+      .sort();
     for (const [file, config] of configs) {
       if (!file.startsWith('src/server/repositories/')) continue;
       const setting = config.rules?.[RULE];
       expect(severity(setting), file).toBe(2);
       expect([...(options(setting)?.tables ?? [])].sort(), file).toEqual(audited);
+      expect([...(options(setting)?.sqlTables ?? [])].sort(), file).toEqual(auditedSql);
     }
   });
 
-  it('refuses MutatingDatabase assertions everywhere else but the mint', () => {
+  it('names each audited table in SQL as its export in snake case', () => {
+    // The rule resolves an interpolated table (`${projectWorkers}`) this way.
+    for (const { sqlName, drizzleExport } of Object.values(AUDIT_ENTITY_TO_TABLE)) {
+      expect(drizzleExport.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)).toBe(sqlName);
+    }
+  });
+
+  it('refuses MutatingDatabase assertions and raw audited writes everywhere else', () => {
+    const auditedSql = Object.values(AUDIT_ENTITY_TO_TABLE)
+      .map((t) => t.sqlName)
+      .sort();
     for (const [file, config] of configs) {
       if (file.startsWith('src/server/repositories/')) continue;
       const setting = config.rules?.[RULE];
@@ -61,7 +82,14 @@ describe('local/audit-write-gate wiring', () => {
       }
       expect(severity(setting), file).toBe(2);
       expect(options(setting)?.tables, file).toBeUndefined();
+      const sqlTables = RAW_EXEMPT.includes(file) ? [] : auditedSql;
+      expect([...(options(setting)?.sqlTables ?? [])].sort(), file).toEqual(sqlTables);
     }
+  });
+
+  it('names only existing files as raw-SQL exemptions', () => {
+    const files = configs.map(([file]) => file);
+    for (const file of RAW_EXEMPT) expect(files).toContain(file);
   });
 
   it('refuses an inline comment disabling the rule, in every file', () => {

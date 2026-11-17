@@ -36,8 +36,8 @@ const UI_BANNED_CLIENT_API = ['@/api/*', '**/src/api/**', '../../api/**', '../ap
 // scripts/check-db-access-coverage.mjs, so a table cannot slip in here.
 const SCHEMA_CONSTANTS = ['AUDIT_ENTITY_TYPES', 'AUDIT_EXCLUDED_FIELDS'];
 
-// Drizzle exports of the audited tables (`AUDIT_ENTITY_TO_TABLE` in
-// src/server/db/schema.ts), for `local/audit-write-gate`. Kept equal to the
+// Drizzle exports and SQL names of the audited tables (`AUDIT_ENTITY_TO_TABLE`
+// in src/server/db/schema.ts), for `local/audit-write-gate`. Kept equal to the
 // schema's map by eslint-rules/__tests__/audit-write-gate-config.test.mjs.
 const AUDITED_TABLES = [
   'projects',
@@ -47,6 +47,15 @@ const AUDITED_TABLES = [
   'attachments',
   'invoices',
   'companyProfile',
+];
+const AUDITED_SQL_TABLES = [
+  'projects',
+  'customers',
+  'users',
+  'project_workers',
+  'attachments',
+  'invoices',
+  'company_profile',
 ];
 
 const localPlugin = {
@@ -244,13 +253,26 @@ export default tseslint.config(
     files: ['src/server/**/*.ts'],
     ignores: ['src/server/services/mutate.ts', 'src/server/**/__tests__/**'],
     plugins: { local: localPlugin },
-    rules: { 'local/audit-write-gate': 'error' },
+    rules: { 'local/audit-write-gate': ['error', { sqlTables: AUDITED_SQL_TABLES }] },
+  },
+  // Raw SQL that writes audited tables on purpose: the dev seed's wipe
+  // (data-model.md §7) and the restore wipe until it moves into a repository
+  // (#946). Assertions are still refused.
+  {
+    files: ['src/server/seed.ts', 'src/server/services/ImportService.ts'],
+    plugins: { local: localPlugin },
+    rules: { 'local/audit-write-gate': ['error', {}] },
   },
   {
     files: ['src/server/repositories/**/*.ts'],
     ignores: ['src/server/repositories/**/__tests__/**'],
     plugins: { local: localPlugin },
-    rules: { 'local/audit-write-gate': ['error', { tables: AUDITED_TABLES }] },
+    rules: {
+      'local/audit-write-gate': [
+        'error',
+        { tables: AUDITED_TABLES, sqlTables: AUDITED_SQL_TABLES },
+      ],
+    },
   },
   // HTTP routes belong to the app factory, never to the instance it
   // returns. `scripts/generate-openapi.ts` (AC-351) builds the published

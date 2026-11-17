@@ -92,4 +92,4 @@ Ruled out: storage growth is unbounded; the diff is what both viewers and notifi
 - `last-login` — sign-ins;
 - `self-preference` — a user's own theme or push mute (AC-659).
 
-What `tsc` cannot see, two checks hold: `local/audit-write-gate` (`eslint-rules/audit-write-gate.mjs`; no inline comment may disable it) refuses assertions to `MutatingDatabase` and, in repositories, audited-table writes through any other handle; `scripts/check-audit-mutations.sh` pins each exception to its file. A new exception adds a name to `AuditExemption`, a site to `EXEMPTION_SITES` and an entry to this list.
+What `tsc` cannot see, two checks hold: `local/audit-write-gate` (`eslint-rules/audit-write-gate.mjs`; no inline comment may disable it) refuses assertions to `MutatingDatabase`, in repositories audited-table writes through any other handle, and raw-SQL writes to audited tables anywhere else; `scripts/check-audit-mutations.sh` pins each exception to its file. A new exception adds a name to `AuditExemption`, a site to `EXEMPTION_SITES` and an entry to this list.
