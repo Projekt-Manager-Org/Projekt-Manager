@@ -31,7 +31,8 @@ const ROUTES_BANNED = ['**/repositories/**', '**/db/schema*', '**/db/connection*
 const UI_BANNED_CLIENT_API = ['@/api/*', '**/src/api/**', '../../api/**', '../api/**'];
 
 // Schema exports that are constants, not tables (`local/no-direct-db-access`
-// cannot tell without typed linting).
+// cannot tell without typed linting). Pinned in
+// scripts/check-db-access-coverage.mjs, so a table cannot slip in here.
 const SCHEMA_CONSTANTS = ['AUDIT_ENTITY_TYPES', 'AUDIT_EXCLUDED_FIELDS'];
 
 const localPlugin = { rules: { 'no-direct-db-access': noDirectDbAccess } };
@@ -162,7 +163,8 @@ export default tseslint.config(
   // Rule logic: eslint-rules/no-direct-db-access.mjs. Wiring scenarios:
   // scripts/__tests__/check-db-access-rule.test.sh.
   //
-  // Named exemptions:
+  // Named exemptions, pinned in scripts/check-db-access-coverage.mjs (CI
+  // fails on any other file with the rule off or its options changed):
   //   - db/: the schema, the connection and the database's own machinery,
   //     file by file, so a query module dropped into db/ is still caught.
   //   - health.ts: the liveness probe `SELECT 1` reads no table.

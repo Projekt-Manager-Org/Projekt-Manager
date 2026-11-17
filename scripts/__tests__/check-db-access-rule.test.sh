@@ -8,6 +8,7 @@
 # eslint-rules/__tests__/no-direct-db-access.test.mjs. What a unit test
 # cannot see is the config: a widened `ignores:` or a mistyped `files:`
 # glob fails open — lint stays green and direct queries land unnoticed.
+# In CI, scripts/check-db-access-coverage.mjs pins the exemptions.
 #
 # ESLint reads the repo's eslint-suppressions.json on its own, which would
 # hide a violation that sits in the baseline. Every run here points it at an

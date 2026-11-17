@@ -74,7 +74,7 @@ Seven responsibility layers. Dependency flows left-to-right only, never reversed
 - **Storage**, **Services**, **Routes** run server-side only.
 - **State**, **UI** run client-side only.
 
-**Enforcement**: `no-restricted-imports` zones in [`eslint.config.js`](eslint.config.js) fail lint on any import against the arrows (e.g. `src/ui/**` → `src/server/**`, routes → repositories). Routes may type-import `Database` from `src/server/db/connection`. `local/no-direct-db-access` ([`eslint-rules/`](eslint-rules/)) fails lint on database access in `src/server/` outside `repositories/` and the exemptions named in `eslint.config.js`, and on a repository handing out a table; no inline comment may disable it. Its existing violations sit in `eslint-suppressions.json`, which `scripts/check-eslint-suppressions.sh` keeps shrink-only in CI (burn-down: #937).
+**Enforcement**: `no-restricted-imports` zones in [`eslint.config.js`](eslint.config.js) fail lint on any import against the arrows (e.g. `src/ui/**` → `src/server/**`, routes → repositories). Routes may type-import `Database` from `src/server/db/connection`. `local/no-direct-db-access` ([`eslint-rules/`](eslint-rules/)) fails lint on database access in `src/server/` outside `repositories/` and the exemptions named in `eslint.config.js`, and on a repository handing out a table; no inline comment may disable it. Its existing violations sit in `eslint-suppressions.json`, which `scripts/check-eslint-suppressions.sh` keeps shrink-only in CI (burn-down: #937); `scripts/check-db-access-coverage.mjs` fails CI on any other exemption.
 
 ---
 

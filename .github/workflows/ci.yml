@@ -493,6 +493,11 @@ jobs:
           BASE_DIR: ${{ steps.base.outputs.dir }}
         run: bash scripts/check-eslint-suppressions.sh --base-dir "$BASE_DIR"
 
+      # Pins where that rule runs: an exempted file would pass the check
+      # above once its entries are pruned.
+      - name: Check database-access rule coverage
+        run: node scripts/check-db-access-coverage.mjs
+
       # H5 audit: shellcheck on every .sh under scripts/ and
       # .github/actions/ (composite-action procedures live in real script
       # files precisely so this gate reaches them). Calls the runner's
