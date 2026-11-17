@@ -216,11 +216,7 @@ export async function createCustomer(
   return toCustomerResponse(rows[0]!);
 }
 
-/**
- * Fetch the raw DB row by id. Returns null when absent. Used by the
- * idempotency path in CustomerService.createCustomer — it compares stored
- * fields (notably the raw JSONB address) against the request body.
- */
+/** Fetch the raw DB row by id. Returns null when absent. */
 export async function getCustomerRow(
   db: TransactionalDatabase,
   id: string,
@@ -239,6 +235,19 @@ export async function getCustomerRowForMutation(
   id: string,
 ): Promise<CustomerRow | null> {
   const rows = await db.select().from(customers).where(eq(customers.id, id)).limit(1).for('update');
+  return rows[0] ?? null;
+}
+
+/**
+ * Fetch the customer under a share lock held until commit: a write
+ * that reads the customer this way is serialized against a concurrent
+ * customer edit (AC-545). Returns null when absent.
+ */
+export async function getCustomerRowForShare(
+  db: TxHandle,
+  id: string,
+): Promise<CustomerRow | null> {
+  const rows = await db.select().from(customers).where(eq(customers.id, id)).limit(1).for('share');
   return rows[0] ?? null;
 }
 

@@ -25,15 +25,17 @@
  *   (AC-287).
  */
 
-import { eq, and } from 'drizzle-orm';
 import type { Database, MutatingDatabase } from '../db/connection.js';
-import { projects } from '../db/schema.js';
 import type { ServiceLogger } from './Logger.js';
 import { mutateInTx, dispatchAuditRows, type MutateContext } from './mutate.js';
 import type { AuditLogRow } from './audit-publisher.js';
 import { transitionForwardInTx } from './ProjectTransitionService.js';
 import { projectAuditLabel } from '../../domain/audit.js';
-import { ConcurrentModificationError, ProjectNotFoundError } from '../repositories/project.js';
+import {
+  ConcurrentModificationError,
+  getProjectForMutation,
+  ProjectNotFoundError,
+} from '../repositories/project.js';
 import type { TransitionResult } from '../repositories/project-transitions.js';
 import {
   computeInvoiceTotals,
@@ -222,12 +224,7 @@ export class InvoiceIssueService {
 
     // 2. Project state precondition — the project must be in
     //    `rechnung_faellig` for the issue to be legal.
-    const projRows = await tx
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, before.projectId), eq(projects.deleted, false)))
-      .limit(1);
-    const project = projRows[0];
+    const project = await getProjectForMutation(tx, before.projectId);
     if (!project) throw notFound(STRINGS.entities.project);
     if (project.status !== 'rechnung_faellig') {
       throw invoiceProjectState();

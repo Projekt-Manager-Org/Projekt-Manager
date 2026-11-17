@@ -682,6 +682,38 @@ export async function getProjectForMutation(
   return rows[0] ?? null;
 }
 
+/** One active (non-archived) project of `customerId`, if any. */
+export async function findActiveProjectIdByCustomerId(
+  db: TransactionalDatabase,
+  customerId: string,
+): Promise<{ id: string } | undefined> {
+  const [row] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.customerId, customerId), eq(projects.deleted, false)))
+    .limit(1);
+  return row;
+}
+
+/** Every archived project of `customerId`. */
+export async function findArchivedProjectsByCustomerId(
+  db: TransactionalDatabase,
+  customerId: string,
+): Promise<ProjectRow[]> {
+  return db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.customerId, customerId), eq(projects.deleted, true)));
+}
+
+/** The distinct `status` values of the active (non-archived) projects. */
+export async function findActiveProjectStatuses(db: Database): Promise<{ status: string }[]> {
+  const result = await db.execute<{ status: string }>(
+    sql`SELECT DISTINCT status FROM projects WHERE deleted = false`,
+  );
+  return result.rows;
+}
+
 /**
  * Soft-delete a project (set deleted = true).
  */
