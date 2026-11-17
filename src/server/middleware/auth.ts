@@ -13,8 +13,7 @@
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { isSessionExpired } from '../../domain/session.js';
-import { findSession } from '../repositories/session.js';
+import { AuthService } from '../services/AuthService.js';
 import { unauthenticated, sessionExpired, notPermitted } from '../errors.js';
 import { hasPermission, type Permission, type Role } from '../../config/permissions.js';
 import type { Database } from '../db/connection.js';
@@ -81,6 +80,7 @@ export interface RoleGate {
 }
 
 export function createAuthMiddleware(db: Database): SessionGate {
+  const authService = new AuthService(db);
   const authenticate = async function authenticate(
     request: FastifyRequest,
     reply: FastifyReply,
@@ -93,38 +93,15 @@ export function createAuthMiddleware(db: Database): SessionGate {
       return;
     }
 
-    const result = await findSession(db, token);
+    const user = await authService.resolveSession(token);
 
-    if (!result) {
+    if (!user) {
       const err = sessionExpired();
       reply.code(err.statusCode).send(err.toResponse());
       return;
     }
 
-    // Check session expiry
-    if (isSessionExpired({ expiresAt: result.session.expiresAt.toISOString() })) {
-      const err = sessionExpired();
-      reply.code(err.statusCode).send(err.toResponse());
-      return;
-    }
-
-    // Check user is still active
-    if (!result.user.active) {
-      const err = sessionExpired();
-      reply.code(err.statusCode).send(err.toResponse());
-      return;
-    }
-
-    // Attach user to request
-    request.user = {
-      id: result.user.id,
-      username: result.user.username,
-      displayName: result.user.displayName,
-      roles: result.user.roles,
-      email: result.user.email,
-      themePreference: result.user.themePreference,
-      pushMuted: result.user.pushMuted,
-    };
+    request.user = user;
   };
 
   return Object.assign(authenticate, { requiresSession: true } as const);

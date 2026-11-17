@@ -3,6 +3,7 @@ import tseslint from 'typescript-eslint';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import eslintComments from '@eslint-community/eslint-plugin-eslint-comments';
+import path from 'node:path';
 import globals from 'globals';
 import auditWriteGate from './eslint-rules/audit-write-gate.mjs';
 import noDirectDbAccess from './eslint-rules/no-direct-db-access.mjs';
@@ -15,10 +16,8 @@ import noDirectDbAccess from './eslint-rules/no-direct-db-access.mjs';
 // Zone summary (see spec for the full model):
 //   config   → imports nothing application-internal
 //   domain   → never imports state, ui, server, api, hooks
-//   storage  → imports from domain, config; never from services/routes/ui
-//              repositories/: only domain, config, db/ and each other
-//              storage/: also repositories/ and src/server/config/
-//   services → imports from storage, domain, config; never from routes
+//   server   → every directory but routes/ and seed/, and the shared
+//              leaves: an allowlist each (SERVER_IMPORT_ZONES)
 //   routes   → imports from services, middleware, errors, config;
 //              NOT from repositories/db directly (must go via services)
 //   state    → imports api, domain, config; NOT server internals
@@ -31,21 +30,119 @@ const CLIENT_BANNED_SERVER = ['**/server/**'];
 
 const ROUTES_BANNED = ['**/repositories/**', '**/db/schema*', '**/db/connection*'];
 
-// Repositories sit at the bottom of the server: an allowlist, so a directory
-// added later is refused until someone decides otherwise (#956). A relative
-// path may name a sibling, `../db/`, `../../domain/` or `../../config/`; the
-// `@/` alias the same targets. Packages are not covered.
-const REPOSITORIES_BANNED_REGEX = [
-  String.raw`^\.(?!/[^.]|\./db/|\./\.\./(?:domain|config)/)`,
-  String.raw`^@/(?!(?:domain|config|server/(?:db|repositories))/)`,
-];
+// Server import zones (#956, #974, #976): what each src/server/ directory
+// but routes/ and seed/ may import, besides itself, as paths under src/ (a
+// directory admits everything beneath it). An allowlist, and a directory
+// with no zone may not import outside itself, so a directory added later is
+// refused until someone places it. Type-only imports and packages are not
+// covered. Layering: ARCHITECTURE.md § Architecture Overview. Scenarios:
+// scripts/__tests__/check-server-import-zones.test.sh.
+//
+// Leaves are root files of src/server/ that the zones may import; they
+// import only SERVER_LEAF_TARGETS.
+const SERVER_LEAVES = ['server/errors.js', 'server/password.js', 'server/staticRoot.js'];
+const SERVER_LEAF_TARGETS = ['domain', 'config'];
+const SERVER_IMPORT_ZONES = {
+  'server/config': ['config'],
+  'server/db': ['server/config', 'config'],
+  'server/sse': SERVER_LEAF_TARGETS,
+  'server/repositories': ['server/db', 'domain', 'config'],
+  'server/storage': ['server/repositories', 'server/db', 'server/config', 'domain', 'config'],
+  'server/services': [
+    'server/repositories',
+    'server/storage',
+    'server/db',
+    'server/config',
+    'server/sse',
+    ...SERVER_LEAVES,
+    'domain',
+    'config',
+  ],
+  'server/middleware': ['server/services', 'server/config', ...SERVER_LEAVES, 'domain', 'config'],
+};
 
-// storage/ (#974): the same, plus `../repositories/` (same layer) and
-// `../config/` (src/server/config/: `STORAGE_CONFIG`).
-const STORAGE_BANNED_REGEX = [
-  String.raw`^\.(?!/[^.]|\./(?:repositories|db|config)/|\./\.\./(?:domain|config)/)`,
-  String.raw`^@/(?!(?:domain|config|server/(?:storage|repositories|db|config))/)`,
-];
+// A relative import means a different target at each nesting level, so the
+// zones are generated per level up to this depth; a file nested deeper may
+// not import outside its directory until the depth is raised.
+const SERVER_ZONE_MAX_DEPTH = 2;
+
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Regexes matching the imports a file in src/<fileDir>/ may not make: any
+// relative or `@/` path that names none of the targets (paths under src/).
+// `(?!\.)` after a directory refuses a one-step detour like
+// `../db/../services/`.
+function bannedImportRegexes(fileDir, targets) {
+  const alternative = (target, ref) =>
+    target.endsWith('.js') ? `${escapeRegex(ref)}$` : `${escapeRegex(ref)}/(?!\\.)`;
+  const relative = targets.map((target) =>
+    alternative(target, path.posix.relative(fileDir, target) || '.'),
+  );
+  const aliased = targets.map((target) => alternative(target, `@/${target}`));
+  return [`^(?!${relative.join('|')})\\.`, `^(?!${aliased.join('|')})@/`];
+}
+
+const importZone = (files, ignores, regexes, message) => ({
+  files,
+  ignores,
+  rules: {
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: regexes.map((regex) => ({
+          regex,
+          caseSensitive: true,
+          message,
+          allowTypeImports: true,
+        })),
+      },
+    ],
+  },
+});
+
+const importOnlyMessage = (what, targets) =>
+  `${what} may import only ${targets.map((target) => `src/${target}`).join(', ')}. Type-only imports are allowed. See ARCHITECTURE.md § Architecture Overview.`;
+
+function serverImportZones() {
+  // First, so each zone below replaces it for its own directory.
+  const unplaced = importZone(
+    ['src/server/*/**/*.ts'],
+    ['src/server/routes/**', 'src/server/seed/**', 'src/server/**/__tests__/**'],
+    [String.raw`^\.\.`, '^@/'],
+    'This src/server/ directory has no import zone: place it in SERVER_IMPORT_ZONES (eslint.config.js).',
+  );
+  const zones = Object.entries(SERVER_IMPORT_ZONES).flatMap(([dir, targets]) => {
+    const ignores = [`src/${dir}/**/__tests__/**`];
+    const message = importOnlyMessage(`src/${dir}/`, [dir, ...targets]);
+    const depths = Array.from({ length: SERVER_ZONE_MAX_DEPTH }, (_, i) => i + 1);
+    return [
+      ...depths.map((depth) => {
+        // A placeholder path one level per depth; its own directory admits
+        // siblings at any depth.
+        const fileDir = [dir, ...Array(depth - 1).fill('x')].join('/');
+        return importZone(
+          [`src/${dir}/${'*/'.repeat(depth - 1)}*.ts`],
+          ignores,
+          bannedImportRegexes(fileDir, [...new Set([fileDir, dir, ...targets])]),
+          message,
+        );
+      }),
+      importZone(
+        [`src/${dir}/${'*/'.repeat(SERVER_ZONE_MAX_DEPTH)}**/*.ts`],
+        ignores,
+        [String.raw`^\.\.`, '^@/'],
+        `Nested deeper than SERVER_ZONE_MAX_DEPTH (${SERVER_ZONE_MAX_DEPTH}) in eslint.config.js: raise it.`,
+      ),
+    ];
+  });
+  const leaves = importZone(
+    SERVER_LEAVES.map((leaf) => `src/${leaf.replace(/\.js$/, '.ts')}`),
+    [],
+    bannedImportRegexes('server', SERVER_LEAF_TARGETS),
+    importOnlyMessage('A server-shared leaf', SERVER_LEAF_TARGETS),
+  );
+  return [unplaced, ...zones, leaves];
+}
 
 const UI_BANNED_CLIENT_API = ['@/api/*', '**/src/api/**', '../../api/**', '../api/**'];
 
@@ -199,49 +296,7 @@ export default tseslint.config(
       ],
     },
   },
-  // Repositories import only db/, domain, config and each other — never a
-  // service, route, middleware or anything else in src/server/. Type-only
-  // imports are allowed: the read-scope predicates take `AuthUser` from
-  // middleware/auth. Scenarios: scripts/__tests__/check-server-import-zones.test.sh.
-  {
-    files: ['src/server/repositories/**/*.ts'],
-    ignores: ['src/server/repositories/**/__tests__/**'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: REPOSITORIES_BANNED_REGEX.map((regex) => ({
-            regex,
-            caseSensitive: true,
-            message:
-              'Repositories may import only db/, src/domain/, src/config/ and other repositories. Type-only imports are allowed. See ARCHITECTURE.md § Architecture Overview.',
-            allowTypeImports: true,
-          })),
-        },
-      ],
-    },
-  },
-  // storage/ imports only siblings, repositories/, db/, src/server/config/,
-  // domain and config — never a service, route or middleware. Type-only
-  // imports are allowed. Scenarios: scripts/__tests__/check-server-import-zones.test.sh.
-  {
-    files: ['src/server/storage/**/*.ts'],
-    ignores: ['src/server/storage/**/__tests__/**'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: STORAGE_BANNED_REGEX.map((regex) => ({
-            regex,
-            caseSensitive: true,
-            message:
-              'storage/ may import only siblings, repositories/, db/, src/server/config/, src/domain/ and src/config/. Type-only imports are allowed. See ARCHITECTURE.md § Architecture Overview.',
-            allowTypeImports: true,
-          })),
-        },
-      ],
-    },
-  },
+  ...serverImportZones(),
   // Database access lives in src/server/repositories/ (spec §11.2; #937).
   // Each table reference or query call outside them is one violation, so
   // the bulk-suppression baseline (eslint-suppressions.json) counts the debt
