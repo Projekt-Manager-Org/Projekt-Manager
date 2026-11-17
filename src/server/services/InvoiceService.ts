@@ -16,9 +16,8 @@
  */
 
 import crypto from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
-import { projects, customers } from '../db/schema.js';
+import { getCustomerRowForShare } from '../repositories/customer.js';
 import type { AuthUser } from '../middleware/auth.js';
 import type { ServiceLogger } from './Logger.js';
 import { mutate } from './mutate.js';
@@ -293,12 +292,7 @@ export class InvoiceService {
           // before this read is visible here and triggers the 404; one
           // committed after it goes unseen and the INSERT proceeds
           // against the row as read.
-          const projRows = await tx
-            .select()
-            .from(projects)
-            .where(eq(projects.id, input.projectId))
-            .limit(1);
-          const project = projRows[0];
+          const project = await getProjectRowById(tx, input.projectId);
           // AC-285: archived project → 404 (mirrors AC-499 for draft writes).
           if (!project || project.deleted) {
             throw notFound(STRINGS.entities.project);
@@ -306,13 +300,7 @@ export class InvoiceService {
 
           // Shared lock: a draft committed behind a running customer edit
           // would be invisible to that edit's correction (AC-545).
-          const customerRows = await tx
-            .select()
-            .from(customers)
-            .where(eq(customers.id, project.customerId))
-            .limit(1)
-            .for('share');
-          const customer = customerRows[0];
+          const customer = await getCustomerRowForShare(tx, project.customerId);
 
           const taxMode: TaxMode = input.taxMode ?? profile.defaultTaxMode;
 

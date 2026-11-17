@@ -7,7 +7,6 @@
  */
 
 import type { Database } from '../db/connection.js';
-import { eq, and } from 'drizzle-orm';
 import {
   listCustomers as listCustomersRepo,
   getCustomer as getCustomerRepo,
@@ -26,8 +25,11 @@ import {
 // (architecture.md §11.2 — routes delegate through services).
 export { CUSTOMER_SORT_KEYS };
 export type { CustomerSortKey };
-import { projects } from '../db/schema.js';
 import { hardDeleteProjectUnchecked } from '../repositories/project.js';
+import {
+  findActiveProjectIdByCustomerId,
+  findArchivedProjectsByCustomerId,
+} from '../repositories/project-read.js';
 import { listKeysForProject } from '../repositories/attachment.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { DB_CONSTRAINTS } from '../db/constraints.js';
@@ -311,13 +313,7 @@ export class CustomerService {
       const priorRow = await getCustomerRowForMutation(tx, id);
       if (!priorRow) throw notFound(STRINGS.entities.customer);
 
-      const activeProjects = await tx
-        .select({ id: projects.id })
-        .from(projects)
-        .where(and(eq(projects.customerId, id), eq(projects.deleted, false)))
-        .limit(1);
-
-      if (activeProjects.length > 0) {
+      if (await findActiveProjectIdByCustomerId(tx, id)) {
         throw conflict(STRINGS.customers.hasProjects);
       }
 
@@ -338,10 +334,7 @@ export class CustomerService {
       // All referencing projects (if any) are archived. Purge them and
       // the customer atomically — the archive has no value without the
       // customer. `project_workers` rows cascade via FK.
-      const archived = await tx
-        .select()
-        .from(projects)
-        .where(and(eq(projects.customerId, id), eq(projects.deleted, true)));
+      const archived = await findArchivedProjectsByCustomerId(tx, id);
 
       for (const row of archived) {
         collectedKeys.push(...(await listKeysForProject(tx, row.id)));
@@ -383,7 +376,7 @@ export class CustomerService {
           try {
             await deleteCustomerRepo(innerTx, id);
           } catch (dbErr) {
-            // A project restored after the `activeProjects` probe takes
+            // A project restored after the active-project probe takes
             // no customer lock, so this DELETE can still hit a 23503 FK
             // violation. Map it to the 409 "has projects" contract.
             if (

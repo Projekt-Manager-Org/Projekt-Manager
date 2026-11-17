@@ -10,7 +10,6 @@
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { buildApp } from './app.js';
 import { installNotFoundHandler, installSpaAwareNotFoundHandler } from './error-handler.js';
@@ -29,6 +28,7 @@ import { createDatabase } from './db/connection.js';
 import { seed } from './seed.js';
 import { pruneBucketOrphans, createBucketObjectLister } from './storage/pruneBucketOrphans.js';
 import { startBucketOrphanPruneScheduler } from './bucket-orphan-prune-scheduler.js';
+import { findActiveProjectStatuses } from './repositories/project-read.js';
 import { deleteExpiredSessions } from './repositories/session.js';
 import { startSessionReaper } from './session-reaper.js';
 import { startAuditRetentionScheduler } from './audit-retention-scheduler.js';
@@ -67,10 +67,8 @@ const migrationsFolder = path.resolve(__dirname, 'db/migrations');
  */
 async function validateWorkflowStates(db: ReturnType<typeof createDatabase>['db']): Promise<void> {
   const validSet = new Set<string>(STATE_KEYS);
-  const rows = await db.execute<{ status: string }>(
-    sql`SELECT DISTINCT status FROM projects WHERE deleted = false`,
-  );
-  const orphaned = rows.rows.filter((r) => !validSet.has(r.status)).map((r) => r.status);
+  const rows = await findActiveProjectStatuses(db);
+  const orphaned = rows.filter((r) => !validSet.has(r.status)).map((r) => r.status);
   if (orphaned.length > 0) {
     throw new Error(
       `Refusing to start: ${orphaned.length} project(s) have status values not in the current ` +

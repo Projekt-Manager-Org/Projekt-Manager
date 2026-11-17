@@ -1,27 +1,7 @@
 {
-  "src/server/services/CustomerService.ts": {
-    "local/no-direct-db-access": {
-      "count": 7
-    }
-  },
   "src/server/services/InvoiceBinaryService.ts": {
     "local/no-direct-db-access": {
       "count": 2
-    }
-  },
-  "src/server/services/InvoiceIssueService.ts": {
-    "local/no-direct-db-access": {
-      "count": 3
-    }
-  },
-  "src/server/services/InvoiceService.ts": {
-    "local/no-direct-db-access": {
-      "count": 4
-    }
-  },
-  "src/server/services/ProjectCrudService.ts": {
-    "local/no-direct-db-access": {
-      "count": 10
     }
   },
   "src/server/services/StorageUsageService.ts": {
@@ -40,11 +20,6 @@
     }
   },
   "src/server/services/takeout-import-runner.ts": {
-    "local/no-direct-db-access": {
-      "count": 1
-    }
-  },
-  "src/server/start.ts": {
     "local/no-direct-db-access": {
       "count": 1
     }

@@ -44,8 +44,7 @@ import {
 // (architecture.md §11.2).
 export { PROJECT_SORT_KEYS };
 export type { ProjectSortKey };
-import { customers, projects } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { getCustomerRow } from '../repositories/customer.js';
 import { STATE_KEYS } from '../../config/stateConfig.js';
 import type { WorkflowState } from '../../config/stateConfig.js';
 import { STRINGS } from '../../config/strings.js';
@@ -293,12 +292,8 @@ export class ProjectCrudService {
       }
 
       const workers = await fetchWorkersForProject(tx, inserted.id);
-      const customerRows = await tx
-        .select()
-        .from(customers)
-        .where(eq(customers.id, inserted.customerId))
-        .limit(1);
-      return toProject(inserted, customerRows[0] ?? null, workers);
+      const customer = await getCustomerRow(tx, inserted.customerId);
+      return toProject(inserted, customer, workers);
     });
 
     await dispatchAuditRows(collected);
@@ -421,12 +416,8 @@ export class ProjectCrudService {
     row: ProjectRow,
     workers: { userId: string; displayName: string }[],
   ) {
-    const customerRows = await this.db
-      .select()
-      .from(customers)
-      .where(eq(customers.id, row.customerId))
-      .limit(1);
-    return toProject(row, customerRows[0] ?? null, workers);
+    const customer = await getCustomerRow(this.db, row.customerId);
+    return toProject(row, customer, workers);
   }
 
   /**
@@ -596,12 +587,8 @@ export class ProjectCrudService {
         }
 
         const workers = await fetchWorkersForProject(tx, id);
-        const customerRows = await tx
-          .select()
-          .from(customers)
-          .where(eq(customers.id, currentRow.customerId))
-          .limit(1);
-        return toProject(currentRow, customerRows[0] ?? null, workers);
+        const customer = await getCustomerRow(tx, currentRow.customerId);
+        return toProject(currentRow, customer, workers);
       });
 
       await dispatchAuditRows(collected);
@@ -703,12 +690,8 @@ export class ProjectCrudService {
         });
         const restored = restoredRow ?? value;
         const workers = await fetchWorkersForProject(tx, id);
-        const customerRows = await tx
-          .select()
-          .from(customers)
-          .where(eq(customers.id, restored.customerId))
-          .limit(1);
-        return toProject(restored, customerRows[0] ?? null, workers);
+        const customer = await getCustomerRow(tx, restored.customerId);
+        return toProject(restored, customer, workers);
       });
       log.info({ projectId: id }, 'project_restored');
       emitProjectChanged();
@@ -754,8 +737,7 @@ export class ProjectCrudService {
             // the time `return` runs `priorRow` is guaranteed populated. The
             // outer catch maps `ProjectNotFoundError` / `ProjectNotArchivedError`
             // to HTTP codes.
-            const priorRows = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
-            const priorRow = priorRows[0];
+            const priorRow = await getProjectRowById(tx, id);
             // AC-504: a project carrying any issued or cancelled invoice
             // is frozen (ADR-0026) — purge is rejected with a dedicated
             // code so the UI can target the invoice message rather
