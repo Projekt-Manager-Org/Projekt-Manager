@@ -35,6 +35,7 @@ import { invalidCredentials, notFound, validationError } from '../errors.js';
 import { AUTH_CONFIG } from '../config/index.js';
 import type { ServiceLogger } from './Logger.js';
 import { exemptFromAudit, mutate } from './mutate.js';
+import type { AuthUser } from '../middleware/auth.js';
 
 export class AuthService {
   constructor(private db: Database) {}
@@ -137,23 +138,29 @@ export class AuthService {
   }
 
   /**
-   * Re-validate an in-flight session token. Returns `true` if the session
-   * row still exists, has not expired, and the joined user is still
-   * active — the same three predicates the `authenticate` middleware
-   * checks at request entry. Used by long-lived authenticated streams
-   * (`/api/events`, AC-275) to bound the post-revocation send window:
-   * the auth gate runs once at connect time, so without re-validation a
-   * held connection outlives its session. Architecture-wise the route
-   * cannot import the repositories directly (architecture.md §11.2 —
-   * routes go through services); centralising the predicate here also
-   * keeps it lock-step with the middleware's own definition.
+   * The user a session token authenticates, or `null` when the session
+   * row is gone, has expired, or its user is inactive. The one definition
+   * of a valid session: the `authenticate` middleware calls it at request
+   * entry, `isSessionValid` on held streams (architecture.md §11.2 —
+   * middleware and routes reach repositories only through services).
+   */
+  async resolveSession(token: string): Promise<AuthUser | null> {
+    const result = await findSession(this.db, token);
+    if (!result) return null;
+    if (isSessionExpired({ expiresAt: result.session.expiresAt.toISOString() })) return null;
+    if (!result.user.active) return null;
+    const { id, username, displayName, roles, email, themePreference, pushMuted } = result.user;
+    return { id, username, displayName, roles, email, themePreference, pushMuted };
+  }
+
+  /**
+   * Re-validate an in-flight session token. Used by long-lived
+   * authenticated streams (`/api/events`, AC-275) to bound the
+   * post-revocation send window: the auth gate runs once at connect time,
+   * so without re-validation a held connection outlives its session.
    */
   async isSessionValid(token: string): Promise<boolean> {
-    const result = await findSession(this.db, token);
-    if (!result) return false;
-    if (isSessionExpired({ expiresAt: result.session.expiresAt.toISOString() })) return false;
-    if (!result.user.active) return false;
-    return true;
+    return (await this.resolveSession(token)) !== null;
   }
 
   async changePassword(
