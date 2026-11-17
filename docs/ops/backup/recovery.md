@@ -88,7 +88,7 @@ The manifest is the per-table row count + deterministic checksum computed at bac
 
 PK ordering is load-bearing — the checksum is order-sensitive. `pk_for` queries `pg_index` on the restored scratch DB so every manifest table is covered without per-table maintenance; an unknown table (or a table missing from the restored dump) returns empty and is reported as a fatal finding.
 
-The outer `md5(…)` wraps a `COALESCE(string_agg(…), '')` so an empty table hashes to `md5('')` — the fixed constant `d41d8cd98f00b204e9800998ecf8427e`. The query below mirrors [services/backup.ts::computeManifest](../../../src/server/services/backup.ts) exactly; a divergence here would produce false mismatches.
+The outer `md5(…)` wraps a `COALESCE(string_agg(…), '')` so an empty table hashes to `md5('')` — the fixed constant `d41d8cd98f00b204e9800998ecf8427e`. The query below mirrors [repositories/backupSnapshot.ts::checksumTable](../../../src/server/repositories/backupSnapshot.ts) exactly; a divergence here would produce false mismatches.
 
 ```bash
 # Manifest fields are `rowCount` and `checksum`, at the top level

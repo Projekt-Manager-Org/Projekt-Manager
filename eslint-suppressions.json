@@ -1,7 +1,2 @@
 {
-  "src/server/services/backup.ts": {
-    "local/no-direct-db-access": {
-      "count": 7
-    }
-  }
 }
