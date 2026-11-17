@@ -55,6 +55,7 @@ const GUARD = {
   '@eslint-community/eslint-comments/no-restricted-disable': [
     2,
     RULE,
+    'local/audit-write-gate',
     '@eslint-community/eslint-comments/*',
   ],
   '@eslint-community/eslint-comments/no-unlimited-disable': [2],
