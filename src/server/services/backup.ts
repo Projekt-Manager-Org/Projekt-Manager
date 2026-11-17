@@ -30,14 +30,22 @@
  *      status mirror carrying the same values (AC-617).
  *
  * Architecture layering (architecture.md §11.2): this service orchestrates
- * the repository (`backupStatus`) and the external-subprocess surface
- * (pg_dump, age, initdb). Routes never call the subprocesses directly.
+ * the repositories (`backupStatus`, `backupSnapshot`) and the
+ * external-subprocess surface (pg_dump, age, initdb). Routes never call
+ * the subprocesses directly.
  */
 
-import { sql } from 'drizzle-orm';
 import { spawn } from 'node:child_process';
 import type { Database, TransactionalDatabase } from '../db/connection.js';
 import { boundRuntime, writeStdin } from './subprocessBound.js';
+import {
+  checksumTable,
+  countTableRows,
+  exportSnapshot,
+  setLocalTimeouts,
+  setLocalTimeZoneUtc,
+  showDataChecksums,
+} from '../repositories/backupSnapshot.js';
 import {
   updateBackupStatus,
   ensureBackupStatusRow,
@@ -220,21 +228,8 @@ export const MANIFEST_TABLES: ReadonlyArray<{
 export async function computeManifest(db: TransactionalDatabase): Promise<Manifest> {
   const manifest: Manifest = {};
   for (const table of MANIFEST_TABLES) {
-    const rowCountResult = await db.execute(
-      sql.raw(`SELECT COUNT(*)::int AS c FROM "${table.name}"`),
-    );
-    const rowCountRow = rowCountResult.rows[0] as { c: number } | undefined;
-    const rowCount = rowCountRow?.c ?? 0;
-
-    const orderBy = table.pkColumns.map((c) => `"${c}"`).join(', ');
-    const checksumResult = await db.execute(
-      sql.raw(
-        `SELECT md5(COALESCE(string_agg(md5(row(t.*)::text), '' ORDER BY ${orderBy}), '')) AS checksum ` +
-          `FROM "${table.name}" t`,
-      ),
-    );
-    const checksumRow = checksumResult.rows[0] as { checksum: string } | undefined;
-    const checksum = checksumRow?.checksum ?? '';
+    const rowCount = (await countTableRows(db, table.name)) ?? 0;
+    const checksum = (await checksumTable(db, table.name, table.pkColumns)) ?? '';
 
     manifest[table.name] = { rowCount, checksum };
   }
@@ -285,7 +280,9 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
   // ---------------------------------------------------------------
   // Precondition: page checksums (AC-366) — see module header, step 0.
   // ---------------------------------------------------------------
-  const checksums = await (opts.readDataChecksums ?? (() => showDataChecksums(opts.db)))();
+  const checksums = await (
+    opts.readDataChecksums ?? (async () => (await showDataChecksums(opts.db)) ?? 'unknown')
+  )();
   if (checksums !== 'on') {
     return fail(
       `precondition: data checksums are ${checksums} on the source database — storage corruption would pass verification`,
@@ -313,7 +310,7 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
         // side (which is pinned to UTC in `ephemeralPg.ts`). `SET
         // LOCAL` scopes the change to this transaction so we never
         // leak a TimeZone mutation back to the pooled connection.
-        await tx.execute(sql`SET LOCAL TIME ZONE 'UTC'`);
+        await setLocalTimeZoneUtc(tx);
 
         // AC-345: bound this transaction's own waits, not just the
         // subprocesses it starts. `computeManifest` takes ACCESS SHARE
@@ -339,19 +336,17 @@ export async function runBackup(opts: RunBackupOptions): Promise<BackupRunResult
         // `SET` is parsed before parameter binding, so it cannot take a
         // placeholder, and building it by interpolation would put a
         // number into raw SQL for no gain.
-        await tx.execute(
-          sql`SELECT set_config('lock_timeout', ${String(opts.manifestLockTimeoutMs ?? LOCK_WAIT_TIMEOUT_MS)}, true)`,
-        );
-        await tx.execute(
-          sql`SELECT set_config('statement_timeout', ${String(MANIFEST_STATEMENT_TIMEOUT_MS)}, true)`,
+        await setLocalTimeouts(
+          tx,
+          opts.manifestLockTimeoutMs ?? LOCK_WAIT_TIMEOUT_MS,
+          MANIFEST_STATEMENT_TIMEOUT_MS,
         );
 
         // A REPEATABLE READ transaction keeps one snapshot for its whole
         // lifetime, so what is exported here and what `computeManifest`
         // reads below are the same view by construction — the order of
         // the two is free.
-        const exported = await tx.execute(sql`SELECT pg_export_snapshot() AS id`);
-        const snapshotId = (exported.rows[0] as { id: string } | undefined)?.id;
+        const snapshotId = await exportSnapshot(tx);
         if (!snapshotId) {
           throw new Error('pg_export_snapshot() returned no snapshot id');
         }
@@ -493,12 +488,6 @@ function defaultDumpSource(manifest: Manifest): Uint8Array {
   // this synthetic dump apart from a real pg_dump artifact.
   const payload = `MANIFEST-DUMP\n${JSON.stringify(manifest)}`;
   return new TextEncoder().encode(payload);
-}
-
-/** The source cluster's `data_checksums` setting: `on` or `off`. */
-async function showDataChecksums(db: Database): Promise<string> {
-  const result = await db.execute<{ data_checksums: string }>(sql`SHOW data_checksums`);
-  return result.rows[0]?.data_checksums ?? 'unknown';
 }
 
 /**
