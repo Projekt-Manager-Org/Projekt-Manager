@@ -328,7 +328,7 @@ This is not a zero-code-change operation.
 **Pattern to copy**: `INVOICE_CHANGED` — `src/config/sseEvents.ts`, `emitInvoiceChanged` in `src/server/sse/emitters.ts`, `src/state/invoiceSseSubscription.ts`.
 
 1. Add the event constant to `src/config/sseEvents.ts` and to `SSE_EVENT_NAMES` — backs the `SseEventName` union and the coverage guard of step 3.
-2. Add a typed `emitXChanged()` helper in `src/server/sse/emitters.ts`; call it post-commit from the mutation call site, never inside the transaction ([ADR-0025](docs/adr/0025-realtime-ui-invalidation-via-sse.md)).
+2. Add a typed `emitXChanged()` helper in `src/server/sse/emitters.ts`; call it post-commit from the mutation call site, never inside the transaction ([ADR-0025](docs/adr/0025-realtime-ui-invalidation-via-sse.md)). A catalog event without one fails `src/server/__tests__/sse-emitters-payload.test.ts`.
 3. Add ≥1 client subscriber under `src/state/` via `onSseEvent` (`src/sse/client.ts`) — an emit-only event fails `src/state/__tests__/sseSubscriberCoverage.test.ts`.
 4. Wire the subscription into the auth-gated `useEffect` in `src/App.tsx`, alongside the existing SSE subscriptions.
 5. **Spec**: a view that starts refreshing live gets an AC in its feature's section; [verification.md §15.28](docs/spec/verification.md#1528-realtime-events) links them.

@@ -139,13 +139,13 @@ async function waitFor(predicate: () => boolean, ms: number): Promise<boolean> {
  * The exact module path is the implementer's choice — `../sse/bus.js`
  * matches the `attachments-sse-bus.test.ts` guess.
  */
-async function loadBroadcast(): Promise<(eventName: string, payload?: unknown) => void> {
+async function loadBroadcast(): Promise<(eventName: string) => void> {
   // Dynamic import via a string variable so TS --noEmit does not block
   // the file. The bus module does not exist at step-3 time; the import
   // fails at runtime with MODULE_NOT_FOUND.
   const path = '../sse/bus.js';
   const mod = (await import(/* @vite-ignore */ path)) as {
-    broadcast: (eventName: string, payload?: unknown) => void;
+    broadcast: (eventName: string) => void;
   };
   return mod.broadcast;
 }
@@ -250,7 +250,8 @@ describe('GET /api/events — SSE route', () => {
         broadcast('storage_usage_changed');
         const body = await readPromise;
 
-        // Pins the `event:` line only. A regression that omits the
+        // Pins the `event:` line only; the `data:` shape is pinned in
+        // `sse-emitters-payload.test.ts`. A regression that omits the
         // `event:` line would land as an unnamed frame and break the EventSource
         // dispatch on the consumer.
         expect(body).toMatch(/event: storage_usage_changed/);

@@ -27,7 +27,7 @@
  *   interface SseBus {
  *     subscribe(c: SseConnection): void;
  *     unsubscribe(c: SseConnection): void;
- *     broadcast(eventName: string, payload?: unknown): void;
+ *     broadcast(eventName: string): void;
  *     size(): number;            // observable subscriber count for tests
  *   }
  *   function createSseBus(opts?: { logger?: SseBusLogger }): SseBus;
@@ -47,7 +47,7 @@ interface SseConnection {
 interface SseBus {
   subscribe(c: SseConnection): void;
   unsubscribe(c: SseConnection): void;
-  broadcast(eventName: string, payload?: unknown): void;
+  broadcast(eventName: string): void;
   size?(): number;
 }
 
@@ -121,7 +121,8 @@ describe('SSE bus — subscribe / broadcast / unsubscribe', () => {
 
     bus.broadcast('storage_usage_changed');
 
-    // Pins the `event:` line only.
+    // Pins the `event:` line only; the `data:` shape is pinned in
+    // `sse-emitters-payload.test.ts`.
     expect(a.chunks.join('')).toMatch(/event: storage_usage_changed/);
     expect(b.chunks.join('')).toMatch(/event: storage_usage_changed/);
   });
