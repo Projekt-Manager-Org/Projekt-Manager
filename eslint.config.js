@@ -179,8 +179,6 @@ export default tseslint.config(
       'src/server/db/connection.ts',
       'src/server/db/constraints.ts',
       'src/server/db/schema.ts',
-      'src/server/db/migrations/**',
-      'src/server/db/baseline/**',
       'src/server/seed/**',
       'src/server/seed.ts',
       'src/server/**/__tests__/**',

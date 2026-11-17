@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Keeps `local/no-direct-db-access` switched on where it belongs (#937, #939).
+ * Keeps `local/no-direct-db-access` and its inline-disable guard switched on
+ * where they belong (#937, #939).
  *
  * WHY THIS EXISTS
  *   scripts/check-eslint-suppressions.sh keeps the baseline shrink-only, but
@@ -14,17 +15,19 @@
  *   ESLint computes for it:
  *     - repositories/: the rule at `error` with REPOSITORY_OPTIONS;
  *     - an entry of EXEMPT: the rule off;
- *     - anything else: the rule at `error` with SERVICE_OPTIONS.
- *   An ignored file counts as off. Every file named in EXEMPT must exist and
- *   have the rule off, so a dead exemption cannot wait for a later file at
- *   its path.
+ *     - anything else: the rule at `error` with SERVICE_OPTIONS;
+ *     - every file, exempt ones too: GUARD, which refuses a comment
+ *       disabling the rule, the guard, or everything.
+ *   An ignored file counts as off. Every EXEMPT file must exist, and every
+ *   EXEMPT directory must hold a source file, so a dead exemption cannot
+ *   wait for a later file at its path.
  *
- *   EXEMPT and the options mirror eslint.config.js on purpose: widening an
+ *   EXEMPT and the settings mirror eslint.config.js on purpose: widening an
  *   exemption takes a change here too, which names what it bypasses.
  *
  * EXIT CODES
  *   0  ok
- *   1  a file with the wrong setting
+ *   1  a file with the wrong setting, a dead exemption, or a crash
  *   2  usage error, or ESLint cannot compute the config
  *
  * Usage:
@@ -48,6 +51,14 @@ const SOURCE = /\.(ts|tsx|mts|cts|js|mjs|cjs)$/;
 const ALLOW = ['AUDIT_ENTITY_TYPES', 'AUDIT_EXCLUDED_FIELDS'];
 const SERVICE_OPTIONS = [2, { allow: ALLOW }];
 const REPOSITORY_OPTIONS = [2, { allow: ALLOW, queries: false }];
+const GUARD = {
+  '@eslint-community/eslint-comments/no-restricted-disable': [
+    2,
+    RULE,
+    '@eslint-community/eslint-comments/*',
+  ],
+  '@eslint-community/eslint-comments/no-unlimited-disable': [2],
+};
 
 // The named exemptions of eslint.config.js, with their reasons there.
 // A trailing `/` exempts a directory.
@@ -57,8 +68,6 @@ const EXEMPT = [
   'src/server/db/connection.ts',
   'src/server/db/constraints.ts',
   'src/server/db/schema.ts',
-  'src/server/db/migrations/',
-  'src/server/db/baseline/',
   'src/server/seed/',
   'src/server/seed.ts',
   'src/server/health.ts',
@@ -88,11 +97,11 @@ const files = readdirSync(path.join(ROOT, SERVER), { recursive: true })
 const eslint = new ESLint({ cwd: ROOT, ...(configFile && { overrideConfigFile: configFile }) });
 const problems = [];
 
-async function setting(file) {
+/** The file's rules from its computed config; none when ignored. */
+async function rulesOf(file) {
   try {
-    if (await eslint.isPathIgnored(file)) return undefined;
-    const value = (await eslint.calculateConfigForFile(file))?.rules?.[RULE];
-    return value && value[0] !== 0 ? value : undefined;
+    if (await eslint.isPathIgnored(file)) return {};
+    return (await eslint.calculateConfigForFile(file))?.rules ?? {};
   } catch (err) {
     // Not exit 1: a broken config must not pass for a caught violation.
     console.error(`ERROR: cannot compute the ESLint config for ${file}: ${err.message}`);
@@ -100,22 +109,31 @@ async function setting(file) {
   }
 }
 
+const on = (value) => (value && value[0] !== 0 ? value : undefined);
+
 for (const file of files) {
-  const actual = await setting(file);
-  const expected = isExempt(file)
-    ? undefined
-    : file.startsWith(`${SERVER}/repositories/`)
-      ? REPOSITORY_OPTIONS
-      : SERVICE_OPTIONS;
-  if (!isDeepStrictEqual(actual, expected)) {
-    problems.push(
-      `${file}: ${RULE} is ${JSON.stringify(actual ?? 'off')}, expected ${JSON.stringify(expected ?? 'off')}.`,
-    );
+  const rules = await rulesOf(file);
+  const expected = {
+    ...GUARD,
+    [RULE]: isExempt(file)
+      ? undefined
+      : file.startsWith(`${SERVER}/repositories/`)
+        ? REPOSITORY_OPTIONS
+        : SERVICE_OPTIONS,
+  };
+  for (const [rule, want] of Object.entries(expected)) {
+    const actual = on(rules[rule]);
+    if (!isDeepStrictEqual(actual, want)) {
+      problems.push(
+        `${file}: ${rule} is ${JSON.stringify(actual ?? 'off')}, expected ${JSON.stringify(want ?? 'off')}.`,
+      );
+    }
   }
 }
 
-for (const e of EXEMPT.filter((x) => !x.endsWith('/'))) {
-  if (!files.includes(e)) problems.push(`${e}: exempt, but no such file. Drop the exemption.`);
+for (const e of EXEMPT) {
+  const live = e.endsWith('/') ? files.some((f) => f.startsWith(e)) : files.includes(e);
+  if (!live) problems.push(`${e}: exempt, but no such source file. Drop the exemption.`);
 }
 
 if (problems.length) {
@@ -127,5 +145,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `${RULE}: on for ${files.length - files.filter(isExempt).length} of ${files.length} files under ${SERVER}/; ok`,
+  `${RULE}: on for ${files.length - files.filter(isExempt).length} of ${files.length} files under ${SERVER}/, guard on all; ok`,
 );

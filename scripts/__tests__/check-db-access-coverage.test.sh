@@ -27,6 +27,8 @@ done
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP" "$PROBE" "$MTS_FIXTURE"' EXIT
+# Leftovers of a killed run would fail the real-config case.
+rm -f "$PROBE" "$MTS_FIXTURE"
 
 pass=0
 fail=0
@@ -93,6 +95,10 @@ probe "allow a table" "s.replace(\"const SCHEMA_CONSTANTS = ['AUDIT_ENTITY_TYPES
 echo "Case: the rule downgraded to a warning"
 probe "warn" "s.replace(\"'local/no-direct-db-access': ['error', { allow: SCHEMA_CONSTANTS }]\", \"'local/no-direct-db-access': ['warn', { allow: SCHEMA_CONSTANTS }]\")" &&
   EXPECT='src/server/services/ImportService.ts:' assert_exit "warn" 1 --config "$PROBE"
+
+echo "Case: a service exempted from the inline-disable guard"
+probe "guard ignore" "s.replace(\"ignores: ['src/server/**/__tests__/**'],\n    plugins: { '@eslint-community/eslint-comments': eslintComments },\", \"ignores: ['src/server/**/__tests__/**', 'src/server/services/ImportService.ts'],\n    plugins: { '@eslint-community/eslint-comments': eslintComments },\")" &&
+  EXPECT='src/server/services/ImportService.ts:' assert_exit "guard ignore" 1 --config "$PROBE"
 
 echo "Case: a named exemption that no longer applies"
 probe "stale exemption" "s.replace(\"      'src/server/health.ts',\n\", '')" &&
