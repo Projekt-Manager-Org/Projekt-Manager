@@ -27,10 +27,9 @@
  *       services already accept (see `src/server/services/Logger.ts`).
  */
 
-import { lt } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
-import { auditLog } from '../db/schema.js';
 import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
+import { deleteAuditEntriesBefore } from '../repositories/audit.js';
 import type { ServiceLogger } from './Logger.js';
 
 export interface RunAuditRetentionCleanupDeps {
@@ -89,9 +88,7 @@ export async function runAuditRetentionCleanup(
 
   // The audit_log triggers accept the DELETE only under
   // `withAuditLogRemoval` (AC-642).
-  const deleted = await withAuditLogRemoval(deps.db, (tx) =>
-    tx.delete(auditLog).where(lt(auditLog.createdAt, cutoff)).returning({ id: auditLog.id }),
-  );
+  const deleted = await withAuditLogRemoval(deps.db, (tx) => deleteAuditEntriesBefore(tx, cutoff));
 
   const removedCount = deleted.length;
   const ranAt = runAt.toISOString();

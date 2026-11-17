@@ -19,10 +19,10 @@
  * considered.
  *
  * The retention service itself is the sole deleter of `audit_log`
- * rows — see `src/server/services/audit-retention.ts` and the
- * architecture-check allowlist in
- * `scripts/check-audit-mutations.sh`. This module only drives the
- * schedule; it does not touch the table directly.
+ * rows — see `src/server/services/audit-retention.ts`; the DB
+ * triggers reject a delete outside `withAuditLogRemoval` (AC-642).
+ * This module only drives the schedule; it does not touch the table
+ * directly.
  */
 
 import type { Database } from './db/connection.js';

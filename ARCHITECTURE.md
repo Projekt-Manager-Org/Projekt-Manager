@@ -177,7 +177,7 @@ What a filename does not tell you. Not a file list.
 **`src/server/services/`** — one service per entity, plus subsystems:
 
 - `mutate.ts` — the single write path for audited tables (ADR-0021).
-- `audit_log` itself is append-only below the services (AC-642; a user delete still clears `actor_id`, AC-567): triggers in `src/server/db/baseline/tail/60-audit-log-append-only.sql`. Rows leave only via `withAuditLogRemoval` (`src/server/db/auditLogRemoval.ts`) — retention, the dev seed, test fixtures.
+- `audit_log` itself is append-only below the services (AC-642; a user delete still clears `actor_id`, AC-567): triggers in `src/server/db/baseline/tail/60-audit-log-append-only.sql`. Rows leave only via `withAuditLogRemoval` (`src/server/db/auditLogRemoval.ts`) — retention, the dev seed, test fixtures. `scripts/check-audit-mutations.sh` pins the files that may insert one (`AUDIT_INSERT_SITES`).
 - `services/events.ts` — the **domain** event bus (audit, notifications). Not the SSE pair `src/server/routes/events.ts` / `src/server/sse/`.
 - `KeyEnvelopeService.ts` — the entire crypto perimeter on B2 ciphertext (ADR-0024).
 - `backup.ts`, `backup-drill.ts`, `ephemeralPg.ts`, `r2Uploader.ts` — the Layer 2 backup pipeline (ADR-0020).

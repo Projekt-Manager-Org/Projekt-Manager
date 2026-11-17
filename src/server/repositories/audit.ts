@@ -1,9 +1,9 @@
 /**
- * Audit-log repository — read-only (AC-642).
+ * Audit-log repository (AC-642).
  *
- * The audit surface is append-only (data-model.md §5.10); no create,
- * update, or delete path is exposed. Writes happen exclusively through
- * the service-layer `mutate()` helper.
+ * The audit surface is append-only (data-model.md §5.10): no update
+ * path exists, and the audit_log triggers accept a delete only under
+ * `withAuditLogRemoval` (AC-642).
  *
  * Scope composition follows the ADR-0019 pattern: the repository
  * applies one `WHERE` fragment — destructive-action narrowing — ANDed
@@ -17,9 +17,9 @@
  * the same page (api.md §14.1).
  */
 
-import { and, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, lt, lte, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
-import type { Database } from '../db/connection.js';
+import type { Database, TxHandle } from '../db/connection.js';
 import { auditLog, users } from '../db/schema.js';
 import type { AuditEntityType } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
@@ -403,4 +403,29 @@ function toAuditRow(row: {
     correlationId: row.correlationId,
     actorDisplayName: row.actorDisplayName,
   };
+}
+
+/**
+ * Insert one audit row and return it, in the caller's transaction so it
+ * commits with the change it records (ADR-0021). The database assigns
+ * `id` and `created_at`; a caller cannot backdate a row.
+ */
+export async function insertAuditEntry(
+  tx: TxHandle,
+  values: Omit<typeof auditLog.$inferInsert, 'id' | 'createdAt'>,
+): Promise<typeof auditLog.$inferSelect | undefined> {
+  const rows = await tx.insert(auditLog).values(values).returning();
+  return rows[0];
+}
+
+/**
+ * Delete the audit rows created before `cutoff` and return their ids
+ * (AC-632). `tx` must come from `withAuditLogRemoval`; the triggers
+ * reject the delete otherwise (AC-642).
+ */
+export async function deleteAuditEntriesBefore(
+  tx: TxHandle,
+  cutoff: Date,
+): Promise<{ id: string }[]> {
+  return tx.delete(auditLog).where(lt(auditLog.createdAt, cutoff)).returning({ id: auditLog.id });
 }

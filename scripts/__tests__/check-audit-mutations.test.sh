@@ -45,6 +45,12 @@
 #      Expected: exit 1.
 #  13. An exemption call wrapped over several lines (the name is not on
 #      the call's first line). Expected: exit 1.
+#  14. `insertAuditEntry` called in a file AUDIT_INSERT_SITES does not
+#      list. Expected: exit 1.
+#  15. `insertAuditEntry` imported under an alias in such a file.
+#      Expected: exit 1.
+#  16. A raw `.insert(auditLog)` in a repository other than audit.ts.
+#      Expected: exit 1.
 #   (Previous scenarios 8–9 covered notification_rule as an audited
 #    entity; removed when ADR-0023 carved it out of the audit coupling.
 #    The numbers are reused here for attachments now that attachments is
@@ -307,6 +313,39 @@ await this.db.transaction((tx) =>
 );
 EOF
 assert_exit 1 "wrapped exemption call is flagged" \
+  env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
+
+# -------------------------------------------------------------
+# Scenarios 14–16 — audit-row inserts are pinned to their files.
+# -------------------------------------------------------------
+echo ""
+echo "Scenario 14: insertAuditEntry called in an unlisted file → expect exit 1"
+tmp="$(mktmp)"
+mkdir -p "$tmp/src/server/services"
+cat > "$tmp/src/server/services/CustomerService.ts" <<'EOF'
+await insertAuditEntry(tx, { actorKind: 'system', entityType: 'customer', action: 'update' });
+EOF
+assert_exit 1 "audit insert in an unlisted file is flagged" \
+  env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
+
+echo ""
+echo "Scenario 15: insertAuditEntry imported under an alias → expect exit 1"
+tmp="$(mktmp)"
+mkdir -p "$tmp/src/server/services"
+cat > "$tmp/src/server/services/CustomerService.ts" <<'EOF'
+import { insertAuditEntry as record } from '../repositories/audit.js';
+EOF
+assert_exit 1 "aliased audit insert import is flagged" \
+  env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
+
+echo ""
+echo "Scenario 16: raw audit_log insert in another repository → expect exit 1"
+tmp="$(mktmp)"
+mkdir -p "$tmp/src/server/repositories"
+cat > "$tmp/src/server/repositories/dataExchangeJob.ts" <<'EOF'
+await tx.insert(auditLog).values(row);
+EOF
+assert_exit 1 "raw audit insert in another repository is flagged" \
   env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
 
 echo ""

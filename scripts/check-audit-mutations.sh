@@ -19,10 +19,9 @@
 #   extends this check's scan. Neither direction lets a new audited
 #   entity ship with its mutation surface unobserved.
 #
-# `audit_log` itself is NOT in the audited-table set — `mutate()` is
-# its legitimate writer, and retention is its only production deleter —
-# enforced at runtime by the DB triggers (AC-642). Both are allowlisted
-# below.
+# `audit_log` itself is NOT in the audited-table set. The DB triggers
+# accept a delete of its rows only under `withAuditLogRemoval` (AC-642).
+# Its inserts are pinned to AUDIT_INSERT_SITES below.
 #
 # Allowlist (ALLOW): files that legitimately author raw mutations
 # against audited tables — kept intentionally small and reviewed per
@@ -147,10 +146,6 @@ ALLOWLIST=(
   # seed steps outside the machine on purpose to compose a varied dev
   # landscape. TRUNCATE has just run — no users observe the moves.
   "src/server/seed/invoices.ts"
-  # Audit retention — the only production deleter of audit_log rows (AC-642).
-  # (audit_log is not in the audited-table set, but this job is the
-  # archetypal allowlist case for parity with the helper.)
-  "src/server/services/audit-retention.ts"
   # Full-account takeout IMPORT job runner — writes raw audit_log rows at
   # its terminal transition (AC-332) and raw INSERT into `attachments` for
   # each restored binary (Pass 2). Both are reviewed bulk-write sites:
@@ -177,6 +172,19 @@ EXEMPTION_SITES=(
   "src/server/services/attachment-orphan-reaper.ts:orphan-reap"
   "src/server/services/AuthService.ts:last-login"
   "src/server/services/AuthService.ts:self-preference"
+)
+
+# Audit-row inserts (ADR-0021): an audit_log insert records no state change
+# of its own, and neither a trigger nor a type stops a forged or duplicate
+# row. Every file under src/server that inserts one — raw, or by naming
+# `insertAuditEntry` (which also catches an aliased import) — must be listed
+# here; tests and `repositories/audit.ts`, which defines it, aside.
+AUDIT_INSERT_SITES=(
+  "src/server/services/mutate.ts"
+  # The job and import audit rows; #945 and #946 move them to
+  # `insertAuditEntry`.
+  "src/server/services/DataExchangeJobService.ts"
+  "src/server/services/ImportService.ts"
 )
 
 is_allowlisted() {
@@ -288,6 +296,30 @@ while IFS= read -r line; do
   done
   [ "$listed" -eq 0 ] && exemption_findings="${exemption_findings}${line}"$'\n'
 done < <($scanner 'exemptFromAudit\((\s*[^)[:space:]]|\s*$)' src/server 2>/dev/null || true)
+
+# --- Audit-row inserts ------------------------------------------------
+insert_findings=""
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  file="${line%%:*}"
+  case "$file" in
+    src/server/repositories/audit.ts | */__tests__/*) continue ;;
+  esac
+  listed=0
+  for entry in "${AUDIT_INSERT_SITES[@]}"; do
+    [ "$entry" = "$file" ] && listed=1
+  done
+  [ "$listed" -eq 0 ] && insert_findings="${insert_findings}${line}"$'\n'
+done < <($scanner '\binsertAuditEntry\b|\.insert\(\s*auditLog\b|INSERT INTO audit_log\b' src/server 2>/dev/null || true)
+
+if [ -n "$insert_findings" ]; then
+  echo "ERROR: audit_log insert in a file AUDIT_INSERT_SITES does not list." >&2
+  echo "       Record the change through mutate(), or add the file to" >&2
+  echo "       AUDIT_INSERT_SITES in $(basename "$0")." >&2
+  echo "" >&2
+  printf "%s" "$insert_findings" >&2
+  exit 1
+fi
 
 if [ -n "$exemption_findings" ]; then
   echo "ERROR: audit exemption used at a site EXEMPTION_SITES does not name." >&2
