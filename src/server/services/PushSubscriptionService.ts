@@ -17,9 +17,14 @@
  * `AuditEntityType` — they're transport state, not a domain entity.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
-import { pushSubscriptions } from '../db/schema.js';
+import {
+  countPushSubscriptionsByUserId,
+  deletePushSubscriptionByEndpoint,
+  deletePushSubscriptionById,
+  findPushSubscriptionIdByEndpoint,
+  upsertPushSubscription,
+} from '../repositories/pushSubscription.js';
 import { validationError } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 
@@ -56,30 +61,14 @@ export class PushSubscriptionService {
       throw validationError(STRINGS.notifications.invalidPushSubscription);
     }
 
-    // Upsert on endpoint. If the row exists, it moves to this user and
-    // takes the new key material + userAgent (key rotation needs no
-    // re-registration).
-    const rows = await this.db
-      .insert(pushSubscriptions)
-      .values({
-        userId,
-        endpoint: input.endpoint,
-        p256dh: input.keys.p256dh,
-        auth: input.keys.auth,
-        userAgent: input.userAgent ?? null,
-      })
-      .onConflictDoUpdate({
-        target: pushSubscriptions.endpoint,
-        set: {
-          userId,
-          p256dh: input.keys.p256dh,
-          auth: input.keys.auth,
-          userAgent: input.userAgent ?? null,
-        },
-      })
-      .returning();
-
-    const row = rows[0]!;
+    // Key rotation needs no re-registration: the upsert takes the new keys.
+    const row = (await upsertPushSubscription(this.db, {
+      userId,
+      endpoint: input.endpoint,
+      p256dh: input.keys.p256dh,
+      auth: input.keys.auth,
+      userAgent: input.userAgent ?? null,
+    }))!;
     return {
       id: row.id,
       endpoint: row.endpoint,
@@ -95,9 +84,7 @@ export class PushSubscriptionService {
     if (typeof endpoint !== 'string' || endpoint.length === 0) {
       throw validationError(STRINGS.notifications.invalidPushSubscription);
     }
-    await this.db
-      .delete(pushSubscriptions)
-      .where(and(eq(pushSubscriptions.userId, userId), eq(pushSubscriptions.endpoint, endpoint)));
+    await deletePushSubscriptionByEndpoint(this.db, userId, endpoint);
   }
 
   /**
@@ -106,9 +93,7 @@ export class PushSubscriptionService {
    * the existence leak a 404 would produce.
    */
   async unsubscribeById(userId: string, id: string): Promise<void> {
-    await this.db
-      .delete(pushSubscriptions)
-      .where(and(eq(pushSubscriptions.id, id), eq(pushSubscriptions.userId, userId)));
+    await deletePushSubscriptionById(this.db, userId, id);
   }
 
   /**
@@ -117,9 +102,7 @@ export class PushSubscriptionService {
    * if the subscription id originates from an untrusted source.
    */
   async prunePermanentlyDead(userId: string, subscriptionId: string): Promise<void> {
-    await this.db
-      .delete(pushSubscriptions)
-      .where(and(eq(pushSubscriptions.id, subscriptionId), eq(pushSubscriptions.userId, userId)));
+    await deletePushSubscriptionById(this.db, userId, subscriptionId);
   }
 
   /**
@@ -127,20 +110,11 @@ export class PushSubscriptionService {
    * another user's endpoint answers `false`, same as an unknown one.
    */
   async isRegistered(userId: string, endpoint: string): Promise<boolean> {
-    const [row] = await this.db
-      .select({ id: pushSubscriptions.id })
-      .from(pushSubscriptions)
-      .where(and(eq(pushSubscriptions.userId, userId), eq(pushSubscriptions.endpoint, endpoint)))
-      .limit(1);
-    return row !== undefined;
+    return (await findPushSubscriptionIdByEndpoint(this.db, userId, endpoint)) !== undefined;
   }
 
   /** Count the caller's subscriptions — used by tests for assertions. */
   async countForUser(userId: string): Promise<number> {
-    const [row] = await this.db
-      .select({ value: sql<number>`count(*)::int` })
-      .from(pushSubscriptions)
-      .where(eq(pushSubscriptions.userId, userId));
-    return row?.value ?? 0;
+    return countPushSubscriptionsByUserId(this.db, userId);
   }
 }
