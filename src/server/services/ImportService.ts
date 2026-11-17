@@ -21,17 +21,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { isNotNull, sql } from 'drizzle-orm';
-import {
-  auditLog,
-  companyProfile,
-  customers,
-  invoices,
-  invoiceSequence,
-  projects,
-  projectWorkers,
-  users,
-} from '../db/schema.js';
 import type { Database, TransactionalDatabase } from '../db/connection.js';
 import {
   importDropsIssuedInvoices,
@@ -60,9 +49,19 @@ import {
   type ValidationIssue,
 } from '../../domain/dataExchange.js';
 import { listAllKeys } from '../repositories/attachment.js';
+import { insertAuditEntry } from '../repositories/audit.js';
+import {
+  findInvoiceSequences,
+  findRestoreTargetPresence,
+  insertBusinessData,
+  lockNumberedInvoices,
+  wipeBusinessData,
+  type InvoiceSequenceRow,
+} from '../repositories/businessData.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import { bestEffortHideStorageKeys } from './AttachmentService.js';
 import type { ServiceLogger } from './Logger.js';
+import { exemptFromAudit } from './mutate.js';
 import { emitProjectChanged } from '../sse/emitters.js';
 import type { AuthUser } from '../middleware/auth.js';
 import {
@@ -559,26 +558,18 @@ function toInvoiceSequenceInsert(seq: EnvelopeInvoiceSequence) {
  * Matching on `(id, number)` also rejects an envelope from another
  * instance that reuses a number for a different document.
  *
- * The ACCESS EXCLUSIVE lock is the one the wipe's TRUNCATE takes anyway;
- * taking it before the read keeps a concurrent issuance from committing
- * between this check and the wipe.
+ * The read takes the wipe's ACCESS EXCLUSIVE lock early (`lockNumberedInvoices`).
  */
 async function assertKeepsNumberedInvoices(
   tx: TransactionalDatabase,
   envelopeInvoices: EnvelopeInvoice[],
 ): Promise<void> {
-  await tx.execute(sql`LOCK TABLE invoices IN ACCESS EXCLUSIVE MODE`);
-  const target = await tx
-    .select({ id: invoices.id, number: invoices.number })
-    .from(invoices)
-    .where(isNotNull(invoices.number));
+  const target = await lockNumberedInvoices(tx);
   const carried = new Set(envelopeInvoices.map((inv) => `${inv.id}|${inv.number}`));
   if (target.some((row) => !carried.has(`${row.id}|${row.number}`))) {
     throw importDropsIssuedInvoices();
   }
 }
-
-type SequenceRow = typeof invoiceSequence.$inferSelect;
 
 /**
  * AC-369: `invoice_sequence` is a high-water mark — an override never
@@ -586,7 +577,10 @@ type SequenceRow = typeof invoiceSequence.$inferSelect;
  * envelope lacks survives the wipe. A target counter ahead of its highest
  * stored number carries numbers a DR restore lost (data-model.md §6.13).
  */
-function mergeSequence(target: SequenceRow[], envelope: SequenceRow[]): SequenceRow[] {
+function mergeSequence(
+  target: InvoiceSequenceRow[],
+  envelope: InvoiceSequenceRow[],
+): InvoiceSequenceRow[] {
   const merged = new Map(target.map((row) => [`${row.year}|${row.kind}`, row]));
   for (const row of envelope) {
     const kept = merged.get(`${row.year}|${row.kind}`);
@@ -614,16 +608,7 @@ export class ImportService {
    * singleton), so a fresh install reads as empty (issue #230).
    */
   async isTargetNonEmpty(): Promise<boolean> {
-    const res = await this.db.execute<{ present: boolean }>(
-      sql`SELECT (
-        EXISTS (SELECT 1 FROM customers)
-        OR EXISTS (SELECT 1 FROM projects)
-        OR EXISTS (SELECT 1 FROM project_workers)
-        OR EXISTS (SELECT 1 FROM invoices)
-        OR EXISTS (SELECT 1 FROM attachments)
-      ) AS present`,
-    );
-    return res.rows[0]?.present === true;
+    return (await findRestoreTargetPresence(this.db)).present;
   }
 
   /**
@@ -711,7 +696,7 @@ export class ImportService {
     const projectRows = envelope.projects.map(toProjectInsert);
     const assignmentRows = envelope.project_workers.map(toAssignmentInsert);
     const invoiceSequenceRows = envelope.invoice_sequence.map(toInvoiceSequenceInsert);
-    let sequenceRowsToInsert: SequenceRow[] = invoiceSequenceRows;
+    let sequenceRowsToInsert: InvoiceSequenceRow[] = invoiceSequenceRows;
 
     // Invoice two-pass: insert originals (cancellationOf IS NULL) first,
     // then Stornos (cancellationOf !== null). The envelope arrives ordered
@@ -729,6 +714,8 @@ export class ImportService {
     let sessionInvalidated = false;
 
     await this.db.transaction(async (tx) => {
+      // ADR-0021: the restore writes the audited tables without per-row audit.
+      const restoreTx = exemptFromAudit(tx, 'restore');
       // VPN-first deployment (ADR-0008) rules out concurrent restores in
       // practice, so the default READ COMMITTED isolation is sufficient —
       // TRUNCATE takes ACCESS EXCLUSIVE anyway.
@@ -736,21 +723,8 @@ export class ImportService {
       // `usersExisted` is sampled separately because the session-invalidation
       // flag (AC-597) is keyed on pre-wipe `users` presence — an empty-users
       // override path performs no CASCADE on `sessions` and must return
-      // `sessionInvalidated: false`. Folding it into the same SELECT keeps
-      // the probe a single round trip.
-      const presenceResult = await tx.execute<{ present: boolean; users_existed: boolean }>(
-        sql`SELECT
-          (
-            EXISTS (SELECT 1 FROM customers)
-            OR EXISTS (SELECT 1 FROM projects)
-            OR EXISTS (SELECT 1 FROM project_workers)
-            OR EXISTS (SELECT 1 FROM invoices)
-            OR EXISTS (SELECT 1 FROM attachments)
-          ) AS present,
-          EXISTS (SELECT 1 FROM users) AS users_existed`,
-      );
-      const hasExisting = presenceResult.rows[0]?.present === true;
-      const usersExisted = presenceResult.rows[0]?.users_existed === true;
+      // `sessionInvalidated: false`.
+      const { present: hasExisting, usersExisted } = await findRestoreTargetPresence(tx);
 
       if (hasExisting && !opts.override) {
         throw targetNotEmpty();
@@ -777,16 +751,10 @@ export class ImportService {
 
       if (opts.override) {
         // AC-369: read the target counters before the wipe clears them.
-        sequenceRowsToInsert = mergeSequence(
-          await tx.select().from(invoiceSequence),
-          invoiceSequenceRows,
-        );
+        sequenceRowsToInsert = mergeSequence(await findInvoiceSequences(tx), invoiceSequenceRows);
         // AC-594 / issue #230: the wipe is unconditional under override
-        // and now covers the expanded set. CASCADE handles dependency
-        // order — TRUNCATE … CASCADE propagates through every FK
-        // reference (including `sessions.user_id → users.id ON DELETE
-        // CASCADE`, which wipes every active session including the
-        // operator's; see `sessionInvalidated` flag below).
+        // and covers the expanded set, including `sessions` — every active
+        // session goes, the operator's too (see `sessionInvalidated`).
         //
         // The storage objects backing the wiped attachment rows are NOT
         // cleaned up by either reaper: the pending-orphan reaper only
@@ -798,108 +766,20 @@ export class ImportService {
         // the post-commit hide demotes them to noncurrent and the
         // existing lifecycle policy reaps them on its own clock.
         keysToHide = await listAllKeys(tx);
-        // Two-step wipe to preserve operational / permanent tables:
-        //
-        // Step A — TRUNCATE the pure-business and session tables that have
-        // no FK references from outside the wipe set. CASCADE is NOT used
-        // here to avoid accidentally wiping audit_log, data_exchange_job,
-        // notification_rule (all carry FK SET NULL back to users and must
-        // survive the restore so the operator can reattach to their job).
-        //
-        //   sessions, push_subscriptions — ON DELETE CASCADE from users;
-        //     wiped here so the TRUNCATE users (step B) has no live referrers.
-        //   company_profile, invoice_sequence — no FK back to the wipe set,
-        //     so CASCADE would NOT reach them; listed explicitly.
-        //
-        // Step B — DELETE FROM users (not TRUNCATE) so that Postgres honours
-        //   the ON DELETE SET NULL FKs: audit_log.actor_id, data_exchange_job.
-        //   created_by, and notification_rule.created_by are all NULLed rather
-        //   than deleted. TRUNCATE does NOT honour ON DELETE actions; DELETE
-        //   does. RESTART IDENTITY covers the sequences reset.
-        await tx.execute(
-          sql`TRUNCATE TABLE
-            sessions,
-            push_subscriptions,
-            attachments,
-            invoices,
-            invoice_sequence,
-            project_workers,
-            project_storage_usage,
-            projects,
-            customers,
-            company_profile
-          RESTART IDENTITY`,
-        );
-        // Step B: DELETE users — honours SET NULL FKs (audit_log, data_exchange_job, ...).
-        await tx.execute(sql`DELETE FROM users`);
+        await wipeBusinessData(restoreTx);
         sessionInvalidated = usersExisted;
       }
 
-      // Insert order — pinned by issue #230:
-      //   users → company_profile → customers → projects → project_workers
-      //   → invoice_sequence → invoices (originals) → invoices (stornos).
-      // Justified by FK direction:
-      //   - users come first (every other table's audit columns reference
-      //     users.id).
-      //   - company_profile depends on users (updatedBy → users.id).
-      //   - customers depends on users (createdBy/updatedBy).
-      //   - projects depends on customers + users.
-      //   - project_workers depends on projects + users.
-      //   - invoice_sequence has no FK — order is cosmetic but kept
-      //     before invoices so the next-number allocator is ready.
-      //   - invoices originals (cancellationOf IS NULL) before Stornos
-      //     so the self-FK from Storno → original resolves.
-      if (userRows.length > 0) {
-        await tx.insert(users).values(userRows);
-      }
-      if (companyProfileRows.length > 0) {
-        // Singleton: the table holds at most one row by CHECK + UNIQUE
-        // on the `singleton` boolean. After the wipe (or on a fresh
-        // install where the baseline migration pre-seeded a default
-        // row that the wipe just removed) we INSERT the envelope's
-        // singleton. The empty-target path is the one wrinkle: a
-        // baseline-pre-seeded row exists; we upsert with `ON CONFLICT
-        // (singleton) DO UPDATE` so the envelope's contents replace
-        // the placeholder. Drizzle's `onConflictDoUpdate` keeps the
-        // semantic explicit.
-        await tx
-          .insert(companyProfile)
-          .values(companyProfileRows)
-          .onConflictDoUpdate({
-            target: companyProfile.singleton,
-            set: {
-              id: sql`excluded.id`,
-              companyName: sql`excluded.company_name`,
-              address: sql`excluded.address`,
-              taxId: sql`excluded.tax_id`,
-              ustId: sql`excluded.ust_id`,
-              iban: sql`excluded.iban`,
-              accentColor: sql`excluded.accent_color`,
-              footerText: sql`excluded.footer_text`,
-              defaultTaxMode: sql`excluded.default_tax_mode`,
-              updatedAt: sql`excluded.updated_at`,
-              updatedBy: sql`excluded.updated_by`,
-            },
-          });
-      }
-      if (customerRows.length > 0) {
-        await tx.insert(customers).values(customerRows);
-      }
-      if (projectRows.length > 0) {
-        await tx.insert(projects).values(projectRows);
-      }
-      if (assignmentRows.length > 0) {
-        await tx.insert(projectWorkers).values(assignmentRows);
-      }
-      if (sequenceRowsToInsert.length > 0) {
-        await tx.insert(invoiceSequence).values(sequenceRowsToInsert);
-      }
-      if (invoiceOriginals.length > 0) {
-        await tx.insert(invoices).values(invoiceOriginals);
-      }
-      if (invoiceStornos.length > 0) {
-        await tx.insert(invoices).values(invoiceStornos);
-      }
+      await insertBusinessData(restoreTx, {
+        users: userRows,
+        companyProfile: companyProfileRows,
+        customers: customerRows,
+        projects: projectRows,
+        projectWorkers: assignmentRows,
+        invoiceSequence: sequenceRowsToInsert,
+        invoiceOriginals,
+        invoiceStornos,
+      });
 
       // Single import-audit row. A business-data import is a deployment-level
       // event, not an event attributed to any one entity — the prior
@@ -948,7 +828,7 @@ export class ImportService {
       // attachment rows are inserted — giving the job sole audit ownership (AC-332).
       // A direct `ImportService` call (e.g. the seed) leaves `writeAuditRow` undefined (defaults true).
       if (opts.writeAuditRow !== false) {
-        await tx.insert(auditLog).values({
+        await insertAuditEntry(tx, {
           actorKind: 'system',
           actorId: null,
           actorReason: 'data_import',

@@ -2,19 +2,9 @@
  * Unified business-data export. See ADR-0018 and data-model.md §5.8.
  */
 
-import { asc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
-import {
-  attachments,
-  companyProfile,
-  customers,
-  invoiceSequence,
-  invoices,
-  projects,
-  projectWorkers,
-  users,
-} from '../db/schema.js';
 import { SCHEMA_VERSION, type Envelope } from '../../domain/dataExchange.js';
+import { readBusinessSnapshot } from '../repositories/businessData.js';
 import { toCustomerResponse } from '../repositories/customer.js';
 import { isUnscoped } from '../repositories/scope.js';
 import type { AuthUser } from '../middleware/auth.js';
@@ -45,9 +35,9 @@ export class ExportService {
    * `invoice_sequence` ride the envelope alongside the original three
    * (customers, projects, project_workers) plus the metadata-only
    * `attachments` slot, so a snapshot reproduces the full operator-
-   * meaningful business state. Every SELECT runs inside the same
-   * `REPEATABLE READ READ ONLY` transaction so the export is a single
-   * consistent snapshot — no torn reads between tables.
+   * meaningful business state. `readBusinessSnapshot` runs every SELECT
+   * inside one `REPEATABLE READ READ ONLY` transaction, so the export is a
+   * single consistent snapshot — no torn reads between tables.
    *
    * The caller is threaded through as a fail-fast tripwire: this service
    * deliberately bypasses the per-caller scope seam (ADR-0019) because an
@@ -73,62 +63,7 @@ export class ExportService {
       invoiceRows,
       invoiceSequenceRows,
       attachmentRows,
-    } = await this.db.transaction(
-      async (tx) => {
-        // Sequential — drizzle runs each tx query on the same pg client, so
-        // Promise.all here would trigger pg's "concurrent query" deprecation
-        // warning without any real parallelism.
-        const userRows = await tx.select().from(users).orderBy(asc(users.id));
-        // Singleton table — one row enforced by UNIQUE(singleton) +
-        // CHECK(singleton = true). The `ORDER BY id ASC` is defensive
-        // uniformity: it costs nothing and pins ordering if a future
-        // migration ever relaxes the singleton invariant.
-        const companyProfileRows = await tx
-          .select()
-          .from(companyProfile)
-          .orderBy(asc(companyProfile.id));
-        const customerRows = await tx.select().from(customers).orderBy(asc(customers.id));
-        const projectRows = await tx.select().from(projects).orderBy(asc(projects.id));
-        const assignmentRows = await tx
-          .select()
-          .from(projectWorkers)
-          .orderBy(asc(projectWorkers.projectId), asc(projectWorkers.userId));
-        // Originals first, Stornos second — the importer's two-pass
-        // insert relies on this ordering to satisfy the self-FK
-        // (`cancellation_of → invoices.id`) without a deferrable
-        // constraint. Postgres treats `(cancellation_of IS NULL)` as a
-        // boolean expression that can sit in ORDER BY directly; DESC on
-        // a boolean puts TRUE (i.e. originals) first, FALSE (Stornos)
-        // last. `id` ASC is the deterministic tiebreaker so a re-export
-        // is byte-stable.
-        const invoiceRows = await tx
-          .select()
-          .from(invoices)
-          .orderBy(sql`(${invoices.cancellationOf} IS NULL) DESC`, asc(invoices.id));
-        const invoiceSequenceRows = await tx
-          .select()
-          .from(invoiceSequence)
-          .orderBy(asc(invoiceSequence.year), asc(invoiceSequence.kind));
-        // AC-431: only ready rows travel in the envelope. Pending rows
-        // represent uncommitted uploads and are excluded by design.
-        const attachmentRows = await tx
-          .select()
-          .from(attachments)
-          .where(eq(attachments.status, 'ready'))
-          .orderBy(asc(attachments.id));
-        return {
-          userRows,
-          companyProfileRows,
-          customerRows,
-          projectRows,
-          assignmentRows,
-          invoiceRows,
-          invoiceSequenceRows,
-          attachmentRows,
-        };
-      },
-      { isolationLevel: 'repeatable read', accessMode: 'read only' },
-    );
+    } = await readBusinessSnapshot(this.db);
 
     return {
       schema_version: SCHEMA_VERSION,

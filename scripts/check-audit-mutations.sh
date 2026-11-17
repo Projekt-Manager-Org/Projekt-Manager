@@ -122,9 +122,6 @@ ALLOWLIST=(
   # Migrations: schema-level DDL + seed-data migrations run outside
   # the runtime path and predate the helper.
   "src/server/db/migrations/"
-  # Unified restore — bulk import replaces business data in one
-  # transaction; per ADR-0021 this is allowlisted.
-  "src/server/services/ImportService.ts"
   # Business-data seed loader — fixture hydration bypasses audit by
   # design (data-model.md §7).
   "src/server/seed/business.ts"
@@ -170,6 +167,7 @@ EXEMPTION_SITES=(
   "src/server/services/attachment-orphan-reaper.ts:orphan-reap"
   "src/server/services/AuthService.ts:last-login"
   "src/server/services/AuthService.ts:self-preference"
+  "src/server/services/ImportService.ts:restore"
 )
 
 # Audit-row inserts (ADR-0021): an audit_log insert records no state change
@@ -181,7 +179,7 @@ AUDIT_INSERT_SITES=(
   "src/server/services/mutate.ts"
   # The job-terminal audit row (AC-332), written with the status flip.
   "src/server/services/DataExchangeJobService.ts"
-  # The import audit row; #946 moves it to `insertAuditEntry`.
+  # A direct restore's `data_import` row (AC-332); the import job writes its own.
   "src/server/services/ImportService.ts"
 )
 

@@ -18,8 +18,6 @@ const MINT = 'src/server/services/mutate.ts';
 const RAW_EXEMPT = [
   // The dev seed's wipe (data-model.md §7).
   'src/server/seed.ts',
-  // The restore wipe, until it moves into a repository (#946).
-  'src/server/services/ImportService.ts',
 ];
 
 function serverSources(dir = 'src/server') {

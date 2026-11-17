@@ -185,7 +185,7 @@ What a filename does not tell you. Not a file list.
 - `DataExchangeJobService.ts`, `takeout-export-builder.ts`, `takeout-export-runner.ts`, `takeout-import-runner.ts`, `takeout-staging.ts`, `takeout-staging-reaper.ts`, `data-exchange-boot-reaper.ts` — the takeout subsystem.
 - Bulk download has **no** server-side orchestrator: the browser assembles the zip (ADR-0024). Absence is a decision.
 
-**`src/server/repositories/`** — audited-table writes take a `MutatingDatabase`, which only `mutate()` and the named exemptions (`exemptFromAudit`) mint; `local/audit-write-gate` covers what `tsc` cannot see, raw SQL included (ADR-0021). `scope.ts` holds the role-based read-scope predicates (ADR-0019). `dataExchangeJob.ts` holds the takeout jobs' queries; `DataExchangeJobService` keeps their state machine and terminal audit row.
+**`src/server/repositories/`** — audited-table writes take a `MutatingDatabase`, which only `mutate()` and the named exemptions (`exemptFromAudit`) mint; `local/audit-write-gate` covers what `tsc` cannot see, raw SQL included (ADR-0021). `scope.ts` holds the role-based read-scope predicates (ADR-0019). `businessData.ts` is export and restore (ADR-0018): the snapshot read and the wipe-and-insert restore. `dataExchangeJob.ts` holds the takeout jobs' queries; `DataExchangeJobService` keeps their state machine and terminal audit row.
 
 **`src/server/seed/`** — `business.ts` seeds through `ImportService.import`, exercising the public restore contract. Only `src/test/api-helpers.ts` inserts users directly.
 

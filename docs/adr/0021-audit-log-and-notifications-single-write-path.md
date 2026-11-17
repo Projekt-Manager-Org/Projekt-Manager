@@ -25,7 +25,7 @@ Shape:
 - **`mutate()` helper**: opens a transaction, runs the mutation, writes the audit row, commits. The helper returns the committed row so subscribers dispatch after commit (a throwing subscriber cannot roll back domain state). Correlation id is a typed argument through the service chain — services never import Fastify.
 - **Self-preference carve-out.** `UserAccount` self-writes of UI preferences (`themePreference`, `pushMuted`) bypass `mutate()` and write directly. Rationale: per-user UI state with no cross-user consequence; routing them through audit dilutes the feed with configuration noise.
 - **Type gate (primary):** repository write functions on audited tables accept only a `MutatingDatabase` — a transaction handle only `mutateInTx()` mints (`src/server/db/connection.ts`; named exceptions: [Amendments](#amendments)). A caller holding any other handle fails `tsc`, so a mutation can only be authored from inside `mutate()` / `mutateInTx()` or at a named exception. This is the integrity guarantee; the static scan below is belt-and-braces for what the type system cannot see.
-- **Static architecture test (belt-and-braces),** CI-enforced: scan fails on raw `INSERT/UPDATE/DELETE` or Drizzle `db.insert/update/delete` targeting audited tables outside the helper — catching dynamically constructed SQL the type gate can't reach. Migrations, `ImportService` restore and business seed loaders are allowlisted; audit-free writes in repositories are the named exceptions ([Amendments](#amendments)).
+- **Static architecture test (belt-and-braces),** CI-enforced: scan fails on raw `INSERT/UPDATE/DELETE` or Drizzle `db.insert/update/delete` targeting audited tables outside the helper — catching dynamically constructed SQL the type gate can't reach. Migrations and business seed loaders are allowlisted; audit-free writes in repositories, the restore's included, are the named exceptions ([Amendments](#amendments)).
 - **Notification publisher**: in-process dispatch on commit. Subscribes to `{entity_type, action}` pairs. Non-mutation events (backup status, cron completion) publish to the same bus, bypassing audit.
 - **User-facing audit view**: read-only endpoint and UI. RBAC-sliced via the same repository predicates as [ADR-0019](0019-worker-data-scoping-repository-layer-predicate.md).
 - **Retention**: aligned with the DB-backup window (90 days per [ADR-0020 Amendment 2026-04-19](0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#amendments)).
@@ -90,6 +90,7 @@ Ruled out: storage growth is unbounded; the diff is what both viewers and notifi
 - `pending-upload` — the pending attachment row (AC-407);
 - `orphan-reap` — the reaper removing those rows (AC-407, AC-408);
 - `last-login` — sign-ins;
-- `self-preference` — a user's own theme or push mute (AC-659).
+- `self-preference` — a user's own theme or push mute (AC-659);
+- `restore` — the business-data restore (`src/server/repositories/businessData.ts`), which replaces the importable set and records one `data_import` row (ADR-0018, AC-332).
 
 What `tsc` cannot see, two checks hold: `local/audit-write-gate` (`eslint-rules/audit-write-gate.mjs`; no inline comment may disable it) refuses assertions to `MutatingDatabase`, in repositories audited-table writes through any other handle, and raw-SQL writes to audited tables anywhere else; `scripts/check-audit-mutations.sh` pins each exception to its file. A new exception adds a name to `AuditExemption`, a site to `EXEMPTION_SITES` and an entry to this list.
