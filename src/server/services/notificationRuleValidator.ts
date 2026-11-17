@@ -9,9 +9,8 @@
  * not a generic 422.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
 import type { TransactionalDatabase } from '../db/connection.js';
-import { users } from '../db/schema.js';
+import { findActiveUserIds } from '../repositories/user.js';
 import {
   NOTIFICATION_EVENT_CLASSES,
   PROJECT_SCOPED_EVENT_CLASSES,
@@ -132,10 +131,7 @@ export async function validateRuleInput(
   // creation — AC-203) is handled at the publisher's
   // resolution step, not here.
   if (userIds.length > 0) {
-    const rows = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(inArray(users.id, userIds), eq(users.active, true)));
+    const rows = await findActiveUserIds(db, userIds);
     const active = new Set(rows.map((r) => r.id));
     const missingOrInactive = userIds.filter((u) => !active.has(u));
     if (missingOrInactive.length > 0) {

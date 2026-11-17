@@ -15,9 +15,13 @@
  * stay isolated.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
-import { users, projectWorkers } from '../db/schema.js';
+import { findActiveWorkerIdsByProjectId } from '../repositories/project-read.js';
+import {
+  findActiveUserIds,
+  findActiveUserIdsByRoles,
+  findUnmutedActiveUserIds,
+} from '../repositories/user.js';
 import type { NotificationRuleRow } from '../repositories/notificationRule.js';
 import {
   type NotificationEventClass,
@@ -92,26 +96,14 @@ export async function resolveRecipients(
   //    operator.
   if (roleSet.size > 0) {
     const roleList = Array.from(roleSet);
-    const rows = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(
-        sql`${users.roles} && ARRAY[${sql.join(
-          roleList.map((r) => sql`${r}`),
-          sql`, `,
-        )}]::text[] AND ${eq(users.active, true)}`,
-      );
+    const rows = await findActiveUserIdsByRoles(db, roleList);
     for (const row of rows) candidateIds.add(row.id);
   }
 
   // 2. Assigned-worker expansion: only meaningful when the event is
   //    project-scoped AND a projectId is known.
   if (anyAssignedWorkers && projectId !== null) {
-    const rows = await db
-      .select({ userId: projectWorkers.userId })
-      .from(projectWorkers)
-      .innerJoin(users, eq(users.id, projectWorkers.userId))
-      .where(and(eq(projectWorkers.projectId, projectId), eq(users.active, true)));
+    const rows = await findActiveWorkerIdsByProjectId(db, projectId);
     for (const row of rows) candidateIds.add(row.userId);
   }
 
@@ -122,10 +114,7 @@ export async function resolveRecipients(
   //    the safety net for the post-create deactivate/delete path.
   if (explicitUserIds.size > 0) {
     const ids = Array.from(explicitUserIds);
-    const rows = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(inArray(users.id, ids), eq(users.active, true)));
+    const rows = await findActiveUserIds(db, ids);
     for (const row of rows) candidateIds.add(row.id);
   }
 
@@ -134,9 +123,6 @@ export async function resolveRecipients(
 
 export async function filterUnmutedUserIds(db: Database, userIds: string[]): Promise<string[]> {
   if (userIds.length === 0) return [];
-  const rows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(and(inArray(users.id, userIds), eq(users.pushMuted, false), eq(users.active, true)));
+  const rows = await findUnmutedActiveUserIds(db, userIds);
   return rows.map((r) => r.id);
 }

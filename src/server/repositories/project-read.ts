@@ -141,6 +141,18 @@ export async function fetchWorkersForProject(
     .where(eq(projectWorkers.projectId, projectId));
 }
 
+/** The active users assigned to `projectId`. */
+export async function findActiveWorkerIdsByProjectId(
+  db: TransactionalDatabase,
+  projectId: string,
+): Promise<{ userId: string }[]> {
+  return db
+    .select({ userId: projectWorkers.userId })
+    .from(projectWorkers)
+    .innerJoin(users, eq(users.id, projectWorkers.userId))
+    .where(and(eq(projectWorkers.projectId, projectId), eq(users.active, true)));
+}
+
 /** Fetch assigned workers for multiple projects, grouped by projectId. */
 export async function fetchWorkersForProjects(
   db: Database,

@@ -14,10 +14,8 @@
  * password, remove env vars, redeploy clean.
  */
 
-import { sql } from 'drizzle-orm';
 import type { Database } from './db/connection.js';
-import { users } from './db/schema.js';
-import { createUser as createUserRepo } from './repositories/user.js';
+import { countUsers, createUser as createUserRepo } from './repositories/user.js';
 import { hashPassword } from './password.js';
 import { checkBootstrapCredentialPair } from './config/bootstrap-credentials.js';
 import { mutate } from './services/mutate.js';
@@ -108,8 +106,7 @@ export async function bootstrapAdminIfEmpty(
   // re-insert — but the warning reminds the operator to clean up.
   // See consolidation review G F-6.
   // ---------------------------------------------------------------
-  const [countRow] = await db.select({ count: sql<number>`cast(count(*) as int)` }).from(users);
-  const initialCount = countRow?.count ?? 0;
+  const initialCount = await countUsers(db);
   if (initialCount > 0) {
     const leftoverUsername = (config.username?.trim() ?? '').length > 0;
     const leftoverPassword = (config.password ?? '').length > 0;
@@ -180,10 +177,7 @@ export async function bootstrapAdminIfEmpty(
         run: async (tx) => {
           // Re-check inside the transaction — closes the window between
           // the initial count and the insert.
-          const [recount] = await tx
-            .select({ count: sql<number>`cast(count(*) as int)` })
-            .from(users);
-          if ((recount?.count ?? 0) > 0) {
+          if ((await countUsers(tx)) > 0) {
             // Another process bootstrapped. We still need to return a
             // MutateResult — the caller will see `didInsert === false`
             // and an audit row will land for this race. To avoid
