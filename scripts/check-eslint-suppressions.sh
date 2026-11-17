@@ -26,9 +26,9 @@
 #   none at the base is the change that creates the baseline: allowed once,
 #   because removing the file again fails.
 #
-#   Also always: any line in src/server/ (tests aside) naming a ratchet rule
-#   or the eslint-comments guard. Code has no reason to name either; a
-#   comment that does disables or reconfigures them (`eslint-disable`, a
+#   Also always: any line in src/server/ (tests aside) naming a rule in
+#   GUARDED_RULES or the eslint-comments guard. Code has no reason to name
+#   either; a comment that does disables or reconfigures them (`eslint-disable`, a
 #   multi-line block, `/* eslint <rule>: off */`). Lint refuses the plain
 #   forms, but a comment can switch the lint guard off too; only a check
 #   outside ESLint sees every form.
@@ -51,6 +51,9 @@ set -euo pipefail
 ROOT="${SUPPRESSIONS_PROJECT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 FILE=eslint-suppressions.json
 RATCHET_RULES='local/no-direct-db-access'
+# Rules no inline comment may switch off. `local/audit-write-gate` (ADR-0021,
+# #938) has no baseline: an entry for it fails like any other non-ratchet rule.
+GUARDED_RULES="$RATCHET_RULES local/audit-write-gate"
 
 BASE_DIR=""
 while [[ $# -gt 0 ]]; do
@@ -78,14 +81,14 @@ HEAD_FILE="$ROOT/$FILE"
 BASE_FILE="${BASE_DIR:+$BASE_DIR/$FILE}"
 status=0
 
-# shellcheck disable=SC2086 # RATCHET_RULES is a space-separated list
-guarded="$(printf '%s|' $RATCHET_RULES)eslint-comments/"
+# shellcheck disable=SC2086 # GUARDED_RULES is a space-separated list
+guarded="$(printf '%s|' $GUARDED_RULES)eslint-comments/"
 if [[ -d "$ROOT/src/server" ]]; then
   disables="$(grep -rEn --include='*.ts' --exclude-dir=__tests__ \
     "(${guarded})" "$ROOT/src/server" || true)"
   if [[ -n "$disables" ]]; then
     while IFS= read -r line; do
-      echo "::error::${line#"$ROOT"/}: names a ratchet rule or its guard, which only disables or reconfigures it. Move the query into src/server/repositories/ instead." >&2
+      echo "::error::${line#"$ROOT"/}: names a guarded lint rule or its guard, which only disables or reconfigures it. Fix the code instead: move a query into src/server/repositories/, route an audited write through mutate()." >&2
     done <<<"$disables"
     status=1
   fi

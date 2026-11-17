@@ -14,7 +14,8 @@
 #   2. Non-allowlisted path — a synthetic service file outside the
 #      allowlist contains a raw mutation. Expected: exit 1.
 #   3. Run against the current repo — every audited mutation is now
-#      routed through mutate() and the repositories path is allowlisted
+#      routed through mutate() or a named exemption, and the repositories
+#      path is allowlisted
 #      behind the MutatingDatabase type gate. Expected: exit 0.
 #   4. M1 regression — lowercase `sql\`insert into projects …\``
 #      previously bypassed the case-sensitive keyword match.
@@ -33,10 +34,17 @@
 #      non-allowlisted file must be flagged (the scanner derives the
 #      audited-table set from schema.ts; `attachments` is in it).
 #      Expected: exit 1.
-#   9. Attachments positive — the same raw INSERT placed inside the
-#      allowlisted reaper (`src/server/services/attachment-orphan-reaper.ts`,
-#      the only legitimate `attachments` deleter per ADR-0023/AC-408)
-#      must NOT be flagged. Expected: exit 0.
+#   9. Attachments positive — the same raw INSERT placed inside an
+#      allowlisted file (the business seed loader) must NOT be flagged.
+#      Expected: exit 0.
+#  10. A named audit exemption at the site EXEMPTION_SITES lists.
+#      Expected: exit 0.
+#  11. An existing exemption name reused at another site (#938).
+#      Expected: exit 1.
+#  12. An exemption whose name is not a literal on the call's line.
+#      Expected: exit 1.
+#  13. An exemption call wrapped over several lines (the name is not on
+#      the call's first line). Expected: exit 1.
 #   (Previous scenarios 8–9 covered notification_rule as an audited
 #    entity; removed when ADR-0023 carved it out of the audit coupling.
 #    The numbers are reused here for attachments now that attachments is
@@ -234,22 +242,71 @@ assert_exit 1 "attachments raw INSERT in non-allowlisted file is flagged" \
 # -------------------------------------------------------------
 # Scenario 9 — attachments table, allowlisted reaper, expect pass.
 # -------------------------------------------------------------
-# The orphan reaper (src/server/services/attachment-orphan-reaper.ts)
-# is allowlisted — it's the only legitimate deleter of orphaned
-# `attachments` rows (housekeeping sweep past TTL, pre-domain rows
-# that never produced an audit entry; AC-408). The same INSERT that
-# Scenario 8 flags must NOT fire here.
+# The business seed loader is allowlisted (fixture hydration bypasses
+# audit by design). The same INSERT that Scenario 8 flags must NOT
+# fire here.
 echo ""
-echo "Scenario 9: attachments raw INSERT inside allowlisted reaper → expect exit 0"
+echo "Scenario 9: attachments raw INSERT inside an allowlisted file → expect exit 0"
 tmp="$(mktmp)"
-mkdir -p "$tmp/src/server/services"
-cat > "$tmp/src/server/services/attachment-orphan-reaper.ts" <<'EOF'
+mkdir -p "$tmp/src/server/seed"
+cat > "$tmp/src/server/seed/business.ts" <<'EOF'
 import { db } from '../db.js';
-export async function reapOrphan(id: string, projectId: string) {
+export async function seedAttachment(id: string, projectId: string) {
   await db.execute(sql`INSERT INTO attachments (id, project_id) VALUES (${id}, ${projectId})`);
 }
 EOF
-assert_exit 0 "attachments raw INSERT inside allowlisted reaper passes" \
+assert_exit 0 "attachments raw INSERT inside an allowlisted file passes" \
+  env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
+
+# -------------------------------------------------------------
+# Scenarios 10–12 — named audit exemptions are pinned to their sites.
+# -------------------------------------------------------------
+echo ""
+echo "Scenario 10: a listed exemption at its listed site → expect exit 0"
+tmp="$(mktmp)"
+mkdir -p "$tmp/src/server/services"
+cat > "$tmp/src/server/services/AuthService.ts" <<'EOF'
+await this.db.transaction((tx) => updateLastLogin(exemptFromAudit(tx, 'last-login'), id));
+EOF
+assert_exit 0 "listed exemption at its site passes" \
+  env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
+
+echo ""
+echo "Scenario 11: an exemption name reused at another site → expect exit 1"
+tmp="$(mktmp)"
+mkdir -p "$tmp/src/server/services"
+cat > "$tmp/src/server/services/CustomerService.ts" <<'EOF'
+await this.db.transaction((tx) => deleteCustomer(exemptFromAudit(tx, 'self-preference'), id));
+EOF
+assert_exit 1 "reused exemption name is flagged" \
+  env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
+
+echo ""
+echo "Scenario 12: an exemption name that is not a literal → expect exit 1"
+tmp="$(mktmp)"
+mkdir -p "$tmp/src/server/services"
+cat > "$tmp/src/server/services/AuthService.ts" <<'EOF'
+await this.db.transaction((tx) => updateLastLogin(exemptFromAudit(tx, reason), id));
+EOF
+assert_exit 1 "non-literal exemption name is flagged" \
+  env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
+
+echo ""
+echo "Scenario 13: an exemption call wrapped over several lines → expect exit 1"
+tmp="$(mktmp)"
+mkdir -p "$tmp/src/server/services"
+cat > "$tmp/src/server/services/CustomerService.ts" <<'EOF'
+await this.db.transaction((tx) =>
+  deleteCustomer(
+    exemptFromAudit(
+      tx,
+      'self-preference',
+    ),
+    id,
+  ),
+);
+EOF
+assert_exit 1 "wrapped exemption call is flagged" \
   env AUDIT_PROJECT_ROOT="$tmp" bash "$CHECK_SCRIPT"
 
 echo ""

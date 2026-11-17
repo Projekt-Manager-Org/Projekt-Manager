@@ -3,8 +3,8 @@
  *
  * Removes `attachment` rows stuck at `status = 'pending'` past the
  * configured TTL together with the backing `originalKey` / `thumbKey`
- * objects. Allowlisted in `scripts/check-audit-mutations.sh`: pending
- * rows never entered the domain, so no `audit_log` row is produced.
+ * objects. Pending rows never entered the domain, so the delete is the
+ * `orphan-reap` audit exemption: no `audit_log` row is produced.
  *
  * Operational-log contract: exactly one info
  * line per run with fields `event`, `ttl_minutes`, `removed_count`
@@ -20,6 +20,7 @@ import type { Database } from '../db/connection.js';
 import type { AttachmentStorageClient } from '../storage/client.js';
 import type { ServiceLogger } from './Logger.js';
 import { deleteOrphans } from '../repositories/attachment.js';
+import { exemptFromAudit } from './mutate.js';
 
 const MS_PER_MINUTE = 60 * 1000;
 
@@ -53,7 +54,9 @@ export async function runAttachmentOrphanReaper(
   // Delete orphan rows first, capturing their storage keys. The DELETE
   // is the authoritative "row gone" signal; storage cleanup follows
   // best-effort so a transient storage error cannot revive a row.
-  const removedRows = await deleteOrphans(deps.db, cutoff);
+  const removedRows = await deps.db.transaction((tx) =>
+    deleteOrphans(exemptFromAudit(tx, 'orphan-reap'), cutoff),
+  );
 
   for (const row of removedRows) {
     await bestEffortDelete(deps.storage, row.originalKey, deps.logger);

@@ -13,9 +13,8 @@
  *     by the push composer (AC-649), the dock, and the /audit Projekt
  *     column. This is the attachment's authoritative entry into the
  *     project.
- *   - Init creates the `pending` row and writes NO audit row (an
- *     allowlisted single-write-path exception, parity with the orphan
- *     reaper's pending-row carve-out). An upload abandoned before
+ *   - Init creates the `pending` row and writes NO audit row (the
+ *     `pending-upload` audit exemption, ADR-0021). An upload abandoned before
  *     complete therefore leaves NO `attachment:add` row and never
  *     surfaces on the activity feed.
  *   - Delete (= soft-hide, ADR-0022) writes exactly one `attachment:hide`

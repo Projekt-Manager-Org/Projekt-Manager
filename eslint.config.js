@@ -4,6 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import eslintComments from '@eslint-community/eslint-plugin-eslint-comments';
 import globals from 'globals';
+import auditWriteGate from './eslint-rules/audit-write-gate.mjs';
 import noDirectDbAccess from './eslint-rules/no-direct-db-access.mjs';
 
 // Layer boundary enforcement for the seven-layer architecture defined in
@@ -35,7 +36,22 @@ const UI_BANNED_CLIENT_API = ['@/api/*', '**/src/api/**', '../../api/**', '../ap
 // scripts/check-db-access-coverage.mjs, so a table cannot slip in here.
 const SCHEMA_CONSTANTS = ['AUDIT_ENTITY_TYPES', 'AUDIT_EXCLUDED_FIELDS'];
 
-const localPlugin = { rules: { 'no-direct-db-access': noDirectDbAccess } };
+// Drizzle exports of the audited tables (`AUDIT_ENTITY_TO_TABLE` in
+// src/server/db/schema.ts), for `local/audit-write-gate`. Kept equal to the
+// schema's map by eslint-rules/__tests__/audit-write-gate-config.test.mjs.
+const AUDITED_TABLES = [
+  'projects',
+  'customers',
+  'users',
+  'projectWorkers',
+  'attachments',
+  'invoices',
+  'companyProfile',
+];
+
+const localPlugin = {
+  rules: { 'audit-write-gate': auditWriteGate, 'no-direct-db-access': noDirectDbAccess },
+};
 
 const CONFIG_BANNED = [
   '**/domain/**',
@@ -191,10 +207,11 @@ export default tseslint.config(
     },
   },
   // An inline disable would bypass the rule and the baseline check alike:
-  // the suppressions file never changes. So no comment may disable the rule,
-  // or this guard, and no comment may disable everything at once. A comment
-  // can still switch this guard off; scripts/check-eslint-suppressions.sh
-  // fails on any src/server/ line naming the rule or the guard.
+  // the suppressions file never changes. So no comment may disable the rule
+  // (or `local/audit-write-gate`, the ADR-0021 gate), or this guard, and no
+  // comment may disable everything at once. A comment can still switch this
+  // guard off; scripts/check-eslint-suppressions.sh fails on any src/server/
+  // line naming either rule or the guard.
   {
     files: ['src/server/**/*.ts'],
     ignores: ['src/server/**/__tests__/**'],
@@ -203,6 +220,7 @@ export default tseslint.config(
       '@eslint-community/eslint-comments/no-restricted-disable': [
         'error',
         'local/no-direct-db-access',
+        'local/audit-write-gate',
         '@eslint-community/eslint-comments/*',
       ],
       '@eslint-community/eslint-comments/no-unlimited-disable': 'error',
@@ -216,6 +234,23 @@ export default tseslint.config(
     rules: {
       'local/no-direct-db-access': ['error', { allow: SCHEMA_CONSTANTS, queries: false }],
     },
+  },
+  // ADR-0021's type gate, the half tsc cannot see (#938): no assertion forges
+  // a `MutatingDatabase`, except in services/mutate.ts, which mints it, and in
+  // repositories an audited-table write takes one. Rule logic and cases:
+  // eslint-rules/audit-write-gate.mjs; wiring:
+  // eslint-rules/__tests__/audit-write-gate-config.test.mjs.
+  {
+    files: ['src/server/**/*.ts'],
+    ignores: ['src/server/services/mutate.ts', 'src/server/**/__tests__/**'],
+    plugins: { local: localPlugin },
+    rules: { 'local/audit-write-gate': 'error' },
+  },
+  {
+    files: ['src/server/repositories/**/*.ts'],
+    ignores: ['src/server/repositories/**/__tests__/**'],
+    plugins: { local: localPlugin },
+    rules: { 'local/audit-write-gate': ['error', { tables: AUDITED_TABLES }] },
   },
   // HTTP routes belong to the app factory, never to the instance it
   // returns. `scripts/generate-openapi.ts` (AC-351) builds the published

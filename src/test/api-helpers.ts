@@ -19,7 +19,7 @@ import { __resetForTests as resetAuditPublisher } from '../server/services/audit
 import { __resetForTests as resetNotificationPublisher } from '../server/services/notification-publisher.js';
 import { __resetForTests as resetSseBus } from '../server/sse/bus.js';
 import { randomBytes } from 'node:crypto';
-import type { Database } from '../server/db/connection.js';
+import type { Database, MutatingDatabase } from '../server/db/connection.js';
 import { projects, sessions, users } from '../server/db/schema.js';
 import type { WorkflowState } from '../config/stateConfig.js';
 import type pg from 'pg';
@@ -256,12 +256,10 @@ export async function createExpiredSession(userId: string): Promise<string> {
  * updatedBy to be null for system/test-fixture actions (data-model.md §5.5).
  */
 export async function deactivateUser(userId: string): Promise<void> {
-  // The repo write requires a tx handle (ADR-0021 type gate — see
-  // connection.ts MutatingDatabase). Test fixtures may bypass the
-  // service-layer `mutate()` wrapper but still must execute inside a
-  // transaction for type safety.
+  // A fixture, not a domain action: it skips `mutate()` and so writes no
+  // audit row, which takes forging the ADR-0021 handle.
   await db.transaction(async (tx) => {
-    await deactivateUserRepo(tx, userId, null);
+    await deactivateUserRepo(tx as MutatingDatabase, userId, null);
   });
 }
 

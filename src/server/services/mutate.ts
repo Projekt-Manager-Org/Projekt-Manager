@@ -3,8 +3,9 @@
  *
  * Every domain-entity mutation routes through `mutate()` so that the
  * state change and its `audit_log` row commit in one transaction
- * (AC-623). A mutation without its audit row is not possible; an audit
- * row without its state change is not possible.
+ * (AC-623). A mutation without its audit row is not possible, except
+ * the named exemptions (`exemptFromAudit`, below); an audit row without
+ * its state change is not possible.
  *
  * Shape:
  *
@@ -36,7 +37,7 @@
  * invariant regardless.
  */
 
-import type { Database, MutatingDatabase } from '../db/connection.js';
+import type { Database, MutatingDatabase, TxHandle } from '../db/connection.js';
 import type { AuditEntityType } from '../db/schema.js';
 import { auditLog, AUDIT_EXCLUDED_FIELDS } from '../db/schema.js';
 import { dispatch, type AuditLogRow } from './audit-publisher.js';
@@ -188,15 +189,20 @@ export async function mutate<T>(db: Database, ctx: MutateContext, spec: MutateSp
  *
  * Use `mutate()` when the mutation is standalone; use `mutateInTx()`
  * only to coordinate multi-audit-row commits.
+ *
+ * Writes belong inside `spec.run`: it gets the `MutatingDatabase` that
+ * audited-table writes require, and the caller's `tx` is not one.
  */
 export async function mutateInTx<T>(
-  tx: MutatingDatabase,
+  tx: TxHandle,
   ctx: MutateContext,
   spec: MutateSpec<T>,
 ): Promise<{ value: T; auditRow: AuditLogRow }> {
   validateContext(ctx);
 
-  const domainResult = await spec.run(tx);
+  // Minted here and in `exemptFromAudit` only: whatever `run` writes
+  // commits with the audit row below.
+  const domainResult = await spec.run(tx as MutatingDatabase);
   validateAncestor(domainResult);
 
   // Schema-level audit exclusion: strip every column-name marker
@@ -244,6 +250,31 @@ export async function mutateInTx<T>(
   }
 
   return { value: domainResult.value, auditRow: toAuditLogRow(inserted) };
+}
+
+/**
+ * The named exceptions to ADR-0021's single write path: audited-table
+ * writes that commit without an audit row, on purpose (AC-623 lists what
+ * is not audited). `scripts/check-audit-mutations.sh` pins each to its
+ * call site.
+ */
+export type AuditExemption =
+  /** AC-407: an upload that never completes records no audit entry. */
+  | 'pending-upload'
+  /** AC-407, AC-408: the reaper removes those uploads, still unaudited. */
+  | 'orphan-reap'
+  /** AC-623: sign-ins are not audited. */
+  | 'last-login'
+  /** AC-659: a user's own theme or push mute is not audited. */
+  | 'self-preference';
+
+/**
+ * The handle for a write that ADR-0021 exempts from audit. The name is
+ * the call site's justification; a new name or site is a reviewed change
+ * here, in the check and in the ADR.
+ */
+export function exemptFromAudit(tx: TxHandle, _exemption: AuditExemption): MutatingDatabase {
+  return tx as MutatingDatabase;
 }
 
 /** Map an inserted `audit_log` row to the shape the audit publisher dispatches. */

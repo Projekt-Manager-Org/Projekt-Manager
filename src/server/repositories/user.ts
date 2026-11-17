@@ -3,7 +3,12 @@
  */
 
 import { eq, count, asc, and, inArray, sql } from 'drizzle-orm';
-import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
+import type {
+  Database,
+  MutatingDatabase,
+  TransactionalDatabase,
+  TxHandle,
+} from '../db/connection.js';
 import { users } from '../db/schema.js';
 import type { ThemePreference } from '../../config/themeStorage.js';
 
@@ -209,10 +214,7 @@ export async function deleteUser(db: MutatingDatabase, id: string): Promise<bool
  * in-flight write that newly references the user (FK key-share lock) and
  * blocks later ones until the delete is done. Returns null when absent.
  */
-export async function getUserRowForDelete(
-  db: MutatingDatabase,
-  id: string,
-): Promise<UserRow | null> {
+export async function getUserRowForDelete(db: TxHandle, id: string): Promise<UserRow | null> {
   const rows = await db.select().from(users).where(eq(users.id, id)).limit(1).for('update');
   return rows[0] ?? null;
 }
@@ -230,13 +232,9 @@ export async function findById(db: TransactionalDatabase, id: string): Promise<U
   return rows[0] ?? null;
 }
 
-// ADR-0021 carve-out: session events ("Authentication and session events
-// are security events, not domain audit") are outside the audit-log write
-// path. This signature intentionally takes `Database` rather than
-// `MutatingDatabase` so the write does not require a `mutate()` wrapper.
-// Do not widen other write paths to `Database` — the ADR-0021 type-level
-// guarantee depends on them requiring a transaction handle.
-export async function updateLastLogin(db: Database, id: string): Promise<void> {
+// Login is a security event, not domain audit (ADR-0021): the caller
+// writes through the `last-login` audit exemption.
+export async function updateLastLogin(db: MutatingDatabase, id: string): Promise<void> {
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, id));
 }
 

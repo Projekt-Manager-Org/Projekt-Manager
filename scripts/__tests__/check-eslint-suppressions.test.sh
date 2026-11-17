@@ -183,6 +183,10 @@ printf '%s\n' \
   '   @eslint-community/eslint-comments/no-restricted-disable,' \
   '   local/no-direct-db-access */' >"$R/src/server/services/A.ts"
 assert_case "rule and guard disabled over several lines" 1 "$R"
+R="$(new_root audit-gate-off)"
+mkdir -p "$R/src/server/repositories"
+echo '/* eslint local/audit-write-gate: off */' >"$R/src/server/repositories/A.ts"
+assert_case "the audit write gate turned off by a config comment" 1 "$R"
 R="$(new_root disable-other)"
 echo '// eslint-disable-next-line no-restricted-syntax' >"$R/src/server/services/A.ts"
 assert_case "an unrelated rule disabled" 0 "$R"

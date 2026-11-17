@@ -21,7 +21,7 @@
  * so the two paths cannot drift.
  */
 
-import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
+import type { Database, TransactionalDatabase, TxHandle } from '../db/connection.js';
 import { companyProfile } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { mutate } from './mutate.js';
@@ -131,7 +131,7 @@ export async function readSingleton(tx: TransactionalDatabase): Promise<CompanyP
  * `readSingleton` plus a row lock held until commit, so the upsert's
  * version check and write are atomic (data-model.md §6.4).
  */
-async function readSingletonForUpdate(tx: MutatingDatabase): Promise<CompanyProfileRow> {
+async function readSingletonForUpdate(tx: TxHandle): Promise<CompanyProfileRow> {
   return singletonOrThrow(await tx.select().from(companyProfile).limit(1).for('update'));
 }
 

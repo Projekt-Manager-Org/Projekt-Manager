@@ -12,7 +12,7 @@
  */
 
 import crypto from 'node:crypto';
-import type { Database } from '../db/connection.js';
+import type { Database, MutatingDatabase } from '../db/connection.js';
 import type { ServiceLogger } from './Logger.js';
 import { mutateInTx, dispatchAuditRows } from './mutate.js';
 import { projectAuditLabel } from '../../domain/audit.js';
@@ -35,6 +35,7 @@ import {
   allocateInvoiceNumber,
   insertStornoInvoice,
   applyCancellationFlip,
+  type InvoiceRow,
 } from '../repositories/invoice-read.js';
 import { readSingleton, toCompanyProfileResponse } from './CompanyProfileService.js';
 import { InvoiceRenderer } from './InvoiceRenderer.js';
@@ -55,6 +56,15 @@ export interface CancelResult {
 
 export interface CancelInput {
   reason?: string | null;
+}
+
+/** What the cancel atom wrote, for its two audit rows and the response. */
+interface CancellationWrites {
+  originalRow: InvoiceRow;
+  stornoRow: InvoiceRow;
+  stornoId: string;
+  stornoNumber: string;
+  ancestorLabel: string;
 }
 
 export class InvoiceCancelService {
@@ -116,126 +126,28 @@ export class InvoiceCancelService {
       if (before.status === 'draft') throw invoiceNotIssued();
       if (before.status === 'cancelled') throw invoiceAlreadyCancelled();
 
-      // 1. Allocate from `(year, 'storno')`. Year derives from the
-      //    clock seam so a backdated Storno keeps its number's year
-      //    aligned with its `issueDate`.
-      const year = now.getUTCFullYear();
-      const { number: stornoNumber } = await allocateInvoiceNumber(tx, year, 'storno');
-
-      // 2. Build the Storno's snapshot fields. Same rule as the issue
-      //    path: the persistence-layer immutability trigger blocks
-      //    UPDATEs on `status='issued'` rows except the cancellation
-      //    flip, so we cannot INSERT-then-UPDATE-descriptor. Render
-      //    first, then INSERT the Storno with the descriptor in one
-      //    shot. Snapshots copied byte-for-byte from the original
-      //    (AC-290): issuer / recipient / taxMode / profile /
-      //    performanceDate.
-      const stornoId = crypto.randomUUID();
-      const stornoLines = negateInvoiceLines(before.lines as InvoiceLine[]);
-      const stornoTotals = negateInvoiceTotals(before.totals as InvoiceTotals);
-      const cancellationReason =
-        input.reason && input.reason.trim().length > 0 ? input.reason : null;
-
-      // 3. Render the Storno PDF from the synthesised snapshot. A
-      //    throw rolls back the whole cancel atom, including the
-      //    sequence allocation. The company profile read shares the
-      //    cancel transaction's snapshot — a concurrent PUT to the
-      //    profile cannot drift the Storno's rendered visual style
-      //    away from the persisted `issuer` block.
-      const profileRow = await readSingleton(tx);
-      const profile = toCompanyProfileResponse(profileRow);
-      const stornoPreview: Invoice = {
-        id: stornoId,
-        number: stornoNumber,
-        status: 'issued',
-        projectId: before.projectId,
-        cancellationOf: before.id,
-        issuer: before.issuer as InvoiceIssuerSnapshot,
-        recipient: before.recipient as InvoiceRecipientSnapshot,
-        lines: stornoLines,
-        taxMode: before.taxMode as TaxMode,
-        profile: before.profile as InvoiceProfile,
-        totals: stornoTotals,
-        issueDate: now.toISOString().slice(0, 10),
-        performanceDate: before.performanceDate
-          ? before.performanceDate.toISOString().slice(0, 10)
-          : null,
-        cancellationReason,
-        renderedPdfBinaryDescriptorId: null,
-        projectArchived: false,
-        version: 1,
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-        createdBy: userId,
-        updatedBy: userId,
-      };
-      const rendered = await this.renderer.render({
-        invoice: stornoPreview,
-        companyProfile: profile,
-        // The customer knows the original by number and date (#548).
-        precedingInvoice: {
-          number: before.number!,
-          issueDate: before.issueDate!.toISOString().slice(0, 10),
-        },
-      });
-      const stornoDescriptor = await this.binary.persistRendered(
-        tx,
-        rendered,
-        before.projectId,
-        stornoPreview,
-        userId,
-      );
-
-      const stornoRow = await insertStornoInvoice(tx, {
-        id: stornoId,
-        projectId: before.projectId,
-        number: stornoNumber,
-        issueDate: now,
-        performanceDate: before.performanceDate,
-        taxMode: before.taxMode as TaxMode,
-        profile: before.profile as InvoiceProfile,
-        issuer: before.issuer as InvoiceIssuerSnapshot,
-        recipient: before.recipient as InvoiceRecipientSnapshot,
-        lines: stornoLines,
-        totals: stornoTotals,
-        cancellationOf: before.id,
-        cancellationReason,
-        renderedPdfBinaryDescriptorId: stornoDescriptor,
-        createdBy: userId,
-        updatedBy: userId,
-      });
-
-      // 4. Flip the original to `cancelled`.
-      const originalRow = await applyCancellationFlip(tx, id, userId, now);
-
-      // Snapshot the parent project's audit label once, inside the
-      // same tx. Both audit rows below share the same ancestor; one
-      // read keeps the label consistent and avoids two round-trips.
-      // FK from invoice→project guarantees existence — a missing row
-      // here is a programmer/integrity error.
-      const projectRow = await getProjectRowById(tx, before.projectId);
-      if (!projectRow) {
-        throw new Error(`cancel: project ${before.projectId} missing for invoice ${id}`);
-      }
-      const ancestorLabel = projectAuditLabel(projectRow);
-
       // 5. Two audit rows in one tx (AC-290). Project status is
       //    deliberately NOT flipped — AC-290 trailing clause.
       const cancelAudit = await mutateInTx(tx, ctx, {
         entityType: 'invoice',
         action: 'invoice:cancel',
-        run: async () => ({
-          entityId: id,
-          entityLabel: originalRow.number,
-          value: originalRow,
-          before: { status: before.status },
-          after: { status: originalRow.status },
-          ancestorEntityType: 'project',
-          ancestorEntityId: before.projectId,
-          ancestorEntityLabel: ancestorLabel,
-        }),
+        // Steps 1–4 run here: the writes need this run's handle (ADR-0021).
+        run: async (mtx) => {
+          const written = await this.writeCancellation(mtx, before, input, userId, now);
+          return {
+            entityId: id,
+            entityLabel: written.originalRow.number,
+            value: written,
+            before: { status: before.status },
+            after: { status: written.originalRow.status },
+            ancestorEntityType: 'project',
+            ancestorEntityId: before.projectId,
+            ancestorEntityLabel: written.ancestorLabel,
+          };
+        },
       });
       collected.push(cancelAudit.auditRow);
+      const { originalRow, stornoRow, stornoId, stornoNumber, ancestorLabel } = cancelAudit.value;
 
       const stornoAudit = await mutateInTx(tx, ctx, {
         entityType: 'invoice',
@@ -280,5 +192,121 @@ export class InvoiceCancelService {
 
     log.info({ invoiceId: id, stornoId: result.storno.id }, 'invoice_cancelled');
     return result;
+  }
+
+  /**
+   * Steps 1–4 of the cancel atom plus the ancestor-label read. Takes the
+   * audit-gated handle: it runs inside the `invoice:cancel` mutation.
+   */
+  private async writeCancellation(
+    tx: MutatingDatabase,
+    before: InvoiceRow,
+    input: CancelInput,
+    userId: string,
+    now: Date,
+  ): Promise<CancellationWrites> {
+    // 1. Allocate from `(year, 'storno')`. Year derives from the
+    //    clock seam so a backdated Storno keeps its number's year
+    //    aligned with its `issueDate`.
+    const year = now.getUTCFullYear();
+    const { number: stornoNumber } = await allocateInvoiceNumber(tx, year, 'storno');
+
+    // 2. Build the Storno's snapshot fields. Same rule as the issue
+    //    path: the persistence-layer immutability trigger blocks
+    //    UPDATEs on `status='issued'` rows except the cancellation
+    //    flip, so we cannot INSERT-then-UPDATE-descriptor. Render
+    //    first, then INSERT the Storno with the descriptor in one
+    //    shot. Snapshots copied byte-for-byte from the original
+    //    (AC-290): issuer / recipient / taxMode / profile /
+    //    performanceDate.
+    const stornoId = crypto.randomUUID();
+    const stornoLines = negateInvoiceLines(before.lines as InvoiceLine[]);
+    const stornoTotals = negateInvoiceTotals(before.totals as InvoiceTotals);
+    const cancellationReason = input.reason && input.reason.trim().length > 0 ? input.reason : null;
+
+    // 3. Render the Storno PDF from the synthesised snapshot. A
+    //    throw rolls back the whole cancel atom, including the
+    //    sequence allocation. The company profile read shares the
+    //    cancel transaction's snapshot — a concurrent PUT to the
+    //    profile cannot drift the Storno's rendered visual style
+    //    away from the persisted `issuer` block.
+    const profileRow = await readSingleton(tx);
+    const profile = toCompanyProfileResponse(profileRow);
+    const stornoPreview: Invoice = {
+      id: stornoId,
+      number: stornoNumber,
+      status: 'issued',
+      projectId: before.projectId,
+      cancellationOf: before.id,
+      issuer: before.issuer as InvoiceIssuerSnapshot,
+      recipient: before.recipient as InvoiceRecipientSnapshot,
+      lines: stornoLines,
+      taxMode: before.taxMode as TaxMode,
+      profile: before.profile as InvoiceProfile,
+      totals: stornoTotals,
+      issueDate: now.toISOString().slice(0, 10),
+      performanceDate: before.performanceDate
+        ? before.performanceDate.toISOString().slice(0, 10)
+        : null,
+      cancellationReason,
+      renderedPdfBinaryDescriptorId: null,
+      projectArchived: false,
+      version: 1,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      createdBy: userId,
+      updatedBy: userId,
+    };
+    const rendered = await this.renderer.render({
+      invoice: stornoPreview,
+      companyProfile: profile,
+      // The customer knows the original by number and date (#548).
+      precedingInvoice: {
+        number: before.number!,
+        issueDate: before.issueDate!.toISOString().slice(0, 10),
+      },
+    });
+    const stornoDescriptor = await this.binary.persistRendered(
+      tx,
+      rendered,
+      before.projectId,
+      stornoPreview,
+      userId,
+    );
+
+    const stornoRow = await insertStornoInvoice(tx, {
+      id: stornoId,
+      projectId: before.projectId,
+      number: stornoNumber,
+      issueDate: now,
+      performanceDate: before.performanceDate,
+      taxMode: before.taxMode as TaxMode,
+      profile: before.profile as InvoiceProfile,
+      issuer: before.issuer as InvoiceIssuerSnapshot,
+      recipient: before.recipient as InvoiceRecipientSnapshot,
+      lines: stornoLines,
+      totals: stornoTotals,
+      cancellationOf: before.id,
+      cancellationReason,
+      renderedPdfBinaryDescriptorId: stornoDescriptor,
+      createdBy: userId,
+      updatedBy: userId,
+    });
+
+    // 4. Flip the original to `cancelled`.
+    const originalRow = await applyCancellationFlip(tx, before.id, userId, now);
+
+    // Snapshot the parent project's audit label once, inside the
+    // same tx. Both audit rows share the same ancestor; one read
+    // keeps the label consistent and avoids two round-trips.
+    // FK from invoice→project guarantees existence — a missing row
+    // here is a programmer/integrity error.
+    const projectRow = await getProjectRowById(tx, before.projectId);
+    if (!projectRow) {
+      throw new Error(`cancel: project ${before.projectId} missing for invoice ${before.id}`);
+    }
+    const ancestorLabel = projectAuditLabel(projectRow);
+
+    return { originalRow, stornoRow, stornoId, stornoNumber, ancestorLabel };
   }
 }

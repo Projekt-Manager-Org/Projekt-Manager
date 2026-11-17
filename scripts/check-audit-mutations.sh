@@ -7,6 +7,8 @@
 # service-layer `mutate()` helper. The `mutate()` helper is the single
 # legitimate writer; every other path must go through it so the audit
 # row is produced atomically with the state change (ADR-0021 §Decision).
+# Also fails when a named audit exemption (`exemptFromAudit`) is used at a
+# site EXEMPTION_SITES does not list.
 #
 # Audited-table derivation:
 #   The audited-table set is sourced from `AUDIT_ENTITY_TO_TABLE` in
@@ -109,23 +111,14 @@ fi
 ALLOWLIST=(
   # The single-write-path helper — the legitimate writer.
   "src/server/services/mutate.ts"
-  # Repository write functions accept `MutatingDatabase` (= `TxHandle`,
-  # see `src/server/db/connection.ts`) — a plain `Database` fails
-  # typecheck. The bypass the static scan cannot reliably detect
-  # (receiver-name agnostic `.insert(X)`) is therefore closed at the
-  # type level; this path-based allowlist exists so the scan does not
-  # flag the legitimate `tx.insert(...)` calls inside repos. The
-  # integrity guarantee is the type, not the allowlist.
-  #
-  # AC-407 single audit-free exception for attachments lives here:
-  # `createPending` (the init `pending`-row insert) is the state-machine
-  # pre-step that writes NO audit row — an upload abandoned before
-  # complete leaves nothing on the activity feed (parity with the orphan
-  # reaper's pending-row carve-out below). `AttachmentService.initUpload`
-  # therefore calls it inside a plain `db.transaction`, not `mutate()`.
-  # Its sibling `markReady` (the `complete` flip) is NOT an exception:
-  # `completeUpload` routes it through `mutate()` so the authoritative
-  # `attachment:add` row co-commits with the `pending → ready` flip.
+  # Repository writes on audited tables take `MutatingDatabase`, a
+  # branded handle only `mutateInTx()` and `exemptFromAudit()` mint
+  # (src/server/services/mutate.ts), so a write outside `mutate()` fails
+  # typecheck; `local/audit-write-gate` refuses forged handles and writes
+  # through any other one. The integrity guarantee is the type, not this
+  # allowlist, which only keeps the scan off the legitimate writes.
+  # Audit-free repository writes are the named exemptions in
+  # EXEMPTION_SITES below.
   "src/server/repositories/"
   # Migrations: schema-level DDL + seed-data migrations run outside
   # the runtime path and predate the helper.
@@ -158,10 +151,6 @@ ALLOWLIST=(
   # (audit_log is not in the audited-table set, but this job is the
   # archetypal allowlist case for parity with the helper.)
   "src/server/services/audit-retention.ts"
-  # Attachment orphan reaper (AC-408) — housekeeping sweep that
-  # deletes pending rows past TTL with no audit row (orphans never
-  # entered the domain). Parallel to audit-retention's allowlist slot.
-  "src/server/services/attachment-orphan-reaper.ts"
   # Full-account takeout IMPORT job runner — writes raw audit_log rows at
   # its terminal transition (AC-332) and raw INSERT into `attachments` for
   # each restored binary (Pass 2). Both are reviewed bulk-write sites:
@@ -176,6 +165,18 @@ ALLOWLIST=(
   # top-level `src/server/__tests__/` and any future subtree's local
   # `__tests__/` without a separate line per location.
   "*/__tests__/*"
+)
+
+# Named audit exemptions (ADR-0021): every `exemptFromAudit(` call under
+# src/server (tests aside) must be one of these `file:exemption` pairs, with
+# the name as a literal on the call's line. The name alone type-checks at
+# any call site; this pins each exception to its file. A call wrapped
+# over several lines has no literal on its first line and fails.
+EXEMPTION_SITES=(
+  "src/server/services/AttachmentService.ts:pending-upload"
+  "src/server/services/attachment-orphan-reaper.ts:orphan-reap"
+  "src/server/services/AuthService.ts:last-login"
+  "src/server/services/AuthService.ts:self-preference"
 )
 
 is_allowlisted() {
@@ -268,6 +269,34 @@ for table in "${AUDITED_TABLE_SQL_NAMES[@]}"; do
     fi
   done < <($scanner "$pattern" src/server 2>/dev/null || true)
 done
+
+# --- Named audit exemptions -------------------------------------------
+exemption_findings=""
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  file="${line%%:*}"
+  case "$file" in
+    src/server/services/mutate.ts | */__tests__/*) continue ;;
+  esac
+  site=""
+  if [[ "$line" =~ exemptFromAudit\([^,]*,[[:space:]]*\'([a-z-]+)\' ]]; then
+    site="${file}:${BASH_REMATCH[1]}"
+  fi
+  listed=0
+  for entry in "${EXEMPTION_SITES[@]}"; do
+    [ "$entry" = "$site" ] && listed=1
+  done
+  [ "$listed" -eq 0 ] && exemption_findings="${exemption_findings}${line}"$'\n'
+done < <($scanner 'exemptFromAudit\((\s*[^)[:space:]]|\s*$)' src/server 2>/dev/null || true)
+
+if [ -n "$exemption_findings" ]; then
+  echo "ERROR: audit exemption used at a site EXEMPTION_SITES does not name." >&2
+  echo "       Route the write through mutate(), or add the site to" >&2
+  echo "       EXEMPTION_SITES in $(basename "$0") and the exemption to ADR-0021." >&2
+  echo "" >&2
+  printf "%s" "$exemption_findings" >&2
+  exit 1
+fi
 
 if [ -n "$findings" ]; then
   echo "ERROR: raw mutations on audited tables found outside mutate()." >&2
