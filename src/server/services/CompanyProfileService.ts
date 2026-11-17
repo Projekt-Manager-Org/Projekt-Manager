@@ -22,7 +22,6 @@
  */
 
 import type { Database, TransactionalDatabase, TxHandle } from '../db/connection.js';
-import { companyProfile } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { mutate } from './mutate.js';
 import {
@@ -39,9 +38,12 @@ import {
 } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 import type { ServiceLogger } from './Logger.js';
-import { updateCompanyProfileSingleton } from '../repositories/companyProfile.js';
-
-export type CompanyProfileRow = typeof companyProfile.$inferSelect;
+import {
+  findCompanyProfile,
+  getCompanyProfileForMutation,
+  updateCompanyProfileSingleton,
+  type CompanyProfileRow,
+} from '../repositories/companyProfile.js';
 
 /**
  * Convert a raw `company_profile` row to the API-facing shape. JSONB
@@ -124,24 +126,21 @@ export function validateCompanyProfileUpsert(input: CompanyProfileUpsertInput): 
  * service refuses to serve (project principle).
  */
 export async function readSingleton(tx: TransactionalDatabase): Promise<CompanyProfileRow> {
-  return singletonOrThrow(await tx.select().from(companyProfile).limit(1));
+  return singletonOrThrow(await findCompanyProfile(tx));
 }
 
-/**
- * `readSingleton` plus a row lock held until commit, so the upsert's
- * version check and write are atomic (data-model.md §6.4).
- */
+/** `readSingleton` with the row locked until commit (`getCompanyProfileForMutation`). */
 async function readSingletonForUpdate(tx: TxHandle): Promise<CompanyProfileRow> {
-  return singletonOrThrow(await tx.select().from(companyProfile).limit(1).for('update'));
+  return singletonOrThrow(await getCompanyProfileForMutation(tx));
 }
 
-function singletonOrThrow(rows: CompanyProfileRow[]): CompanyProfileRow {
-  if (rows.length === 0) {
+function singletonOrThrow(row: CompanyProfileRow | undefined): CompanyProfileRow {
+  if (!row) {
     throw new Error(
       'CompanyProfileService: company_profile singleton missing — baseline migration did not seed',
     );
   }
-  return rows[0]!;
+  return row;
 }
 
 export class CompanyProfileService {
