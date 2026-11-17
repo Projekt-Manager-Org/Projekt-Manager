@@ -70,7 +70,7 @@ import type { AuthUser } from '../middleware/auth.js';
 import type { ServiceLogger } from './Logger.js';
 import type { Attachment, AttachmentLabel } from '../../domain/types.js';
 import {
-  ATTACHMENT_LABELS,
+  isAttachmentLabel,
   ATTACHMENT_MIME_WHITELIST,
   classifyKind,
   isKnownWrappedDekVersion,
@@ -128,7 +128,6 @@ const CIPHERTEXT_CONTENT_TYPE = 'application/octet-stream';
 /** AES-256-GCM key length — the spec contract for `dekMaterial` after base64-decode. */
 const DEK_BYTE_LENGTH = 32;
 
-const LABEL_VALUES = new Set<string>(ATTACHMENT_LABELS.map((entry) => entry.value));
 const MIME_WHITELIST = new Set<string>(ATTACHMENT_MIME_WHITELIST);
 
 /**
@@ -144,7 +143,8 @@ export interface InitUploadInput {
   mimeType: string;
   /** Plaintext byte count — drives the per-file cap + export envelope. */
   sizeBytes: number;
-  label: AttachmentLabel;
+  /** Untrusted: checked against the closed enum here (AC-398). */
+  label: string;
   hasThumbnail: boolean;
   /** Base64 of the 32-byte AES-256-GCM DEK for the original blob. */
   dekMaterial: string;
@@ -431,7 +431,8 @@ export class AttachmentService {
     if (!isSafeFileName(input.fileName)) {
       throw validationError(STRINGS.errors.invalidInput);
     }
-    if (!LABEL_VALUES.has(input.label)) {
+    const { label } = input;
+    if (!isAttachmentLabel(label)) {
       throw validationError(STRINGS.errors.invalidInput);
     }
     if (!MIME_WHITELIST.has(input.mimeType)) {
@@ -520,7 +521,7 @@ export class AttachmentService {
         id: attachmentId,
         projectId,
         kind,
-        label: input.label,
+        label,
         filename: input.fileName,
         mimeType: input.mimeType,
         sizeBytes: input.sizeBytes,

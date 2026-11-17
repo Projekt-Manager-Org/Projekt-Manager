@@ -145,10 +145,8 @@ export function attachmentRoutes(db: Database) {
             fileName: body.fileName,
             mimeType: body.mimeType,
             sizeBytes: body.sizeBytes,
-            // The service re-validates `label` against the closed enum;
-            // the typing here is intentionally wide so invalid payloads
-            // reach the validator path (AC-398 422 VALIDATION_ERROR).
-            label: body.label as never,
+            // Validated by the service (AC-398 422 VALIDATION_ERROR).
+            label: body.label,
             hasThumbnail: Boolean(body.hasThumbnail),
             dekMaterial: body.dekMaterial,
             ciphertextSizeBytes: body.ciphertextSizeBytes,

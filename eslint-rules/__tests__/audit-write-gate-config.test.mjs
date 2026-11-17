@@ -1,7 +1,9 @@
 // Where eslint.config.js runs `local/audit-write-gate` (#938, #946), and with
-// which tables. A mistyped glob or an extra `ignores:` entry fails open: lint
-// stays green and the file's audited writes go unchecked. A stale table list fails
-// open the same way, so it is compared with the schema's own map.
+// which tables, plus the rules that keep a type error from being silenced
+// into a forged `MutatingDatabase` (#964). A mistyped glob or an extra
+// `ignores:` entry fails open: lint stays green and the file's audited writes
+// go unchecked. A stale table list fails open the same way, so it is compared
+// with the schema's own map.
 
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -12,6 +14,9 @@ import { AUDIT_ENTITY_TO_TABLE } from '../../src/server/db/schema.ts';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const RULE = 'local/audit-write-gate';
 const GUARD = '@eslint-community/eslint-comments/no-restricted-disable';
+const TS_COMMENT = '@typescript-eslint/ban-ts-comment';
+const NO_ANY = '@typescript-eslint/no-explicit-any';
+const NO_FUNCTION = '@typescript-eslint/no-unsafe-function-type';
 // The one file that may assert MutatingDatabase: it mints the handle.
 const MINT = 'src/server/services/mutate.ts';
 // Files whose raw SQL writes audited tables on purpose, unchecked.
@@ -93,6 +98,23 @@ describe('local/audit-write-gate wiring', () => {
   it('refuses an inline comment disabling the rule, in every file', () => {
     for (const [file, config] of configs) {
       expect(config.rules?.[GUARD], file).toContain(RULE);
+    }
+  });
+
+  it('refuses every @ts- suppression, `any` and `Function`, with no inline way out', () => {
+    for (const [file, config] of configs) {
+      const tsComment = config.rules?.[TS_COMMENT];
+      expect(severity(tsComment), file).toBe(2);
+      expect(options(tsComment), file).toMatchObject({
+        'ts-expect-error': true,
+        'ts-ignore': true,
+        'ts-nocheck': true,
+      });
+      expect(severity(config.rules?.[NO_ANY]), file).toBe(2);
+      expect(severity(config.rules?.[NO_FUNCTION]), file).toBe(2);
+      expect(config.rules?.[GUARD], file).toEqual(
+        expect.arrayContaining([TS_COMMENT, NO_ANY, NO_FUNCTION]),
+      );
     }
   });
 });

@@ -55,11 +55,6 @@ interface DrawCursor {
   pageNumber: number;
 }
 
-type PdfDrawDeps = Pick<
-  typeof import('@cantoo/pdf-lib'),
-  'PDFDocument' | 'StandardFonts' | 'rgb' | 'AFRelationship'
->;
-
 const PAGE_WIDTH = 595.28; // A4 width in points
 const PAGE_HEIGHT = 841.89; // A4 height in points
 const MARGIN_LEFT = 50;
@@ -321,7 +316,7 @@ export async function drawInvoicePdf(
   companyProfile: CompanyProfile,
   preceding?: PrecedingInvoice,
 ): Promise<Uint8Array> {
-  const { PDFDocument, StandardFonts, rgb, AFRelationship } = (await pdfLibImport) as PdfDrawDeps;
+  const { PDFDocument, StandardFonts, rgb, AFRelationship } = await pdfLibImport;
 
   const doc = await PDFDocument.create();
 
