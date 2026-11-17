@@ -15,8 +15,8 @@
  *                 `ciphertextSizeBytes` length, and
  *                 `ciphertextContentMd5` body hash. No audit row
  *                 (AC-407) — an upload abandoned before complete leaves
- *                 no `attachment:add` row (allowlisted single-write-path
- *                 exception, parity with the orphan reaper).
+ *                 no `attachment:add` row (the `pending-upload` audit
+ *                 exemption).
  *   complete    → HEAD verify both objects against the persisted
  *                 ciphertext sizes + sentinel content-type, flip to
  *                 `status = 'ready'`, persist version-ids (ADR-0022).
@@ -99,7 +99,7 @@ import {
 import { getProjectRowById } from '../repositories/project.js';
 import { projectAuditLabel } from '../../domain/audit.js';
 import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
-import { mutate } from './mutate.js';
+import { exemptFromAudit, mutate } from './mutate.js';
 import { emitAttachmentChanged, emitStorageUsageChanged } from '../sse/emitters.js';
 import {
   bulkLimitExceeded,
@@ -513,13 +513,10 @@ export class AttachmentService {
     // authoritative `attachment:add` row is written at `complete` (the
     // `pending → ready` finalize) — an upload abandoned before complete
     // leaves no audit entry and never surfaces on the activity feed
-    // (the orphan reaper removes the pending row). The pending-row INSERT
-    // is the allowlisted single-write-path exception in
-    // `scripts/check-audit-mutations.sh` (parity with the orphan
-    // reaper's pending-row carve-out). A plain `db.transaction` is the
-    // right shape here — no `mutate()`, no audit co-commit.
+    // (the orphan reaper removes the pending row). Hence the
+    // `pending-upload` audit exemption instead of `mutate()`.
     const row: AttachmentRow = await this.db.transaction(async (tx) =>
-      createPending(tx, {
+      createPending(exemptFromAudit(tx, 'pending-upload'), {
         id: attachmentId,
         projectId,
         kind,

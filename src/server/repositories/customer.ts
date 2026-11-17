@@ -3,7 +3,12 @@
  */
 
 import { eq, and, count, ilike, sql, type SQL } from 'drizzle-orm';
-import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
+import type {
+  Database,
+  MutatingDatabase,
+  TransactionalDatabase,
+  TxHandle,
+} from '../db/connection.js';
 import { customers, projects } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import {
@@ -230,7 +235,7 @@ export async function getCustomerRow(
  * write are atomic. Returns null when absent.
  */
 export async function getCustomerRowForMutation(
-  db: MutatingDatabase,
+  db: TxHandle,
   id: string,
 ): Promise<CustomerRow | null> {
   const rows = await db.select().from(customers).where(eq(customers.id, id)).limit(1).for('update');

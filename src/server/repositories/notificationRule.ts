@@ -4,9 +4,9 @@
  * Rule mutations do NOT route through `mutate()` (ADR-0023 §Decision:
  * rule changes are administrative config, not audited domain events).
  * Write functions therefore accept `TransactionalDatabase` — the same
- * type reads use — rather than the narrower `MutatingDatabase` (which
- * is `TxHandle` and exists solely to enforce the `mutate()` gate on
- * audited entities). Reads take a plain `Database` or transaction handle.
+ * type reads use — rather than `MutatingDatabase`, the handle
+ * `services/mutate.ts` mints for audited entities. Reads take a plain
+ * `Database` or transaction handle.
  */
 
 import { and, asc, eq } from 'drizzle-orm';

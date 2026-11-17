@@ -10,9 +10,8 @@
  * would need a lease at this caller site.
  *
  * The reaper service is the sole deleter of `pending` rows via this
- * path; the architecture-check allowlist in
- * `scripts/check-audit-mutations.sh` names the service file, not this
- * scheduler, because this module only drives the schedule.
+ * path, through the `orphan-reap` audit exemption; this module only
+ * drives the schedule.
  */
 
 import type { Database } from './db/connection.js';

@@ -2,7 +2,7 @@
  * Invoice repository — reads + write primitives.
  *
  * Reads accept `Database | TransactionalDatabase`. Writes accept
- * `MutatingDatabase` (a transaction handle only) so a caller bypassing
+ * `MutatingDatabase` (the handle `mutate()` mints) so a caller bypassing
  * the service-layer `mutate()` helper fails at tsc — ADR-0021's primary
  * build-time seam. The service layer captures
  * `payload.before` / `payload.after` and feeds it to `mutate()`; the
@@ -16,7 +16,12 @@
  */
 
 import { eq, and, or, desc, asc, inArray, count, sql, type SQL } from 'drizzle-orm';
-import type { Database, MutatingDatabase, TransactionalDatabase } from '../db/connection.js';
+import type {
+  Database,
+  MutatingDatabase,
+  TransactionalDatabase,
+  TxHandle,
+} from '../db/connection.js';
 import { invoices, projects } from '../db/schema.js';
 import type { AuthUser } from '../middleware/auth.js';
 import { isUnscoped, OUT_OF_SCOPE, type ScopedReadResult } from './scope.js';
@@ -250,7 +255,7 @@ export async function getInvoice(
  * project is archived (AC-513); callers map to `NOT_FOUND`.
  */
 export async function getInvoiceRowForMutation(
-  tx: MutatingDatabase,
+  tx: TxHandle,
   id: string,
 ): Promise<InvoiceRow | null> {
   const rows = await tx
@@ -269,7 +274,7 @@ export async function getInvoiceRowForMutation(
  * for, so a draft issued or deleted meanwhile drops out and a committed
  * override is seen (§6.4).
  */
-export async function getCustomerDraftsForMutation(tx: MutatingDatabase, customerId: string) {
+export async function getCustomerDraftsForMutation(tx: TxHandle, customerId: string) {
   return tx
     .select({ invoice: invoices, project: projects })
     .from(invoices)
@@ -322,10 +327,7 @@ export async function countIssuedOrCancelledForCustomer(
  * touching the user row, so the delete must wait on the invoice to count
  * it as issued rather than cascade into it once frozen.
  */
-export async function lockInvoicesReferencingUser(
-  tx: MutatingDatabase,
-  userId: string,
-): Promise<void> {
+export async function lockInvoicesReferencingUser(tx: TxHandle, userId: string): Promise<void> {
   await tx
     .select({ id: invoices.id })
     .from(invoices)
@@ -443,7 +445,7 @@ export async function allocateInvoiceNumber(
 // ---------------------------------------------------------------------
 // Write functions — INSERT / UPDATE / DELETE primitives.
 //
-// All accept `MutatingDatabase` (transaction handle only). The
+// All accept `MutatingDatabase` (the handle `mutate()` mints). The
 // service-layer `mutate()` helper supplies the tx; the audit-row
 // payload is constructed by the service from `before`/`after` it has
 // in hand. Repo just writes.

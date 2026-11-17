@@ -34,7 +34,7 @@ import { STRINGS } from '../../config/strings.js';
 import { invalidCredentials, notFound, validationError } from '../errors.js';
 import { AUTH_CONFIG } from '../config/index.js';
 import type { ServiceLogger } from './Logger.js';
-import { mutate } from './mutate.js';
+import { exemptFromAudit, mutate } from './mutate.js';
 
 export class AuthService {
   constructor(private db: Database) {}
@@ -66,7 +66,7 @@ export class AuthService {
     const session = await createSession(this.db, user.id, expiresAt);
 
     // Update last login
-    await updateLastLogin(this.db, user.id);
+    await this.db.transaction((tx) => updateLastLogin(exemptFromAudit(tx, 'last-login'), user.id));
 
     log.info({ username, ip }, 'login_success');
 
@@ -99,10 +99,8 @@ export class AuthService {
    * self-preference writes on UserAccount" — per-user UI/notification
    * preferences have no cross-user or security consequence and would
    * drown out the actor-on-entity traffic the activity feed is tuned
-   * for (ADR-0021 "high-signal activity feed"). A transaction is still
-   * opened so MutatingDatabase's type-gate on the repo write is satisfied
-   * (ADR-0021's carve-out is expressed as an allowlisted write site, not
-   * a general bypass of the single-write-path helper).
+   * for (ADR-0021 "high-signal activity feed"). The write goes through
+   * the `self-preference` audit exemption.
    */
   async updateSelfPreferences(
     actingUserId: string,
@@ -112,7 +110,7 @@ export class AuthService {
     const updated = await this.db.transaction(async (tx) => {
       const prior = await findById(tx, actingUserId);
       if (!prior) throw notFound(STRINGS.entities.user);
-      const row = await updateSelfRepo(tx, actingUserId, patch);
+      const row = await updateSelfRepo(exemptFromAudit(tx, 'self-preference'), actingUserId, patch);
       if (!row) throw notFound(STRINGS.entities.user);
       return row;
     });

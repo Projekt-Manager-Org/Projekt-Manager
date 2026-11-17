@@ -27,16 +27,17 @@ export type TxHandle = Parameters<Parameters<Database['transaction']>[0]>[0];
  */
 export type TransactionalDatabase = Database | TxHandle;
 
+declare const mutating: unique symbol;
+
 /**
- * Transaction handle ONLY — **not** a plain `Database`. Repository WRITE
- * functions on audited tables accept this so the type system enforces
- * ADR-0021: a mutation can only be authored from inside a transaction,
- * i.e. from inside `mutate()` / `mutateInTx()`. Attempting to
- * call a write with a plain `Database` fails `tsc` — the bypass the
- * static arch check can't reliably detect (the scan can't distinguish
- * `db.insert(...)` from `tx.insert(...)`).
+ * A transaction handle that `mutateInTx()` opened for an audited mutation,
+ * or that `exemptFromAudit()` names as an exception (services/mutate.ts).
+ * Repository writes on audited tables take only this, so a write from any
+ * other transaction, or from a plain `Database`, fails `tsc` (ADR-0021).
+ * The brand exists only in the type system; the audit-write-gate lint
+ * rule refuses assertions that would forge it.
  */
-export type MutatingDatabase = TxHandle;
+export type MutatingDatabase = TxHandle & { readonly [mutating]: true };
 
 export interface ConnectionOptions {
   connectionString?: string;

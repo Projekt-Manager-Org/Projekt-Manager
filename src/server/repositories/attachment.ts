@@ -1,7 +1,7 @@
 /**
  * Attachment repository — CRUD + scope-aware reads.
  *
- * Writes take `MutatingDatabase` (a transaction handle only; see
+ * Writes take `MutatingDatabase` (the handle `mutate()` mints; see
  * `src/server/db/connection.ts`) so a caller bypassing the service-
  * layer `mutate()` helper fails at tsc — ADR-0021's primary build-time
  * seam. Reads accept `Database | TxHandle` via the
@@ -413,12 +413,14 @@ export async function listAllKeys(
 }
 
 /**
- * Delete pending rows older than cutoff directly. Returns the deleted
- * rows (for storage-side cleanup + count). The reaper is allowlisted in
- * `scripts/check-audit-mutations.sh` — rows never entered the domain,
- * so removal is housekeeping, not an audit event.
+ * Delete pending rows older than cutoff. Returns the deleted rows (for
+ * storage-side cleanup + count). The reaper's call is the `orphan-reap`
+ * audit exemption: the rows never entered the domain (AC-408).
  */
-export async function deleteOrphans(db: Database, cutoffTime: Date): Promise<AttachmentRow[]> {
+export async function deleteOrphans(
+  db: MutatingDatabase,
+  cutoffTime: Date,
+): Promise<AttachmentRow[]> {
   return db
     .delete(attachments)
     .where(and(eq(attachments.status, 'pending'), lt(attachments.createdAt, cutoffTime)))
