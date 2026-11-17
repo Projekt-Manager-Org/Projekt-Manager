@@ -29,16 +29,6 @@
       "count": 10
     }
   },
-  "src/server/services/PushDispatcher.ts": {
-    "local/no-direct-db-access": {
-      "count": 10
-    }
-  },
-  "src/server/services/PushSubscriptionService.ts": {
-    "local/no-direct-db-access": {
-      "count": 17
-    }
-  },
   "src/server/services/StorageUsageService.ts": {
     "local/no-direct-db-access": {
       "count": 1

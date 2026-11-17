@@ -18,9 +18,11 @@
  * `'gone'` and the caller prunes the subscription row.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
 import type { Database } from '../db/connection.js';
-import { pushSubscriptions } from '../db/schema.js';
+import {
+  deletePushSubscriptionById,
+  findPushTargetsByUserIds,
+} from '../repositories/pushSubscription.js';
 
 export interface PushSubscriptionTarget {
   id: string;
@@ -90,16 +92,7 @@ export async function dispatchToSubscriptions(
 ): Promise<PushDispatchResult[]> {
   if (userIds.length === 0) return [];
 
-  const rows = await db
-    .select({
-      id: pushSubscriptions.id,
-      userId: pushSubscriptions.userId,
-      endpoint: pushSubscriptions.endpoint,
-      p256dh: pushSubscriptions.p256dh,
-      auth: pushSubscriptions.auth,
-    })
-    .from(pushSubscriptions)
-    .where(inArray(pushSubscriptions.userId, userIds));
+  const rows = await findPushTargetsByUserIds(db, userIds);
 
   const results: PushDispatchResult[] = [];
   const deadIds: string[] = [];
@@ -125,9 +118,7 @@ export async function dispatchToSubscriptions(
         // keeps the self-scope invariant explicit.
         const row = rows.find((r) => r.id === id);
         if (!row) continue;
-        await tx
-          .delete(pushSubscriptions)
-          .where(and(eq(pushSubscriptions.id, id), eq(pushSubscriptions.userId, row.userId)));
+        await deletePushSubscriptionById(tx, row.userId, id);
       }
     });
   }
