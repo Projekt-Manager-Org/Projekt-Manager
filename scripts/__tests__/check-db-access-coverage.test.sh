@@ -85,7 +85,7 @@ probe "global ignore" "s.replace('export default tseslint.config(', \"export def
   EXPECT='src/server/services/ImportService.ts:' assert_exit "global ignore" 1 --config "$PROBE"
 
 echo "Case: services get the repositories' options"
-probe "queries: false" "s.replace(\"files: ['src/server/repositories/**/*.ts'],\", \"files: ['src/server/{repositories,services}/**/*.ts'],\")" &&
+probe "queries: false" "s.replace(\"files: ['src/server/repositories/**/*.ts'],\n    ignores: ['src/server/repositories/**/__tests__/**'],\n    plugins: { local: localPlugin },\n    rules: {\n      'local/no-direct-db-access'\", \"files: ['src/server/{repositories,services}/**/*.ts'],\n    ignores: ['src/server/repositories/**/__tests__/**'],\n    plugins: { local: localPlugin },\n    rules: {\n      'local/no-direct-db-access'\")" &&
   EXPECT='src/server/services/ImportService.ts:' assert_exit "queries: false" 1 --config "$PROBE"
 
 echo "Case: a table added to the allowed constants"
