@@ -16,6 +16,7 @@ import noDirectDbAccess from './eslint-rules/no-direct-db-access.mjs';
 //   config   → imports nothing application-internal
 //   domain   → never imports state, ui, server, api, hooks
 //   storage  → imports from domain, config; never from services/routes/ui
+//              (repositories: only domain, config, db/ and each other)
 //   services → imports from storage, domain, config; never from routes
 //   routes   → imports from services, middleware, errors, config;
 //              NOT from repositories/db directly (must go via services)
@@ -28,6 +29,15 @@ const DOMAIN_BANNED = ['**/state/**', '**/ui/**', '**/server/**', '**/api/**', '
 const CLIENT_BANNED_SERVER = ['**/server/**'];
 
 const ROUTES_BANNED = ['**/repositories/**', '**/db/schema*', '**/db/connection*'];
+
+// Repositories sit at the bottom of the server: an allowlist, so a directory
+// added later is refused until someone decides otherwise (#956). A relative
+// path may name a sibling, `../db/`, `../../domain/` or `../../config/`; the
+// `@/` alias the same targets. Packages are not covered.
+const REPOSITORIES_BANNED_REGEX = [
+  String.raw`^\.(?!/[^.]|\./db/|\./\.\./(?:domain|config)/)`,
+  String.raw`^@/(?!(?:domain|config|server/(?:db|repositories))/)`,
+];
 
 const UI_BANNED_CLIENT_API = ['@/api/*', '**/src/api/**', '../../api/**', '../api/**'];
 
@@ -175,6 +185,28 @@ export default tseslint.config(
             group: [group],
             message:
               'Routes must delegate to services — no direct repository or db/schema imports. Type-only imports (`import type { Database } from ...`) are allowed. See architecture.md §11.2.',
+            allowTypeImports: true,
+          })),
+        },
+      ],
+    },
+  },
+  // Repositories import only db/, domain, config and each other — never a
+  // service, route, middleware or anything else in src/server/. Type-only
+  // imports are allowed: the read-scope predicates take `AuthUser` from
+  // middleware/auth. Scenarios: scripts/__tests__/check-repository-imports.test.sh.
+  {
+    files: ['src/server/repositories/**/*.ts'],
+    ignores: ['src/server/repositories/**/__tests__/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: REPOSITORIES_BANNED_REGEX.map((regex) => ({
+            regex,
+            caseSensitive: true,
+            message:
+              'Repositories may import only db/, src/domain/, src/config/ and other repositories. Type-only imports are allowed. See ARCHITECTURE.md § Architecture Overview.',
             allowTypeImports: true,
           })),
         },
