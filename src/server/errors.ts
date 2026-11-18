@@ -359,7 +359,7 @@ export function dekUnwrapFailed(): AppError {
 // ---------------------------------------------------------------------
 
 /**
- * Mutation rejected on an issued or cancelled invoice row. AC-286 / §6.14:
+ * Mutation rejected on an issued or cancelled invoice row. AC-709 / §6.14:
  * issued rows are write-once at the persistence layer; the route surface
  * rejects PATCH / DELETE / non-cancellation mutations with this code
  * before the persistence-layer backstop fires.
@@ -370,7 +370,7 @@ export function invoiceFrozen(): AppError {
 
 /**
  * Issue call rejected because the parent project is not in
- * `rechnung_faellig`. AC-289 / api.md §14.2.14 error paths.
+ * `rechnung_faellig`. AC-696.
  */
 export function invoiceProjectState(): AppError {
   return new AppError('INVOICE_PROJECT_STATE', STRINGS.errors.invoiceProjectState, 409);
@@ -378,14 +378,14 @@ export function invoiceProjectState(): AppError {
 
 /**
  * Cancel / PDF-download rejected because the row is still a draft.
- * AC-291 (cancel-on-draft) and AC-299 (download-on-draft).
+ * AC-705 (cancel-on-draft) and the PDF download of a draft.
  */
 export function invoiceNotIssued(): AppError {
   return new AppError('INVOICE_NOT_ISSUED', STRINGS.errors.invoiceNotIssued, 409);
 }
 
 /**
- * Cancel rejected because the row is already cancelled. AC-291.
+ * Cancel rejected because the row is already cancelled. AC-705.
  */
 export function invoiceAlreadyCancelled(): AppError {
   return new AppError('INVOICE_ALREADY_CANCELLED', STRINGS.errors.invoiceAlreadyCancelled, 409);
@@ -394,7 +394,7 @@ export function invoiceAlreadyCancelled(): AppError {
 /**
  * Issue / company-profile-upsert rejected because the singleton
  * `company_profile` row lacks one or more fields required for the
- * resolved `taxMode`. AC-289(i) / AC-303 / AC-305.
+ * resolved `taxMode`. AC-698 / AC-723.
  *
  * `details.missingFields` enumerates the offending field paths so the
  * UI can target the right input(s).

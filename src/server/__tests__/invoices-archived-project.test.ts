@@ -9,7 +9,7 @@
  * project row and the audit log, equal before and after the call.
  *
  * Reads carry `projectArchived`, the state the `/rechnungen` surfaces gate
- * their changes on (api.md §14.2.14). Archive and restore flip it, and a
+ * their changes on (AC-514). Archive and restore flip it, and a
  * purge — direct or through customer delete — cascades the drafts away, so
  * each emits `invoice_changed` (ADR-0025).
  */
@@ -87,7 +87,7 @@ describe('AC-513: invoice changes on an archived project', () => {
     await startApp();
     token = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
 
-    // Issue preconditions (AC-289): a complete company profile.
+    // Issue preconditions (AC-698): a complete company profile.
     const profile = await authPut(token, '/api/company-profile', {
       ...(await expectedVersion(token, '/api/company-profile')),
       companyName: 'Test Maler GmbH',

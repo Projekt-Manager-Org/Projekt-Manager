@@ -22,7 +22,7 @@
  *        transition path — its own `transition:forward` audit row.
  *   Then the `invoice:issue` audit row, and commit. Post-commit: both
  *   rows dispatched, `emitInvoiceChanged()` and `emitProjectChanged()`
- *   (AC-287).
+ *   (AC-719).
  */
 
 import type { Database, MutatingDatabase } from '../db/connection.js';
@@ -82,13 +82,13 @@ export class InvoiceIssueService {
   }
 
   /**
-   * The issuance transaction (AC-287). See module docstring for the
+   * The issuance transaction (AC-689). See module docstring for the
    * step list. Throws structured errors at each pre-condition failure
    * so the route maps to the documented status / code combinations
-   * (AC-289).
+   * (AC-697).
    *
    * Post-commit emits ONE `invoice_changed` SSE event AND ONE
-   * `project_changed` SSE event (AC-287): a new issued row is
+   * `project_changed` SSE event (AC-719): a new issued row is
    * visible, and the parent project's `status` flipped to
    * `abgerechnet` inside the same transaction — both consumer surfaces
    * (invoice list / per-invoice viewer, Kanban / project list /
@@ -128,10 +128,10 @@ export class InvoiceIssueService {
     await dispatchAuditRows(collected);
     log.info({ invoiceId: id }, 'invoice_issued');
     emitInvoiceChanged();
-    // AC-287: the issuance flipped `projects.status` to
+    // AC-692: the issuance flipped `projects.status` to
     // `abgerechnet` as part of the same transaction, so the project
     // surfaces must invalidate too. Cancellation deliberately does NOT
-    // emit this (AC-290 — the cancel atom does not modify project
+    // emit this (AC-704 — the cancel atom does not modify project
     // status).
     emitProjectChanged();
     return toInvoiceResponse(issued, false);
@@ -163,7 +163,7 @@ export class InvoiceIssueService {
     ancestorEntityLabel: string;
   }> {
     // 0. Lock the draft row of an active project, then state and version
-    //    checks (data-model.md §6.4, architecture.md §11.14): the issued invoice
+    //    checks (data-model.md §6.4): the issued invoice
     //    is exactly the draft the issuer saw, and no concurrent draft
     //    write commits between this check and step 8.
     const before = await getInvoiceRowForMutation(tx, invoiceId);
@@ -172,7 +172,7 @@ export class InvoiceIssueService {
     if (before.version !== expectedVersion) throw versionConflict();
 
     // 1. Pre-condition rejections — each maps to its documented code
-    // (AC-289). Order matters: the cheaper checks (no DB
+    // (AC-697). Order matters: the cheaper checks (no DB
     // round-trip) run first so they don't waste a sequence lock.
 
     const lines = before.lines as InvoiceLine[];
@@ -182,7 +182,7 @@ export class InvoiceIssueService {
     // Writes validate lines; a restored draft or a row written before
     // derivation bypasses them. A stored `lineTotal` mismatch is rejected,
     // not re-derived — the issued invoice is exactly the draft the issuer
-    // saw (AC-384).
+    // saw (AC-697).
     const taxMode = before.taxMode as TaxMode;
     for (const [i, line] of lines.entries()) {
       const [field] = invalidStoredLineFields(line, taxRatesFor(taxMode));
@@ -233,11 +233,9 @@ export class InvoiceIssueService {
     // 3. Company profile completeness — assertion reads inside the
     //    issuance tx so a concurrent profile mutation cannot
     //    invalidate the snapshot mid-issue. Throws
-    //    `companyProfileRequired()` on incomplete state (AC-289(i),
-    //    AC-289, AC-305). The throw rolls back the tx — no
-    //    sequence allocation has been claimed yet, so AC-305's
-    //    "release the lock without advancement" invariant is met by
-    //    ordering: validate THEN allocate.
+    //    `companyProfileRequired()` on incomplete state (AC-698).
+    //    The throw rolls back the tx before any sequence allocation,
+    //    so no number is used (AC-695): validate THEN allocate.
     const companyProfileRow = await assertCompanyProfileComplete(tx);
 
     // 4. Allocate `number` from the gapless `(year, 'invoice')`
@@ -277,9 +275,9 @@ export class InvoiceIssueService {
     //    `taxMode`, `profile`, `number`, `issueDate` — so the rendered
     //    bytes match the eventually-persisted row exactly. A throw
     //    inside `render()` rolls back the entire transaction; the
-    //    sequence value returns to the pool (AC-288). The rollback tests
-    //    in `invoices-issue.test.ts` (AC-288) and
-    //    `invoices-xsd-abort.test.ts` (AC-293) exercise this path.
+    //    sequence value returns to the pool (AC-695). The rollback tests
+    //    in `invoices-issue.test.ts` (AC-695) and
+    //    `invoices-xsd-abort.test.ts` (AC-700) exercise this path.
     const previewInvoice: Invoice = {
       id: invoiceId,
       number,
@@ -342,11 +340,11 @@ export class InvoiceIssueService {
     });
 
     // 9. Move the parent project to `abgerechnet` through the standard
-    //    transition path (architecture.md §11.14 step 7): row lock,
+    //    transition path: row lock,
     //    status check, `transition:forward` audit row. Step 2 read the
     //    status without a lock; a project moved out of
     //    `rechnung_faellig` since then rejects the issue rather than
-    //    being overwritten (AC-287).
+    //    being overwritten (AC-696).
     let transitioned: TransitionResult['project'];
     try {
       const transition = await transitionForwardInTx(

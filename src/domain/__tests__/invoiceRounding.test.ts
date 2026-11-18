@@ -4,7 +4,7 @@ import { round2 } from '../money';
 
 /**
  * Money rounding (data-model.md §5.15 "Money arithmetic is decimal",
- * AC-384): decimal values, half away from zero.
+ * AC-685): decimal values, half away from zero.
  */
 describe('invoice money rounding', () => {
   it('rounds an exact half-cent away from zero for both signs', () => {

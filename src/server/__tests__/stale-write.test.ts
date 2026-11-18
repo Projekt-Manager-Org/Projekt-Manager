@@ -1,13 +1,13 @@
 /**
  * Stale-write rejection — optimistic concurrency on edits
- * (data-model.md §6.4, api.md §14.2.14 / §14.2.15).
+ * (data-model.md §6.4).
  *
  * AC coverage in this file:
  *   - AC-375: every versioned edit rejects a stale `expectedVersion`
  *     with `409 VERSION_CONFLICT`; row, audit log and SSE stay untouched.
  *     A positive control with the current version succeeds, so a route
  *     that rejects everything cannot pass.
- *   - AC-376: a stale issue allocates no number and leaves the
+ *   - AC-699: a stale issue allocates no number and leaves the
  *     draft, the project, the sequence and the PDF prefix in storage untouched.
  *   - AC-377: a versioned operation without `expectedVersion` is
  *     a `422 VALIDATION_ERROR`.
@@ -89,7 +89,7 @@ async function mintProject(status: WorkflowState): Promise<string> {
 }
 
 async function mintCustomer(): Promise<string> {
-  // A billing address makes drafts on its projects issuable (AC-289).
+  // A billing address makes drafts on its projects issuable (AC-697).
   const res = await authPost(ownerToken, '/api/customers', {
     name: `Stale-write Kunde ${crypto.randomUUID().slice(0, 8)}`,
     address: { street: 'Hauptstr. 12', zip: '51465', city: 'Bergisch Gladbach' },
@@ -240,7 +240,7 @@ beforeAll(async () => {
   await startApp();
   ownerToken = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
   customerId = await mintCustomer();
-  // Issue arms need a complete profile (AC-289); write it with the current version.
+  // Issue arms need a complete profile (AC-698); write it with the current version.
   const profile = await authGet(ownerToken, '/api/company-profile');
   const put = await authPut(ownerToken, '/api/company-profile', {
     ...PROFILE,
@@ -313,10 +313,10 @@ describe('AC-375: a stale expectedVersion is rejected and writes nothing', () =>
 });
 
 // ---------------------------------------------------------------------
-// AC-376
+// AC-699
 // ---------------------------------------------------------------------
 
-describe('AC-376: a stale issue allocates no number and writes nothing', () => {
+describe('AC-699: a stale issue allocates no number and writes nothing', () => {
   it('rejects, then the current version issues with the number the rejected call would have taken', async () => {
     const { invoiceId, projectId } = await mintDraft();
     const readUrl = `/api/invoices/${invoiceId}`;

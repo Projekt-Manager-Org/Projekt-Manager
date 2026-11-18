@@ -31,7 +31,7 @@ import { emitProjectChanged } from '../sse/emitters.js';
 
 /**
  * The audited transition, shared by the manual moves below and the
- * invoice issuance atom (architecture.md §11.14 step 7).
+ * invoice issuance atom (`InvoiceIssueService` step 9).
  */
 function transitionSpec(
   direction: 'forward' | 'backward',

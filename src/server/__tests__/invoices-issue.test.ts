@@ -2,8 +2,8 @@
  * API integration tests — invoice issuance transaction (issue #109,
  * ADR-0026).
  *
- * Pins the issuance contract from api.md §14.2.14 and the gapless-
- * sequence invariant from data-model.md §5.16 + §6.13:
+ * Pins the issuance contract (verification.md §15.30) and the gapless
+ * sequence (data-model.md §5.16, §6.13):
  *
  *   POST /api/invoices/:id/issue
  *
@@ -23,19 +23,19 @@
  *     post-commit.
  *
  * AC coverage in this file:
- *   - AC-287: happy path with all the above shape assertions; the
+ *   - AC-689, AC-691, AC-692: happy path with all the above shape assertions; the
  *                      project transition row and its dispatch; a
  *                      concurrent project move rejecting the issue.
- *   - AC-288: gapless sequence under rollback — fault injected
+ *   - AC-694, AC-695: gapless sequence under rollback — fault injected
  *                      between allocation and commit; the rolled-back
  *                      value is returned to the sequence.
- *   - AC-289: every pre-condition rejection path with exact
+ *   - AC-696, AC-697: every pre-condition rejection path with exact
  *                      code mapping. No state change, no sequence
  *                      advancement, no audit row, no SSE event.
- *   - AC-292: per-tax-mode boilerplate text extracted from the
+ *   - AC-693: per-tax-mode boilerplate text extracted from the
  *                      rendered PDF — `reverse_charge` includes the §13b
  *                      string, `standard` does not.
- *   - AC-293: PDF/A-3 + embedded `factur-x.xml` validation
+ *   - AC-700: PDF/A-3 + embedded `factur-x.xml` validation
  *                      against the EN 16931 XSD; `Invoice.profile`
  *                      pinned to `'zugferd-en16931'`.
  *
@@ -240,7 +240,7 @@ async function createDraft(
  * Ensure the company_profile singleton carries every required field
  * (§5.17); `mode` only sets `defaultTaxMode`. The seeded row ships empty per
  * data-model.md §5.17 — fill it deterministically via the spec verb
- * (PUT — api.md §14.2.15) so issue arms run against a complete profile.
+ * (PUT) so issue arms run against a complete profile.
  */
 async function ensureCompanyProfileComplete(
   ownerToken: string,
@@ -262,7 +262,7 @@ async function ensureCompanyProfileComplete(
 
 /**
  * Fetch the rendered PDF bytes for an invoice. The transport is
- * implementation-defined per api.md §14.2.14 — either inline bytes
+ * implementation-defined (AC-711) — either inline bytes
  * or a `{ url, dekMaterial }` wrapper. This helper supports both
  * shapes and returns a `Buffer` of plaintext PDF bytes.
  */
@@ -293,7 +293,7 @@ async function fetchRenderedPdfBytes(token: string, invoiceId: string): Promise<
   }
   if (!body.url) {
     // The wire shape is unrecognised — surface as a failure rather
-    // than silently returning garbage; the AC-293 / AC-292 arms need
+    // than silently returning garbage; the AC-700 / AC-693 arms need
     // real PDF bytes to validate.
     throw new Error(`fetchRenderedPdfBytes — unknown response shape ${JSON.stringify(body)}`);
   }
@@ -303,17 +303,17 @@ async function fetchRenderedPdfBytes(token: string, invoiceId: string): Promise<
   // pipeline per ADR-0024). If a `dekMaterial` is present and the bytes
   // do not begin with `%PDF-`, the test cannot decrypt without
   // KeyEnvelopeService machinery — surface as a deliberate failure so
-  // the impl team wires plaintext access for AC-292 / AC-293.
+  // the impl team wires plaintext access for AC-693 / AC-700.
   if (arr[0] !== 0x25 || arr[1] !== 0x50) {
     throw new Error(
-      'fetchRenderedPdfBytes — bytes are not plaintext PDF (no %PDF- magic). The renderer/transport needs a plaintext path for AC-292 / AC-293.',
+      'fetchRenderedPdfBytes — bytes are not plaintext PDF (no %PDF- magic). The renderer/transport needs a plaintext path for AC-693 / AC-700.',
     );
   }
   return Buffer.from(arr);
 }
 
 /**
- * Extract plain text from a PDF buffer. AC-292 uses this to grep for
+ * Extract plain text from a PDF buffer. AC-693 uses this to grep for
  * the per-tax-mode boilerplate strings.
  */
 async function extractPdfText(buf: Buffer): Promise<string> {
@@ -400,7 +400,7 @@ async function extractFacturXml(buf: Buffer): Promise<string> {
 // Tests.
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — happy path (AC-287)', () => {
+describe('Invoice issuance — happy path (AC-689, AC-691, AC-692, AC-693, AC-719)', () => {
   let ownerToken: string;
   let projectId: string;
   const issuedProjectIds = new Set<string>();
@@ -419,7 +419,7 @@ describe('Invoice issuance — happy path (AC-287)', () => {
   it('issues a draft against a project in rechnung_faellig: number/status/dates/snapshots/audit/SSE', async () => {
     // Draft created BEFORE subscribing — `createDraft` also emits an
     // `invoice_changed` SSE (draft CRUD emits). The
-    // AC-287 assertion below pins "exactly one" event from the ISSUE
+    // AC-719 assertion below pins "exactly one" event from the ISSUE
     // call; the draft-create event must be outside the window.
     const draftId = await createDraft(ownerToken, projectId);
     issuedProjectIds.add(projectId);
@@ -435,7 +435,7 @@ describe('Invoice issuance — happy path (AC-287)', () => {
       expect(res.statusCode).toBe(200);
 
       const body = res.json();
-      // Number format pinned at the DB CHECK (AC-295); pin again at the
+      // Number format pinned at the DB CHECK (data-model.md §5.15 format); pin again at the
       // wire so a regression that returned a misshapen number from the
       // route side surfaces here.
       expect(body.number).toMatch(new RegExp(`^RE-${year}-\\d{4,}$`));
@@ -463,9 +463,9 @@ describe('Invoice issuance — happy path (AC-287)', () => {
       expect(proj.statusCode).toBe(200);
       expect(proj.json().status).toBe('abgerechnet');
 
-      // Exactly one `invoice:issue` audit row. AC-287 pins the issue
+      // Exactly one `invoice:issue` audit row. AC-623 pins the issue
       // call's audit shape; the draft-create call earlier in this same
-      // arm also writes an `action='create'` row (AC-285), which is
+      // arm also writes an `action='create'` row (AC-623), which is
       // out of scope for this assertion — filter to the issue action.
       const auditCount = await countAuditRowsForInvoice(body.id, 'invoice:issue');
       expect(auditCount).toBe(1);
@@ -473,7 +473,7 @@ describe('Invoice issuance — happy path (AC-287)', () => {
       const { db, pool } = createDatabase();
       try {
         // Filter to the issue audit row — the draft-create row also
-        // exists (AC-285), but the AC-287 shape pin is about the
+        // exists (AC-623), but the issue shape pin is about the
         // issuance call's row only.
         const auditRows = await db.execute(sql`
           SELECT entity_type, entity_id, action, ancestor_entity_type, ancestor_entity_id
@@ -493,14 +493,14 @@ describe('Invoice issuance — happy path (AC-287)', () => {
       // to a single microtask drain. Matches
       // `attachments-events-route.test.ts` pattern.
       //
-      // AC-287 requires BOTH events post-commit:
+      // AC-719 and AC-277 require BOTH events post-commit:
       //   - `invoice_changed` — a new issued row is visible.
       //   - `project_changed` — the parent project's status flipped to
       //     `abgerechnet` as part of the same transaction, so every
       //     consumer surface on the project (Kanban, project list, the
       //     project detail page) must invalidate.
-      // The two events MUST land exactly once each per the AC-287 pin
-      // (verification.md AC-287). A regression that emitted only one
+      // Exactly once each is a regression guard beyond AC-719 and
+      // AC-277. A regression that emitted only one
       // event would leave one of the two consumer surfaces stale until
       // the next manual refresh / poll.
       await waitFor(() => countInvoiceChanged(conn) === 1 && countProjectChanged(conn) === 1);
@@ -572,7 +572,7 @@ describe('Invoice issuance — happy path (AC-287)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-288 — Gapless sequence under rollback.
+// AC-695 — Gapless sequence under rollback.
 //
 // Two arms:
 //   (a) Two sequential successful issues produce N and N+1.
@@ -587,7 +587,7 @@ describe('Invoice issuance — happy path (AC-287)', () => {
 // rolls back the increment".
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — gapless sequence (AC-288)', () => {
+describe('Invoice issuance — gapless sequence (AC-694, AC-695)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -676,7 +676,7 @@ describe('Invoice issuance — gapless sequence (AC-288)', () => {
       // Proof the failure reached the renderer step: by construction,
       // InvoiceIssueService.runIssueInsideTx calls `this.renderer.render(...)`
       // ONLY after `allocateInvoiceNumber(...)`, so the spy being called
-      // guarantees the throw is post-allocation. The load-bearing AC-288
+      // guarantees the throw is post-allocation. The load-bearing AC-695
       // assertion is the rolled-back-value check below.
       expect(spy).toHaveBeenCalled();
 
@@ -704,7 +704,7 @@ describe('Invoice issuance — gapless sequence (AC-288)', () => {
 
 // ---------------------------------------------------------------------
 // Concurrent-issue race against TWO real Postgres connections
-// (security-audit finding S5 / AC-288).
+// (security-audit finding S5 / AC-694).
 //
 // The existing gapless-sequence tests above cover the sequential and
 // rollback paths only — both arms run on a single connection so the
@@ -750,7 +750,7 @@ describe('Invoice issuance — gapless sequence (AC-288)', () => {
 //     accumulate idle connections across describe blocks.
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — concurrent race on two real PG connections (S5 / AC-288)', () => {
+describe('Invoice issuance — concurrent race on two real PG connections (S5 / AC-694)', () => {
   let ownerToken: string;
   let ownerId: string;
   let customerId: string;
@@ -864,7 +864,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
     // sequence-row contention without dragging the project-status
     // pre-condition into the picture: on the SAME project the second
     // issue would find `abgerechnet` at the project flip and reject
-    // (AC-287).
+    // (AC-696).
     const projectAId = await mintRechnungFaelligProject();
     const projectBId = await mintRechnungFaelligProject();
 
@@ -888,7 +888,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
       serviceB.issueDraft(draftB, FRESH_DRAFT_VERSION, ownerId, noopLog, null),
     ]);
 
-    // Both numbers conform to the wire shape (AC-295). `Invoice.number`
+    // Both numbers conform to the wire shape (data-model.md §5.15). `Invoice.number`
     // is `string | null` (drafts carry null); after a successful issue
     // it's always non-null — the assertion above narrows the union.
     const numberPattern = new RegExp(`^RE-${year}-\\d{4,}$`);
@@ -992,7 +992,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
     expect(midway).toBe(expectedFirst + 1);
 
     // Third issuance — claims the next consecutive value, proving the
-    // failed call rolled back cleanly (AC-288 gapless).
+    // failed call rolled back cleanly (AC-694 gapless).
     const projectCId = await mintRechnungFaelligProject();
     const draftC = await createDraft(ownerToken, projectCId);
     const serviceC = buildIssueServiceFor(connA.db); // reuse connA's pool.
@@ -1011,7 +1011,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
     expect(String(resB.reason)).toContain('test-injected-render-fault');
   });
 
-  it('AC-287 — a project transition committed during the render rejects the issue; the moved status stands', async () => {
+  it('AC-696 — a project transition committed during the render rejects the issue; the moved status stands', async () => {
     const projectId = await mintRechnungFaelligProject();
     const draftId = await createDraft(ownerToken, projectId);
 
@@ -1047,7 +1047,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
 
 // ---------------------------------------------------------------------
 // Concurrent FIRST-OF-YEAR allocation race (review finding M1 /
-// AC-288).
+// AC-694).
 //
 // The S5 race block above covers the "row already exists" path: both
 // racers hit the `UPDATE … RETURNING next_value` branch, Postgres
@@ -1091,7 +1091,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
 //     layer regardless of transport).
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)', () => {
+describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-694)', () => {
   let ownerToken: string;
   let ownerId: string;
   let customerId: string;
@@ -1181,7 +1181,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
     await stopApp();
   });
 
-  it('AC-288 — concurrent first-of-year issuance does not leak PG 23505 to the caller', async () => {
+  it('AC-694 — concurrent first-of-year issuance does not leak PG 23505 to the caller', async () => {
     // Two fresh `rechnung_faellig` projects, two drafts, two services
     // on independent pools. Stub Date so the issuance code's
     // `new Date().getUTCFullYear()` resolves to FUTURE_YEAR for the
@@ -1256,7 +1256,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
 });
 
 // ---------------------------------------------------------------------
-// AC-289 — Pre-condition rejection paths.
+// AC-696, AC-697 — Pre-condition rejection paths.
 //
 // Each (a) through (i) arm asserts:
 //   - the documented error code,
@@ -1269,7 +1269,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-288)
 // connection for the duration of the call and counting frames.
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — pre-condition rejections (AC-289)', () => {
+describe('Invoice issuance — pre-condition rejections (AC-696, AC-697)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -1309,7 +1309,7 @@ describe('Invoice issuance — pre-condition rejections (AC-289)', () => {
 
       // Sequence MUST NOT advance.
       expect(seqAfter).toBe(seqBefore);
-      // No audit row for the failed issue (AC-289 trailing clause).
+      // No audit row for the failed issue (AC-697).
       expect(auditAfter).toBe(auditBefore);
 
       // Give any errant post-commit SSE the full poll window to land.
@@ -1469,7 +1469,7 @@ describe('Invoice issuance — pre-condition rejections (AC-289)', () => {
 // Each describe block owns its `startApp` lifecycle; suites and tests
 // within one file run sequentially because `sequence.concurrent`
 // defaults to false, so the blocks cannot interleave.
-describe('Invoice issuance — pre-condition rejection (i) (AC-289)', () => {
+describe('Invoice issuance — pre-condition rejection (i) (AC-698)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -1512,7 +1512,7 @@ describe('Invoice issuance — pre-condition rejection (i) (AC-289)', () => {
 
     // Draft created BEFORE subscribing — `createDraft` emits an
     // `invoice_changed` SSE (draft CRUD emits).
-    // The AC-289 assertion is about the FAILED issue branch — the
+    // The AC-698 assertion is about the FAILED issue branch — the
     // draft-create event is pre-existing noise and must be outside
     // the subscription window.
     const draftId = await createDraft(ownerToken, projectId);
@@ -1550,9 +1550,9 @@ describe('Invoice issuance — pre-condition rejection (i) (AC-289)', () => {
 
 // ---------------------------------------------------------------------
 // POST /api/invoices/:id/issue on an ALREADY-ISSUED row (review
-// finding M20 / AC-286).
+// finding M20 / AC-709).
 //
-// AC-286 freezes issued/cancelled rows at the route surface: any
+// AC-709 freezes issued/cancelled rows at the route surface: any
 // mutation other than the cancel-flip path is rejected with
 // `INVOICE_FROZEN` (status 422 — see `errors.ts:invoiceFrozen`). The
 // service-layer guard at `InvoiceIssueService.ts:117-119` enforces
@@ -1562,12 +1562,12 @@ describe('Invoice issuance — pre-condition rejection (i) (AC-289)', () => {
 //
 // Pin the contract end-to-end at the route surface: no second number
 // allocation, no second audit row, no second SSE event. (The
-// happy-path AC-287 test already pins the first issue's audit + SSE
+// happy-path issue test already pins the first issue's audit + SSE
 // shape; this test pins that calling /issue a SECOND time is a
 // rejection-only path.)
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)', () => {
+describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-709)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -1582,7 +1582,7 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
     await stopApp();
   });
 
-  it('AC-286 — POST /issue on an issued row is rejected with INVOICE_FROZEN and persists nothing', async () => {
+  it('AC-709 — POST /issue on an issued row is rejected with INVOICE_FROZEN and persists nothing', async () => {
     // 1. Issue a draft successfully — establishes the issued row that
     //    the second POST will hit. Use direct authPost rather than
     //    going through the SSE-subscribed window: the first issue is
@@ -1609,7 +1609,7 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
     const bus = await loadBus();
     const conn = subscribeFake(bus);
     try {
-      // 3. Second POST /issue — the load-bearing call. AC-286 + the
+      // 3. Second POST /issue — the load-bearing call. AC-709 + the
       //    service guard at `InvoiceIssueService.ts:117` map this to
       //    `INVOICE_FROZEN` at status 422 (`errors.ts:263-265`).
       const reissue = await authPost(
@@ -1639,7 +1639,7 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
       //    `mutate()` returns successfully (`InvoiceIssueService.ts:94`),
       //    so a throw inside the tx body never reaches the emit. Wait
       //    the full poll window so a fast errant emit cannot race the
-      //    assertion (negative-assertion pattern from the AC-289 block).
+      //    assertion (negative-assertion pattern from the precondition block).
       await waitFor(() => countInvoiceChanged(conn) > 0 || countProjectChanged(conn) > 0);
       expect(countInvoiceChanged(conn)).toBe(0);
       expect(countProjectChanged(conn)).toBe(0);
@@ -1650,7 +1650,7 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
 });
 
 // ---------------------------------------------------------------------
-// AC-292 — Per-tax-mode boilerplate text.
+// AC-693 — Per-tax-mode boilerplate text.
 //
 // Issue the same fixture draft under each mode; extract text from the
 // rendered PDF/A-3. `reverse_charge` carries the §13b string, `standard`
@@ -1658,11 +1658,11 @@ describe('Invoice issuance — re-issue on issued row is frozen (M20 / AC-286)',
 // breakdown), `reverse_charge` does not.
 // ---------------------------------------------------------------------
 
-// AC-292 statutory reference — pinned literally. The German UI copy
+// AC-693 statutory reference — pinned literally. The German UI copy
 // around it is `[C]`; the §-reference itself appears verbatim.
 const REVERSE_CHARGE_BOILERPLATE = '§ 13b UStG';
 
-describe('Invoice issuance — per-tax-mode boilerplate (AC-292)', () => {
+describe('Invoice issuance — per-tax-mode boilerplate (AC-693)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -1706,7 +1706,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AC-292)', () => {
 
   it('standard mode — renders per-rate VAT breakdown and omits the §13b boilerplate', async () => {
     const text = await issueAndExtract('standard');
-    // Standard mode renders the per-rate breakdown (per AC-292 +
+    // Standard mode renders the per-rate breakdown (per AC-693 +
     // ADR-0026 §Tax modes). The fixture line is qty=1, unitPrice=1500,
     // taxRate=19 → net=1500.00, tax=285.00, gross=1785.00.
     //
@@ -1729,7 +1729,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AC-292)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-293 — PDF/A-3 + embedded factur-x.xml conformance.
+// AC-700 — PDF/A-3 + embedded factur-x.xml conformance.
 //
 // Extract the embedded XML and validate against the EN 16931 XSD.
 // The renderer/XSD machinery does not exist at step-3 time — the
@@ -1738,7 +1738,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AC-292)', () => {
 // test passes.
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — ZUGFeRD EN 16931 conformance (AC-293)', () => {
+describe('Invoice issuance — ZUGFeRD EN 16931 conformance (AC-693, AC-700)', () => {
   let ownerToken: string;
   let projectId: string;
 

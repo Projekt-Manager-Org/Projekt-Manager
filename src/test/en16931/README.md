@@ -1,6 +1,6 @@
 # EN 16931 CII validation rules (test-only)
 
-The CEN EN 16931 business rules for the CII syntax, as the precompiled Schematron XSLT. Tests run them over rendered `factur-x.xml` ([AC-293](../../../docs/spec/verification.md#1530-invoices)). They never run at render time ([ADR-0026 §E-invoice format](../../../docs/adr/0026-invoices-immutability-and-zugferd.md#e-invoice-format)).
+The CEN EN 16931 business rules for the CII syntax, as the precompiled Schematron XSLT. Tests run them over rendered `factur-x.xml` ([AC-701](../../../docs/spec/verification.md#1530-invoices)). They never run at render time ([ADR-0026 §E-invoice format](../../../docs/adr/0026-invoices-immutability-and-zugferd.md#e-invoice-format)).
 
 |         |                                                                                                                                                                                                                                       |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

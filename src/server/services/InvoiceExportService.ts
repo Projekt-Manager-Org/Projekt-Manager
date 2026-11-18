@@ -21,7 +21,7 @@ import type { InvoiceService, ListInvoicesOpts } from './InvoiceService.js';
 import { draftNotExportable, exportTooLarge, validationError } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 
-/** Filter shape mirrors the GET /api/invoices opts surface (api.md §14.2.14). */
+/** Filter shape mirrors the GET /api/invoices opts surface. */
 export interface ExportFilterInput {
   year?: number;
   status?: ListInvoicesOpts['status'];

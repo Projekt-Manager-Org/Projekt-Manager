@@ -9,10 +9,10 @@ Section 8 of the [product spec](../index.md): UI surface. Split into per-subsyst
 | **index.md** (this file)                   | §8.1, §8.7        | Shell: top-level layout states, navigation matrix, user menu                                         |
 | **[workflow-views.md](workflow-views.md)** | §8.2–§8.4         | Kanban, Calendar, Project Detail Panel                                                               |
 | **[management.md](management.md)**         | §8.8–§8.10, §8.13 | Project, Customer, and User management tabular CRUD views; global Audit View                         |
-| **[daten.md](daten.md)**                   | §8.11             | Daten view — unified business-data restore + export, storage usage, company profile                  |
+| **[daten.md](daten.md)**                   | §8.11             | Daten view — unified business-data restore + export, storage usage                                   |
 | **[email-intake.md](email-intake.md)**     | §8.12             | Email Data Intake — modal LLM extraction to customer + project                                       |
 | **[project-detail.md](project-detail.md)** | §8.15             | Project Detail Page — dedicated `/projects/:id` route with attachments and per-project invoice block |
-| **[invoices.md](invoices.md)**             | §8.16             | Invoices View — list, draft form, issued-invoice viewer, Stornorechnung action                       |
+| **[invoices.md](invoices.md)**             | §8.16             | Invoices View — list, export, draft form, invoice viewer, company profile                            |
 | **[behavior.md](behavior.md)**             | §9                | Cross-cutting behavioral rules                                                                       |
 
 ---
@@ -97,14 +97,14 @@ The table below mirrors the route table in `src/config/routes.ts`; CI fails on d
 
 <!-- CHECKED:nav-matrix:END -->
 
-Parametrized routes (`/projects/:id`, `/rechnungen/:id`) are deep-link targets rather than nav entries and are omitted above; their gating is specified with the surface itself ([project-detail.md §8.15](project-detail.md#815-project-detail-page), [invoices.md §8.16.3](invoices.md#8163-issued-invoice-viewer)).
+Parametrized routes (`/projects/:id`, `/rechnungen/:id`) are deep-link targets rather than nav entries and are omitted above; their gating is specified with the surface itself ([project-detail.md §8.15](project-detail.md#815-project-detail-page), [invoices.md §8.16.3](invoices.md#8163-invoice-viewer)).
 
 **Per-view notes.** What the table cannot carry:
 
 - **"Meine Projekte"** — the logged-in worker's assigned projects, grouped Heute / Demnächst / Weitere, each row a single tap target deep-linking to `/projects/:id`. Designed for phone-first field use.
 - **"Kanban"**, **"Kalender"** — worker access is scoped; see **Worker-scoped views** below.
-- **"Rechnungen"** — the invoice register; see [invoices.md §8.16](invoices.md#816-invoices-view).
-- **"Daten"** — includes the deployment-wide storage usage row ([daten.md §8.11.3](daten.md#8113-speichernutzung)) and, for the owner, the company-profile form ([daten.md §8.11.4](daten.md#8114-company-profile)).
+- **"Rechnungen"** — the invoice register and the company profile; see [invoices.md §8.16](invoices.md#816-invoices-view).
+- **"Daten"** — includes the deployment-wide storage usage row ([daten.md §8.11.3](daten.md#8113-speichernutzung)).
 - **"Aktivität"** — office does not see destructive entries ([AC-182](../verification.md#1523-audit-log)); the permission gate above governs tab visibility only.
 - **"Benutzer"**, **"Benachrichtigungen"** — hidden for every other role, and a deep link to `/users` or `/benachrichtigungen` returns the not-permitted surface rather than redirecting.
 

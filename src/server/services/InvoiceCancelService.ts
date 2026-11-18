@@ -2,11 +2,16 @@
  * Invoice cancellation atom — split off `InvoiceService` per C-SIZE.
  *
  * Cancel mirrors the issuance atom against a `storno` sub-sequence,
- * with TWO audit rows (`invoice:cancel` on the original,
- * `invoice:issue` on the Storno — the Storno is itself an issuance)
- * and ONE SSE event.
+ * in ONE transaction (steps 1–5 below): allocate the `(year, 'storno')`
+ * number, build the Storno (snapshots copied from the original, amounts
+ * negated), render and persist its PDF, insert it, flip the original
+ * to `cancelled`, write
+ * TWO audit rows (`invoice:cancel` on the original, `invoice:issue` on
+ * the Storno — the Storno is itself an issuance), commit; then ONE SSE
+ * event. Any failure rolls back the number (AC-695). The project
+ * status is never touched (AC-704).
  *
- * Rejections (AC-291):
+ * Rejections (AC-705):
  *   - draft → 409 `INVOICE_NOT_ISSUED`
  *   - cancelled → 409 `INVOICE_ALREADY_CANCELLED`
  */
@@ -45,7 +50,7 @@ import { emitInvoiceChanged } from '../sse/emitters.js';
 import { InvoiceBinaryService } from './InvoiceBinaryService.js';
 
 /**
- * Shape returned by the cancel call (api.md §14.2.14 — pinned exactly
+ * Shape returned by the cancel call (pinned exactly
  * as `{ original, storno }` per the wire contract assertion in the
  * `invoices-cancel.test.ts` happy path).
  */
@@ -82,7 +87,7 @@ export class InvoiceCancelService {
   /**
    * Cancel an issued invoice — create the Stornorechnung sibling, flip
    * the original to `'cancelled'`, write TWO audit rows in one tx,
-   * emit ONE SSE event post-commit (AC-290).
+   * emit ONE SSE event post-commit (AC-719).
    *
    * Invariant: the cancel atom commits EXACTLY two audit rows AND
    * dispatches EXACTLY one SSE event. Because this path uses a bespoke
@@ -97,7 +102,7 @@ export class InvoiceCancelService {
    * and do not let `mutate()` (with its built-in dispatch) sneak back
    * into the cancel atom — that would double-publish.
    *
-   * Rejections (AC-291):
+   * Rejections (AC-705):
    *   - draft → 409 `INVOICE_NOT_ISSUED`
    *   - cancelled → 409 `INVOICE_ALREADY_CANCELLED`
    */
@@ -126,8 +131,8 @@ export class InvoiceCancelService {
       if (before.status === 'draft') throw invoiceNotIssued();
       if (before.status === 'cancelled') throw invoiceAlreadyCancelled();
 
-      // 5. Two audit rows in one tx (AC-290). Project status is
-      //    deliberately NOT flipped — AC-290 trailing clause.
+      // 5. Two audit rows in one tx (AC-623). Project status is
+      //    deliberately NOT flipped — AC-704.
       const cancelAudit = await mutateInTx(tx, ctx, {
         entityType: 'invoice',
         action: 'invoice:cancel',
@@ -185,7 +190,7 @@ export class InvoiceCancelService {
 
     // Post-commit dispatch — both audit rows ride the publisher.
     await dispatchAuditRows(collected);
-    // Exactly ONE SSE frame for the cancel atom (AC-290 trailing
+    // Exactly ONE SSE frame for the cancel atom (AC-719
     // clause). Both rows changed; one invalidation is enough — the
     // client refetches the gated list anyway.
     emitInvoiceChanged();
@@ -217,7 +222,7 @@ export class InvoiceCancelService {
     //    flip, so we cannot INSERT-then-UPDATE-descriptor. Render
     //    first, then INSERT the Storno with the descriptor in one
     //    shot. Snapshots copied byte-for-byte from the original
-    //    (AC-290): issuer / recipient / taxMode / profile /
+    //    (AC-703): issuer / recipient / taxMode / profile /
     //    performanceDate.
     const stornoId = crypto.randomUUID();
     const stornoLines = negateInvoiceLines(before.lines as InvoiceLine[]);

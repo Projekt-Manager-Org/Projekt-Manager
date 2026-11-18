@@ -12,7 +12,7 @@
  * Siblings (the Storno children of an `issued` original) are fetched
  * on demand via `invoicesApi.list({ projectId, includeCancelled: 'true' })`
  * and filtered client-side by `cancellationOf === :id`. The list
- * endpoint does not expose a `cancellationOf` filter (api.md §14.2.14),
+ * endpoint does not expose a `cancellationOf` filter,
  * and the typical sibling count is small (most issued invoices have
  * zero Storno children; the rest have one), so a per-project list
  * fetch is the right tradeoff vs. a dedicated server-side filter that

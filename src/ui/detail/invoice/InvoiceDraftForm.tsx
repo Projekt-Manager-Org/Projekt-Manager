@@ -21,8 +21,8 @@
  *
  * Line totals are computed client-side as a UX preview only, by the
  * same domain function the server uses: the wire lines carry no
- * `lineTotal` — the server derives it on every write (AC-384) and the
- * totals block from it (AC-286).
+ * `lineTotal` — the server derives it on every write (AC-685) and the
+ * totals block from it (AC-685).
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -237,7 +237,7 @@ export function InvoiceDraftForm({
     setErrorMessage(null);
 
     // A rate the mode does not allow (a 0 % line switched to Regulär)
-    // carries its inline error; the server would reject it (AC-384).
+    // carries its inline error; the server would reject it (AC-686).
     // Focus the first one so the error is in view.
     const invalidIdx = lines.findIndex(rateInvalid);
     if (invalidIdx !== -1) {
@@ -253,7 +253,7 @@ export function InvoiceDraftForm({
     // this short-circuit the server returns 422 with the same intent
     // but no actionable field hints; the inline German message is the
     // affordance the user can act on. The server remains authoritative
-    // on field-level validation (AC-303).
+    // on field-level validation (AC-731, AC-686).
     const hasUsableLine = wireLines.some((l) => l.description.length > 0 && l.unitPrice !== 0);
     if (!hasUsableLine) {
       setErrorMessage(STRINGS.invoices.formEmptyLinesError);

@@ -2,7 +2,7 @@
  * API integration tests: a customer correction reaches open drafts
  * (data-model.md §5.15, §6.4).
  *
- * AC-543 the correction itself, AC-544 its transaction, audit and SSE,
+ * AC-543 the correction itself, AC-688 its transaction, AC-623 its audit, AC-719 its event,
  * AC-545 a draft created during an edit, AC-546 serialization with Update,
  * Delete and Issue on the same draft.
  */
@@ -299,7 +299,7 @@ describe('customer correction on open drafts', () => {
     });
   });
 
-  describe('AC-544: transaction, audit and event', () => {
+  describe('AC-688 transaction, AC-623 audit, AC-719 event', () => {
     it('each changed draft gets a version, updatedBy and audit row; one event in all', async () => {
       const customer = await mintCustomer();
       const projectA = await mintProject(customer.id);

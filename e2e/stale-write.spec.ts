@@ -16,7 +16,7 @@ import { STORAGE_STATES } from './storage-states';
  *     is rejected with the stale-write message and shows the refetched
  *     draft — a background refresh while the form is open does not
  *     advance the version it sends.
- *   - AC-382: the `Ausstellen` / `Verwerfen` dialogs preview the draft and
+ *   - AC-728, AC-729: the `Ausstellen` / `Verwerfen` dialogs preview the draft and
  *     send the previewed version — a background refresh while the dialog
  *     is open does not advance it.
  *
@@ -62,7 +62,7 @@ async function mintProject(
   status: WorkflowState,
 ): Promise<{ projectId: string; customerName: string }> {
   const customerName = `Stale-Kunde ${suffix()}`;
-  // A billing address makes drafts on the project issuable (AC-289).
+  // A billing address makes drafts on the project issuable (AC-697).
   const customer = await request.post('/api/customers', {
     data: {
       name: customerName,
@@ -157,7 +157,7 @@ test.describe('AC-379: edits recover from a stale write', () => {
   });
 });
 
-test.describe('AC-382: issue / discard dialogs preview and pin the draft', () => {
+test.describe('AC-728, AC-729: issue / discard dialogs preview and pin the draft', () => {
   for (const action of [
     { name: 'Ausstellen', button: 'invoice-issue-button', path: '/issue', method: 'POST' },
     { name: 'Verwerfen', button: 'invoice-draft-delete', path: '', method: 'DELETE' },

@@ -42,7 +42,7 @@ function mkInvoice(id: string, cancellationOf: string | null): Invoice {
   };
 }
 
-describe('orderInvoicesWithStornoGrouping', () => {
+describe('AC-713: orderInvoicesWithStornoGrouping', () => {
   it('returns empty output for empty input', () => {
     expect(orderInvoicesWithStornoGrouping([])).toEqual([]);
   });

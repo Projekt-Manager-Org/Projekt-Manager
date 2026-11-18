@@ -9,7 +9,7 @@
  *     trash omit it; delete / restore / complete / download-url answer
  *     404 and change nothing; bulk fetch rejects the batch with 422. The
  *     invoice's own PDF route keeps serving the bytes.
- *   - AC-296: its object is written with a per-object Compliance lock of
+ *   - AC-710: its object is written with a per-object Compliance lock of
  *     `INVOICE_OBJECT_LOCK_DAYS`. The restricted MinIO user cannot read
  *     retention back (no `s3:GetObjectRetention`, parity with the B2 app
  *     key), so the arm captures the outgoing `PutObjectCommand`; the
@@ -157,7 +157,7 @@ describe('Rendered invoice PDF protection (#417)', () => {
     else process.env.INVOICE_OBJECT_LOCK_DAYS = previousLockDays;
   });
 
-  describe('AC-296: per-object Compliance lock', () => {
+  describe('AC-710: per-object Compliance lock', () => {
     it('the rendered PDF is PUT with COMPLIANCE mode until ≥ write time + INVOICE_OBJECT_LOCK_DAYS', async () => {
       const { original_key } = await descriptorRow();
       const put = putInputs.find((input) => input.Key?.endsWith(original_key));

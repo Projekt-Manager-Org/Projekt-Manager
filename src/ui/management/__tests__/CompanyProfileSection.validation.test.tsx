@@ -1,6 +1,6 @@
 /**
  * Client-side required-field validation on the company-profile form
- * (ui/daten.md §8.11.4): submitting with a required field empty shows an
+ * (AC-724): submitting with a required field empty shows an
  * inline German message next to that field, marks it `aria-invalid`, and
  * does not dispatch the PUT.
  *
@@ -90,7 +90,7 @@ afterEach(() => {
   useAuthStore.setState({ authUser: null, authError: null, sessionChecked: true });
 });
 
-describe('CompanyProfileSection — required-field validation (ui/daten.md §8.11.4)', () => {
+describe('CompanyProfileSection — required-field validation (AC-724)', () => {
   it.each(REQUIRED_FIELDS)(
     'empty $key shows an inline message naming "$label" and blocks the PUT',
     async ({ key, label }) => {

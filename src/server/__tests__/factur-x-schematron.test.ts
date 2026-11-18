@@ -1,5 +1,5 @@
 /**
- * AC-293 — `factur-x.xml` against the EN 16931 CII business
+ * AC-701 — `factur-x.xml` against the EN 16931 CII business
  * rules (CEN Schematron, `src/test/en16931/`), plus the XML sign
  * convention (data-model.md §5.15 *Signed amounts*) and the Storno's
  * preceding-invoice reference (#548, BT-25 / BT-26).
@@ -145,7 +145,7 @@ const MATRIX = (['standard', 'reverse_charge'] as const).flatMap((mode) =>
   ),
 );
 
-describe('AC-293: factur-x.xml passes the EN 16931 CII business rules', () => {
+describe('AC-701: factur-x.xml passes the EN 16931 CII business rules', () => {
   let sef: string;
 
   beforeAll(() => {

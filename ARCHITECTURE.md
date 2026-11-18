@@ -453,7 +453,7 @@ Contract: [data-model.md §6.4](docs/spec/data-model.md#64-concurrency), [ui/beh
 
 ## Invoices Module
 
-Contract: [data-model.md §5.15–§5.17](docs/spec/data-model.md#515-invoice-entity), [api.md §14.2.14–§14.2.15](docs/spec/api.md#14214-invoice-operations). Design: [ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md) (immutability, ZUGFeRD, libraries). Responsibility boundary: [Betriebsverantwortung](docs/compliance/betriebsverantwortung.md).
+Contract: [data-model.md §5.15–§5.17](docs/spec/data-model.md#515-invoice-entity), [verification.md §15.30–§15.31](docs/spec/verification.md#1530-invoices). Design: [ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md) (immutability, ZUGFeRD, libraries). Responsibility boundary: [Betriebsverantwortung](docs/compliance/betriebsverantwortung.md).
 
 ```mermaid
 flowchart LR
@@ -461,7 +461,7 @@ flowchart LR
   issued -->|cancel| storno["Stornorechnung<br/>sibling row"]
 ```
 
-Issuing is one transaction; any failure, an XSD rejection included, rolls back the number too. Step order: the `src/server/services/InvoiceIssueService.ts` header. After commit, `invoice_changed` + `project_changed` ([architecture.md §11.14](docs/spec/architecture.md#1114-invoice-domain)).
+Issuing is one transaction; any failure, an XSD rejection included, rolls back the number too. Step order: the `src/server/services/InvoiceIssueService.ts` header; cancelling, the `InvoiceCancelService.ts` header. A rollback leaves the already-written PDF object behind as a bucket orphan for the orphan prune; its number was never issued. After commit, `invoice_changed` + `project_changed`.
 
 | Concern                                              | Where                                                                                                                                |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |

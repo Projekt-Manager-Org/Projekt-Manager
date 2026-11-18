@@ -5,8 +5,8 @@
  * Standalone from the shared `ConfirmDialog` because the cancel flow
  * needs a free-text `Grund` input that the snapshot atom records on
  * `Invoice.cancellationReason`. The dialog enforces the reason as
- * required client-side; the server has its own validation (api.md
- * §14.2.14) and remains authoritative.
+ * required client-side (AC-707); the server accepts a cancel without
+ * one.
  */
 
 import { useCallback, useRef, useState } from 'react';

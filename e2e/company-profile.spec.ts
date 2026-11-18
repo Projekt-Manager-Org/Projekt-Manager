@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { STORAGE_STATES } from './storage-states';
 
 /**
- * E2E — Company profile management (pins AC-303 at the UI layer).
+ * E2E — Company profile management (pins AC-722 and AC-724 at the UI layer).
  *
  * Lives on the Rechnungen tab (`/rechnungen`) inside a collapsible
  * `<details>` — the values are referenced by every invoice snapshot
@@ -22,7 +22,7 @@ import { STORAGE_STATES } from './storage-states';
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('Company profile management (AC-303)', () => {
+test.describe('Company profile management (AC-722, AC-724)', () => {
   test.describe('Owner flow', () => {
     test.use({ storageState: STORAGE_STATES.owner });
 

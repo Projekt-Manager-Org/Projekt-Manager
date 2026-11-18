@@ -2,12 +2,12 @@ import { test, expect } from '@playwright/test';
 import { STORAGE_STATES } from './storage-states';
 
 /**
- * E2E — Invoice lifecycle (pins AC-287 and AC-290 at the UI integration
+ * E2E — Invoice lifecycle (pins AC-689, AC-692 and AC-702 at the UI integration
  * level).
  *
  * Drives the owner-facing happy path end-to-end:
  *   1. Owner navigates to a project in `rechnung_faellig` (the only
- *      state from which issuance is allowed per AC-289).
+ *      state from which issuance is allowed per AC-696).
  *   2. Opens the per-project invoice form (ui/invoices.md §8.16, and
  *      the per-project invoice block in ui/project-detail.md §8.15.11).
  *   3. Enters lines + performance date; selects `taxMode = 'standard'`.
@@ -16,7 +16,7 @@ import { STORAGE_STATES } from './storage-states';
  *      - the invoice list shows the new row with an `RE-YYYY-NNNN`
  *        number,
  *      - the parent project's status shows `abgerechnet` on the
- *        Kanban board (AC-287 project flip),
+ *        Kanban board (AC-692),
  *      - the rendered PDF/A-3 is downloadable through the per-invoice
  *        viewer.
  *   6. Cancels the issued invoice with a `cancellationReason`.
@@ -24,8 +24,7 @@ import { STORAGE_STATES } from './storage-states';
  *      - the original row's status renders as `cancelled`,
  *      - the Storno sibling row appears with `ST-YYYY-NNNN`, visually
  *        grouped under the original,
- *      - the parent project's status is NOT auto-reverted (AC-290
- *        trailing clause).
+ *      - the parent project's status is NOT auto-reverted (AC-704).
  *
  * Runs under `chromium-mutating` because the flow persists `invoice`
  * rows + flips a project status — a parallel reader would see the
@@ -43,7 +42,7 @@ const year = new Date().getFullYear();
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
+test.describe('Invoice lifecycle (AC-689, AC-692, AC-702)', () => {
   let projectId: string;
   let invoiceNumber: string;
   let stornoNumber: string;
@@ -105,7 +104,7 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
     await page.getByTestId('invoice-line-tax-rate-select').selectOption('19');
 
     // Save draft, then issue. The two-step UX (save draft first, then
-    // issue) mirrors the §14.2.14 split.
+    // issue) mirrors the draft form / block split (ui/invoices.md §8.16.2).
     await page.getByTestId('invoice-form-save').click();
     await expect(page.getByTestId('invoice-form')).toBeHidden();
 
@@ -129,7 +128,7 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
       page.getByTestId('confirm-ok').click(),
     ]);
 
-    // The issued row carries the `RE-YYYY-NNNN` number per AC-287.
+    // The issued row carries the `RE-YYYY-NNNN` number per AC-689.
     const issuedRow = page
       .getByTestId('invoice-list')
       .locator('[data-testid^="invoice-row-"]')
@@ -143,7 +142,7 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
     expect(invoiceNumber).toMatch(new RegExp(`^RE-${year}-\\d{4,}$`));
   });
 
-  test('the project status flips to abgerechnet on the Kanban board (AC-287)', async ({ page }) => {
+  test('the project status flips to abgerechnet on the Kanban board (AC-692)', async ({ page }) => {
     await page.goto('/kanban');
     await expect(page.getByTestId('kanban-board')).toBeVisible();
 
@@ -219,7 +218,7 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
     await expect(dialog).toBeHidden();
   });
 
-  test('owner cancels the issued invoice with a cancellationReason (AC-290)', async ({ page }) => {
+  test('owner cancels the issued invoice with a cancellationReason (AC-702)', async ({ page }) => {
     await page.goto(`/projects/${projectId}`);
     await expect(page.getByTestId('project-detail-page')).toBeVisible();
 
@@ -271,9 +270,7 @@ test.describe('Invoice lifecycle (AC-287, AC-290)', () => {
     expect(stornoNumber).toMatch(new RegExp(`^ST-${year}-\\d{4,}$`));
   });
 
-  test('the project status is NOT auto-reverted after cancellation (AC-290 trailing clause)', async ({
-    page,
-  }) => {
+  test('the project status is NOT auto-reverted after cancellation (AC-704)', async ({ page }) => {
     await page.goto('/kanban');
     await expect(page.getByTestId('kanban-board')).toBeVisible();
 

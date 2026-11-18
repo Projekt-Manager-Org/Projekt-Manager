@@ -201,7 +201,7 @@ export async function authPatch(token: string, url: string, payload?: Record<str
 /**
  * Make an authenticated PUT request.
  *
- * Used by upsert-style routes such as company-profile (api.md §14.2.15).
+ * Used by upsert-style routes such as company-profile.
  */
 export async function authPut(token: string, url: string, payload?: Record<string, unknown>) {
   return getApp().inject({

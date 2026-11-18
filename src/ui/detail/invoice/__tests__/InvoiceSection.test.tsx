@@ -322,12 +322,12 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
 
   const sentRecipient = () => vi.mocked(invoicesApi.createDraft).mock.calls[0]![1].recipient;
 
-  it("ui/invoices.md §8.16.2: a new draft shows the customer's USt-IdNr.", async () => {
+  it("AC-523: a new draft shows the customer's USt-IdNr.", async () => {
     await openNewDraft();
     expect(ustIdInput()).toHaveValue('DE123456789');
   });
 
-  it('ui/invoices.md §8.16.2: an unchanged recipient is left to the server pre-fill', async () => {
+  it('AC-523: an unchanged recipient is left to the server pre-fill', async () => {
     await openNewDraft();
     await fillUsableLine();
     await userEvent.click(screen.getByTestId('invoice-form-save'));
@@ -336,7 +336,7 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     expect(sentRecipient()).toEqual({});
   });
 
-  it('ui/invoices.md §8.16.2: a correction landing while the form is open is not overridden by the shown value', async () => {
+  it('AC-523: a correction landing while the form is open is not overridden by the shown value', async () => {
     await openNewDraft();
     act(() => {
       useProjectStore.setState({
@@ -350,7 +350,7 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     expect(sentRecipient()).toEqual({});
   });
 
-  it('ui/invoices.md §8.16.2: a form opened after a customer correction shows the corrected values', async () => {
+  it('AC-523: a form opened after a customer correction shows the corrected values', async () => {
     await openNewDraft();
     await userEvent.click(screen.getByRole('button', { name: STRINGS.ui.cancel }));
     act(() => {
@@ -364,7 +364,7 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     expect(await screen.findByTestId('invoice-recipient-ustid-input')).toHaveValue('DE000000001');
   });
 
-  it('ui/invoices.md §8.16.2: an edited address is sent whole, and only the address', async () => {
+  it('AC-523: an edited address is sent whole, and only the address', async () => {
     await openNewDraft();
     const street = screen.getByRole('textbox', { name: STRINGS.invoices.formRecipientStreet });
     await userEvent.clear(street);
@@ -378,7 +378,7 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     });
   });
 
-  it('ui/invoices.md §8.16.2: an edited USt-IdNr. overrides the customer value on the draft', async () => {
+  it('AC-523: an edited USt-IdNr. overrides the customer value on the draft', async () => {
     await openNewDraft();
     await userEvent.clear(ustIdInput());
     await userEvent.type(ustIdInput(), ' DE987654321 ');
@@ -389,7 +389,7 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     expect(sentRecipient()).toEqual({ ustId: 'DE987654321' });
   });
 
-  it('ui/invoices.md §8.16.2: an emptied USt-IdNr. is sent as no value', async () => {
+  it('AC-523: an emptied USt-IdNr. is sent as no value', async () => {
     await openNewDraft();
     await userEvent.clear(ustIdInput());
     await fillUsableLine();
@@ -399,7 +399,7 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     expect(sentRecipient()).toEqual({ ustId: null });
   });
 
-  it('ui/invoices.md §8.16.2: a cleared address is sent as no address', async () => {
+  it('AC-523: a cleared address is sent as no address', async () => {
     await openNewDraft();
     for (const label of ['Street', 'Zip', 'City'] as const) {
       await userEvent.clear(
@@ -413,7 +413,7 @@ describe('InvoiceSection — recipient USt-IdNr.', () => {
     expect(sentRecipient()).toEqual({ address: null });
   });
 
-  it("ui/invoices.md §8.16.2: an existing draft shows its own USt-IdNr., not the customer's", async () => {
+  it("AC-684: an existing draft shows its own USt-IdNr., not the customer's", async () => {
     useProjectStore.setState({
       projects: [makeProject({ customer: { ...CUSTOMER, ustId: 'DE123456789' } })],
     });
@@ -465,7 +465,7 @@ describe('InvoiceSection — draft editor tax-rate select', () => {
     expect(rateOptions()).toEqual(['0', '7', '19']);
   });
 
-  it('switching to Regulär keeps a 0 % line, flags it and blocks Speichern', async () => {
+  it('AC-726: switching to Regulär keeps a 0 % line, flags it and blocks Speichern', async () => {
     listByProjectMock.mockResolvedValue({
       ok: true,
       data: { data: [reverseChargeDraftWithZeroLine()], total: 1 },

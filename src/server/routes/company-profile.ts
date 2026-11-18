@@ -1,6 +1,6 @@
 /**
  * Company-profile routes — singleton GET + owner-only PUT
- * (api.md §14.2.15, ADR-0026, data-model.md §5.17).
+ * (ADR-0026, data-model.md §5.17).
  *
  * POST and DELETE are deliberately NOT registered (singleton row: DB
  * CHECK + BEFORE-DELETE trigger); like any unserved verb they answer
@@ -8,7 +8,7 @@
  *
  * Authorization:
  *   - GET: any authenticated role (the profile is referenced by invoice
- *     rendering AND by the Daten view's read surface).
+ *     rendering AND by the Rechnungen view's read surface).
  *   - PUT: owner role only, via `requireRole('owner')`. The spec doesn't
  *     allocate dedicated `company_profile:*` permission keys (a
  *     fine-grained key per singleton would dilute the catalog), so this
@@ -45,7 +45,7 @@ const profileBodySchema = {
   // PUT semantics — required fields must be present. Optional fields
   // (`iban`, …) accept null explicitly. Non-empty validation runs in the
   // service layer (single source of truth with the issue-time gate —
-  // AC-303 / AC-289(i)).
+  // AC-723 / AC-698).
   required: ['expectedVersion', 'companyName', 'address', 'taxId', 'ustId', 'defaultTaxMode'],
   additionalProperties: false,
   properties: {
@@ -84,7 +84,7 @@ export function companyProfileRoutes(db: Database) {
     //
     // Gated by `requireRole`, not `requirePermission`, because the spec
     // folds the owner-only invariant into a role check rather than
-    // minting a dedicated permission key — api.md §14.2.15 design note
+    // minting a dedicated permission key — api.md §14.3
     // "Owner-only writes".
     // ---------------------------------------------------------------
     app.put(

@@ -110,7 +110,7 @@ async function expectImportRejection(env: Envelope, opts: ImportOptions): Promis
  * - `company_profile` is exactly one row (singleton).
  * - `customers` / `projects` reference each other.
  * - `invoices` carries one cancelled original + the Storno cancelling it,
- *   shaped as the cancel flow writes it (AC-290).
+ *   shaped as the cancel flow writes it (AC-702).
  * - `invoice_sequence` carries the matching counter for the issued
  *   year.
  */

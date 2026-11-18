@@ -1,8 +1,8 @@
 /**
- * Company-profile singleton state (ui/daten.md §8.11.4, ADR-0026).
+ * Company-profile singleton state (ui/invoices.md §8.16.4, ADR-0026).
  *
  * Owner-mutated only — no cross-session race worth wiring an SSE
- * subscription for. The Daten view's CompanyProfileSection drives both
+ * subscription for. The Rechnungen view's CompanyProfileSection drives both
  * `fetch()` (mount + post-save refresh) and `save()` (PUT).
  *
  * Session expiry is funnelled through the shared helper so the bounce-
@@ -17,7 +17,7 @@ import { handleSessionExpired } from './sessionExpired';
 
 /**
  * Payload accepted by `save`. The full `CompanyProfileInput` shape per
- * api.md §14.2.15 — PUT semantics, every writable field present.
+ * PUT semantics, every writable field present.
  */
 export type CompanyProfileSavePayload = CompanyProfileInput;
 

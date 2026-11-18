@@ -19,7 +19,7 @@ with the number of the invoice it renders.
 
 An invoice PDF also gets its own Compliance lock of the target's
 INVOICE_OBJECT_LOCK_DAYS from the write, as the app and the takeout
-import put on it (architecture.md §11.14); the rest keep the bucket
+import put on it (AC-710); the rest keep the bucket
 default. The target's config decides: a few days on staging, years on a
 real deployment, none on dev.
 

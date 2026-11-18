@@ -25,7 +25,7 @@ function stornoRow(name: string): string {
 const rowWithNameCell = (cell: string): string =>
   `ST-2026-0001;02.01.2026;${cell};-10,00;-1,90;-11,90;Storno\r\n`;
 
-describe('buildManifestCsv recipient name', () => {
+describe('AC-717: buildManifestCsv recipient name', () => {
   it.each([
     ['=1+1', "'=1+1"],
     ['+1+1', "'+1+1"],

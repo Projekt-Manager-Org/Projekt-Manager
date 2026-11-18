@@ -112,7 +112,7 @@ export interface ListInvoicesOpts {
  * `project_worker` path on the invoice row, so the worker branch
  * short-circuits before issuing the SELECT.
  *
- * Ordering: `issueDate DESC, createdAt DESC, id` (api.md §14.2.14). Drafts
+ * Ordering: `issueDate DESC, createdAt DESC, id` (AC-712). Drafts
  * have null `issueDate` and sort by `createdAt DESC` via NULLS LAST.
  *
  * Search matches `number` and the snapshotted `recipient.name` (JSONB
@@ -384,7 +384,7 @@ export async function countIssuedOrCancelledForUser(
  * PK blocks on the existing INSERT's lock; when the first transaction
  * commits, the second's `ON CONFLICT` branch runs against the now-
  * existing row and produces the next value. A rollback returns the
- * value to the sequence (AC-288 gapless guarantee).
+ * value to the sequence (AC-695 gapless guarantee).
  *
  * The previous two-step shape (UPDATE-then-INSERT-on-miss) leaked PG
  * `23505 unique_violation` to the caller when two transactions raced
@@ -610,7 +610,7 @@ export async function applyIssuanceUpdate(
 /**
  * Fields for inserting a Storno (cancellation) sibling row. The service
  * snapshots issuer/recipient/taxMode/profile/performanceDate from the
- * original byte-for-byte (AC-290), negates the lines and the totals,
+ * original byte-for-byte (AC-703), negates the lines and the totals,
  * and pre-allocates a number from the `(year, 'storno')` sequence. The
  * descriptor id comes from a separate render+persist that ran earlier
  * in the cancel atom (same immutability-trigger reason as issuance:

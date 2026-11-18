@@ -599,7 +599,7 @@ export const STRINGS = {
      * Aggregate validation error fired by the draft form when the user
      * submits without a single positional row that carries both a
      * non-empty description and a non-zero unit price. Per-field
-     * validation is out of scope for this surface (AC-303 — the server
+     * validation is out of scope for this surface (AC-723 — the server
      * remains authoritative on field-level rejections); this is the
      * load-bearing "no usable line" case.
      */
@@ -679,8 +679,8 @@ export const STRINGS = {
 
     // COMPANY_PROFILE_REQUIRED banner (ui/project-detail.md §8.15.11) —
     // surfaces when the issue call returns 422 with that code. The banner
-    // names the missing fields and links to the Daten view's company-
-    // profile form so the user can fix them inline.
+    // names the missing fields and links to the Rechnungen view's
+    // company-profile form so the user can fix them inline.
     companyProfileBannerHeading: 'Firmendaten unvollständig',
     companyProfileBannerBody: (fields: string) => `Fehlende Felder: ${fields}.`,
     companyProfileBannerLink: 'Firmendaten vervollständigen',

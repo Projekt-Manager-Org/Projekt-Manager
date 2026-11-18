@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------
--- Invoices — issued-row immutability (data-model.md §6.14, AC-294).
+-- Invoices — issued-row immutability (data-model.md §6.14, AC-708).
 --
 -- Persistence-layer backstop on direct SQL writes that bypass the
 -- route layer (seed scripts, migrations, manual SQL). The route
@@ -14,7 +14,7 @@
 -- `cancellation_reason` is NOT in the allow-list. Per
 -- data-model.md §5.15 ("null on non-Storno rows; frozen on the
 -- Storno row at issuance of the cancellation") and
--- the AC-290 happy-path test in `invoices-cancel.test.ts` (it lists
+-- the AC-702 happy-path test in `invoices-cancel.test.ts` (it lists
 -- `cancellation_reason` in the original's `immutableFields`), the
 -- original invoice's `cancellation_reason` stays NULL forever. The
 -- reason text is carried by the Storno sibling row, which is a fresh

@@ -1,6 +1,6 @@
 /**
  * What an `Ausstellen` / `Verwerfen` confirmation acts on (ui/project-detail.md
- * §8.15.11, AC-382): the draft as the dialog opened — recipient, lines,
+ * §8.15.11, AC-728): the draft as the dialog opened — recipient, lines,
  * `taxMode`, `performanceDate`, totals. Rendered from the snapshot the
  * dialog sends the version of, never from the live row: a background
  * refresh behind the dialog must not change what the user confirms.

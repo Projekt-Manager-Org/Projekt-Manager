@@ -414,7 +414,7 @@ export const envSchema = z.object({
     z.string().default(path.join(os.tmpdir(), 'projekt-manager-takeout')),
   ),
   // ---------------------------------------------------------------
-  // Invoice retention (ADR-0026, architecture.md §12.2 / §11.14).
+  // Invoice retention (ADR-0026, architecture.md §12.2, AC-710).
   // Per-object Compliance lock (days from write) on every rendered
   // invoice PDF/A-3; 0 writes no lock. .env.example ships 0 (dev —
   // binaries are cleanable); .env.production.example ships 3650 —

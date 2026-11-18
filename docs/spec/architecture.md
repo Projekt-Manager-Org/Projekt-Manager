@@ -136,49 +136,6 @@ Integrations with external services (e.g., LLM APIs) follow a server-side proxy 
 
 The first integration of this shape is the LLM-based email data extractor (see [ADR-0016](../adr/0016-llm-email-extraction-via-server-proxied-openrouter.md), [api.md §14.2.6](api.md#1426-data-extraction), [ui/email-intake.md §8.12](ui/email-intake.md#812-email-data-intake)).
 
-### 11.14 Invoice Domain
-
-The transaction shape and supporting topology for the invoice domain ([data-model.md §5.15](data-model.md#515-invoice-entity), [data-model.md §5.16](data-model.md#516-invoice-sequence-entity), [data-model.md §5.17](data-model.md#517-company-profile-entity)). Architectural rationale — immutable snapshot, gapless sequence, ZUGFeRD EN 16931 profile, env-driven Object Lock retention, Stornorechnung as a sibling row — is pinned by [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
-
-**Issuance transaction.** A single DB transaction wraps every step of the `draft → issued` transition. Before step 1 it locks the draft row and runs the state and version checks ([data-model.md §6.4](data-model.md#64-concurrency)), so no concurrent draft write commits between the check and step 6:
-
-1. Atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE … RETURNING next_value` on `invoice_sequence` `(year, 'invoice')` — single statement covers both first-of-year and steady-state; Postgres takes a row-exclusive lock for the duration of the transaction (equivalent to `SELECT FOR UPDATE`).
-2. Format the resulting `Invoice.number` as `RE-YYYY-NNNN`.
-3. Snapshot `issuer` from the live `company_profile` row; freeze `recipient`, `lines`, `taxMode`, `profile` from the draft's current values; compute `totals` server-side from `lines` + `taxMode`.
-4. Render the PDF/A-3 with embedded `factur-x.xml` (ZUGFeRD EN 16931 Comfort profile) — the render happens inside the transaction so a render failure rolls back the sequence allocation.
-5. Write the rendered bytes through the binary descriptor pipeline ([ARCHITECTURE.md § Attachments Module](../../ARCHITECTURE.md#attachments-module)) using the e2e envelope ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)). The descriptor write is part of the same transaction; the object carries its own Object Lock per `INVOICE_OBJECT_LOCK_DAYS` (Object Lock retention below).
-6. Flip `Invoice.status` to `'issued'`, persist the snapshotted fields, persist `renderedPdfBinaryDescriptorId`.
-7. Update the parent `Project.status` to `abgerechnet` via the standard transition path ([data-model.md §6.4](data-model.md#64-concurrency)); the transition's audit row is co-committed in the same transaction. A project no longer in `rechnung_faellig` at this step fails the transaction with `INVOICE_PROJECT_STATE`.
-8. Write the `audit_log` row through the single-write-path helper ([§11.3](#113-state-layer-behavioral-contract)) with `entityType = 'invoice'`, `action = 'invoice:issue'`, ancestor `('project', projectId)`.
-9. Commit.
-10. Post-commit, emit the `invoice_changed` and `project_changed` SSE events ([ADR-0025](../adr/0025-realtime-ui-invalidation-via-sse.md)) — the project status changed, so both consumer surfaces (invoice list, project list / kanban) invalidate.
-
-A failure at any step rolls back the entire transaction: the sequence increment never persists (gapless guarantee — [§6.13](data-model.md#613-gapless-sequence-allocation)), the descriptor row rolls back (the already-PUT object stays behind as a bucket orphan, its invoice number never issued), the issuance leaves the project status unchanged, and the draft remains editable.
-
-**Stornorechnung issuance transaction.** Cancellation of an issued invoice runs its own single transaction:
-
-1. Atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE … RETURNING next_value` on `invoice_sequence` `(year, 'storno')`.
-2. Format `ST-YYYY-NNNN`.
-3. Insert a new `Invoice` row carrying `cancellationOf = <original.id>`, `issuer` / `recipient` / `taxMode` / `profile` / `performanceDate` snapshotted from the original, `lines` with sign-flipped `unitPrice` and `lineTotal`, `totals` the exact negation of the original's, `cancellationReason` from the cancel call body, `status = 'issued'` (Storno rows are born issued).
-4. Render the PDF/A-3 with embedded `factur-x.xml` for the Storno using the same toolchain; write bytes through the binary pipeline.
-5. Flip the original row's `status` to `'cancelled'`; the original row's other fields are unchanged (it stays frozen per [§6.14](data-model.md#614-immutability-of-issued-invoices)).
-6. Write two `audit_log` rows through `mutate()` — one `invoice:cancel` on the original, one `invoice:issue` on the Storno — both inside the same transaction. Project status is **not** auto-modified (the operator decides what to do with the now-orphan `abgerechnet` state via the UI — [ui/invoices.md §8.16](ui/invoices.md#816-invoices-view)).
-7. Commit.
-8. Post-commit, emit `invoice_changed`.
-
-**Render shape (ZUGFeRD EN 16931 Comfort).** A single PDF/A-3 file with the EN 16931 XML payload embedded as `factur-x.xml`. The PDF is human-readable; the XML is machine-readable. The Comfort profile is the EN 16931-conformant tier of ZUGFeRD — sufficient for §14a UStG and what B2B receivers expect. v1 `Invoice.profile` always evaluates to `'zugferd-en16931'`; the field exists so a future XRECHNUNG profile lands without schema churn (renderer dispatch by `profile`, [ADR-0026 §E-invoice format](../adr/0026-invoices-immutability-and-zugferd.md#e-invoice-format)). Amount signs: [data-model.md §5.15](data-model.md#515-invoice-entity) _Signed amounts_. The render is server-side; the toolchain choice is implementation-defined (`ARCHITECTURE.md § Invoices Module`).
-
-**Tax-mode boilerplate.** Each `taxMode` value renders with its boilerplate in German:
-
-- `standard` — per-line VAT columns (19% / 7%), full tax breakdown in the totals block.
-- `reverse_charge` — no VAT on lines; mandatory boilerplate `"Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG"`.
-
-Exact German strings live in the German UI and error strings catalogue (`[C]` — [§12.2](#122-company-configurable-settings)).
-
-**Object Lock retention.** Each rendered PDF/A-3 is written with its own Compliance Object Lock until write time + `INVOICE_OBJECT_LOCK_DAYS` ([§12.2](#122-company-configurable-settings) `[C]`); the full-account import job applies the same lock when it restores one. The lock is per object, not the bucket default: the bucket-default retention `R` must stay within the trash window `L` ([AC-236](verification.md#1526-attachments)), so it cannot carry a multi-year horizon. A write whose lock the storage provider rejects fails, and the surrounding transaction rolls back.
-
-**Verification.** State-machine, transaction shape, sequence gaplessness, tax-mode rendering, Storno mechanics and Object Lock enforcement are pinned by [§15.30](verification.md#1530-invoices). Company-profile invariants are pinned by [§15.31](verification.md#1531-company-profile).
-
 ---
 
 ## 12. Configuration Boundaries
@@ -250,8 +207,8 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 
 A variable's absence here is a claim that no company would need to change it. If one does, the fix is to add the entry — not to treat the catalogue as advisory.
 
-- Invoice Object Lock retention — `INVOICE_OBJECT_LOCK_DAYS`, the per-object Compliance lock (days from write) on every rendered invoice PDF/A-3. Default `3650` in `.env.production.example`: defense in depth against the application's own unreliability, not a retention promise — retention stays with the operating company ([ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)); `0` in `.env.example` writes no lock, so dev binaries stay disposable. Bounds: integer ≥ 0. Independent of the bucket-default retention `R` and the trash window `L` ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)). See [§11.14](#1114-invoice-domain), [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
-- Company default tax mode — `company_profile.defaultTaxMode` ∈ `'standard' | 'reverse_charge'`; pre-fills new invoice drafts with the tenant's most common mode ([data-model.md §5.17](data-model.md#517-company-profile-entity)). Owner-editable at runtime through the Daten view's company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); not an env var. Listed here because it is a per-tenant default that the deployment owner sets, not a per-user preference. Default `'standard'` on the pre-seeded singleton.
+- Invoice Object Lock retention — `INVOICE_OBJECT_LOCK_DAYS`, the per-object Compliance lock (days from write) on every rendered invoice PDF/A-3. Default `3650` in `.env.production.example`: defense in depth against the application's own unreliability, not a retention promise — retention stays with the operating company ([ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)); `0` in `.env.example` writes no lock, so dev binaries stay disposable. Bounds: integer ≥ 0. Independent of the bucket-default retention `R` and the trash window `L` ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)). Behavior: [AC-710](verification.md#1530-invoices). Design: [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
+- Company default tax mode — `company_profile.defaultTaxMode` ∈ `'standard' | 'reverse_charge'`; pre-fills new invoice drafts with the tenant's most common mode ([data-model.md §5.17](data-model.md#517-company-profile-entity)). Owner-editable at runtime through the company-profile form ([ui/invoices.md §8.16.4](ui/invoices.md#8164-company-profile)); not an env var. Listed here because it is a per-tenant default that the deployment owner sets, not a per-user preference. Default `'standard'` on the pre-seeded singleton.
 
 ### 12.3 Configuration Requirements
 

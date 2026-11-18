@@ -51,7 +51,7 @@ import styles from './InvoiceSection.module.css';
 /**
  * Translate the server's missing-field path ("address.zip", "ustId", …)
  * to its German display label. The path strings are pinned at the API
- * layer (api.md §14.2.15 + CompanyProfileService), so this map is the
+ * layer (CompanyProfileService), so this map is the
  * client-side decoder. Unknown paths fall back to the raw key — operator
  * triage still reads it, and a missing translation surfaces as text
  * rather than a silent drop.
@@ -162,7 +162,7 @@ export function InvoiceSection({ projectId, projectStatus, archived }: Props) {
     setActionError(null);
     setMissingProfileFields(null);
     // `invoice` is the row as the dialog opens: the preview shows it and
-    // its version is what the issue sends (AC-382) — a refresh behind the
+    // its version is what the issue sends (AC-729) — a refresh behind the
     // dialog changes neither.
     const ok = await requestConfirm(STRINGS.invoices.issueConfirmBody, {
       title: STRINGS.invoices.issueConfirmTitle,
@@ -177,7 +177,7 @@ export function InvoiceSection({ projectId, projectStatus, archived }: Props) {
       outcome.missingFields.length > 0
     ) {
       // F3 — surface the dedicated COMPANY_PROFILE_REQUIRED banner with
-      // the named fields + a link to /daten. The row state stays intact
+      // the named fields + a link to /rechnungen (AC-725). The row state stays intact
       // so the user can fix the profile and retry. The server validates
       // recipient fields the same way; recipient.* paths are typed-input
       // problems the user fixes in the form itself, so we route only the
@@ -194,7 +194,7 @@ export function InvoiceSection({ projectId, projectStatus, archived }: Props) {
       setActionError(outcome.errorMessage);
       return;
     }
-    // The issue path flips the project status server-side (AC-287). Refresh
+    // The issue path flips the project status server-side (AC-692). Refresh
     // the project so the Kanban / detail header reflect the new state without
     // requiring a manual reload.
     void useProjectStore.getState().fetchProject(projectId);

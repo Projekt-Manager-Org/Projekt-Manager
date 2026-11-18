@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------
--- Company profile — singleton DELETE guard (AC-300).
+-- Company profile — singleton DELETE guard (AC-721).
 --
 -- The CHECK on (singleton = true) plus the UNIQUE on `singleton`
 -- caps the row count at one, but a DELETE leaves zero rows — also

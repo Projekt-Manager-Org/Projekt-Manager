@@ -6,7 +6,7 @@
  *
  * Architectural rationale: ADR-0026.
  * Entity: data-model.md §5.15 (Invoice), §5.16 (Sequence), §5.17 (Profile).
- * Wire contract: api.md §14.2.14.
+ * Wire contract: the generated `docs/api/openapi.json`.
  * Verification: verification.md §15.30.
  *
  * Every mutation rides the single-write `mutate()` / `mutateInTx()`
@@ -105,7 +105,7 @@ function parseCalendarDate(input: string): Date {
   return date;
 }
 
-/** Validate every line's shape, then derive its `lineTotal` (AC-384). */
+/** Validate every line's shape, then derive its `lineTotal` (AC-685). */
 function deriveInvoiceLines(lines: InvoiceLineInput[]): InvoiceLine[] {
   if (!Array.isArray(lines)) {
     throw validationError(STRINGS.errors.invalidInput);
@@ -121,7 +121,7 @@ function deriveInvoiceLines(lines: InvoiceLineInput[]): InvoiceLine[] {
   return derived;
 }
 
-/** Reject a line rate the draft's tax mode does not allow (AC-384). */
+/** Reject a line rate the draft's tax mode does not allow (AC-686). */
 function assertLineRatesFor(lines: InvoiceLine[], mode: TaxMode): void {
   const rates = taxRatesFor(mode);
   if (lines.some((line) => !rates.includes(line.taxRate))) {
@@ -129,7 +129,7 @@ function assertLineRatesFor(lines: InvoiceLine[], mode: TaxMode): void {
   }
 }
 
-/** Re-derive `totals` (AC-286); an amount that overflows a double is rejected (AC-384). */
+/** Re-derive `totals` (AC-685); an amount that overflows a double is rejected (AC-686). */
 function deriveTotals(lines: InvoiceLine[], mode: TaxMode): InvoiceTotals {
   const totals = computeInvoiceTotals(lines, mode);
   if (!invoiceTotalsAreFinite(totals)) throw validationError(STRINGS.errors.invalidInput);
@@ -233,7 +233,7 @@ export class InvoiceService {
    * Create a draft invoice scoped to a project. Pre-fills `taxMode`
    * from the live `company_profile.defaultTaxMode` and `recipient`
    * from the project's customer (live row; the actual snapshot is
-   * taken at issuance — AC-285).
+   * taken at issuance — AC-691).
    *
    * Rejected on an archived project (mirrors AC-499) — 404 NOT_FOUND.
    *
@@ -250,7 +250,7 @@ export class InvoiceService {
    * the resolved `taxMode` is what the draft carries until issuance,
    * and a profile mutation racing the draft is benign — the issuance
    * path re-reads the profile inside its own transaction and is the
-   * load-bearing snapshot point (AC-287, AC-304).
+   * load-bearing snapshot point (AC-691).
    */
   async createDraft(
     input: CreateDraftInput,
@@ -288,12 +288,12 @@ export class InvoiceService {
         entityType: 'invoice',
         action: 'create',
         run: async (tx) => {
-          // Project lookup INSIDE the tx (AC-285). An archive committed
+          // Project lookup INSIDE the tx (AC-727). An archive committed
           // before this read is visible here and triggers the 404; one
           // committed after it goes unseen and the INSERT proceeds
           // against the row as read.
           const project = await getProjectRowById(tx, input.projectId);
-          // AC-285: archived project → 404 (mirrors AC-499 for draft writes).
+          // AC-727: archived project → 404.
           if (!project || project.deleted) {
             throw notFound(STRINGS.entities.project);
           }
@@ -379,7 +379,7 @@ export class InvoiceService {
   /**
    * PATCH a draft row. Rejected with `INVOICE_FROZEN` (422) if the
    * row's status is not `'draft'`. Server re-derives `totals` from the
-   * post-patch `lines + taxMode` on every successful PATCH (AC-286).
+   * post-patch `lines + taxMode` on every successful PATCH (AC-685).
    */
   async updateDraft(
     id: string,
@@ -496,7 +496,7 @@ export class InvoiceService {
 
   /**
    * Hard-delete a draft. Rejected with `INVOICE_FROZEN` (422) for any
-   * non-draft row (AC-286). Audit `action='invoice:delete'` — the
+   * non-draft row (AC-709). Audit `action='invoice:delete'` — the
    * exact string is pinned in `invoices-routes.test.ts`. Ancestor
    * link is the parent project.
    */

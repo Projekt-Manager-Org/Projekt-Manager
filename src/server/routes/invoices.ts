@@ -1,6 +1,6 @@
 /**
  * Invoice routes — per-project draft CRUD plus issue / cancel / PDF
- * download (ADR-0026, api.md §14.2.14).
+ * download (ADR-0026).
  *
  * Each handler is a thin HTTP adapter:
  *   - parse + Ajv-validate the request,
@@ -16,9 +16,8 @@
  * The PDF download path retrieves the rendered ciphertext via the
  * attachment binary-descriptor reference, unwraps the row's `wrappedDek`
  * server-side, decrypts in memory, and streams the plaintext as
- * `application/pdf`. This mirrors the api.md §14.2.14 "Download PDF"
- * line which permits either inline bytes or a presigned-GET wrapper;
- * the inline path keeps the contract simple (no extra round-trip,
+ * `application/pdf`. The spec leaves the transport open (AC-711):
+ * inline bytes or a presigned-GET wrapper; the inline path keeps the contract simple (no extra round-trip,
  * single-origin response) and matches the boot-time identity-loaded
  * invariant (ADR-0024).
  */
@@ -43,8 +42,8 @@ import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
 /**
  * Shared JSON-schema fragment for an `InvoiceLineInput`. No `lineTotal`:
- * the service derives it (AC-384), and the server re-derives `totals`
- * from `lines + taxMode` on every successful write (AC-286). A
+ * the service derives it (AC-685), and the server re-derives `totals`
+ * from `lines + taxMode` on every successful write (AC-685). A
  * client-sent `lineTotal` is refused as an undefined field (AC-516).
  */
 const lineSchema = {
@@ -126,7 +125,7 @@ export function invoiceRoutes(db: Database) {
           ...(q.year !== undefined ? { year: q.year } : {}),
           ...(q.projectId !== undefined ? { projectId: q.projectId } : {}),
           ...(q.customerId !== undefined ? { customerId: q.customerId } : {}),
-          // Default `true` per api.md §14.2.14; the repo treats undefined
+          // Default `true`; the repo treats undefined
           // as the default so explicit absence and explicit `true` are
           // observationally equivalent.
           ...(q.includeCancelled === 'false' ? { includeCancelled: false } : {}),
@@ -335,7 +334,7 @@ export function invoiceRoutes(db: Database) {
     );
 
     // ---------------------------------------------------------------
-    // POST /api/invoices/:id/issue — issuance transaction (AC-287)
+    // POST /api/invoices/:id/issue — issuance transaction (AC-689)
     // ---------------------------------------------------------------
     app.post(
       '/api/invoices/:id/issue',
@@ -370,7 +369,7 @@ export function invoiceRoutes(db: Database) {
     );
 
     // ---------------------------------------------------------------
-    // POST /api/invoices/:id/cancel — Storno atom (AC-290)
+    // POST /api/invoices/:id/cancel — Storno atom (AC-702)
     // ---------------------------------------------------------------
     app.post(
       '/api/invoices/:id/cancel',
@@ -415,7 +414,7 @@ export function invoiceRoutes(db: Database) {
     // get-triage collapses to two-way: 200 (row resolved) or 404
     // (unknown id; also surfaces when the descriptor reference is null
     // or the attachment row is gone). Draft → 409 INVOICE_NOT_ISSUED
-    // (AC-299). Bytes are retrieved by fetching the rendered-PDF
+    // (AC-711). Bytes are retrieved by fetching the rendered-PDF
     // attachment row, unwrapping its `wrappedDek` server-side,
     // decrypting the ciphertext fetched from object storage, and
     // streaming the plaintext as `application/pdf` with a

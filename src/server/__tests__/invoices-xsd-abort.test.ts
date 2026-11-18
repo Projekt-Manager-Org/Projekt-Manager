@@ -1,5 +1,5 @@
 /**
- * Per-render XSD failure aborts the issue / cancel transaction (AC-293,
+ * Per-render XSD failure aborts the issue / cancel transaction (AC-700,
  * #559).
  *
  *   POST /api/invoices/:id/issue
@@ -182,7 +182,7 @@ async function expectXsdRejection(): Promise<void> {
 // Tests.
 // ---------------------------------------------------------------------
 
-describe('Invoice per-render XSD failure aborts the transaction (AC-293)', () => {
+describe('Invoice per-render XSD failure aborts the transaction (AC-700)', () => {
   let ownerToken: string;
   let issueProjectId: string;
   let cancelProjectId: string;

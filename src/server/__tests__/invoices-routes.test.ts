@@ -1,8 +1,7 @@
 /**
  * API integration tests — invoice route surface (issue #109, ADR-0026).
  *
- * Pins the HTTP contract for the per-project invoice CRUD endpoints in
- * api.md §14.2.14:
+ * Pins the HTTP contract for the per-project invoice CRUD endpoints:
  *
  *   POST   /api/invoices                       — create draft
  *   GET    /api/invoices/:id                   — get
@@ -11,15 +10,15 @@
  *   GET    /api/invoices/:id/pdf               — download rendered PDF
  *
  * AC coverage in this file:
- *   - AC-285: POST creates a draft with documented defaults;
+ *   - AC-683: POST creates a draft with documented defaults;
  *                      permission matrix on POST; archived-project 404.
- *   - AC-286: PATCH on draft updates and re-derives totals;
+ *   - AC-684, AC-685: PATCH on draft updates and re-derives totals;
  *                      PATCH on issued/cancelled → INVOICE_FROZEN;
  *                      DELETE on draft removes; DELETE on non-draft frozen.
  *   - AC-574, AC-576: authentication and permission matrix, with
  *                      `invoices-auth.test.ts`; not duplicated in the
  *                      issue / cancel / cascade files.
- *   - AC-299: download PDF — issued / cancelled / draft / worker
+ *   - AC-711: download PDF — issued / cancelled / draft / worker
  *                      arms.
  *
  * Pre-impl red state: routes do not exist. Fastify returns 404
@@ -55,10 +54,10 @@ interface Project {
 
 /**
  * Fetch a seeded project in `rechnung_faellig` — the only status that
- * permits a successful invoice issue per AC-289. The seed places three
+ * permits a successful invoice issue per AC-698. The seed places three
  * such projects per `src/server/seed/business.ts`, so picking the first
  * non-`deleted` row is robust to ordering changes. `skipIds` lets the
- * AC-299 PDF arms claim three distinct projects in turn — each issuance
+ * AC-711 PDF arms claim three distinct projects in turn — each issuance
  * flips its project to `abgerechnet`, so consecutive calls need fresh
  * slots.
  */
@@ -76,7 +75,7 @@ async function rechnungFaelligProjectId(
 
 /**
  * Fetch a seeded project NOT in `rechnung_faellig`. Used by the
- * AC-285 negative arm and by the cancel-on-wrong-state path: a draft
+ * AC-727 arm and by the cancel-on-wrong-state path: a draft
  * created here can be issued only after a status flip.
  */
 async function anyActiveProjectId(ownerToken: string): Promise<string> {
@@ -86,7 +85,7 @@ async function anyActiveProjectId(ownerToken: string): Promise<string> {
   return p.id;
 }
 
-/** Archive a project (soft-delete) for the AC-285 404 arm. */
+/** Archive a project (soft-delete) for the AC-727 404 arm. */
 async function archiveProject(ownerToken: string, projectId: string): Promise<void> {
   const res = await authDelete(ownerToken, `/api/projects/${projectId}`);
   if (res.statusCode !== 200) {
@@ -139,7 +138,7 @@ async function seedDraftInvoice(
 }
 
 /**
- * Direct-insert an issued invoice — the AC-286 / AC-299 / AC-120
+ * Direct-insert an issued invoice — the AC-709 / AC-711 / AC-120
  * frozen-row arms need this without going through the issuance
  * service (which doesn't exist at step-3). Sets `number` to a value
  * conforming to the DB CHECK regex.
@@ -199,7 +198,7 @@ async function seedIssuedInvoice(
 
 /**
  * Assert the wire shape of a successful PDF download response.
- * api.md §14.2.14 leaves the transport implementation-defined: either
+ * The spec leaves the transport implementation-defined (AC-711): either
  * inline PDF bytes (Content-Type: application/pdf, body starts with
  * `%PDF-`) OR a JSON wrapper carrying a presigned-GET URL +
  * DEK material. Branch on content-type and assert the matching shape;
@@ -234,7 +233,7 @@ function assertPdfDownloadShape(res: any): void {
 
 /**
  * Fill the `company_profile` singleton with the fields required for a
- * successful issue (AC-289 / COMPANY_PROFILE_REQUIRED). The seeded row
+ * successful issue (AC-698). The seeded row
  * ships empty per data-model.md §5.17 so the issue gate fires until an
  * owner PUTs values — mirrors the helper in `invoices-issue.test.ts`.
  */
@@ -262,7 +261,7 @@ async function ensureCompanyProfileComplete(ownerToken: string): Promise<void> {
  * WHY this exists: `seedIssuedInvoice` writes the row directly via SQL
  * and pre-dates the issuance service, so it leaves
  * `rendered_pdf_binary_descriptor_id` NULL — `InvoiceService.downloadPdf`
- * then correctly returns 404 for that row. The AC-299 PDF-download arms
+ * then correctly returns 404 for that row. The AC-711 PDF-download arms
  * need a row whose descriptor is wired, which only the full issue
  * pipeline produces.
  *
@@ -313,8 +312,8 @@ describe('Invoice routes — integration (issue #109)', () => {
       login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD),
       login(SEED_USERS.bookkeeper.username, SEED_DEFAULT_PASSWORD),
     ]);
-    // The AC-299 PDF arms drive real issuances via the production route,
-    // which requires a complete company_profile (AC-289). The seed ships
+    // The AC-711 PDF arms drive real issuances via the production route,
+    // which requires a complete company_profile (AC-698). The seed ships
     // the singleton empty; fill it here so the issue gate passes.
     await ensureCompanyProfileComplete(ownerToken);
     projectId = await rechnungFaelligProjectId(ownerToken);
@@ -325,11 +324,11 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-285 — POST /api/invoices creates a draft with documented
+  // AC-683 — POST /api/invoices creates a draft with documented
   // defaults. Permission matrix: owner / office succeed; worker /
   // bookkeeper rejected with 403; draft on archived project → 404.
   // -------------------------------------------------------------------
-  describe('AC-285: POST /api/invoices', () => {
+  describe('AC-683, AC-523: POST /api/invoices', () => {
     it('owner creates a draft with documented defaults', async () => {
       const res = await authPost(ownerToken, '/api/invoices', {
         projectId,
@@ -361,14 +360,14 @@ describe('Invoice routes — integration (issue #109)', () => {
       // profile defaults to v1's only value per ADR-0026 §E-invoice format.
       expect(body.profile).toBe('zugferd-en16931');
       // recipient pre-filled from the project's customer (live row, not
-      // snapshot — the snapshot happens at issuance, AC-285).
+      // snapshot — the snapshot happens at issuance, AC-691).
       expect(body.recipient).toBeDefined();
       expect(typeof body.recipient.name).toBe('string');
       expect(body.recipient.name.length).toBeGreaterThan(0);
 
-      // AC-285: "produces one `audit_log` row via `mutate()` with
+      // AC-623: one `audit_log` row via `mutate()` with
       // `entityType = 'invoice'`, `action = 'create'`, ancestor
-      // `('project', projectId)`". Mirrors the AC-286 DELETE audit
+      // `('project', projectId)`. Mirrors the DELETE audit
       // pattern below — without this assertion an impl that skips
       // audit on POST would pass green.
       const { db, pool } = createDatabase();
@@ -425,7 +424,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(res.json().code).toBe('NOT_PERMITTED');
     });
 
-    it('draft on an archived project returns 404 NOT_FOUND (parity with AC-499)', async () => {
+    it('draft on an archived project returns 404 NOT_FOUND (AC-727)', async () => {
       // Use an in_arbeit project we can safely archive — the seeded
       // rechnung_faellig set is reserved for issue-path arms.
       const archivableId = await anyActiveProjectId(ownerToken);
@@ -439,7 +438,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(res.json().code).toBe('NOT_FOUND');
     });
 
-    it('taxMode outside TaxMode (kleinunternehmer) is rejected with 422 VALIDATION_ERROR', async () => {
+    it('taxMode outside TaxMode (kleinunternehmer) is rejected with 422 VALIDATION_ERROR (AC-686)', async () => {
       // ADR-0026 § Tax modes: only `standard` and `reverse_charge` (#552).
       const res = await authPost(ownerToken, '/api/invoices', {
         projectId,
@@ -451,7 +450,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(JSON.stringify(res.json().details)).toContain('taxMode');
     });
 
-    it('calendar-invalid performanceDate is rejected with 422 VALIDATION_ERROR (AC-289 — no silent normalization)', async () => {
+    it('calendar-invalid performanceDate is rejected with 422 VALIDATION_ERROR (AC-686 — no silent normalization)', async () => {
       // The route-layer regex (M9 hardening) only enforces structural
       // YYYY-(01-12)-(01-31) shape; calendar-invalid dates like
       // 2026-02-30 pass the regex. Without the service-layer round-trip
@@ -484,8 +483,8 @@ describe('Invoice routes — integration (issue #109)', () => {
     });
 
     it('explicit recipient overrides the project-customer pre-fill field-by-field', async () => {
-      // AC-285 design note in api.md §14.2.14: "explicit `recipient` in
-      // the body overrides field-by-field". Pinning the override path
+      // AC-523: an explicit `recipient` in
+      // the body overrides field-by-field. Pinning the override path
       // here so a regression that ignored the body (always pulled from
       // customer) would surface.
       const res = await authPost(ownerToken, '/api/invoices', {
@@ -545,11 +544,11 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-286 — PATCH + DELETE freeze rules.
+  // AC-684, AC-685, AC-687, AC-709 — PATCH + DELETE freeze rules.
   // PATCH on draft re-derives totals; PATCH on issued → 422 INVOICE_FROZEN.
   // DELETE on draft hard-deletes; DELETE on non-draft → 422 INVOICE_FROZEN.
   // -------------------------------------------------------------------
-  describe('AC-286: PATCH and DELETE freeze rules', () => {
+  describe('AC-684, AC-685, AC-687, AC-709: PATCH and DELETE', () => {
     it('PATCH on a draft updates fields and re-derives totals from lines + taxMode', async () => {
       const draftId = await seedDraftInvoice(projectId);
 
@@ -568,7 +567,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(res.statusCode).toBe(200);
 
       const body = res.json();
-      // Totals re-derived server-side per AC-286.
+      // Totals re-derived server-side per AC-685.
       expect(body.totals.netGrandTotal).toBe(400);
       // For standard mode the per-rate breakdown is populated.
       expect(body.totals.perRate).toBeDefined();
@@ -581,7 +580,7 @@ describe('Invoice routes — integration (issue #109)', () => {
       expect(body.totals.grossGrandTotal).toBeCloseTo(476, 2);
     });
 
-    it('PATCH with a taxMode outside TaxMode (kleinunternehmer) → 422 VALIDATION_ERROR; draft unchanged', async () => {
+    it('AC-686: PATCH with a taxMode outside TaxMode (kleinunternehmer) → 422 VALIDATION_ERROR; draft unchanged', async () => {
       const draftId = await seedDraftInvoice(projectId);
       const before = (await authGet(ownerToken, `/api/invoices/${draftId}`)).json();
 
@@ -720,12 +719,12 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-299 — GET /api/invoices/:id/pdf
+  // AC-711 — GET /api/invoices/:id/pdf
   // Status: issued | cancelled → bytes (or presigned-GET + DEK wrapper).
   //        draft → 409 INVOICE_NOT_ISSUED.
   //        worker → 403 NOT_PERMITTED (AC-576).
   // -------------------------------------------------------------------
-  describe('AC-299: GET /api/invoices/:id/pdf', () => {
+  describe('AC-711: GET /api/invoices/:id/pdf', () => {
     // Each PDF-download arm that needs real rendered bytes drives a
     // full issuance via `issueViaApi`, which flips its project to
     // `abgerechnet`. The seed ships 3 `rechnung_faellig` projects
@@ -743,7 +742,7 @@ describe('Invoice routes — integration (issue #109)', () => {
     });
 
     it('returns the rendered PDF for a cancelled row — same wire contract as issued', async () => {
-      // AC-299 names `status ∈ {'issued', 'cancelled'}` as the
+      // AC-711 names `status ∈ {'issued', 'cancelled'}` as the
       // PDF-downloadable set. Cancelled rows are legally retained
       // artifacts under §147 AO; the bytes must remain reachable.
       //

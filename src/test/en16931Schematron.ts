@@ -1,5 +1,5 @@
 /**
- * EN 16931 CII business-rule validation for tests (AC-293). Runs the
+ * EN 16931 CII business-rule validation for tests (AC-701). Runs the
  * vendored CEN Schematron XSLT (`src/test/en16931/`) through SaxonJS.
  * Test-only: SaxonJS is proprietary and never ships in the runtime
  * (ADR-0026 §E-invoice format).

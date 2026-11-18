@@ -757,7 +757,7 @@ export const storageUsageApi = {
 };
 
 /**
- * Company-profile singleton (api.md §14.2.15, ADR-0026). GET is open
+ * Company-profile singleton (ADR-0026). GET is open
  * to every authenticated role; PUT is owner-only (enforced server-
  * side). The body excludes `id`, `updatedAt`, `updatedBy` — those are
  * server-managed projections on every response.
@@ -784,7 +784,7 @@ export const companyProfileApi = {
 };
 
 /**
- * Invoice endpoints (api.md §14.2.14, ADR-0026). The list endpoint
+ * Invoice endpoints (ADR-0026). The list endpoint
  * returns `{ data, total }` mirroring the server's repository shape;
  * the per-id read / mutation endpoints return a single `Invoice` row.
  * Cancel returns `{ original, storno }` — both rows in one envelope so
@@ -819,7 +819,7 @@ export interface InvoiceCancelResult {
 }
 
 /**
- * Query parameters for `GET /api/invoices` (api.md §14.2.14). Mirrors
+ * Query parameters for `GET /api/invoices`. Mirrors
  * the server's route schema in `src/server/routes/invoices.ts` — fields
  * are optional and AND-compose. The wire shape encodes `includeCancelled`
  * as a string enum to match the route's `{ enum: ['true', 'false'] }`
