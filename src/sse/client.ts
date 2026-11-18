@@ -18,72 +18,110 @@
  *   - WHATWG `EventSource` reconnects on transport failure at the
  *     implementation-defined reconnection time the spec mandates
  *     (overridable by the server's `retry:` field, not used here).
- *     For the residual unrecoverable-close path (a 401 mid-stream
- *     because a session got revoked, a malformed response, etc.) the
- *     source enters CLOSED and `ensureSource()` recreates it on the
- *     next subscribe — see the readyState guard there.
+ *     A non-200 answer to that reconnect — the proxy's 502 while the
+ *     app restarts, or a 401 after the session was revoked — moves the
+ *     source to CLOSED for good. The client then probes the session
+ *     with growing delays: an expired session goes to the shared
+ *     session-expired handling; otherwise, once the probe succeeds, a
+ *     fresh source opens. A subscribe meanwhile opens it at once.
+ *   - No replay (ADR-0025): every reopen after the first open of a
+ *     subscription lifetime runs each handler once, so every view
+ *     refetches what changed while the connection was down.
  *   - Same-origin only — cookies ride along automatically. Do not
  *     pass `withCredentials: true` (it is for cross-origin only and
  *     causes a CORS preflight that the server is not configured for).
  */
 
+import { authApi } from '@/api/client';
+import { handleSessionExpired } from '@/state/sessionExpired';
+
 const SSE_URL = '/api/events';
+const RECOVERY_DELAY_MIN_MS = 1_000;
+const RECOVERY_DELAY_MAX_MS = 30_000;
 
 let source: EventSource | null = null;
 const handlersByEvent = new Map<string, Set<() => void>>();
 const listenersByEvent = new Map<string, (e: MessageEvent) => void>();
+/** A source opened since the first subscribe; the next open is a reconnect. */
+let hasOpened = false;
+let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+let recoveryDelayMs = RECOVERY_DELAY_MIN_MS;
 
 function ensureSource(): EventSource {
-  // A cached source in CLOSED state is treated the same as no source:
-  // recreate. WHATWG `EventSource` enters CLOSED on responses the spec
-  // deems unrecoverable (401, 404, malformed Content-Type, ...). The
-  // bootstrap-time 401 case — opening pre-auth — is handled at the
-  // call-site layer via the auth-gated `useEffect` in `App.tsx`; this
-  // guard covers the residual mid-stream-session-revocation path
-  // (heartbeat re-validation kills the response, the auto-reconnect
-  // hits 401 because the cookie is now invalid). Without this, the
-  // next subscriber would `addEventListener` on a dead source and
-  // silently miss every frame until a full page reload.
-  if (source && source.readyState !== EventSource.CLOSED) return source;
-  if (source) {
-    // Belt-and-suspenders — `close()` on a CLOSED source is a no-op
-    // per spec, but explicit teardown documents the intent and tears
-    // down any pending reconnect timer the implementation may hold.
-    source.close();
-    listenersByEvent.clear();
-  }
+  // A source that closed for good was dropped by its `error` listener
+  // below, so a cached one is always live.
+  if (source) return source;
+  cancelRecovery();
   source = new EventSource(SSE_URL);
-  // Nullify the cached reference if the freshly-opened source ever
-  // transitions to CLOSED — same self-heal mechanism the readyState
-  // guard above relies on for the next subscribe.
+  source.addEventListener('open', () => {
+    recoveryDelayMs = RECOVERY_DELAY_MIN_MS;
+    if (hasOpened) runAllHandlers();
+    hasOpened = true;
+  });
+  // A CLOSED source never reconnects on its own: drop it and recover.
   source.addEventListener('error', () => {
     if (source && source.readyState === EventSource.CLOSED) {
       source = null;
       listenersByEvent.clear();
+      scheduleRecovery();
     }
   });
   // Re-attach DOM listeners to the newly created source for every
-  // event name we already track. This handles the
-  // close-on-last-unsubscribe → resubscribe sequence within the same
-  // page lifetime AND the dead-source recreation path above.
+  // event name we already track: a resubscribe after the last
+  // unsubscribe, and a source reopened after a terminal close.
   for (const eventName of handlersByEvent.keys()) {
     attachDomListener(source, eventName);
   }
   return source;
 }
 
+function runAllHandlers(): void {
+  for (const set of handlersByEvent.values()) runHandlers(set);
+}
+
+function runHandlers(set: Set<() => void>): void {
+  for (const h of [...set]) {
+    try {
+      h();
+    } catch {
+      /* a faulty handler must not poison the fan-out */
+    }
+  }
+}
+
+function scheduleRecovery(): void {
+  if (recoveryTimer || handlersByEvent.size === 0) return;
+  const delay = recoveryDelayMs;
+  recoveryDelayMs = Math.min(delay * 2, RECOVERY_DELAY_MAX_MS);
+  recoveryTimer = setTimeout(() => {
+    recoveryTimer = null;
+    void recover();
+  }, delay);
+}
+
+async function recover(): Promise<void> {
+  const probe = await authApi.me();
+  // Settled meanwhile: every handler left, or a subscribe reopened.
+  if (handlersByEvent.size === 0 || source) return;
+  if (probe.ok) {
+    ensureSource();
+  } else if (probe.sessionExpired) {
+    handleSessionExpired();
+  } else {
+    scheduleRecovery();
+  }
+}
+
+function cancelRecovery(): void {
+  if (recoveryTimer) clearTimeout(recoveryTimer);
+  recoveryTimer = null;
+}
+
 function attachDomListener(es: EventSource, eventName: string): void {
   if (listenersByEvent.has(eventName)) return;
   const listener = (): void => {
     const set = handlersByEvent.get(eventName);
-    if (!set) return;
-    for (const h of [...set]) {
-      try {
-        h();
-      } catch {
-        /* a faulty handler must not poison the fan-out */
-      }
-    }
+    if (set) runHandlers(set);
   };
   es.addEventListener(eventName, listener);
   listenersByEvent.set(eventName, listener);
@@ -91,6 +129,9 @@ function attachDomListener(es: EventSource, eventName: string): void {
 
 function teardownIfIdle(): void {
   if (handlersByEvent.size > 0) return;
+  cancelRecovery();
+  hasOpened = false;
+  recoveryDelayMs = RECOVERY_DELAY_MIN_MS;
   if (!source) return;
   for (const [name, listener] of listenersByEvent) {
     source.removeEventListener(name, listener);

@@ -62,7 +62,7 @@ Cleaner per-route auth at the cost of N TCP connections per tab and per-domain s
 
 - Industry-standard primitive; zero new client dependency (`EventSource` is built-in).
 - One channel scales to future surfaces — new event types ship without new infra.
-- Browser handles auto-reconnect at the WHATWG-mandated implementation-defined reconnection time (overridable via the server's `retry:` field, not used here).
+- Browser auto-reconnects after a transport drop, at the WHATWG-mandated implementation-defined reconnection time (overridable via the server's `retry:` field, not used here).
 - Server-side cost is small: one held HTTP response per connected tab, no protocol upgrade.
 - Aligns with the post-commit fan-out pattern established by [ADR-0021](0021-audit-log-and-notifications-single-write-path.md)'s in-process publisher — same architectural shape, distinct subscribers.
 
@@ -71,6 +71,7 @@ Cleaner per-route auth at the cost of N TCP connections per tab and per-domain s
 - Each connected tab pins one socket on the Node process and one upstream socket on Caddy — eventual ceiling at scale, not at single-tenant scale.
 - Caddy needs the `flush_interval -1` directive on the `/api/events` upstream as defensive config; misconfigure and SSE buffers until the connection closes.
 - In-process bus is not durable. App restart drops all connections; clients reconnect and refetch (acceptable, same posture as ADR-0021's notification publisher).
+- A non-200 answer to a reconnect — the proxy's 502 while the app restarts, a 401 after session revocation — closes `EventSource` for good. The client owns that recovery: it probes the session with backoff, then reopens or hands over to session-expired handling.
 - v1 emission is tied to mutation call sites: out-of-band SQL writes do not fire events. `LISTEN`/`NOTIFY` upgrade closes this gap if it becomes load-bearing.
 - Event-name broadcast to all authenticated sessions is a (deliberately) low-information signal but still a side channel — it leaks the existence of cross-domain mutations to roles that cannot read the affected entity. Acceptable under the project's threat model (single-tenant, role-trust within the customer organization, [ADR-0019](0019-worker-data-scoping-repository-layer-predicate.md)); recorded so the assumption is explicit.
 - **Security audit required** under [CONTRIBUTING.md §Security audit](../../CONTRIBUTING.md#security-audit) — new long-lived authenticated network surface, broadcast semantics across role boundaries.

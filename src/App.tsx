@@ -171,9 +171,8 @@ export function App() {
 
   // Cross-cutting `project_changed` SSE subscription (ADR-0025,
   // AC-277). Auth-gated: opening `/api/events` before the
-  // session cookie is set yields 401 and the EventSource transitions to
-  // CLOSED with no spec-mandated reconnect — the page would then never
-  // receive frames until a manual reload. The cleanup runs on logout
+  // session cookie is set yields 401, and the client's recovery would
+  // read that as an expired session. The cleanup runs on logout
   // (authUser → null) so the server-side connection is released
   // promptly instead of waiting for the heartbeat re-validation tick.
   useEffect(() => {

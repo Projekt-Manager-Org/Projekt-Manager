@@ -22,9 +22,8 @@
  * Auth-gating contract — the SSE attach path inside `attachListeners()`
  * opens the shared `/api/events` EventSource, which the server's
  * `authenticate` preHandler rejects with 401 before any session cookie
- * exists. Per WHATWG the EventSource then transitions to CLOSED and
- * stops reconnecting; the page would silently miss every frame until
- * a full reload (the bug shape diagnosed against the #176 deploy).
+ * exists. Per WHATWG the EventSource then transitions to CLOSED, and
+ * the client's recovery would read that as an expired session.
  *
  * The mitigation is two-layer:
  *   1. Both consumers (`StorageUsageBadge` in `Footer`, `StorageUsageRow`
