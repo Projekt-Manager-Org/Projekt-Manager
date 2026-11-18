@@ -109,10 +109,10 @@ for i, entry in enumerate(data.get("IgnoredVulns", []), start=1):
                 f"{label}: id: must be a non-empty TOML string, "
                 f"got {type(v).__name__}"
             )
-    if "ignoreUntil" not in entry:
-        out.append(f"{label}: ignoreUntil: missing")
+    if "effectiveUntil" not in entry:
+        out.append(f"{label}: effectiveUntil: missing")
     else:
-        v = entry["ignoreUntil"]
+        v = entry["effectiveUntil"]
         # tomllib maps bare TOML dates to datetime.date; a TOML offset
         # datetime / local datetime parses to datetime.datetime (subclass
         # of date — the isinstance(date) check would pass, then the
@@ -121,21 +121,21 @@ for i, entry in enumerate(data.get("IgnoredVulns", []), start=1):
         # bare YYYY-MM-DD date literal.
         if isinstance(v, datetime):
             out.append(
-                f"{label}: ignoreUntil: must be a bare TOML date "
+                f"{label}: effectiveUntil: must be a bare TOML date "
                 f"(YYYY-MM-DD), got TOML datetime"
             )
         elif not isinstance(v, date):
             out.append(
-                f"{label}: ignoreUntil: must be a bare TOML date "
+                f"{label}: effectiveUntil: must be a bare TOML date "
                 f"(YYYY-MM-DD without quotes), got {type(v).__name__}"
             )
         elif v < today and entry in base_entries:
-            print(f"warning: {label}: ignoreUntil: expired ({v} < {today}), unchanged from the base", file=sys.stderr)
+            print(f"warning: {label}: effectiveUntil: expired ({v} < {today}), unchanged from the base", file=sys.stderr)
         elif v < today:
-            out.append(f"{label}: ignoreUntil: expired ({v} < {today})")
+            out.append(f"{label}: effectiveUntil: expired ({v} < {today})")
         elif v > max_d:
             out.append(
-                f"{label}: ignoreUntil: too far ({v} > today+90d {max_d})"
+                f"{label}: effectiveUntil: too far ({v} > today+90d {max_d})"
             )
     if "reason" not in entry:
         out.append(f"{label}: reason: missing")
@@ -217,7 +217,7 @@ def nonempty_str(v):
 def as_date(v):
     # Only a bare YYYY-MM-DD, which PyYAML reads as datetime.date — the
     # shape Trivy's own `expired_at` parser is guaranteed to accept. Same
-    # rule as OSV's ignoreUntil above; a timestamp is rejected too.
+    # rule as OSV's effectiveUntil above; a timestamp is rejected too.
     return v if isinstance(v, date) and not isinstance(v, datetime) else None
 
 

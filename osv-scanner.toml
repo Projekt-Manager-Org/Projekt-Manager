@@ -6,27 +6,27 @@
 # by scripts/check-allowlist-schema.sh in CI.
 #
 # Required schema per entry:
-#   id           — the OSV identifier (GHSA-..., CVE-..., or OSV-...)
-#                  TOML string.
-#   ignoreUntil  — bare TOML date literal (YYYY-MM-DD, NOT quoted), at most
-#                  90 days from the day the entry was added. The expiry
-#                  forces a re-review; OSV-Scanner stops honoring the entry
-#                  past this date and the nightlies turn red.
-#   reason       — TOML string. MUST start with `@<github-handle>:` so the
-#                  owner is encoded (OSV-Scanner has no dedicated owner
-#                  field). Brief explanation follows the prefix.
+#   id              — the OSV identifier (GHSA-..., CVE-..., or OSV-...)
+#                     TOML string.
+#   effectiveUntil  — bare TOML date literal (YYYY-MM-DD, NOT quoted), at most
+#                     90 days from the day the entry was added. The expiry
+#                     forces a re-review; OSV-Scanner stops honoring the entry
+#                     past this date and the nightlies turn red.
+#   reason          — TOML string. MUST start with `@<github-handle>:` so the
+#                     owner is encoded (OSV-Scanner has no dedicated owner
+#                     field). Brief explanation follows the prefix.
 #
 [[IgnoredVulns]]
 id = "GHSA-4cm8-f57v-mqm6"
-ignoreUntil = 2027-01-29  # <= 90 days from renewal 2026-10-31
+effectiveUntil = 2027-01-29  # <= 90 days from renewal 2026-10-31
 reason = "@vlzware: prettier pinned to 3.9.10, the advisory's patched release. Repo-level range '>=3.9.0, <=3.9.9; 3.9.9 tested' carries free text, so check-repo-advisories.mjs reports it unevaluated. Drop once the global DB carries the advisory (still repo-level only on 2026-10-31)."
 
 [[IgnoredVulns]]
 id = "GHSA-g3hv-75wg-m249"
-ignoreUntil = 2026-12-01  # <= 90 days from 2026-11-01
+effectiveUntil = 2026-12-01  # <= 90 days from 2026-11-01
 reason = "@vlzware: minimatch 10.2.6 via eslint, archiver>readdir-glob (^10); fixed only in 11.0.1. Needs an attacker-supplied pattern and optimizationLevel >= 2. archiver's glob()/directory() are never called, readdir-glob keeps the default level 1, eslint's patterns are repo config. Unreachable (#668). Drop when the dependents allow minimatch >=11.0.1 or 10.x gets a backport."
 
 [[IgnoredVulns]]
 id = "GHSA-fc5q-39xc-vjpf"
-ignoreUntil = 2026-12-18  # <= 90 days from 2026-11-18
+effectiveUntil = 2026-12-18  # <= 90 days from 2026-11-18
 reason = "@vlzware: picomatch 4.0.7 (latest) via vite, vitest, lint-staged; no fixed release yet. ReDoS needs an attacker-supplied extglob pattern. Dev tooling only (pruned from the runtime image), every pattern is repo config. Drop when a fixed picomatch is on main."

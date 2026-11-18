@@ -67,7 +67,7 @@ jobs:
         run: bash scripts/check-allowlist-schema.sh
 
       # Runs even when the schema check failed: the check honours
-      # `ignoreUntil` itself, and one lapsed entry must not blind the scan
+      # `effectiveUntil` itself, and one lapsed entry must not blind the scan
       # for every advisory published while it stays red.
       - name: Repo-level advisory check
         if: ${{ !cancelled() }}

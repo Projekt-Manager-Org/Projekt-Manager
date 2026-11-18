@@ -296,7 +296,7 @@ jobs:
       #
       # The pinned CLI, shared with the nightly (security-scheduled.yml),
       # which runs the same gate without a base. Allowlist: osv-scanner.toml
-      # (entries require owner + reason + ignoreUntil ≤90d per ADR-0027
+      # (entries require owner + reason + effectiveUntil ≤90d per ADR-0027
       # §Negative).
       - uses: ./.github/actions/install-osv-scanner
 

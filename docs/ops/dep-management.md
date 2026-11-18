@@ -195,7 +195,7 @@ The contract — id, owner, reason, expiry ≤ 90 days, scope and nothing else (
 | id     | `id`                            | `id`                                                      | `vulnerability`                 |
 | owner  | `@<handle>:` prefix on `reason` | `owner: '@<handle>'`                                      | `owner: '@<handle>'`            |
 | reason | `reason`                        | `statement`                                               | `reason`                        |
-| expiry | `ignoreUntil`                   | `expired_at` (Trivy honours it)                           | `expires` (Grype ignores it)    |
+| expiry | `effectiveUntil`                | `expired_at` (Trivy honours it)                           | `expires` (Grype ignores it)    |
 | scope  | —                               | `paths` (no leading `/`) / `purls` (vulnerabilities only) | `package` (`location` absolute) |
 
 Expiries are bare `YYYY-MM-DD` dates (a quoted string or a datetime is rejected). Scopes are literal: the scanners read `paths` and `location` as globs and Grype's `name` / `upstream-name` as a regex, so a wildcard would ignore everywhere. A name containing `+` (e.g. `libstdc++`) is a regex to Grype; scope such a package by `location`. A Grype `package` holds a `name`, `upstream-name` or `location`: type and version alone match many packages. `osv-scanner.toml` holds `[[IgnoredVulns]]` only: `[[PackageOverrides]]` (`ignore = true` per package) would suppress with no owner or expiry.
@@ -206,7 +206,7 @@ Per [CLAUDE.md "refuse to serve" principle](../../CLAUDE.md#principles), the cor
 # osv-scanner.toml
 [[IgnoredVulns]]
 id = "GHSA-67mh-4wv8-2f99"
-ignoreUntil = <today+≤90d>
+effectiveUntil = <today+≤90d>
 reason = "@vlzware: esbuild dev-server only; prod build invokes the bundler API, not the server. Tracking upstream fix at <link>."
 ```
 
@@ -277,7 +277,7 @@ GITHUB_TOKEN="$(gh auth token)" node scripts/check-repo-advisories.mjs --base-lo
 
 Runs also print **`cleared by the global DB`** — the reverse: the publisher says vulnerable, the curated record says patched, and the curated one won. When GitHub's review of the global record is at or after the publisher's last edit, the line says `reviewed since the last repo edit` and needs nothing. When it says **`global review predates the last repo edit`**, the global DB may be lagging — the risk this layer exists for — so check the advisory page before trusting the pass. The review timestamp is the first review only, so once that line appears for an advisory, it stays.
 
-No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason + `ignoreUntil` (≤90 days) per [§ Allowlist](#allowlist). Do not weaken the check.
+No fix available yet? Add the GHSA id to `osv-scanner.toml` with owner + reason + `effectiveUntil` (≤90 days) per [§ Allowlist](#allowlist). Do not weaken the check.
 
 **Read the "NOT CHECKED" lines.** Every run prints the direct deps with no GitHub repository and the repos whose advisories endpoint 404s. Those are live coverage gaps, not noise. The amendment above carries the full list of what no layer covers — transitive deps most notably.
 
@@ -295,7 +295,7 @@ Three layers, because none covers the others' path:
 
 The gate **complements** the `.npmrc` cutoff, it does not replace it. The cutoff prevents — young versions never enter the lockfile, which is what lets a daily regeneration converge. The gate reports — it names the package and can be overruled. Dropping the cutoff was measured and rejected: a cooldown-free regeneration introduces 70 new versions, 33 under 3 days, a fresh crop daily, which would leave the auto-merged branch permanently red ([ADR-0027 § 2026-09-17](../adr/0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff)).
 
-Waive a finding by adding `{ package, version, reason, ignoreUntil }` to `release-age-allowlist.json` — same `reason`/`ignoreUntil` rules and 90-day ceiling as the [scanner allowlist](#allowlist), validated by the gate itself rather than by `check-allowlist-schema.sh`, which exists for files third-party scanners read. `security`-labelled PRs waive age findings automatically, matching Renovate's own vulnerability carve-out.
+Waive a finding by adding `{ package, version, reason, effectiveUntil }` to `release-age-allowlist.json` — same `reason`/`effectiveUntil` rules and 90-day ceiling as the [scanner allowlist](#allowlist), validated by the gate itself rather than by `check-allowlist-schema.sh`, which exists for files third-party scanners read. `security`-labelled PRs waive age findings automatically, matching Renovate's own vulnerability carve-out.
 
 Renovate cannot enforce its half on `lockFileMaintenance` (or `pin`, `bump`, `rollback`, `lockfileUpdate`, `replacement`): those update types are [documented as unsupported](https://docs.renovatebot.com/key-concepts/minimum-release-age/) because it delegates the resolution to the package manager. `lockFileMaintenance` runs daily here and auto-merges — so it is precisely the path that needs the npm-side half.
 
