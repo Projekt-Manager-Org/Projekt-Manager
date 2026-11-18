@@ -24,18 +24,17 @@
  *
  * AC coverage in this file:
  *   - AC-689, AC-691, AC-692: happy path with all the above shape assertions; the
- *                      project transition row and its dispatch; a
- *                      concurrent project move rejecting the issue.
+ *                      project transition row and its dispatch.
  *   - AC-694, AC-695: gapless sequence under rollback — fault injected
  *                      between allocation and commit; the rolled-back
  *                      value is returned to the sequence.
  *   - AC-696, AC-697: every pre-condition rejection path with exact
- *                      code mapping. No state change, no sequence
+ *                      code mapping, a concurrent project move included. No state change, no sequence
  *                      advancement, no audit row, no SSE event.
  *   - AC-693: per-tax-mode boilerplate text extracted from the
  *                      rendered PDF — `reverse_charge` includes the §13b
  *                      string, `standard` does not.
- *   - AC-700: PDF/A-3 + embedded `factur-x.xml` validation
+ *   - AC-693: PDF/A-3 + embedded `factur-x.xml` validation
  *                      against the EN 16931 XSD; `Invoice.profile`
  *                      pinned to `'zugferd-en16931'`.
  *
@@ -1309,7 +1308,7 @@ describe('Invoice issuance — pre-condition rejections (AC-696, AC-697)', () =>
 
       // Sequence MUST NOT advance.
       expect(seqAfter).toBe(seqBefore);
-      // No audit row for the failed issue (AC-697).
+      // No audit row for the failed issue (AC-695).
       expect(auditAfter).toBe(auditBefore);
 
       // Give any errant post-commit SSE the full poll window to land.
@@ -1729,7 +1728,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AC-693)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-700 — PDF/A-3 + embedded factur-x.xml conformance.
+// AC-693 — PDF/A-3 + embedded factur-x.xml conformance.
 //
 // Extract the embedded XML and validate against the EN 16931 XSD.
 // The renderer/XSD machinery does not exist at step-3 time — the
@@ -1738,7 +1737,7 @@ describe('Invoice issuance — per-tax-mode boilerplate (AC-693)', () => {
 // test passes.
 // ---------------------------------------------------------------------
 
-describe('Invoice issuance — ZUGFeRD EN 16931 conformance (AC-693, AC-700)', () => {
+describe('Invoice issuance — ZUGFeRD EN 16931 conformance (AC-693)', () => {
   let ownerToken: string;
   let projectId: string;
 

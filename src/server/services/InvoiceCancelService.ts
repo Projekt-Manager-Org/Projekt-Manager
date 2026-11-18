@@ -5,10 +5,9 @@
  * in ONE transaction (steps 1–5 below): allocate the `(year, 'storno')`
  * number, build the Storno (snapshots copied from the original, amounts
  * negated), render and persist its PDF, insert it, flip the original
- * to `cancelled`, write
- * TWO audit rows (`invoice:cancel` on the original, `invoice:issue` on
- * the Storno — the Storno is itself an issuance), commit; then ONE SSE
- * event. Any failure rolls back the number (AC-695). The project
+ * to `cancelled`, write TWO audit rows (`invoice:cancel` on the
+ * original, `invoice:issue` on the Storno — the Storno is itself an
+ * issuance), commit; then ONE SSE event. Any failure rolls back the number (AC-695). The project
  * status is never touched (AC-704).
  *
  * Rejections (AC-705):

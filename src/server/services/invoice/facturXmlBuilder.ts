@@ -15,7 +15,7 @@
  *     detection: `invoice.cancellationOf !== null` is the load-bearing
  *     signal; `number.startsWith('ST-')` is a fallback in case the test
  *     fixture builds a Storno-shaped row without populating the FK.
- *   - Amounts are signed per data-model.md §5.15 *Signed amounts*: a
+ *   - Amounts are signed per data-model.md §5.15 (Rendered document, signed XML amounts): a
  *     Storno renders its stored values negated; a negative signed price
  *     moves its sign onto `BilledQuantity` (EN 16931 BR-27).
  *   - Tax-mode dispatch on the row's snapshotted `taxMode`:
@@ -193,7 +193,7 @@ function renderRecipientBlock(recipient: InvoiceRecipientSnapshot): string {
 
 /**
  * `sign` is +1 for an invoice, −1 for a Storno (data-model.md §5.15
- * *Signed amounts*): the stored values times `sign`. A negative signed
+ * signed XML amounts): the stored values times `sign`. A negative signed
  * `unitPrice` moves its sign onto the quantity — EN 16931 BR-27 forbids
  * a negative item net price.
  */
@@ -260,7 +260,7 @@ export function buildFacturXml(invoice: Invoice, preceding?: PrecedingInvoice): 
   }
   const typeCode = storno ? '381' : '380';
   // A credit note's type code carries the sign; its amounts render
-  // negated (data-model.md §5.15 *Signed amounts*).
+  // negated (data-model.md §5.15, signed XML amounts).
   const sign = storno ? -1 : 1;
   const totals = storno ? negateInvoiceTotals(invoice.totals) : invoice.totals;
 

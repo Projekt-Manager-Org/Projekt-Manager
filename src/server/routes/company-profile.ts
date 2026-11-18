@@ -84,8 +84,8 @@ export function companyProfileRoutes(db: Database) {
     //
     // Gated by `requireRole`, not `requirePermission`, because the spec
     // folds the owner-only invariant into a role check rather than
-    // minting a dedicated permission key — api.md §14.3
-    // "Owner-only writes".
+    // minting a dedicated permission key — api.md §14.3, Company
+    // profile: edit by role `owner`.
     // ---------------------------------------------------------------
     app.put(
       '/api/company-profile',

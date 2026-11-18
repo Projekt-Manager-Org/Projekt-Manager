@@ -205,7 +205,7 @@ test.describe('Invoice lifecycle (AC-689, AC-692, AC-702)', () => {
     );
 
     // Stornorechnung dialog opens with the verbatim German warning
-    // pinned by ui/invoices.md §8.16.3 line 60.
+    // pinned by ui/invoices.md §8.16.3 (`Stornieren`).
     await page.getByTestId('invoice-detail-cancel-button').click();
     const dialog = page.getByTestId('invoice-cancel-dialog');
     await expect(dialog).toBeVisible();

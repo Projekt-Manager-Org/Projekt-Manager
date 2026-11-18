@@ -599,7 +599,7 @@ export const STRINGS = {
      * Aggregate validation error fired by the draft form when the user
      * submits without a single positional row that carries both a
      * non-empty description and a non-zero unit price. Per-field
-     * validation is out of scope for this surface (AC-723 — the server
+     * validation is out of scope for this surface (AC-686 — the server
      * remains authoritative on field-level rejections); this is the
      * load-bearing "no usable line" case.
      */

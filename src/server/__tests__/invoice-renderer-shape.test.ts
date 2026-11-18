@@ -14,9 +14,9 @@
  *   - PDF magic = `%PDF-`.
  *   - PDF text content carries the per-mode boilerplate (AC-693).
  *   - The catalog Names tree has `factur-x.xml` as an embedded file
- *     (AC-700 first assertion).
+ *     (AC-693).
  *   - The embedded XML validates against the EN 16931 Comfort XSD
- *     (AC-700 load-bearing assertion).
+ *     (AC-693).
  *   - Line `quantity` / `unitPrice` render unrounded (AC-693).
  */
 import { describe, it, expect } from 'vitest';
@@ -146,7 +146,7 @@ describe('InvoiceRenderer — line precision (AC-693)', () => {
   });
 });
 
-describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AC-700 shape, route-free)', () => {
+describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AC-693 shape, route-free)', () => {
   const renderer = new InvoiceRenderer();
 
   it('embeds factur-x.xml in the catalog Names tree and the XML validates against the EN 16931 XSD', async () => {
@@ -156,7 +156,7 @@ describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AC-700 shape, route-f
     });
 
     // Walk the catalog Names tree to confirm the embedded file lands
-    // under the exact `factur-x.xml` name. This mirrors what AC-700's
+    // under the exact `factur-x.xml` name. This mirrors what the
     // `extractFacturXml` helper does inside `invoices-issue.test.ts`.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pdfLib = (await import('@cantoo/pdf-lib')) as any;
@@ -177,7 +177,7 @@ describe('InvoiceRenderer — factur-x.xml + EN 16931 XSD (AC-700 shape, route-f
     }
     expect(found).toBe(true);
 
-    // Explicit AC-700 anchor: assert the embedded XML validates
+    // Explicit AC-693 anchor: assert the embedded XML validates
     // against the EN 16931 Comfort XSD. The renderer also validates
     // internally and would throw before returning — this re-check
     // pins the assertion even if the internal step is ever

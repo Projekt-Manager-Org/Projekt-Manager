@@ -20,7 +20,8 @@
  * that lets libxml2 resolve sibling XSDs) trips this file first rather
  * than skipping the validator silently.
  *
- * Pins [AC-700] (EN 16931 XSD conformance of the embedded XML payload).
+ * Pins AC-700 (an XML failing the XSD fails the issuance; the negative
+ * coverage block) and AC-693 (the embedded XML conforms; positive sanity).
  */
 import { describe, it, expect } from 'vitest';
 import { validateFacturXml, FacturXValidationError } from '../services/invoice/xsdValidator.js';
@@ -130,7 +131,7 @@ const GOOD_XML = [
   '</rsm:CrossIndustryInvoice>',
 ].join('');
 
-describe('validateFacturXml — positive sanity (AC-700)', () => {
+describe('validateFacturXml — positive sanity (AC-693)', () => {
   it('accepts a minimal known-good EN 16931 Comfort document', async () => {
     // If this arm regresses, the schema loader is broken (wrong path,
     // dropped sibling import, cache invariant violated) — the negative

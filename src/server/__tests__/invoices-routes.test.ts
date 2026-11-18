@@ -54,7 +54,7 @@ interface Project {
 
 /**
  * Fetch a seeded project in `rechnung_faellig` — the only status that
- * permits a successful invoice issue per AC-698. The seed places three
+ * permits a successful invoice issue per AC-696. The seed places three
  * such projects per `src/server/seed/business.ts`, so picking the first
  * non-`deleted` row is robust to ordering changes. `skipIds` lets the
  * AC-711 PDF arms claim three distinct projects in turn — each issuance

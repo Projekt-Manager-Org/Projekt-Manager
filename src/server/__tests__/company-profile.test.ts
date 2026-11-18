@@ -123,7 +123,7 @@ async function createDraft(ownerToken: string, projectId: string): Promise<strin
 // AC-721 — singleton; AC-576 — owner-only PUT.
 // ---------------------------------------------------------------------
 
-describe('AC-576, AC-721, AC-722: company-profile role matrix + singleton invariant', () => {
+describe('AC-576, AC-721: company-profile role matrix + singleton invariant', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -266,7 +266,7 @@ describe('AC-576, AC-721, AC-722: company-profile role matrix + singleton invari
 // AC-623 — Audit row shape on PUT.
 // ---------------------------------------------------------------------
 
-describe('AC-623: PUT /api/company-profile writes one audit row with payload before/after', () => {
+describe('AC-623, AC-722: PUT /api/company-profile writes one audit row with payload before/after', () => {
   let ownerToken: string;
 
   beforeAll(async () => {

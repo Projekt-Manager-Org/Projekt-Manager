@@ -17,8 +17,8 @@
  * attachment binary-descriptor reference, unwraps the row's `wrappedDek`
  * server-side, decrypts in memory, and streams the plaintext as
  * `application/pdf`. The spec leaves the transport open (AC-711):
- * inline bytes or a presigned-GET wrapper; the inline path keeps the contract simple (no extra round-trip,
- * single-origin response) and matches the boot-time identity-loaded
+ * inline bytes or a presigned-GET wrapper; the inline path keeps the
+ * contract simple (no extra round-trip, single-origin response) and matches the boot-time identity-loaded
  * invariant (ADR-0024).
  */
 
@@ -42,8 +42,8 @@ import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
 /**
  * Shared JSON-schema fragment for an `InvoiceLineInput`. No `lineTotal`:
- * the service derives it (AC-685), and the server re-derives `totals`
- * from `lines + taxMode` on every successful write (AC-685). A
+ * the service derives it, and `totals` from `lines + taxMode`, on
+ * every successful write (AC-685). A
  * client-sent `lineTotal` is refused as an undefined field (AC-516).
  */
 const lineSchema = {

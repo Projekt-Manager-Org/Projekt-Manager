@@ -12,8 +12,8 @@
 -- `ON DELETE SET NULL` on updated_by fails instead of rewriting.
 --
 -- `cancellation_reason` is NOT in the allow-list. Per
--- data-model.md §5.15 ("null on non-Storno rows; frozen on the
--- Storno row at issuance of the cancellation") and
+-- data-model.md §5.15 (`cancellationReason`: set on a Storno only;
+-- an issued row never changes, AC-708) and
 -- the AC-702 happy-path test in `invoices-cancel.test.ts` (it lists
 -- `cancellation_reason` in the original's `immutableFields`), the
 -- original invoice's `cancellation_reason` stays NULL forever. The

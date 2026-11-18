@@ -2,7 +2,7 @@
  * API integration tests — server-derived invoice `lineTotal` (issue #525).
  *
  * AC coverage in this file:
- *   - AC-685: create and PATCH reject a client-supplied
+ *   - AC-685, AC-686, AC-697 (per arm): create and PATCH reject a client-supplied
  *     `lineTotal` (AC-516); issue rejects a stored line that breaks
  *     `lineTotal = round2(quantity × unitPrice)` before a number is
  *     allocated; create rejects a non-finite derived `lineTotal` and a
