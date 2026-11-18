@@ -15,3 +15,39 @@ ignore:
     owner: '@vlzware'
     reason: JWK-parsing DoS on ACME-server/PKI paths our Caddyfile does not enable; no v3 fix
     expires: 2027-01-26
+
+  # OpenSSL 3.5.9 in Alpine 3.24 (app, backup, db): CVE-2026-88823/-95692
+  # (AES-GCM-SIV), -95691 (QUIC client), -107496 (CMS_encrypt with EC
+  # recipients). OpenSSL rates them Low; CISA-ADP's High (via NVD) trips
+  # the gate. Edge patched them in openssl 3.5.9-r1; 3.24 has no fix yet.
+  # Unreached here (checked 2026-11-18): no binary linking the system
+  # libraries imports CMS_encrypt or an OSSL_QUIC_* symbol, and only
+  # libssl and the legacy/loader_attic modules fetch ciphers by name (TLS
+  # has no GCM-SIV suite). Node bundles its own OpenSSL 3.5.9, invisible
+  # to Grype; the app uses only AES-256-GCM there, and a Node release
+  # fixes it. Drop when 3.24 ships the fix: `apk upgrade` takes it.
+  - &openssl-3-24
+    vulnerability: CVE-2026-88823
+    package:
+      name: libssl3
+      type: apk
+    owner: '@vlzware'
+    reason: AES-GCM-SIV, QUIC client and CMS EC paths unused (see comment above); no Alpine 3.24 fix yet
+    expires: 2026-12-18
+  - <<: *openssl-3-24
+    vulnerability: CVE-2026-95691
+  - <<: *openssl-3-24
+    vulnerability: CVE-2026-95692
+  - <<: *openssl-3-24
+    vulnerability: CVE-2026-107496
+  - &openssl-3-24-crypto
+    <<: *openssl-3-24
+    package:
+      name: libcrypto3
+      type: apk
+  - <<: *openssl-3-24-crypto
+    vulnerability: CVE-2026-95691
+  - <<: *openssl-3-24-crypto
+    vulnerability: CVE-2026-95692
+  - <<: *openssl-3-24-crypto
+    vulnerability: CVE-2026-107496
