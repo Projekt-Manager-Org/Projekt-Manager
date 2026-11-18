@@ -17,7 +17,7 @@ import { getEnv } from '../config/env.js';
 /**
  * The writable fields and their limits (data-model.md §5.6). `\\S` refuses
  * an empty or whitespace-only value; an address has all three parts or is
- * null. `ustId` is required only at reverse-charge issuance (AC-289).
+ * null. `ustId` is required only at reverse-charge issuance (AC-697).
  */
 const CUSTOMER_FIELDS = {
   name: { type: 'string', pattern: '\\S', maxLength: 255 },

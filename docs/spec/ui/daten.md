@@ -43,26 +43,3 @@ A row at the top of the view, above Export and Import, shown to `data:export` ho
 | Papierkorb | `Im Papierkorb` |
 
 Behavior: [verification.md §15.29](../verification.md#1529-storage-usage).
-
-### 8.11.4 Company Profile
-
-An owner-only form persisting the singleton `company_profile` row ([data-model.md §5.17](../data-model.md#517-company-profile-entity)) — the source from which every issued invoice's `issuer` block is snapshotted. The form is the only UI surface that mutates the row; the API contract is [api.md §14.2.15](../api.md#14215-company-profile-operations).
-
-**Visibility.** The section is rendered to every authenticated role with read access; the editable surface (inputs enabled, save button visible) is owner-only. Office, worker, and bookkeeper see the section as a read-only summary — useful for verifying the values an invoice will snapshot, with no save affordance. The server is authoritative ([AC-576](../verification.md#1521-role-scoping)).
-
-**Fields.**
-
-- `Firmenname` — required, non-empty.
-- `Adresse` — three components `Straße`, `PLZ`, `Ort`; all three required, non-empty (no all-or-none toggle here; an address with one or two components is meaningless on an invoice).
-- `Steuernummer` — required, non-empty.
-- `USt-IdNr.` — required, non-empty.
-- `IBAN` — optional structurally; the renderer emits a payment block when present.
-- `Akzentfarbe` — optional hex color used by the **rendered invoice** (the rules bracketing the line-item table); falls back to the deploy-time brand accent when unset. It is a document-styling value, not an app-theme override: the app theme needs a light/dark pair with contrast guarantees and is owned by the branding config ([architecture.md §12.5](../architecture.md#125-theming-model)).
-- `Fußzeile` — optional free German text printed at the foot of every rendered invoice.
-- `Standard-Steuermodus` (`defaultTaxMode`) — two-way dropdown (`Regulär`, `Reverse-Charge §13b`). Pre-fills new invoice drafts ([invoices.md §8.16.2](invoices.md#8162-draft-form)).
-
-**Validation.** Required-field validation runs client-side as a UX affordance; the server re-validates and remains authoritative ([AC-303](../verification.md#1531-company-profile)). Submitting with a required field empty (e.g. `USt-IdNr.`) surfaces an inline German validation message next to the offending field and does NOT dispatch the PUT — the save handler short-circuits client-side. The save button is disabled only while an in-flight save is pending ([behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior)); keeping it clickable on incomplete forms is intentional so the user gets explicit field-level feedback instead of a silently unresponsive button.
-
-**Save.** A single `Speichern` action dispatches `PUT /api/company-profile`. On success the form re-renders with the persisted values; the audit log records the mutation per [AC-302](../verification.md#1531-company-profile). On rejection (e.g. `422 VALIDATION_ERROR` from an empty required field) the German error message names the offending fields and the form retains the user's typed values.
-
-**No deletion.** The row is a singleton ([AC-300](../verification.md#1531-company-profile)) — no delete affordance exists.

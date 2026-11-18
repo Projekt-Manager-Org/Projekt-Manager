@@ -1,18 +1,18 @@
 /**
- * Persistence-layer immutability for issued invoices (AC-294,
- * AC-295) and the DB-level CHECK on `invoices.number`.
+ * Persistence-layer immutability for issued invoices (AC-708)
+ * and the DB-level CHECK on `invoices.number`.
  *
  * Three invariants pinned here — defense-in-depth backstops on direct DB
  * writes that bypass the route layer (seed scripts, migrations, manual
  * SQL):
  *
- *   - AC-294: a direct SQL `UPDATE` on an `issued` row touching any
+ *   - AC-708: a direct SQL `UPDATE` on an `issued` row touching any
  *     column other than the cancellation-flip path on `status` is
  *     rejected by the persistence layer (trigger, column-level
  *     constraint, or constraint-equivalent invariant — the exact
  *     mechanism is implementation-defined per ADR-0026).
  *
- *   - AC-295: a direct INSERT with a `number` violating the regex
+ *   - Regression guard, no AC: a direct INSERT with a `number` violating the regex
  *     `^(RE|ST)-\d{4}-\d{4,}$` is rejected by the DB CHECK constraint.
  *     A handful of variants probe the anchors: short suffix, lowercase
  *     prefix, two-digit year, unknown prefix.
@@ -22,7 +22,7 @@
  *
  * Pattern mirrors `data-integrity.test.ts` (AC-96 / AC-97): raw SQL
  * inserts/updates via `pool.query`, with SQLSTATE assertion on the
- * thrown error. The AC-294 rejection arms share one issued fixture
+ * thrown error. The AC-708 rejection arms share one issued fixture
  * row (rejected UPDATEs leave it unchanged); the arm that mutates
  * inserts its own row.
  */
@@ -49,7 +49,7 @@ interface PgErrorShape {
   message?: string;
 }
 
-describe('AC-294: issued invoice rows are write-once at the persistence layer', () => {
+describe('AC-708: issued invoice rows are write-once at the persistence layer', () => {
   let db: Database;
   let pool: pg.Pool;
   let testProjectId: string;
@@ -234,7 +234,7 @@ describe('AC-294: issued invoice rows are write-once at the persistence layer', 
   });
 });
 
-describe('AC-295: invoices.number CHECK constraint matches /^(RE|ST)-\\d{4}-\\d{4,}$/', () => {
+describe('invoices.number CHECK constraint matches /^(RE|ST)-\\d{4}-\\d{4,}$/', () => {
   let db: Database;
   let pool: pg.Pool;
   let testProjectId: string;
@@ -323,7 +323,7 @@ describe('AC-295: invoices.number CHECK constraint matches /^(RE|ST)-\\d{4}-\\d{
     return parentId;
   }
 
-  // Each `it.each` case probes one anchor in the regex. Per AC-294's
+  // Each `it.each` case probes one anchor in the regex. Per AC-708's
   // posture in the same file (impl-defined mechanism), we assert only
   // that the rejection lands — the regex's CHECK is the documented
   // primary mechanism, but the constraint name / SQLSTATE is left to

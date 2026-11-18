@@ -317,10 +317,10 @@ INSERT INTO "meta_backup_status" ("singleton", "last_backup_ok") VALUES (TRUE, F
 -- Pre-seed the single company_profile row (data-model.md §5.17,
 -- ADR-0026). The API exposes upsert (`PUT`) only — no `POST` /
 -- `DELETE` path — so the row MUST exist before the first write.
--- Mandatory fields land empty; the issuance gate (AC-289 /
+-- Mandatory fields land empty; the issuance gate (AC-698 /
 -- COMPANY_PROFILE_REQUIRED) refuses to issue until the owner fills
 -- them via `PUT /api/company-profile`. The `id` defaults to
--- gen_random_uuid() so audit_log.entity_id (uuid NOT NULL, AC-302)
+-- gen_random_uuid() so audit_log.entity_id (uuid NOT NULL, AC-623)
 -- has a stable target without a hard-coded seed UUID. `singleton`
 -- defaults to TRUE; the UNIQUE constraint on it caps the table at one
 -- row.
@@ -457,7 +457,7 @@ FOR EACH ROW
 EXECUTE FUNCTION attachments_storage_usage_delta_fn();
 --> statement-breakpoint
 -- ---------------------------------------------------------------
--- Invoices — issued-row immutability (data-model.md §6.14, AC-294).
+-- Invoices — issued-row immutability (data-model.md §6.14, AC-708).
 --
 -- Persistence-layer backstop on direct SQL writes that bypass the
 -- route layer (seed scripts, migrations, manual SQL). The route
@@ -470,9 +470,9 @@ EXECUTE FUNCTION attachments_storage_usage_delta_fn();
 -- `ON DELETE SET NULL` on updated_by fails instead of rewriting.
 --
 -- `cancellation_reason` is NOT in the allow-list. Per
--- data-model.md §5.15 ("null on non-Storno rows; frozen on the
--- Storno row at issuance of the cancellation") and
--- the AC-290 happy-path test in `invoices-cancel.test.ts` (it lists
+-- data-model.md §5.15 (`cancellationReason`: set on a Storno only;
+-- an issued row never changes, AC-708) and
+-- the AC-702 happy-path test in `invoices-cancel.test.ts` (it lists
 -- `cancellation_reason` in the original's `immutableFields`), the
 -- original invoice's `cancellation_reason` stays NULL forever. The
 -- reason text is carried by the Storno sibling row, which is a fresh
@@ -557,7 +557,7 @@ FOR EACH ROW
 EXECUTE FUNCTION invoices_enforce_immutability_fn();
 --> statement-breakpoint
 -- ---------------------------------------------------------------
--- Company profile — singleton DELETE guard (AC-300).
+-- Company profile — singleton DELETE guard (AC-721).
 --
 -- The CHECK on (singleton = true) plus the UNIQUE on `singleton`
 -- caps the row count at one, but a DELETE leaves zero rows — also

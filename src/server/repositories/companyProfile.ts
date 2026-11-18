@@ -1,6 +1,6 @@
 /**
  * Company-profile repository — the singleton's reads and the UPDATE that
- * powers the `PUT` upsert (data-model.md §5.17, api.md §14.2.15, ADR-0026).
+ * powers the `PUT` upsert (data-model.md §5.17, ADR-0026).
  * `services/CompanyProfileService.ts` refuses to serve when the row is
  * missing and maps it to the API shape.
  *

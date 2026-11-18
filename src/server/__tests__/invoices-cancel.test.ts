@@ -1,7 +1,7 @@
 /**
  * API integration tests — invoice cancellation (issue #109, ADR-0026).
  *
- * Pins the cancel contract from api.md §14.2.14 + ADR-0026:
+ * Pins the cancel contract (verification.md §15.30, ADR-0026):
  *
  *   POST /api/invoices/:id/cancel
  *
@@ -18,9 +18,9 @@
  *   - On an already-`cancelled` row: 409 INVOICE_ALREADY_CANCELLED.
  *
  * AC coverage in this file:
- *   - AC-290: cancel-on-issued happy path with all the above
+ *   - AC-702: cancel-on-issued happy path with all the above
  *                      shape + audit + SSE assertions.
- *   - AC-291: cancel-on-draft and cancel-on-cancelled rejection
+ *   - AC-705: cancel-on-draft and cancel-on-cancelled rejection
  *                      paths with no state change.
  *
  * Pre-impl red state: no route, no service. The cancel endpoint returns
@@ -116,7 +116,7 @@ async function rechnungFaelligProjectId(
 }
 
 async function ensureCompanyProfileComplete(ownerToken: string): Promise<void> {
-  // PUT is the spec verb per api.md §14.2.15.
+  // PUT is the upsert verb.
   const res = await authPut(ownerToken, '/api/company-profile', {
     ...(await expectedVersion(ownerToken, '/api/company-profile')),
     companyName: 'Test Maler GmbH',
@@ -192,7 +192,7 @@ async function countAuditRowsForInvoice(invoiceId: string): Promise<number> {
 }
 
 /**
- * Direct-insert a draft row. Used by AC-291's first arm; the
+ * Direct-insert a draft row. Used by AC-705's first arm; the
  * cancel-on-draft path is a route-level rejection, no service work
  * runs, so seeding directly is fine.
  */
@@ -225,7 +225,7 @@ async function seedDraftInvoice(projectId: string): Promise<string> {
 // Tests.
 // ---------------------------------------------------------------------
 
-describe('Invoice cancellation — happy path (AC-290)', () => {
+describe('Invoice cancellation — happy path (AC-702, AC-703, AC-704)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -262,7 +262,7 @@ describe('Invoice cancellation — happy path (AC-290)', () => {
       expect(cancelRes.statusCode).toBe(200);
 
       const body = cancelRes.json();
-      // Wire shape per api.md §14.2.14: pinned exactly as `{ original, storno }`.
+      // Wire shape: pinned exactly as `{ original, storno }`.
       // No fallback — a regression to a different shape must surface.
       expect(body.original).toBeDefined();
       expect(body.storno).toBeDefined();
@@ -285,7 +285,7 @@ describe('Invoice cancellation — happy path (AC-290)', () => {
       const stornoTotals = storno.totals as { netGrandTotal: number; grossGrandTotal: number };
       expect(stornoTotals.netGrandTotal).toBeLessThan(0);
       expect(stornoTotals.grossGrandTotal).toBeLessThan(0);
-      // Snapshots copied from original (AC-290: issuer / recipient /
+      // Snapshots copied from original (AC-703: issuer / recipient /
       // taxMode / profile / performanceDate copied byte-for-byte).
       expect(storno.issuer).toEqual(beforeRow!.issuer);
       expect(storno.recipient).toEqual(beforeRow!.recipient);
@@ -303,8 +303,8 @@ describe('Invoice cancellation — happy path (AC-290)', () => {
       expect(original.id).toBe(originalId);
       expect(original.status).toBe('cancelled');
 
-      // Per AC-290: "all other fields on the original are byte-equal
-      // to their pre-cancel snapshot". Re-read directly from the DB to
+      // Per AC-708: every other field of the original stays equal
+      // to its pre-cancel snapshot. Re-read directly from the DB to
       // pin this regardless of the wire shape.
       const afterRow = await readInvoiceRow(originalId);
       expect(afterRow).not.toBeNull();
@@ -363,7 +363,7 @@ describe('Invoice cancellation — happy path (AC-290)', () => {
         await pool.end();
       }
 
-      // Project status NOT auto-reverted (AC-290).
+      // Project status NOT auto-reverted (AC-704).
       const proj = await authGet(ownerToken, `/api/projects/${projectId}`);
       expect(proj.statusCode).toBe(200);
       expect(proj.json().status).toBe('abgerechnet');
@@ -378,7 +378,7 @@ describe('Invoice cancellation — happy path (AC-290)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-290 — Storno totals are the exact negation of the
+// AC-703 — Storno totals are the exact negation of the
 // original's stored totals.
 // ---------------------------------------------------------------------
 
@@ -434,7 +434,7 @@ async function seedIssuedInvoice(projectId: string, unitPrice: number, totals: T
   }
 }
 
-describe('Invoice cancellation — Storno names its original (#548)', () => {
+describe('Invoice cancellation — Storno names its original (AC-693, #548)', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -474,7 +474,7 @@ describe('Invoice cancellation — Storno names its original (#548)', () => {
   });
 });
 
-describe('Invoice cancellation — Storno totals (AC-290)', () => {
+describe('Invoice cancellation — Storno totals (AC-703)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -529,14 +529,14 @@ describe('Invoice cancellation — Storno totals (AC-290)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-291 — Cancel rejection paths.
+// AC-705 — Cancel rejection paths.
 //
 // Each arm asserts the documented error code AND no state change. The
 // "no state change" half is checked by reading the row before/after
 // and asserting the status field is unchanged.
 // ---------------------------------------------------------------------
 
-describe('Invoice cancellation — rejection paths (AC-291)', () => {
+describe('Invoice cancellation — rejection paths (AC-705)', () => {
   let ownerToken: string;
   let projectId: string;
 

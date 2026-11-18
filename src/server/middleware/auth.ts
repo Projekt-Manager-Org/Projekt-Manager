@@ -152,7 +152,7 @@ export function requirePermission(...permissions: Permission[]): PermissionGate 
  * ask for a permission, never a role name (§ Permission Gating). This
  * exists for the routes where the spec deliberately folds the invariant
  * into a role check rather than minting a permission key, today only
- * owner-only writes ([api.md §14.2.15]). Enforcing it here rather than
+ * owner-only writes ([api.md §14.3]). Enforcing it here rather than
  * inside the handler keeps every route's access rule at the route
  * boundary, where it is both uniform and readable.
  */

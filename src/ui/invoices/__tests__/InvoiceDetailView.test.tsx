@@ -223,7 +223,7 @@ describe('InvoiceDetailView — cancelled original', () => {
     expect(screen.queryByTestId('invoice-detail-cancel-button')).toBeNull();
   });
 
-  it('renders the storno-siblings list (§8.16.1 — original links to every Storno)', async () => {
+  it('renders the storno-siblings list (§8.16.3 Links — original links to its Storno)', async () => {
     setAuthUser(['owner']);
     const storno = makeInvoice({
       id: 'storno-1',

@@ -1,84 +1,44 @@
 # UI: Invoices View
 
-Section 8.16 of the [product spec](../index.md) — the invoice list and per-invoice surfaces. Architectural rationale and the contract pinned by [ADR-0026](../../adr/0026-invoices-immutability-and-zugferd.md). Entity in [data-model.md §5.15](../data-model.md#515-invoice-entity); API in [api.md §14.2.14](../api.md#14214-invoice-operations).
-
-Shell and navigation live in [index.md](index.md); cross-cutting behavioral rules (in-flight lock, error handling, mutation semantics) in [behavior.md](behavior.md).
+Section 8.16 of the [product spec](../index.md).
 
 ---
 
 ## 8.16 Invoices View
 
-Reachable at `/rechnungen`; nav placement per [index.md §8.7.1](index.md#871-views). Visible to callers with `invoice:read`. Workers do not see the entry.
+`/rechnungen`, for `invoice:read` holders ([index.md §8.7.1](index.md#871-views)). Behavior: [verification.md §15.30](../verification.md#1530-invoices). Fields: [data-model.md §5.15](../data-model.md#515-invoice-entity).
 
-### 8.16.1 List View
+### 8.16.1 List
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  [Jahr ▾]  [Status ▾]  [Suche …]                         │
-├──────────────────────────────────────────────────────────┤
-│  Nr.           Status       Datum       Kunde      Summe  │
-│  RE-2026-0042  Storniert    12.04.2026  Müller    1.250,00│
-│   ↳ ST-2026-0003 Storno     18.04.2026  Müller   -1.250,00│
-│  RE-2026-0041  Ausgestellt  05.04.2026  Schmidt   2.380,00│
-│  RE-2026-0040  Entwurf      —           Weber     1.100,00│
-└──────────────────────────────────────────────────────────┘
-```
-
-A paginated table over `GET /api/invoices` ([api.md §14.2.14](../api.md#14214-invoice-operations)). Columns: `number`, `status` (German label per the mapping below), `issueDate` (DD.MM.YYYY; `—` for drafts), recipient name from the snapshotted `Invoice.recipient.name`, `totals.grossGrandTotal` (EUR, German locale).
-
-- **Status labels.** `Invoice.status` ([data-model.md §5.15](../data-model.md#515-invoice-entity)) maps to German display labels: `'draft' → "Entwurf"`, `'issued' → "Ausgestellt"`, `'cancelled' → "Storniert"`. Storno sibling rows (`cancellationOf` non-null, status `'issued'`) render with the row-kind label `"Storno"` so the user distinguishes them at a glance from a fresh issued invoice. No payment-state labels — payment tracking is out of scope per the kickoff.
-- **Filters.** `Jahr` dropdown (years derived from existing invoice issue dates plus the current year), `Status` dropdown (`Entwurf` / `Ausgestellt` / `Storniert` + an `Alle` option), and a free-text `Suche` matching `number` and recipient name (substring, case-insensitive). Filters AND-compose; the server enforces the same composition.
-- **Stornorechnung grouping.** Storno rows render visually subordinated under their `cancellationOf` original — same row group, indented chevron, muted text on the original's row. The grouping is rendered client-side from the `cancellationOf` references in the list response; the underlying rows are independent in the database. Bookkeeper exports include both rows independently.
-- **Default sort.** `issueDate DESC` then `createdAt DESC`, `id` as stable tiebreaker. Drafts (with `issueDate = null`) sort first within their group, ordered by `createdAt DESC`.
-- **Empty state.** `"Keine Rechnungen"` German placeholder. A `data:export`-less role with no invoices visible (none on any project) sees the same placeholder.
-- **Permission gate.** The list is rendered when the caller holds `invoice:read` ([api.md §14.3](../api.md#143-authorization-rules)). Bookkeeper sees the full list per the matrix.
-- **Row actions.** Clicking an issued or cancelled row navigates to the per-invoice viewer (`/rechnungen/:id`, §8.16.3); clicking a draft row navigates to the parent project's detail page (`/projects/:id`) where the per-project block (§8.15.11) hosts the only editable surface for a draft. Action affordances render as buttons inside the row's action area; row click and action-button clicks are distinct interactions. Draft rows (visible only to `invoice:write` holders): `Bearbeiten` (navigates to the project so the per-project block's form opens with the row pre-filled) and `Verwerfen` (deletes the draft via `DELETE /api/invoices/:id` after a confirmation). `Ausstellen` is intentionally NOT exposed on this surface — issuing requires the project context (project-status flip per AC-287, project refetch), which lives on the per-project block. Issued and Storno rows: `PDF herunterladen` only.
-
-> **Future-work seam — bookkeeper view.** The kickoff ([kickoff.md "Done when"](../../project/kickoff.md#done-when-final-product)) calls for "searching, **grouping** and **exporting**" on the bookkeeper invoice list. The current surface delivers `Suche`, `Jahr`, and `Status` filters, the per-invoice PDF download, and bulk export of the selected or filtered invoices ([api.md §14.2.14](../api.md#14214-invoice-operations)). Grouping (by year / customer / tax mode) is deferred to a follow-up issue covering the bookkeeper view. Tracked explicitly here so the kickoff requirement is not silently dropped.
+- **`Firmendaten`** — the company profile (§8.16.4), collapsed.
+- **Filters** — `Jahr` ([AC-716](../verification.md#1530-invoices)), `Status` (`Entwurf`, `Ausgestellt`, `Storniert`, `Alle`) ([AC-715](../verification.md#1530-invoices)), search ([AC-714](../verification.md#1530-invoices)); `Alle Filter zurücksetzen`. Opened from a project's invoice block, also a removable project filter.
+- **Export** — `Alle herunterladen (N)`, or `N ausgewählte herunterladen` for a selection ([AC-717](../verification.md#1530-invoices), [AC-718](../verification.md#1530-invoices), [AC-730](../verification.md#1530-invoices)). A draft cannot be selected.
+- **Columns** — selection, number, status, issue date (`—` on a draft), recipient name, gross total.
+- **Status** — `Entwurf`, `Ausgestellt`, `Storniert`; a Storno shows `Storno` and `Storno zu <number>`.
+- **Order** — [AC-712](../verification.md#1530-invoices); each Storno under its original ([AC-713](../verification.md#1530-invoices)).
+- **Empty** — `Keine Rechnungen`.
+- **Row** — a draft opens its project with the draft form (§8.16.2); any other row opens the viewer (§8.16.3). Actions: on a draft, `Bearbeiten` and `Verwerfen` with a confirmation ([AC-687](../verification.md#1530-invoices)); otherwise `PDF herunterladen` ([AC-711](../verification.md#1530-invoices)). Issuing happens on the project only ([project-detail.md §8.15.11](project-detail.md#81511-invoice)).
 
 ### 8.16.2 Draft Form
 
-Visible to callers with `invoice:write` (owner / office). Reachable from the per-project block's `Neue Rechnung` CTA ([project-detail.md §8.15.11](project-detail.md#81511-invoice)) on a project in `rechnung_faellig`, and from the per-project block's `Bearbeiten` row action on an existing draft. The form's actions are limited to persistence — `Ausstellen` and `Verwerfen` are row-level affordances on the per-project block; see §8.15.11 for the issuance flow (including the `COMPANY_PROFILE_REQUIRED` banner contract).
+A modal, opened from a project's invoice block ([project-detail.md §8.15.11](project-detail.md#81511-invoice)):
 
-- **Recipient block.** Auto-filled from the project's customer (`name`, `address`, USt-IdNr.); every field is editable inline. On a new draft, a field the user left unchanged takes the customer's current value at save ([AC-285](../verification.md#1530-invoices)), even if the open form still shows an older one. The address counts as one field: editing any part sends the whole address. A saved draft follows later customer corrections per [data-model.md §5.15](../data-model.md#515-invoice-entity). A note next to the block reminds: `"Daten werden bei Ausstellung der Rechnung eingefroren."` — driving home the snapshot-at-issuance semantics ([data-model.md §5.15](../data-model.md#515-invoice-entity)).
-- **Line editor.** A table with rows of `Beschreibung` (description), `Menge` (quantity), `Einheit` (unit — free text), `Einzelpreis (€ netto)` (unit price, net of VAT), `MwSt %` (tax rate — a dropdown of the [§5.15](../data-model.md#515-invoice-entity) rates for the selected tax mode), and `Position (€ netto)` (line total, previewed client-side from `quantity * unitPrice` in real time; the server derives it on create / update — [data-model.md §5.15](../data-model.md#515-invoice-entity)). An `+ Position hinzufügen` action appends a row; a row-level remove affordance deletes. The line total column is read-only; everything else is editable.
-- **Tax-mode select.** Two-way dropdown (`Regulär`, `Reverse-Charge §13b`). Pre-filled from `company_profile.defaultTaxMode` ([data-model.md §5.17](../data-model.md#517-company-profile-entity)). Changing the value triggers a re-render of the totals block (the per-rate breakdown disappears for `reverse_charge`). Switching to `Regulär` with a 0 % line keeps the line unchanged, marks its `MwSt %` field with an inline German error, and blocks `Speichern` until a valid rate is chosen.
-- **Performance date input.** Required to issue; pre-filled with `project.plannedEnd` when present (a sensible default — the Leistungsdatum often matches the project's planned end). German date picker (DD.MM.YYYY).
-- **Totals block.** Read-only; rendered from the client-side computation over `lines` + `taxMode` (`Nettosumme` + per-rate `MwSt …%` rows for `standard`, just net + gross for `reverse_charge`, plus `Bruttosumme`). EUR with German locale formatting. The server derives them on every write; the visible totals are a UX preview.
-- **Actions.** `Speichern` persists the draft via `PATCH /api/invoices/:id` (or `POST /api/invoices` on first save). `Abbrechen` (or modal close) discards any unsaved typed changes and closes the form; persisted state on the row stays intact. Issuance and discarding the persisted row are row-level affordances on the per-project block (§8.15.11) — the form itself does not expose them.
-- **In-flight lock.** Per [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior), all inputs and the modal close affordances are disabled while a save request is in flight ([AC-131](../verification.md#1515-navigation)).
-- **Accessibility.** The form is announced as a modal dialog with a labelled heading; focus is trapped within the form and Escape closes (unless a save is in flight). Same pattern as the cancel dialog (§8.16.3).
+- **Recipient** — name, street, zip, city, USt-IdNr. ([AC-523](../verification.md#1530-invoices)); the note `Daten werden bei Ausstellung der Rechnung eingefroren.`
+- **Lines** — `Beschreibung`, `Menge`, `Einheit`, `Einzelpreis (€ netto)`, `MwSt %` (the rates of the chosen tax mode), `Position (€ netto)` read-only; `+ Position hinzufügen`, a remove action per line.
+- **Tax mode** — `Regulär`, `Reverse-Charge §13b` ([AC-683](../verification.md#1530-invoices)). A 0 % line under `Regulär`: [AC-726](../verification.md#1530-invoices).
+- **Performance date** — pre-filled with the project's planned end.
+- **Totals** — net, VAT per rate under `Regulär`, gross; recomputed while typing.
+- **Actions** — `Speichern` ([AC-731](../verification.md#1530-invoices), [AC-684](../verification.md#1530-invoices), [AC-686](../verification.md#1530-invoices), [AC-379](../verification.md#1517-data-integrity)), `Abbrechen`. A live refresh keeps the form ([AC-720](../verification.md#1530-invoices)).
 
-### 8.16.3 Issued Invoice Viewer
+### 8.16.3 Invoice Viewer
 
-The viewer for `status ∈ {'issued', 'cancelled'}` rows — reachable from a list-view row click (§8.16.1) or from the `/rechnungen/:id` deep link.
+`/rechnungen/:id`, for an issued or cancelled invoice or a Storno; read-only ([AC-708](../verification.md#1530-invoices)).
 
-- **Read-only by structure.** Every field is displayed without an edit affordance — the row is immutable ([data-model.md §6.14](../data-model.md#614-immutability-of-issued-invoices)).
-- **Snapshot summary.** Number, status (German label including `Storniert` for cancelled originals and `Storno` for Storno rows), issue date, performance date, recipient (name + address from the snapshot), issuer (company snapshot), lines (read-only table), totals.
-- **Actions.**
-  - `PDF herunterladen` — calls `GET /api/invoices/:id/pdf` and triggers a download. Renamed to `ZUGFeRD herunterladen` when the snapshotted `profile = 'zugferd-en16931'` (clarifies the content for B2B receivers).
-  - `Stornorechnung erstellen` — visible on `status = 'issued'` rows for `invoice:write` holders. Opens a confirmation dialog with a free-text `Grund` input (snapshotted onto `Invoice.cancellationReason`) and a German warning: `"Diese Aktion erstellt eine Storno-Rechnung. Beide Rechnungen bleiben dauerhaft erhalten. Der Projektstatus wird NICHT automatisch zurückgesetzt — bitte separat anpassen."` On confirm dispatches `POST /api/invoices/:id/cancel`.
-  - The Storno row, when opened directly, links back to its `cancellationOf` original via an `Original anzeigen` affordance. The original row, when opened, links to every Storno sibling via the same indented chevron used in the list view.
+- **Shows** — number, status, issue and performance date, tax mode, a Storno's reason; issuer; recipient; lines; totals.
+- **`ZUGFeRD herunterladen`** ([AC-711](../verification.md#1530-invoices)).
+- **`Stornieren`** — on an issued invoice, not on a Storno. A confirmation with a required `Grund` ([AC-707](../verification.md#1530-invoices)) and the warning `Diese Aktion erstellt eine Storno-Rechnung. Beide Rechnungen bleiben dauerhaft erhalten. Der Projektstatus wird NICHT automatisch zurückgesetzt — bitte separat anpassen.` Behavior: [AC-702](../verification.md#1530-invoices), [AC-704](../verification.md#1530-invoices), [AC-720](../verification.md#1530-invoices).
+- **Links** — a Storno to its original (`Original anzeigen`); an original to its Storno.
 
-### 8.16.4 Permissions Summary
+### 8.16.4 Company Profile
 
-| Region                              | Permission                                                                                                                 |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| List view (read)                    | `invoice:read`                                                                                                             |
-| Draft form (create / edit / delete) | `invoice:write` + project in `rechnung_faellig` for new                                                                    |
-| Issue action                        | `invoice:write` + draft passes pre-conditions                                                                              |
-| Cancel action                       | `invoice:write` + invoice `status = 'issued'`                                                                              |
-| PDF download                        | `invoice:read` (per [AC-299](../verification.md#1530-invoices))                                                            |
-| Worker access                       | Not visible. The `/rechnungen` route returns the not-permitted surface per [AC-149](../verification.md#1521-role-scoping). |
-
-Every change also needs the invoice's project not archived ([AC-514](../verification.md#1530-invoices); the server refuses it per [AC-513](../verification.md#1530-invoices)).
-
-Server-side authorization is authoritative; client-side hiding is a UX convenience per [AC-121](../verification.md#1521-role-scoping).
-
-### 8.16.5 Realtime Refresh
-
-The list view and any open per-invoice viewer subscribe to `invoice_changed` SSE events ([ADR-0025](../../adr/0025-realtime-ui-invalidation-via-sse.md)). On event receipt the client refetches the list / detail surface; an inflight draft form is not interrupted (the user's typed values remain — the refresh affects only the read surface). An open Stornorechnung confirmation dialog on a per-invoice viewer is similarly protected: the refetch silently updates the underlying viewer's read state but does not close the open dialog or replace its content — closing a dialog the user is mid-action on is a misleading-state defect class. If the underlying invoice was concurrently cancelled by another session (race-condition window), the subsequent cancel request returns `INVOICE_ALREADY_CANCELLED` and the dialog surfaces the error via the standard mutation error banner. Cross-session value: an office user looking at the invoice list sees a fresh `RE-YYYY-NNNN` row appear within one SSE round trip when the owner issues a new invoice from a different session.
-
----
-
-_Cross-references: [index.md](../index.md) for scope and assumptions, [data-model.md](../data-model.md) for the Invoice / InvoiceSequence / CompanyProfile entities, [api.md](../api.md) for the invoice operations, [project-detail.md §8.15](project-detail.md#815-project-detail-page) for the per-project invoice block, [daten.md §8.11.4](daten.md#8114-company-profile) for the company-profile form, [verification.md](../verification.md) for acceptance criteria._
+The `Firmendaten` panel of the list: `Firmenname`, `Straße`, `PLZ`, `Ort`, `Steuernummer`, `USt-IdNr.`, `IBAN`, `Akzentfarbe`, `Fußzeile`, `Standard-Steuermodus` (`Regulär`, `Reverse-Charge §13b`). Fields: [data-model.md §5.17](../data-model.md#517-company-profile-entity). The owner edits it with `Speichern`; for anyone else it is read-only ([AC-121](../verification.md#1521-role-scoping)). Behavior: [verification.md §15.31](../verification.md#1531-company-profile).

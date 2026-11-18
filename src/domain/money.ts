@@ -1,6 +1,5 @@
 /**
- * Decimal money primitives (data-model.md §5.15 "Money arithmetic is
- * decimal"). A binary double enters `Big` as its shortest decimal form,
+ * Decimal money primitives (data-model.md §5.15 "Amounts"). A binary double enters `Big` as its shortest decimal form,
  * so `2.01` is exactly 2.01 here, never 2.0099999….
  */
 

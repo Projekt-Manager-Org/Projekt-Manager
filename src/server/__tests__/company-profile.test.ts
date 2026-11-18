@@ -1,6 +1,6 @@
 /**
  * API integration tests — company profile singleton (issue #109,
- * ADR-0026, api.md §14.2.15, data-model.md §5.17).
+ * ADR-0026, data-model.md §5.17).
  *
  * Pins the singleton-row CRUD contract:
  *
@@ -14,16 +14,16 @@
  *
  * AC coverage in this file:
  *   - AC-576: role matrix (owner-only PUT).
- *   - AC-300: singleton CHECK (DB-level INSERT-second-row and
+ *   - AC-721: singleton CHECK (DB-level INSERT-second-row and
  *     DELETE-singleton rejections).
- *   - AC-302: audit row shape on PUT — entityType,
+ *   - AC-623: audit row shape on PUT — entityType,
  *     action, ancestor pair null, payload.before / payload.after.
- *   - AC-303: required-field validation, details lists
+ *   - AC-723: required-field validation, details lists
  *     offending field paths, no partial mutation.
- *   - AC-304: snapshot-then-mutate roundtrip — Invoice.issuer
+ *   - AC-691: snapshot-then-mutate roundtrip — Invoice.issuer
  *     reflects the snapshot-time values after a subsequent profile
  *     mutation.
- *   - AC-305: issue rejected when profile incomplete; sequence
+ *   - AC-698, AC-695: issue rejected when profile incomplete; sequence
  *     lock released; subsequent successful issue claims the value.
  */
 
@@ -120,10 +120,10 @@ async function createDraft(ownerToken: string, projectId: string): Promise<strin
 }
 
 // ---------------------------------------------------------------------
-// AC-300 — DB singleton CHECKs; AC-576 — owner-only PUT.
+// AC-721 — singleton; AC-576 — owner-only PUT.
 // ---------------------------------------------------------------------
 
-describe('AC-300: company-profile role matrix + singleton invariant', () => {
+describe('AC-576, AC-721: company-profile role matrix + singleton invariant', () => {
   let ownerToken: string;
   let officeToken: string;
   let workerToken: string;
@@ -196,7 +196,7 @@ describe('AC-300: company-profile role matrix + singleton invariant', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('POST is not addressable (no create surface — spec §14.2.15) → 404', async () => {
+  it('POST is not addressable (no create surface — AC-721) → 404', async () => {
     const res = await authPost(ownerToken, '/api/company-profile', completeProfileBody);
     expect(res.statusCode).toBe(404);
   });
@@ -207,13 +207,13 @@ describe('AC-300: company-profile role matrix + singleton invariant', () => {
   });
 
   // -----------------------------------------------------------------
-  // AC-300 — DB-level singleton CHECKs.
+  // AC-721 — DB-level singleton CHECKs.
   //
   // (a) Direct INSERT of a second row is rejected by the CHECK on the
   //     constant primary key.
   // (b) Direct DELETE of the singleton row is rejected.
   // -----------------------------------------------------------------
-  describe('AC-300: DB-level singleton invariant', () => {
+  describe('AC-721: DB-level singleton invariant', () => {
     let pool: pg.Pool;
     let db: Database;
 
@@ -263,10 +263,10 @@ describe('AC-300: company-profile role matrix + singleton invariant', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-302 — Audit row shape on PUT.
+// AC-623 — Audit row shape on PUT.
 // ---------------------------------------------------------------------
 
-describe('AC-302: PUT /api/company-profile writes one audit row with payload before/after', () => {
+describe('AC-623, AC-722: PUT /api/company-profile writes one audit row with payload before/after', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -339,7 +339,7 @@ describe('AC-302: PUT /api/company-profile writes one audit row with payload bef
       };
       expect(payload.before).toBeDefined();
       expect(payload.after).toBeDefined();
-      // Per AC-302: payload.after matches the post-write state and
+      // Per AC-623: payload.after matches the post-write state and
       // payload.before matches the pre-write state. Pin every
       // snapshotted column the spec lists in §5.17 — companyName,
       // address, taxId, footerText — not just the one that changed.
@@ -358,10 +358,10 @@ describe('AC-302: PUT /api/company-profile writes one audit row with payload bef
 });
 
 // ---------------------------------------------------------------------
-// AC-303 — required fields (data-model.md §5.17), any mode.
+// AC-723 — required fields (data-model.md §5.17), any mode.
 // ---------------------------------------------------------------------
 
-describe('AC-303: PUT validates required fields', () => {
+describe('AC-723: PUT validates required fields', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -443,10 +443,10 @@ describe('AC-303: PUT validates required fields', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-304 — Snapshot-then-mutate roundtrip.
+// AC-691 — Snapshot-then-mutate roundtrip.
 // ---------------------------------------------------------------------
 
-describe('AC-304: Invoice.issuer is frozen at issuance — profile mutation does not retroactively change it', () => {
+describe('AC-691: Invoice.issuer is frozen at issuance — profile mutation does not retroactively change it', () => {
   let ownerToken: string;
 
   beforeAll(async () => {
@@ -501,11 +501,11 @@ describe('AC-304: Invoice.issuer is frozen at issuance — profile mutation does
 });
 
 // ---------------------------------------------------------------------
-// AC-305 — Issue rejection with sequence-lock release.
+// AC-698, AC-695 — Issue rejection uses no number.
 // ---------------------------------------------------------------------
 
-describe('AC-305: failed issue does not permanently advance the sequence', () => {
-  // AC-305 normative language pins "the lock is acquired and released"
+describe('AC-698, AC-695: failed issue does not permanently advance the sequence', () => {
+  // A "lock acquired and released" wording
   // — that detail is implementation-internal and observably
   // indistinguishable from "validation runs before allocation" under
   // unit-integration testing. The wire-observable contract is the
@@ -573,7 +573,7 @@ describe('AC-305: failed issue does not permanently advance the sequence', () =>
     expect(Array.isArray(details.missingFields)).toBe(true);
     expect([...details.missingFields!].sort()).toEqual(['companyName', 'taxId', 'ustId']);
 
-    // No audit row on the failed issue per AC-305 trailing clause.
+    // No audit row on the failed issue (AC-695).
     const { db: db2, pool: pool2 } = createDatabase();
     try {
       const r = await db2.execute(

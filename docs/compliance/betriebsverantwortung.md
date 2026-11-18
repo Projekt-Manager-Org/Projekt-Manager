@@ -71,7 +71,7 @@ Der Betreiber kann Aufgaben delegieren, nicht die Verantwortung.
 
 - **3-2-1-Regel:** drei Kopien, zwei Medien, eine außer Haus. Das System liefert eine Kopie außer Haus — nur anfangs gegen Löschen gesperrt, mit begrenzter Aufbewahrung ([ADR-0020 §Retention](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention)).
 - **Sicherungen übernehmen:** Sicherungen regelmäßig auf eigenen Speicher kopieren, mit eigener Aufbewahrung — z. B. monatliche Stände ≥ 13 Monate. Ausgemusterte Sicherungsschlüssel so lange verwahren, wie damit verschlüsselte Kopien existieren.
-- **Gesamtexport ablegen:** regelmäßig exportieren — Geschäftsdaten und Anhänge, lesbar ohne Anwendung und Schlüssel. Rechnungs-PDFs über den Rechnungsexport ([api.md §14.2.14](../spec/api.md#14214-invoice-operations)). Exporte sind unverschlüsselt: nur verschlüsselt ablegen.
+- **Gesamtexport ablegen:** regelmäßig exportieren — Geschäftsdaten und Anhänge, lesbar ohne Anwendung und Schlüssel. Rechnungs-PDFs über den Rechnungsexport ([AC-717](../spec/verification.md#1530-invoices)). Exporte sind unverschlüsselt: nur verschlüsselt ablegen.
 - **Schlüssel außer Haus verwahren:** neben dem Passwortmanager Offline-Kopien an getrennten Orten — Speicherschlüssel ≥ 2 (sein Verlust trifft alle Anhänge und Rechnungs-PDFs), Sicherungsschlüssel ≥ 1. Ohne Offline-Kopie ist der Passwortmanager der einzige Weg zum Schlüssel ([Schlüsselverwahrung](../ops/index.md#key-custody)).
 - **Wiederherstellung üben:** an den eigenen Kopien, nicht nur an denen des Systems ([recovery.md](../ops/backup/recovery.md)).
 - **Kostenwarnungen** bei allen Speicheranbietern einrichten.

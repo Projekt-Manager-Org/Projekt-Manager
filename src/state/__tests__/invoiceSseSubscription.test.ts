@@ -83,7 +83,7 @@ describe('AC-682: invoiceSseSubscription refetches every loaded invoice view', (
     expect(sseHandlers.get('invoice_changed')?.size).toBe(1);
   });
 
-  it('a frame refetches every loaded project cache, invoice detail, and the loaded list with its years', () => {
+  it('AC-719: a frame refetches every loaded project cache, invoice detail, and the loaded list with its years', () => {
     byProject = { 'project-a': {}, 'project-b': {} };
     listInitialized = true;
     useInvoiceDetailStore.setState({ statusById: { 'invoice-1': 'ok', 'invoice-2': 'error' } });

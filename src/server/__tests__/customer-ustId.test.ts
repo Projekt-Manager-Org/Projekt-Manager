@@ -5,7 +5,7 @@
  *      semantics, null-clears (AC-518, AC-519); a replay with a divergent
  *      ustId conflicts (AC-124, AC-127).
  *
- *   2. Invoice draft pre-fill (AC-285): `POST /api/invoices` without a
+ *   2. Invoice draft pre-fill (AC-523): `POST /api/invoices` without a
  *      `recipient.ustId` takes it from the project's customer; an explicit
  *      value overrides it. A project response carries the values the
  *      draft form pre-fills and the customer edit form saves back.
@@ -159,7 +159,7 @@ describe('customer.ustId CRUD + idempotent-replay + invoice pre-fill', () => {
     });
   });
 
-  describe('AC-285: Invoice draft pre-fills recipient.ustId from the project customer', () => {
+  describe('AC-523: Invoice draft pre-fills recipient.ustId from the project customer', () => {
     it('POST /api/invoices on a project whose customer carries ustId pre-fills Invoice.recipient.ustId', async () => {
       const projectId = await rechnungFaelligProjectId(ownerToken);
 
@@ -207,7 +207,7 @@ describe('customer.ustId CRUD + idempotent-replay + invoice pre-fill', () => {
         },
       });
       expect(draftRes.statusCode).toBe(201);
-      // Per AC-285 design note: explicit `recipient` overrides
+      // Per AC-523: an explicit `recipient` overrides
       // field-by-field. Override must win.
       expect(draftRes.json().recipient.ustId).toBe(overrideUstId);
     });

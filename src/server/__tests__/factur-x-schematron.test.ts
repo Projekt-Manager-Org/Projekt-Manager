@@ -1,7 +1,7 @@
 /**
- * AC-293 — `factur-x.xml` against the EN 16931 CII business
+ * AC-701 — `factur-x.xml` against the EN 16931 CII business
  * rules (CEN Schematron, `src/test/en16931/`), plus the XML sign
- * convention (data-model.md §5.15 *Signed amounts*) and the Storno's
+ * convention (data-model.md §5.15 Rendered document: XML amounts are signed) and the Storno's
  * preceding-invoice reference (#548, BT-25 / BT-26).
  *
  * Route-free: `buildFacturXml` is the XML the renderer embeds. Fixture
@@ -145,7 +145,7 @@ const MATRIX = (['standard', 'reverse_charge'] as const).flatMap((mode) =>
   ),
 );
 
-describe('AC-293: factur-x.xml passes the EN 16931 CII business rules', () => {
+describe('AC-701: factur-x.xml passes the EN 16931 CII business rules', () => {
   let sef: string;
 
   beforeAll(() => {
@@ -188,7 +188,7 @@ describe('AC-293: factur-x.xml passes the EN 16931 CII business rules', () => {
   });
 });
 
-describe('data-model.md §5.15 Signed amounts — factur-x.xml', () => {
+describe('AC-693: data-model.md §5.15 signed XML amounts — factur-x.xml', () => {
   it.each(['standard', 'reverse_charge'] as const)(
     '%s: an invoice carries 380 and the stored amounts; a negative line has BilledQuantity < 0 and ChargeAmount ≥ 0',
     (mode) => {

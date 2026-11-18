@@ -21,8 +21,8 @@
  *
  * Line totals are computed client-side as a UX preview only, by the
  * same domain function the server uses: the wire lines carry no
- * `lineTotal` — the server derives it on every write (AC-384) and the
- * totals block from it (AC-286).
+ * `lineTotal` — the server derives it and the totals block on every
+ * write (AC-685).
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -212,9 +212,9 @@ export function InvoiceDraftForm({
   const onOpenedFocus = useCallback(() => firstFieldRef.current?.focus(), []);
   useDialogA11y({ isOpen: true, dialogRef, onOpenedFocus, onEscape });
 
-  // Read-only totals preview (ui/invoices.md §8.16.2 — "the visible
-  // totals are a UX preview"). The server derives them on every write
-  // and remains authoritative.
+  // Read-only totals preview, recomputed while typing (ui/invoices.md
+  // §8.16.2). The server derives them on every write (AC-685) and
+  // remains authoritative.
   // `null` while a typed value overflows a double; the server rejects it.
   const previewTotals = useMemo(() => {
     const derived = toWireLines(lines).map(deriveInvoiceLine);
@@ -237,7 +237,7 @@ export function InvoiceDraftForm({
     setErrorMessage(null);
 
     // A rate the mode does not allow (a 0 % line switched to Regulär)
-    // carries its inline error; the server would reject it (AC-384).
+    // carries its inline error; the server would reject it (AC-686).
     // Focus the first one so the error is in view.
     const invalidIdx = lines.findIndex(rateInvalid);
     if (invalidIdx !== -1) {
@@ -249,11 +249,9 @@ export function InvoiceDraftForm({
     const wirePerformanceDate = performanceDate ? performanceDate : null;
 
     // Client-side aggregate validation: block the submit if no line
-    // carries both a description and a non-zero unit price. Without
-    // this short-circuit the server returns 422 with the same intent
-    // but no actionable field hints; the inline German message is the
-    // affordance the user can act on. The server remains authoritative
-    // on field-level validation (AC-303).
+    // carries both a description and a non-zero unit price (AC-731).
+    // The server accepts such a draft; this is a form rule. The server
+    // remains authoritative on field-level validation (AC-686).
     const hasUsableLine = wireLines.some((l) => l.description.length > 0 && l.unitPrice !== 0);
     if (!hasUsableLine) {
       setErrorMessage(STRINGS.invoices.formEmptyLinesError);

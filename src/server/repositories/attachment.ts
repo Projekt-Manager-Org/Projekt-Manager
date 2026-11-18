@@ -525,7 +525,7 @@ export async function deleteHiddenForReap(
  * wrapped envelope + ciphertext size are non-null at `status='ready'`
  * — the service computes both upfront (DEK wrap + AES-GCM ciphertext
  * byte count) and passes them in here. The PUT carries the object's
- * own Compliance lock (`INVOICE_OBJECT_LOCK_DAYS`, AC-296); the row is
+ * own Compliance lock (`INVOICE_OBJECT_LOCK_DAYS`, AC-710); the row is
  * just the descriptor.
  */
 export interface InsertRenderedInvoiceBinaryFields {

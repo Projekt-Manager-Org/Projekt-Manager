@@ -19,7 +19,7 @@ export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
 /**
  * §5.15 / §5.17 — the supported tax modes (ADR-0026 § Tax modes), each
- * rendered with its boilerplate (AC-292).
+ * rendered with its boilerplate (AC-693).
  *
  * - `standard`: per-line VAT (19% / 7% / 0%); per-rate totals.
  * - `reverse_charge`: §13b UStG; no VAT on lines, totals=net.
@@ -45,7 +45,7 @@ export interface InvoiceLine {
   taxRate: number;
 }
 
-/** A line as the client writes it — `lineTotal` is server-derived (AC-384). */
+/** A line as the client writes it — `lineTotal` is server-derived (AC-685). */
 export type InvoiceLineInput = Omit<InvoiceLine, 'lineTotal'>;
 
 /** §5.15 issuer snapshot — copied from `company_profile` at issuance. */
@@ -138,7 +138,7 @@ export interface CompanyProfile {
  * Compute the missing-field list for a candidate company-profile snapshot
  * (data-model.md §5.17 — required in every tax mode). The order is the
  * order of `details.missingFields`. Shared between the upsert validator
- * (AC-303) and the issue-time gate (AC-289(i) / AC-305) so the two paths
+ * (AC-723) and the issue-time gate (AC-698) so the two paths
  * cannot drift.
  *
  * Empty strings count as missing — the column-level defaults ship empty
@@ -173,7 +173,7 @@ export function taxRatesFor(mode: TaxMode): readonly number[] {
 /** §5.15 — `unitPrice` carries at most this many decimals. */
 export const UNIT_PRICE_MAX_DECIMALS = 4;
 
-/** Derive `lineTotal` from `quantity` and `unitPrice` (AC-384). */
+/** Derive `lineTotal` from `quantity` and `unitPrice` (AC-685). */
 export function deriveInvoiceLine(line: InvoiceLineInput): InvoiceLine {
   return { ...line, lineTotal: round2(new Big(line.quantity).times(line.unitPrice)) };
 }
@@ -182,7 +182,7 @@ const INPUT_LINE_FIELDS = ['description', 'quantity', 'unit', 'unitPrice', 'taxR
 
 /**
  * Fields of a client-written line that break the §5.15 write rules
- * (AC-384); empty when the line is valid, every field when it is not an
+ * (AC-686); empty when the line is valid, every field when it is not an
  * object. `unitPrice` carries no sign rule: a Storno line negates it.
  */
 export function invalidInputLineFields(
@@ -207,7 +207,7 @@ export function invalidInputLineFields(
 
 /**
  * `invalidInputLineFields` for a stored line, which must also carry the
- * derived `lineTotal` (AC-384). Shared by the issue preconditions and the
+ * derived `lineTotal` (AC-685). Shared by the issue preconditions and the
  * import (AC-593): a stored mismatch is rejected, never re-derived.
  */
 export function invalidStoredLineFields(
@@ -245,7 +245,7 @@ export function labelForTaxMode(
 /**
  * Re-derive totals from a line list + tax mode. The service calls this
  * on every draft PATCH and on the issue transaction so totals are never
- * client-trusted (AC-286).
+ * client-trusted (AC-685).
  *
  * `standard`: lines summed per rate; each band's VAT is its rounded net
  *   × rate (EN 16931 BR-CO-17).
@@ -340,7 +340,7 @@ export function invoiceTotalsMatch(totals: unknown, derived: InvoiceTotals): boo
 }
 
 /**
- * Sign-flip a line list for a Storno row (AC-290). Both `unitPrice` and
+ * Sign-flip a line list for a Storno row (AC-703). Both `unitPrice` and
  * `lineTotal` are negated; `quantity` / `description` / `unit` / `taxRate`
  * are copied unchanged, as `quantity` stays positive (§5.15).
  */
@@ -353,7 +353,7 @@ export function negateInvoiceLines(lines: InvoiceLine[]): InvoiceLine[] {
 }
 
 /**
- * Negate an issued invoice's stored totals for its Storno (AC-290).
+ * Negate an issued invoice's stored totals for its Storno (AC-703).
  * Never re-derived: the Storno cancels the document as issued.
  */
 export function negateInvoiceTotals(totals: InvoiceTotals): InvoiceTotals {

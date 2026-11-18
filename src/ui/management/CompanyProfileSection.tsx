@@ -1,5 +1,5 @@
 /**
- * Company-profile section on the Daten view (ui/daten.md §8.11.4,
+ * Company-profile section on the Rechnungen view (ui/invoices.md §8.16.4,
  * ADR-0026).
  *
  * Argumented C-SIZE exception (review/conventions-code.md §C-SIZE,
@@ -15,10 +15,10 @@
  * section as a read-only summary so the values invoices will snapshot
  * are visible. The owner-vs-read-only gate is by ROLE (the server
  * folds the invariant into a role check, not a permission key —
- * api.md §14.2.15 design note).
+ * api.md §14.3).
  *
  * Client-side required-field validation is a UX affordance only; the
- * server re-validates and remains authoritative (AC-303).
+ * server re-validates and remains authoritative (AC-723).
  *
  * The company logo is NOT part of this form: it is a deploy-time
  * branding asset (`BRANDING.mark.logo`, ADR-0001), not per-installation
@@ -188,7 +188,7 @@ function CompanyProfileForm({ profile }: { profile: CompanyProfile }) {
   const [submitting, setSubmitting] = useState(false);
   // Show validation errors after a submit attempt — keeps the form
   // quiet on first paint while still surfacing field-level guidance
-  // the moment the owner tries to save with an incomplete row. AC-303
+  // the moment the owner tries to save with an incomplete row. AC-724
   // says client-side validation is a UX affordance; the server is
   // authoritative regardless.
   const [showErrors, setShowErrors] = useState(false);

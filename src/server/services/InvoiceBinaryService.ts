@@ -44,7 +44,7 @@ import {
  *   4. `putObject(key, ciphertext, "application/octet-stream", meta, lock)`
  *      — server-side direct PUT, no presign round-trip, carrying the
  *      envelope + invoice number as object metadata (AC-439, AC-440) and its own
- *      Compliance lock of `invoiceObjectLockDays` (AC-296).
+ *      Compliance lock of `invoiceObjectLockDays` (AC-710).
  *   5. Insert an `attachments` row at `status='ready'` carrying the
  *      ciphertext key + size + the wrapped DEK + MIME `application/pdf`
  *      + label `'rechnung'`. The row id is returned and stored on
@@ -83,7 +83,7 @@ export class InvoiceBinaryService {
    *      (`BINARY_AGE_RECIPIENT`) via `KeyEnvelopeService`.
    *   4. `putObject` the ciphertext to the bucket under
    *      `invoices/<projectId>/<descriptorId>.orig` with its own
-   *      Compliance lock (AC-296). A provider rejecting the lock fails
+   *      Compliance lock (AC-710). A provider rejecting the lock fails
    *      the PUT, and the issuance rolls back.
    *   5. Insert one `attachments` row at `status='ready'`. The row id
    *      is the descriptor reference returned to the caller and
@@ -170,7 +170,7 @@ export class InvoiceBinaryService {
   /**
    * Resolve the rendered PDF for an issued / cancelled invoice and
    * return the plaintext bytes plus the suggested filename. Drafts
-   * surface `INVOICE_NOT_ISSUED` (AC-299).
+   * surface `INVOICE_NOT_ISSUED` (no AC: the UI never offers it).
    *
    * The orchestrator does the `get()` triage upstream; this method
    * takes an already-resolved `Invoice` and applies only the

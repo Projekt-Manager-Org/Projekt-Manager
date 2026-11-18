@@ -161,7 +161,7 @@ export const customers = pgTable('customers', {
     zip: string;
     city: string;
   } | null>(),
-  // USt-IdNr. — data-model.md §5.6, AC-289. Structurally
+  // USt-IdNr. — data-model.md §5.6, AC-697. Structurally
   // optional; the requiredness gate fires at invoice issuance when
   // the draft's taxMode = 'reverse_charge'. Pre-fills the recipient
   // ustId on new invoice drafts when set. ADR-0026.
@@ -734,7 +734,7 @@ export const projectStorageUsage = pgTable(
 //
 // Singleton table — exactly one row carrying the issuing company's
 // identity. Distinct from meta_backup_status (§5.9) in one respect:
-// `company_profile` IS audited (AUDIT_ENTITY_TYPES above, AC-302) and
+// `company_profile` IS audited (AUDIT_ENTITY_TYPES above, AC-623) and
 // `audit_log.entity_id` is `uuid NOT NULL`, so the row needs a real
 // UUID identity in addition to the singleton-enforcement plumbing. The
 // shape is:
@@ -745,7 +745,7 @@ export const projectStorageUsage = pgTable(
 //     `singleton = true`, and UNIQUE on `singleton` means only one row
 //     can carry the value — so the table holds at most one row.
 //   - A BEFORE DELETE trigger in the baseline migration tail rejects
-//     removals (AC-300) so the singleton can never go below one.
+//     removals (AC-721) so the singleton can never go below one.
 // The row is pre-seeded by the baseline migration with empty mandatory
 // fields so write paths are always upserts.
 //
@@ -837,7 +837,7 @@ export const invoiceSequence = pgTable(
 // row with `cancellationOf` set, NEVER mutates the original beyond
 // the `issued → cancelled` status flip.
 //
-// Issued rows are write-once at the persistence layer (AC-294,
+// Issued rows are write-once at the persistence layer (AC-708,
 // §6.14). The route layer rejects mutations on issued rows with
 // INVOICE_FROZEN; the DB-level immutability backstop is a row-level
 // trigger in src/server/db/baseline/tail/ (drizzle-kit does not emit
@@ -927,7 +927,7 @@ export const invoices = pgTable(
     // Defense-in-depth backstop on direct DB writes (seed scripts,
     // migrations, manual SQL). The route layer formats from
     // invoice_sequence so this CHECK is unreachable in steady state;
-    // the regex is the structural anchor (AC-295).
+    // the regex is the structural anchor (data-model.md §5.15).
     check(
       'invoices_number_format',
       sql`${table.number} IS NULL

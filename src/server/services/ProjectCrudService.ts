@@ -642,7 +642,7 @@ export class ProjectCrudService {
       );
       log.info({ projectId: id }, 'project_archived');
       emitProjectChanged();
-      // Invoice reads carry `projectArchived` (api.md §14.2.14).
+      // Invoice reads carry `projectArchived` (AC-514).
       emitInvoiceChanged();
     } catch (err) {
       if (err instanceof ProjectNotFoundError) throw notFound(STRINGS.entities.project);
@@ -695,7 +695,7 @@ export class ProjectCrudService {
       });
       log.info({ projectId: id }, 'project_restored');
       emitProjectChanged();
-      // Invoice reads carry `projectArchived` (api.md §14.2.14).
+      // Invoice reads carry `projectArchived` (AC-514).
       emitInvoiceChanged();
       return project;
     } catch (err) {

@@ -323,7 +323,7 @@ export interface BucketSafetyReader {
  * output, not because the checks depend on each other.
  *
  * Invoice retention is not a bucket property: rendered invoice PDFs
- * carry their own per-object lock (ADR-0026, AC-296), because the
+ * carry their own per-object lock (ADR-0026, AC-710), because the
  * bucket default `R` must stay within `L` and so cannot hold years.
  */
 export async function assertStorageBucketSafe(client: BucketSafetyReader): Promise<void> {

@@ -86,7 +86,7 @@ async function listDraftInvoices(token: string): Promise<InvoiceWire[]> {
   return body.data;
 }
 
-describe('POST /api/invoices/export', () => {
+describe('AC-717: POST /api/invoices/export', () => {
   let ownerToken: string;
   let workerToken: string;
   let bookkeeperToken: string;
@@ -294,7 +294,7 @@ describe('POST /api/invoices/export', () => {
   // Seeding 5000+ invoices is impractical; we spy on the service's
   // `list()` to report an inflated `total` on the first probe page.
   // -------------------------------------------------------------------
-  it('rejects 422 EXPORT_TOO_LARGE when the filter matches more than the cap', async () => {
+  it('AC-718: rejects 422 EXPORT_TOO_LARGE when the filter matches more than the cap', async () => {
     const spy = vi
       .spyOn(InvoiceService.prototype, 'list')
       .mockResolvedValueOnce({ data: [], total: EXPORT_FILTER_SAFETY_CAP + 1 });

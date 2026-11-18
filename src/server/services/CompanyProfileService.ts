@@ -1,6 +1,6 @@
 /**
  * Company-profile service — singleton CRUD for the issuing company
- * identity (data-model.md §5.17, api.md §14.2.15, ADR-0026).
+ * identity (data-model.md §5.17, ADR-0026).
  *
  * Exactly one row exists, pre-seeded by the baseline migration with
  * empty mandatory fields. The API exposes GET (every authenticated
@@ -14,8 +14,8 @@
  * `entityType = 'company_profile'`, `action = 'update'`, ancestor pair
  * null (top-level entity — parity with `customer` / `user`).
  *
- * Required-field validation runs at upsert time (AC-303) AND at
- * issue time (defense in depth — AC-289(i) / AC-305 in
+ * Required-field validation runs at upsert time (AC-723) AND at
+ * issue time (defense in depth — AC-698 in
  * `InvoiceIssueService.issueDraft`). The single source of truth is
  * `companyProfileMissingFields()` in `src/domain/invoice.ts`,
  * so the two paths cannot drift.
@@ -87,7 +87,7 @@ export interface CompanyProfileUpsertInput {
 /**
  * Validate required fields + structural invariants on an incoming
  * PUT body. Throws `validationError` (mode-shaped, with `details`
- * naming every offending field path) on any rejection — AC-303.
+ * naming every offending field path) on any rejection — AC-723.
  *
  * The check has two halves:
  *
@@ -99,9 +99,7 @@ export interface CompanyProfileUpsertInput {
  *
  * `details` exposes `missingFields` so the UI can target the offending
  * input(s); this matches the contract for `COMPANY_PROFILE_REQUIRED`
- * but uses the generic `VALIDATION_ERROR` code at upsert time per
- * api.md §14.2.15 ("Body with an empty required field … → 422
- * VALIDATION_ERROR with details naming the offending field path").
+ * but uses the generic `VALIDATION_ERROR` code at upsert time (AC-723).
  */
 export function validateCompanyProfileUpsert(input: CompanyProfileUpsertInput): void {
   if (!TAX_MODES.includes(input.defaultTaxMode)) {
@@ -170,7 +168,7 @@ export class CompanyProfileService {
    * error shape the route emits when its pre-handler gate fires.
    *
    * `entityId` = the singleton row's UUID (Phase A seed). Ancestor
-   * pair null per AC-302.
+   * pair null per AC-623.
    */
   async upsert(
     caller: AuthUser,
@@ -247,7 +245,7 @@ export class CompanyProfileService {
             value: after,
             before: beforePayload,
             after: afterPayload,
-            // Ancestor pair null — top-level entity (AC-302, parity
+            // Ancestor pair null — top-level entity (AC-623, parity
             // with customer / user).
           };
         },
@@ -262,7 +260,7 @@ export class CompanyProfileService {
  * Issue-time gate — run inside the issuance transaction to verify the
  * singleton is complete (§5.17). Re-uses the same
  * domain helper as the upsert validator so the two paths cannot drift
- * (AC-289(i), AC-305).
+ * (AC-698).
  *
  * `tx` argument forces the read to share the issuance transaction's
  * snapshot — a profile update committed between the route entry and
@@ -270,8 +268,7 @@ export class CompanyProfileService {
  *
  * Throws `companyProfileRequired(...)` (422 + `COMPANY_PROFILE_REQUIRED`
  * + `details.missingFields`) on incomplete state. The throw rolls back
- * any allocation that ran before this check (AC-305 trailing clause
- * about the sequence lock release).
+ * any allocation that ran before this check (AC-695).
  */
 export async function assertCompanyProfileComplete(
   tx: TransactionalDatabase,

@@ -44,7 +44,7 @@ export const AUDIT_ACTION_KEYS = [
   'attachment:hide',
   'attachment:restore',
   'attachment:purge',
-  // Invoice domain (ADR-0026, api.md §14.2.14).
+  // Invoice domain (ADR-0026).
   // - 'invoice:delete' on a draft hard-delete (ADR-0026 §Audit and realtime).
   // - 'invoice:issue'  on the issuance transaction; also on the Storno row's
   //   own issuance (a Storno is a fresh sibling that itself was issued).

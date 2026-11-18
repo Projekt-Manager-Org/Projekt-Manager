@@ -12,8 +12,8 @@
  *     visited `/rechnungen` at least once); skipping the initial fetch
  *     keeps an idle login from issuing a list query the user hasn't
  *     asked for.
- *   - `useInvoiceDetailStore` — per-id viewer cache (ui/invoices.md
- *     §8.16.5). Every id the user has already loaded gets refetched;
+ *   - `useInvoiceDetailStore` — per-id viewer cache (AC-719,
+ *     AC-720). Every id the user has already loaded gets refetched;
  *     an open `Stornorechnung` confirmation dialog is NOT closed by
  *     this refresh — the dialog component owns its own open state and
  *     is unaffected by store data updates.

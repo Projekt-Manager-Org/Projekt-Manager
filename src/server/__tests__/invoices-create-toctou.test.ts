@@ -1,6 +1,6 @@
 /**
  * API integration test — `createDraft` TOCTOU on the archived-project
- * check (security-audit finding M2 / AC-285).
+ * check (security-audit finding M2 / AC-727).
  *
  * Current `InvoiceService.createDraft` reads the project row from
  * `this.db` BEFORE `mutate()` opens the audit transaction:
@@ -13,7 +13,7 @@
  * Between (2) and (4) the project state is observed without a row lock
  * and without the audit transaction's snapshot. A concurrent commit
  * that flips `projects.deleted = true` after (2) but before (4) slips
- * a draft onto an archived project — AC-285 promises 404 NOT_FOUND
+ * a draft onto an archived project — AC-727 promises 404 NOT_FOUND
  * for that case (mirrors AC-499 for draft writes).
  *
  * After Wave 3 the project lookup moves inside `mutate()`'s `run(tx)`
@@ -40,7 +40,7 @@
  * `deleted=true`, and throws `NOT_FOUND` — the test passes.
  *
  * Why direct service call instead of HTTP: the route's surface is
- * already covered by `invoices-routes.test.ts` (AC-285 happy + archived
+ * already covered by `invoices-routes.test.ts` (AC-683 happy + AC-727 archived
  * cases). The race condition is a service-layer invariant; calling the
  * service directly with our own `db` handle gives us the connection-
  * level seam without dragging Fastify middleware into the test.
@@ -60,7 +60,7 @@ import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
 
-describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup and insert is caught', () => {
+describe('AC-727 — createDraft TOCTOU: archived-project commit between lookup and insert is caught', () => {
   let ownerToken: string;
   let ownerId: string;
   let customerId: string;
@@ -171,7 +171,7 @@ describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup 
     // delegates to the real prototype method. By the time the
     // replacement fires, `createDraft` has already completed its
     // pre-tx project read (line 181 of InvoiceService.ts) — the
-    // archive therefore lands in the AC-285-forbidden window.
+    // archive therefore lands in the AC-727-forbidden window.
     //
     // `interceptCount` proves the seam actually ran; without that
     // counter a regression that bypassed `db.transaction` (e.g. moved
@@ -237,7 +237,7 @@ describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup 
 
     // No invoice row exists for the archived project — neither under
     // any status. Read via a fresh pool to bypass any per-connection
-    // cache concerns; the SET-not-EXISTS shape pins the AC-285 promise
+    // cache concerns; the SET-not-EXISTS shape pins the AC-727 promise
     // independently of the throw above.
     const { db, pool } = createDatabase();
     try {
@@ -250,7 +250,7 @@ describe('AC-285 — createDraft TOCTOU: archived-project commit between lookup 
     }
 
     // And no audit row was committed for the failed call either —
-    // AC-285 audit-row promise pairs to the SUCCESSFUL `mutate()` path
+    // AC-623 audit-row promise pairs to the SUCCESSFUL `mutate()` path
     // only; a rejection inside `run(tx)` rolls back both the domain
     // INSERT and the audit INSERT (mutate.ts AC-623 atomicity).
     const { db: db2, pool: pool2 } = createDatabase();

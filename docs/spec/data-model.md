@@ -80,7 +80,7 @@ A person or company the projects are for. Only `name` is required. Behavior: [ve
 | `name`                   | Not blank, at most 255 characters; not unique ([AC-536](verification.md#1511-customer-management))                             |
 | `phone`                  | Free text, at most 100 characters                                                                                              |
 | `email`                  | Free text, at most 255 characters                                                                                              |
-| `ustId`                  | USt-IdNr., at most 50 characters; a reverse-charge invoice needs it on its recipient ([AC-289](verification.md#1530-invoices)) |
+| `ustId`                  | USt-IdNr., at most 50 characters; a reverse-charge invoice needs it on its recipient ([AC-697](verification.md#1530-invoices)) |
 | `address`                | The billing address (Rechnungsadresse): `street`, `zip`, `city`, all non-empty — or none                                       |
 | `notes`                  | Free text                                                                                                                      |
 | `version`                | Concurrency token ([§6.4](#64-concurrency))                                                                                    |
@@ -318,153 +318,78 @@ Deployment-wide totals over the attachments of every project ([§5.13](#513-atta
 
 ### 5.15 Invoice Entity
 
-The artifact produced by the `Rechnung fällig → Abgerechnet` transition of the project workflow ([index.md §3](index.md#3-workflow-states)). Architectural rationale — immutability posture, gapless numbering, ZUGFeRD profile, Stornorechnung model, snapshot semantics — is pinned by [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
+A bill for a project's work, issued as an e-invoice. A project may have several — an invoice, its Storno, a corrected invoice. Behavior: [verification.md §15.30](verification.md#1530-invoices). Design: [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
 
-```typescript
-type InvoiceStatus = 'draft' | 'issued' | 'cancelled';
+| Field                    | Constraint                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                     | UUID                                                                                                                                                                                                                                                                                                                                              |
+| `projectId`              | The billed project                                                                                                                                                                                                                                                                                                                                |
+| `status`                 | `draft` → `issued` → `cancelled`. A Storno is born `issued` and stays so                                                                                                                                                                                                                                                                          |
+| `number`                 | Empty on a draft. `RE-YYYY-NNNN` for an invoice, `ST-YYYY-NNNN` for a Storno: the issue year, then the sequence value ([§5.16](#516-invoice-sequence-entity)) in at least four digits                                                                                                                                                             |
+| `cancellationOf`         | On a Storno, its original; empty otherwise                                                                                                                                                                                                                                                                                                        |
+| `recipient`              | `name`; `address` — `street`, `zip`, `city`, counting as one field; `ustId` (USt-IdNr.). Surrounding whitespace, and blank versus absent, make no difference to whether a field differs from the customer's. A field the user has not set follows the customer ([AC-523](verification.md#1530-invoices), [AC-543](verification.md#1530-invoices)) |
+| `lines`                  | At most 500                                                                                                                                                                                                                                                                                                                                       |
+| `lines[].description`    | 1 to 1000 characters                                                                                                                                                                                                                                                                                                                              |
+| `lines[].quantity`       | Greater than 0                                                                                                                                                                                                                                                                                                                                    |
+| `lines[].unit`           | Free text, at most 100 characters — `Stück`, `h`, `m²`, `pauschal`, …                                                                                                                                                                                                                                                                             |
+| `lines[].unitPrice`      | EUR net of VAT; at least 0, at most 4 decimals. Negated on a Storno                                                                                                                                                                                                                                                                               |
+| `lines[].taxRate`        | Percent: `7` or `19` under `standard`; `0`, `7` or `19` under `reverse_charge`                                                                                                                                                                                                                                                                    |
+| `lines[].lineTotal`      | `quantity × unitPrice`, rounded                                                                                                                                                                                                                                                                                                                   |
+| `taxMode`                | `standard` or `reverse_charge`                                                                                                                                                                                                                                                                                                                    |
+| `performanceDate`        | The Leistungsdatum (§14 UStG); a calendar date                                                                                                                                                                                                                                                                                                    |
+| `issueDate`              | Set at issuance ([AC-690](verification.md#1530-invoices))                                                                                                                                                                                                                                                                                         |
+| `issuer`                 | Set at issuance from the company profile ([§5.17](#517-company-profile-entity)): `companyName`, `address`, `taxId`, `ustId`, `iban`, `footerText`                                                                                                                                                                                                 |
+| `profile`                | `zugferd-en16931`                                                                                                                                                                                                                                                                                                                                 |
+| `totals.perRate[]`       | Under `standard`, per tax rate: `taxRate`, `netSubtotal`, `taxAmount` (`netSubtotal × taxRate / 100`, rounded). Empty under `reverse_charge`                                                                                                                                                                                                      |
+| `totals.netGrandTotal`   | Sum of the line totals                                                                                                                                                                                                                                                                                                                            |
+| `totals.taxGrandTotal`   | Sum of the per-rate tax amounts; 0 under `reverse_charge`                                                                                                                                                                                                                                                                                         |
+| `totals.grossGrandTotal` | Net plus tax                                                                                                                                                                                                                                                                                                                                      |
+| `cancellationReason`     | On a Storno, the user's reason; at most 2000 characters                                                                                                                                                                                                                                                                                           |
+| `version`                | Concurrency token ([§6.4](#64-concurrency))                                                                                                                                                                                                                                                                                                       |
+| `createdAt`, `updatedAt` | Server time                                                                                                                                                                                                                                                                                                                                       |
+| `createdBy`, `updatedBy` | The acting user                                                                                                                                                                                                                                                                                                                                   |
 
-type TaxMode = 'standard' | 'reverse_charge';
+**Amounts.** Computed on decimal values. Rounding is to 2 decimals, half away from zero, so a negated input rounds to the negated result. Every amount is finite.
 
-type InvoiceProfile = 'zugferd-en16931';
+**Required to issue.** `performanceDate`; at least one line; the recipient's `name` and complete `address`; under `reverse_charge`, the recipient's `ustId`.
 
-interface InvoiceLine {
-  description: string; // free text, German display
-  quantity: number; // positive decimal
-  unit: string; // free text — "Stück", "h", "m²", "pauschal", …
-  unitPrice: number; // EUR, net of VAT; at most 4 decimals
-  lineTotal: number; // EUR, `quantity * unitPrice` rounded to 2 decimals; server-derived on create / update, never accepted from the client
-  taxRate: number; // percent — 0, 7 or 19; `standard` excludes 0 (EN 16931 BR-S-05); ignored in totals when taxMode = 'reverse_charge'
-}
+**Rendered document** — one per issued invoice and Storno:
 
-interface InvoiceIssuerSnapshot {
-  // Snapshot of company_profile at issuance time — never re-derived from the live row.
-  companyName: string;
-  address: { street: string; zip: string; city: string };
-  taxId: string; // Steuernummer
-  ustId?: string; // USt-IdNr. — required at issuance (§5.17)
-  iban?: string;
-  footerText?: string;
-  // No logo field — it is deploy-time branding, drawn at render time and never snapshotted (§5.17).
-}
+- A PDF/A-3 with an embedded `factur-x.xml` in the ZUGFeRD EN 16931 (Comfort) profile, CII syntax.
+- Shows the issuer with the brand logo ([AC-362](verification.md#1519a-brand-logo)), the recipient, number, issue and performance date, the lines with `quantity` and `unitPrice` unrounded, and the totals. The IBAN when `issuer.iban` is set; `issuer.footerText` at the foot; rules in the profile's accent color ([§5.17](#517-company-profile-entity)).
+- `standard`: VAT per line and the per-rate breakdown. `reverse_charge`: no VAT, and `Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG.`
+- A Storno names its original's number and issue date — in the text and as the preceding-invoice reference (EN 16931 BT-25, BT-26).
+- XML amounts are signed: as stored for an invoice (type code `380`), negated for a Storno (`381`), lines, per-rate bands and totals alike. A negative unit price renders as a negative quantity at the positive price (EN 16931 BR-27).
+- Downloaded as `<number>_<recipient name>.pdf`, the name reduced to characters safe in a file name; `<number>.pdf` without one.
 
-interface InvoiceRecipientSnapshot {
-  // Frozen at issuance; an issued row is never re-derived from the live customer.
-  name: string;
-  address?: { street: string; zip: string; city: string };
-  ustId?: string; // customer's USt-IdNr. — required for reverse_charge
-}
+**Export archive** — the bookkeeper's export ([AC-717](verification.md#1530-invoices)):
 
-interface InvoiceTotals {
-  // Aggregations across `lines`. Per-rate subtotals populated only for taxMode = 'standard'.
-  perRate: { taxRate: number; netSubtotal: number; taxAmount: number }[];
-  netGrandTotal: number; // sum of perRate.netSubtotal, or sum of lineTotal for reverse_charge
-  taxGrandTotal: number; // sum of perRate.taxAmount; zero for reverse_charge
-  grossGrandTotal: number; // netGrandTotal + taxGrandTotal
-}
-
-interface Invoice {
-  id: string; // UUID
-  number?: string; // "RE-YYYY-NNNN" (invoice) or "ST-YYYY-NNNN" (Storno); null while status = 'draft'
-  status: InvoiceStatus;
-
-  projectId: string; // references Project.id — the project whose work this invoice bills
-  cancellationOf?: string; // references Invoice.id of the original issued row when this is a Stornorechnung; null otherwise
-
-  issuer: InvoiceIssuerSnapshot; // frozen at issuance — owner-mutable in draft
-  recipient: InvoiceRecipientSnapshot; // frozen at issuance — owner-mutable in draft
-  lines: InvoiceLine[]; // JSONB array — frozen at issuance
-  taxMode: TaxMode; // snapshotted at issuance; pre-filled from company_profile.defaultTaxMode in draft
-  profile: InvoiceProfile; // snapshotted at issuance; v1 always 'zugferd-en16931'
-  totals: InvoiceTotals; // server-computed at issuance; frozen thereafter
-
-  issueDate?: string; // ISO 8601 date — server-set at issuance; null in draft
-  performanceDate?: string; // ISO 8601 date — Leistungsdatum per §14 UStG; required at issuance; editable in draft
-
-  cancellationReason?: string; // free text from the cancel call; null on non-Storno rows; frozen on the Storno row at issuance of the cancellation
-
-  renderedPdfBinaryDescriptorId?: string; // FK to a binary descriptor row carrying the rendered PDF/A-3 + embedded factur-x.xml; null in draft, set at issuance
-
-  createdAt: string; // ISO 8601
-  updatedAt: string; // ISO 8601 — frozen after issuance (only `status: 'issued' → 'cancelled'` may bump it)
-  createdBy?: string; // UserAccount.id
-  updatedBy?: string; // UserAccount.id
-  version: number; // server-managed concurrency token — §6.4
-}
-```
-
-Design notes:
-
-- **Snapshot at issuance — issuer, recipient, lines, taxMode, profile.** At issuance the service freezes every contributing value onto the row before the transaction commits: `issuer` from the live `company_profile` row, the others as the draft holds them. A subsequent edit to the live company profile or customer does not retroactively change the issued artifact. Rendering an issued invoice is a pure projection over the row — no join is needed against `customers` or `company_profile` to reproduce the document.
-- **A customer correction reaches open drafts.** When a customer edit changes `name`, `address` or `ustId`, every draft on that customer's projects, archived ones included, takes the new value of each such field where it still holds the customer's previous value. Any other value is a user override and stays. The address counts as one field; surrounding whitespace and blank versus absent are no difference ([AC-543](verification.md#1530-invoices), [AC-544](verification.md#1530-invoices)).
-- **Issued rows are write-once.** Once `status = 'issued'`, no UPDATE path is permitted on the row except the `cancelled` transition. The constraint is structural — the API rejects (per [api.md §14.2.14](api.md#14214-invoice-operations)) and the persistence layer treats issued rows as immutable. A correction is a fresh `draft → issued` cycle, not an edit; the cancellation primitive is a sibling row (see `cancellationOf`).
-- **Stornorechnung is a sibling row.** A cancel call against an issued invoice creates a new row with its own `id`, a `ST-YYYY-NNNN` number from the storno sub-sequence, `cancellationOf` pointing at the original, line totals negated (sign-flipped lineTotal and unitPrice values), and `totals` the exact negation of the original's `totals`. The original row's `status` flips to `'cancelled'`; both rows persist forever. Project status is **not** auto-reverted on cancellation — the UI surfaces the gap (see [ui/invoices.md §8.16](ui/invoices.md#816-invoices-view)). The rendered Storno names its original by `number` and issue date: in the PDF text and as the preceding-invoice reference in `factur-x.xml` (EN 16931 BT-25, BT-26).
-- **Signed amounts in `factur-x.xml`.** The XML renders each amount signed: the stored value for an invoice (TypeCode `380`), its negation for a Storno (`381` — the type code carries the sign). This covers lines, per-rate bands and header totals. A line whose signed `unitPrice` is negative renders as negative `BilledQuantity` and `ChargeAmount = |unitPrice|` (EN 16931 BR-27: no negative item net price). The mapping is render-only; stored values keep their sign.
-- **Number format pinned at the DB.** `number` carries a CHECK constraint matching `^(RE|ST)-\d{4}-\d{4,}$` so a misshapen number cannot land even via raw SQL. The four-digit minimum allows growth past 9999 within a year without a schema migration. `number` is null on `status = 'draft'` rows and non-null on `'issued' | 'cancelled'`; a partial unique index over `number WHERE number IS NOT NULL` enforces uniqueness on the non-draft set.
-- **Why JSONB lines.** Lines are part of the snapshot — they freeze at issuance and are read as a unit when the invoice renders. There is no analytic query workload across `lines` (no "sum every invoice line containing 'Anstrich' across all years"). The JSONB shape matches the lifecycle exactly (`Stripe Invoices` analogue, [ADR-0026 Alternatives Considered](../adr/0026-invoices-immutability-and-zugferd.md#alternatives-considered)). Adding a typed columns table would impose FK / ordering / per-row audit churn on data that is read once at render time.
-- **Project linkage.** `projectId` is required and FK-enforced. An invoice belongs to exactly one project. The project's status flips to `abgerechnet` as part of the issuance transaction (see [api.md §14.2.14](api.md#14214-invoice-operations)). Multiple invoices may reference one project (e.g., a Storno + a fresh re-issued invoice).
-- **Performance date is editable in draft, frozen at issuance.** `performanceDate` is the Leistungsdatum required by §14 UStG. It is required to issue (the API rejects an issue call when `performanceDate` is null). In the absence of an explicit user entry, drafts default `performanceDate` to the project's `plannedEnd` if available — the UI is the SSOT for this default. The field is frozen once `status = 'issued'`.
-- **Totals are server-computed.** On every PATCH on a draft and on the issue call, the server re-computes `totals` from `lines` + `taxMode`. Client-supplied totals are refused ([api.md §14.4.2](api.md#1442-error-principles)). Per-rate subtotals are produced only for `taxMode = 'standard'`; `reverse_charge` produces `perRate: []` and `taxGrandTotal: 0`.
-- **Money arithmetic is decimal.** Amounts are computed on their decimal values, not on binary floating point. Every line value and derived amount is a finite number. Rounding to 2 decimals is half away from zero, so a negated input rounds to the negated result. A per-rate `taxAmount` is its `netSubtotal × taxRate / 100`, rounded. The rendered PDF and `factur-x.xml` show each line's `quantity` and `unitPrice` without rounding (XML sign per _Signed amounts_).
-- **Rendered artifact reference.** `renderedPdfBinaryDescriptorId` references the `attachment` row ([§5.13](#513-attachment)) the ZUGFeRD renderer writes at issuance ([ADR-0026 §Storage](../adr/0026-invoices-immutability-and-zugferd.md#storage-and-retention)); the invoice row holds only that reference. The row lives in the invoice namespace, apart from uploaded attachments:
-  - **Off the attachment surface.** No attachment operation lists or addresses it ([AC-364](verification.md#1530-invoices)), so it cannot be hidden, purged, or read without `invoice:read`. Its only read path is `GET /api/invoices/:id/pdf`.
-  - **Locked per object.** Its bytes carry their own Compliance Object Lock of `INVOICE_OBJECT_LOCK_DAYS` from the write ([architecture.md §11.14](architecture.md#1114-invoice-domain)), independent of the bucket-default retention.
-  - **Restore keeps both.** The full-account import job restores an attachment that an envelope invoice references into the invoice namespace, with the same lock ([AC-365](verification.md#1514-data-exchange)).
-- **Audit metadata follows §5.5.** `createdBy` / `updatedBy` / `createdAt` / `updatedAt` set by the server. After issuance only the cancellation flip writes `updatedAt`; no other mutation path is reachable.
+- A zip named `Rechnungen_<scope>_<YYYY-MM-DD>.zip` — the export date in Germany — scope `auswahl` for a selection, else the filtered year or `alle`. At most 5000 invoices ([AC-718](verification.md#1530-invoices)).
+- One `<number>.pdf` per invoice: its document as stored.
+- `manifest.csv`: UTF-8 with byte-order mark, `;`-separated, CRLF line ends. Columns `Nr.`, `Datum` (DD.MM.YYYY), `Empfänger`, `Netto`, `USt`, `Brutto` (decimal comma, 2 decimals), `Status` (`Ausgestellt`, `Storniert`, `Storno`); one row per invoice, by issue date, then number, oldest first. Where a spreadsheet would read a recipient name as a formula, a `'` neutralizes it.
 
 ### 5.16 Invoice Sequence Entity
 
-The gapless year-scoped counter feeding `Invoice.number` allocation at issuance time. Rationale and rejected alternatives (`SERIAL` / `IDENTITY` leak gaps on rollback) are pinned by [ADR-0026 §Data model](../adr/0026-invoices-immutability-and-zugferd.md#data-model).
-
-```typescript
-type InvoiceSequenceKind = 'invoice' | 'storno';
-
-interface InvoiceSequence {
-  year: number; // calendar year — composite key with `kind`
-  kind: InvoiceSequenceKind; // 'invoice' for RE-YYYY-NNNN; 'storno' for ST-YYYY-NNNN
-  nextValue: bigint; // monotonically increasing within (year, kind); starts at 1
-  updatedAt: string; // ISO 8601 — bumped on every allocation
-}
-```
-
-Design notes:
-
-- **Composite primary key `(year, kind)`.** One row per `(calendar year, sequence kind)` pair; allocations are scoped to that key. A new `(year, kind)` row is **upserted on first use** in the same transaction as the first issuance of the year — the sequence table has no pre-seeding obligation.
-- **Allocation is an atomic `INSERT … ON CONFLICT (year, kind) DO UPDATE SET next_value = next_value + 1 RETURNING next_value` inside the issuance transaction.** A single statement that collapses the first-of-year case (INSERT) and the steady-state case (DO UPDATE) into one race-free path; Postgres takes a row-exclusive lock on the row (equivalent to `SELECT FOR UPDATE` for serialization purposes) and reads + increments `next_value` in one statement. The formatted `number` is derived from `RETURNING - 1` (the pre-increment value); the invoice row is written in the same transaction. The row lock is held until commit; a rollback returns the value to the sequence (the increment never persists), which is the gapless guarantee.
-- **`bigint` for headroom.** `nextValue` is bigint so a deployment cannot mathematically exhaust a year's namespace; the four-digit-minimum format in §5.15 widens past 9999 without a schema migration.
-- **Persistence principle.** The atomic-upsert pattern is generalized in [§6.13](#613-gapless-sequence-allocation) so future gapless counters can reuse the shape without re-arguing the choice against `SERIAL`.
+One counter per calendar year and kind — `invoice` for `RE-` numbers, `storno` for `ST-` numbers. Each starts at 1; only a committed issuance uses a value ([AC-694](verification.md#1530-invoices)), and only a restore or an import skips values ([§6.13](#613-gapless-sequence-allocation)). Restore and import: [§6.13](#613-gapless-sequence-allocation).
 
 ### 5.17 Company Profile Entity
 
-The single-row table carrying the issuing company's identity — the source from which every issued invoice's `issuer` snapshot is taken ([§5.15](#515-invoice-entity)). Single-tenant by [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md), so the singleton shape is correct without a tenant key.
+The issuing company's identity, printed on every invoice. Exactly one exists ([AC-721](verification.md#1531-company-profile)). Behavior: [verification.md §15.31](verification.md#1531-company-profile). Screen: [ui/invoices.md §8.16.4](ui/invoices.md#8164-company-profile).
 
-```typescript
-// `TaxMode` is defined in §5.15 and reused here.
+| Field                    | Constraint                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `companyName`            | Required; at most 200 characters                                                                                                                    |
+| `address`                | `street` (at most 200 characters), `zip` (20), `city` (200); all required                                                                           |
+| `taxId`                  | Steuernummer; required; at most 50 characters                                                                                                       |
+| `ustId`                  | USt-IdNr.; required ([ADR-0026 § Compliance boundary](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)); at most 50 characters |
+| `iban`                   | At most 50 characters                                                                                                                               |
+| `accentColor`            | `#RGB` or `#RRGGBB`; colors the rendered invoice only. Unset: the brand accent ([architecture.md §12.5](architecture.md#125-theming-model))         |
+| `footerText`             | At most 2000 characters                                                                                                                             |
+| `defaultTaxMode`         | `standard` or `reverse_charge`; pre-fills new drafts ([AC-683](verification.md#1530-invoices)). `standard` on a new deployment                      |
+| `version`                | Concurrency token ([§6.4](#64-concurrency))                                                                                                         |
+| `updatedAt`, `updatedBy` | Server time; the acting user                                                                                                                        |
 
-interface CompanyProfile {
-  // Singleton — enforced by a CHECK on a fixed primary key (parity with `meta_backup_status.singleton`).
-  companyName: string; // required, non-empty
-  address: { street: string; zip: string; city: string }; // all three components required
-  taxId: string; // Steuernummer — required, non-empty
-  ustId?: string; // USt-IdNr. — required, non-empty; empty only on an incomplete stored row (see Required fields)
-  iban?: string; // always structurally optional; the renderer emits a payment block iff `iban` is present
-  accentColor?: string; // hex; nullable — document styling for the rendered invoice only, never an app-theme override; the renderer falls back to the brand accent's light variant (AC-362)
-  footerText?: string; // free German text printed at the foot of every rendered invoice
-  defaultTaxMode: TaxMode; // pre-fills new invoice drafts; editable per-draft until issuance
-
-  updatedAt: string; // ISO 8601
-  updatedBy?: string; // UserAccount.id
-  version: number; // server-managed concurrency token — §6.4
-}
-```
-
-Design notes:
-
-- **Singleton invariant.** Exactly one row exists. The row is pre-seeded by the baseline migration with empty mandatory fields so write paths are always upserts rather than first-writes. The DB enforces the singleton via a CHECK constraint on a constant primary key.
-- **Owner-only mutation surface.** Every authenticated role may read; writes are owner-only, enforced by the route-layer role check (no dedicated `company_profile:read` / `company_profile:write` keys are introduced). The CRUD shape is `GET` + `PUT` (upsert), no `POST` / `DELETE`. The mutation goes through the single-write-path helper ([architecture.md §11.3](architecture.md#113-state-layer-behavioral-contract)); the audit entity type is `'company_profile'` (added to `AuditEntityType` alongside `'invoice'` — [§5.10](#510-audit-log-entity)).
-- **Required fields.** `companyName`, `address.{street,zip,city}`, `taxId` and `ustId`, all non-empty. Enforced at upsert ([AC-303](verification.md#1531-company-profile)) and at issuance ([AC-305](verification.md#1531-company-profile), [api.md §14.4](api.md#144-error-handling) `COMPANY_PROFILE_REQUIRED`). The stored row can still be incomplete: pre-seeded empty, or restored by import. Rationale for `ustId`: [ADR-0026 § Compliance boundary](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary).
-- **Snapshot at issuance, not at draft creation.** Drafts read the live row for pre-fill (default tax mode), but the actual `Invoice.issuer` block is snapshotted at the issue call — never earlier. A draft created today and issued next month carries next month's company profile, not today's. This matches the standard ERP "as of the issue date" expectation.
-- **`defaultTaxMode` is a tenant default, not a per-user preference.** Stored on the singleton row, edited by the owner via the company-profile form ([ui/daten.md §8.11.4](ui/daten.md#8114-company-profile)); it does not live on the user record. New invoice drafts pre-fill `taxMode` from this value; the draft author edits per-invoice as needed (e.g. reverse charge for Bauleistungen performed as a subcontractor). Listed in [architecture.md §12.2](architecture.md#122-company-configurable-settings) as a `[C]` value — the default is set per deployment by the owner, not at deploy time.
-- **Logo is not on this row.** The company logo is a deploy-time branding asset (`BRANDING.mark.logo`, [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)), served from the static build and read by the invoice renderer at issuance. It is not per-installation business data, so it neither lives on this table nor rides the export envelope. See [architecture.md §12.2](architecture.md#122-company-configurable-settings).
+Required means non-empty. The stored profile can still lack one — on a new deployment, or after an import; issuing then fails ([AC-698](verification.md#1530-invoices)). The brand logo is deploy-time branding, not part of the profile ([architecture.md §12.2](architecture.md#122-company-configurable-settings)).
 
 ### 5.18 Data Exchange Job
 
@@ -503,8 +428,8 @@ Low write concurrency is assumed. A write to a versioned entity based on a stale
 
 - **State transitions** use optimistic concurrency on `status` — a transition is rejected as a conflict if the project's status has moved since the client's last read (see [AC-94](verification.md#1517-data-integrity)). The client should refetch and present the new state.
 - **Edits** to Customer, Invoice and Company Profile use optimistic concurrency on `version`, a server-managed integer. Every committed API write to the row changes it ([AC-378](verification.md#1517-data-integrity)). Two exceptions: an issued or cancelled invoice is frozen, so its version no longer changes; database-level cascades ([§6.6](#66-referential-integrity)) do not change it.
-- **Versioned operations** (saving the customer edit form; input `expectedVersion` in [api.md](api.md)) carry the version their edit started from. A mismatch is rejected with `VERSION_CONFLICT` and nothing is written ([AC-375](verification.md#1517-data-integrity), [AC-376](verification.md#1517-data-integrity)). The check and the write are atomic: of two writes carrying the same current version, exactly one commits ([AC-381](verification.md#1517-data-integrity)).
-- **Check order.** Request-shape validation first — a missing `expectedVersion` is a validation error ([AC-377](verification.md#1517-data-integrity)). Then: not found and archived ([AC-499](verification.md#1512-projects), [AC-513](verification.md#1530-invoices)); the invoice state checks (`INVOICE_FROZEN`, issue on a non-draft); the version check; business-rule checks (e.g. the issuance preconditions in [api.md §14.2.14](api.md#14214-invoice-operations)).
+- **Versioned operations** (saving the customer edit form; input `expectedVersion` in [api.md](api.md)) carry the version their edit started from. A mismatch is rejected with `VERSION_CONFLICT` and nothing is written ([AC-375](verification.md#1517-data-integrity), [AC-699](verification.md#1530-invoices)). The check and the write are atomic: of two writes carrying the same current version, exactly one commits ([AC-381](verification.md#1517-data-integrity)).
+- **Check order.** Request-shape validation first — a missing `expectedVersion` is a validation error ([AC-377](verification.md#1517-data-integrity)). Then: not found and archived ([AC-499](verification.md#1512-projects), [AC-513](verification.md#1530-invoices)); the invoice state checks (`INVOICE_FROZEN`, issue on a non-draft); the version check; business-rule checks (e.g. the issuance preconditions, [AC-696](verification.md#1530-invoices), [AC-697](verification.md#1530-invoices), [AC-698](verification.md#1530-invoices)).
 - **Not versioned.** Project edits (Update project, Update dates) are last-write-wins: the detail page saves one field at a time, so a lost update needs two users on the same field at once — rare, and recoverable from the audit `before`. A project-wide `version` would instead reject an edit to one field whenever anything else on the project moved (a transition, an assignment, the issuance flip), discarding the user's input. Lifecycle operations — project archive / restore / purge, customer delete — act on the row's existence, not its content; their preconditions are state checks ([§6.9](#69-soft-deletes)). Delete draft is versioned: discarding a draft is a judgement on its content. Invoice cancel — its target is frozen. Attachments — own state checks ([verification.md §15.26](verification.md#1526-attachments)). Users and notification rules — low-stakes rows whose stale overwrite freezes nothing.
 - **Customer corrections on drafts.** The draft write a customer edit causes ([§5.15](#515-invoice-entity)) carries no `expectedVersion`. It evaluates each field against the draft's latest committed state and serializes with Update, Delete and Issue on that draft: an override committed first stays, a draft deleted or issued first is untouched, and an operation carrying the pre-correction version is rejected with `VERSION_CONFLICT` ([AC-546](verification.md#1530-invoices)).
 - **Not exported.** `version` is a concurrency token, not business data: the export archive omits it ([§5.8](#58-export-archive)) and import sets it fresh. No stale client survives an import — it ends every session ([AC-597](verification.md#1514-data-exchange)).
@@ -538,19 +463,13 @@ Timestamp ownership rules are defined in section 5.5. Additionally, `statusChang
 
 ### 6.13 Gapless Sequence Allocation
 
-- A gapless sequence is an integer counter whose advancement is **coupled to the commit of a using transaction** — a rollback returns the value to the pool, never leaving a gap. Postgres `SERIAL` / `IDENTITY` is incompatible by design (they advance on every insert attempt, including rolled-back ones).
-- The canonical pattern is a dedicated counter table whose row is allocated by a single `INSERT … ON CONFLICT (key) DO UPDATE SET next_value = next_value + 1 RETURNING next_value` inside the using transaction — Postgres takes a row-exclusive lock equivalent to `SELECT FOR UPDATE` for the duration of the transaction. The lock is held until commit; the row's `nextValue` is incremented and read atomically in the same statement; the first-of-key case (INSERT) and the steady-state case (DO UPDATE) collapse into one race-free path; if the transaction rolls back, the increment never persists.
-- The pattern is reusable for any future counter with gapless semantics. The current consumer is `invoice_sequence` ([§5.16](#516-invoice-sequence-entity)) per [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md); allocations are scoped to `(year, kind)` composite keys.
-- The using transaction commits the counter increment, the using row's insert, the audit row, and any byte-side write (e.g., a rendered artifact's binary descriptor) atomically. Splitting the counter advancement out of the using transaction breaks the gapless guarantee.
-- **Restore to an earlier state.** A database restore ([AC-368](verification.md#1522-backup-and-recovery)) drops rows committed after the backup snapshot, but their invoice numbers already reached customers. Before issuance resumes, every `invoice_sequence` `(year, kind)` advances past every number that may have been issued since — mechanism in [AC-368](verification.md#1522-backup-and-recovery). A gap is acceptable; a reissued number is not (§14 Abs. 4 Nr. 4 UStG). An import never lowers the counter ([AC-369](verification.md#1514-data-exchange)).
+- An invoice number, once issued, is never issued again (§14 Abs. 4 Nr. 4 UStG); a gap is acceptable only after a restore or an import.
+- After a database restore, numbering advances past every number that may have been issued since the backup ([AC-368](verification.md#1522-backup-and-recovery)). An import never lowers it ([AC-369](verification.md#1514-data-exchange)).
 
 ### 6.14 Immutability of Issued Invoices
 
-- An `invoices` row with `status = 'issued'` is **write-once** at the persistence layer. The only field that may transition is `status: 'issued' → 'cancelled'`, paired with the creation of a sibling Storno row ([§5.15](#515-invoice-entity)).
-- The application enforces immutability at every write surface: the API rejects mutations on issued rows ([api.md §14.4](api.md#144-error-handling) `INVOICE_FROZEN`), the service layer refuses to dispatch an update that touches a frozen row, and the persistence layer is the last line of defense — direct DB writes to issued rows other than the cancellation flip are out of contract.
-- Rationale: consistency of the system's own outputs — an issued row must agree with its Object-Locked PDF. Retention and legal obligations stay with the operating company ([ADR-0026 §Compliance boundary](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)). A correction is a fresh `draft → issued` cycle producing a new sibling row, not an edit. See [ADR-0026 §State machine](../adr/0026-invoices-immutability-and-zugferd.md#state-machine).
-- An import never removes an issued or cancelled invoice ([AC-367](verification.md#1514-data-exchange)). Drafts carry no number and are not protected.
-- Object-storage retention on the rendered PDF/A-3 ([architecture.md §11.14](architecture.md#1114-invoice-domain)) is the storage-layer backstop on the artifact bytes; this principle is the row-side counterpart.
+- An issued or cancelled invoice never changes, except an issued one becoming cancelled ([AC-708](verification.md#1530-invoices)). A correction is a Storno and a new invoice. Its document stays as rendered, under the invoice lock ([AC-710](verification.md#1530-invoices)).
+- An import never removes one ([AC-367](verification.md#1514-data-exchange)). Drafts carry no number and are not protected.
 
 ---
 

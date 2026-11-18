@@ -120,7 +120,7 @@ export interface RunTakeoutImportDeps {
   binaryAgeRecipient: string;
   /** Tmpfs-resident path to the operator-loaded binary `age` private identity. */
   binaryAgeIdentityPath: string;
-  /** `INVOICE_OBJECT_LOCK_DAYS` — lock on a restored rendered invoice PDF (AC-296). */
+  /** `INVOICE_OBJECT_LOCK_DAYS` — lock on a restored rendered invoice PDF (AC-710). */
   invoiceObjectLockDays: number;
 }
 

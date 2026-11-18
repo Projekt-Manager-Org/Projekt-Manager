@@ -222,9 +222,27 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-281 | retired | —                                                                                                        |
 | AC-282 | retired | —                                                                                                        |
 | AC-284 | retired | —                                                                                                        |
+| AC-285 | retired | —                                                                                                        |
+| AC-286 | retired | —                                                                                                        |
+| AC-287 | retired | —                                                                                                        |
+| AC-288 | retired | —                                                                                                        |
+| AC-289 | retired | —                                                                                                        |
+| AC-290 | retired | —                                                                                                        |
+| AC-291 | retired | —                                                                                                        |
+| AC-292 | retired | —                                                                                                        |
+| AC-293 | retired | —                                                                                                        |
+| AC-294 | retired | —                                                                                                        |
+| AC-295 | retired | —                                                                                                        |
+| AC-296 | retired | —                                                                                                        |
 | AC-297 | retired | —                                                                                                        |
 | AC-298 | retired | —                                                                                                        |
+| AC-299 | retired | —                                                                                                        |
+| AC-300 | retired | —                                                                                                        |
 | AC-301 | retired | —                                                                                                        |
+| AC-302 | retired | —                                                                                                        |
+| AC-303 | retired | —                                                                                                        |
+| AC-304 | retired | —                                                                                                        |
+| AC-305 | retired | —                                                                                                        |
 | AC-306 | retired | —                                                                                                        |
 | AC-307 | retired | —                                                                                                        |
 | AC-308 | retired | —                                                                                                        |
@@ -267,6 +285,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-372 | retired | —                                                                                                        |
 | AC-373 | retired | —                                                                                                        |
 | AC-374 | infra   | monthly binary-key drill — `docs/ops/binary-key/drills.md`                                               |
+| AC-376 | retired | —                                                                                                        |
+| AC-382 | retired | —                                                                                                        |
+| AC-384 | retired | —                                                                                                        |
 | AC-385 | retired | —                                                                                                        |
 | AC-386 | retired | —                                                                                                        |
 | AC-387 | retired | —                                                                                                        |
@@ -302,3 +323,15 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-529 | gap     | needs an e2e of a failed search                                                                          |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
+| AC-544 | retired | —                                                                                                        |
+| AC-690 | gap     | #1000: needs the issue date taken in Europe/Berlin and a test at the day and year boundary               |
+| AC-706 | gap     | #1002: needs the refusal and a test cancelling a Storno                                                  |
+| AC-707 | gap     | needs a test confirming a Storno with an empty reason                                                    |
+| AC-712 | gap     | needs a test of the list order with drafts and issued invoices                                           |
+| AC-714 | gap     | needs a test of the list search over number and recipient name                                           |
+| AC-715 | gap     | needs a test of the year and status filters on the list                                                  |
+| AC-716 | gap     | needs a test of the year options beside an active filter                                                 |
+| AC-720 | gap     | needs a test that a live refresh keeps an open draft form and Storno confirmation                        |
+| AC-725 | gap     | needs a test of the incomplete-profile banner and its link                                               |
+| AC-730 | gap     | needs a test that a document failing to load mid-export yields no archive                                |
+| AC-731 | gap     | needs a test saving a draft form without a priced, described line                                        |

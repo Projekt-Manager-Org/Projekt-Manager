@@ -18,7 +18,7 @@
  * their historical invoices, this loader temporarily sets each
  * project's status to `rechnung_faellig` before issuing, and restores
  * the original target afterward. Cancellation does NOT touch project
- * status (AC-290), so a cancel-then-reissue pair needs another flip
+ * status (AC-704), so a cancel-then-reissue pair needs another flip
  * back to `rechnung_faellig` between the two issuances.
  *
  * The three projects that natively start in `rechnung_faellig` (013,
@@ -273,7 +273,7 @@ const ISSUE_SPECS: readonly IssueSpec[] = [
 
   // — Kanzlei Dr. Meier, Wandgestaltung. Standard, single line. The
   // seeded customer has NO address, so `recipient.address` is
-  // overridden to satisfy the issue-time guard (AC-289).
+  // overridden to satisfy the issue-time guard (AC-697).
   {
     projectNumberSuffix: '019',
     issueDate: '2025-10-14',
@@ -557,7 +557,7 @@ async function applyIssueSpec(
 
     if (spec.cancellation.reissue) {
       // After cancellation the project is still `abgerechnet` (cancel
-      // does not touch project status per AC-290); flip back so the
+      // does not touch project status per AC-704); flip back so the
       // corrected invoice can be issued on the same project.
       await setProjectStatus(db, projectId, 'rechnung_faellig', now);
 

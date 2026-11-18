@@ -7,10 +7,10 @@ INSERT INTO "meta_backup_status" ("singleton", "last_backup_ok") VALUES (TRUE, F
 -- Pre-seed the single company_profile row (data-model.md §5.17,
 -- ADR-0026). The API exposes upsert (`PUT`) only — no `POST` /
 -- `DELETE` path — so the row MUST exist before the first write.
--- Mandatory fields land empty; the issuance gate (AC-289 /
+-- Mandatory fields land empty; the issuance gate (AC-698 /
 -- COMPANY_PROFILE_REQUIRED) refuses to issue until the owner fills
 -- them via `PUT /api/company-profile`. The `id` defaults to
--- gen_random_uuid() so audit_log.entity_id (uuid NOT NULL, AC-302)
+-- gen_random_uuid() so audit_log.entity_id (uuid NOT NULL, AC-623)
 -- has a stable target without a hard-coded seed UUID. `singleton`
 -- defaults to TRUE; the UNIQUE constraint on it caps the table at one
 -- row.
