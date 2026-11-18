@@ -25,8 +25,3 @@ reason = "@vlzware: prettier pinned to 3.9.10, the advisory's patched release. R
 id = "GHSA-g3hv-75wg-m249"
 effectiveUntil = 2026-12-01  # <= 90 days from 2026-11-01
 reason = "@vlzware: minimatch 10.2.6 via eslint, archiver>readdir-glob (^10); fixed only in 11.0.1. Needs an attacker-supplied pattern and optimizationLevel >= 2. archiver's glob()/directory() are never called, readdir-glob keeps the default level 1, eslint's patterns are repo config. Unreachable (#668). Drop when the dependents allow minimatch >=11.0.1 or 10.x gets a backport."
-
-[[IgnoredVulns]]
-id = "GHSA-fc5q-39xc-vjpf"
-effectiveUntil = 2026-12-18  # <= 90 days from 2026-11-18
-reason = "@vlzware: picomatch 4.0.7 (latest) via vite, vitest, lint-staged; no fixed release yet. ReDoS needs an attacker-supplied extglob pattern. Dev tooling only (pruned from the runtime image), every pattern is repo config. Drop when a fixed picomatch is on main."
