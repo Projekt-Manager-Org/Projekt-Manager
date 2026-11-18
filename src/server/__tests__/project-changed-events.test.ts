@@ -26,10 +26,14 @@
  *      a. override path (TRUNCATE + re-insert into a non-empty target)
  *      b. empty-target path (insert into empty tables; the seed-equivalent path)
  *  12. CustomerService.updateCustomer (project reads nest the customer)
+ *  13. UserService.updateUser / deleteUser of an assigned worker
+ *      (project reads nest worker display names; delete cascades
+ *      the assignment, AC-559)
  *
  * Silence cases:
  *   - CustomerService.deleteCustomer with zero archived projects
  *   - A mutation that aborts inside its transaction
+ *   - A refused user delete (AC-558, self-delete)
  *
  * Co-emission independence — the two cascading sites that may also
  * emit `storage_usage_changed`:
@@ -289,6 +293,24 @@ async function createCustomer(ownerToken: string): Promise<string> {
     throw new Error(`fixture customer create failed ${res.statusCode} ${res.body}`);
   }
   return res.json().id as string;
+}
+
+/** Create a worker and assign it to a fresh project. Returns the user id. */
+async function createAssignedWorker(ownerToken: string): Promise<string> {
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const res = await authPost(ownerToken, '/api/users', {
+    username: `evt_worker_${suffix}`,
+    displayName: `Evt-Worker-${suffix}`,
+    password: `Evt-${crypto.randomUUID()}`,
+    roles: ['worker'],
+  });
+  if (res.statusCode !== 201) {
+    throw new Error(`fixture user create failed ${res.statusCode} ${res.body}`);
+  }
+  const userId = res.json().id as string;
+  const customerId = await seededCustomerIdAny(ownerToken);
+  await createActiveProject(ownerToken, customerId, { assignedWorkerIds: [userId] });
+  return userId;
 }
 
 /**
@@ -727,6 +749,66 @@ describe('AC-277: project_changed emission from every project-mutation site', ()
           name: 'Veralteter Stand',
         });
         expect(res.statusCode).toBe(409);
+
+        await new Promise<void>((r) => setImmediate(r));
+
+        expect(countProjectChanged(conn)).toBe(0);
+      } finally {
+        bus.unsubscribe(conn);
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // UserService — project reads carry each assigned worker's display
+  // name, and a deleted user's assignments cascade away (AC-559).
+  // -------------------------------------------------------------------
+  describe('AC-277: UserService emits exactly one event when an assigned worker changes', () => {
+    it('a subscribed connection observes one project_changed event after renaming an assigned worker', async () => {
+      const bus = await loadBus();
+      const userId = await createAssignedWorker(ownerToken);
+
+      const conn = subscribeFake(bus);
+      try {
+        const res = await authPatch(ownerToken, `/api/users/${userId}`, {
+          displayName: 'Umbenannter Monteur',
+        });
+        expect(res.statusCode).toBe(200);
+
+        await new Promise<void>((r) => setImmediate(r));
+
+        expect(countProjectChanged(conn)).toBe(1);
+      } finally {
+        bus.unsubscribe(conn);
+      }
+    });
+
+    it('a subscribed connection observes one project_changed event after deleting an assigned worker', async () => {
+      const bus = await loadBus();
+      const userId = await createAssignedWorker(ownerToken);
+
+      const conn = subscribeFake(bus);
+      try {
+        const res = await authDelete(ownerToken, `/api/users/${userId}`);
+        expect(res.statusCode).toBe(204);
+
+        await new Promise<void>((r) => setImmediate(r));
+
+        expect(countProjectChanged(conn)).toBe(1);
+      } finally {
+        bus.unsubscribe(conn);
+      }
+    });
+
+    it('a refused user delete emits no event', async () => {
+      const bus = await loadBus();
+      const ownerId = (await authGet(ownerToken, '/api/auth/me')).json().id as string;
+
+      const conn = subscribeFake(bus);
+      try {
+        // AC-558: an owner cannot delete their own account.
+        const res = await authDelete(ownerToken, `/api/users/${ownerId}`);
+        expect(res.statusCode).toBe(422);
 
         await new Promise<void>((r) => setImmediate(r));
 

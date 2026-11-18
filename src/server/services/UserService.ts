@@ -44,6 +44,7 @@ import {
 } from '../errors.js';
 import type { ServiceLogger } from './Logger.js';
 import { mutate } from './mutate.js';
+import { emitProjectChanged } from '../sse/emitters.js';
 
 export class UserService {
   constructor(private db: Database) {}
@@ -196,6 +197,8 @@ export class UserService {
         },
       },
     );
+    // Post-commit: project reads carry assigned workers' display names (AC-277).
+    if (data.displayName !== undefined) emitProjectChanged();
     log.info({ userId: id }, 'user_updated');
     return user;
   }
@@ -316,6 +319,8 @@ export class UserService {
       },
     );
 
+    // Post-commit: the FK cascade dropped the user's worker assignments (AC-559, AC-277).
+    emitProjectChanged();
     log.info({ userId: id, actorId }, 'user_deleted');
   }
 
