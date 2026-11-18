@@ -434,7 +434,7 @@ Contract: [verification.md §15.28](docs/spec/verification.md#1528-realtime-even
 
 - **Server:** in-process bus `src/server/sse/bus.ts`; one typed emitter per event in `src/server/sse/emitters.ts`, called post-commit.
 - **Catalogue:** `src/config/sseEvents.ts`.
-- **Client:** `src/sse/client.ts` (`onSseEvent`); stores subscribe and refetch.
+- **Client:** `src/sse/client.ts` (`onSseEvent`); stores subscribe and refetch. A reconnect re-runs every handler; after a terminal close (a non-200 reconnect) the client probes the session, then reopens or hands over to session-expired handling.
 - **Session end:** each heartbeat re-validates the stream's session through `AuthService`; an ended session's stream closes (`src/server/routes/events.ts`).
 
 ## Edit Concurrency
