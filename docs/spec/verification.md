@@ -69,7 +69,7 @@ What the login screen shows: [ui/index.md §8.1.1](ui/index.md#811-unauthenticat
 - **AC-24** `[vis]`: While a user is signed in, the header shows their display name.
 - **AC-25** `[crit]`: When a user clicks "Abmelden", the system signs them out and shows the login screen.
 - **AC-26** `[crit]`: If a user presses the browser back button after signing out, the system shows no project data.
-- **AC-27** `[crit]`: If a session expires while the app is open, the system shows the login screen with an expiry message.
+- **AC-27** `[crit]`: If an open app's session expires or is ended elsewhere, the system shows the login screen with an expiry message within one heartbeat interval **[C]** ([architecture.md §12.2](architecture.md#122-company-configurable-settings)) plus 30 seconds.
 - **AC-572** `[crit]`: If a request carries an expired session token, the system refuses it as an authentication error.
 - **AC-28** `[crit]`: If a request carries a valid session token of a deactivated user, the system refuses it as an authentication error.
 - **AC-395** `[vis]`: While a session is valid, reloading the app keeps the user signed in.
