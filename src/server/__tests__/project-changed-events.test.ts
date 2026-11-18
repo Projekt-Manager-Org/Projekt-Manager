@@ -2,15 +2,15 @@
  * API integration tests — `project_changed` emission per call site
  * (issue #176, ADR-0025).
  *
- * Pins AC-276 from verification.md §15.28: each of the eleven project-
- * mutation sites enumerated in architecture.md §11.13 emits exactly
- * one `project_changed` event post-commit to a subscribed `/api/events`
- * connection — and a tx that aborts emits nothing. AC-276 cross-refs
- * AC-270 for failure-isolation, post-commit, and tx-abort posture, so
- * those arms are pinned narrowly here (the broad bus-level isolation
- * lives in `attachments-sse-bus.test.ts`).
+ * The emit half of AC-277 (open project views show another session's
+ * change): each project-mutation site emits exactly one
+ * `project_changed` event post-commit to a subscribed `/api/events`
+ * connection. Regression guards, not AC-277: a tx that aborts emits
+ * nothing; failure isolation, post-commit and tx-abort are pinned
+ * narrowly here (the broad
+ * bus-level isolation lives in `attachments-sse-bus.test.ts`).
  *
- * v1 emitters under test (architecture.md §11.13):
+ * Emitters under test:
  *
  *   1. ProjectCrudService.createProject
  *   2. ProjectCrudService.updateProject (field-only branch)
@@ -46,11 +46,11 @@
  *   - Subscribe a fake `Connection` directly to the in-process bus and
  *     drive each happy-path emitter via the existing service / route
  *     surface, then assert the fake connection observed exactly one
- *     `project_changed` frame post-commit. Mirrors AC-270's
+ *     `project_changed` frame post-commit. Mirrors the storage-usage test's
  *     `attachments-storage-usage-events.test.ts` exactly.
  *   - For the tx-abort arm, construct ProjectCrudService against a
  *     Proxy db whose `transaction()` rejects — the canonical "tx
- *     aborted" injection point. Same pattern as AC-270's tx-abort arm.
+ *     aborted" injection point. Same pattern as the storage-usage tx-abort arm.
  *   - Wire-string pin: assert against the constant `PROJECT_CHANGED`
  *     from `src/config/sseEvents.ts`. The constant does not yet exist
  *     at step-3 time — the static import surfaces a TypeScript /
@@ -90,8 +90,8 @@ import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { ProjectCrudService } from '../services/ProjectCrudService.js';
 import { getEnv } from '../config/env.js';
 import type { ServiceLogger } from '../services/Logger.js';
-// Wire-string pin — AC-276 names the literal `project_changed` on the
-// SSE `event:` line (api.md §14.2.13, architecture.md §11.13). The
+// Wire-string pin — the literal `project_changed` on the SSE `event:`
+// line. The
 // constant lives in the shared catalog; the static import is the
 // load-bearing red signal at step-3 time. Once the implementer adds
 // `PROJECT_CHANGED` next to `STORAGE_USAGE_CHANGED`, this import
@@ -101,7 +101,8 @@ import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
 import { GCM_OVERHEAD_BYTES } from '../../domain/clientEncryption.js';
 
 // ---------------------------------------------------------------------
-// Bus module surface — same shape AC-270 uses. Dynamic import via a
+// Bus module surface — same shape the storage-usage test uses.
+// Dynamic import via a
 // string variable so a pre-implementation typo on the catalog constant
 // is the surfacing failure rather than a TS resolution error inside
 // this file. (The bus module itself already exists; the constant does
@@ -293,8 +294,8 @@ async function createCustomer(ownerToken: string): Promise<string> {
 /**
  * Resolve a worker user id from the seed — used by the assigned-worker-
  * only branch of updateProject, which mutates the `project_workers`
- * join without touching the projects row. AC-276 names this branch
- * explicitly because the join is part of the project read surface.
+ * join without touching the projects row. This branch emits
+ * too because the join is part of the project read surface.
  */
 async function seededWorkerIdAny(ownerToken: string): Promise<string> {
   const res = await authGet(ownerToken, '/api/users');
@@ -320,11 +321,11 @@ function uuidWithPrefix(prefix: string, i: number): string {
 /**
  * Build a minimal valid envelope distinct from the seed so the
  * override path actually replaces business data. The shape mirrors
- * `buildOverrideEnvelope` in `data-exchange.test.ts`. AC-276 pins
- * exactly one `project_changed` per successful commit (architecture.md
- * §11.13: "one coarse signal is sufficient for every consumer to
- * refetch"). Both branches reuse this envelope: the override test runs it
- * against a non-empty target; the empty-target test wipes the tables first.
+ * `buildOverrideEnvelope` in `data-exchange.test.ts`. One
+ * `project_changed` per successful commit: one coarse signal is
+ * enough for every consumer to refetch. Both branches reuse this
+ * envelope: the override test runs it against a non-empty target; the
+ * empty-target test wipes the tables first.
  */
 function buildOverrideEnvelope(): Record<string, unknown> {
   // Deterministic per-test-run UUIDs would collide on a re-run; lift
@@ -408,7 +409,7 @@ function buildOverrideEnvelope(): Record<string, unknown> {
 // Tests.
 // ---------------------------------------------------------------------
 
-describe('AC-276: project_changed emission from every project-mutation site', () => {
+describe('AC-277: project_changed emission from every project-mutation site', () => {
   let ownerToken: string;
   let db: Database;
   let pool: ReturnType<typeof createDatabase>['pool'];
@@ -428,9 +429,9 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
   // -------------------------------------------------------------------
   // (1) ProjectCrudService.createProject — new row visible to every
-  // project list / detail consumer (architecture.md §11.13).
+  // project list / detail consumer.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectCrudService.createProject emits exactly one event', () => {
+  describe('AC-277: ProjectCrudService.createProject emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a successful create', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -462,22 +463,22 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // (2) ProjectCrudService.updateProject — field-only branch.
   //
   // Mutates `title` / `notes` only — the projects row is touched, the
-  // project_workers join is not. AC-276 pins emission on every successful
+  // project_workers join is not. Emission is on every successful
   // updateProject return.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectCrudService.updateProject (field-only branch) emits exactly one event', () => {
+  describe('AC-277: ProjectCrudService.updateProject (field-only branch) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a title/notes update', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
       const projectId = await createActiveProject(ownerToken, customerId);
 
       // Subscribe AFTER the seed so the seed's create-event does not
-      // pollute the count. Same isolation pattern as AC-270's hide /
-      // restore arms.
+      // pollute the count. Same isolation pattern as the storage-usage
+      // test's hide / restore arms.
       const conn = subscribeFake(bus);
       try {
         const res = await authPatch(ownerToken, `/api/projects/${projectId}`, {
-          title: 'Updated title for AC-276',
+          title: 'Updated title for AC-277',
           notes: 'Field-only branch — no worker mutation.',
         });
         expect(res.statusCode).toBe(200);
@@ -495,12 +496,11 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // (3) ProjectCrudService.updateProject — assigned-worker-only branch.
   //
   // Mutates `assignedWorkerIds` only. The projects row is unchanged but
-  // the join is part of the read surface (architecture.md §11.13:
-  // "the assigned-worker-only path that writes only `project_workers`").
+  // the join is part of the project read surface, so this path emits too.
   // Without this arm a regression that gates emission on
   // `hasFieldUpdate` would silently drop the join change.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectCrudService.updateProject (assigned-worker-only branch) emits exactly one event', () => {
+  describe('AC-277: ProjectCrudService.updateProject (assigned-worker-only branch) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after writing only project_workers', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -530,7 +530,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // -------------------------------------------------------------------
   // (4) ProjectCrudService.deleteProject — soft-delete / archive.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectCrudService.deleteProject (archive) emits exactly one event', () => {
+  describe('AC-277: ProjectCrudService.deleteProject (archive) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a successful archive', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -553,7 +553,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // -------------------------------------------------------------------
   // (5) ProjectCrudService.restoreProject — un-archive.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectCrudService.restoreProject (un-archive) emits exactly one event', () => {
+  describe('AC-277: ProjectCrudService.restoreProject (un-archive) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a successful restore', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -579,7 +579,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // row. Always emits `project_changed` (the row is being deleted),
   // independently of whether the cascade also moved bytes.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectCrudService.purgeProject (hard delete) emits exactly one event', () => {
+  describe('AC-277: ProjectCrudService.purgeProject (hard delete) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a successful purge', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -606,7 +606,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // transition. Default-created projects start in `anfrage`; `angebot`
   // is the next state.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectTransitionService.transitionForward emits exactly one event', () => {
+  describe('AC-277: ProjectTransitionService.transitionForward emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a +1 transition', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -632,7 +632,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // (8) ProjectTransitionService.transitionBackward — `-1` workflow
   // transition. Drive the project forward once, then back.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectTransitionService.transitionBackward emits exactly one event', () => {
+  describe('AC-277: ProjectTransitionService.transitionBackward emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a -1 transition', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -665,7 +665,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // -------------------------------------------------------------------
   // (9) ProjectDatesService.updateDates — planned start / end edit.
   // -------------------------------------------------------------------
-  describe('AC-276: ProjectDatesService.updateDates emits exactly one event', () => {
+  describe('AC-277: ProjectDatesService.updateDates emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a successful date edit', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -692,7 +692,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // CustomerService.updateCustomer — project reads carry the nested
   // customer, so an open project page must refetch after an edit.
   // -------------------------------------------------------------------
-  describe('AC-276: CustomerService.updateCustomer emits exactly one event', () => {
+  describe('AC-277: CustomerService.updateCustomer emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a customer edit', async () => {
       const bus = await loadBus();
       const customerId = await createCustomer(ownerToken);
@@ -743,7 +743,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // even if multiple archived projects are purged atomically: observers
   // refetch the project list once, not per row.
   // -------------------------------------------------------------------
-  describe('AC-276: CustomerService.deleteCustomer (cascade with archived projects) emits exactly one event', () => {
+  describe('AC-277: CustomerService.deleteCustomer (cascade with archived projects) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event when the cascade purges an archived project', async () => {
       const bus = await loadBus();
       const customerId = await createCustomer(ownerToken);
@@ -767,11 +767,10 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
   // -------------------------------------------------------------------
   // (11a) ImportService.import — override path, successful bulk-restore
-  // into a non-empty target. architecture.md §11.13: "Exactly one
-  // `project_changed` is emitted post-commit per successful import —
-  // one coarse signal is sufficient for every consumer to refetch."
+  // into a non-empty target. Exactly one `project_changed` per
+  // successful import: one coarse signal is enough for every consumer.
   // -------------------------------------------------------------------
-  describe('AC-276: ImportService.import (override commit) emits exactly one event', () => {
+  describe('AC-277: ImportService.import (override commit) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a successful override', async () => {
       const bus = await loadBus();
 
@@ -804,10 +803,10 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   // into empty tables. The empty-target branch writes new project rows
   // and is observable to any subscriber connected at the time (e.g. an
   // admin re-importing into a wiped staging DB while the office tab is
-  // open). AC-276 widens to cover this branch alongside override —
+  // open). This branch emits alongside override —
   // both paths emit one signal post-commit.
   // -------------------------------------------------------------------
-  describe('AC-276: ImportService.import (empty-target commit) emits exactly one event', () => {
+  describe('AC-277: ImportService.import (empty-target commit) emits exactly one event', () => {
     it('a subscribed connection observes one project_changed event after a successful empty-target import', async () => {
       const bus = await loadBus();
 
@@ -841,7 +840,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
   // (12) deleteCustomer with zero archived projects — the project rows
   // visible to subscribers do not change, so no event must fire.
-  describe('AC-276: CustomerService.deleteCustomer with zero archived projects emits no event', () => {
+  describe('CustomerService.deleteCustomer with zero archived projects emits no event', () => {
     it('a subscribed connection observes zero project_changed events', async () => {
       const bus = await loadBus();
       const customerId = await createCustomer(ownerToken);
@@ -861,12 +860,12 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
   });
 
   // (14) Tx-abort — a mutation that aborts inside its transaction
-  // emits no event. AC-276 cross-refs AC-270's tx-abort posture; the
-  // injection pattern matches AC-270's `attachments-storage-usage-events.test.ts`
+  // emits no event. The injection pattern matches the
+  // `attachments-storage-usage-events.test.ts`
   // arm (a Proxy db whose `transaction()` rejects). Pinning one path
   // is sufficient under T-REDU — the post-commit hook is shared
   // across every emitter.
-  describe('AC-276: a transaction that aborts emits no project_changed event', () => {
+  describe('a transaction that aborts emits no project_changed event', () => {
     it('createProject that throws inside its transaction emits no event', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -874,7 +873,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
       // Wrap the real db with a Proxy that rejects on `.transaction()`.
       // createProject's row insert + audit dispatch run inside
       // db.transaction(...), so this is the canonical "tx aborted"
-      // injection point. Mirrors the pattern in AC-270's
+      // injection point. Mirrors the pattern in the storage-usage test's
       // `attachments-storage-usage-events.test.ts` L734-741.
       const flakyDb = new Proxy(db, {
         get(target, prop, receiver) {
@@ -928,15 +927,15 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
   // -------------------------------------------------------------------
   // Co-emission independence — the two cascade sites that may also
-  // emit `storage_usage_changed` (architecture.md §11.13: "the two
-  // events' emit gates are independent"). Pin both gates: a project
+  // emit `storage_usage_changed`: the two events' emit gates are
+  // independent. Pin both gates: a project
   // mutation always emits `project_changed` regardless of cascade
   // bytes, and emits `storage_usage_changed` only when bytes moved.
   // -------------------------------------------------------------------
 
   // (15) purgeProject of an archived project carrying a ready
   // attachment — both events fire.
-  describe('AC-276: purgeProject co-emits project_changed AND storage_usage_changed when bytes moved', () => {
+  describe('AC-277: purgeProject co-emits project_changed AND storage_usage_changed when bytes moved', () => {
     it('a subscribed connection observes one of each event', async () => {
       const bus = await loadBus();
       const customerId = await seededCustomerIdAny(ownerToken);
@@ -964,7 +963,7 @@ describe('AC-276: project_changed emission from every project-mutation site', ()
 
   // (18) deleteCustomer whose archived project carried a ready
   // attachment — both events fire.
-  describe('AC-276: deleteCustomer co-emits project_changed AND storage_usage_changed when bytes moved', () => {
+  describe('AC-277: deleteCustomer co-emits project_changed AND storage_usage_changed when bytes moved', () => {
     it('a subscribed connection observes one of each event', async () => {
       const bus = await loadBus();
       const customerId = await createCustomer(ownerToken);

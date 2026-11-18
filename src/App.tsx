@@ -169,8 +169,8 @@ export function App() {
     }
   }, [authUser]);
 
-  // Cross-cutting `project_changed` SSE subscription (api.md §14.2.13,
-  // ADR-0025, AC-277). Auth-gated: opening `/api/events` before the
+  // Cross-cutting `project_changed` SSE subscription (ADR-0025,
+  // AC-277). Auth-gated: opening `/api/events` before the
   // session cookie is set yields 401 and the EventSource transitions to
   // CLOSED with no spec-mandated reconnect — the page would then never
   // receive frames until a manual reload. The cleanup runs on logout
@@ -186,8 +186,8 @@ export function App() {
     return subscribeInvoiceStoreToSse();
   }, [authUser]);
 
-  // Cross-cutting `attachment_changed` SSE subscription (api.md
-  // §14.2.13, ADR-0025, AC-337). Same auth-gated lifecycle as the
+  // Cross-cutting `attachment_changed` SSE subscription (ADR-0025,
+  // AC-337). Same auth-gated lifecycle as the
   // project / invoice subscriptions above — refreshes the per-project
   // attachment caches so an always-open gallery / Papierkorb reflects
   // another user's add / hide / restore / purge (#237).

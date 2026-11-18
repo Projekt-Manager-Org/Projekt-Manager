@@ -132,10 +132,10 @@ export async function runAttachmentHiddenReaper(
       // Post-commit: a hidden row's bytes leave the hidden bucket
       // (data-model.md §5.14). Broadcast AFTER mutate() resolves so
       // CAS-loss (HiddenReaperRowRaced — caught below) and per-row
-      // failures emit nothing (AC-270 emitter list).
+      // failures emit nothing.
       emitStorageUsageChanged();
       // The purged row leaves the project's Papierkorb, so the
-      // cross-session attachment caches must invalidate too (AC-336).
+      // cross-session attachment caches must invalidate too (AC-337).
       emitAttachmentChanged();
     } catch (err) {
       if (err instanceof HiddenReaperRowRaced) continue;

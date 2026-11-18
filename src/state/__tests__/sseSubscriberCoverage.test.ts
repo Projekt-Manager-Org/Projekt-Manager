@@ -1,9 +1,8 @@
 /**
- * AC-338 — subscribe-side SSE coverage guard.
+ * Subscribe-side SSE coverage guard.
  *
- * The emit side of the realtime channel is enumerated and pinned by
- * crit ACs (AC-270 storage, AC-276 project, AC-320 audit, AC-336
- * attachment). The *subscribe* side was not enforced: a typed event
+ * The emit side of the realtime channel is pinned per call site by the
+ * emitter tests. The *subscribe* side was not enforced: a typed event
  * could be emitted with no client ever subscribing, so the mutation
  * fired into the void and the always-open observer stayed stale. That
  * is exactly the gallery gap (#237) — `attachment_changed` did not even
@@ -85,7 +84,7 @@ async function walkClientFiles(absDir: string): Promise<string[]> {
 // Matcher self-tests — a regex regression must fail loud here, not slip
 // through the tree scan as a false "covered".
 // ---------------------------------------------------------------------
-describe('AC-338: onSseEvent matcher captures the subscribed identifier', () => {
+describe('onSseEvent matcher captures the subscribed identifier', () => {
   it('captures a plain subscription identifier', () => {
     expect(findSubscribedIdentifiers('onSseEvent(STORAGE_USAGE_CHANGED, () => {})')).toEqual([
       'STORAGE_USAGE_CHANGED',
@@ -112,7 +111,7 @@ describe('AC-338: onSseEvent matcher captures the subscribed identifier', () => 
 // ---------------------------------------------------------------------
 // Tree scan — every SseEventName member must have a live subscriber.
 // ---------------------------------------------------------------------
-describe('AC-338: every SseEventName has ≥1 client subscriber', () => {
+describe('every SseEventName has ≥1 client subscriber', () => {
   it('finds a subscriber under src/state or src/ui for each catalog event', async () => {
     const roots = ['src/state', 'src/ui'];
     const files: string[] = [];

@@ -429,10 +429,11 @@ export const envSchema = z.object({
     z.coerce.number().int().min(0).max(36525).default(0),
   ),
   // ---------------------------------------------------------------
-  // Realtime invalidation channel (ADR-0025, architecture.md §11.13).
+  // Realtime invalidation channel (ADR-0025).
   // Heartbeat cadence on the held SSE response — `:` keepalive every
-  // `n` ms. The default (25 s) is fixed in api.md §14.2.13 and aligns
-  // with reverse-proxy / browser idle-disconnect windows; the override
+  // `n` ms. The default (25 s) is in the [C] catalogue
+  // (architecture.md §12.2) and aligns with reverse-proxy / browser
+  // idle-disconnect windows; the override
   // exists so integration tests can drive the heartbeat at sub-second
   // cadence rather than waiting >25 s of wall-clock per case.
   // ---------------------------------------------------------------

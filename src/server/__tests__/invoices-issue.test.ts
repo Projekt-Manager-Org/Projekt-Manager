@@ -87,7 +87,8 @@ interface Project {
 }
 
 // ---------------------------------------------------------------------
-// SSE bus surface — same shape used by AC-270 / AC-276 sibling tests.
+// SSE bus surface — same shape used by the storage-usage / project
+// emitter tests.
 // Dynamic import so this file parses even before the bus module exists.
 // ---------------------------------------------------------------------
 
@@ -417,7 +418,7 @@ describe('Invoice issuance — happy path (AC-287)', () => {
 
   it('issues a draft against a project in rechnung_faellig: number/status/dates/snapshots/audit/SSE', async () => {
     // Draft created BEFORE subscribing — `createDraft` also emits an
-    // `invoice_changed` SSE (api.md §14.2.13: draft CRUD emits). The
+    // `invoice_changed` SSE (draft CRUD emits). The
     // AC-287 assertion below pins "exactly one" event from the ISSUE
     // call; the draft-create event must be outside the window.
     const draftId = await createDraft(ownerToken, projectId);
@@ -1510,7 +1511,7 @@ describe('Invoice issuance — pre-condition rejection (i) (AC-289)', () => {
     }
 
     // Draft created BEFORE subscribing — `createDraft` emits an
-    // `invoice_changed` SSE per api.md §14.2.13 (draft CRUD emits).
+    // `invoice_changed` SSE (draft CRUD emits).
     // The AC-289 assertion is about the FAILED issue branch — the
     // draft-create event is pre-existing noise and must be outside
     // the subscription window.

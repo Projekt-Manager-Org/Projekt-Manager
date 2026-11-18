@@ -22,7 +22,7 @@ import { STORAGE_STATES } from './storage-states';
  *     403 cross-check below is a single light browser-level sanity that
  *     audit CONTENT is gated for a non-holder, not a re-derivation of the
  *     per-role read matrix.
- *   - AC-320 (verification.md §15.28) owns the "SSE carries only the
+ *   - AC-680 (verification.md §15.28) owns the "SSE carries only the
  *     contentless `audit_changed` envelope" claim; it is not re-asserted
  *     here. This file's primary job is dock VISIBILITY per role.
  *

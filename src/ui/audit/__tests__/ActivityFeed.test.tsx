@@ -80,7 +80,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('ActivityFeed — audit_changed SSE subscription', () => {
+describe('AC-681: ActivityFeed — audit_changed SSE subscription', () => {
   it('subscribes to audit_changed on mount', () => {
     render(
       <ActivityFeed

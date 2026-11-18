@@ -26,7 +26,7 @@
 		respond "ok" 200
 	}
 
-	# Realtime invalidation channel (ADR-0025, api.md §14.2.13). Caddy
+	# Realtime invalidation channel (ADR-0025). Caddy
 	# auto-flushes responses with Content-Type: text/event-stream, but
 	# `flush_interval -1` makes the buffering posture explicit so a
 	# regression on the upstream content-type does not silently buffer

@@ -44,7 +44,7 @@
  *     invoice lock, off the attachment surface. The file runs with
  *     `INVOICE_OBJECT_LOCK_DAYS = 1` (set before `startApp()`, which wires
  *     the import route) so the restore PUT carries a lock to assert.
- *   - AC-450, AC-336 — the job emits one `storage_usage_changed` and one
+ *   - AC-450, AC-337 — the job emits one `storage_usage_changed` and one
  *     `attachment_changed` when it ends, ready or failed after the wipe;
  *     neither when Pass 1 fails.
  *
@@ -1519,7 +1519,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   });
 
   // -------------------------------------------------------------------
-  // AC-450, AC-336 — Pass 2 keeps inserting attachments after the restore
+  // AC-450, AC-337 — Pass 2 keeps inserting attachments after the restore
   // commits, so the job emits one `storage_usage_changed` and one
   // `attachment_changed` when it ends, after its terminal
   // `data_exchange_job_changed`: ready, or failed after the wipe (Pass 2
@@ -1527,7 +1527,7 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
   // The runner is driven directly: the route only fires it, and a Pass-2
   // fault needs a storage client that rejects its PUTs.
   // -------------------------------------------------------------------
-  describe('AC-450, AC-336: the import job emits storage and attachment events when it ends', () => {
+  describe('AC-450, AC-337: the import job emits storage and attachment events when it ends', () => {
     const STORAGE_EVENT = 'event: storage_usage_changed';
     const ATTACHMENT_EVENT = 'event: attachment_changed';
     const JOB_EVENT = 'event: data_exchange_job_changed';

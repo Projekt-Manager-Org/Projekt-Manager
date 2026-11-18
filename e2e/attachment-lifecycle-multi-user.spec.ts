@@ -22,8 +22,8 @@ import { STORAGE_STATES } from './storage-states';
  *
  * Each mutation must propagate to the office gallery within 2 seconds with
  * NO manual refresh — driven by the `attachment_changed` event over
- * `/api/events` (api.md §14.2.13, AC-336) and `attachmentStore`'s SSE
- * refresh trigger (AC-337). The office tab mounts the project page once
+ * `/api/events` (ADR-0025) and `attachmentStore`'s SSE refresh trigger
+ * (AC-337). The office tab mounts the project page once
  * and is never reloaded; the 2-second `toHaveCount` budget is the gate —
  * a regression to mount-only fetch (the original bug) leaves the count
  * unchanged and times out here.

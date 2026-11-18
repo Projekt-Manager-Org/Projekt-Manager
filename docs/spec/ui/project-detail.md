@@ -86,7 +86,7 @@ Per-project invoice block. Surfaces every invoice tied to the project as a list 
 - **Project-status flip.** The issue path flips `project.status` to `abgerechnet` server-side (AC-287); the block refetches the project so the page header / Kanban column reflect the new state without a manual reload. The cancel path deliberately does NOT auto-revert (AC-290 trailing clause) — a user staring at an `abgerechnet` project with a cancelled invoice sees the gap and acts on it manually.
 - **Cross-link to the full invoice view.** A `Alle Rechnungen anzeigen` affordance below the list navigates to `/rechnungen?projectId=<thisProjectId>` ([invoices.md §8.16.1](invoices.md#8161-list-view)). The standalone view reads the query on mount and pre-sets the projectId filter; the active filter renders as a removable chip on the toolbar so the user sees why the list is constrained (clearing strips the query param and refetches the unfiltered set).
 - **Worker exclusion.** Workers do not hold `invoice:read` and never see the section. The page renders without it for worker callers.
-- **Realtime refresh.** Subscribes to the `invoice_changed` SSE event ([api.md §14.2.13](../api.md#14213-realtime-events)) so a fresh issuance / cancellation from another session updates the block without a manual refresh.
+- **Realtime refresh.** Subscribes to the `invoice_changed` SSE event ([ADR-0025](../../adr/0025-realtime-ui-invalidation-via-sse.md)) so a fresh issuance / cancellation from another session updates the block without a manual refresh.
 
 ---
 

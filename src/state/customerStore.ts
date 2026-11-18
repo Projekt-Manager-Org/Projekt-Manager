@@ -237,7 +237,7 @@ export const useCustomerStore = create<CustomerState>((set, get) => ({
     }));
     // Defence in depth alongside the SSE roundtrip — the server emits
     // `storage_usage_changed` post-commit when the atomic archived-
-    // project purge cascade moved bytes (AC-270). The customer may
+    // project purge cascade moved bytes (AC-450). The customer may
     // have had no archived projects (no event) or the SSE channel may
     // be unhealthy; this refresh keeps the actor's Footer badge /
     // DatenView row current either way. Cheap idempotent GET.

@@ -1,5 +1,5 @@
 /**
- * Realtime invalidation bus — architecture.md §11.13, ADR-0025.
+ * Realtime invalidation bus — ADR-0025.
  *
  * In-process pub/sub over SSE connections. Each subscriber is a writer
  * (the live `/api/events` reply); `broadcast(eventName)` fans out one
@@ -45,7 +45,7 @@ export interface SseBusLogger {
 export interface SseBus {
   subscribe(c: SseConnection): void;
   unsubscribe(c: SseConnection): void;
-  broadcast(eventName: string, payload?: unknown): void;
+  broadcast(eventName: string): void;
   /** Observable subscriber count — exposed for tests. */
   size(): number;
 }
@@ -73,8 +73,9 @@ export function createSseBus(opts: CreateSseBusOpts = {}): SseBus {
     unsubscribe(c) {
       subscribers.delete(c);
     },
-    broadcast(eventName, payload) {
-      const envelope = payload === undefined ? { type: eventName } : payload;
+    broadcast(eventName) {
+      // The frame names the kind of change only, never data (AC-680).
+      const envelope = { type: eventName };
       const frame = `event: ${eventName}\ndata: ${JSON.stringify(envelope)}\n\n`;
       for (const c of [...subscribers]) {
         try {
@@ -126,8 +127,8 @@ export function unsubscribe(c: SseConnection): void {
   singleton.unsubscribe(c);
 }
 
-export function broadcast(eventName: string, payload?: unknown): void {
-  singleton.broadcast(eventName, payload);
+export function broadcast(eventName: string): void {
+  singleton.broadcast(eventName);
 }
 
 /**

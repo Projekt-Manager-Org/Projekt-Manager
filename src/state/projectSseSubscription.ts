@@ -1,6 +1,6 @@
 /**
  * Cross-cutting subscription that refreshes both project stores on every
- * `project_changed` SSE frame (api.md §14.2.13, ADR-0025).
+ * `project_changed` SSE frame (ADR-0025).
  *
  * Why a dedicated module rather than a `subscribe()` on one of the
  * project stores:

@@ -18,7 +18,7 @@ import { STORAGE_STATES } from './storage-states';
  *
  * Each mutation must propagate to the office session within 2 seconds
  * with NO manual refresh — driven by the `storage_usage_changed` event
- * over `/api/events` (api.md §14.2.13) and the shared storage-usage
+ * over `/api/events` (ADR-0025) and the shared storage-usage
  * subscription (its SSE refresh, `src/state/storageUsageStore.ts`).
  *
  * This is the value test the realtime channel exists to deliver — the
@@ -246,7 +246,7 @@ test.describe('AC-450: storage usage propagates from worker mutations to office 
 
     // The worker's upload-complete orchestrator (AttachmentService.completeUpload)
     // emits `storage_usage_changed`
-    // post-commit (AC-270). The OFFICE session is the AC-450 gate — its
+    // post-commit (AC-450). The OFFICE session is the AC-450 gate — its
     // surfaces must reflect the change without a manual refresh.
     const attachmentId = await waitForNewId(gallery, 'photo-thumb-', galleryBefore);
     const afterUpload = await expectOfficeReadoutChanges(officePage, beforeUpload);
@@ -263,7 +263,7 @@ test.describe('AC-450: storage usage propagates from worker mutations to office 
     // Worker holds `attachment:hide` and authored the row inside the
     // configured grace window — the row-level delete affordance is the
     // worker's UI path to the `hide` mutation. Same SSE event downstream
-    // (AC-270 covers `hide` regardless of who triggers it).
+    // (AC-450 covers `hide` regardless of who triggers it).
     const beforeHide = afterUpload;
 
     const ourThumbItem = gallery

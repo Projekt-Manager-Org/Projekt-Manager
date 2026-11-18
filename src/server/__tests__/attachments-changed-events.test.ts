@@ -2,15 +2,15 @@
  * API integration tests — `attachment_changed` emission per call site
  * (#237, ADR-0025).
  *
- * Pins AC-336 from verification.md §15.28: each attachment mutation that
- * changes a project's attachment list emits one `attachment_changed`
- * frame post-commit to a subscribed `/api/events` connection. This is
- * the emit half of the gallery cross-user view-sync fix; the consumer
- * refetch is AC-337 (`attachmentSseSubscription.test.ts`) and the
- * two-browser value test is AC-338 (e2e).
+ * The emit half of AC-337 (open attachment lists and Papierkorb show
+ * another session's change): each attachment mutation that changes a
+ * project's attachment list emits one `attachment_changed` frame
+ * post-commit to a subscribed `/api/events` connection. The consumer
+ * refetch is `attachmentSseSubscription.test.ts`; the two-browser value
+ * test is `e2e/attachment-lifecycle-multi-user.spec.ts`.
  *
  * Emitter list under test (co-located with the `storage_usage_changed`
- * emits pinned by AC-270):
+ * emits, AC-450):
  *
  *   1. AttachmentService.completeUpload (pending → ready)
  *   2. AttachmentService.hideAttachment (ready → hidden)
@@ -19,7 +19,8 @@
  *
  * `init` (pending row creation) is deliberately NOT an emitter — a
  * pending row is invisible to the gallery and the Papierkorb, so an
- * emit would be a wasted refetch (parity with AC-270's init exclusion).
+ * emit would be a wasted refetch (`init` emits no
+ * `storage_usage_changed` either).
  *
  * Post-commit ordering ("a tx that aborts emits nothing") and
  * subscriber-failure isolation are NOT re-pinned here: `attachment_changed`
@@ -202,7 +203,7 @@ async function loadHiddenReaper(): Promise<
   return mod.runAttachmentHiddenReaper;
 }
 
-describe('attachment_changed emission per call site (AC-336, #237)', () => {
+describe('attachment_changed emission per call site (AC-337, #237)', () => {
   let ownerToken: string;
   let db: Database;
   let pool: ReturnType<typeof createDatabase>['pool'];

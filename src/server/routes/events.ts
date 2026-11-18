@@ -1,6 +1,6 @@
 /**
  * Realtime invalidation channel — `GET /api/events` (ADR-0025,
- * api.md §14.2.13, AC-268, AC-269, AC-275).
+ * AC-275, AC-680).
  *
  * Single multiplexed Server-Sent Events response. The handler accepts
  * an authenticated session, opens an indefinite `text/event-stream`,
@@ -13,8 +13,8 @@
  *
  * The 25-second heartbeat is configurable via `SSE_HEARTBEAT_INTERVAL_MS`
  * — see `src/server/config/env.ts`. Each connection runs its own
- * `setInterval` (architecture.md §11.13: "Independent per connection;
- * not coordinated across the subscriber set") and `unref()`s the timer
+ * `setInterval` (independent per connection, not coordinated across
+ * the subscriber set) and `unref()`s the timer
  * so a held connection cannot block process shutdown.
  *
  * Session re-validation (AC-275, CWE-613). The `authenticate` preHandler

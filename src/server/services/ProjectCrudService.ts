@@ -770,13 +770,13 @@ export class ProjectCrudService {
       );
       log.info({ projectId: id, actorUserId: userId }, 'project_purged');
 
-      // Post-commit invalidation (AC-276). The project row is gone — every
+      // Post-commit invalidation (AC-277). The project row is gone — every
       // project list / detail consumer must refetch unconditionally.
       emitProjectChanged();
-      // The FK cascade removed the project's drafts (api.md §14.2.13).
+      // The FK cascade removed the project's drafts (AC-502).
       emitInvoiceChanged();
 
-      // Post-commit invalidation (AC-270). The FK cascade removed every
+      // Post-commit invalidation (AC-450). The FK cascade removed every
       // attachment row alongside the project; the per-row delete trigger
       // short-circuits at depth>1 and `project_storage_usage` is wiped
       // by its own cascade, so the global figure has moved by exactly

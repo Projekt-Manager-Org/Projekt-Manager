@@ -378,7 +378,7 @@ export async function listByIdsForProject(
  * status. Used by the purge cascade so the storage-side cleanup can
  * fire after the DB transaction commits (AC-428), and so the caller
  * can gate `storage_usage_changed` emission on whether the cascade
- * removed any byte-bearing rows (AC-270 — pending rows contribute zero
+ * removed any byte-bearing rows (AC-450 — pending rows contribute zero
  * to every counter, so a purge whose attachments were all `pending`
  * does not move the global figure).
  */

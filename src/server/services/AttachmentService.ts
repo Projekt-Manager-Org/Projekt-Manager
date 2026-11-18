@@ -597,7 +597,7 @@ export class AttachmentService {
     // Optional trailing arg: complete now writes the `attachment:add`
     // audit row (AC-427), so it threads the request correlation id into
     // `mutate()` like the other audited methods. Defaults to null so an
-    // in-process caller (e.g. the AC-270 abort test) can omit it.
+    // in-process caller (e.g. the storage-usage abort test) can omit it.
     correlationId: string | null = null,
   ): Promise<Attachment> {
     // Scope check early — spec requires worker on unassigned project to
@@ -777,10 +777,10 @@ export class AttachmentService {
     // Post-commit: pending → ready flips a row's contribution to the
     // counters from 0 to its sizeBytes (data-model.md §5.14). Broadcast
     // AFTER mutate() resolves so a tx that aborts emits nothing
-    // (architecture.md §11.13, AC-270).
+    // (ADR-0025).
     emitStorageUsageChanged();
     // The new ready row joins the project's gallery / binary list, so
-    // the cross-session attachment caches must invalidate too (AC-336).
+    // the cross-session attachment caches must invalidate too (AC-337).
     emitAttachmentChanged();
 
     log.info({ attachmentId, projectId }, 'attachment_ready');
@@ -900,11 +900,11 @@ export class AttachmentService {
 
     // Post-commit: ready → hidden moves the row out of the ready
     // counters into the hidden bucket (data-model.md §5.14). Broadcast
-    // AFTER mutate() resolves; emission inside `run` would leak on a
-    // post-mutate fault and pre-empt the abort guarantee (AC-270).
+    // AFTER mutate() resolves; emission inside `run` would leak an event
+    // for a change that a post-mutate fault rolls back.
     emitStorageUsageChanged();
     // The row leaves the live gallery for the Papierkorb — both caches
-    // must invalidate cross-session (AC-336).
+    // must invalidate cross-session (AC-337).
     emitAttachmentChanged();
 
     log.info({ attachmentId, projectId }, 'attachment_hidden');
@@ -1110,10 +1110,10 @@ export class AttachmentService {
     // Post-commit: hidden → ready moves the row from the hidden bucket
     // back into the ready counters (data-model.md §5.14). Broadcast
     // AFTER mutate() resolves so a tx rollback (storage copy fault,
-    // CAS-loss) emits nothing (AC-270).
+    // CAS-loss) emits nothing.
     emitStorageUsageChanged();
     // The row returns from the Papierkorb to the live gallery — both
-    // caches must invalidate cross-session (AC-336).
+    // caches must invalidate cross-session (AC-337).
     emitAttachmentChanged();
 
     log.info({ attachmentId, projectId }, 'attachment_restored');

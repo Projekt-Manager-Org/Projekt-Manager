@@ -38,7 +38,7 @@ const getGlobalMock = vi.fn<() => Promise<GetGlobalResult>>();
 
 // Lightweight typed SSE bus mock: tests can grab the registered handler
 // for a given event name and dispatch through it. Mirrors the contract
-// implied by [architecture.md §11.13] (consumer-side: subscribe to a
+// implied by [ADR-0025] (consumer-side: subscribe to a
 // typed event name; payload is an invalidation hint, not data).
 type SseHandler = () => void;
 const sseHandlers = new Map<string, Set<SseHandler>>();
