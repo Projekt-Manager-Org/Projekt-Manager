@@ -465,7 +465,7 @@ volumes:
   caddy_data:
   caddy_config:
   # Disk-backed staging for full-account takeout archives (data-model.md
-  # §6.14). Keeps multi-GB exports off the tmpfs /tmp mount and prevents
+  # §5.18). Keeps multi-GB exports off the tmpfs /tmp mount and prevents
   # the RAM-exhaustion DoS that the default os.tmpdir() path would cause
   # inside the container. The app service mounts this at
   # /var/lib/projekt-manager/takeout (uid=1001 app:app, mode 0700).

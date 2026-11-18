@@ -394,7 +394,7 @@ export const envSchema = z.object({
   ),
   // ---------------------------------------------------------------
   // Full-account takeout staging (ADR-0018 / ADR-0024, data-model.md
-  // §5.18 / §6.14, architecture.md §12.2). The export job builds the
+  // §5.18, architecture.md §12.2). The export job builds the
   // archive (envelope + every ready attachment's plaintext) and stages
   // it on a VPS-local path — never on B2 (ADR-0024: plaintext stays
   // inside the trust radius). `TAKEOUT_STAGING_TTL_MINUTES` is the [C]
