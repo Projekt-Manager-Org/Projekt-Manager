@@ -37,7 +37,7 @@ import { handleSessionExpired } from '@/state/sessionExpired';
 
 const SSE_URL = '/api/events';
 const RECOVERY_DELAY_MIN_MS = 1_000;
-const RECOVERY_DELAY_MAX_MS = 30_000;
+const RECOVERY_DELAY_MAX_MS = 15_000; // inside AC-682's 30 s, with margin
 
 let source: EventSource | null = null;
 const handlersByEvent = new Map<string, Set<() => void>>();

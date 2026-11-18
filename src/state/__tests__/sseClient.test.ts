@@ -249,7 +249,7 @@ describe('sse/client — recovery from terminal-CLOSED state', () => {
   });
 });
 
-describe('sse/client — reconnect refetches (ADR-0025: on reconnect the client refetches state)', () => {
+describe('AC-682: sse/client — a reconnect refetches (ADR-0025: no replay)', () => {
   it('the first open does not fan out — each view fetched on mount', async () => {
     const { onSseEvent } = await loadClient();
     const handler = vi.fn();
@@ -281,7 +281,7 @@ describe('sse/client — reconnect refetches (ADR-0025: on reconnect the client 
   });
 });
 
-describe('sse/client — recovery when the source closes for good', () => {
+describe('AC-682: sse/client — recovery when the source closes for good', () => {
   it('a source closed by a 502 on reconnect (app restart behind the proxy) reopens, refetches once and delivers again', async () => {
     const { onSseEvent } = await loadClient();
     const handler = vi.fn();
@@ -306,6 +306,39 @@ describe('sse/client — recovery when the source closes for good', () => {
     lastEs!.failClosed();
     await vi.runAllTimersAsync();
     expect(constructorCallCount).toBe(3);
+  });
+
+  it('after a long outage, refetches within 30 s of the server being reachable again', async () => {
+    const { onSseEvent } = await loadClient();
+    const handler = vi.fn();
+    onSseEvent('project_changed', handler);
+    lastEs!.open();
+    let serverUp = false;
+    // Every probe takes 1 s, as on a slow mobile network.
+    meMock.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(() => resolve(serverUp ? SESSION_OK : SERVER_DOWN), 1_000),
+        ),
+    );
+
+    lastEs!.failClosed();
+    // Long enough for the retry delay to reach its ceiling.
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    // Worst case: the server comes back just as a probe reported it down.
+    const probesBefore = meMock.mock.calls.length;
+    while (meMock.mock.calls.length === probesBefore) {
+      await vi.advanceTimersByTimeAsync(10);
+    }
+    await vi.advanceTimersByTimeAsync(1_000);
+    serverUp = true;
+
+    // 30 s minus 1 s each for the new connection and the refetch.
+    await vi.advanceTimersByTimeAsync(30_000 - 2 * 1_000);
+
+    expect(constructorCallCount).toBe(2);
+    lastEs!.open();
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it('opens no new source while the server stays unreachable, then reopens', async () => {

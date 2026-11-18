@@ -545,9 +545,10 @@ Storage safety and recovery:
 
 ### 15.28 Realtime Events
 
-Live refresh: [AC-277](#1512-projects), [AC-681](#1523-audit-log), [AC-337](#1526-attachments), [AC-450](#1529-storage-usage), [AC-317](#1532-activity-dock), [AC-602](#1514-data-exchange), [AC-608](#1514-data-exchange). Design: [ADR-0025](../adr/0025-realtime-ui-invalidation-via-sse.md).
+Live refresh, while a view's realtime event connection is up: [AC-277](#1512-projects), [AC-681](#1523-audit-log), [AC-337](#1526-attachments), [AC-450](#1529-storage-usage), [AC-317](#1532-activity-dock), [AC-602](#1514-data-exchange), [AC-608](#1514-data-exchange). After a lost connection: AC-682. Design: [ADR-0025](../adr/0025-realtime-ui-invalidation-via-sse.md).
 
 - **AC-680** `[crit]`: Realtime events carry only the kind of data that changed, never the data itself ([ADR-0025](../adr/0025-realtime-ui-invalidation-via-sse.md)).
+- **AC-682** `[crit]`: While an open view's session is valid, if the view lost its realtime event connection, it shows current data within 30 seconds of the server being reachable again, without a reload.
 - **AC-275** `[crit]`: When a session ends ([data-model.md §5.4](data-model.md#54-session)), the system closes that session's realtime event connections within one heartbeat interval **[C]** ([architecture.md §12.2](architecture.md#122-company-configurable-settings)).
 
 ### 15.29 Storage Usage
