@@ -124,7 +124,7 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'young-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
 cat > "$d/release-age-allowlist.json" <<JSON
-[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: CVE fix, reviewed by hand","ignoreUntil":"$EXPIRES_OK"}]
+[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: CVE fix, reviewed by hand","effectiveUntil":"$EXPIRES_OK"}]
 JSON
 run 'allowlisted' 0 "$d"
 
@@ -133,7 +133,7 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'young-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
 cat > "$d/release-age-allowlist.json" <<JSON
-[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: stale","ignoreUntil":"$EXPIRES_PAST"}]
+[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: stale","effectiveUntil":"$EXPIRES_PAST"}]
 JSON
 run 'allowlist expired' 1 "$d"
 
@@ -142,7 +142,7 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'young-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
 cat > "$d/release-age-allowlist.json" <<JSON
-[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: too far out","ignoreUntil":"$EXPIRES_FAR"}]
+[{"package":"young-pkg","version":"2.0.0","reason":"@vlzware: too far out","effectiveUntil":"$EXPIRES_FAR"}]
 JSON
 run 'allowlist expiry too far out' 1 "$d"
 
@@ -151,7 +151,7 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'young-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'young-pkg@2.0.0'
 cat > "$d/release-age-allowlist.json" <<JSON
-[{"package":"young-pkg","version":"2.0.0","reason":"no owner prefix","ignoreUntil":"$EXPIRES_OK"}]
+[{"package":"young-pkg","version":"2.0.0","reason":"no owner prefix","effectiveUntil":"$EXPIRES_OK"}]
 JSON
 run 'allowlist reason missing handle' 1 "$d"
 

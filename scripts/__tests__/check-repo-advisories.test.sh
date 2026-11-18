@@ -523,13 +523,13 @@ write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
 allow_entry() {
   printf '[[IgnoredVulns]]\nid = "GHSA-gpj5-g38j-94v9"\n%sreason = "@vlzware: fixture entry"\n' "$1"
 }
-allow_entry "ignoreUntil = $(date -u -d '+30 days' +%F)  # trailing comment"$'\n' >"$d/osv-scanner.toml"
+allow_entry "effectiveUntil = $(date -u -d '+30 days' +%F)  # trailing comment"$'\n' >"$d/osv-scanner.toml"
 assert_case 0 "allowlisted" "$d"
 
 echo "Case: allowlist entry valid through today"
 d="$(stage)"
 write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
-allow_entry "ignoreUntil = $(date -u +%F)"$'\n' >"$d/osv-scanner.toml"
+allow_entry "effectiveUntil = $(date -u +%F)"$'\n' >"$d/osv-scanner.toml"
 assert_case 0 "allowlisted until today" "$d"
 
 echo "Case: allowlist entry has expired"
@@ -538,14 +538,20 @@ echo "Case: allowlist entry has expired"
 # not suppress a finding.
 d="$(stage)"
 write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
-allow_entry "ignoreUntil = $(date -u -d '-1 day' +%F)"$'\n' >"$d/osv-scanner.toml"
+allow_entry "effectiveUntil = $(date -u -d '-1 day' +%F)"$'\n' >"$d/osv-scanner.toml"
 assert_case 1 "expired allowlist entry" "$d"
 
-echo "Case: allowlist entry without ignoreUntil"
+echo "Case: allowlist entry without effectiveUntil"
 d="$(stage)"
 write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
 allow_entry "" >"$d/osv-scanner.toml"
 assert_case 1 "allowlist entry without a date" "$d"
+
+echo "Case: allowlist entry with only the deprecated ignoreUntil"
+d="$(stage)"
+write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
+allow_entry "ignoreUntil = $(date -u -d '+30 days' +%F)"$'\n' >"$d/osv-scanner.toml"
+assert_case 1 "deprecated ignoreUntil is not honoured" "$d"
 
 echo "Case: allowlist entry smuggled inside a multi-line string"
 # A line scan read this as a second entry, valid until 2099, that the schema
@@ -555,11 +561,11 @@ write_repo_advisory "$d" "$(repo_vuln '<= 1.0.0-beta.19' '1.0.0-beta.20')"
 cat >"$d/osv-scanner.toml" <<'TOML'
 [[IgnoredVulns]]
 id = "GHSA-real-real-real"
-ignoreUntil = 2099-01-01
+effectiveUntil = 2099-01-01
 reason = """@vlzware: looks innocent
 [[IgnoredVulns]]
 id = "GHSA-gpj5-g38j-94v9"
-ignoreUntil = 2099-01-01
+effectiveUntil = 2099-01-01
 """
 TOML
 assert_case 1 "entry inside a multi-line string" "$d"

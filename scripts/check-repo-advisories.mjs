@@ -90,9 +90,9 @@
  * ALLOWLIST
  *   Reuses `osv-scanner.toml`'s `[[IgnoredVulns]]` ids rather than
  *   introducing a third allowlist file — same advisory namespace, same
- *   owner/reason/ignoreUntil contract, already gated by
+ *   owner/reason/effectiveUntil contract, already gated by
  *   scripts/check-allowlist-schema.sh. That script owns schema validation;
- *   this one reads each entry's id and `ignoreUntil`, with the same parser
+ *   this one reads each entry's id and `effectiveUntil`, with the same parser
  *   (tomllib), so the two cannot see different entries.
  *
  *   It honours the date itself, like OSV-Scanner: an entry past it, or
@@ -460,7 +460,7 @@ const advisoriesDisabled = slugs.filter((s) => advisoriesBySlug.get(s).status ==
 // validates with: two parsers could disagree on what the file holds, and a
 // line scan did — an entry inside a multi-line `reason` string suppressed a
 // finding the schema check never saw. That script owns owner/reason/scope;
-// this one reads `id` and `ignoreUntil` and honours the date (see ALLOWLIST),
+// this one reads `id` and `effectiveUntil` and honours the date (see ALLOWLIST),
 // valid through its day as the schema check reads it. An entry without a
 // bare date suppresses nothing.
 const allowlistPath = path.join(projectRoot, 'osv-scanner.toml');
@@ -486,7 +486,7 @@ if (existsSync(allowlistPath)) {
   for (const e of entries) {
     // A TOML date serialises as `YYYY-MM-DD`; a datetime carries a time and
     // is rejected, as the schema check rejects it.
-    const until = typeof e?.ignoreUntil === 'string' ? e.ignoreUntil : '';
+    const until = typeof e?.effectiveUntil === 'string' ? e.effectiveUntil : '';
     if (typeof e?.id === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(until) && until >= today) {
       allowlist.add(e.id);
     }
@@ -783,6 +783,6 @@ for (const f of findings) {
 
 console.log('Fix by bumping the package past the patched version.');
 console.log('If there is no fix yet, add the GHSA id to osv-scanner.toml with');
-console.log('owner + reason + ignoreUntil (<=90d) — see docs/ops/dep-management.md');
+console.log('owner + reason + effectiveUntil (<=90d) — see docs/ops/dep-management.md');
 console.log('§ Allowlist. Do not weaken this check to get past it.');
 process.exit(1);

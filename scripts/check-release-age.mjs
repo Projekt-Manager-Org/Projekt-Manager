@@ -46,8 +46,8 @@
  *
  * ALLOWLIST
  *   `release-age-allowlist.json` at the repo root — a JSON array of
- *   { package, version, reason, ignoreUntil }. `reason` must start with
- *   `@<github-handle>:`; `ignoreUntil` is YYYY-MM-DD inside
+ *   { package, version, reason, effectiveUntil }. `reason` must start with
+ *   `@<github-handle>:`; `effectiveUntil` is YYYY-MM-DD inside
  *   [today, today+90d] — same field name and window as
  *   `osv-scanner.toml`, deliberately, so one rule is learned once.
  *   Schema is validated here rather than in
@@ -202,7 +202,7 @@ function loadAllowlist() {
 
   entries.forEach((entry, i) => {
     const at = `release-age-allowlist.json[${i}]`;
-    const { package: pkg, version, reason, ignoreUntil } = entry ?? {};
+    const { package: pkg, version, reason, effectiveUntil } = entry ?? {};
     let ok = true;
     const bad = (field, msg) => {
       finding('allowlist', `${at}: ${field}: ${msg}`);
@@ -214,13 +214,13 @@ function loadAllowlist() {
     if (typeof reason !== 'string' || !HANDLE_RE.test(reason)) {
       bad('reason', 'must start with `@<github-handle>:`');
     }
-    if (typeof ignoreUntil !== 'string' || !DATE_RE.test(ignoreUntil)) {
-      bad('ignoreUntil', 'must be YYYY-MM-DD');
+    if (typeof effectiveUntil !== 'string' || !DATE_RE.test(effectiveUntil)) {
+      bad('effectiveUntil', 'must be YYYY-MM-DD');
     } else {
-      const d = new Date(`${ignoreUntil}T00:00:00Z`);
-      if (Number.isNaN(d.getTime())) bad('ignoreUntil', `not a real date: ${ignoreUntil}`);
-      else if (d < today) bad('ignoreUntil', `expired on ${ignoreUntil}`);
-      else if (d > maxDate) bad('ignoreUntil', `more than 90 days out (${ignoreUntil})`);
+      const d = new Date(`${effectiveUntil}T00:00:00Z`);
+      if (Number.isNaN(d.getTime())) bad('effectiveUntil', `not a real date: ${effectiveUntil}`);
+      else if (d < today) bad('effectiveUntil', `expired on ${effectiveUntil}`);
+      else if (d > maxDate) bad('effectiveUntil', `more than 90 days out (${effectiveUntil})`);
     }
 
     if (ok) out.set(`${pkg}@${version}`, entry);

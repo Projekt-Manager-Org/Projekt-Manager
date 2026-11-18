@@ -102,9 +102,22 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 EOF
 assert_case 1 "FAIL-osv-missing-reason" "$dir"
+
+# -------------------------------------------------------------
+# FAIL-osv-deprecated-expiry-key — `ignoreUntil` is OSV-Scanner's
+# deprecated name; an entry carrying only it has no expiry here.
+# -------------------------------------------------------------
+dir="$(mktmp)"
+cat > "$dir/osv-scanner.toml" <<EOF
+[[IgnoredVulns]]
+id = "GHSA-xxxx-xxxx-xxxx"
+ignoreUntil = $PLUS_30
+reason = "@vlzware: dead code"
+EOF
+assert_finding "FAIL-osv-deprecated-expiry-key" "$dir" "effectiveUntil: missing"
 
 # -------------------------------------------------------------
 # FAIL-osv-no-owner-prefix
@@ -113,7 +126,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 reason = "dead code path"
 EOF
 assert_case 1 "FAIL-osv-no-owner-prefix" "$dir"
@@ -125,7 +138,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = "$PLUS_30"
+effectiveUntil = "$PLUS_30"
 reason = "@vlzware: dead code"
 EOF
 assert_case 1 "FAIL-osv-string-date" "$dir"
@@ -137,7 +150,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $YESTERDAY
+effectiveUntil = $YESTERDAY
 reason = "@vlzware: dead code"
 EOF
 assert_case 1 "FAIL-osv-expired" "$dir"
@@ -149,7 +162,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_100
+effectiveUntil = $PLUS_100
 reason = "@vlzware: dead code"
 EOF
 assert_case 1 "FAIL-osv-too-far" "$dir"
@@ -161,7 +174,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 reason = "@vlzware: dead code path — function bundled but never reached at runtime"
 EOF
 assert_case 0 "OK-osv-real-entry" "$dir"
@@ -170,12 +183,12 @@ assert_case 0 "OK-osv-real-entry" "$dir"
 # Boundary cases — exact window edges
 # -------------------------------------------------------------
 
-# OK-osv-boundary-today — ignoreUntil = today is the inclusive lower edge.
+# OK-osv-boundary-today — effectiveUntil = today is the inclusive lower edge.
 dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $TODAY
+effectiveUntil = $TODAY
 reason = "@vlzware: dead code"
 EOF
 assert_case 0 "OK-osv-boundary-today" "$dir"
@@ -185,7 +198,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_90
+effectiveUntil = $PLUS_90
 reason = "@vlzware: dead code"
 EOF
 assert_case 0 "OK-osv-boundary-plus-90" "$dir"
@@ -195,7 +208,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_91
+effectiveUntil = $PLUS_91
 reason = "@vlzware: dead code"
 EOF
 assert_case 1 "FAIL-osv-boundary-plus-91" "$dir"
@@ -207,7 +220,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = ${PLUS_30}T00:00:00Z
+effectiveUntil = ${PLUS_30}T00:00:00Z
 reason = "@vlzware: dead code"
 EOF
 assert_case 1 "FAIL-osv-datetime-not-date" "$dir"
@@ -220,7 +233,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = ""
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 reason = "@vlzware: dead code"
 EOF
 assert_case 1 "FAIL-osv-id-empty" "$dir"
@@ -229,7 +242,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = 12345
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 reason = "@vlzware: dead code"
 EOF
 assert_case 1 "FAIL-osv-id-nonstring" "$dir"
@@ -254,7 +267,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 reason = "@: dead code"
 EOF
 assert_case 1 "FAIL-osv-handle-empty" "$dir"
@@ -263,7 +276,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 reason = "@-: dead code"
 EOF
 assert_case 1 "FAIL-osv-handle-leading-hyphen" "$dir"
@@ -272,7 +285,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 reason = "@vlz-: dead code"
 EOF
 assert_case 1 "FAIL-osv-handle-trailing-hyphen" "$dir"
@@ -281,7 +294,7 @@ dir="$(mktmp)"
 cat > "$dir/osv-scanner.toml" <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = $PLUS_30
+effectiveUntil = $PLUS_30
 reason = "@vl--ware: dead code"
 EOF
 assert_case 1 "FAIL-osv-handle-consecutive-hyphens" "$dir"
@@ -547,7 +560,7 @@ osv_expired() {
   cat <<EOF
 [[IgnoredVulns]]
 id = "GHSA-xxxx-xxxx-xxxx"
-ignoreUntil = ${1:-$YESTERDAY}
+effectiveUntil = ${1:-$YESTERDAY}
 reason = "@vlzware: dead code"
 EOF
 }

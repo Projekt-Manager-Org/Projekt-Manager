@@ -179,6 +179,6 @@ for (const f of introduced) {
 }
 console.log('\nFix by bumping the package past the patched version.');
 console.log('If there is no fix yet, add the id to osv-scanner.toml with');
-console.log('owner + reason + ignoreUntil (<=90d) — see docs/ops/dep-management.md');
+console.log('owner + reason + effectiveUntil (<=90d) — see docs/ops/dep-management.md');
 console.log('§ Allowlist. Do not weaken this check to get past it.');
 process.exit(1);
