@@ -202,6 +202,17 @@ describe('searchCustomers / searchProjects actions', () => {
     expect(projectListMock).toHaveBeenCalledWith({ search: 'P-1', includeArchived: true });
   });
 
+  it('searchProjects reports a failed lookup as null, not as no match (AC-478)', async () => {
+    projectListMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'SERVER_ERROR', message: 'Fehlgeschlagen' },
+      category: 'server_error',
+      sessionExpired: false,
+    });
+    const result = await useProjectManagementStore.getState().searchProjects('P-1');
+    expect(result).toBeNull();
+  });
+
   it('searchProjects short-circuits on empty input', async () => {
     const result = await useProjectManagementStore.getState().searchProjects('');
     expect(result).toEqual([]);

@@ -74,7 +74,9 @@ interface ProjectManagementState {
   sortDir: SortDir;
 
   fetchProjects: () => Promise<void>;
-  searchProjects: (search: string) => Promise<Project[]>;
+  /** Projects matching `search`, archived ones included; `null` when the
+   * lookup failed, so a caller never mistakes a failure for no match. */
+  searchProjects: (search: string) => Promise<Project[] | null>;
   fetchCustomers: () => Promise<void>;
   fetchWorkers: () => Promise<void>;
   setShowArchived: (v: boolean) => void;
@@ -212,7 +214,7 @@ export const useProjectManagementStore = create<ProjectManagementState>((set, ge
     const result = await projectApi.list({ search: trimmed, includeArchived: true });
     if (!result.ok) {
       if (result.sessionExpired) handleSessionExpired();
-      return [];
+      return null;
     }
     return result.data.data;
   },
