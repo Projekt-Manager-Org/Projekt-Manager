@@ -28,20 +28,6 @@ The API is the boundary between the front end and all persistent state ([archite
 | ---------------- | ----- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Health check** | —     | status (`ok` or `degraded`), per-component checks (database, storage) | No authentication required. Returns degraded with component-level detail if any probe fails. Used by the deploy script for post-deploy verification. |
 
-#### 14.2.6 Data Extraction
-
-All extraction operations require an authenticated session and the `customer:write` permission. See [ADR-0016](../adr/0016-llm-email-extraction-via-server-proxied-openrouter.md) for the server-side proxy rationale.
-
-| Operation         | Input                  | Output                                                                                                                   | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Extract email** | `text`: raw email text | `{ customer: { name, phone, email, street, zip, city }, project: { title, description } }` — all fields nullable strings | Routes the text to an external LLM via a server-side proxy. The text must be non-empty and not exceed 50,000 characters. The operation is read-only with respect to persistence — it returns extracted data for review; the client uses the existing customer and project creation operations ([AC-518](verification.md#1511-customer-management), [AC-475](verification.md#1512-projects)) to persist the reviewed result. Requires `customer:write` permission. |
-
-Design notes:
-
-- **Stateless with respect to persistence.** The extraction endpoint does not create, update, or delete any record. It is a pure read: email text in, structured data out.
-- **Upstream failures are mapped to error categories.** Missing upstream configuration, a non-OK response from the external service, an empty response, or an unparseable response all resolve to a server error (see [§14.4.1](#1441-error-categories)). Internal details (service name, upstream status codes, stack traces) are not exposed.
-- **Every field may be null.** The LLM returns `null` for information it could not find in the input. Clients must handle nulls across all fields.
-
 ---
 
 ### 14.3 Authorization Rules

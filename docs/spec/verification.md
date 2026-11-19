@@ -299,13 +299,18 @@ Export and import of the whole deployment. Archive format: [data-model.md §5.8]
 
 ### 15.18 Email Data Intake
 
-- **AC-100** `[crit]`: An unauthenticated email extraction request is rejected with an authentication error.
-- **AC-102** `[crit]`: Email text that is empty or exceeds 50,000 characters is rejected with a validation error.
-- **AC-103** `[crit]`: A successful extraction returns a structured response with a `customer` section (name, phone, email, street, zip, city) and a `project` section (title, description). Fields not present in the input email are `null`.
-- **AC-104** `[crit]`: An upstream extraction failure (missing configuration, unreachable service, unparseable response) is mapped to a server error. No internal details leak to the client.
-- **AC-105** `[vis]`: The entry point to the email extraction modal is visible only to users with `customer:write` permission.
-- **AC-106** `[vis]`: The extraction modal presents a paste textarea and an extract action. The action is disabled while the textarea is empty or an extraction is in flight.
-- **AC-107** `[vis]`: After extraction, the modal presents editable customer and project fields for review and supports selecting an existing customer by name to avoid duplicates.
+Screen: [ui/email-intake.md §8.12](ui/email-intake.md#812-email-data-intake). Who may extract: [api.md §14.3](api.md#143-authorization-rules).
+
+- **AC-734** `[vis]`: While email extraction is not configured ([architecture.md §12.6](architecture.md#126-feature-manifest-and-operator-confidence)), the system shows no email intake entry point.
+- **AC-106** `[vis]`: While the email text is blank or an extraction is in flight, the system disables the extract action.
+- **AC-102** `[crit]`: If the email text is blank or longer than 50,000 characters, the system refuses the extraction as a validation error.
+- **AC-737** `[crit]`: When the user extracts, the system sends the extraction service the pasted email text and no stored data ([ADR-0016](../adr/0016-llm-email-extraction-via-server-proxied-openrouter.md)).
+- **AC-732** `[vis]`: When an extraction succeeds, the system fills the review form's fields with what it found in the email and leaves the rest empty.
+- **AC-739** `[crit]`: When an extraction succeeds, the system stores nothing until the user saves the review form.
+- **AC-738** `[crit]`: If email extraction is not configured, the system refuses email text within the [AC-102](#1518-email-data-intake) bounds as a server error that names no configuration.
+- **AC-733** `[crit]`: If the extraction service fails or returns an unusable answer, the system refuses the extraction as a server error that names neither the service nor its answer.
+- **AC-735** `[crit]`: When the user saves the review form, the system creates the customer unless an existing one is selected, then a project for that customer if a title is given.
+- **AC-736** `[crit]`: If creating the project fails after the customer was created, the system keeps the customer and uses it when the user saves again.
 
 ### 15.19 Theming
 

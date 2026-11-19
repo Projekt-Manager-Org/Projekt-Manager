@@ -73,8 +73,11 @@ describe('ExtractionService', () => {
       await expect(service.extract('some email', mockLog)).rejects.toThrow('nicht konfiguriert');
     });
 
-    it('throws on empty input', async () => {
-      await expect(service.extract('   ', mockLog)).rejects.toThrow('nicht leer');
+    it('AC-102: throws on blank input', async () => {
+      await expect(service.extract('   ', mockLog)).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: expect.stringContaining('nicht leer'),
+      });
     });
   });
 
@@ -241,7 +244,7 @@ describe('ExtractionService', () => {
   // API call structure
   // ---------------------------------------------------------------
   describe('API call', () => {
-    it('sends correct request to OpenRouter', async () => {
+    it('AC-737: sends the email text and a fixed prompt, nothing else, to OpenRouter', async () => {
       const mockFetch = mockFetchResponse(
         JSON.stringify({ customer: { name: 'Test' }, project: { title: 'Test' } }),
       );
@@ -261,6 +264,11 @@ describe('ExtractionService', () => {
       expect(body.messages[0].role).toBe('system');
       expect(body.messages[1].role).toBe('user');
       expect(body.messages[1].content).toBe('email body here');
+
+      // The system message is a fixed prompt: no stored data rides along.
+      await service.extract('another email', mockLog);
+      const second = JSON.parse(mockFetch.mock.calls[1]![1].body);
+      expect(second.messages[0].content).toBe(body.messages[0].content);
     });
 
     it('logs success on completed extraction', async () => {
