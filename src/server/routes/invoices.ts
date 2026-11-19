@@ -59,22 +59,23 @@ const lineSchema = {
   },
 } as const;
 
+/** Field limits: data-model.md §5.15 (`recipient`). */
 const recipientSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    name: { type: 'string' },
+    name: { type: 'string', maxLength: 255 },
     address: {
       type: ['object', 'null'],
       additionalProperties: false,
       required: ['street', 'zip', 'city'],
       properties: {
-        street: { type: 'string' },
-        zip: { type: 'string' },
-        city: { type: 'string' },
+        street: { type: 'string', maxLength: 200 },
+        zip: { type: 'string', maxLength: 20 },
+        city: { type: 'string', maxLength: 200 },
       },
     },
-    ustId: { type: ['string', 'null'] },
+    ustId: { type: ['string', 'null'], maxLength: 50 },
   },
 } as const;
 

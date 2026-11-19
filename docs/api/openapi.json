@@ -690,15 +690,18 @@
                     "properties": {
                       "street": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 200
                       },
                       "zip": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 20
                       },
                       "city": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 200
                       }
                     }
                   },
@@ -775,15 +778,18 @@
                     "properties": {
                       "street": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 200
                       },
                       "zip": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 20
                       },
                       "city": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 200
                       }
                     }
                   },
@@ -2109,7 +2115,8 @@
                     "additionalProperties": false,
                     "properties": {
                       "name": {
-                        "type": "string"
+                        "type": "string",
+                        "maxLength": 255
                       },
                       "address": {
                         "type": ["object", "null"],
@@ -2117,18 +2124,22 @@
                         "required": ["street", "zip", "city"],
                         "properties": {
                           "street": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 200
                           },
                           "zip": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 20
                           },
                           "city": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 200
                           }
                         }
                       },
                       "ustId": {
-                        "type": ["string", "null"]
+                        "type": ["string", "null"],
+                        "maxLength": 50
                       }
                     }
                   },
@@ -2231,7 +2242,8 @@
                     "additionalProperties": false,
                     "properties": {
                       "name": {
-                        "type": "string"
+                        "type": "string",
+                        "maxLength": 255
                       },
                       "address": {
                         "type": ["object", "null"],
@@ -2239,18 +2251,22 @@
                         "required": ["street", "zip", "city"],
                         "properties": {
                           "street": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 200
                           },
                           "zip": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 20
                           },
                           "city": {
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 200
                           }
                         }
                       },
                       "ustId": {
-                        "type": ["string", "null"]
+                        "type": ["string", "null"],
+                        "maxLength": 50
                       }
                     }
                   },
