@@ -162,8 +162,8 @@ Fields: [data-model.md §5.1](data-model.md#51-project-entity). What the screens
 - **AC-475** `[crit]`: When a user creates a project with a number, title and customer, the system stores it in the first workflow state.
 - **AC-476** `[crit]`: If a user creates a project with a number another project already has, archived ones included, the system refuses it as a conflict ([api.md §14.4.1](api.md#1441-error-categories)) with a German message naming the number, and creates nothing.
 - **AC-477** `[crit]`: When a project create is retried after its response was lost, the system stores the project once.
-- **AC-478** `[vis]`: When a user leaves the number field of the create form, the system shows whether another project, archived ones included, already uses the number.
-- **AC-479** `[vis]`: The free / taken verdict of the number field always refers to the number currently in the field.
+- **AC-478** `[vis]`: When a user leaves the number field of the create form or of the email intake review form, or that review form opens, the system shows whether another project, archived ones included, already uses the number the form would save.
+- **AC-479** `[vis]`: The free / taken verdict of the number field always refers to the number the form would save.
 - **AC-480** `[crit]`: When a user edits the title, a planned date, the estimated value or the notes on the Project Detail Page, the system stores the change.
 - **AC-511** `[vis]`: When a user clears the planned start on the Project Detail Page while a planned end is set, the system clears both.
 - **AC-482** `[crit]`: If a date change would leave a planned end without a planned start, or before it, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) with a German message and changes nothing.
