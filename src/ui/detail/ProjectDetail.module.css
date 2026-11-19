@@ -36,7 +36,7 @@
 .errorBanner {
   padding: 12px 16px;
   background: var(--color-surface-muted);
-  color: var(--color-danger);
+  color: var(--color-danger-text);
   border: 1px solid var(--color-danger);
   border-radius: 6px;
   display: flex;
@@ -133,7 +133,7 @@
   border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--color-text-on-accent);
+  color: var(--color-text-on-state);
 }
 
 .archivedBadge {
@@ -143,8 +143,8 @@
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--color-text-on-accent);
-  background: var(--color-text-subtle);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-sunken);
 }
 
 /* Banner under the header on archived projects — communicates the
@@ -446,8 +446,8 @@
   box-shadow: 0 0 0 2px var(--color-focus-ring);
 }
 
-/* Inline tel:/mailto: anchors on the KUNDE card. Sit one per line under
-   the customer name; mirror the panel's `.link` styling so the same
+/* Inline tel:/mailto: anchors on the KUNDE card and the site-address map
+   link. Contact anchors sit one per line under the customer name; mirror the panel's `.link` styling so the same
    contact info reads identically across both surfaces. */
 .coreContactLink {
   font-size: 0.85rem;
@@ -564,7 +564,7 @@
 }
 
 .chipRemove:hover {
-  color: var(--color-danger);
+  color: var(--color-danger-text);
 }
 
 .workerAddWrapper {
@@ -973,7 +973,7 @@
   padding: 4px 10px;
   border: 1px solid var(--color-danger);
   background: var(--color-surface-base);
-  color: var(--color-danger);
+  color: var(--color-danger-text);
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.8rem;

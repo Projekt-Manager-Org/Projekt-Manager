@@ -55,7 +55,11 @@
 }
 
 .otherMonth {
-  opacity: 0.35;
+  background: var(--color-surface-sunken);
+}
+
+.otherMonth .dayNumber {
+  color: var(--color-text-secondary);
 }
 
 .today {

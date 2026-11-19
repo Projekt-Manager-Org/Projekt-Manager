@@ -304,10 +304,10 @@ describe('InvoiceRenderer branding', () => {
       companyProfile: { ...profile, accentColor: null },
     });
 
-    // BRANDING.accent.light is #3b82f6 -> 0.231… 0.509… 0.964…
+    // BRANDING.accent.light is #2563eb -> 0.145… 0.388… 0.921…
     const stream = await contentStreamText(pdfBytes);
     expect(stream).not.toContain('1 0.4 0 rg');
-    expect(stream).toMatch(/0\.231\d* 0\.509\d* 0\.964\d* rg/);
+    expect(stream).toMatch(/0\.145\d* 0\.388\d* 0\.921\d* rg/);
   });
 
   it('falls back rather than throwing on a malformed accent value', async () => {
@@ -323,6 +323,6 @@ describe('InvoiceRenderer branding', () => {
     // must land on the brand accent, not merely survive. `%PDF-` alone
     // is true of a black or grey render too.
     expect(Buffer.from(pdfBytes).subarray(0, 5).toString()).toBe('%PDF-');
-    expect(await contentStreamText(pdfBytes)).toMatch(/0\.231\d* 0\.509\d* 0\.964\d* rg/);
+    expect(await contentStreamText(pdfBytes)).toMatch(/0\.145\d* 0\.388\d* 0\.921\d* rg/);
   });
 });

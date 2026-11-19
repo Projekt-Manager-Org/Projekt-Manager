@@ -7,7 +7,7 @@
  *   --brand-accent-dark
  *
  * The semantic accent chain (--color-accent, --color-accent-hover,
- * --color-accent-active-surface, --color-focus-ring) resolves through
+ * --color-focus-ring, --color-accent-on-inverse) resolves through
  * these at runtime, with fallback defaults declared in tokens.css for
  * the pre-JS frame (ARCHITECTURE.md § Design Decisions, Theming).
  *

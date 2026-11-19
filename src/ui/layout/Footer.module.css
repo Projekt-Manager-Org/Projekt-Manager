@@ -8,7 +8,7 @@
   align-items: center;
   padding: 8px 20px;
   background: var(--color-surface-inverse);
-  color: var(--color-text-muted);
+  color: var(--color-text-on-inverse-muted);
   font-size: 0.8rem;
   border-top: 1px solid var(--color-surface-inverse-raised);
 }
@@ -25,7 +25,7 @@
   grid-column: 1;
   justify-self: start;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  color: var(--color-text-muted);
+  color: var(--color-text-on-inverse-subtle);
 }
 
 .storageBadge {
@@ -35,7 +35,7 @@
   padding: 2px 8px;
   border-radius: 4px;
   background: var(--color-surface-inverse-raised);
-  color: var(--color-text-muted);
+  color: var(--color-text-on-inverse-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -52,7 +52,7 @@
   padding: 6px 10px;
   border-radius: 4px;
   background: var(--color-surface-inverse-raised);
-  color: var(--color-text-muted);
+  color: var(--color-text-on-inverse-muted);
   font-size: 0.75rem;
   white-space: nowrap;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);

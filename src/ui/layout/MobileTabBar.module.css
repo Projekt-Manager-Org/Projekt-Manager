@@ -53,12 +53,9 @@
   background: var(--color-surface-inverse-hover);
 }
 
-.tabActive {
-  color: var(--color-accent);
-}
-
+.tabActive,
 .tabActive:hover {
-  color: var(--color-accent-hover);
+  color: var(--color-accent-on-inverse);
 }
 
 .icon {

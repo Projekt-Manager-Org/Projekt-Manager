@@ -53,10 +53,7 @@ const PAGE_CLASSES: SurfaceClasses = {
   wrapper: pageStyles.coreField,
   label: pageStyles.coreLabel,
   value: pageStyles.coreValue,
-  // The page already inlines anchor styling alongside `.coreValue`
-  // text without a dedicated class — keep that pattern by using an
-  // empty class string for the link on this surface.
-  link: '',
+  link: pageStyles.coreContactLink,
 };
 
 const TEST_IDS: Record<Variant, string> = {

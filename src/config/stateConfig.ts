@@ -40,6 +40,7 @@ export interface StateConfig {
   label: string;
   type: StateType;
   order: number;
+  /** Fill behind state labels: must meet WCAG AA with slate-900 text (AC-748). */
   color: string;
   collapseTier: CollapseTier;
   agingThresholdDays?: number;
@@ -117,7 +118,7 @@ export const STATE_CONFIGS: StateConfig[] = [
     label: STRINGS.states.abgerechnet,
     type: 'buffer',
     order: 8,
-    color: '#6366F1',
+    color: '#A78BFA',
     collapseTier: 3,
     agingThresholdDays: 30,
     agingBoldDays: 30,

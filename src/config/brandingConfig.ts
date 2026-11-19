@@ -15,12 +15,11 @@
  *     `src/styles/applyBranding.ts`. No other module consumes these raw
  *     hex strings; stylesheets reference the semantic `--color-accent`
  *     token chain instead.
- *   - Each value MUST meet WCAG AA against both `--color-surface-base`
- *     (the body background it sits on in borders/focus-rings) and
- *     `--color-text-on-accent` (the label text on filled accent
- *     surfaces) in its respective mode. The defaults below pair with
- *     `--color-text-on-accent: slate-900` and give 4.97:1 (light) and
- *     7.31:1 (dark) — do not regress without re-checking contrast.
+ *   - Each value MUST meet WCAG AA (AC-748) as text on the surfaces it
+ *     sits on (surface-base, -raised, -muted of its theme) and against
+ *     `--color-text-on-accent` (labels on filled accent surfaces). The
+ *     dark value also colors accents on the inverse chrome in both themes.
+ *     `e2e/text-contrast.spec.ts` checks the rendered pairs.
  *
  * Brand mark contract:
  *   - `mark.bg` and `mark.bars` paint the generic fallback mark
@@ -116,8 +115,8 @@ export const BRANDING: BrandingConfig = {
   shortName: 'Projekte',
   footerBrandLine: 'Projekt-Manager',
   accent: {
-    light: '#3b82f6', // tailwind blue-500 — 4.97:1 against slate-900
-    dark: '#60a5fa', //  tailwind blue-400 — 7.31:1 against slate-900
+    light: '#2563eb', // tailwind blue-600
+    dark: '#60a5fa', //  tailwind blue-400
   },
   mark: {
     bg: '#1e293b', // slate-800
