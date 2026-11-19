@@ -209,3 +209,83 @@ describe('EmailExtractModal — partial customer address', () => {
     expect(projectCreateMock).not.toHaveBeenCalled();
   });
 });
+
+describe('EmailExtractModal — project number', () => {
+  async function reachReview(): Promise<HTMLInputElement> {
+    extractMock.mockResolvedValue(
+      ok({
+        customer: {
+          name: 'Neue Firma',
+          phone: null,
+          email: null,
+          street: null,
+          zip: null,
+          city: null,
+        },
+        project: { title: 'Dachsanierung', description: null, siteAddress: null },
+      }),
+    );
+    render(<EmailExtractModal onClose={() => {}} />);
+    await userEvent.type(screen.getByTestId('extract-email-input'), 'Some email body.');
+    await userEvent.click(screen.getByTestId('extract-submit'));
+    return (await screen.findByTestId('extract-project-number')) as HTMLInputElement;
+  }
+
+  /** The project list answers with one project holding `number`. */
+  function numberIsTaken(number: string): void {
+    projectListMock.mockResolvedValue(ok({ data: [{ id: 'p-x', number } as Project], total: 1 }));
+  }
+
+  it('saves the generated number it shows while the field is left empty', async () => {
+    customerCreateMock.mockResolvedValue(ok({ id: 'cust-1', name: 'Neue Firma' } as Customer));
+    projectCreateMock.mockResolvedValue(ok({ id: 'proj-1' } as Project));
+    const input = await reachReview();
+    const shown = input.placeholder;
+    expect(shown).toMatch(/^\d{4}-\d{3}$/);
+
+    // Re-renders must not change the number shown.
+    await userEvent.type(screen.getByTestId('extract-project-title'), ' Nord');
+    expect(input.placeholder).toBe(shown);
+
+    await userEvent.click(screen.getByTestId('extract-save'));
+
+    await waitFor(() => expect(projectCreateMock).toHaveBeenCalledTimes(1));
+    const [body] = projectCreateMock.mock.calls[0] as unknown as [{ number: string }];
+    expect(body.number).toBe(shown);
+  });
+
+  it('AC-478: shows the generated number as taken when the review form opens', async () => {
+    projectListMock.mockImplementation(async (params: { search: string }) =>
+      ok({ data: [{ id: 'p-x', number: params.search } as Project], total: 1 }),
+    );
+
+    const input = await reachReview();
+
+    expect(await screen.findByTestId('project-number-taken')).toHaveTextContent(input.placeholder);
+    expect(projectListMock).toHaveBeenCalledWith(
+      expect.objectContaining({ search: input.placeholder, includeArchived: true }),
+    );
+  });
+
+  it('AC-478: shows a typed number as taken when the user leaves the number field', async () => {
+    const input = await reachReview();
+    expect(await screen.findByTestId('project-number-available')).toBeInTheDocument();
+    numberIsTaken('2024-007');
+
+    await userEvent.clear(input);
+    await userEvent.type(input, '2024-007');
+    await userEvent.tab();
+
+    expect(await screen.findByTestId('project-number-taken')).toHaveTextContent('2024-007');
+  });
+
+  it('AC-479: clears the verdict when the user edits the number', async () => {
+    const input = await reachReview();
+    expect(await screen.findByTestId('project-number-available')).toBeInTheDocument();
+
+    await userEvent.type(input, '2');
+
+    expect(screen.queryByTestId('project-number-available')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('project-number-taken')).not.toBeInTheDocument();
+  });
+});

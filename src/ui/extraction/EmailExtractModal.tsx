@@ -17,10 +17,12 @@ import { useCustomerStore } from '@/state/customerStore';
 import { useProjectManagementStore } from '@/state/projectManagementStore';
 import { useProjectStore } from '@/state/projectStore';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { useProjectNumberPreflight } from '@/hooks/useProjectNumberPreflight';
 import { STRINGS } from '@/config/strings';
 import type { Address, Customer } from '@/domain/types';
 import { readAddressDraft } from '@/domain/address';
 import { MenuBackdrop } from '../common/MenuBackdrop';
+import { ProjectNumberVerdict } from '../management/ProjectNumberVerdict';
 import { SiteAddressGroup, type SiteAddressGroupHandle } from '../management/SiteAddressGroup';
 import styles from '../management/Management.module.css';
 
@@ -51,6 +53,11 @@ export function EmailExtractModal({ onClose }: Props) {
   // Project fields
   const [projectTitle, setProjectTitle] = useState('');
   const [projectNumber, setProjectNumber] = useState('');
+  // Generated once, so the number shown while the field is empty is the
+  // number saved.
+  const [generatedNumber] = useState(generateProjectNumber);
+  const numberToSave = projectNumber.trim() || generatedNumber;
+  const numberPreflight = useProjectNumberPreflight();
   // Extracted Baustelle (work-site address) seed for the SiteAddressGroup
   // below. Set once when extraction completes; the group owns its own
   // editable draft from that point on. Null seeds the group with toggle ON
@@ -139,6 +146,7 @@ export function EmailExtractModal({ onClose }: Props) {
     setProjectTitle(project.title ?? '');
     setExtractedSiteAddress(project.siteAddress);
     setExtracted(true);
+    void numberPreflight.check(numberToSave);
   };
 
   // Customer address fed to SiteAddressGroup as the disabled-toggle-ON
@@ -213,11 +221,9 @@ export function EmailExtractModal({ onClose }: Props) {
 
     // Step 2: create project if title is provided
     if (projectTitle.trim()) {
-      const num = projectNumber.trim() || generateProjectNumber();
-
       const projResult = await createProjectFromExtraction({
         id: projectCreateIdRef.current,
-        number: num,
+        number: numberToSave,
         title: projectTitle.trim(),
         customerId: custId,
         siteAddress: siteResult.value,
@@ -439,11 +445,17 @@ export function EmailExtractModal({ onClose }: Props) {
               <input
                 className={styles.formInput}
                 value={projectNumber}
-                onChange={(e) => setProjectNumber(e.target.value)}
-                placeholder={generateProjectNumber()}
+                onChange={(e) => {
+                  setProjectNumber(e.target.value);
+                  // The verdict re-runs on the next blur (AC-479).
+                  numberPreflight.reset();
+                }}
+                onBlur={() => void numberPreflight.check(numberToSave)}
+                placeholder={generatedNumber}
                 disabled={saving}
                 data-testid="extract-project-number"
               />
+              <ProjectNumberVerdict status={numberPreflight.status} number={numberToSave} />
             </div>
 
             <div className={styles.formGroup}>
