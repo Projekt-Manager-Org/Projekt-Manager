@@ -759,11 +759,11 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
   });
 
   // -------------------------------------------------------------------
-  // AC-593: invoice tax mode, lines and totals pass the §5.15 write rules
-  // at envelope validation. Rejections run against an empty target, so a
+  // AC-593: invoice tax mode, lines, totals and field lengths pass the
+  // §5.15 write rules at envelope validation. Rejections run against an empty target, so a
   // single wipe and reseed covers every case.
   // -------------------------------------------------------------------
-  describe('AC-593: invoice tax mode, lines and totals are validated', () => {
+  describe('AC-593: invoice tax mode, lines, totals and field lengths are validated', () => {
     type Mutate = (inv: Envelope['invoices'][number]) => void;
     const lineCases: Array<[string, Mutate, string]> = [
       [
@@ -835,6 +835,51 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         (inv) => Object.assign(inv, { taxMode: 'kleinunternehmer' }),
         'invoices[0].taxMode',
       ],
+      [
+        'an empty line description',
+        (inv) => Object.assign(inv.lines[0]!, { description: '' }),
+        'invoices[0].lines[0].description',
+      ],
+      [
+        'a line description over 1000 characters',
+        (inv) => Object.assign(inv.lines[0]!, { description: 'd'.repeat(1001) }),
+        'invoices[0].lines[0].description',
+      ],
+      [
+        'a line unit over 100 characters',
+        (inv) => Object.assign(inv.lines[0]!, { unit: 'u'.repeat(101) }),
+        'invoices[0].lines[0].unit',
+      ],
+      [
+        'a recipient name over 255 characters',
+        (inv) => Object.assign(inv.recipient, { name: 'n'.repeat(256) }),
+        'invoices[0].recipient.name',
+      ],
+      [
+        'a recipient street over 200 characters',
+        (inv) => Object.assign(inv.recipient.address!, { street: 's'.repeat(201) }),
+        'invoices[0].recipient.address.street',
+      ],
+      [
+        'a recipient zip over 20 characters',
+        (inv) => Object.assign(inv.recipient.address!, { zip: '5'.repeat(21) }),
+        'invoices[0].recipient.address.zip',
+      ],
+      [
+        'a recipient city over 200 characters',
+        (inv) => Object.assign(inv.recipient.address!, { city: 'c'.repeat(201) }),
+        'invoices[0].recipient.address.city',
+      ],
+      [
+        'a recipient USt-IdNr. over 50 characters',
+        (inv) => Object.assign(inv.recipient, { ustId: 'D'.repeat(51) }),
+        'invoices[0].recipient.ustId',
+      ],
+      [
+        'a cancellation reason over 2000 characters',
+        (inv) => Object.assign(inv, { cancellationReason: 'r'.repeat(2001) }),
+        'invoices[0].cancellationReason',
+      ],
     ];
 
     beforeAll(wipeBusinessDataExceptUsers);
@@ -867,6 +912,30 @@ describe('ImportService — Layer 1 envelope (issue #230)', () => {
         'invoices[0].taxMode',
         'invoices[0].lines[0].unitPrice',
       ]);
+    });
+
+    // Limits count characters, as the write routes do: an emoji is one,
+    // though two UTF-16 units — an archive of accepted writes restores.
+    it('imports values exactly at each limit, counted in characters', async () => {
+      const env = buildExpandedEnvelope();
+      const original = env.invoices[0]!;
+      Object.assign(original.lines[0]!, { description: '🎨'.repeat(1000), unit: '😀'.repeat(100) });
+      original.recipient = {
+        name: '😀'.repeat(255),
+        address: { street: '😀'.repeat(200), zip: '😀'.repeat(20), city: '😀'.repeat(200) },
+        ustId: '😀'.repeat(50),
+      };
+      Object.assign(env.invoices[1]!, { cancellationReason: '😀'.repeat(2000) });
+
+      try {
+        await importEnvelope(env, { override: false, confirmationPhrase: null });
+
+        expect(await db.select().from(invoices)).toHaveLength(env.invoices.length);
+      } finally {
+        // The import adds its users; the next case imports them again.
+        await reseed();
+        await wipeBusinessDataExceptUsers();
+      }
     });
 
     it('imports a cancelled invoice and its Storno with lines and totals unchanged', async () => {

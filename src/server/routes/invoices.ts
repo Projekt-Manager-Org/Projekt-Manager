@@ -35,7 +35,12 @@ import {
   type ExportFilterInput,
 } from '../services/InvoiceExportService.js';
 import type { InvoiceLineInput, InvoiceRecipientSnapshot, TaxMode } from '../../domain/invoice.js';
-import { TAX_MODES, INVOICE_STATUSES, INVOICE_TAX_RATES } from '../../domain/invoice.js';
+import {
+  TAX_MODES,
+  INVOICE_STATUSES,
+  INVOICE_TAX_RATES,
+  INVOICE_TEXT_MAX,
+} from '../../domain/invoice.js';
 import { buildContentDisposition } from '../storage/client.js';
 import { calendarDateDE } from '../../domain/dateFormat.js';
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
@@ -51,9 +56,9 @@ const lineSchema = {
   required: ['description', 'quantity', 'unit', 'unitPrice', 'taxRate'],
   additionalProperties: false,
   properties: {
-    description: { type: 'string', minLength: 1, maxLength: 1000 },
+    description: { type: 'string', minLength: 1, maxLength: INVOICE_TEXT_MAX.lineDescription },
     quantity: { type: 'number', exclusiveMinimum: 0 },
-    unit: { type: 'string', maxLength: 100 },
+    unit: { type: 'string', maxLength: INVOICE_TEXT_MAX.lineUnit },
     unitPrice: { type: 'number', minimum: 0 },
     taxRate: { type: 'number', enum: INVOICE_TAX_RATES },
   },
@@ -64,18 +69,18 @@ const recipientSchema = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    name: { type: 'string', maxLength: 255 },
+    name: { type: 'string', maxLength: INVOICE_TEXT_MAX.recipientName },
     address: {
       type: ['object', 'null'],
       additionalProperties: false,
       required: ['street', 'zip', 'city'],
       properties: {
-        street: { type: 'string', maxLength: 200 },
-        zip: { type: 'string', maxLength: 20 },
-        city: { type: 'string', maxLength: 200 },
+        street: { type: 'string', maxLength: INVOICE_TEXT_MAX.recipientStreet },
+        zip: { type: 'string', maxLength: INVOICE_TEXT_MAX.recipientZip },
+        city: { type: 'string', maxLength: INVOICE_TEXT_MAX.recipientCity },
       },
     },
-    ustId: { type: ['string', 'null'], maxLength: 50 },
+    ustId: { type: ['string', 'null'], maxLength: INVOICE_TEXT_MAX.recipientUstId },
   },
 } as const;
 
@@ -385,7 +390,7 @@ export function invoiceRoutes(db: Database) {
             type: ['object', 'null'],
             additionalProperties: false,
             properties: {
-              reason: { type: ['string', 'null'], maxLength: 2000 },
+              reason: { type: ['string', 'null'], maxLength: INVOICE_TEXT_MAX.cancellationReason },
             },
           },
         },

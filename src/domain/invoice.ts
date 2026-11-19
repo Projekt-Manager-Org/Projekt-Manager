@@ -173,6 +173,27 @@ export function taxRatesFor(mode: TaxMode): readonly number[] {
 /** §5.15 — `unitPrice` carries at most this many decimals. */
 export const UNIT_PRICE_MAX_DECIMALS = 4;
 
+/** §5.15 — the most characters each text field may hold. */
+export const INVOICE_TEXT_MAX = {
+  lineDescription: 1000,
+  lineUnit: 100,
+  recipientName: 255,
+  recipientStreet: 200,
+  recipientZip: 20,
+  recipientCity: 200,
+  recipientUstId: 50,
+  cancellationReason: 2000,
+} as const;
+
+/**
+ * Whether `value` is a string over `max` characters. Counts code
+ * points, as JSON Schema's `maxLength` does on the write routes, so an
+ * archive of accepted writes passes the import.
+ */
+function overLimit(value: unknown, max: number): boolean {
+  return typeof value === 'string' && [...value].length > max;
+}
+
 /** Derive `lineTotal` from `quantity` and `unitPrice` (AC-685). */
 export function deriveInvoiceLine(line: InvoiceLineInput): InvoiceLine {
   return { ...line, lineTotal: round2(new Big(line.quantity).times(line.unitPrice)) };
@@ -192,9 +213,17 @@ export function invalidInputLineFields(
   if (typeof line !== 'object' || line === null) return [...INPUT_LINE_FIELDS];
   const l = line as Record<string, unknown>;
   const invalid: (keyof InvoiceLine)[] = [];
-  if (typeof l.description !== 'string') invalid.push('description');
+  if (
+    typeof l.description !== 'string' ||
+    l.description.length === 0 ||
+    overLimit(l.description, INVOICE_TEXT_MAX.lineDescription)
+  ) {
+    invalid.push('description');
+  }
   if (!Number.isFinite(l.quantity) || (l.quantity as number) <= 0) invalid.push('quantity');
-  if (typeof l.unit !== 'string') invalid.push('unit');
+  if (typeof l.unit !== 'string' || overLimit(l.unit, INVOICE_TEXT_MAX.lineUnit)) {
+    invalid.push('unit');
+  }
   if (
     !Number.isFinite(l.unitPrice) ||
     !hasAtMostDecimals(l.unitPrice as number, UNIT_PRICE_MAX_DECIMALS)
@@ -219,6 +248,32 @@ export function invalidStoredLineFields(
   const l = line as InvoiceLine;
   if (l.lineTotal !== deriveInvoiceLine(l).lineTotal) invalid.push('lineTotal');
   return invalid;
+}
+
+/**
+ * Paths of an invoice's text fields over their §5.15 limit, relative to
+ * the invoice — the recipient's and the cancellation reason. Lines are
+ * checked by `invalidStoredLineFields`. Used by the import (AC-593).
+ */
+export function overLimitInvoiceFields(invoice: {
+  recipient: unknown;
+  cancellationReason: unknown;
+}): string[] {
+  const paths: string[] = [];
+  const r = (invoice.recipient ?? {}) as Record<string, unknown>;
+  const a = (r.address ?? {}) as Record<string, unknown>;
+  const checks: Array<[string, unknown, number]> = [
+    ['recipient.name', r.name, INVOICE_TEXT_MAX.recipientName],
+    ['recipient.address.street', a.street, INVOICE_TEXT_MAX.recipientStreet],
+    ['recipient.address.zip', a.zip, INVOICE_TEXT_MAX.recipientZip],
+    ['recipient.address.city', a.city, INVOICE_TEXT_MAX.recipientCity],
+    ['recipient.ustId', r.ustId, INVOICE_TEXT_MAX.recipientUstId],
+    ['cancellationReason', invoice.cancellationReason, INVOICE_TEXT_MAX.cancellationReason],
+  ];
+  for (const [path, value, max] of checks) {
+    if (overLimit(value, max)) paths.push(path);
+  }
+  return paths;
 }
 
 /**

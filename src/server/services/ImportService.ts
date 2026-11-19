@@ -68,6 +68,7 @@ import {
   computeInvoiceTotals,
   invalidStoredLineFields,
   invoiceTotalsMatch,
+  overLimitInvoiceFields,
   TAX_MODES,
   taxRatesFor,
 } from '../../domain/invoice.js';
@@ -80,8 +81,8 @@ function isPartialAddress(a: { street: unknown; zip: unknown; city: unknown }): 
 /**
  * Within-envelope structural checks — uniqueness of keys that become DB
  * constraints on insert, plus referential integrity between tables. Row-level
- * column validation is left to the DB, except invoice `lines` / `totals`:
- * JSONB the DB does not check. This pre-check exists so the import fails
+ * column validation is left to the DB, except invoice fields §5.15
+ * constrains and the DB does not (AC-593). This pre-check exists so the import fails
  * cleanly (422) before TRUNCATE rather than bubbling a 23505 through as a
  * generic 500.
  */
@@ -295,11 +296,17 @@ function validateEnvelope(envelope: Envelope): ValidationIssue[] {
     }
   }
 
-  // AC-593: invoice tax mode, lines and totals pass the write rules
-  // (data-model.md §5.15). An issued row is frozen as imported, so a
-  // violation is rejected, never re-derived.
+  // AC-593: invoice tax mode, lines, totals and text lengths pass the
+  // write rules (data-model.md §5.15). An issued row is frozen as
+  // imported, so a violation is rejected, never re-derived.
   for (let i = 0; i < envelope.invoices.length; i++) {
     const inv = envelope.invoices[i]!;
+    for (const field of overLimitInvoiceFields(inv)) {
+      issues.push({
+        path: `invoices[${i}].${field}`,
+        message: `${field} is over its length limit`,
+      });
+    }
     // Totals derive from the mode; an unknown one would be read as
     // `standard`, so it skips the totals check, and its lines check
     // against the full §5.15 rate set.
