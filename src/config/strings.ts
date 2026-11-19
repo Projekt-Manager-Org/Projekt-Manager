@@ -62,6 +62,7 @@ export const STRINGS = {
       'Das Projekt steht nicht im Status „Rechnung fällig" — die Rechnung kann nicht ausgestellt werden.',
     invoiceNotIssued: 'Die Rechnung ist noch ein Entwurf.',
     invoiceAlreadyCancelled: 'Die Rechnung wurde bereits storniert.',
+    stornoNotCancellable: 'Eine Stornorechnung kann nicht storniert werden.',
     companyProfileRequired:
       'Firmendaten sind unvollständig. Bitte erst im Bereich „Rechnungen" vervollständigen.',
     customerHasInvoices:
