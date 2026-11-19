@@ -12,7 +12,7 @@ import { STORAGE_STATES } from './storage-states';
 test.use({ storageState: STORAGE_STATES.owner });
 
 test('AC-478: the review form checks the number it would save', async ({ page }) => {
-  // The entry shows only while extraction is configured (AC-734); e2e has no key.
+  // The entry shows only while extraction is configured; e2e has no key.
   await page.route('**/api/extract/status', (route) =>
     route.fulfill({ json: { configured: true } }),
   );
