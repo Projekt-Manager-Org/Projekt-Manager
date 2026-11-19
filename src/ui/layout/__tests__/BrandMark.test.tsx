@@ -1,5 +1,5 @@
 /**
- * Component tests — brand mark rendering (issue #189, AC-361).
+ * Component tests — brand mark rendering (the header inventory, docs/spec/ui/index.md; AC-745).
  *
  * The header's mark has three states worth pinning: the default install
  * (generic SVG), a deployment that configured its own logo, and that
@@ -26,7 +26,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('BrandMark — AC-361 configurable brand mark', () => {
+describe('BrandMark — configurable brand mark', () => {
   it('renders the generic three-bar mark when no logo is configured', () => {
     configureLogo(undefined);
     render(<BrandMark />);
@@ -35,7 +35,7 @@ describe('BrandMark — AC-361 configurable brand mark', () => {
     expect(screen.queryByTestId('brand-mark-logo')).not.toBeInTheDocument();
   });
 
-  it('renders the configured logo asset when one is set', () => {
+  it('AC-743: renders the configured logo asset when one is set', () => {
     configureLogo('/brand/logo.png');
     render(<BrandMark />);
 
@@ -53,7 +53,7 @@ describe('BrandMark — AC-361 configurable brand mark', () => {
     expect(img).toHaveAttribute('aria-hidden', 'true');
     unmount();
 
-    // The fallback arm too: AC-361 calls the mark decorative in BOTH
+    // The fallback arm too: the header inventory calls the mark decorative in BOTH
     // states, and the generic SVG is what a default install renders on
     // every page.
     configureLogo(undefined);
@@ -62,7 +62,7 @@ describe('BrandMark — AC-361 configurable brand mark', () => {
     expect(screen.getByTestId('brand-mark-fallback')).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('falls back to the generic mark when the configured asset fails to load', () => {
+  it('AC-745: falls back to the generic mark when the configured asset fails to load', () => {
     configureLogo('/brand/typo.png');
     render(<BrandMark />);
 

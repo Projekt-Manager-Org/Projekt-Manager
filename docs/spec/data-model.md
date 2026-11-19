@@ -38,7 +38,7 @@ A person who can sign in. A user changes their own `themePreference` and `pushMu
 | `roles`                  | One or more of the role set **[C]** ([api.md §14.3](api.md#143-authorization-rules))                                 |
 | `email`                  | Optional free text, at most 255 characters                                                                           |
 | `active`                 | Default `true`; `false` means deactivated ([§6.9](#69-soft-deletes))                                                 |
-| `themePreference`        | [§5.7](#57-user-theme-preference)                                                                                    |
+| `themePreference`        | `light`, `dark` or `system`; default `system` ([verification.md §15.19](verification.md#1519-theming))               |
 | `pushMuted`              | Default `false`; mutes push delivery only ([§5.12](#512-push-subscription))                                          |
 | `createdAt`, `updatedAt` | Server time                                                                                                          |
 | `lastLoginAt`            | Time of the last successful login; empty before the first                                                            |
@@ -86,20 +86,6 @@ A person or company the projects are for. Only `name` is required. Behavior: [ve
 | `version`                | Concurrency token ([§6.4](#64-concurrency))                                                                                    |
 | `createdAt`, `updatedAt` | Server time                                                                                                                    |
 | `createdBy`, `updatedBy` | The acting user; empty for seeded or imported rows without a known actor                                                       |
-
-### 5.7 User Theme Preference
-
-`UserAccount.themePreference` is the server-authoritative source for the user's chosen color scheme.
-
-| Value      | Effect                                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------------------------- |
-| `'light'`  | The UI renders the light theme regardless of operating-system scheme.                                   |
-| `'dark'`   | The UI renders the dark theme regardless of operating-system scheme.                                    |
-| `'system'` | The UI follows the operating system's color-scheme preference and updates when that preference changes. |
-
-- New users default to `'system'`.
-- The value is updated by the authenticated user via self-update ([§5.3](#53-user-entity)).
-- The server value is authoritative. Clients may cache the value locally to prevent a flash of the wrong theme on page load, but must replace any cached value with the server value on session hydration.
 
 ### 5.8 Export Archive
 
@@ -356,7 +342,7 @@ A bill for a project's work, issued as an e-invoice. A project may have several 
 **Rendered document** — one per issued invoice and Storno:
 
 - A PDF/A-3 with an embedded `factur-x.xml` in the ZUGFeRD EN 16931 (Comfort) profile, CII syntax.
-- Shows the issuer with the brand logo ([AC-362](verification.md#1519a-brand-logo)), the recipient, number, issue and performance date, the lines with `quantity` and `unitPrice` unrounded, and the totals. The IBAN when `issuer.iban` is set; `issuer.footerText` at the foot; rules in the profile's accent color ([§5.17](#517-company-profile-entity)).
+- Shows the issuer with the brand logo ([AC-746](verification.md#1520-branding)), the recipient, number, issue and performance date, the lines with `quantity` and `unitPrice` unrounded, and the totals. The IBAN when `issuer.iban` is set; `issuer.footerText` at the foot; rules in the profile's accent color ([§5.17](#517-company-profile-entity)).
 - `standard`: VAT per line and the per-rate breakdown. `reverse_charge`: no VAT, and `Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG.`
 - A Storno names its original's number and issue date — in the text and as the preceding-invoice reference (EN 16931 BT-25, BT-26).
 - XML amounts are signed: as stored for an invoice (type code `380`), negated for a Storno (`381`), lines, per-rate bands and totals alike. A negative unit price renders as a negative quantity at the positive price (EN 16931 BR-27).
@@ -376,18 +362,18 @@ One counter per calendar year and kind — `invoice` for `RE-` numbers, `storno`
 
 The issuing company's identity, printed on every invoice. Exactly one exists ([AC-721](verification.md#1531-company-profile)). Behavior: [verification.md §15.31](verification.md#1531-company-profile). Screen: [ui/invoices.md §8.16.4](ui/invoices.md#8164-company-profile).
 
-| Field                    | Constraint                                                                                                                                          |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `companyName`            | Required; at most 200 characters                                                                                                                    |
-| `address`                | `street` (at most 200 characters), `zip` (20), `city` (200); all required                                                                           |
-| `taxId`                  | Steuernummer; required; at most 50 characters                                                                                                       |
-| `ustId`                  | USt-IdNr.; required ([ADR-0026 § Compliance boundary](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)); at most 50 characters |
-| `iban`                   | At most 50 characters                                                                                                                               |
-| `accentColor`            | `#RGB` or `#RRGGBB`; colors the rendered invoice only. Unset: the brand accent ([architecture.md §12.5](architecture.md#125-theming-model))         |
-| `footerText`             | At most 2000 characters                                                                                                                             |
-| `defaultTaxMode`         | `standard` or `reverse_charge`; pre-fills new drafts ([AC-683](verification.md#1530-invoices)). `standard` on a new deployment                      |
-| `version`                | Concurrency token ([§6.4](#64-concurrency))                                                                                                         |
-| `updatedAt`, `updatedBy` | Server time; the acting user                                                                                                                        |
+| Field                    | Constraint                                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `companyName`            | Required; at most 200 characters                                                                                                                                          |
+| `address`                | `street` (at most 200 characters), `zip` (20), `city` (200); all required                                                                                                 |
+| `taxId`                  | Steuernummer; required; at most 50 characters                                                                                                                             |
+| `ustId`                  | USt-IdNr.; required ([ADR-0026 § Compliance boundary](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)); at most 50 characters                       |
+| `iban`                   | At most 50 characters                                                                                                                                                     |
+| `accentColor`            | `#RGB` or `#RRGGBB`; colors the rendered invoice only. Unset: the light brand accent **[C]** ([architecture.md §12.2](architecture.md#122-company-configurable-settings)) |
+| `footerText`             | At most 2000 characters                                                                                                                                                   |
+| `defaultTaxMode`         | `standard` or `reverse_charge`; pre-fills new drafts ([AC-683](verification.md#1530-invoices)). `standard` on a new deployment                                            |
+| `version`                | Concurrency token ([§6.4](#64-concurrency))                                                                                                                               |
+| `updatedAt`, `updatedBy` | Server time; the acting user                                                                                                                                              |
 
 Required means non-empty. The stored profile can still lack one — on a new deployment, or after an import; issuing then fails ([AC-698](verification.md#1530-invoices)). The brand logo is deploy-time branding, not part of the profile ([architecture.md §12.2](architecture.md#122-company-configurable-settings)).
 

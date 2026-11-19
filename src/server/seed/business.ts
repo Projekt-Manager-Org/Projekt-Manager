@@ -448,7 +448,7 @@ export function buildBusinessEnvelope(now: Date, hashedPassword: string): Envelo
 
   // Users: every fixture row becomes an envelope row. `passwordHash`
   // comes from the orchestrator (one bcrypt call, reused). Defaults
-  // mirror the schema's column defaults (data-model.md §5.3, §5.7):
+  // mirror the schema's column defaults (data-model.md §5.3):
   //   themePreference = 'system', pushMuted = false, lastLoginAt = null.
   // `createdBy` / `updatedBy` are null — seeded users have no audit
   // ancestor inside the seed corpus.

@@ -1,5 +1,5 @@
 /**
- * Service Worker push fallback identity (AC-363).
+ * Service Worker push fallback identity (AC-743).
  *
  * A push that arrives with no body, or a body the SW cannot parse, still
  * raises a notification — and that notification names the installation.
@@ -57,7 +57,7 @@ function pushEvent(data: PushMessageData | null): PushEvent {
   } as unknown as PushEvent;
 }
 
-describe('handlePush — AC-363 fallback notification identity', () => {
+describe('handlePush — AC-743 fallback notification identity', () => {
   it('titles a body-less push with the configured app name', () => {
     handlePush(pushEvent(null));
     expect(showNotification).toHaveBeenCalledWith(FOREIGN_APP_NAME, expect.anything());

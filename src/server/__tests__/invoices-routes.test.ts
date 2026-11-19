@@ -138,7 +138,7 @@ async function seedDraftInvoice(
 }
 
 /**
- * Direct-insert an issued invoice — the AC-709 / AC-711 / AC-120
+ * Direct-insert an issued invoice — the AC-709 / AC-711
  * frozen-row arms need this without going through the issuance
  * service (which doesn't exist at step-3). Sets `number` to a value
  * conforming to the DB CHECK regex.

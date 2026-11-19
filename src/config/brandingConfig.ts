@@ -3,9 +3,10 @@
  * Each installation overrides these values for their company.
  *
  * Raw color literals are permitted ONLY in this file (it is on the
- * AC-108 allowlist alongside `tokens.css` and `stateConfig.ts`).
+ * theming-rule allowlist alongside `tokens.css` and `stateConfig.ts`;
+ * ARCHITECTURE.md § Design Decisions).
  *
- * Brand accent contract ([C] in spec §12.2 / §12.5):
+ * Brand accent contract ([C] in spec architecture.md §12.2):
  *   - `accent.light` and `accent.dark` are the brand accent for light and
  *     dark themes respectively — both keys are required, no auto-derivation
  *     (clarity over cleverness, per #101).
@@ -33,8 +34,8 @@
  *     is what ships.
  *
  * Supplying `mark.logo` (issue #189). Its behaviour — resolution,
- * refusal, and both render surfaces — is specified by AC-360 / AC-361 /
- * AC-362 in `docs/spec/verification.md`; what an operator provides:
+ * what makes it usable — is specified in `docs/spec/architecture.md` §12.2
+ * and AC-745, AC-746, AC-747; what an operator provides:
  *   - Drop the file in `public/brand/`, COMMIT IT, and set this key to
  *     its served path, leading slash included (`/brand/logo.png`). The
  *     asset ships the same way `public/favicon.svg` and `public/icons/`
@@ -97,7 +98,7 @@ export interface BrandingConfig {
   /**
    * App-shell chrome, consumed only by the generated PWA manifest and
    * the `theme-color` meta the same build step injects into
-   * `index.html` (AC-363). Deliberately NOT the brand accent: that one
+   * `index.html` (AC-743). Deliberately NOT the brand accent: that one
    * is a light/dark pair under a contrast contract, these are single
    * values on surfaces the browser paints outside the document, where
    * no stylesheet and no theme attribute reaches.

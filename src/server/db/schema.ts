@@ -91,7 +91,7 @@ export const AUDIT_ENTITY_TO_TABLE = {
 } as const satisfies Partial<Record<AuditEntityType, { sqlName: string; drizzleExport: string }>>;
 
 // ---------------------------------------------------------------
-// Users (data-model.md §5.3, §5.7)
+// Users (data-model.md §5.3)
 // ---------------------------------------------------------------
 export const users = pgTable(
   'users',
@@ -111,9 +111,9 @@ export const users = pgTable(
     // and deletion without adding meaningful integrity guarantees here.
     createdBy: uuid('created_by'),
     updatedBy: uuid('updated_by'),
-    // data-model.md §5.7: 'light' | 'dark' | 'system'. DB default matches
+    // data-model.md §5.3: 'light' | 'dark' | 'system'. DB default matches
     // the documented new-user default; the CHECK constraint below is the
-    // defense-in-depth backstop pinned by AC-115.
+    // defense-in-depth backstop.
     themePreference: text('theme_preference').notNull().default('system'),
     // data-model.md §5.3 / §5.12: single self-settable boolean controlling
     // push delivery. Mute is a delivery-time filter — activity-feed

@@ -159,7 +159,7 @@ export function authRoutes(db: Database) {
             properties: {
               themePreference: {
                 type: 'string',
-                // data-model.md §5.7 — the accepted set. Kept in sync with
+                // data-model.md §5.3 — the accepted set. Kept in sync with
                 // the DB CHECK `users_valid_theme_preference`.
                 enum: ['light', 'dark', 'system'],
               },

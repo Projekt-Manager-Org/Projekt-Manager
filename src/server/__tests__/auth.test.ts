@@ -173,6 +173,7 @@ describe('Authentication & Session Management', () => {
       // Sanity: the derivation holds at the config layer.
       expect(AUTH_CONFIG.cookieMaxAgeSec * 1000).toBe(AUTH_CONFIG.sessionDurationMs);
 
+      const loginAt = Date.now();
       const res = await getApp().inject({
         method: 'POST',
         url: '/api/auth/login',
@@ -191,6 +192,25 @@ describe('Authentication & Session Management', () => {
       // derived from the same constant the route reads. Any drift means
       // a second path has appeared that the test can surface.
       expect(maxAge).toBe(AUTH_CONFIG.cookieMaxAgeSec);
+
+      // The server-side expiry is what ends the session (AC-572); the
+      // cookie alone would let a hardcoded expiry slip through.
+      const env = validateEnvRuntime();
+      const client = new pg.Client({ connectionString: env.DATABASE_URL });
+      await client.connect();
+      try {
+        const row = await client.query<{ expires_at: Date }>(
+          `SELECT s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id
+           WHERE u.username = $1 ORDER BY s.expires_at DESC LIMIT 1`,
+          [SEED_USERS.owner.username],
+        );
+        const expiresAt = row.rows[0]!.expires_at.getTime();
+        expect(Math.abs(expiresAt - (loginAt + AUTH_CONFIG.sessionDurationMs))).toBeLessThan(
+          60_000,
+        );
+      } finally {
+        await client.end();
+      }
     });
   });
 
@@ -646,8 +666,7 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-117: Self-update without a valid session is rejected
-  // AC-117 [crit]
+  // AC-574: Self-update without a valid session is rejected
   //
   // A missing or invalid session is an authentication error. A PATCH with no cookie is exactly the
   // "missing session" branch. The error code must be UNAUTHENTICATED
@@ -655,7 +674,7 @@ describe('Authentication & Session Management', () => {
   // that presented a cookie which no longer validates. The distinction
   // drives different client UX (login screen vs. expiry message).
   // ---------------------------------------------------------------
-  describe('AC-117: Self-update without a valid session', () => {
+  describe('AC-574: Self-update without a valid session', () => {
     it('PATCH /api/auth/me without session cookie returns 401 UNAUTHENTICATED', async () => {
       const res = await getApp().inject({
         method: 'PATCH',
@@ -691,8 +710,12 @@ describe('Authentication & Session Management', () => {
     it("PATCH /api/auth/me with themePreference='ultraviolet' returns VALIDATION_ERROR", async () => {
       const token = await login(SEED_USERS.worker1.username, SEED_DEFAULT_PASSWORD);
 
+      const before = (await authGet(token, '/api/auth/me')).json().user;
+
+      // A valid field beside the invalid one: the refusal changes nothing.
       const res = await authPatch(token, '/api/auth/me', {
         themePreference: 'ultraviolet',
+        pushMuted: !before.pushMuted,
       });
 
       // Client error, not server error — validation fires before
@@ -704,6 +727,10 @@ describe('Authentication & Session Management', () => {
       expect(body.code).toBe('VALIDATION_ERROR');
       expect(typeof body.message).toBe('string');
       expect(body.message.length).toBeGreaterThan(0);
+
+      const after = (await authGet(token, '/api/auth/me')).json().user;
+      expect(after.themePreference).toBe(before.themePreference);
+      expect(after.pushMuted).toBe(before.pushMuted);
     });
   });
 });

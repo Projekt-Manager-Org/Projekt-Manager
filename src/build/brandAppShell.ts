@@ -1,6 +1,6 @@
 /**
  * Vite plugin: feed the app shell from the branding configuration
- * (AC-363).
+ * (AC-743).
  *
  * Two surfaces, one source. `index.html` carries placeholders this hook
  * substitutes, and `/manifest.webmanifest` is generated rather than

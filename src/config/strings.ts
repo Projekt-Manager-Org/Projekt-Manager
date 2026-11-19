@@ -427,7 +427,7 @@ export const STRINGS = {
     /**
      * Helper text below the Akzentfarbe input — pins the accepted shape
      * (the server validates against `^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$`).
-     * Examples use the 3-digit form to satisfy the AC-108 palette-leak
+     * Examples use the 3-digit form to satisfy the theme-token palette-leak
      * scan, which only inspects 6-/8-digit hex literals.
      */
     accentColorHelper: 'Hex-Farbe als #RGB oder #RRGGBB, z. B. #f60.',

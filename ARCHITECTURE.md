@@ -189,7 +189,7 @@ What a filename does not tell you. Not a file list.
 
 **`src/server/seed/`** — `business.ts` seeds through `ImportService.import`, exercising the public restore contract. Only `src/test/api-helpers.ts` inserts users directly.
 
-**`src/build/`** — Vite plugins. `brandAppShell.ts` brands `index.html` and generates the PWA manifest (AC-363). Modules here sit in the Vite config's import graph, and Vite's native config loader does no extension resolution — so their imports carry explicit `.ts` extensions.
+**`src/build/`** — Vite plugins. `brandAppShell.ts` brands `index.html` and generates the PWA manifest ([AC-743](docs/spec/verification.md#1520-branding)). Modules here sit in the Vite config's import graph, and Vite's native config loader does no extension resolution — so their imports carry explicit `.ts` extensions.
 
 **`src/ui/`** — `src/ui/detail/ProjectDetailPage.tsx` is the full page; `ProjectDetailPanel.tsx` is the quick-glance overlay on Kanban / Calendar.
 
@@ -212,7 +212,6 @@ Maps spec `[C]` markers (values that vary per deployment) to files. For how oper
 | Backup-freshness thresholds (amber/red days for backup and drill)                   | `src/config/backupThresholds.ts`       |
 | Threshold-monitor policy (storage warn band, hysteresis, sweep, re-notify)          | `src/config/thresholdMonitor.ts`       |
 | Destructive-restore confirmation phrase                                             | `src/config/dataExchangeConfig.ts`     |
-| Theme preference local-storage key                                                  | `src/config/themeStorage.ts`           |
 | Audit retention window (ADR-0021)                                                   | `src/config/auditRetention.ts`         |
 | Audit action → German label map                                                     | `src/config/auditActionLabels.ts`      |
 | Audit list page size                                                                | `src/config/auditPageSize.ts`          |
@@ -486,6 +485,7 @@ Workers hold no `invoice:*` permission, so every invoice route refuses them (403
 - **Project number format**: configurable `[C]`, enforced only for uniqueness.
 - **Site vs billing address**: `projects.siteAddress` (Baustelle) beside `customers.address` (Rechnung) — the standard ERP split; null means "at the billing address". No `addresses` table: no need for several per customer.
 - **Bulk transitions**: not supported.
+- **Theming**: components read semantic color tokens only; a theme is a set of semantic overrides keyed by `data-theme` on the document root. Palette values live in `src/styles/tokens.css`, the branding colors in `src/config/brandingConfig.ts`, state colors in `src/config/stateConfig.ts` — so a theme or a branding change never touches a component. `scripts/check-theme-tokens.sh` (CI `lint`) fails on a 6- or 8-digit hex color elsewhere under `src/`.
 - **One DB role** (`pm`) serves app, backup and migrations. The integrity backstop is external (immutable R2 backups, B2 Compliance lock); a least-privilege split would only stop an attacker holding the app but not the host (#418). The role stays superuser: a non-superuser owner protects no data, and the shell or persistence superuser adds over SQL injection is cleared by the restore an injection requires anyway (#836).
 - **Client-side routing**: declarative mode (`<BrowserRouter>`, no data router). `src/config/routes.ts` is the single route table — URL, access rule, per-role landing; nav and guard derive from it, landing from its `LANDING_ORDER`.
 - **Escape-to-dismiss**: every Esc-closable surface registers on the LIFO `src/hooks/escapeStack.ts`, so only the topmost closes. Modals use `src/ui/common/useDialogA11y.ts`, the rest `src/hooks/useEscapeKey.ts`; no hand-rolled `keydown` listeners.

@@ -9,7 +9,7 @@
  * The semantic accent chain (--color-accent, --color-accent-hover,
  * --color-accent-active-surface, --color-focus-ring) resolves through
  * these at runtime, with fallback defaults declared in tokens.css for
- * the pre-JS frame (see §12.5 of the architecture spec).
+ * the pre-JS frame (ARCHITECTURE.md § Design Decisions, Theming).
  *
  * Call this BEFORE `startThemeRuntime()` in `src/main.tsx`: the theme
  * cascade then resolves against an already-populated brand accent on

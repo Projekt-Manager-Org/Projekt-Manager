@@ -4,7 +4,7 @@
  * The pre-paint script at public/theme-init.js handles the first paint.
  * Once the module graph boots, this runtime keeps the applied scheme in
  * sync with:
- *   - OS color-scheme changes, when preference is 'system' (spec §9.6).
+ *   - OS color-scheme changes, when preference is 'system' (AC-112).
  *   - Cross-tab updates to the preference via the storage event.
  *
  * On startup the runtime also re-applies the cached preference so the

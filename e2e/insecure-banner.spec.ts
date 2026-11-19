@@ -28,7 +28,7 @@ test.describe('Insecure connection banner', () => {
     await expect(page.getByTestId('login-form')).toBeVisible();
 
     await expect(page.getByTestId('insecure-banner')).not.toBeVisible();
-    // AC-363: the shell's identity reaches the browser only through the
+    // AC-743: the shell's identity reaches the browser only through the
     // `brand-app-shell` plugin, so this is where it is observable.
     // index.html ships `%APP_NAME%` / `%SHELL_THEME_COLOR%` rather than
     // literals — a failed injection renders the placeholder and fails

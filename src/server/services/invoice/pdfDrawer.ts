@@ -361,7 +361,7 @@ export async function drawInvoicePdf(
   // runs inside the issuance transaction holding the gapless
   // number-sequence lock, so an unembeddable asset must degrade to "no
   // logo" exactly as an unresolvable one does — otherwise a cosmetic
-  // file stops every issuance in the installation (AC-360, AC-362).
+  // file stops every issuance in the installation (AC-747).
   const image = logo ? await embedLogo(doc, logo) : null;
   if (image) {
     // Fit-inside scaling: take the tighter of the two axis ratios, and

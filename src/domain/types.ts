@@ -76,7 +76,7 @@ export interface User {
   email: string | null;
   active: boolean;
   /**
-   * Server-authoritative color-scheme preference — see data-model.md §5.7.
+   * Server-authoritative color-scheme preference — see data-model.md §5.3.
    * New users default to `'system'` at the DB level (see migration 0013
    * and the CHECK constraint `users_valid_theme_preference`).
    */

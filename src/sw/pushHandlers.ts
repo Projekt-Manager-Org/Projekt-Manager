@@ -31,7 +31,7 @@ interface PushPayload {
  * to a generic notification so the user still sees *something*.
  */
 function parsePayload(event: PushEvent): PushPayload {
-  // AC-363: the notification names the installation, so the name comes
+  // AC-743: the notification names the installation, so the name comes
   // from the branding config rather than a literal that drifts from it.
   const fallback: PushPayload = { title: BRANDING.appName, body: '', url: '/' };
   if (!event.data) return fallback;

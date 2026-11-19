@@ -1,20 +1,12 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Theming state/timing tests — covers AC-111 and AC-112 from the theming
- * block (spec: docs/spec/verification.md §15.20, docs/spec/ui/behavior.md §9.6).
- *
- * AC-111 [vis]: The theme override is resolved and applied to the document
- * root before the first paint of themed content. Reloading a session with
- * a non-default preference shows no flash of the default theme.
- *
- * AC-112 [vis]: When the user's theme preference is `'system'`, operating-
- * system color-scheme changes propagate to the UI without a reload.
+ * Theming state/timing tests — AC-750, AC-741 and AC-112
+ * (docs/spec/verification.md §15.19).
  *
  * Scope notes:
- *   - The other [vis] ACs in §15.19 (token override, dark palette +
- *     WCAG contrast, configured-accent propagation) are NOT covered
- *     here. They are listed as gaps in
+ *   - The dark-surface walk and the configured-accent walk
+ *     are NOT covered here. They are listed as gaps in
  *     docs/testing/verification-exceptions.md and need E2E specs that drive the
  *     scenario so a reviewer can judge the result in Playwright UI
  *     mode (per ADR-0014). Earlier attempts to verify them via
@@ -24,17 +16,18 @@ import { test, expect } from '@playwright/test';
  *     the replacement path.
  *   - Uses the `chromium` project (parallel, read-only). Empty
  *     storageState forces the unauthenticated login view.
- *   - The localStorage key `theme-preference` is pinned as the
- *     contract; if the implementation picks a different one, these
- *     tests fail and the naming gets reconciled in the spec.
+ *   - The localStorage key `theme-preference` mirrors
+ *     src/config/themeStorage.ts; the key itself is internal.
  */
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
 const THEME_PREFERENCE_KEY = 'theme-preference';
 
-// AC-111
-test('AC-111 [vis]: theme override applied before first paint (no flash)', async ({ page }) => {
+// AC-750, AC-741
+test('AC-750, AC-741: the theme preference this device last applied is applied before first paint', async ({
+  page,
+}) => {
   // Seed preference = 'dark' via addInitScript, which runs BEFORE the page's
   // own scripts — this is the earliest hook available. The pre-paint theme
   // script (public/theme-init.js, referenced from index.html) must already
@@ -90,21 +83,18 @@ test('AC-111 [vis]: theme override applied before first paint (no flash)', async
   ).toBe('dark');
 });
 
-// AC-112
-test('AC-112 [vis]: system mode tracks OS color-scheme change without reload', async ({ page }) => {
+// AC-741, AC-112
+test('AC-741, AC-112: with no cached preference, the theme tracks an OS color-scheme change', async ({
+  page,
+}) => {
+  // No cached preference: the device falls back to `system` (AC-741).
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.addInitScript(
-    ({ key }) => {
-      window.localStorage.setItem(key, 'system');
-    },
-    { key: THEME_PREFERENCE_KEY },
-  );
 
   await page.goto('/');
   await expect(page.getByTestId('login-form')).toBeVisible();
 
   // Track navigations — an OS scheme change MUST NOT cause a reload
-  // (spec §9.6: live subscription, not refresh).
+  // (AC-112: live subscription, not refresh).
   let navigations = 0;
   const onNav = () => {
     navigations += 1;

@@ -143,5 +143,5 @@ export const WORKFLOW_ORDER: WorkflowState[] = STATE_CONFIGS.sort((a, b) => a.or
 // State-domain fallback color for unknown workflow states. Lives here with
 // the state palette (not in tokens.css) so the state-color domain stays
 // self-contained; this file is the documented allowlist exception for
-// palette literals (AC-108).
+// palette literals (ARCHITECTURE.md § Design Decisions, Theming).
 export const STATE_FALLBACK_COLOR = '#94a3b8';

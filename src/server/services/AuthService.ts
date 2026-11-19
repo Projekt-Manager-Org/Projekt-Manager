@@ -79,7 +79,7 @@ export class AuthService {
         displayName: user.displayName,
         roles: user.roles,
         email: user.email,
-        // data-model.md §5.7 — login response exposes
+        // data-model.md §5.3 — login response exposes
         // the user's stored theme preference so the client can render
         // the correct scheme on first paint without an extra round-trip.
         // Narrow the raw text column to the domain literal union; the

@@ -1,11 +1,11 @@
 /**
- * Data integrity tests — AC-94 through AC-99, AC-115 (CHECK half).
+ * Data integrity tests — AC-94, AC-96, AC-97, AC-99 and the users.theme_preference CHECK.
  *
  * Verifies defense-in-depth constraints identified by the data integrity
  * audit: optimistic locking on transitions, soft-delete immutability,
  * DB-level CHECK constraints, FK integrity on audit columns, and atomic
  * project creation. Also pins the users.theme_preference CHECK constraint
- * (AC-115 defense in depth — see data-model.md §5.3, §5.7).
+ * (defense in depth for the data-model.md §5.3 value set).
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -497,8 +497,7 @@ describe('AC-99: Atomic project creation', () => {
 });
 
 // ---------------------------------------------------------------
-// §15.21 AC-115: users.theme_preference CHECK constraint
-// AC-115
+// users.theme_preference CHECK constraint
 //
 // Defense in depth — the API validator already rejects an invalid
 // themePreference (covered by AC-118). But the DB is the last line:
@@ -507,7 +506,7 @@ describe('AC-99: Atomic project creation', () => {
 // outside the allowed set. This test pins the CHECK constraint
 // presence the same way AC-96 pins projects_valid_status.
 // ---------------------------------------------------------------
-describe('AC-115: users.theme_preference CHECK constraint', () => {
+describe('users.theme_preference CHECK constraint', () => {
   let db: Database;
   let pool: pg.Pool;
 
@@ -529,7 +528,7 @@ describe('AC-115: users.theme_preference CHECK constraint', () => {
     await pool.end();
   });
 
-  it("AC-115: rejects direct INSERT of a user with themePreference='ultraviolet'", async () => {
+  it("rejects direct INSERT of a user with themePreference='ultraviolet'", async () => {
     // Raw SQL so we observe the actual PG error object (the drizzle
     // `insert()` helper would still hit the constraint, but going
     // through pool.query keeps the test symmetrical with AC-96/AC-97
@@ -556,11 +555,11 @@ describe('AC-115: users.theme_preference CHECK constraint', () => {
     // the CHECK constraint, not from a NOT NULL / type error / trigger.
     expect(pgError!.code).toBe('23514');
     // The constraint name is the contract that the migration must
-    // produce. Keep the expected name aligned with data-model.md §5.7.
+    // produce. Keep the expected name aligned with data-model.md §5.3.
     expect(pgError!.constraint).toBe('users_valid_theme_preference');
   });
 
-  it('AC-115: accepts all three allowed theme_preference values', async () => {
+  it('accepts all three allowed theme_preference values', async () => {
     const validValues = ['light', 'dark', 'system'];
     for (let i = 0; i < validValues.length; i++) {
       await pool.query(
