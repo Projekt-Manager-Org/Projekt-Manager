@@ -156,6 +156,12 @@ test.describe('AC-121: permission-based UI visibility', () => {
     test.describe(role, () => {
       test.use({ storageState: STORAGE_STATES[role] });
       test('action controls match ROLE_PERMISSIONS', async ({ page }) => {
+        // The email intake entry also needs extraction configured (AC-734);
+        // pin it so this test sees permission alone, whatever the server's
+        // environment.
+        await page.route('**/api/extract/status', (route) =>
+          route.fulfill({ json: { configured: true } }),
+        );
         await page.goto('/');
 
         // -- Header navigation and extract button --------------------------
@@ -399,5 +405,21 @@ test.describe('AC-149: the notification rules view needs notifications:manage', 
     await expect(page.getByTestId('not-permitted-view')).toBeVisible();
     await expect(page).toHaveURL(/\/benachrichtigungen$/);
     await expect(page.getByTestId('notification-rules-view')).toHaveCount(0);
+  });
+});
+
+test.describe('AC-734: email intake entry while extraction is not configured', () => {
+  test.use({ storageState: STORAGE_STATES.office });
+
+  test('a customer:write holder sees no email intake entry', async ({ page }) => {
+    await page.route('**/api/extract/status', (route) =>
+      route.fulfill({ json: { configured: false } }),
+    );
+    const status = page.waitForResponse('**/api/extract/status');
+    await page.goto('/');
+    await status;
+    await page.getByTestId('view-toggle-kanban').waitFor();
+
+    await expect(page.getByTestId('extract-button')).toHaveCount(0);
   });
 });

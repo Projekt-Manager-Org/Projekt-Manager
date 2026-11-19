@@ -6,6 +6,7 @@
  */
 
 import { getEnv } from '../config/env.js';
+import { featureStatus } from '../config/features.js';
 import { STRINGS } from '../../config/strings.js';
 import { validationError, serverError } from '../errors.js';
 import type { ServiceLogger } from './Logger.js';
@@ -77,12 +78,15 @@ export class ExtractionService {
   async extract(emailText: string, log: ServiceLogger): Promise<ExtractionResult> {
     const env = getEnv();
 
-    if (!env.OPENROUTER_API_KEY) {
-      throw validationError(STRINGS.extraction.notConfigured);
-    }
-
     if (!emailText.trim()) {
       throw validationError(STRINGS.extraction.emptyInput);
+    }
+
+    // Missing configuration is the operator's fault, not the caller's
+    // (AC-738): a server error that names nothing; the log says why.
+    if (!featureStatus(env, 'llm').enabled) {
+      log.error({}, 'extraction_not_configured');
+      throw serverError();
     }
 
     try {

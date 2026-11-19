@@ -336,7 +336,4 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-725 | gap     | needs a test of the incomplete-profile banner and its link                                               |
 | AC-730 | gap     | needs a test that a document failing to load mid-export yields no archive                                |
 | AC-731 | gap     | needs a test saving a draft form without a priced, described line                                        |
-| AC-734 | gap     | needs the entry hidden while extraction is not configured (#1016), and an e2e                            |
 | AC-735 | gap     | needs a test of each save path: new customer, selected customer, no title                                |
-| AC-738 | gap     | needs the not-configured refusal to name no configuration (#1016), and its test                          |
-| AC-739 | gap     | needs a route test that an extraction leaves no customer or project row                                  |
