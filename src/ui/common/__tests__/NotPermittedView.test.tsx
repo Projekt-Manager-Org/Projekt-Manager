@@ -88,6 +88,7 @@ vi.mock('@/api/client', async (importActual) => {
     },
     extractApi: {
       extract: vi.fn(),
+      status: vi.fn().mockResolvedValue({ ok: true, data: { configured: false } }),
     },
   };
 });
