@@ -267,6 +267,27 @@ describe('EmailExtractModal — project number', () => {
     );
   });
 
+  it('AC-478: shows no verdict when the check on opening fails', async () => {
+    projectListMock.mockResolvedValue({
+      ok: false,
+      error: { code: 'SERVER_ERROR', message: 'Fehlgeschlagen' },
+      category: 'server_error',
+      sessionExpired: false,
+    });
+
+    const input = await reachReview();
+
+    await waitFor(() =>
+      expect(projectListMock).toHaveBeenCalledWith(
+        expect.objectContaining({ search: input.placeholder }),
+      ),
+    );
+    // Let the failed check settle before asserting the absence.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByTestId('project-number-available')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('project-number-taken')).not.toBeInTheDocument();
+  });
+
   it('AC-478: shows a typed number as taken when the user leaves the number field', async () => {
     const input = await reachReview();
     expect(await screen.findByTestId('project-number-available')).toBeInTheDocument();

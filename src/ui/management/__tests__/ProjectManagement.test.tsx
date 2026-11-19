@@ -175,6 +175,29 @@ describe('ProjectManagement — number preflight', () => {
     expect(screen.queryByTestId('project-number-available')).not.toBeInTheDocument();
   });
 
+  it('AC-478: shows no verdict on blur when the check fails', async () => {
+    renderWithRouter(<ProjectManagement />);
+    await userEvent.click(screen.getByTestId('project-create-button'));
+    projectListMock.mockResolvedValue({
+      ok: false,
+      error: { code: 'SERVER_ERROR', message: 'Fehlgeschlagen' },
+      category: 'server_error',
+      sessionExpired: false,
+    });
+
+    const numberInput = screen.getByTestId('project-number-input');
+    await userEvent.type(numberInput, 'P-1000');
+    fireEvent.blur(numberInput);
+
+    await waitFor(() =>
+      expect(projectListMock).toHaveBeenCalledWith(expect.objectContaining({ search: 'P-1000' })),
+    );
+    // Let the failed check settle before asserting the absence.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByTestId('project-number-available')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('project-number-taken')).not.toBeInTheDocument();
+  });
+
   it('shows "available" on blur when the number is free', async () => {
     renderWithRouter(<ProjectManagement />);
 

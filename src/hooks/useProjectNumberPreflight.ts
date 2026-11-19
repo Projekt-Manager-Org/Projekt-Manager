@@ -31,7 +31,9 @@ export function useProjectNumberPreflight() {
       const results = await searchProjects(trimmed);
       // A later check or reset wins.
       if (myRequest !== requestRef.current) return;
-      setStatus(results.some((p) => p.number === trimmed) ? 'taken' : 'available');
+      // A failed lookup proves nothing: no verdict (AC-478).
+      if (results === null) setStatus('idle');
+      else setStatus(results.some((p) => p.number === trimmed) ? 'taken' : 'available');
     },
     [searchProjects],
   );
