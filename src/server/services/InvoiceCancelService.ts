@@ -46,6 +46,7 @@ import { readSingleton, toCompanyProfileResponse } from './CompanyProfileService
 import { InvoiceRenderer } from './InvoiceRenderer.js';
 import { notFound, conflict, invoiceNotIssued, invoiceAlreadyCancelled } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
+import { calendarDateDE } from '../../domain/dateFormat.js';
 import { emitInvoiceChanged } from '../sse/emitters.js';
 import { InvoiceBinaryService } from './InvoiceBinaryService.js';
 
@@ -212,10 +213,12 @@ export class InvoiceCancelService {
     userId: string,
     now: Date,
   ): Promise<CancellationWrites> {
-    // 1. Allocate from `(year, 'storno')`. Year derives from the
-    //    clock seam so a backdated Storno keeps its number's year
-    //    aligned with its `issueDate`.
-    const year = now.getUTCFullYear();
+    // 1. Allocate from `(year, 'storno')`. The Storno is issued on the
+    //    calendar date in Germany at `now` (the clock seam); the year
+    //    comes from it, so `ST-YYYY-NNNN` agrees with `issueDate`
+    //    (AC-690).
+    const issueDate = calendarDateDE(now);
+    const year = Number(issueDate.slice(0, 4));
     const { number: stornoNumber } = await allocateInvoiceNumber(tx, year, 'storno');
 
     // 2. Build the Storno's snapshot fields. Same rule as the issue
@@ -251,7 +254,7 @@ export class InvoiceCancelService {
       taxMode: before.taxMode as TaxMode,
       profile: before.profile as InvoiceProfile,
       totals: stornoTotals,
-      issueDate: now.toISOString().slice(0, 10),
+      issueDate,
       performanceDate: before.performanceDate
         ? before.performanceDate.toISOString().slice(0, 10)
         : null,
@@ -285,7 +288,7 @@ export class InvoiceCancelService {
       id: stornoId,
       projectId: before.projectId,
       number: stornoNumber,
-      issueDate: now,
+      issueDate,
       performanceDate: before.performanceDate,
       taxMode: before.taxMode as TaxMode,
       profile: before.profile as InvoiceProfile,

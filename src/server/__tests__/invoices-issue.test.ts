@@ -1082,7 +1082,7 @@ describe('Invoice issuance — concurrent race on two real PG connections (S5 / 
 // Implementation strategy:
 //   - Use a FUTURE year that is guaranteed to have no row in
 //     `invoice_sequence` yet — avoids racing the seed / sibling tests
-//     for the current year. Stub `Date` so `new Date().getUTCFullYear()`
+//     for the current year. Stub `Date` so the issue date's year
 //     in `runIssueInsideTx` resolves to that year. After the test,
 //     restore Date and clean up the row we inserted.
 //   - Mirror S5's two-pool service-direct pattern; the route path is
@@ -1183,7 +1183,7 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-694)
   it('AC-694 — concurrent first-of-year issuance does not leak PG 23505 to the caller', async () => {
     // Two fresh `rechnung_faellig` projects, two drafts, two services
     // on independent pools. Stub Date so the issuance code's
-    // `new Date().getUTCFullYear()` resolves to FUTURE_YEAR for the
+    // issue-date year resolves to FUTURE_YEAR for the
     // duration of the race — that's the year with no row in
     // `invoice_sequence`, so both racers' UPDATE will miss and they'll
     // both attempt the INSERT, exercising the first-of-year race.
@@ -1196,8 +1196,8 @@ describe('Invoice issuance — concurrent first-of-year allocation (M1 / AC-694)
     const serviceB = buildIssueServiceFor(connB.db);
 
     // Stub `Date` so `new Date()` returns a FUTURE_YEAR instant. The
-    // issuance code reads year from `new Date().getUTCFullYear()` in
-    // `runIssueInsideTx` step 4. We use vi's fake-Date facility so the
+    // issuance code takes the year from the issue date in Germany at
+    // `new Date()` in `runIssueInsideTx` step 4. We use vi's fake-Date facility so the
     // stub is scoped to the test arm and `vi.useRealTimers()` in the
     // `finally` restores normal Date behavior for sibling tests.
     const futureInstant = new Date(`${FUTURE_YEAR}-06-15T12:00:00.000Z`);

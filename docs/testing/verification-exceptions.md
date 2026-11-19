@@ -324,7 +324,6 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
 | AC-541 | gap     | needs a test failing the delete part-way                                                                 |
 | AC-544 | retired | —                                                                                                        |
-| AC-690 | gap     | #1000: needs the issue date taken in Europe/Berlin and a test at the day and year boundary               |
 | AC-707 | gap     | needs a test confirming a Storno with an empty reason                                                    |
 | AC-712 | gap     | needs a test of the list order with drafts and issued invoices                                           |
 | AC-714 | gap     | needs a test of the list search over number and recipient name                                           |

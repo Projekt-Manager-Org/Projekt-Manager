@@ -428,8 +428,8 @@ export async function allocateNextSequenceValue(
  * `RE-YYYY-NNNN` / `ST-YYYY-NNNN` string.
  *
  * The shape is enforced by the `invoices_number_format` CHECK constraint
- * on INSERT. No application-side re-check: `year` is the caller's
- * `getUTCFullYear()` and `value` a sequence integer, so nothing this
+ * on INSERT. No application-side re-check: `year` is the year of the
+ * caller's issue date and `value` a sequence integer, so nothing this
  * function can produce fails the constraint short of a corrupt
  * `invoice_sequence` row — which the constraint catches anyway.
  */
@@ -562,7 +562,10 @@ export async function deleteInvoiceDraft(tx: MutatingDatabase, id: string): Prom
  */
 export interface ApplyIssuanceUpdateFields {
   number: string;
-  issueDate: Date;
+  /** The `YYYY-MM-DD` calendar date it is issued on. */
+  issueDate: string;
+  /** The instant of issuance. */
+  issuedAt: Date;
   issuer: InvoiceIssuerSnapshot;
   recipient: InvoiceRecipientSnapshot;
   lines: InvoiceLine[];
@@ -591,7 +594,7 @@ export async function applyIssuanceUpdate(
     .set({
       status: 'issued',
       number: fields.number,
-      issueDate: fields.issueDate,
+      issueDate: sql`${fields.issueDate}::date`,
       issuer: fields.issuer,
       recipient: fields.recipient,
       lines: fields.lines,
@@ -599,7 +602,7 @@ export async function applyIssuanceUpdate(
       taxMode: fields.taxMode,
       profile: fields.profile,
       renderedPdfBinaryDescriptorId: fields.renderedPdfBinaryDescriptorId,
-      updatedAt: fields.issueDate,
+      updatedAt: fields.issuedAt,
       updatedBy: fields.updatedBy,
     })
     .where(eq(invoices.id, id))
@@ -620,7 +623,8 @@ export interface InsertStornoInvoiceFields {
   id: string;
   projectId: string;
   number: string;
-  issueDate: Date;
+  /** The `YYYY-MM-DD` calendar date it is issued on. */
+  issueDate: string;
   performanceDate: Date | null;
   taxMode: typeof invoices.$inferInsert.taxMode;
   profile: typeof invoices.$inferInsert.profile;
@@ -651,7 +655,7 @@ export async function insertStornoInvoice(
       projectId: fields.projectId,
       status: 'issued',
       number: fields.number,
-      issueDate: fields.issueDate,
+      issueDate: sql`${fields.issueDate}::date`,
       performanceDate: fields.performanceDate,
       taxMode: fields.taxMode,
       profile: fields.profile,

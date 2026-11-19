@@ -28,6 +28,14 @@ export function formatDateOnly(d: Date): string {
 }
 
 /**
+ * The `YYYY-MM-DD` calendar date in Germany (Berlin) at `instant` —
+ * the date an invoice is issued on, whatever the host's timezone.
+ */
+export function calendarDateDE(instant: Date): string {
+  return formatInTimeZone(instant, DE_TIMEZONE, 'yyyy-MM-dd');
+}
+
+/**
  * Format an ISO timestamp to its German DD.MM.YYYY date in Berlin.
  * Calendar dates take `formatCalendarDateDE`.
  */

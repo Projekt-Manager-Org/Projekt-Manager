@@ -104,6 +104,30 @@ describe('AC-717: POST /api/invoices/export', () => {
     await stopApp();
   });
 
+  // The archive is named with the export date in Germany (data-model.md
+  // §5.15, Export archive): at 23:30 UTC, Berlin is already a day ahead.
+  // A year without invoices keeps the faked clock away from storage,
+  // whose client would carry a learned clock offset into later tests.
+  it('names the archive with the export date in Germany', async () => {
+    const utcToday = new Date();
+    utcToday.setUTCHours(23, 30, 0, 0);
+    const berlinDate = new Date(utcToday.getTime() + 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+
+    vi.useFakeTimers({ now: utcToday, toFake: ['Date'] });
+    try {
+      const token = await login(SEED_USERS.owner.username, SEED_DEFAULT_PASSWORD);
+      const res = await authPost(token, '/api/invoices/export', { filter: { year: 2000 } });
+      expect(res.statusCode).toBe(200);
+      expect(String(res.headers['content-disposition'])).toContain(
+        `Rechnungen_2000_${berlinDate}.zip`,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // -------------------------------------------------------------------
   // Happy path — filter mode (no filter) returns every non-draft row.
   // -------------------------------------------------------------------
