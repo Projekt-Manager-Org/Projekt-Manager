@@ -739,7 +739,7 @@ jobs:
       postgres:
         # docker/db/Dockerfile's base: Renovate bumps both in one PR, so an
         # auto-merged `db` update is tested here first (#637).
-        image: postgres:17.12-alpine@sha256:005c5c37db96c1e6652a79ea31f9886402fba81ac95dc2db897739121dd7f8f2
+        image: postgres:17.12-alpine@sha256:e80acae3f1109e8e4533618b594918936f2858c63afc7204c4773148a673add8
         env:
           # POSTGRES_DB defaults to POSTGRES_USER, so omitting it yields
           # a `pm` database. Vitest integration tests don't use it
