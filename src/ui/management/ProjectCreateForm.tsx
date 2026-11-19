@@ -7,12 +7,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { STRINGS } from '@/config/strings';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { useProjectNumberPreflight } from '@/hooks/useProjectNumberPreflight';
 import { useProjectManagementStore } from '@/state/projectManagementStore';
 import { MenuBackdrop } from '../common/MenuBackdrop';
+import { ProjectNumberVerdict } from './ProjectNumberVerdict';
 import { SiteAddressGroup, type SiteAddressGroupHandle } from './SiteAddressGroup';
 import styles from './Management.module.css';
-
-type NumberPreflightStatus = 'idle' | 'checking' | 'available' | 'taken';
 
 interface Props {
   onClose: () => void;
@@ -20,7 +20,6 @@ interface Props {
 
 export function ProjectCreateForm({ onClose }: Props) {
   const customers = useProjectManagementStore((s) => s.customers);
-  const searchProjects = useProjectManagementStore((s) => s.searchProjects);
   const createProject = useProjectManagementStore((s) => s.createProject);
   const error = useProjectManagementStore((s) => s.error);
 
@@ -41,27 +40,7 @@ export function ProjectCreateForm({ onClose }: Props) {
   // group owns its draft and the parent never reaches into its internals.
   const siteAddressRef = useRef<SiteAddressGroupHandle | null>(null);
 
-  const [numberStatus, setNumberStatus] = useState<NumberPreflightStatus>('idle');
-  // Monotonic request id so two overlapping blurs cannot commit out of
-  // order — the response that completes second may carry the older value.
-  const numberPreflightReqRef = useRef(0);
-
-  const handleNumberBlur = async () => {
-    const trimmed = number.trim();
-    if (!trimmed) {
-      numberPreflightReqRef.current++;
-      setNumberStatus('idle');
-      return;
-    }
-    const myReq = ++numberPreflightReqRef.current;
-    setNumberStatus('checking');
-    const results = await searchProjects(trimmed);
-    // Only commit if this is still the latest request — a later blur
-    // (or a change-driven reset) must win.
-    if (myReq !== numberPreflightReqRef.current) return;
-    const taken = results.some((p) => p.number === trimmed);
-    setNumberStatus(taken ? 'taken' : 'available');
-  };
+  const numberPreflight = useProjectNumberPreflight();
 
   const handleCreate = async () => {
     if (submitting || !number.trim() || !title.trim() || !customerId) return;
@@ -120,31 +99,15 @@ export function ProjectCreateForm({ onClose }: Props) {
             value={number}
             onChange={(e) => {
               setNumber(e.target.value);
-              // Clear the preflight verdict on edit — re-runs on the
-              // next blur. Bump the request id so a still-in-flight
-              // fetch from the prior value cannot commit its result.
-              numberPreflightReqRef.current++;
-              if (numberStatus !== 'idle') setNumberStatus('idle');
+              // The verdict re-runs on the next blur (AC-479).
+              numberPreflight.reset();
             }}
-            onBlur={() => void handleNumberBlur()}
+            onBlur={() => void numberPreflight.check(number)}
             disabled={submitting}
             data-testid="project-number-input"
             autoFocus
           />
-          {numberStatus === 'taken' && (
-            <div className={styles.fieldHintError} data-testid="project-number-taken" role="status">
-              {STRINGS.projects.numberTaken(number.trim())}
-            </div>
-          )}
-          {numberStatus === 'available' && (
-            <div
-              className={styles.fieldHintOk}
-              data-testid="project-number-available"
-              role="status"
-            >
-              {STRINGS.projects.numberAvailable}
-            </div>
-          )}
+          <ProjectNumberVerdict status={numberPreflight.status} number={number.trim()} />
         </div>
 
         <div className={styles.formGroup}>
