@@ -187,7 +187,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
 
-    // Spec §9.6: after the authenticated session is established, the
+    // AC-120: after the authenticated session is established, the
     // client replaces the local cache with the server value and re-applies
     // the theme. Login is one of the two session-establishment paths
     // (checkSession is the other) so the same hydration rule applies.
@@ -239,7 +239,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // pre-envelope version kept.
     const user = result.data?.user;
     if (user && typeof user.username === 'string' && typeof user.displayName === 'string') {
-      // Spec §9.6 / AC-120: the server value is authoritative. On
+      // AC-120: the server value is authoritative. On
       // hydration, overwrite any stale localStorage cache and re-apply
       // the scheme so a cache mismatch does not survive the round-trip.
       if (
@@ -273,9 +273,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   /**
    * Self-update the user's color-scheme preference.
    *
-   * Spec §9.6: applied optimistically, reconciled with the server response,
+   * Applied optimistically, reconciled with the server response,
    * reverted on failure. The UI must flip before the round-trip completes
-   * (AC-119). The optimistic leg updates:
+   * (AC-740). The optimistic leg updates:
    *   1. The in-memory `authUser.themePreference`,
    *   2. The localStorage cache (so a reload without a new session
    *      hydration still paints the chosen scheme via the pre-paint

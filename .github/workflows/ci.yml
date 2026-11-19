@@ -556,10 +556,9 @@ jobs:
       - name: Format check
         run: npm run format:check
 
-      # Enforce AC-108 — palette and semantic tokens live in a single source
-      # (src/styles/tokens.css); state colors from stateConfig.ts are the one
-      # documented exception. Runs before type-check so a token leak fails
-      # fast and is not hidden behind a tsc error elsewhere.
+      # Enforce the theming rule (ARCHITECTURE.md § Design Decisions). Runs
+      # before type-check so a token leak fails fast and is not hidden behind
+      # a tsc error elsewhere.
       - name: Check theme token hygiene
         run: npm run check:tokens
 

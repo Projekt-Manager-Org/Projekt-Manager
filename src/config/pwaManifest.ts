@@ -1,5 +1,5 @@
 /**
- * PWA manifest source (AC-363).
+ * PWA manifest source (AC-743, AC-744).
  *
  * Built here rather than checked in at `public/manifest.webmanifest`, so
  * the installation's name and shell colors have one definition site —

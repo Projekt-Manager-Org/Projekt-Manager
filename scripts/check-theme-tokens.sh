@@ -1,34 +1,24 @@
 #!/usr/bin/env bash
 #
-# Lint step: enforce the design-token single-source rule (AC-108) and the
-# brand-accent boundary (AC-113).
-#
-# AC-108 [infra]: Palette and semantic color tokens are defined in a single
-# source consumed by all components. No component or stylesheet references
-# a palette color outside that source. State colors, applied from the state
-# configuration array, are the single documented exception.
-#
-# AC-113 [infra]: The brand accent is supplied by the branding configuration
-# with explicit light and dark values. No component or stylesheet hardcodes
-# the accent. The accent primitives (formerly --color-blue-*) no longer
-# exist in tokens.css — the accent lives in brandingConfig.ts and reaches
-# CSS via the --brand-accent-light / --brand-accent-dark custom properties.
+# Lint step: enforce the theming rule (ARCHITECTURE.md § Design Decisions,
+# "Theming"). Components read semantic color tokens only, so a theme or a
+# branding change never touches a component: a hardcoded #ffffff in a
+# stylesheet ignores the dark theme, a hardcoded accent ignores the
+# configured brand accent (spec AC-114, AC-742).
 #
 # Two checks run in sequence:
 #
-#   Check 1 (AC-108) — palette hex scan
+#   Check 1 — palette hex scan
 #     Scans src/**/*.{css,module.css,ts,tsx} for 6- and 8-digit hex color
 #     literals (#RRGGBB, #RRGGBBAA) and fails if any are found outside the
-#     allowlist. Palette leaks outside the token source defeat theming —
-#     a dark mode override has no effect on a hardcoded #ffffff in a
-#     stylesheet. The 3- and 4-digit shorthands are intentionally NOT
+#     allowlist. The 3- and 4-digit shorthands are intentionally NOT
 #     scanned: they collide with `(issue #NNN)` references and the
 #     codebase's tokens use 6-char hex consistently — so the loss of
 #     coverage is theoretical, while the false-positive cost is real.
 #
-#   Check 2 (AC-113) — no --color-blue-* primitives in tokens.css
+#   Check 2 — no --color-blue-* primitives in tokens.css
 #     Greps src/styles/tokens.css for definitions of the retired blue
-#     primitives. Fails if any remain. After #101 lands, the accent value
+#     primitives. Fails if any remain. The accent value
 #     lives only in src/config/brandingConfig.ts; tokens.css must reference
 #     --brand-accent-light / --brand-accent-dark, not a local blue palette.
 #     The check is scoped to tokens.css by design — comments elsewhere in
@@ -99,7 +89,7 @@ HEX_PATTERN='#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b'
 #     .ignore, .rgignore). Defense in depth — a local override of any of
 #     these would otherwise silently shrink the scan footprint.
 #
-#   * `--glob '!...'` excludes the AC-108 allowlist files from the scan.
+#   * `--glob '!...'` excludes the allowlist files from the scan.
 rg_args=(
   --no-config
   --no-ignore
@@ -168,7 +158,7 @@ filtered=$(printf '%s\n' "$raw_matches" \
 # --- Report (Check 1) -----------------------------------------------------
 echo -e "${GREEN}=== Theme token hygiene check ===${NC}"
 echo ""
-echo -e "${GREEN}--- Check 1/2 (AC-108): palette hex scan ---${NC}"
+echo -e "${GREEN}--- Check 1/2: palette hex scan ---${NC}"
 echo "Scope: src/**/*.{css,module.css,ts,tsx}"
 echo "Allowlist:"
 for entry in "${ALLOWLIST[@]}"; do
@@ -202,7 +192,7 @@ else
   echo ""
   echo -e "${YELLOW}Summary: ${leak_count} leak(s) across ${leak_files} file(s).${NC}"
   echo ""
-  echo "AC-108 requires palette colors to live only in:"
+  echo "The theming rule requires palette colors to live only in:"
   for entry in "${ALLOWLIST[@]}"; do
     echo "  - ${entry}"
   done
@@ -211,8 +201,8 @@ else
   echo "     (e.g. var(--color-surface-base)) defined in src/styles/tokens.css."
 fi
 
-# --- Check 2 (AC-113): blue primitives must not exist in tokens.css -------
-# After #101, the accent value lives in src/config/brandingConfig.ts. The
+# --- Check 2: blue primitives must not exist in tokens.css -------
+# The accent value lives in src/config/brandingConfig.ts. The
 # tokens file must reference --brand-accent-light / --brand-accent-dark
 # instead of defining its own blue palette. We grep for *definitions*
 # (lines like `  --color-blue-500: #...;`) in tokens.css only. Comments or
@@ -220,7 +210,7 @@ fi
 # contract is that these primitive names no longer exist as CSS custom
 # properties in the token source.
 echo ""
-echo -e "${GREEN}--- Check 2/2 (AC-113): no blue primitives in tokens.css ---${NC}"
+echo -e "${GREEN}--- Check 2/2: no blue primitives in tokens.css ---${NC}"
 echo "Scope: src/styles/tokens.css"
 echo ""
 
@@ -231,7 +221,7 @@ TOKENS_FILE="src/styles/tokens.css"
 set +o pipefail
 blue_defs=$(grep -nE '^\s*--color-blue-[0-9]+\s*:' "$TOKENS_FILE" || true)
 # References (lines using the retired token via var(--color-blue-*)) are
-# also a violation once #101 lands — the accent chain must flow through
+# also a violation — the accent chain must flow through
 # --brand-accent-*, not legacy blue primitives.
 blue_refs=$(grep -nE 'var\(\s*--color-blue-[0-9]+\s*\)' "$TOKENS_FILE" || true)
 set -o pipefail
@@ -268,7 +258,7 @@ else
     '
   fi
   echo ""
-  echo "AC-113 requires the brand accent to live in src/config/brandingConfig.ts"
+  echo "The theming rule requires the brand accent to live in src/config/brandingConfig.ts"
   echo "as explicit light and dark values, consumed via --brand-accent-light /"
   echo "--brand-accent-dark. Remove the --color-blue-* primitives from"
   echo "tokens.css and point --color-accent / --color-accent-hover /"

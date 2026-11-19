@@ -45,7 +45,8 @@ The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `A
 ```
 
 - **Insecure banner**: non-dismissible, visually prominent warning shown when the page loaded over plain HTTP on a non-localhost host. Covers both login and authenticated layout. See [AC-45](../verification.md#156-deployment) and [ADR-0013](../../adr/0013-http-only-evaluation-mode.md).
-- **Header**: app name **[C]**, navigation ([§8.7](#87-navigation)).
+- **Header**: brand mark, app name **[C]**, navigation ([§8.7](#87-navigation)).
+- **Brand mark** (decorative): the configured logo **[C]**, or the generic mark ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)).
 - **Backup badge** (owners only, [AC-612](../verification.md#1522-backup-and-recovery), [AC-613](../verification.md#1522-backup-and-recovery)): one icon in the header whose colour shows the state; hovering or tapping it shows the label, followed by the last backup run's time (`lastBackupAt`, `HH:mm EEE dd.MM.yyyy`) when there is one. The first row whose condition holds wins; fields are the backup status ([data-model.md §5.9](../data-model.md#59-backup-status)), thresholds are **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)):
 
   | Condition                                                                     | Colour | Label                                        |
@@ -65,7 +66,7 @@ The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `A
 - **User indicator**: displays the authenticated user's `displayName`. Clicking reveals a dropdown — see [§8.7.2](#872-user-menu).
 - **Mutation error banner**: appears when the most recent mutation failed. German message from the API error category (see [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior)), dismiss button. Cleared on next successful mutation or by dismissal.
 - **Default view**: Meine Projekte for worker; Kanban for owner and office; Rechnungen for bookkeeper (see [§8.7.1](#871-views)).
-- **Footer** (desktop only): brand text driven by branding config **[C]**, and the storage badge ([AC-448](../verification.md#1529-storage-usage), [AC-449](../verification.md#1529-storage-usage)).
+- **Footer** (desktop only): footer brand line **[C]**, and the storage badge ([AC-448](../verification.md#1529-storage-usage), [AC-449](../verification.md#1529-storage-usage)).
 - **Activity dock**: a collapsible panel directly above the Footer, for callers holding `audit:read` ([AC-638](../verification.md#1532-activity-dock)); absent on phones and on the Aktivität view. Header button `Aktivität (Alt+A)` ([AC-640](../verification.md#1532-activity-dock)). It lists audit entries ([AC-637](../verification.md#1532-activity-dock)) one per line — `Aktor · Projekt · Beschreibung`, the time at the right, as in the activity feed ([workflow-views.md §8.4.1](workflow-views.md#841-activity-feed)) — with no `Details anzeigen`; then `Ältere anzeigen`.
 
 ---
@@ -125,7 +126,7 @@ Views that the user lacks permission to access are hidden from navigation. Serve
 The user menu (accessible from the header area) provides:
 
 - Display of the authenticated user's `displayName`
-- "Darstellung" — a 3-way theme selector with options "Hell" (light), "Dunkel" (dark), "Systemstandard" (system). Selecting an option applies immediately and persists server-side (see [behavior.md §9.6](behavior.md#96-theme-handling)).
+- "Darstellung" — the theme selector: "Hell" (`light`), "Dunkel" (`dark`), "Systemstandard" (`system`) ([verification.md §15.19](../verification.md#1519-theming)).
 - "Push-Benachrichtigungen" — for this device ([verification.md §15.24](../verification.md#1524-notifications)): `Push-Benachrichtigungen aktivieren` while the device is not registered for the user and the browser does not block push; `Gerät abmelden` while it is; the `Stummschalten` toggle. A hint takes the place of `Push-Benachrichtigungen aktivieren` when the browser blocks push, and of the whole group when it lacks push; after activation, a hint names a failure, e.g. no push keys configured on the server.
 - "Passwort ändern" — opens a password change form (current password, new password, confirmation)
 - "Abmelden" — logs out and returns to the login screen

@@ -1,5 +1,5 @@
 /**
- * Renderer tests — brand logo and invoice accent (issue #189, AC-362).
+ * Renderer tests — brand logo (AC-746, AC-747) and invoice accent.
  *
  * Route-free, like `invoice-renderer-shape.test.ts`: the renderer is
  * pure-Node, so the branding surface can be pinned without HTTP, DB or
@@ -223,8 +223,8 @@ afterAll(() => {
   rmSync(CORRUPT_LOGO_PATH, { force: true });
 });
 
-describe('InvoiceRenderer branding — AC-362', () => {
-  it('embeds the configured logo as an image XObject', async () => {
+describe('InvoiceRenderer branding', () => {
+  it('AC-746: embeds the configured logo as an image XObject', async () => {
     configureLogo('/brand/ac362-logo.png');
 
     const { pdfBytes } = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
@@ -232,7 +232,7 @@ describe('InvoiceRenderer branding — AC-362', () => {
     expect(await countEmbeddedImages(pdfBytes)).toBe(1);
   });
 
-  it('scales the logo to fit its box, preserving aspect ratio', async () => {
+  it('AC-746: scales the logo to fit its box, preserving aspect ratio', async () => {
     configureLogo('/brand/ac362-wide.png');
 
     const { pdfBytes } = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
@@ -243,7 +243,7 @@ describe('InvoiceRenderer branding — AC-362', () => {
     expect(await drawnLogoSize(pdfBytes)).toEqual({ width: 84, height: 42 });
   });
 
-  it('never enlarges a logo past its natural size', async () => {
+  it('AC-746: never enlarges a logo past its natural size', async () => {
     configureLogo('/brand/ac362-logo.png');
 
     const { pdfBytes } = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
@@ -261,7 +261,7 @@ describe('InvoiceRenderer branding — AC-362', () => {
     expect(await countEmbeddedImages(pdfBytes)).toBe(0);
   });
 
-  it('still renders a valid invoice when the configured asset is missing', async () => {
+  it('AC-747: still renders a valid invoice when the configured asset is missing', async () => {
     configureLogo('/brand/ac362-typo.png');
 
     const { pdfBytes } = await new InvoiceRenderer().render({ invoice, companyProfile: profile });
@@ -272,7 +272,7 @@ describe('InvoiceRenderer branding — AC-362', () => {
     expect(await drawnLogoSize(pdfBytes)).toBeNull();
   });
 
-  it('still renders a valid invoice when the asset has a good signature but a corrupt body', async () => {
+  it('AC-747: still renders a valid invoice when the asset has a good signature but a corrupt body', async () => {
     // The resolution-side sniff proves the signature only; the body is
     // parsed by the PDF engine, which throws on a file it cannot decode
     // (a CMYK JPEG, an APNG, a truncated copy). This runs inside the

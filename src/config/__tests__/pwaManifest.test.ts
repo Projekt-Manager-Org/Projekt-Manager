@@ -1,5 +1,5 @@
 /**
- * App shell identity (AC-363) — two layers.
+ * App shell identity (AC-743, AC-744) — two layers.
  *
  * `buildPwaManifest` (src/config/pwaManifest.ts) is the manifest's one
  * source. The `brand-app-shell` plugin (src/build/brandAppShell.ts)
@@ -25,8 +25,8 @@ import { brandAppShell } from '../../build/brandAppShell';
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, '../../..');
 
-describe('buildPwaManifest — AC-363 app shell identity', () => {
-  it('follows the branding it is given rather than the shipped default', () => {
+describe('buildPwaManifest — app shell identity', () => {
+  it('AC-743: follows the branding it is given rather than the shipped default', () => {
     // Fed a foreign identity so all four fields have to move. Asserting
     // against the live BRANDING would still pass if the generator
     // ignored its argument and read the module-level constant.
@@ -49,14 +49,14 @@ describe('buildPwaManifest — AC-363 app shell identity', () => {
     expect(m.background_color).toBe(BRANDING.shell.themeColor);
   });
 
-  it('carries the installability fields Chrome requires', () => {
+  it('AC-744: carries the installability fields Chrome requires', () => {
     const m = buildPwaManifest(BRANDING);
     expect(m.start_url).toBe('/');
     expect(m.scope).toBe('/');
     expect(m.display).toBe('standalone');
   });
 
-  it('declares 192 and 512 PNG icons and a maskable purpose', () => {
+  it('AC-744: declares 192 and 512 PNG icons and a maskable purpose', () => {
     const m = buildPwaManifest(BRANDING);
     const sizes = m.icons.map((i) => i.sizes);
     expect(sizes).toContain('192x192');
@@ -66,7 +66,7 @@ describe('buildPwaManifest — AC-363 app shell identity', () => {
     expect(hasMaskable).toBe(true);
   });
 
-  it('points at icon files that exist on disk', () => {
+  it('AC-744: points at icon files that exist on disk', () => {
     // The icon set stays a set of files under `public/` — a deployment
     // replaces the two source SVGs and re-runs `npm run gen:pwa-icons`.
     // Nothing regenerates them at build time, so a manifest naming a
@@ -87,7 +87,7 @@ describe('buildPwaManifest — AC-363 app shell identity', () => {
   });
 });
 
-describe('brandAppShell plugin — AC-363 delivery', () => {
+describe('brandAppShell plugin — AC-743 delivery', () => {
   it('emits the generator output at the path index.html links to', () => {
     const emitFile = vi.fn();
     const plugin = brandAppShell();

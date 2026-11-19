@@ -2,7 +2,7 @@
  * API integration tests: User management operations.
  *
  * Covers user CRUD, deactivate/reactivate, password reset, permission enforcement,
- * and the themePreference default for newly-created users (AC-115).
+ * and the themePreference default for newly-created users (data-model.md §5.3).
  * Runs against a real test database via Fastify inject (no network).
  *
  * These tests are written ahead of the implementation (TDD). They define
@@ -163,8 +163,8 @@ describe('User Management Operations', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-115: Newly created user defaults themePreference to 'system'
-  // AC-115 [crit] (data-model.md §5.7, verification.md §15.21)
+  // Newly created user defaults themePreference to 'system'
+  // (data-model.md §5.3)
   //
   // The admin create-user payload does not expose themePreference —
   // only the user themselves controls their preference via the
@@ -174,7 +174,7 @@ describe('User Management Operations', () => {
   // (which pins that the default was actually persisted, not just
   // filled in by the response serializer).
   // ---------------------------------------------------------------
-  describe('AC-115: New user defaults themePreference to system', () => {
+  describe('New user defaults themePreference to system', () => {
     it("returns themePreference='system' on create and on GET", async () => {
       const createRes = await authPost(ownerToken, '/api/users', {
         username: 'testuser_at56',

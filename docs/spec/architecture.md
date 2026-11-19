@@ -148,11 +148,16 @@ The following values are centralized as single-source constants: each has exactl
 
 Entries state which. Promoting a source constant to an env var is a normal change when a deployment actually needs to vary it — it is not a spec change.
 
-- App name, branding, footer brand line — `BRANDING.appName` names the installation across the application surfaces: the header wordmark and login heading, the served document's title, the PWA manifest, and the Service Worker's fallback notification. Rendered-invoice PDF metadata (`Producer` / `Creator`) still carries a literal — tracked, out of AC-363's scope. `BRANDING.shortName` is the installed app's home-screen label, short enough to survive the launcher's truncation. `BRANDING.footerBrandLine` is the application footer's own brand line — not `company_profile.footerText`, which is invoice prose. Source constants, no env vars; [AC-363](verification.md#1519b-app-shell-identity) holds the shell surfaces to one definition site each
-- Shell chrome colors — `BRANDING.shell.themeColor` (browser and installed-app chrome) and `BRANDING.shell.backgroundColor` (the splash behind the icon, before first paint). Source constants, no env vars. Independent of the brand accent below: that one is a light/dark pair under a contrast contract, these are single values on surfaces no stylesheet reaches
-- Brand accent color — explicit light and dark values (see [§12.5](#125-theming-model))
-- Brand logo asset — optional served path, the file living at `public/brand/` (`BRANDING.mark.logo`, source constant, no env var). Set, it replaces the generic mark in the header at every viewport width and is drawn above the issuer block of every rendered invoice; unset, both surfaces fall back to the generic mark. PNG or JPEG only — one asset feeds both surfaces, and the invoice renderer embeds no other format. A deployment ships its asset with its configuration, the same way the other files under `public/` ship; this generalized repo carries none of its own, per [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)
-- Favicon and PWA icon set — neither env var nor source constant: the value _is_ the file. Two square SVG marks under `public/` and the PNG set rasterized from them. A deployment replaces the SVGs and regenerates; the procedure lives with the rest of the branding contract in `src/config/brandingConfig.ts`. Distinct from the brand logo above, which is sized for the header strip and the invoice issuer block
+- Branding — source constants, no env vars. What each one reaches ([AC-743](verification.md#1520-branding)):
+  - App name — the header wordmark, the login heading, the document title, the installed app's name, and the title of a push notification that carries none.
+  - Short name — the installed app's home-screen label.
+  - Footer brand line — the application footer. Not the invoice footer text ([data-model.md §5.17](data-model.md#517-company-profile-entity)).
+  - Shell theme color — the browser and installed-app chrome.
+  - Shell background color — the installed app's splash.
+  - Brand accent — one value per theme, on the surfaces of [AC-114](verification.md#1519-theming), each meeting [AC-748](verification.md#1519-theming) contrast against the surfaces it sits on and the text it carries.
+  - Generic mark colors — the header mark while no logo is configured.
+  - Logo — optional; the header mark at every width and the invoice issuer block ([AC-746](verification.md#1520-branding)). Used on the invoice only when it names, by an absolute same-origin path, a PNG or JPEG file of at most 2 MB under the served `brand/` directory. A deployment ships its own; this generalized system ships none ([ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)).
+- Favicon and installed-app icons — files, not values: a deployment replaces them.
 - Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers ([index.md §3](index.md#3-workflow-states))
 - German UI and error strings
 - Date and locale display settings
@@ -203,23 +208,6 @@ A variable's absence here is a claim that no company would need to change it. If
 
 - Configuration must be represented explicitly, not scattered as literals across the codebase.
 - Configuration sources may be static (environment variables, config files), but API and domain boundaries must not assume configuration can only live in source code — the design must permit a move to persisted company settings without restructuring those layers.
-
-### 12.4 User-Configurable Settings
-
-Values controlled per user, independent of the deployment-level configuration in §12.2. Stored on the user record and updated via the self-update API operation.
-
-- Theme preference — `'light' | 'dark' | 'system'`, default `'system'` (see [data-model.md §5.7](data-model.md#57-user-theme-preference))
-- Push-mute toggle — boolean, default `false`. When `true`, suppresses push delivery to every subscription owned by the user; activity-feed inclusion is unaffected (see [data-model.md §5.3](data-model.md#53-user-entity), [§5.12](data-model.md#512-push-subscription)).
-
-### 12.5 Theming Model
-
-The visual theme (color scheme) is expressed through a two-layer token system. Components consume only the semantic layer; the primitive layer is an implementation detail.
-
-- **Primitive tokens** — the raw palette, no semantics. Defined once.
-- **Semantic tokens** — roles that components reference (surface, text, border, accent, …). Mapped to primitive values.
-- **Theme overrides** — a non-default theme (e.g. dark) is a set of semantic-layer overrides scoped by an attribute on the document root. Component stylesheets render different palettes without code changes.
-- **Data-driven colors** — state colors from the workflow state configuration remain data-driven and are the single exception to the "no palette values outside the tokens source" rule.
-- **Brand accent [C]** — supplied by the branding configuration (§12.2); components consume it via a single semantic token.
 
 ### 12.6 Feature Manifest and Operator Confidence
 

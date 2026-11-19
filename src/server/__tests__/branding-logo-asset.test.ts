@@ -1,5 +1,5 @@
 /**
- * Unit tests — brand-logo asset resolution (issue #189, AC-360).
+ * Unit tests — brand-logo asset resolution (AC-747: an unusable logo is no logo).
  *
  * `loadBrandLogo` is the only thing standing between a per-deployment
  * config string and a file read inside the invoice-issuance transaction,
@@ -87,7 +87,7 @@ afterAll(() => {
   for (const d of writtenDirs) rmSync(d, { recursive: true, force: true });
 });
 
-describe('loadBrandLogo — AC-360 brand logo asset', () => {
+describe('loadBrandLogo — AC-747 brand logo asset', () => {
   it('returns null when no logo is configured (the default install)', () => {
     configureLogo(undefined);
     expect(loadBrandLogo()).toBeNull();

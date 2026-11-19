@@ -111,7 +111,7 @@ export interface EnvelopeAttachment {
  * set without an out-of-band password-reset pass. `passwordHash` ships
  * verbatim — the salted hash is no more PII-sensitive than the addresses
  * and invoice line items already in the artifact, and excluding it would
- * break the round-trip. See data-model.md §5.3 / §5.7 for field semantics.
+ * break the round-trip. See data-model.md §5.3 for field semantics.
  */
 export interface EnvelopeUser {
   id: string;

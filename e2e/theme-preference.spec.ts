@@ -1,19 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Per-user theme preference E2E — covers AC-119 and AC-120 from the
- * themePreference block (spec: docs/spec/verification.md §15.21,
- * docs/spec/ui/index.md §8.7.2, docs/spec/ui/behavior.md §9.6,
- * docs/spec/data-model.md §5.7).
- *
- * AC-119 [vis]: The user menu exposes a 3-way theme selector ("Hell",
- * "Dunkel", "Systemstandard"). Selecting an option updates the UI
- * immediately AND persists server-side; the selection survives a page
- * reload.
- *
- * AC-120 [vis]: On session hydration, the server-stored preference
- * replaces any locally cached value. A client on a different device
- * reflects the updated preference after the next session start.
+ * Per-user theme preference E2E — AC-740, AC-116 and AC-120
+ * (docs/spec/verification.md §15.19; the selector: docs/spec/ui/index.md
+ * §8.7.2).
  *
  * Scope notes:
  *   - This file is classified as MUTATING (see playwright.config.ts,
@@ -26,13 +16,13 @@ import { test, expect, type Page } from '@playwright/test';
  *   - German labels are pinned contract — see §8.7.2. If the impl picks
  *     different labels, these tests fail and the LABELS get reconciled
  *     in the spec, not by rewriting the test.
- *   - The localStorage key is pinned contract — see
+ *   - The localStorage key is internal — see
  *     src/config/themeStorage.ts.
  */
 
 test.describe.configure({ mode: 'serial' });
 
-// Local-cache key for the user's theme preference. Pinned contract.
+// Local-cache key for the user's theme preference (src/config/themeStorage.ts).
 const THEME_PREFERENCE_KEY = 'theme-preference';
 
 // Self-update API path.
@@ -94,8 +84,8 @@ async function openThemeSelector(page: Page): Promise<void> {
   await expect(section).toBeVisible();
 }
 
-// AC-119
-test('AC-119 [vis]: user menu theme selector updates UI, persists, survives reload', async ({
+// AC-740, AC-116
+test('AC-740, AC-116: user menu theme selector updates UI, persists, survives reload', async ({
   page,
 }) => {
   // --- Baseline: start from the default state. ---
@@ -108,6 +98,14 @@ test('AC-119 [vis]: user menu theme selector updates UI, persists, survives relo
 
   // --- Phase 1: select "Dunkel" from the user menu. ---
   await openThemeSelector(page);
+
+  // AC-740: the theme applies without a reload — the cache would make a
+  // reload render dark too, so count navigations around the click.
+  let navigations = 0;
+  const onNav = () => {
+    navigations += 1;
+  };
+  page.on('framenavigated', onNav);
 
   // Wait for the PATCH to land so subsequent reload sees the new server
   // value — optimistic update means the UI flips before the response,
@@ -125,6 +123,8 @@ test('AC-119 [vis]: user menu theme selector updates UI, persists, survives relo
 
   // UI, cache, and server state must all agree on `'dark'`.
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  page.off('framenavigated', onNav);
+  expect(navigations, 'Selecting "Dunkel" navigated the page; AC-740 forbids a reload.').toBe(0);
   expect(await readCachedPreference(page, THEME_PREFERENCE_KEY)).toBe('dark');
   const darkBodyBg = await readBodyBg(page);
 
@@ -173,7 +173,7 @@ test('AC-119 [vis]: user menu theme selector updates UI, persists, survives relo
 
   // --- Phase 4: "Systemstandard" persists server-side. Live OS-scheme
   //   reactivity under preference=system is AC-112's contract and is
-  //   covered by `e2e/theming.spec.ts:94-147`. ---
+  //   covered by `e2e/theming.spec.ts`. ---
   await openThemeSelector(page);
   const [systemResponse] = await Promise.all([
     page.waitForResponse(
@@ -189,8 +189,8 @@ test('AC-119 [vis]: user menu theme selector updates UI, persists, survives relo
   // cleans up.
 });
 
-// AC-120
-test('AC-120 [vis]: server preference wins over stale localStorage on hydration', async ({
+// AC-120, AC-749
+test('AC-120, AC-749: server preference wins over stale localStorage and the OS scheme on load', async ({
   page,
 }) => {
   // Pin OS color-scheme to light so a system-mode fallback does not
@@ -235,13 +235,13 @@ test('AC-120 [vis]: server preference wins over stale localStorage on hydration'
   //   the stale 'light' cache, and the UI must reflect it. ---
   await expect(
     page.locator('html'),
-    `data-theme did not resolve to "dark" after hydration. localStorage["${THEME_PREFERENCE_KEY}"] held a stale "light" value and the client failed to overwrite it with the server's "dark". The hydration contract (spec §9.6) is broken.`,
+    `data-theme did not resolve to "dark" after hydration. localStorage["${THEME_PREFERENCE_KEY}"] held a stale "light" value and the client failed to overwrite it with the server's "dark". The hydration contract (AC-120) is broken.`,
   ).toHaveAttribute('data-theme', 'dark');
 
   const cachedAfter = await readCachedPreference(page, THEME_PREFERENCE_KEY);
   expect(
     cachedAfter,
-    `localStorage["${THEME_PREFERENCE_KEY}"] is "${cachedAfter}" after hydration, still holding the stale pre-login value. Spec §9.6: "after the authenticated session is established, the client replaces the local cache with the server value".`,
+    `localStorage["${THEME_PREFERENCE_KEY}"] is "${cachedAfter}" after hydration, still holding the stale pre-login value. AC-120: the stored preference wins when a session starts.`,
   ).toBe('dark');
 });
 

@@ -1,9 +1,10 @@
 /*
- * Public contract for the client-side theme preference cache.
+ * Client-side theme preference cache.
  *
- * THEME_PREFERENCE_KEY is pinned by spec §9.6 "Local cache semantics" and
- * the e2e contract in e2e/theming.spec.ts. Changing it requires a spec
- * change in docs/spec/ui/behavior.md and a coordinated test update.
+ * THEME_PREFERENCE_KEY is internal. public/theme-init.js (the pre-paint
+ * script, which cannot import this module) and the e2e tests in
+ * e2e/theming.spec.ts and e2e/theme-preference.spec.ts repeat it, so a
+ * change updates them too.
  */
 
 export const THEME_PREFERENCE_KEY = 'theme-preference';

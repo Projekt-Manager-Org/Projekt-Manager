@@ -73,6 +73,7 @@ What the login screen shows: [ui/index.md §8.1.1](ui/index.md#811-unauthenticat
 - **AC-572** `[crit]`: If a request carries an expired session token, the system refuses it as an authentication error.
 - **AC-28** `[crit]`: If a request carries a valid session token of a deactivated user, the system refuses it as an authentication error.
 - **AC-395** `[vis]`: While a session is valid, reloading the app keeps the user signed in.
+- **AC-39** `[crit]`: When a user signs in, the system issues a session that lasts the session duration **[C]** ([data-model.md §5.4](data-model.md#54-session)).
 - **AC-396** `[crit]`: If a login attempt fails — unknown username, wrong password, or deactivated account — the system returns the same error.
 - **AC-566** `[crit]`: When a user submits valid credentials, the system signs them in and shows the landing view of their role ([ui/index.md §8.7.1](ui/index.md#871-views)).
 - **AC-547** `[crit]`: When a user submits their correct current password and a new one, the system stores the new password.
@@ -120,11 +121,6 @@ What the login screen shows: [ui/index.md §8.1.1](ui/index.md#811-unauthenticat
 - **AC-383** `[infra]`: Every authenticated route the application factory registers whose access gates admit the worker role is either probed for worker data scoping ([ADR-0019](../adr/0019-worker-data-scoping-repository-layer-predicate.md)) or exempt with a named reason. A CI-enforced check fails the build on a route that is neither. Probes run as a worker against seeded data: a request whose entity ids all belong to a project the worker is not assigned to is refused; a request naming an assigned project and a child entity of an unassigned one is refused; a read naming no entity returns no entity of an unassigned project. "Refused" means `403` or `404`, or `422` where the route's own AC rejects a foreign id as invalid input ([AC-414](#1526-attachments)). A self-test goes red on a planted route that skips the scope check, one that skips the parent binding, one that leaks an out-of-scope entity from a read, and one left unclassified.
 - **AC-247** `[crit]`: Transport-layer rejections from the API server preserve the 4xx HTTP statusCode native to the failure class and ship a stable machine-readable code, per [api.md §14.4.2](api.md#1442-error-principles): a malformed body declared as `Content-Type: application/json` returns `400 VALIDATION_ERROR`; a payload exceeding the configured maximum returns `413 VALIDATION_ERROR`; a request whose `Content-Type` falls outside the accepted set returns `415 VALIDATION_ERROR`; a request whose method and URL match no registered handler returns `404 ROUTE_NOT_FOUND`. Pre-existing branches are unchanged: schema-validation rejections remain `422 VALIDATION_ERROR` (with the field-level `details` array preserved), rate-limit rejections remain `429 RATE_LIMITED`, and any error whose statusCode is in the 5xx range — or carries no statusCode — maps to `500 SERVER_ERROR`. Every 5xx response logs at the operational `error` level — an application error carrying its own 5xx code included, since answering 500 silently hides a genuine server failure from triage; transport-layer 4xx rejections log below that level. Tiered `[crit]` because the contract guards operator triage: a transport-layer 4xx surfacing as 5xx (response or log) misroutes oncall attention away from genuine server failures.
 - **AC-1** `[vis]`: The full stack (frontend, backend, database) starts locally with a documented command or minimal command sequence.
-
-### 15.8 Configurability
-
-- **AC-38** `[vis]`: App name (header) and footer text are driven by a branding config, not hardcoded in components. Changing the config changes all instances.
-- **AC-39** `[crit]`: The system takes the session duration from configuration.
 
 ### 15.11 Customer Management
 
@@ -314,32 +310,29 @@ Screen: [ui/email-intake.md §8.12](ui/email-intake.md#812-email-data-intake). W
 
 ### 15.19 Theming
 
-- **AC-108** `[infra]`: Palette and semantic color tokens are defined in a single source consumed by all components. No component or stylesheet references a palette color outside that source. State colors, applied from the state configuration array, are the single exception. A repository-wide check enforces this boundary.
-- **AC-109** `[vis]`: Applying a non-default theme override on the document root replaces the semantic token layer. Components render with the overridden palette without code changes.
-- **AC-110** `[vis]`: Dark mode renders via a dark theme override. Every semantic surface has a dark-appropriate value. All text/surface semantic pairs meet WCAG AA contrast — 4.5:1 for normal text and 3:1 for large text — in both light and dark.
-- **AC-111** `[vis]`: The theme override is resolved and applied to the document root before the first paint of themed content. Reloading a session with a non-default preference shows no flash of the default theme.
-- **AC-112** `[vis]`: When the user's theme preference is `'system'`, operating-system color-scheme changes propagate to the UI without a reload.
-- **AC-113** `[infra]`: The brand accent is supplied by the branding configuration with explicit light and dark values. No component or stylesheet hardcodes the accent. A repository-wide check enforces this boundary.
-- **AC-114** `[vis]`: Changing the configured accent value updates every accent-using surface — primary actions, links, focus rings, selection highlights, form input indicators — in both modes.
+The preference values: [data-model.md §5.3](data-model.md#53-user-entity). The selector: [ui/index.md §8.7.2](ui/index.md#872-user-menu).
 
-### 15.19a Brand Logo
+- **AC-116** `[crit]`: When a user changes their own theme preference, the system stores it.
+- **AC-118** `[crit]`: If a submitted theme preference is not one of its values, the system refuses it as a validation error ([api.md §14.4.1](api.md#1441-error-categories)) and changes nothing.
+- **AC-740** `[vis]`: When a user selects a theme in the user menu, the system renders it without a reload.
+- **AC-749** `[vis]`: While the applied theme preference is `light` or `dark`, the system renders that theme regardless of the operating-system color scheme.
+- **AC-112** `[vis]`: While the applied theme preference is `system`, the system follows the operating-system color scheme, including its changes, without a reload.
+- **AC-120** `[vis]`: When a user signs in or the app loads with a valid session, the system applies the user's stored theme preference, whatever this device applied before.
+- **AC-750** `[vis]`: When the app loads, its first frame shows the theme preference this device last applied, or `system` if there is none.
+- **AC-741** `[vis]`: While no user is signed in, the system applies the theme preference this device last applied, or `system` if there is none.
+- **AC-742** `[vis]`: While the dark theme applies, the system renders every screen with dark surfaces.
+- **AC-748** `[vis]`: The system renders text with WCAG AA contrast against its surface — 4.5:1, large text 3:1 — in both themes.
+- **AC-114** `[vis]`: When the brand accent **[C]** changes, the system shows the new value on every accent-using surface — primary actions, links, focus rings, selection highlights, form input indicators — in both themes.
 
-- **AC-360** `[crit]`: `BRANDING.mark.logo` names an optional asset path, resolved against the static root the browser is served from. Resolution refuses, returning no asset, when the path is not an absolute same-origin one — the identical string is the browser's image source, so a relative or protocol-relative path would feed the two surfaces different bytes — when it does not name a file under that root's `brand/` directory (including a `..` traversal that resolves out of it), when the file's leading bytes are neither a PNG signature nor a JPEG SOI marker, when the file exceeds the 2 MB cap, or when it cannot be read. The format is sniffed from the bytes, never trusted from the extension. A file that is present but unusable is a refusal, not a reason to search a different root — embedding bytes other than the ones the browser loads would defeat the single-asset contract. Every refusal yields no asset rather than throwing: resolution runs inside the invoice-issuance transaction while it holds the gapless number-sequence row lock ([AC-694](#1530-invoices)), so a branding misconfiguration must never be able to abort an issuance.
-- **AC-361** `[vis]`: With `BRANDING.mark.logo` unset, the header renders the generic mark painted from `BRANDING.mark.bg` / `.bars`, shown only at the narrow widths where the wordmark is hidden. With it set, the header renders the configured asset at every viewport width. The mark is decorative in both cases (`alt=""`, `aria-hidden`) — the accessible name comes from the enclosing navigation control. A configured asset that fails to load falls back to the generic mark, so a per-deployment path typo degrades rather than leaving a broken image on every page.
-- **AC-362** `[crit]`: A rendered invoice embeds the configured logo as an image XObject in the issuer block, scaled to fit its box preserving aspect ratio and never enlarged past its natural size. With no logo configured, with one configured but unresolvable under AC-360, or with one whose bytes the document engine cannot decode, the invoice renders with no image and issuance completes normally — a branding asset is never able to fail an issuance, at either stage. The rules bracketing the line-item table are painted in `company_profile.accentColor` when set and `BRANDING.accent.light` otherwise; a malformed accent value falls back rather than throwing. The light variant is the correct default regardless of the reader's theme — the sheet is white.
+### 15.20 Branding
 
-### 15.19b App Shell Identity
+The values and the surfaces each one reaches: [architecture.md §12.2](architecture.md#122-company-configurable-settings).
 
-- **AC-363** `[infra]`: The installation's name and its shell colors have one definition site each, in the branding configuration. `BRANDING.appName` is the served document's `<title>`, the PWA manifest's `name`, and the Service Worker's fallback notification title; `BRANDING.shortName` is the manifest's `short_name`; `BRANDING.shell.themeColor` is both the served document's `theme-color` meta and the manifest's `theme_color`; `BRANDING.shell.backgroundColor` is the manifest's `background_color`. The manifest is a build output, not a repository asset — the build and the development server serve one generated document, and no static copy of it ships alongside. It declares the installability fields and a maskable icon purpose, and every icon path it names resolves to a file that ships. The icon files are outside this boundary: they are square marks a deployment replaces wholesale, and they hold their own copies of the mark colors.
-
-### 15.20 User Theme Preference
-
-- **AC-115** `[crit]`: `themePreference` is stored on each user with a value from `'light' | 'dark' | 'system'`. New users default to `'system'`. The database enforces the allowed set via a CHECK constraint (defense in depth).
-- **AC-116** `[crit]`: An authenticated user can update their own theme preference via the self-update API operation. Subsequent responses for the current user return the updated value.
-- **AC-117** `[crit]`: A self-update request without a valid session is rejected with an authentication error.
-- **AC-118** `[crit]`: A self-update request with an invalid theme value is rejected with a validation error.
-- **AC-119** `[vis]`: The user menu exposes a 3-way theme selector ("Hell", "Dunkel", "Systemstandard"). Selecting an option updates the UI immediately and persists server-side; the selection survives a page reload.
-- **AC-120** `[vis]`: On session hydration, the server-stored preference replaces any locally cached value. A client on a different device reflects the updated preference after the next session start.
+- **AC-743** `[vis]`: The system shows each branding value **[C]** on every surface its catalogue entry names.
+- **AC-744** `[vis]`: The system can be installed as an app, and every icon it declares for the installed app exists.
+- **AC-745** `[vis]`: If the configured logo fails to load in the browser, the header shows what it shows with no logo configured.
+- **AC-746** `[vis]`: When an invoice is rendered while a usable logo is configured, the system draws the logo in the issuer block, fit to the block with its aspect ratio kept and never enlarged.
+- **AC-747** `[crit]`: If the configured logo is unusable or cannot be decoded, the system renders the invoice without a logo.
 
 ### 15.21 Role Scoping
 
