@@ -222,7 +222,7 @@ Two paths exist; this runbook supports **(a) only**. Path (b) — targeted table
    sudo -u deploy docker exec -i projekt-manager-db-1 psql -U pm -d projekt_manager -v ON_ERROR_STOP=1 <<SQL
    INSERT INTO invoice_sequence (year, kind, next_value)
    SELECT y, k, 1 + ${N}
-   FROM generate_series(${Y0}, EXTRACT(YEAR FROM now() AT TIME ZONE 'UTC')::int) AS y,
+   FROM generate_series(${Y0}, EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Berlin')::int) AS y,
         unnest(ARRAY['invoice', 'storno']) AS k
    ON CONFLICT (year, kind) DO UPDATE
      SET next_value = invoice_sequence.next_value + ${N}, updated_at = now();

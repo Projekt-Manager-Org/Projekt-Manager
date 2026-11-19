@@ -259,11 +259,3 @@ function statusLabel(invoice: Invoice): string {
   if (invoice.status === 'cancelled') return 'Storniert';
   return 'Ausgestellt';
 }
-
-/** Today's `YYYY-MM-DD` in UTC — load-bearing in the download filename. */
-export function todayIsoDate(now: Date = new Date()): string {
-  const y = now.getUTCFullYear();
-  const m = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(now.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}

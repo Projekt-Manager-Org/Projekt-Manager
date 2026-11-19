@@ -65,6 +65,7 @@ import {
   versionConflict,
 } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
+import { calendarDateDE } from '../../domain/dateFormat.js';
 import { emitInvoiceChanged, emitProjectChanged } from '../sse/emitters.js';
 import { InvoiceBinaryService } from './InvoiceBinaryService.js';
 
@@ -239,10 +240,12 @@ export class InvoiceIssueService {
     const companyProfileRow = await assertCompanyProfileComplete(tx);
 
     // 4. Allocate `number` from the gapless `(year, 'invoice')`
-    //    sequence. The row lock survives until commit. The year MUST
-    //    come from `now` (the clock seam) — not the wall clock — so a
-    //    backdated `issueDate` stays consistent with `RE-YYYY-NNNN`.
-    const year = now.getUTCFullYear();
+    //    sequence. The row lock survives until commit. The issue date
+    //    is the calendar date in Germany at `now` (the clock seam, not
+    //    the wall clock); the year comes from it, so `RE-YYYY-NNNN`
+    //    agrees with `issueDate` (AC-690).
+    const issueDate = calendarDateDE(now);
+    const year = Number(issueDate.slice(0, 4));
     const { number } = await allocateInvoiceNumber(tx, year, 'invoice');
 
     // 5. Build the snapshot blocks (issuer is frozen from the live
@@ -256,8 +259,6 @@ export class InvoiceIssueService {
       iban: companyProfileRow.iban,
       footerText: companyProfileRow.footerText,
     };
-
-    const issueDate = now;
 
     // 6. Render BEFORE the UPDATE — the persistence-layer immutability
     //    trigger (data-model.md §6.14, baseline migration) blocks every
@@ -290,7 +291,7 @@ export class InvoiceIssueService {
       taxMode,
       profile: 'zugferd-en16931',
       totals,
-      issueDate: issueDate.toISOString().slice(0, 10),
+      issueDate,
       performanceDate: before.performanceDate
         ? before.performanceDate.toISOString().slice(0, 10)
         : null,
@@ -300,7 +301,7 @@ export class InvoiceIssueService {
       // Step 8's UPDATE bumps the draft's version once, then it freezes.
       version: before.version + 1,
       createdAt: before.createdAt.toISOString(),
-      updatedAt: issueDate.toISOString(),
+      updatedAt: now.toISOString(),
       createdBy: before.createdBy,
       updatedBy: userId,
     };
@@ -329,6 +330,7 @@ export class InvoiceIssueService {
     const issuedRow = await applyIssuanceUpdate(tx, invoiceId, {
       number,
       issueDate,
+      issuedAt: now,
       issuer,
       recipient,
       lines,
@@ -353,7 +355,7 @@ export class InvoiceIssueService {
         before.projectId,
         userId,
         'rechnung_faellig',
-        issueDate,
+        now,
       );
       collected.push(transition.auditRow);
       transitioned = transition.value.project;

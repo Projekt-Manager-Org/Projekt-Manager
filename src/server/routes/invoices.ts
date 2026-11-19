@@ -30,7 +30,6 @@ import { createInvoiceService, type ListInvoicesOpts } from '../services/Invoice
 import {
   resolveExportInvoices,
   buildManifestCsv,
-  todayIsoDate,
   EXPORT_FILTER_SAFETY_CAP,
   type ExportInput,
   type ExportFilterInput,
@@ -38,6 +37,7 @@ import {
 import type { InvoiceLineInput, InvoiceRecipientSnapshot, TaxMode } from '../../domain/invoice.js';
 import { TAX_MODES, INVOICE_STATUSES, INVOICE_TAX_RATES } from '../../domain/invoice.js';
 import { buildContentDisposition } from '../storage/client.js';
+import { calendarDateDE } from '../../domain/dateFormat.js';
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
 /**
@@ -531,7 +531,7 @@ export function invoiceRoutes(db: Database) {
         }
         const manifest = buildManifestCsv(invoices);
 
-        const filename = `Rechnungen_${scopeLabel}_${todayIsoDate()}.zip`;
+        const filename = `Rechnungen_${scopeLabel}_${calendarDateDE(new Date())}.zip`;
         const archive = new ZipArchive({ zlib: { level: 9 } });
         archive.on('warning', (err) => {
           request.log.warn({ err }, 'invoice_export_archive_warning');
