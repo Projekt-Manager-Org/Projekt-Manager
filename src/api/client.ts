@@ -547,6 +547,7 @@ export interface ExtractionResult {
 export const extractApi = {
   extract: (text: string) =>
     apiCall<ExtractionResult>('/api/extract', { method: 'POST', body: { text } }),
+  status: () => apiCall<{ configured: boolean }>('/api/extract/status'),
 };
 
 /**

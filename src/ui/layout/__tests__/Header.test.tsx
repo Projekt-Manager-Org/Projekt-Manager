@@ -9,10 +9,17 @@
  * component-level assertion catches that drift by rendering the real
  * Header and asserting on the DOM.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import { fireEvent } from '@testing-library/react';
 import type { AuthUser } from '@/api/client';
+
+// The extraction status is server state (AC-734); each test sets the answer.
+vi.mock('@/state/extractionActions', () => ({
+  fetchExtractionConfigured: vi.fn(),
+}));
+const { fetchExtractionConfigured } = await import('@/state/extractionActions');
+const mockFetchExtractionConfigured = vi.mocked(fetchExtractionConfigured);
 
 const { useAuthStore } = await import('@/state/authStore');
 const { Header } = await import('@/ui/layout/Header');
@@ -72,6 +79,8 @@ const ALL_VIEWS = [
 ] as const;
 
 beforeEach(() => {
+  mockFetchExtractionConfigured.mockReset();
+  mockFetchExtractionConfigured.mockResolvedValue(true);
   useAuthStore.setState({
     authUser: null,
     authError: null,
@@ -106,4 +115,32 @@ describe('Header — per-role nav visibility (AC-75)', () => {
       }
     });
   }
+});
+
+describe('Header — email intake entry (AC-734)', () => {
+  it('AC-734: shows the email intake entry to a customer:write holder while extraction is configured', async () => {
+    setAuthUser(['office']);
+    render(<Header />);
+
+    expect(await screen.findByTestId('extract-button')).toBeInTheDocument();
+  });
+
+  it('AC-734: shows no email intake entry while extraction is not configured', async () => {
+    mockFetchExtractionConfigured.mockResolvedValue(false);
+    setAuthUser(['office']);
+    render(<Header />);
+
+    await waitFor(() => expect(mockFetchExtractionConfigured).toHaveBeenCalled());
+    // Let the resolved status commit before asserting the absence.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByTestId('extract-button')).not.toBeInTheDocument();
+  });
+
+  it('AC-121: asks for no extraction status without customer:write', () => {
+    setAuthUser(['worker']);
+    render(<Header />);
+
+    expect(mockFetchExtractionConfigured).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('extract-button')).not.toBeInTheDocument();
+  });
 });

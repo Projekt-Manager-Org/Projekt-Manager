@@ -121,7 +121,7 @@ Entries are cited by partial path (`routes/auth.ts`), so the citation check (AC-
 - `routes/invoices.ts` — drafts, issue / cancel, server-decrypted PDF, ZIP export, year list (ADR-0026)
 - `routes/company-profile.ts` — singleton `GET` + owner-only `PUT`
 - `routes/audit.ts` — read-only list + get-by-id
-- `routes/extract.ts` — LLM email-to-structured-data via OpenRouter (ADR-0016)
+- `routes/extract.ts` — LLM email-to-structured-data via OpenRouter (ADR-0016); whether extraction is configured
 - `routes/notification-rules.ts` — notification rule CRUD (ADR-0023)
 - `routes/push-subscriptions.ts` — Web Push subscribe / unsubscribe / registration status
 - `routes/push.ts` — VAPID public key

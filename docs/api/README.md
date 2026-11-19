@@ -55,6 +55,7 @@ Both read the routes through `scripts/lib/route-introspection.ts`. An access gat
 | GET     | `/api/import-jobs/:id`                              | session | `data:restore`         | none          |
 | HEAD    | `/api/import-jobs/:id/archive`                      | session | `data:restore`         | none          |
 | PATCH   | `/api/import-jobs/:id/archive`                      | session | `data:restore`         | none          |
+| GET     | `/api/extract/status`                               | session | `customer:write`       | none          |
 | POST    | `/api/extract`                                      | session | `customer:write`       | none          |
 | GET     | `/api/audit`                                        | session | `audit:read`           | none          |
 | GET     | `/api/audit/:id`                                    | session | `audit:read`           | none          |

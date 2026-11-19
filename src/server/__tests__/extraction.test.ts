@@ -65,12 +65,29 @@ describe('ExtractionService', () => {
   // Validation
   // ---------------------------------------------------------------
   describe('input validation', () => {
-    it('throws when OPENROUTER_API_KEY is not set', async () => {
+    it('AC-738: refuses as a server error naming no configuration, and logs why, when not configured', async () => {
+      mockGetEnv.mockReturnValue({
+        OPENROUTER_API_KEY: undefined,
+      } as ReturnType<typeof getEnv>);
+      const upstream = vi.fn();
+      globalThis.fetch = upstream;
+
+      const err = await service.extract('some email', mockLog).catch((e: unknown) => e);
+
+      expect(err).toMatchObject({ code: 'SERVER_ERROR' });
+      expect((err as Error).message).not.toMatch(/OPENROUTER|konfiguriert/i);
+      expect(mockLog.error).toHaveBeenCalledWith({}, 'extraction_not_configured');
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('AC-102: refuses blank input as a validation error even when not configured', async () => {
       mockGetEnv.mockReturnValue({
         OPENROUTER_API_KEY: undefined,
       } as ReturnType<typeof getEnv>);
 
-      await expect(service.extract('some email', mockLog)).rejects.toThrow('nicht konfiguriert');
+      await expect(service.extract('   ', mockLog)).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
     });
 
     it('AC-102: throws on blank input', async () => {
@@ -202,10 +219,13 @@ describe('ExtractionService', () => {
   // Error handling
   // ---------------------------------------------------------------
   describe('error handling', () => {
-    it('throws on non-OK HTTP response', async () => {
+    it('throws a server error, unwrapped, on non-OK HTTP response', async () => {
       globalThis.fetch = mockFetchResponse('', false, 401);
 
-      await expect(service.extract('test email', mockLog)).rejects.toThrow();
+      await expect(service.extract('test email', mockLog)).rejects.toMatchObject({
+        code: 'SERVER_ERROR',
+        statusCode: 500,
+      });
       expect(mockLog.error).toHaveBeenCalledWith({ status: 401 }, 'openrouter_api_error');
     });
 
@@ -224,19 +244,6 @@ describe('ExtractionService', () => {
         expect.objectContaining({ err: expect.any(SyntaxError) }),
         'extraction_json_parse_failed',
       );
-    });
-
-    it('re-throws AppError (validation/server) without wrapping', async () => {
-      mockGetEnv.mockReturnValue({
-        OPENROUTER_API_KEY: undefined,
-      } as ReturnType<typeof getEnv>);
-
-      try {
-        await service.extract('test', mockLog);
-        expect.fail('should have thrown');
-      } catch (err) {
-        expect((err as Error).message).toContain('nicht konfiguriert');
-      }
     });
   });
 

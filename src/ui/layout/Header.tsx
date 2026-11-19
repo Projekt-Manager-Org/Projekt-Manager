@@ -3,6 +3,7 @@ import { useAuthStore } from '@/state/authStore';
 import { useUIStore } from '@/state/uiStore';
 import { useBackupStatusRefresh } from '@/hooks/useBackupStatusRefresh';
 import { usePermission } from '@/hooks/usePermission';
+import { useExtractionConfigured } from '@/hooks/useExtractionConfigured';
 import { useRouterNav } from '@/hooks/useRouterNav';
 import { SECONDARY_VIEWS, landingPathForUser, visibleRoutesForUser } from '@/config/routes';
 import { BRANDING } from '@/config/brandingConfig';
@@ -89,9 +90,10 @@ export function Header() {
   // matrix (`docs/spec/ui/index.md §8.7.1`, AC-75) has one source of truth —
   // the guard in `App.tsx` consults the same table. Extractor visibility
   // is an action affordance (not a nav concern), so it stays permission-
-  // driven via `usePermission`.
+  // driven via `usePermission`, and shown only while the server can
+  // extract (AC-734).
   const visibleRoutes = authUser ? visibleRoutesForUser(authUser) : [];
-  const canExtract = usePermission('customer:write');
+  const canExtract = useExtractionConfigured(usePermission('customer:write'));
 
   const primaryRoutes = visibleRoutes.filter((r) => !SECONDARY_VIEWS.includes(r.view));
   const secondaryRoutes = visibleRoutes.filter((r) => SECONDARY_VIEWS.includes(r.view));

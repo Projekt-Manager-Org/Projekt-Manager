@@ -16,6 +16,17 @@ export async function extractFromEmail(text: string) {
   return result;
 }
 
+/** Whether the server can extract (AC-734). Any failure reads as "not
+ * configured": hiding the entry beats offering one that cannot work. */
+export async function fetchExtractionConfigured(): Promise<boolean> {
+  const result = await extractApi.status();
+  if (!result.ok) {
+    if (result.sessionExpired) handleSessionExpired();
+    return false;
+  }
+  return result.data.configured;
+}
+
 export async function searchCustomers(query: string): Promise<Customer[]> {
   const result = await customerApi.list({ search: query });
   if (!result.ok) {

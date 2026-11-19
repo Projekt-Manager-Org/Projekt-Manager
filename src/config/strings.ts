@@ -209,7 +209,6 @@ export const STRINGS = {
   },
 
   extraction: {
-    notConfigured: 'E-Mail-Extraktion ist nicht konfiguriert (OPENROUTER_API_KEY fehlt).',
     emptyInput: 'E-Mail-Text darf nicht leer sein.',
   },
 
