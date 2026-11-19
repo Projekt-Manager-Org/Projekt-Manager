@@ -1,7 +1,7 @@
 /**
  * Component tests for the two-step save flow in EmailExtractModal.
  *
- * Covers the partial-failure retry: if customer-create succeeds but
+ * Covers the partial-failure retry (AC-736): if customer-create succeeds but
  * project-create fails, a retry must NOT replay the customer-create
  * call (either as an idempotent replay or — worse — under a subtly
  * different body that would provoke IDEMPOTENCY_CONFLICT). The fix
@@ -90,7 +90,7 @@ beforeEach(() => {
   });
 });
 
-describe('EmailExtractModal — two-step save resilience', () => {
+describe('AC-736: EmailExtractModal — two-step save resilience', () => {
   it('does not recreate the customer when the second step fails and the user retries', async () => {
     extractMock.mockResolvedValue(
       ok({
@@ -151,6 +151,35 @@ describe('EmailExtractModal — two-step save resilience', () => {
     // And the retry's project-create used the original customer id.
     const retryCalls = projectCreateMock.mock.calls as unknown as Array<[{ customerId: string }]>;
     expect(retryCalls[1][0].customerId).toBe('cust-1');
+  });
+});
+
+describe('AC-732: EmailExtractModal — review form pre-fill', () => {
+  it('fills the fields the extraction found and leaves the rest empty', async () => {
+    extractMock.mockResolvedValue(
+      ok({
+        customer: {
+          name: 'Neue Firma',
+          phone: null,
+          email: 'info@neue-firma.de',
+          street: null,
+          zip: null,
+          city: null,
+        },
+        project: { title: 'Dachsanierung', description: null, siteAddress: null },
+      }),
+    );
+
+    render(<EmailExtractModal onClose={() => {}} />);
+    await userEvent.type(screen.getByTestId('extract-email-input'), 'Some email body.');
+    await userEvent.click(screen.getByTestId('extract-submit'));
+
+    expect(await screen.findByTestId('extract-customer-name')).toHaveValue('Neue Firma');
+    expect(screen.getByTestId('extract-project-title')).toHaveValue('Dachsanierung');
+    expect(screen.getByDisplayValue('info@neue-firma.de')).toBeInTheDocument();
+    expect(screen.getByTestId('extract-customer-search')).toHaveValue('Neue Firma');
+    expect(customerCreateMock).not.toHaveBeenCalled();
+    expect(projectCreateMock).not.toHaveBeenCalled();
   });
 });
 

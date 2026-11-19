@@ -88,10 +88,13 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-93  | retired | —                                                                                                        |
 | AC-95  | retired | —                                                                                                        |
 | AC-98  | retired | —                                                                                                        |
+| AC-100 | retired | —                                                                                                        |
 | AC-101 | retired | —                                                                                                        |
-| AC-105 | gap     | needs an e2e confirming the entry is visible only with `customer:write`                                  |
-| AC-106 | gap     | needs an e2e covering the textarea and the action disabled while empty / in flight                       |
-| AC-107 | gap     | needs an e2e walking the extraction-review form + existing-customer match                                |
+| AC-103 | retired | —                                                                                                        |
+| AC-104 | retired | —                                                                                                        |
+| AC-105 | retired | —                                                                                                        |
+| AC-106 | gap     | needs an e2e covering the action disabled while the text is blank / in flight                            |
+| AC-107 | retired | —                                                                                                        |
 | AC-108 | infra   | CI `lint` — `scripts/check-theme-tokens.sh`                                                              |
 | AC-109 | gap     | needs an e2e that flips `data-theme` and walks the surfaces                                              |
 | AC-110 | gap     | needs an e2e walking dark-mode surfaces, plus a WCAG AA contrast check                                   |
@@ -333,3 +336,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-725 | gap     | needs a test of the incomplete-profile banner and its link                                               |
 | AC-730 | gap     | needs a test that a document failing to load mid-export yields no archive                                |
 | AC-731 | gap     | needs a test saving a draft form without a priced, described line                                        |
+| AC-734 | gap     | needs the entry hidden while extraction is not configured (#1016), and an e2e                            |
+| AC-735 | gap     | needs a test of each save path: new customer, selected customer, no title                                |
+| AC-738 | gap     | needs the not-configured refusal to name no configuration (#1016), and its test                          |
+| AC-739 | gap     | needs a route test that an extraction leaves no customer or project row                                  |

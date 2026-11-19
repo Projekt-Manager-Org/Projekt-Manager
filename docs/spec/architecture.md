@@ -125,17 +125,6 @@ Any deployed environment must exercise all four components end-to-end. A topolog
 - **Registry retention:** a scheduled sweep bounds how long a built image stays pullable, so the rollback range is finite by design. It must never reap the protected-branch pointer, the rollback window behind it, or the head of an open PR. See [ADR-0011 § Retention](../adr/0011-build-images-in-ci-distribute-via-ghcr.md).
 - Environment separation and rollback mechanisms are documented in [docs/ops/manual-deploy.md](../../docs/ops/manual-deploy.md).
 
-### 11.8 External Integrations
-
-Integrations with external services (e.g., LLM APIs) follow a server-side proxy pattern:
-
-- The external-service credential lives in server-side environment configuration and is never exposed to the browser.
-- The browser calls a local API route; the server forwards the request to the external service and relays a sanitized response.
-- Upstream failures are mapped to the API's error categories (see [api.md §14.4.1](api.md#1441-error-categories)); internal details (service name, upstream status codes, stack traces) do not leak to the client.
-- The Content Security Policy (see [§13.6](#136-security)) is kept tight (`connectSrc: 'self'`) — the proxy pattern is what enables this.
-
-The first integration of this shape is the LLM-based email data extractor (see [ADR-0016](../adr/0016-llm-email-extraction-via-server-proxied-openrouter.md), [api.md §14.2.6](api.md#1426-data-extraction), [ui/email-intake.md §8.12](ui/email-intake.md#812-email-data-intake)).
-
 ---
 
 ## 12. Configuration Boundaries
@@ -299,6 +288,7 @@ The UI must tolerate incomplete project data without crashing:
 
 - Passwords are hashed using a modern, slow hashing algorithm. Plaintext passwords are never stored or logged.
 - Session tokens are cryptographically random and opaque. They carry no user data themselves.
+- Secrets for external services (API keys, secret keys) stay on the server; no response or served asset carries them ([ADR-0016](../adr/0016-llm-email-extraction-via-server-proxied-openrouter.md)).
 - API endpoints validate authentication and authorization on every request. No security-by-obscurity.
 - API input is validated and sanitized. No raw user input reaches the database.
 - Error messages do not leak internal details (no stack traces, no database field names, no path information).

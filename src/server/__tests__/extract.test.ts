@@ -36,9 +36,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-100: Unauthenticated requests are rejected
+  // AC-574: Unauthenticated requests are rejected
   // ---------------------------------------------------------------
-  it('AC-100: unauthenticated request is rejected with auth error', async () => {
+  it('AC-574: unauthenticated request is rejected with auth error', async () => {
     const res = await getApp().inject({
       method: 'POST',
       url: '/api/extract',
@@ -79,9 +79,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-103: Successful extraction returns structured fields
+  // Successful extraction returns the fields found, null for the rest
   // ---------------------------------------------------------------
-  it('AC-103: successful extraction returns customer + project sections with nulls for missing data', async () => {
+  it('successful extraction returns customer + project sections with nulls for missing data', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -176,9 +176,9 @@ describe('POST /api/extract', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-104: Upstream failure mapped to server error, no leak
+  // AC-733: Upstream failure refused as a server error, no internal details
   // ---------------------------------------------------------------
-  it('AC-104: upstream service failure is mapped to a server error with no internal details leaked', async () => {
+  it('AC-733: upstream service failure is mapped to a server error with no internal details leaked', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
