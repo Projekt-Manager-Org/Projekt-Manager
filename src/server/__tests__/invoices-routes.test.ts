@@ -706,6 +706,68 @@ describe('Invoice routes — integration (issue #109)', () => {
   });
 
   // -------------------------------------------------------------------
+  // AC-686 — recipient field limits (data-model.md §5.15).
+  // -------------------------------------------------------------------
+  describe('AC-686: recipient field limits', () => {
+    const address = { street: 'Hauptstr. 1', zip: '50667', city: 'Köln' };
+    const overLimit: Array<[string, Record<string, unknown>]> = [
+      ['a name over 255 characters', { name: 'n'.repeat(256), address }],
+      [
+        'a street over 200 characters',
+        { name: 'R', address: { ...address, street: 's'.repeat(201) } },
+      ],
+      ['a zip over 20 characters', { name: 'R', address: { ...address, zip: '5'.repeat(21) } }],
+      ['a city over 200 characters', { name: 'R', address: { ...address, city: 'c'.repeat(201) } }],
+      ['a USt-IdNr. over 50 characters', { name: 'R', address, ustId: 'D'.repeat(51) }],
+    ];
+
+    async function invoiceCount(): Promise<number> {
+      const { db, pool } = createDatabase();
+      try {
+        const res = await db.execute(sql`SELECT COUNT(*)::int AS c FROM invoices`);
+        return (res.rows[0] as { c: number }).c;
+      } finally {
+        await pool.end();
+      }
+    }
+
+    it.each(overLimit)('POST refuses %s and creates nothing', async (_label, recipient) => {
+      const before = await invoiceCount();
+      const res = await authPost(ownerToken, '/api/invoices', { projectId, lines: [], recipient });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect(await invoiceCount()).toBe(before);
+    });
+
+    it.each(overLimit)('PATCH refuses %s and changes nothing', async (_label, recipient) => {
+      const draftId = await seedDraftInvoice(projectId);
+      const url = `/api/invoices/${draftId}`;
+      const before = (await authGet(ownerToken, url)).json();
+
+      const res = await authPatch(ownerToken, url, {
+        ...(await expectedVersion(ownerToken, url)),
+        recipient,
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+      expect((await authGet(ownerToken, url)).json()).toEqual(before);
+    });
+
+    it('accepts values exactly at each limit', async () => {
+      const res = await authPost(ownerToken, '/api/invoices', {
+        projectId,
+        lines: [],
+        recipient: {
+          name: 'n'.repeat(255),
+          address: { street: 's'.repeat(200), zip: '5'.repeat(20), city: 'c'.repeat(200) },
+          ustId: 'D'.repeat(50),
+        },
+      });
+      expect(res.statusCode).toBe(201);
+    });
+  });
+
+  // -------------------------------------------------------------------
   // AC-576 — a worker holds no `invoice:read`.
   // -------------------------------------------------------------------
   describe('AC-576: worker read of an existing invoice', () => {

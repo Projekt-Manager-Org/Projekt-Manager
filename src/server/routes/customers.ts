@@ -28,9 +28,9 @@ const CUSTOMER_FIELDS = {
     additionalProperties: false,
     required: ['street', 'zip', 'city'],
     properties: {
-      street: { type: 'string', pattern: '\\S' },
-      zip: { type: 'string', pattern: '\\S' },
-      city: { type: 'string', pattern: '\\S' },
+      street: { type: 'string', pattern: '\\S', maxLength: 200 },
+      zip: { type: 'string', pattern: '\\S', maxLength: 20 },
+      city: { type: 'string', pattern: '\\S', maxLength: 200 },
     },
   },
   ustId: { type: ['string', 'null'], maxLength: 50 },

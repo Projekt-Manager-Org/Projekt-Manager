@@ -206,6 +206,19 @@ describe('Customer CRUD Operations', () => {
       ['AC-538: a name over 255 characters', { name: 'n'.repeat(256) }],
       ['AC-538: a phone over 100 characters', { phone: '1'.repeat(101) }],
       ['AC-538: an email over 255 characters', { email: 'e'.repeat(256) }],
+      [
+        'AC-538: a street over 200 characters',
+        { address: { street: 's'.repeat(201), zip: '50667', city: 'Köln' } },
+      ],
+      [
+        'AC-538: a zip over 20 characters',
+        { address: { street: 'Hauptstr. 1', zip: '5'.repeat(21), city: 'Köln' } },
+      ],
+      [
+        'AC-538: a city over 200 characters',
+        { address: { street: 'Hauptstr. 1', zip: '50667', city: 'c'.repeat(201) } },
+      ],
+      ['AC-538: a USt-IdNr. over 50 characters', { ustId: 'D'.repeat(51) }],
       ['AC-521: an address with only a street', { address: { street: 'A', zip: '', city: '' } }],
       ['AC-521: an address with only a city', { address: { street: '', zip: '', city: 'Köln' } }],
       ['AC-521: an all-empty address', { address: { street: '', zip: '', city: '' } }],
@@ -257,6 +270,8 @@ describe('Customer CRUD Operations', () => {
         name: 'n'.repeat(255),
         phone: '1'.repeat(100),
         email: 'e'.repeat(255),
+        address: { street: 's'.repeat(200), zip: '5'.repeat(20), city: 'c'.repeat(200) },
+        ustId: 'D'.repeat(50),
       });
 
       expect(res.statusCode).toBe(201);
