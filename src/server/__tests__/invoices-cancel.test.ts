@@ -16,12 +16,14 @@
  *
  *   - On a `draft` row: 409 INVOICE_NOT_ISSUED, no state change.
  *   - On an already-`cancelled` row: 409 INVOICE_ALREADY_CANCELLED.
+ *   - On a Storno: 409 CONFLICT, no state change.
  *
  * AC coverage in this file:
  *   - AC-702: cancel-on-issued happy path with all the above
  *                      shape + audit + SSE assertions.
  *   - AC-705: cancel-on-draft and cancel-on-cancelled rejection
  *                      paths with no state change.
+ *   - AC-706: cancel-on-Storno rejection with no state change.
  *
  * Pre-impl red state: no route, no service. The cancel endpoint returns
  * 404 ROUTE_NOT_FOUND for every call — the intended TDD signal.
@@ -186,6 +188,28 @@ async function countAuditRowsForInvoice(invoiceId: string): Promise<number> {
             WHERE entity_type = 'invoice' AND entity_id = ${invoiceId}`,
     );
     return (res.rows[0] as { c: number }).c;
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * What a cancel could add: invoices on the project, Storno numbers
+ * handed out, audit rows.
+ */
+async function projectInvoiceState(
+  projectId: string,
+): Promise<{ invoices: number; stornoNumbers: number; auditRows: number }> {
+  const { db, pool } = createDatabase();
+  try {
+    const res = await db.execute(
+      sql`SELECT
+            (SELECT COUNT(*)::int FROM invoices WHERE project_id = ${projectId}) AS invoices,
+            (SELECT COALESCE(SUM(next_value), 0)::int FROM invoice_sequence
+              WHERE kind = 'storno') AS "stornoNumbers",
+            (SELECT COUNT(*)::int FROM audit_log) AS "auditRows"`,
+    );
+    return res.rows[0] as { invoices: number; stornoNumbers: number; auditRows: number };
   } finally {
     await pool.end();
   }
@@ -529,14 +553,13 @@ describe('Invoice cancellation — Storno totals (AC-703)', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-705 — Cancel rejection paths.
+// AC-705, AC-706 — Cancel rejection paths.
 //
 // Each arm asserts the documented error code AND no state change. The
-// "no state change" half is checked by reading the row before/after
-// and asserting the status field is unchanged.
+// "no state change" half compares the whole row before and after.
 // ---------------------------------------------------------------------
 
-describe('Invoice cancellation — rejection paths (AC-705)', () => {
+describe('Invoice cancellation — rejection paths (AC-705, AC-706)', () => {
   let ownerToken: string;
   let projectId: string;
 
@@ -580,5 +603,26 @@ describe('Invoice cancellation — rejection paths (AC-705)', () => {
 
     const afterRow = await readInvoiceRow(originalId);
     expect(afterRow).toEqual(beforeRow);
+  });
+
+  it('AC-706: cancel on a Storno → 409 CONFLICT, no state change', async () => {
+    // Issuing moves a project out of `rechnung_faellig`; take one still in it.
+    const pid = await rechnungFaelligProjectId(ownerToken);
+    const draftId = await createDraft(ownerToken, pid);
+    const originalId = await issueDraft(ownerToken, draftId);
+    const firstCancel = await authPost(ownerToken, `/api/invoices/${originalId}/cancel`);
+    expect(firstCancel.statusCode).toBe(200);
+    const stornoId = firstCancel.json().storno.id as string;
+
+    const beforeRow = await readInvoiceRow(stornoId);
+    expect(beforeRow!.status).toBe('issued');
+    const before = await projectInvoiceState(pid);
+
+    const res = await authPost(ownerToken, `/api/invoices/${stornoId}/cancel`);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
+
+    expect(await readInvoiceRow(stornoId)).toEqual(beforeRow);
+    expect(await projectInvoiceState(pid)).toEqual(before);
   });
 });

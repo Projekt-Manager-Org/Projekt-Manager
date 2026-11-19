@@ -10,9 +10,10 @@
  * issuance), commit; then ONE SSE event. Any failure rolls back the number (AC-695). The project
  * status is never touched (AC-704).
  *
- * Rejections (AC-705):
+ * Rejections (AC-705, AC-706):
  *   - draft → 409 `INVOICE_NOT_ISSUED`
  *   - cancelled → 409 `INVOICE_ALREADY_CANCELLED`
+ *   - Storno → 409 `CONFLICT`
  */
 
 import crypto from 'node:crypto';
@@ -43,7 +44,7 @@ import {
 } from '../repositories/invoice-read.js';
 import { readSingleton, toCompanyProfileResponse } from './CompanyProfileService.js';
 import { InvoiceRenderer } from './InvoiceRenderer.js';
-import { notFound, invoiceNotIssued, invoiceAlreadyCancelled } from '../errors.js';
+import { notFound, conflict, invoiceNotIssued, invoiceAlreadyCancelled } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
 import { emitInvoiceChanged } from '../sse/emitters.js';
 import { InvoiceBinaryService } from './InvoiceBinaryService.js';
@@ -101,9 +102,10 @@ export class InvoiceCancelService {
    * and do not let `mutate()` (with its built-in dispatch) sneak back
    * into the cancel atom — that would double-publish.
    *
-   * Rejections (AC-705):
+   * Rejections (AC-705, AC-706):
    *   - draft → 409 `INVOICE_NOT_ISSUED`
    *   - cancelled → 409 `INVOICE_ALREADY_CANCELLED`
+   *   - Storno → 409 `CONFLICT`
    */
   async cancel(
     id: string,
@@ -129,6 +131,7 @@ export class InvoiceCancelService {
       if (!before) throw notFound(STRINGS.entities.invoice);
       if (before.status === 'draft') throw invoiceNotIssued();
       if (before.status === 'cancelled') throw invoiceAlreadyCancelled();
+      if (before.cancellationOf !== null) throw conflict(STRINGS.errors.stornoNotCancellable);
 
       // 5. Two audit rows in one tx (AC-623). Project status is
       //    deliberately NOT flipped — AC-704.
