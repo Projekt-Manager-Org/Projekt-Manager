@@ -20,8 +20,9 @@
     max-width 0.2s;
 }
 
+/* A fill, not opacity: dimming would take the count below AA (AC-748). */
 .columnCollapsed:hover {
-  opacity: 0.85;
+  background: var(--color-surface-base);
 }
 
 .columnAction {

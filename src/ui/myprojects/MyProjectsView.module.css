@@ -70,10 +70,6 @@
   background: var(--color-surface-hover);
 }
 
-.row:active {
-  background: var(--color-surface-active);
-}
-
 .statusDot {
   width: 12px;
   height: 12px;

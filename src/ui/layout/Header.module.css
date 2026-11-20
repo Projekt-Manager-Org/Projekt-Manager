@@ -123,6 +123,8 @@
 .viewButtonActive:hover,
 .adminTriggerActive:hover {
   background: var(--color-accent-hover);
+  /* .viewButton:hover would otherwise set its inverse label color. */
+  color: var(--color-text-on-accent);
 }
 
 /* End caps: round the first and last segment. Targets the inner
