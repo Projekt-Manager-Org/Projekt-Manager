@@ -368,7 +368,9 @@ fieldset.formGroup {
   background: var(--color-surface-base);
   color: var(--color-text-secondary);
   font-size: 0.85rem;
-  line-height: 1;
+  /* Matches the button height, so the glyph's box stays inside it
+     and axe can measure its contrast. */
+  line-height: 16px;
   cursor: pointer;
 }
 
