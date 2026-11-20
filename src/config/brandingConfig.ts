@@ -16,8 +16,9 @@
  *     hex strings; stylesheets reference the semantic `--color-accent`
  *     token chain instead.
  *   - Each value MUST meet WCAG AA (AC-748) as text on the surfaces it
- *     sits on (surface-base, -raised, -muted of its theme) and against
- *     `--color-text-on-accent` (labels on filled accent surfaces). The
+ *     sits on (surface-base, -raised, -hover of its theme) and against
+ *     `--color-text-on-accent` (labels on filled accent surfaces). Accent
+ *     text stays off surface-muted: the default dark accent fails there. The
  *     dark value also colors accents on the inverse chrome in both themes.
  *     `e2e/text-contrast.spec.ts` checks the rendered pairs.
  *
