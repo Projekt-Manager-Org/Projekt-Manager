@@ -220,7 +220,12 @@ export function UserDetailPanel({ user, onClose }: Props) {
             {resetSuccess ? (
               <div className={styles.resultBox}>{STRINGS.password.resetSuccess}</div>
             ) : (
-              <>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleResetPassword();
+                }}
+              >
                 <div className={styles.formGroup}>
                   <label className={styles.formLabel}>{STRINGS.password.newPassword} *</label>
                   <input
@@ -249,6 +254,7 @@ export function UserDetailPanel({ user, onClose }: Props) {
                 </div>
                 <div className={styles.formActions}>
                   <button
+                    type="button"
                     className={styles.cancelButton}
                     onClick={cancelResetForm}
                     disabled={submitting}
@@ -256,15 +262,15 @@ export function UserDetailPanel({ user, onClose }: Props) {
                     {STRINGS.ui.cancel}
                   </button>
                   <button
+                    type="submit"
                     className={styles.submitButton}
-                    onClick={() => void handleResetPassword()}
                     disabled={submitting || !resetPw.trim() || !resetPwMatch}
                     data-testid="user-reset-pw-submit"
                   >
                     {STRINGS.password.resetPassword}
                   </button>
                 </div>
-              </>
+              </form>
             )}
           </div>
         )}

@@ -69,7 +69,14 @@ export function UserCreateForm({ onClose }: Props) {
 
   return (
     <div className={styles.formOverlay}>
-      <div className={styles.formPanel}>
+      <form
+        className={styles.formPanel}
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleCreate();
+        }}
+      >
         <h2 className={styles.formTitle}>
           {STRINGS.entities.user} {STRINGS.ui.create}
         </h2>
@@ -158,19 +165,24 @@ export function UserCreateForm({ onClose }: Props) {
         {error && <div className={styles.error}>{error}</div>}
 
         <div className={styles.formActions}>
-          <button className={styles.cancelButton} onClick={close} disabled={submitting}>
+          <button
+            type="button"
+            className={styles.cancelButton}
+            onClick={close}
+            disabled={submitting}
+          >
             {STRINGS.ui.cancel}
           </button>
           <button
+            type="submit"
             className={styles.submitButton}
-            onClick={handleCreate}
             disabled={!canSubmit}
             data-testid="user-submit"
           >
             {STRINGS.ui.create}
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
