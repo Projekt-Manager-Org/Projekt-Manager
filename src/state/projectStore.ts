@@ -44,7 +44,7 @@ interface ProjectState {
   fetchProject: (id: string) => Promise<FetchProjectOutcome>;
   /**
    * Replace the project's assigned-worker set (§8.15.3). Applies
-   * optimistically per behavior.md §9.5 and reverts on failure.
+   * optimistically and reverts on failure (AC-754).
    * Returns true when the server-confirmed row has been written back.
    */
   updateAssignedWorkers: (
@@ -57,7 +57,7 @@ interface ProjectState {
   updateDates: (projectId: string, start?: string | null, end?: string | null) => void;
   /**
    * PATCH the editable fields. A failure surfaces as `mutationError`
-   * (AC-53) and resolves false, so the caller can show the stored value
+   * (AC-755) and resolves false, so the caller can show the stored value
    * again. `siteAddress`: omit to leave unchanged, `null` to clear.
    */
   updateProject: (

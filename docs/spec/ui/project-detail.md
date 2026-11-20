@@ -2,7 +2,7 @@
 
 Section 8.15 of the [product spec](../index.md) — the full-page view of one project at `/projects/:id`. The detail panel ([workflow-views.md §8.4](workflow-views.md#84-project-detail-panel)) is the quick-glance overlay on the board and calendar.
 
-Shell and navigation live in [index.md](index.md); cross-cutting behavioral rules (in-flight lock, error handling, mutation semantics) in [behavior.md](behavior.md).
+Shell and navigation live in [index.md](index.md); cross-cutting interaction rules (in-flight lock, error handling, dialogs) in [verification.md §15.15](../verification.md#1515-navigation-and-interaction).
 
 ---
 
@@ -68,7 +68,7 @@ It asks first: a Yes / No dialog whose German warning names the Papierkorb, the 
 
 Shown with `attachment:trash`; its badge counts the hidden attachments. Lists them ([AC-421](../verification.md#1526-attachments)) with file name, label, time since hiding as a German relative time (`"vor 1 Stunde"`), and a one-click restore without confirmation ([AC-422](../verification.md#1526-attachments)). Also available on archived projects ([AC-425](../verification.md#1526-attachments)).
 
-- **States** — loading; forbidden; error with a German message and `Erneut versuchen` ([behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior)); ready, where an empty list reads `"Keine gelöschten Dateien"`.
+- **States** — loading; forbidden; error with a German message and `Erneut versuchen`; ready, where an empty list reads `"Keine gelöschten Dateien"`.
 
 ### 8.15.11 Invoice
 

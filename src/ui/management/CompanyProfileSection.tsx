@@ -141,7 +141,7 @@ export function CompanyProfileSection() {
   // `key={data.version}` re-mounts the form when the server returns a
   // new snapshot — after a save or a stale-write refetch — so `useState`
   // initializers re-run against the new data (and the edit's start
-  // version, behavior.md §9.5) without a setState-in-effect.
+  // version, AC-379) without a setState-in-effect.
   //
   // Until then, surface the fetch error explicitly. The form is the only
   // place `saveError` is rendered, so a failed initial GET would

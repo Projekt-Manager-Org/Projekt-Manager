@@ -4,8 +4,9 @@ import { STORAGE_STATES } from './storage-states';
 /**
  * E2E — `Gerät abmelden` failure path.
  *
- * Pins AC-673 from `docs/spec/verification.md §15.24` and the
- * optimistic-UI revert contract in `docs/spec/ui/behavior.md §9.5`.
+ * Pins AC-673 from `docs/spec/verification.md §15.24` and AC-754:
+ * after the failure the affordance shows the stored (still registered)
+ * state.
  *
  * Contract: when the DELETE `/api/push-subscriptions` call fails (5xx),
  * the UI must:

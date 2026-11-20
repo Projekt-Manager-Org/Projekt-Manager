@@ -493,7 +493,7 @@ describe('ProjectDetailPage — BAUSTELLE click opens SiteAddressEditModal', () 
   });
 });
 
-describe('ProjectDetailPage — a failed edit shows the error and the stored value (AC-53)', () => {
+describe('ProjectDetailPage — a failed edit shows the error and the stored value (AC-754, AC-755)', () => {
   const FAILURE = 'Ein interner Fehler ist aufgetreten.';
 
   beforeEach(() => {

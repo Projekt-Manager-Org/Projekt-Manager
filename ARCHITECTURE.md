@@ -438,7 +438,7 @@ Contract: [verification.md §15.28](docs/spec/verification.md#1528-realtime-even
 
 ## Edit Concurrency
 
-Contract: [data-model.md §6.4](docs/spec/data-model.md#64-concurrency), [ui/behavior.md §9.5](docs/spec/ui/behavior.md#95-asynchronous-mutation-behavior). SSE refreshes views; `version` stops stale writes to customers, invoices and the company profile. Project edits stay last-write-wins.
+Contract: [data-model.md §6.4](docs/spec/data-model.md#64-concurrency), [AC-379](docs/spec/verification.md#1517-data-integrity). SSE refreshes views; `version` stops stale writes to customers, invoices and the company profile. Project edits stay last-write-wins.
 
 | Concern                                                       | Where                                                                                                  |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |

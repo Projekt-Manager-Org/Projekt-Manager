@@ -720,7 +720,7 @@ function InlineTitle({
       setDraft(value);
       return;
     }
-    // A failed save shows the stored value again (AC-53).
+    // A failed save shows the stored value again (AC-754).
     void onCommit(normalized).then((saved) => {
       if (!saved) setDraft(stored.current);
     });
@@ -826,7 +826,7 @@ function InlineNumberField({
       setDraft(lastSeen);
       return;
     }
-    // A failed save shows the stored value again (AC-53).
+    // A failed save shows the stored value again (AC-754).
     void onCommit(parsed).then((saved) => {
       if (!saved) setDraft(stored.current);
     });
@@ -880,7 +880,7 @@ function InlineTextareaField({
     const trimmed = draft.trim();
     const normalized = trimmed || null;
     if ((normalized ?? '') === (initial ?? '')) return;
-    // A failed save shows the stored value again (AC-53).
+    // A failed save shows the stored value again (AC-754).
     void onCommit(normalized).then((saved) => {
       if (!saved) setDraft(stored.current);
     });

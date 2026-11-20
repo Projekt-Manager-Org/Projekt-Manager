@@ -9,7 +9,7 @@
  *     AC-484.
  *   - Surfaces the AC-485 partial-fill validation message inline.
  *   - Save dispatches PATCH via the project store; on success the modal
- *     closes. On failure it stays open with the store's message (AC-53)
+ *     closes. On failure it stays open with the store's message (AC-755)
  *     so the user can retry.
  *   - Escape / overlay click cancels; both are no-ops while a save is
  *     in flight (mirrors CustomerEditForm).

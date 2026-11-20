@@ -407,13 +407,12 @@ test.describe('Management flows', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-122: Modal keyboard contract — Esc closes, Enter submits the
-  // primary action when focus is in the form. These tests reuse the
-  // customer created in step 18 and the user created in step 22, but
-  // make no DB changes — Esc cancels the create form, Enter on the
-  // password change modal submits but rejects (wrong current pw).
+  // AC-758, AC-759: Esc closes a dialog, Enter in a single-line field
+  // submits it. Esc cancels a customer create form (nothing saved);
+  // Enter saves an edit to the customer created in step 18, which the
+  // test then reverts.
   // ---------------------------------------------------------------
-  test('AC-122: Esc closes the customer create modal without saving', async ({ page }) => {
+  test('AC-758: Esc closes the customer create modal without saving', async ({ page }) => {
     await page.getByTestId('view-toggle-kunden').click();
     await expect(page.getByTestId('customer-table')).toBeVisible();
 
@@ -430,7 +429,7 @@ test.describe('Management flows', () => {
     await expect(page.getByText('Esc-Test (should not persist)')).toHaveCount(0);
   });
 
-  test('AC-122: Enter in the customer edit form submits the primary action', async ({ page }) => {
+  test('AC-759: Enter in the customer edit form submits the primary action', async ({ page }) => {
     await page.getByTestId('view-toggle-kunden').click();
     await expect(page.getByTestId('customer-table')).toBeVisible();
 
@@ -574,10 +573,10 @@ test.describe('Management flows', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-123: Backdrop click does not close form modals. Protects
+  // AC-760: Backdrop click does not close form modals. Protects
   // against accidental loss of typed data.
   // ---------------------------------------------------------------
-  test('AC-123: clicking the backdrop does not close the customer create modal', async ({
+  test('AC-760: clicking the backdrop does not close the customer create modal', async ({
     page,
   }) => {
     await page.getByTestId('view-toggle-kunden').click();
@@ -599,7 +598,7 @@ test.describe('Management flows', () => {
     await expect(nameInput).toBeVisible();
     await expect(nameInput).toHaveValue('Backdrop-Test (must persist)');
 
-    // Clean teardown — close via Esc (AC-122).
+    // Clean teardown — close via Esc (AC-758).
     await page.keyboard.press('Escape');
     await expect(nameInput).toBeHidden();
   });

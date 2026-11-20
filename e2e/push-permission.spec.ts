@@ -170,7 +170,7 @@ test.describe('AC-658: Stummschalten reflects pushMuted and persists', () => {
 
     await toggle.click();
 
-    // AC-658 / AC-53 contract — two halves to pin:
+    // AC-658 / AC-754 contract — two halves to pin:
     //  1. The optimistic flip is observable BEFORE the server responds.
     //  2. The flip reverts after the 500 lands.
     await expect.poll(async () => toggle.isChecked()).toBe(!before);

@@ -10,338 +10,342 @@ Tests are the test spec: an AC is covered when a test file cites its ID (`grep -
 
 A row goes when a test starts citing its AC; the check fails on a stale row.
 
-| AC     | Status  | Verified by / missing                                                                                    |
-| ------ | ------- | -------------------------------------------------------------------------------------------------------- |
-| AC-2   | retired | —                                                                                                        |
-| AC-3   | retired | —                                                                                                        |
-| AC-4   | retired | —                                                                                                        |
-| AC-5   | retired | —                                                                                                        |
-| AC-6   | retired | —                                                                                                        |
-| AC-8   | retired | —                                                                                                        |
-| AC-9   | retired | —                                                                                                        |
-| AC-10  | retired | —                                                                                                        |
-| AC-11  | gap     | needs an e2e that renders both column types                                                              |
-| AC-12  | gap     | needs an e2e walking Kanban dot + calendar bar + detail badge for one project                            |
-| AC-13  | retired | —                                                                                                        |
-| AC-14  | retired | —                                                                                                        |
-| AC-15  | retired | —                                                                                                        |
-| AC-16  | retired | —                                                                                                        |
-| AC-17  | retired | —                                                                                                        |
-| AC-18  | retired | —                                                                                                        |
-| AC-19  | retired | —                                                                                                        |
-| AC-20  | retired | —                                                                                                        |
-| AC-21  | retired | —                                                                                                        |
-| AC-22  | retired | —                                                                                                        |
-| AC-30  | infra   | deployment review — reverse-proxy TLS                                                                    |
-| AC-31  | infra   | deploy procedure — `scripts/deploy.sh`                                                                   |
-| AC-32  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                                      |
-| AC-33  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                                      |
-| AC-34  | infra   | code review                                                                                              |
-| AC-35  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                                      |
-| AC-36  | infra   | CI `lint` — ESLint, Prettier                                                                             |
-| AC-37  | infra   | CI `check` job; nightly `e2e.yml`                                                                        |
-| AC-38  | retired | —                                                                                                        |
-| AC-40  | retired | —                                                                                                        |
-| AC-41  | retired | —                                                                                                        |
-| AC-42  | retired | —                                                                                                        |
-| AC-43  | retired | —                                                                                                        |
-| AC-46  | infra   | deploy procedure — `scripts/deploy.sh`                                                                   |
-| AC-47  | infra   | deploy procedure — `scripts/deploy.sh <sha>`                                                             |
-| AC-48  | infra   | deploy procedure — `scripts/smoke-app-health.sh`                                                         |
-| AC-49  | infra   | deployment review — VPN-only reachability                                                                |
-| AC-50  | infra   | deployment review — persistent volumes                                                                   |
-| AC-51  | infra   | deploy procedure — `scripts/deploy.sh` takes a commit SHA                                                |
-| AC-52  | retired | —                                                                                                        |
-| AC-54  | retired | —                                                                                                        |
-| AC-55  | retired | —                                                                                                        |
-| AC-56  | retired | —                                                                                                        |
-| AC-57  | retired | —                                                                                                        |
-| AC-58  | retired | —                                                                                                        |
-| AC-59  | retired | —                                                                                                        |
-| AC-60  | retired | —                                                                                                        |
-| AC-61  | retired | —                                                                                                        |
-| AC-62  | retired | —                                                                                                        |
-| AC-64  | retired | —                                                                                                        |
-| AC-65  | retired | —                                                                                                        |
-| AC-67  | retired | —                                                                                                        |
-| AC-69  | retired | —                                                                                                        |
-| AC-70  | retired | —                                                                                                        |
-| AC-71  | retired | —                                                                                                        |
-| AC-72  | retired | —                                                                                                        |
-| AC-73  | retired | —                                                                                                        |
-| AC-74  | gap     | the navigation walk misses Daten, Aktivität, Benachrichtigungen, Meine Projekte; no-reload is unasserted |
-| AC-76  | retired | —                                                                                                        |
-| AC-77  | retired | —                                                                                                        |
-| AC-78  | retired | —                                                                                                        |
-| AC-79  | retired | —                                                                                                        |
-| AC-80  | retired | —                                                                                                        |
-| AC-81  | retired | —                                                                                                        |
-| AC-82  | retired | —                                                                                                        |
-| AC-83  | retired | —                                                                                                        |
-| AC-84  | retired | —                                                                                                        |
-| AC-86  | retired | —                                                                                                        |
-| AC-87  | retired | —                                                                                                        |
-| AC-88  | retired | —                                                                                                        |
-| AC-89  | retired | —                                                                                                        |
-| AC-90  | retired | —                                                                                                        |
-| AC-91  | retired | —                                                                                                        |
-| AC-93  | retired | —                                                                                                        |
-| AC-95  | retired | —                                                                                                        |
-| AC-98  | retired | —                                                                                                        |
-| AC-100 | retired | —                                                                                                        |
-| AC-101 | retired | —                                                                                                        |
-| AC-103 | retired | —                                                                                                        |
-| AC-104 | retired | —                                                                                                        |
-| AC-105 | retired | —                                                                                                        |
-| AC-106 | gap     | needs an e2e covering the action disabled while the text is blank / in flight                            |
-| AC-107 | retired | —                                                                                                        |
-| AC-108 | retired | —                                                                                                        |
-| AC-109 | retired | —                                                                                                        |
-| AC-110 | retired | —                                                                                                        |
-| AC-111 | retired | —                                                                                                        |
-| AC-113 | retired | —                                                                                                        |
-| AC-114 | gap     | needs an e2e that swaps the accent and walks primary, link, focus, selection                             |
-| AC-115 | retired | —                                                                                                        |
-| AC-117 | retired | —                                                                                                        |
-| AC-119 | retired | —                                                                                                        |
-| AC-125 | retired | —                                                                                                        |
-| AC-126 | retired | —                                                                                                        |
-| AC-128 | retired | —                                                                                                        |
-| AC-129 | retired | —                                                                                                        |
-| AC-130 | retired | —                                                                                                        |
-| AC-132 | retired | —                                                                                                        |
-| AC-133 | retired | —                                                                                                        |
-| AC-134 | retired | —                                                                                                        |
-| AC-135 | retired | —                                                                                                        |
-| AC-136 | retired | —                                                                                                        |
-| AC-137 | retired | —                                                                                                        |
-| AC-138 | retired | —                                                                                                        |
-| AC-139 | retired | —                                                                                                        |
-| AC-140 | retired | —                                                                                                        |
-| AC-141 | retired | —                                                                                                        |
-| AC-143 | retired | —                                                                                                        |
-| AC-144 | retired | —                                                                                                        |
-| AC-145 | retired | —                                                                                                        |
-| AC-146 | retired | —                                                                                                        |
-| AC-147 | retired | —                                                                                                        |
-| AC-148 | retired | —                                                                                                        |
-| AC-150 | retired | —                                                                                                        |
-| AC-151 | retired | —                                                                                                        |
-| AC-152 | retired | —                                                                                                        |
-| AC-154 | retired | —                                                                                                        |
-| AC-155 | retired | —                                                                                                        |
-| AC-156 | retired | —                                                                                                        |
-| AC-157 | retired | —                                                                                                        |
-| AC-158 | retired | —                                                                                                        |
-| AC-159 | retired | —                                                                                                        |
-| AC-160 | retired | —                                                                                                        |
-| AC-162 | retired | —                                                                                                        |
-| AC-163 | retired | —                                                                                                        |
-| AC-169 | retired | —                                                                                                        |
-| AC-170 | retired | —                                                                                                        |
-| AC-171 | retired | —                                                                                                        |
-| AC-172 | retired | —                                                                                                        |
-| AC-173 | infra   | provider-side review against the recovery runbook                                                        |
-| AC-175 | infra   | repo scan of `scripts/backup/load-drill-key.sh` (tmpfs-only); runbook review                             |
-| AC-176 | retired | —                                                                                                        |
-| AC-177 | retired | —                                                                                                        |
-| AC-178 | retired | —                                                                                                        |
-| AC-179 | retired | —                                                                                                        |
-| AC-180 | retired | —                                                                                                        |
-| AC-181 | retired | —                                                                                                        |
-| AC-184 | retired | —                                                                                                        |
-| AC-185 | retired | —                                                                                                        |
-| AC-187 | retired | —                                                                                                        |
-| AC-189 | retired | —                                                                                                        |
-| AC-191 | retired | —                                                                                                        |
-| AC-193 | retired | —                                                                                                        |
-| AC-194 | retired | —                                                                                                        |
-| AC-196 | retired | —                                                                                                        |
-| AC-197 | retired | —                                                                                                        |
-| AC-198 | retired | —                                                                                                        |
-| AC-200 | retired | —                                                                                                        |
-| AC-202 | retired | —                                                                                                        |
-| AC-204 | retired | —                                                                                                        |
-| AC-205 | retired | —                                                                                                        |
-| AC-206 | retired | —                                                                                                        |
-| AC-208 | retired | —                                                                                                        |
-| AC-209 | retired | —                                                                                                        |
-| AC-210 | retired | —                                                                                                        |
-| AC-211 | retired | —                                                                                                        |
-| AC-212 | retired | —                                                                                                        |
-| AC-213 | retired | —                                                                                                        |
-| AC-214 | retired | —                                                                                                        |
-| AC-215 | retired | —                                                                                                        |
-| AC-216 | retired | —                                                                                                        |
-| AC-217 | retired | —                                                                                                        |
-| AC-218 | retired | —                                                                                                        |
-| AC-219 | retired | —                                                                                                        |
-| AC-220 | retired | —                                                                                                        |
-| AC-221 | retired | —                                                                                                        |
-| AC-222 | retired | —                                                                                                        |
-| AC-223 | retired | —                                                                                                        |
-| AC-224 | retired | —                                                                                                        |
-| AC-226 | retired | —                                                                                                        |
-| AC-227 | retired | —                                                                                                        |
-| AC-229 | infra   | CI `lint` — `scripts/check-env-drift.sh`                                                                 |
-| AC-232 | retired | —                                                                                                        |
-| AC-233 | retired | —                                                                                                        |
-| AC-234 | retired | —                                                                                                        |
-| AC-235 | retired | —                                                                                                        |
-| AC-238 | retired | —                                                                                                        |
-| AC-239 | retired | —                                                                                                        |
-| AC-241 | retired | —                                                                                                        |
-| AC-242 | retired | —                                                                                                        |
-| AC-243 | retired | —                                                                                                        |
-| AC-245 | retired | —                                                                                                        |
-| AC-246 | retired | —                                                                                                        |
-| AC-248 | retired | —                                                                                                        |
-| AC-249 | retired | —                                                                                                        |
-| AC-250 | retired | —                                                                                                        |
-| AC-251 | retired | —                                                                                                        |
-| AC-252 | retired | —                                                                                                        |
-| AC-253 | retired | —                                                                                                        |
-| AC-254 | retired | —                                                                                                        |
-| AC-255 | retired | —                                                                                                        |
-| AC-256 | retired | —                                                                                                        |
-| AC-257 | retired | —                                                                                                        |
-| AC-258 | retired | —                                                                                                        |
-| AC-259 | retired | —                                                                                                        |
-| AC-260 | retired | —                                                                                                        |
-| AC-261 | retired | —                                                                                                        |
-| AC-262 | retired | —                                                                                                        |
-| AC-263 | retired | —                                                                                                        |
-| AC-264 | retired | —                                                                                                        |
-| AC-265 | retired | —                                                                                                        |
-| AC-266 | retired | —                                                                                                        |
-| AC-267 | retired | —                                                                                                        |
-| AC-268 | retired | —                                                                                                        |
-| AC-269 | retired | —                                                                                                        |
-| AC-270 | retired | —                                                                                                        |
-| AC-271 | retired | —                                                                                                        |
-| AC-272 | retired | —                                                                                                        |
-| AC-273 | retired | —                                                                                                        |
-| AC-274 | retired | —                                                                                                        |
-| AC-276 | retired | —                                                                                                        |
-| AC-278 | retired | —                                                                                                        |
-| AC-279 | retired | —                                                                                                        |
-| AC-280 | retired | —                                                                                                        |
-| AC-281 | retired | —                                                                                                        |
-| AC-282 | retired | —                                                                                                        |
-| AC-284 | retired | —                                                                                                        |
-| AC-285 | retired | —                                                                                                        |
-| AC-286 | retired | —                                                                                                        |
-| AC-287 | retired | —                                                                                                        |
-| AC-288 | retired | —                                                                                                        |
-| AC-289 | retired | —                                                                                                        |
-| AC-290 | retired | —                                                                                                        |
-| AC-291 | retired | —                                                                                                        |
-| AC-292 | retired | —                                                                                                        |
-| AC-293 | retired | —                                                                                                        |
-| AC-294 | retired | —                                                                                                        |
-| AC-295 | retired | —                                                                                                        |
-| AC-296 | retired | —                                                                                                        |
-| AC-297 | retired | —                                                                                                        |
-| AC-298 | retired | —                                                                                                        |
-| AC-299 | retired | —                                                                                                        |
-| AC-300 | retired | —                                                                                                        |
-| AC-301 | retired | —                                                                                                        |
-| AC-302 | retired | —                                                                                                        |
-| AC-303 | retired | —                                                                                                        |
-| AC-304 | retired | —                                                                                                        |
-| AC-305 | retired | —                                                                                                        |
-| AC-306 | retired | —                                                                                                        |
-| AC-307 | retired | —                                                                                                        |
-| AC-308 | retired | —                                                                                                        |
-| AC-309 | retired | —                                                                                                        |
-| AC-310 | retired | —                                                                                                        |
-| AC-311 | retired | —                                                                                                        |
-| AC-312 | retired | —                                                                                                        |
-| AC-313 | retired | —                                                                                                        |
-| AC-314 | retired | —                                                                                                        |
-| AC-315 | retired | —                                                                                                        |
-| AC-316 | retired | —                                                                                                        |
-| AC-318 | retired | —                                                                                                        |
-| AC-319 | retired | —                                                                                                        |
-| AC-320 | retired | —                                                                                                        |
-| AC-322 | retired | —                                                                                                        |
-| AC-323 | retired | —                                                                                                        |
-| AC-324 | retired | —                                                                                                        |
-| AC-325 | retired | —                                                                                                        |
-| AC-326 | retired | —                                                                                                        |
-| AC-327 | retired | —                                                                                                        |
-| AC-328 | retired | —                                                                                                        |
-| AC-329 | retired | —                                                                                                        |
-| AC-330 | retired | —                                                                                                        |
-| AC-333 | retired | —                                                                                                        |
-| AC-334 | retired | —                                                                                                        |
-| AC-335 | retired | —                                                                                                        |
-| AC-336 | retired | —                                                                                                        |
-| AC-338 | retired | —                                                                                                        |
-| AC-339 | retired | —                                                                                                        |
-| AC-340 | retired | —                                                                                                        |
-| AC-342 | retired | —                                                                                                        |
-| AC-348 | infra   | CI `lint` — lychee, `lychee.toml`                                                                        |
-| AC-350 | retired | —                                                                                                        |
-| AC-355 | retired | —                                                                                                        |
-| AC-356 | retired | —                                                                                                        |
-| AC-357 | retired | —                                                                                                        |
-| AC-358 | retired | —                                                                                                        |
-| AC-359 | retired | —                                                                                                        |
-| AC-360 | retired | —                                                                                                        |
-| AC-361 | retired | —                                                                                                        |
-| AC-362 | retired | —                                                                                                        |
-| AC-363 | retired | —                                                                                                        |
-| AC-368 | infra   | review of `docs/ops/backup/recovery.md`                                                                  |
-| AC-372 | retired | —                                                                                                        |
-| AC-373 | retired | —                                                                                                        |
-| AC-374 | infra   | monthly binary-key drill — `docs/ops/binary-key/drills.md`                                               |
-| AC-376 | retired | —                                                                                                        |
-| AC-382 | retired | —                                                                                                        |
-| AC-384 | retired | —                                                                                                        |
-| AC-385 | retired | —                                                                                                        |
-| AC-386 | retired | —                                                                                                        |
-| AC-387 | retired | —                                                                                                        |
-| AC-388 | retired | —                                                                                                        |
-| AC-389 | retired | —                                                                                                        |
-| AC-401 | gap     | needs an e2e asserting the stored object is not the uploaded plaintext                                   |
-| AC-405 | gap     | no test drives the client-side cap block or the missing retry action                                     |
-| AC-423 | gap     | no test drives a restore whose storage copy fails with a non-410 error                                   |
-| AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review                       |
-| AC-452 | gap     | needs an e2e asserting the column order                                                                  |
-| AC-453 | gap     | e2e asserts nine columns; card placement per state is unasserted                                         |
-| AC-454 | gap     | needs an e2e asserting the oldest-first card order                                                       |
-| AC-455 | gap     | e2e asserts a bar is visible, not that it spans the planned dates                                        |
-| AC-456 | gap     | needs an e2e with a start-only project                                                                   |
-| AC-460 | gap     | needs a component test of the card buttons in the first, middle and last state                           |
-| AC-461 | gap     | needs a card test past the threshold; `aging.test.ts` covers only the helper                             |
-| AC-462 | gap     | needs a card test past the threshold; `aging.test.ts` covers only the helper                             |
-| AC-463 | gap     | e2e asserts the expanded header; the collapsed marker is unasserted                                      |
-| AC-464 | gap     | e2e asserts the counter label, not the count                                                             |
-| AC-466 | gap     | needs an e2e clicking "Filter aufheben"                                                                  |
-| AC-467 | gap     | needs an e2e switching views with the filter active                                                      |
-| AC-469 | gap     | needs an e2e asserting a Monday-start week                                                               |
-| AC-470 | gap     | needs an e2e below each tier width; `useCollapseTier.test.tsx` covers only the hook                      |
-| AC-471 | gap     | needs a panel test clearing the start while an end is set                                                |
-| AC-472 | gap     | `ProjectDetailPanel.test.tsx` asserts only the route change, not the back action                         |
-| AC-473 | gap     | e2e opens the panel from a card; no test opens it from a calendar bar                                    |
-| AC-474 | gap     | needs an e2e at phone width opening a project from the board and the calendar                            |
-| AC-506 | gap     | `archive-flows.spec.ts` does not assert the project name; restore is untested                            |
-| AC-511 | gap     | needs a page test clearing the start while an end is set                                                 |
-| AC-527 | gap     | needs an e2e of the create-form list (`CustomerManagement.test.tsx` is mock-based)                       |
-| AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based)                     |
-| AC-529 | gap     | needs an e2e of a failed search                                                                          |
-| AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                                                |
-| AC-541 | gap     | needs a test failing the delete part-way                                                                 |
-| AC-544 | retired | —                                                                                                        |
-| AC-707 | gap     | needs a test confirming a Storno with an empty reason                                                    |
-| AC-712 | gap     | needs a test of the list order with drafts and issued invoices                                           |
-| AC-714 | gap     | needs a test of the list search over number and recipient name                                           |
-| AC-715 | gap     | needs a test of the year and status filters on the list                                                  |
-| AC-716 | gap     | needs a test of the year options beside an active filter                                                 |
-| AC-720 | gap     | needs a test that a live refresh keeps an open draft form and Storno confirmation                        |
-| AC-725 | gap     | needs a test of the incomplete-profile banner and its link                                               |
-| AC-730 | gap     | needs a test that a document failing to load mid-export yields no archive                                |
-| AC-731 | gap     | needs a test saving a draft form without a priced, described line                                        |
-| AC-735 | gap     | needs a test of each save path: new customer, selected customer, no title                                |
-| AC-742 | gap     | needs an e2e walking every screen in the dark theme                                                      |
+| AC     | Status  | Verified by / missing                                                                |
+| ------ | ------- | ------------------------------------------------------------------------------------ |
+| AC-2   | retired | —                                                                                    |
+| AC-3   | retired | —                                                                                    |
+| AC-4   | retired | —                                                                                    |
+| AC-5   | retired | —                                                                                    |
+| AC-6   | retired | —                                                                                    |
+| AC-8   | retired | —                                                                                    |
+| AC-9   | retired | —                                                                                    |
+| AC-10  | retired | —                                                                                    |
+| AC-11  | gap     | needs an e2e that renders both column types                                          |
+| AC-12  | gap     | needs an e2e walking Kanban dot + calendar bar + detail badge for one project        |
+| AC-13  | retired | —                                                                                    |
+| AC-14  | retired | —                                                                                    |
+| AC-15  | retired | —                                                                                    |
+| AC-16  | retired | —                                                                                    |
+| AC-17  | retired | —                                                                                    |
+| AC-18  | retired | —                                                                                    |
+| AC-19  | retired | —                                                                                    |
+| AC-20  | retired | —                                                                                    |
+| AC-21  | retired | —                                                                                    |
+| AC-22  | retired | —                                                                                    |
+| AC-30  | infra   | deployment review — reverse-proxy TLS                                                |
+| AC-31  | infra   | deploy procedure — `scripts/deploy.sh`                                               |
+| AC-32  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                  |
+| AC-33  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                  |
+| AC-34  | infra   | code review                                                                          |
+| AC-35  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                  |
+| AC-36  | infra   | CI `lint` — ESLint, Prettier                                                         |
+| AC-37  | infra   | CI `check` job; nightly `e2e.yml`                                                    |
+| AC-38  | retired | —                                                                                    |
+| AC-40  | retired | —                                                                                    |
+| AC-41  | retired | —                                                                                    |
+| AC-42  | retired | —                                                                                    |
+| AC-43  | retired | —                                                                                    |
+| AC-46  | infra   | deploy procedure — `scripts/deploy.sh`                                               |
+| AC-47  | infra   | deploy procedure — `scripts/deploy.sh <sha>`                                         |
+| AC-48  | infra   | deploy procedure — `scripts/smoke-app-health.sh`                                     |
+| AC-49  | infra   | deployment review — VPN-only reachability                                            |
+| AC-50  | infra   | deployment review — persistent volumes                                               |
+| AC-51  | infra   | deploy procedure — `scripts/deploy.sh` takes a commit SHA                            |
+| AC-52  | retired | —                                                                                    |
+| AC-53  | retired | —                                                                                    |
+| AC-54  | retired | —                                                                                    |
+| AC-55  | retired | —                                                                                    |
+| AC-56  | retired | —                                                                                    |
+| AC-57  | retired | —                                                                                    |
+| AC-58  | retired | —                                                                                    |
+| AC-59  | retired | —                                                                                    |
+| AC-60  | retired | —                                                                                    |
+| AC-61  | retired | —                                                                                    |
+| AC-62  | retired | —                                                                                    |
+| AC-64  | retired | —                                                                                    |
+| AC-65  | retired | —                                                                                    |
+| AC-67  | retired | —                                                                                    |
+| AC-69  | retired | —                                                                                    |
+| AC-70  | retired | —                                                                                    |
+| AC-71  | retired | —                                                                                    |
+| AC-72  | retired | —                                                                                    |
+| AC-73  | retired | —                                                                                    |
+| AC-74  | retired | —                                                                                    |
+| AC-76  | retired | —                                                                                    |
+| AC-77  | retired | —                                                                                    |
+| AC-78  | retired | —                                                                                    |
+| AC-79  | retired | —                                                                                    |
+| AC-80  | retired | —                                                                                    |
+| AC-81  | retired | —                                                                                    |
+| AC-82  | retired | —                                                                                    |
+| AC-83  | retired | —                                                                                    |
+| AC-84  | retired | —                                                                                    |
+| AC-86  | retired | —                                                                                    |
+| AC-87  | retired | —                                                                                    |
+| AC-88  | retired | —                                                                                    |
+| AC-89  | retired | —                                                                                    |
+| AC-90  | retired | —                                                                                    |
+| AC-91  | retired | —                                                                                    |
+| AC-93  | retired | —                                                                                    |
+| AC-95  | retired | —                                                                                    |
+| AC-98  | retired | —                                                                                    |
+| AC-100 | retired | —                                                                                    |
+| AC-101 | retired | —                                                                                    |
+| AC-103 | retired | —                                                                                    |
+| AC-104 | retired | —                                                                                    |
+| AC-105 | retired | —                                                                                    |
+| AC-106 | gap     | needs an e2e covering the action disabled while the text is blank / in flight        |
+| AC-107 | retired | —                                                                                    |
+| AC-108 | retired | —                                                                                    |
+| AC-109 | retired | —                                                                                    |
+| AC-110 | retired | —                                                                                    |
+| AC-111 | retired | —                                                                                    |
+| AC-113 | retired | —                                                                                    |
+| AC-114 | gap     | needs an e2e that swaps the accent and walks primary, link, focus, selection         |
+| AC-115 | retired | —                                                                                    |
+| AC-117 | retired | —                                                                                    |
+| AC-119 | retired | —                                                                                    |
+| AC-122 | retired | —                                                                                    |
+| AC-123 | retired | —                                                                                    |
+| AC-125 | retired | —                                                                                    |
+| AC-126 | retired | —                                                                                    |
+| AC-128 | retired | —                                                                                    |
+| AC-129 | retired | —                                                                                    |
+| AC-130 | retired | —                                                                                    |
+| AC-131 | retired | —                                                                                    |
+| AC-132 | retired | —                                                                                    |
+| AC-133 | retired | —                                                                                    |
+| AC-134 | retired | —                                                                                    |
+| AC-135 | retired | —                                                                                    |
+| AC-136 | retired | —                                                                                    |
+| AC-137 | retired | —                                                                                    |
+| AC-138 | retired | —                                                                                    |
+| AC-139 | retired | —                                                                                    |
+| AC-140 | retired | —                                                                                    |
+| AC-141 | retired | —                                                                                    |
+| AC-143 | retired | —                                                                                    |
+| AC-144 | retired | —                                                                                    |
+| AC-145 | retired | —                                                                                    |
+| AC-146 | retired | —                                                                                    |
+| AC-147 | retired | —                                                                                    |
+| AC-148 | retired | —                                                                                    |
+| AC-150 | retired | —                                                                                    |
+| AC-151 | retired | —                                                                                    |
+| AC-152 | retired | —                                                                                    |
+| AC-154 | retired | —                                                                                    |
+| AC-155 | retired | —                                                                                    |
+| AC-156 | retired | —                                                                                    |
+| AC-157 | retired | —                                                                                    |
+| AC-158 | retired | —                                                                                    |
+| AC-159 | retired | —                                                                                    |
+| AC-160 | retired | —                                                                                    |
+| AC-162 | retired | —                                                                                    |
+| AC-163 | retired | —                                                                                    |
+| AC-169 | retired | —                                                                                    |
+| AC-170 | retired | —                                                                                    |
+| AC-171 | retired | —                                                                                    |
+| AC-172 | retired | —                                                                                    |
+| AC-173 | infra   | provider-side review against the recovery runbook                                    |
+| AC-175 | infra   | repo scan of `scripts/backup/load-drill-key.sh` (tmpfs-only); runbook review         |
+| AC-176 | retired | —                                                                                    |
+| AC-177 | retired | —                                                                                    |
+| AC-178 | retired | —                                                                                    |
+| AC-179 | retired | —                                                                                    |
+| AC-180 | retired | —                                                                                    |
+| AC-181 | retired | —                                                                                    |
+| AC-184 | retired | —                                                                                    |
+| AC-185 | retired | —                                                                                    |
+| AC-187 | retired | —                                                                                    |
+| AC-189 | retired | —                                                                                    |
+| AC-191 | retired | —                                                                                    |
+| AC-193 | retired | —                                                                                    |
+| AC-194 | retired | —                                                                                    |
+| AC-196 | retired | —                                                                                    |
+| AC-197 | retired | —                                                                                    |
+| AC-198 | retired | —                                                                                    |
+| AC-200 | retired | —                                                                                    |
+| AC-202 | retired | —                                                                                    |
+| AC-204 | retired | —                                                                                    |
+| AC-205 | retired | —                                                                                    |
+| AC-206 | retired | —                                                                                    |
+| AC-208 | retired | —                                                                                    |
+| AC-209 | retired | —                                                                                    |
+| AC-210 | retired | —                                                                                    |
+| AC-211 | retired | —                                                                                    |
+| AC-212 | retired | —                                                                                    |
+| AC-213 | retired | —                                                                                    |
+| AC-214 | retired | —                                                                                    |
+| AC-215 | retired | —                                                                                    |
+| AC-216 | retired | —                                                                                    |
+| AC-217 | retired | —                                                                                    |
+| AC-218 | retired | —                                                                                    |
+| AC-219 | retired | —                                                                                    |
+| AC-220 | retired | —                                                                                    |
+| AC-221 | retired | —                                                                                    |
+| AC-222 | retired | —                                                                                    |
+| AC-223 | retired | —                                                                                    |
+| AC-224 | retired | —                                                                                    |
+| AC-226 | retired | —                                                                                    |
+| AC-227 | retired | —                                                                                    |
+| AC-229 | infra   | CI `lint` — `scripts/check-env-drift.sh`                                             |
+| AC-232 | retired | —                                                                                    |
+| AC-233 | retired | —                                                                                    |
+| AC-234 | retired | —                                                                                    |
+| AC-235 | retired | —                                                                                    |
+| AC-238 | retired | —                                                                                    |
+| AC-239 | retired | —                                                                                    |
+| AC-241 | retired | —                                                                                    |
+| AC-242 | retired | —                                                                                    |
+| AC-243 | retired | —                                                                                    |
+| AC-245 | retired | —                                                                                    |
+| AC-246 | retired | —                                                                                    |
+| AC-248 | retired | —                                                                                    |
+| AC-249 | retired | —                                                                                    |
+| AC-250 | retired | —                                                                                    |
+| AC-251 | retired | —                                                                                    |
+| AC-252 | retired | —                                                                                    |
+| AC-253 | retired | —                                                                                    |
+| AC-254 | retired | —                                                                                    |
+| AC-255 | retired | —                                                                                    |
+| AC-256 | retired | —                                                                                    |
+| AC-257 | retired | —                                                                                    |
+| AC-258 | retired | —                                                                                    |
+| AC-259 | retired | —                                                                                    |
+| AC-260 | retired | —                                                                                    |
+| AC-261 | retired | —                                                                                    |
+| AC-262 | retired | —                                                                                    |
+| AC-263 | retired | —                                                                                    |
+| AC-264 | retired | —                                                                                    |
+| AC-265 | retired | —                                                                                    |
+| AC-266 | retired | —                                                                                    |
+| AC-267 | retired | —                                                                                    |
+| AC-268 | retired | —                                                                                    |
+| AC-269 | retired | —                                                                                    |
+| AC-270 | retired | —                                                                                    |
+| AC-271 | retired | —                                                                                    |
+| AC-272 | retired | —                                                                                    |
+| AC-273 | retired | —                                                                                    |
+| AC-274 | retired | —                                                                                    |
+| AC-276 | retired | —                                                                                    |
+| AC-278 | retired | —                                                                                    |
+| AC-279 | retired | —                                                                                    |
+| AC-280 | retired | —                                                                                    |
+| AC-281 | retired | —                                                                                    |
+| AC-282 | retired | —                                                                                    |
+| AC-284 | retired | —                                                                                    |
+| AC-285 | retired | —                                                                                    |
+| AC-286 | retired | —                                                                                    |
+| AC-287 | retired | —                                                                                    |
+| AC-288 | retired | —                                                                                    |
+| AC-289 | retired | —                                                                                    |
+| AC-290 | retired | —                                                                                    |
+| AC-291 | retired | —                                                                                    |
+| AC-292 | retired | —                                                                                    |
+| AC-293 | retired | —                                                                                    |
+| AC-294 | retired | —                                                                                    |
+| AC-295 | retired | —                                                                                    |
+| AC-296 | retired | —                                                                                    |
+| AC-297 | retired | —                                                                                    |
+| AC-298 | retired | —                                                                                    |
+| AC-299 | retired | —                                                                                    |
+| AC-300 | retired | —                                                                                    |
+| AC-301 | retired | —                                                                                    |
+| AC-302 | retired | —                                                                                    |
+| AC-303 | retired | —                                                                                    |
+| AC-304 | retired | —                                                                                    |
+| AC-305 | retired | —                                                                                    |
+| AC-306 | retired | —                                                                                    |
+| AC-307 | retired | —                                                                                    |
+| AC-308 | retired | —                                                                                    |
+| AC-309 | retired | —                                                                                    |
+| AC-310 | retired | —                                                                                    |
+| AC-311 | retired | —                                                                                    |
+| AC-312 | retired | —                                                                                    |
+| AC-313 | retired | —                                                                                    |
+| AC-314 | retired | —                                                                                    |
+| AC-315 | retired | —                                                                                    |
+| AC-316 | retired | —                                                                                    |
+| AC-318 | retired | —                                                                                    |
+| AC-319 | retired | —                                                                                    |
+| AC-320 | retired | —                                                                                    |
+| AC-322 | retired | —                                                                                    |
+| AC-323 | retired | —                                                                                    |
+| AC-324 | retired | —                                                                                    |
+| AC-325 | retired | —                                                                                    |
+| AC-326 | retired | —                                                                                    |
+| AC-327 | retired | —                                                                                    |
+| AC-328 | retired | —                                                                                    |
+| AC-329 | retired | —                                                                                    |
+| AC-330 | retired | —                                                                                    |
+| AC-333 | retired | —                                                                                    |
+| AC-334 | retired | —                                                                                    |
+| AC-335 | retired | —                                                                                    |
+| AC-336 | retired | —                                                                                    |
+| AC-338 | retired | —                                                                                    |
+| AC-339 | retired | —                                                                                    |
+| AC-340 | retired | —                                                                                    |
+| AC-342 | retired | —                                                                                    |
+| AC-348 | infra   | CI `lint` — lychee, `lychee.toml`                                                    |
+| AC-350 | retired | —                                                                                    |
+| AC-355 | retired | —                                                                                    |
+| AC-356 | retired | —                                                                                    |
+| AC-357 | retired | —                                                                                    |
+| AC-358 | retired | —                                                                                    |
+| AC-359 | retired | —                                                                                    |
+| AC-360 | retired | —                                                                                    |
+| AC-361 | retired | —                                                                                    |
+| AC-362 | retired | —                                                                                    |
+| AC-363 | retired | —                                                                                    |
+| AC-368 | infra   | review of `docs/ops/backup/recovery.md`                                              |
+| AC-372 | retired | —                                                                                    |
+| AC-373 | retired | —                                                                                    |
+| AC-374 | infra   | monthly binary-key drill — `docs/ops/binary-key/drills.md`                           |
+| AC-376 | retired | —                                                                                    |
+| AC-382 | retired | —                                                                                    |
+| AC-384 | retired | —                                                                                    |
+| AC-385 | retired | —                                                                                    |
+| AC-386 | retired | —                                                                                    |
+| AC-387 | retired | —                                                                                    |
+| AC-388 | retired | —                                                                                    |
+| AC-389 | retired | —                                                                                    |
+| AC-401 | gap     | needs an e2e asserting the stored object is not the uploaded plaintext               |
+| AC-405 | gap     | no test drives the client-side cap block or the missing retry action                 |
+| AC-423 | gap     | no test drives a restore whose storage copy fails with a non-410 error               |
+| AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review   |
+| AC-452 | gap     | needs an e2e asserting the column order                                              |
+| AC-453 | gap     | e2e asserts nine columns; card placement per state is unasserted                     |
+| AC-454 | gap     | needs an e2e asserting the oldest-first card order                                   |
+| AC-455 | gap     | e2e asserts a bar is visible, not that it spans the planned dates                    |
+| AC-456 | gap     | needs an e2e with a start-only project                                               |
+| AC-460 | gap     | needs a component test of the card buttons in the first, middle and last state       |
+| AC-461 | gap     | needs a card test past the threshold; `aging.test.ts` covers only the helper         |
+| AC-462 | gap     | needs a card test past the threshold; `aging.test.ts` covers only the helper         |
+| AC-463 | gap     | e2e asserts the expanded header; the collapsed marker is unasserted                  |
+| AC-464 | gap     | e2e asserts the counter label, not the count                                         |
+| AC-466 | gap     | needs an e2e clicking "Filter aufheben"                                              |
+| AC-467 | gap     | needs an e2e switching views with the filter active                                  |
+| AC-469 | gap     | needs an e2e asserting a Monday-start week                                           |
+| AC-470 | gap     | needs an e2e below each tier width; `useCollapseTier.test.tsx` covers only the hook  |
+| AC-471 | gap     | needs a panel test clearing the start while an end is set                            |
+| AC-472 | gap     | `ProjectDetailPanel.test.tsx` asserts only the route change, not the back action     |
+| AC-473 | gap     | e2e opens the panel from a card; no test opens it from a calendar bar                |
+| AC-474 | gap     | needs an e2e at phone width opening a project from the board and the calendar        |
+| AC-506 | gap     | `archive-flows.spec.ts` does not assert the project name; restore is untested        |
+| AC-511 | gap     | needs a page test clearing the start while an end is set                             |
+| AC-527 | gap     | needs an e2e of the create-form list (`CustomerManagement.test.tsx` is mock-based)   |
+| AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based) |
+| AC-529 | gap     | needs an e2e of a failed search                                                      |
+| AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                            |
+| AC-541 | gap     | needs a test failing the delete part-way                                             |
+| AC-544 | retired | —                                                                                    |
+| AC-707 | gap     | needs a test confirming a Storno with an empty reason                                |
+| AC-712 | gap     | needs a test of the list order with drafts and issued invoices                       |
+| AC-714 | gap     | needs a test of the list search over number and recipient name                       |
+| AC-715 | gap     | needs a test of the year and status filters on the list                              |
+| AC-716 | gap     | needs a test of the year options beside an active filter                             |
+| AC-720 | gap     | needs a test that a live refresh keeps an open draft form and Storno confirmation    |
+| AC-725 | gap     | needs a test of the incomplete-profile banner and its link                           |
+| AC-730 | gap     | needs a test that a document failing to load mid-export yields no archive            |
+| AC-731 | gap     | needs a test saving a draft form without a priced, described line                    |
+| AC-735 | gap     | needs a test of each save path: new customer, selected customer, no title            |
+| AC-742 | gap     | needs an e2e walking every screen in the dark theme                                  |

@@ -7,9 +7,7 @@
  *     gallery and binary list render from.
  *   - `pendingUploads[clientId]` tracks in-flight or failed uploads so
  *     the UI can show the failure banner + retry.
- *   - `error` carries the last mutation error as a German string so
- *     the page shell can surface it via the project-level banner
- *     (behavior.md §9.5).
+ *   - `error` carries the last mutation error as a German string.
  *
  * Upload orchestration (`uploadFile` + `retryUpload`) runs the full
  * happy-path: pipeline → MD5 → init → PUT original → PUT thumbnail →

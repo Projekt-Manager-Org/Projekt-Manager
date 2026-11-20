@@ -1,5 +1,5 @@
 /**
- * `invoiceStore` — stale-write recovery (behavior.md §9.5).
+ * `invoiceStore` — stale-write recovery (AC-379).
  *
  * A `VERSION_CONFLICT` refetches the project's invoices and hands back the
  * fresh row. When that refetch fails nothing was reloaded, so the outcome

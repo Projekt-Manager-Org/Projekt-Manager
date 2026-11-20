@@ -189,7 +189,7 @@ export function InvoiceDraftForm({
 
   // Track the server-assigned id so consecutive saves PATCH the same row
   // rather than POSTing a fresh one, together with the edit's start
-  // version — the draft version the form opened with (behavior.md §9.5).
+  // version — the draft version the form opened with (AC-379).
   // A background refresh never moves it; only this form's own save or the
   // refetch after a stale write does. `useRef` (not `useState`) because the
   // value is read inside `handleSave` and we don't need a re-render on
@@ -201,8 +201,8 @@ export function InvoiceDraftForm({
 
   // Modal accessibility: focus trap, body scroll lock, Escape-to-close.
   // Same hook the cancel dialog uses so the two surfaces match. Escape
-  // is suppressed while a save is in flight — the in-flight lock from
-  // [behavior.md §9.5] also applies to the close affordance.
+  // is suppressed while a save is in flight — the in-flight lock
+  // (AC-757) also covers the close affordance.
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const onEscape = useCallback(() => {

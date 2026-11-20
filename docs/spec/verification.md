@@ -266,14 +266,20 @@ Export and import of the whole deployment. Archive format: [data-model.md §5.8]
 - **AC-604** `[vis]`: When a user opens the Daten view after an import ended, the view shows the latest import's result until the user closes it; a page load shows it again.
 - **AC-607** `[vis]`: When an import succeeds, the Daten view shows the number of files it restored.
 
-### 15.15 Navigation
+### 15.15 Navigation and Interaction
 
-- **AC-74** `[vis]`: Navigation between all views (Meine Projekte, Kanban, Calendar, Projects, Customers, Users, Daten, Aktivität, Benachrichtigungen) works without page reload. Shared state is preserved across navigation.
-- **AC-75** `[vis]`: Views that require specific permissions are hidden from navigation for unauthorized users. Per-role nav matrix (default role set — see [ui/index.md §8.7.1](ui/index.md#871-views) and [api.md §14.3](api.md#143-authorization-rules)): owner sees Kanban, Kalender, Projekte, Kunden, Rechnungen, Benutzer, Daten, Aktivität, Benachrichtigungen; office sees everything except Benutzer and Benachrichtigungen; worker sees Meine Projekte + Kanban + Kalender (all scoped — see [AC-579](#1521-role-scoping), [AC-580](#1521-role-scoping); Meine Projekte is worker-only by nav matrix); bookkeeper sees Projekte + Kunden + Rechnungen. A role-scoping visual-regression run must walk each role and confirm the nav set matches the matrix exactly.
-- **AC-53** `[crit]`: A failed mutation displays a German error message and reverts the optimistic UI update.
-- **AC-122** `[vis]`: Modals close on Escape (except while a mutation is in flight, see [AC-131](#1515-navigation)). Form modals submit the primary action on Enter when focus is within the form. Read-only modals accept Escape but do not submit on Enter.
-- **AC-123** `[vis]`: Form modals and confirmation dialogs do not close on backdrop click — only via Escape or the explicit cancel action. Non-editing side panels close on backdrop click.
-- **AC-131** `[crit]`: While a create, edit, or state-changing mutation is in flight, the form's submit action is disabled, every input in the form is disabled, and the enclosing modal cannot be closed (Escape, close button, backdrop). The lock covers any user-confirmation dialog that precedes request dispatch, so a submit initiated behind an open confirm does not fire a second time. The lock releases when the request resolves (success or failure). Rationale: silent double-dispatch or a close-during-flight produces state the user did not intend — a misleading-state class defect.
+- **AC-75** `[vis]`: The navigation shows a user exactly the views their roles may access ([ui/index.md §8.7.1](ui/index.md#871-views)).
+- **AC-751** `[vis]`: When a user picks a view in the navigation, the system shows it without reloading the page.
+- **AC-752** `[vis]`: While the viewport is at most 768 px wide, every navigation entry outside `Verwaltung` is one tap away from any view.
+- **AC-753** `[vis]`: The Meine Projekte view lists the worker's assigned projects under `Heute` (a planned date is today, or the planned span covers today), `Demnächst` (planned start after today) and `Weitere` (the rest); each group by planned start, undated last.
+- **AC-754** `[crit]`: If a change the user made outside a dialog fails, the system shows the stored values, not the attempted ones.
+- **AC-755** `[crit]`: If a user's change fails, the system shows a German error message.
+- **AC-756** `[crit]`: While a change submitted from a dialog is in flight, the system sends no second request for it — neither from a repeated submit nor from its confirmation dialog.
+- **AC-757** `[crit]`: While a change submitted from a dialog is in flight, the dialog's fields cannot be edited and the dialog cannot be closed.
+- **AC-758** `[vis]`: When the user presses Escape, the system closes the topmost open dialog or side panel and discards its unsaved input.
+- **AC-759** `[vis]`: When the user presses Enter in a single-line field of a create or edit dialog, the system submits the dialog.
+- **AC-760** `[vis]`: If the user clicks outside a form or confirmation dialog, the system keeps it open.
+- **AC-761** `[vis]`: When the user clicks outside the project panel, the system closes it.
 
 ### 15.17 Data Integrity
 
@@ -281,7 +287,7 @@ Export and import of the whole deployment. Archive format: [data-model.md §5.8]
 - **AC-375** `[crit]`: A versioned edit — saving the customer edit form, Update draft, Delete draft, Upsert company profile ([api.md §14.2](api.md#142-operations)) — carrying a stale `expectedVersion` is rejected with `409` `VERSION_CONFLICT`. The row is unchanged; no audit row is written and no realtime event is emitted.
 - **AC-377** `[crit]`: A versioned edit or Issue invoice without `expectedVersion` is rejected with `422 VALIDATION_ERROR`; the row is unchanged.
 - **AC-378** `[crit]`: Every committed API write to a customer, draft invoice or the company profile changes its `version` — including the issuance of a draft — so a later versioned operation carrying the prior version is rejected per AC-375. Cancelling an issued invoice leaves its `version` unchanged.
-- **AC-379** `[crit]`: An edit form whose entity is changed by another session and refreshed in the background after the form opened, then saved, receives `VERSION_CONFLICT`; the UI shows the stale-write message, displays the refetched values, and does not retry ([ui/behavior.md §9.5](ui/behavior.md#95-asynchronous-mutation-behavior)).
+- **AC-379** `[crit]`: An edit form whose entity is changed by another session and refreshed in the background after the form opened, then saved, receives `VERSION_CONFLICT`; the UI shows the stale-write message, displays the refetched values, and does not retry.
 - **AC-381** `[crit]`: Two versioned writes to one entity carrying the same current `expectedVersion`, run concurrently — including Update draft concurrent with Issue invoice — result in exactly one commit; the other writes nothing and is rejected with `VERSION_CONFLICT`, or with the state error the check order puts first ([data-model.md §6.4](data-model.md#64-concurrency) — e.g. `INVOICE_FROZEN` for an Update draft that lost to Issue invoice).
 - **AC-96** `[crit]`: The database rejects a project row with a `status` value outside the valid workflow states (defense-in-depth CHECK constraint).
 - **AC-97** `[crit]`: The database rejects a project row where `plannedEnd < plannedStart` (defense-in-depth CHECK constraint).

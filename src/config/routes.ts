@@ -2,7 +2,7 @@
  * Central route table — single source of truth for:
  *   - URL ↔ view key mapping
  *   - Per-route access rules (role- or permission-based, via a predicate)
- *   - Per-user landing choice (the "default view" after login, §8.1.2)
+ *   - Per-user landing choice (the "default view" after login, ui/index.md §8.7.1)
  *
  * Both the nav renderer (`Header`) and the route guard (`App`) consume
  * this table, so what the user sees and what the guard allows cannot
@@ -124,7 +124,7 @@ function allows(access: RouteAccess, caller: RouteCaller): boolean {
 }
 
 /**
- * Per-role landing choice (ui/index.md §8.1.2), **first match wins**.
+ * Per-role landing choice (ui/index.md §8.7.1), **first match wins**.
  *
  * Order is the whole rule. A caller holding several roles lands on the
  * first entry that matches, which is why `bookkeeper` sits last: an

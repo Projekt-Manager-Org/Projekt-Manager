@@ -35,7 +35,7 @@ import { handleSessionExpired } from './sessionExpired';
  * list has been refetched. `'validation'` — server returned a 422 with a
  * decoded German message on `errorMessage`; the caller keeps the form
  * open and surfaces the message inline. `'conflict'` — stale write
- * (behavior.md §9.5); the list has been refetched and `invoice` is the
+ * (AC-379); the list has been refetched and `invoice` is the
  * fresh row (absent if it is gone) — a failed refetch is an `'error'`
  * instead. `'error'` — generic failure; same
  * surfacing rule but the message is the generic catch-all.
@@ -61,7 +61,7 @@ interface InvoiceState {
   ) => Promise<InvoiceWriteOutcome>;
   /**
    * The versioned writes carry `startVersion`: the draft version the
-   * form or the confirmation dialog opened with (behavior.md §9.5).
+   * form or the confirmation dialog opened with (AC-379).
    */
   updateDraft: (
     invoiceId: string,
