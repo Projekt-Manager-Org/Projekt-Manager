@@ -1,5 +1,6 @@
 /**
  * AC-759: Enter in the reset-password sub-form submits the reset.
+ * AC-758: Escape in the open reset closes the reset, not the panel.
  * AC-754: after a failed email save, the panel shows the stored email.
  * The API client is stubbed at the module boundary; real stores run.
  */
@@ -66,6 +67,19 @@ describe('UserDetailPanel', () => {
     await user.type(screen.getByTestId('user-reset-pw-confirm'), 'neu-geheim{Enter}');
 
     expect(resetPasswordMock).toHaveBeenCalledWith('u-2', 'neu-geheim');
+  });
+
+  it('AC-758: Escape in the open reset closes the reset, not the panel', async () => {
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    render(<UserDetailPanel user={target} onClose={onClose} />);
+
+    await user.click(screen.getByTestId('user-reset-pw-button'));
+    await user.type(screen.getByTestId('user-reset-pw-input'), 'halb');
+    await user.keyboard('{Escape}');
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('user-reset-pw-input')).not.toBeInTheDocument();
   });
 
   it('AC-754: a failed email save shows the stored email', async () => {
