@@ -1,4 +1,11 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  type BrowserContext,
+  type BrowserContextOptions,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { STORAGE_STATES } from './storage-states';
 import { EXPECTED_RESTORE_PHRASE } from '../src/test/seedAssumptions';
@@ -10,10 +17,12 @@ import { EXPECTED_RESTORE_PHRASE } from '../src/test/seedAssumptions';
  * computed background. The walk covers every view, the states a click
  * opens (dialogs, the detail panel, menus, popovers, a toast, the
  * company-profile block, active filters, validation errors) and, on each,
- * every `:hover` / `:focus*` rule that applies there. States the seed does
- * not hold (attachments, an archived project, failed requests) come from
- * stubbed responses or a stubbed browser API; no state writes data. The
- * seeded users store `system`, so `colorScheme` picks the theme.
+ * every `:hover` / `:focus*` rule that applies there; a separate test
+ * fails on a rule that applies in no walk. States the seed does not hold
+ * (attachments, an archived project, failed requests) come from stubbed
+ * responses or a stubbed browser API. No walk writes data: an API write
+ * that no stub answers is blocked and fails the test. The seeded users
+ * store `system`, so `colorScheme` picks the theme.
  */
 
 type Scheme = 'light' | 'dark';
@@ -65,27 +74,43 @@ async function isolate(root: Locator): Promise<void> {
   }, ROOT_ATTR);
 }
 
+/** `media`: the rule's `@media` condition, empty for none. */
+type StateRule = { selector: string; media: string; name: string };
+
 /**
- * The selectors of all `:hover` / `:focus*` rules: any property can change
- * contrast (color, background, opacity, a revealed tooltip).
+ * All `:hover` / `:focus*` rules: any property can change contrast (color,
+ * background, opacity, a revealed tooltip). `name` reads as in the source,
+ * `src/ui/kanban/KanbanBoard.module.css: .filterBanner button:hover`, as the
+ * dev server's CSS module hash and line number change with each edit.
  */
-async function interactiveSelectors(page: Page): Promise<string[]> {
+async function stateRules(page: Page): Promise<StateRule[]> {
   return page.evaluate((statePattern) => {
     const state = new RegExp(statePattern);
-    const selectors = new Set<string>();
-    const visit = (rules: CSSRuleList): void => {
-      for (const rule of Array.from(rules)) {
+    const rules = new Map<string, StateRule>();
+    const visit = (cssRules: CSSRuleList, source: string, media: string): void => {
+      for (const rule of Array.from(cssRules)) {
         if (rule instanceof CSSStyleRule) {
           for (const part of rule.selectorText.split(',')) {
-            if (state.test(part)) selectors.add(part.trim());
+            const selector = part.trim();
+            if (!state.test(selector)) continue;
+            // `._badge_1m7ng_22` is `.badge`.
+            const readable = selector.replace(/\._([\w-]+)_[0-9a-z]{1,5}_\d+/g, '.$1');
+            const name = `${source}: ${media ? `@media ${media} ` : ''}${readable}`;
+            rules.set(`${media}|${selector}`, { selector, media, name });
           }
+        } else if (rule instanceof CSSMediaRule) {
+          const condition = rule.media.mediaText;
+          visit(rule.cssRules, source, media ? `${media} and ${condition}` : condition);
         } else if ('cssRules' in rule) {
-          visit((rule as CSSGroupingRule).cssRules);
+          visit((rule as CSSGroupingRule).cssRules, source, media);
         }
       }
     };
-    for (const sheet of Array.from(document.styleSheets)) visit(sheet.cssRules);
-    return [...selectors];
+    for (const sheet of Array.from(document.styleSheets)) {
+      const id = (sheet.ownerNode as Element | null)?.getAttribute('data-vite-dev-id') ?? '';
+      visit(sheet.cssRules, id.slice(id.lastIndexOf('/src/') + 1), '');
+    }
+    return [...rules.values()];
   }, STATE.source);
 }
 
@@ -110,12 +135,15 @@ function stateHost(selector: string): string {
  * Marks the first element under `include` that can carry `host`'s state:
  * enabled (WCAG exempts disabled controls), visible, not covered (an open
  * dialog covers the page) and, for `:focus-within`, holding something
- * focusable. Marked just before use, as a re-render drops the attribute.
+ * focusable. None while the rule's `@media` does not match. Marked just
+ * before use, as a re-render drops the attribute.
  */
-async function markTarget(page: Page, include: string, host: string): Promise<boolean> {
+async function markTarget(page: Page, include: string, rule: StateRule): Promise<boolean> {
+  const host = stateHost(rule.selector);
   return page.evaluate(
-    ({ include, base, attr, focusWithin, focusable }) => {
+    ({ include, base, media, attr, focusWithin, focusable }) => {
       document.querySelector(`[${attr}]`)?.removeAttribute(attr);
+      if (media && !matchMedia(media).matches) return false;
       const uncovered = (el: Element): boolean => {
         el.scrollIntoView({ block: 'center', inline: 'center' });
         const r = el.getBoundingClientRect();
@@ -133,6 +161,7 @@ async function markTarget(page: Page, include: string, host: string): Promise<bo
     {
       include,
       base: host.replace(STATE, ''),
+      media: rule.media,
       attr: TARGET_ATTR,
       focusWithin: /:focus-within\b/.test(host),
       focusable: FOCUSABLE,
@@ -164,39 +193,70 @@ async function enterState(page: Page, target: Locator, host: string): Promise<st
 }
 
 /**
+ * Freezes transitions and, for a floating `root`, hides the page around
+ * it. Returns the selector the walk checks within.
+ */
+async function settle(page: Page, root: Locator | null): Promise<string> {
+  // Transitions and animations would let axe measure a color mid-change.
+  await page.addStyleTag({
+    content: '*, *::before, *::after { transition: none !important; animation: none !important; }',
+  });
+  if (!root) return 'body';
+  await isolate(root);
+  return `[${ROOT_ATTR}]`;
+}
+
+/**
  * Runs the contrast check on `root` (null: the page) as rendered, then on
  * one element per hover/focus rule that applies in that state. A rule
  * whose state cannot be entered fails rather than passing unchecked.
  */
 async function expectAaContrast(page: Page, scheme: Scheme, root: Locator | null): Promise<void> {
   await expectTheme(page, scheme);
-  // Transitions and animations would let axe measure a color mid-change.
-  await page.addStyleTag({
-    content: '*, *::before, *::after { transition: none !important; animation: none !important; }',
-  });
-
-  let include = 'body';
-  if (root) {
-    await isolate(root);
-    include = `[${ROOT_ATTR}]`;
-  }
+  const include = await settle(page, root);
   const offenders = await contrastOffenders(page, include, '');
 
+  // The rules with a target here, before any is entered; the rest apply in
+  // another walk, which the coverage test checks.
+  const applicable: StateRule[] = [];
+  for (const rule of await stateRules(page)) {
+    if (await markTarget(page, include, rule)) applicable.push(rule);
+  }
+
   const target = page.locator(`[${TARGET_ATTR}]`);
-  for (const selector of await interactiveSelectors(page)) {
-    const host = stateHost(selector);
-    if (!(await markTarget(page, include, host))) continue;
-    const notEntered = await enterState(page, target, host);
-    if (notEntered) {
-      offenders.push(`${selector} — state not entered: ${notEntered}`);
+  for (const rule of applicable) {
+    const { name } = rule;
+    if (!(await markTarget(page, include, rule))) {
+      offenders.push(`${name} — target lost`);
       continue;
     }
-    offenders.push(...(await contrastOffenders(page, `[${TARGET_ATTR}]`, `${selector}: `)));
+    const notEntered = await enterState(page, target, stateHost(rule.selector));
+    if (notEntered) {
+      offenders.push(`${name} — state not entered: ${notEntered}`);
+      continue;
+    }
+    offenders.push(...(await contrastOffenders(page, `[${TARGET_ATTR}]`, `${name} — `)));
     // Leave both states, so the next rule is measured alone.
     await target.blur();
     await page.mouse.move(0, 0);
   }
   expect(offenders, offenders.join('\n')).toEqual([]);
+}
+
+/**
+ * Blocks each API request but a GET that no stub of the walk answered,
+ * and lists it. Stubs are page routes, which run before this context
+ * route. The Vite dev server proxies only `/api` to the backend.
+ */
+async function blockWrites(context: BrowserContext): Promise<string[]> {
+  const blocked: string[] = [];
+  await context.route('**/api/**', (route) => {
+    const request = route.request();
+    if (request.method() === 'GET') return route.fallback();
+    blocked.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    return route.abort('blockedbyclient');
+  });
+  return blocked;
 }
 
 async function firstId(page: Page, url: string): Promise<string> {
@@ -228,6 +288,8 @@ async function editJson<T>(
   edit: (json: T) => T,
 ): Promise<void> {
   await page.route(url, async (route) => {
+    // A write goes on to `blockWrites`: `route.fetch` would send it.
+    if (route.request().method() !== 'GET') return route.fallback();
     const response = await route.fetch();
     await route.fulfill({ response, json: edit((await response.json()) as T) });
   });
@@ -287,11 +349,19 @@ const OWNER_VIEWS: { path: string; loaded: string }[] = [
 ];
 
 /**
- * States a click opens, each read-only: nothing is submitted. `open`
- * returns the root to check — a menu or popover covers the page beneath
- * it, which the view walk already checks — or null for the whole page.
+ * A page or state the walk checks. `open` returns the root to check — a
+ * menu or popover covers the page beneath it, which the view walk already
+ * checks — or null for the whole page. `use` sets the context: a viewport,
+ * a device, another role.
  */
-const OWNER_STATES: { name: string; open: (page: Page) => Promise<Locator | null> }[] = [
+type Walk = {
+  name: string;
+  use?: Pick<BrowserContextOptions, 'viewport' | 'hasTouch' | 'isMobile' | 'storageState'>;
+  open: (page: Page) => Promise<Locator | null>;
+};
+
+/** States a click opens, each read-only: nothing is submitted. */
+const OWNER_STATES: Walk[] = [
   {
     name: 'detail panel',
     open: async (page) => {
@@ -804,113 +874,179 @@ const OWNER_STATES: { name: string; open: (page: Page) => Promise<Locator | null
   },
 ];
 
+const PHONE = { width: 390, height: 844 };
+const SIGNED_OUT = { cookies: [], origins: [] };
+
+/** Every walk: the views, the states, and the pages in another context. */
+const WALKS: Walk[] = [
+  ...OWNER_VIEWS.map((view) => ({
+    name: view.path,
+    open: async (page: Page) => {
+      await page.goto(view.path);
+      await expect(page.locator(view.loaded).first()).toBeVisible();
+      return null;
+    },
+  })),
+  {
+    name: 'project detail page',
+    open: async (page) => {
+      await page.goto(`/projects/${await firstId(page, '/api/projects?limit=1')}`);
+      await expect(page.getByTestId('project-detail-page')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'invoice detail view',
+    open: async (page) => {
+      await page.goto(`/rechnungen/${await firstId(page, '/api/invoices?limit=1')}`);
+      await expect(page.getByTestId('invoice-detail-view')).toBeVisible();
+      return null;
+    },
+  },
+  ...OWNER_STATES,
+  {
+    name: '/kanban with collapsed columns',
+    // Below 1780 px the board collapses its low-tier columns.
+    use: { viewport: { width: 1440, height: 900 } },
+    open: async (page) => {
+      await page.goto('/kanban');
+      await expect(page.locator('[data-testid^="project-card-"]').first()).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: '/projects with the tab bar',
+    use: { viewport: PHONE },
+    open: async (page) => {
+      await page.goto('/projects');
+      await expect(page.locator('[data-testid="project-table"] tbody tr').first()).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'project detail page with the camera button',
+    // A touch device shows the camera button, hidden under a fine pointer.
+    use: { viewport: PHONE, hasTouch: true, isMobile: true },
+    open: async (page) => {
+      await page.goto(`/projects/${await firstId(page, '/api/projects?limit=1')}`);
+      await expect(page.getByTestId('detail-camera-capture')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: '/meine-projekte',
+    use: { storageState: STORAGE_STATES.worker },
+    open: async (page) => {
+      await page.goto('/meine-projekte');
+      await expect(page.getByTestId('my-projects-view')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'not-permitted page',
+    use: { storageState: STORAGE_STATES.worker },
+    open: async (page) => {
+      await page.goto('/audit');
+      await expect(page.getByTestId('not-permitted-view')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'login screen',
+    use: { storageState: SIGNED_OUT },
+    open: async (page) => {
+      await page.goto('/');
+      await expect(page.getByTestId('login-form')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'login error',
+    use: { storageState: SIGNED_OUT },
+    open: async (page) => {
+      // Answered here, so no real failed login counts against the account.
+      await page.route('**/api/auth/login', (route) =>
+        route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: 'INVALID_CREDENTIALS',
+            message: 'Anmeldung fehlgeschlagen',
+          }),
+        }),
+      );
+      await page.goto('/');
+      await page.getByTestId('login-username').fill('inhaber');
+      await page.getByTestId('login-password').fill('falsch');
+      await page.getByTestId('login-submit').click();
+      await expect(page.getByTestId('login-error')).toBeVisible();
+      return null;
+    },
+  },
+];
+
+/**
+ * Hover/focus rules that apply in no walk, each with the reason. The
+ * coverage test fails on any other such rule, and on an entry here that
+ * a walk enters or no stylesheet holds.
+ */
+const NOT_WALKED: Record<string, string> = {};
+
 for (const scheme of SCHEMES) {
   test.describe(`AC-748: text contrast, ${scheme} theme`, () => {
     test.use({ colorScheme: scheme });
 
-    for (const view of OWNER_VIEWS) {
-      test(`AC-748: ${view.path}`, async ({ page }) => {
-        await page.goto(view.path);
-        await expect(page.locator(view.loaded).first()).toBeVisible();
-        await expectAaContrast(page, scheme, null);
+    let blocked: string[] = [];
+    test.beforeEach(async ({ context }) => {
+      blocked = await blockWrites(context);
+    });
+    test.afterEach(() => {
+      expect(blocked, 'API writes no stub answered').toEqual([]);
+    });
+
+    for (const walk of WALKS) {
+      test.describe(() => {
+        test.use(walk.use ?? {});
+
+        test(`AC-748: ${walk.name}`, async ({ page }) => {
+          const root = await walk.open(page);
+          await expectAaContrast(page, scheme, root);
+        });
       });
     }
-
-    test('AC-748: project detail page', async ({ page }) => {
-      await page.goto(`/projects/${await firstId(page, '/api/projects?limit=1')}`);
-      await expect(page.getByTestId('project-detail-page')).toBeVisible();
-      await expectAaContrast(page, scheme, null);
-    });
-
-    test('AC-748: invoice detail view', async ({ page }) => {
-      await page.goto(`/rechnungen/${await firstId(page, '/api/invoices?limit=1')}`);
-      await expect(page.getByTestId('invoice-detail-view')).toBeVisible();
-      await expectAaContrast(page, scheme, null);
-    });
-
-    for (const state of OWNER_STATES) {
-      test(`AC-748: ${state.name}`, async ({ page }) => {
-        const root = await state.open(page);
-        await expectAaContrast(page, scheme, root);
-      });
-    }
-
-    test.describe('laptop width', () => {
-      // Below 1780 px the board collapses its low-tier columns.
-      test.use({ viewport: { width: 1440, height: 900 } });
-
-      test('AC-748: /kanban with collapsed columns', async ({ page }) => {
-        await page.goto('/kanban');
-        await expect(page.locator('[data-testid^="project-card-"]').first()).toBeVisible();
-        await expectAaContrast(page, scheme, null);
-      });
-    });
-
-    test.describe('phone width', () => {
-      test.use({ viewport: { width: 390, height: 844 } });
-
-      test('AC-748: /projects with the tab bar', async ({ page }) => {
-        await page.goto('/projects');
-        await expect(page.locator('[data-testid="project-table"] tbody tr').first()).toBeVisible();
-        await expectAaContrast(page, scheme, null);
-      });
-    });
-
-    test.describe('touch phone', () => {
-      // A touch device shows the camera button, hidden under a fine pointer.
-      test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-
-      test('AC-748: project detail page with the camera button', async ({ page }) => {
-        await page.goto(`/projects/${await firstId(page, '/api/projects?limit=1')}`);
-        await expect(page.getByTestId('detail-camera-capture')).toBeVisible();
-        await expectAaContrast(page, scheme, null);
-      });
-    });
-
-    test.describe('worker', () => {
-      test.use({ storageState: STORAGE_STATES.worker });
-
-      test('AC-748: /meine-projekte', async ({ page }) => {
-        await page.goto('/meine-projekte');
-        await expect(page.getByTestId('my-projects-view')).toBeVisible();
-        await expectAaContrast(page, scheme, null);
-      });
-
-      test('AC-748: not-permitted page', async ({ page }) => {
-        await page.goto('/audit');
-        await expect(page.getByTestId('not-permitted-view')).toBeVisible();
-        await expectAaContrast(page, scheme, null);
-      });
-    });
-
-    test.describe('signed out', () => {
-      test.use({ storageState: { cookies: [], origins: [] } });
-
-      test('AC-748: login screen', async ({ page }) => {
-        await page.goto('/');
-        await expect(page.getByTestId('login-form')).toBeVisible();
-        await expectAaContrast(page, scheme, null);
-      });
-
-      test('AC-748: login error', async ({ page }) => {
-        // Answered here, so no real failed login counts against the account.
-        await page.route('**/api/auth/login', (route) =>
-          route.fulfill({
-            status: 401,
-            contentType: 'application/json',
-            body: JSON.stringify({
-              code: 'INVALID_CREDENTIALS',
-              message: 'Anmeldung fehlgeschlagen',
-            }),
-          }),
-        );
-        await page.goto('/');
-        await page.getByTestId('login-username').fill('inhaber');
-        await page.getByTestId('login-password').fill('falsch');
-        await page.getByTestId('login-submit').click();
-        await expect(page.getByTestId('login-error')).toBeVisible();
-        await expectAaContrast(page, scheme, null);
-      });
-    });
   });
 }
+
+/**
+ * Each walk skips the rules with no element in its state. A rule that
+ * applies in no walk would go unchecked with the suite green, so this
+ * opens every walk and fails on such a rule. The rules carry no theme,
+ * so one scheme decides.
+ */
+test('AC-748: every hover and focus rule applies in a walk', async ({ browser }) => {
+  // One pass over every walk, without axe.
+  test.setTimeout(WALKS.length * 10_000);
+  // The context options the project sets; the walks' own come from `use`.
+  const { baseURL, viewport, storageState } = test.info().project.use;
+  const rules = new Set<string>();
+  const applied = new Set<string>();
+  for (const walk of WALKS) {
+    await test.step(walk.name, async () => {
+      const context = await browser.newContext({ baseURL, viewport, storageState, ...walk.use });
+      const blocked = await blockWrites(context);
+      const page = await context.newPage();
+      const include = await settle(page, await walk.open(page));
+      for (const rule of await stateRules(page)) {
+        rules.add(rule.name);
+        if (await markTarget(page, include, rule)) applied.add(rule.name);
+      }
+      await context.close();
+      expect(blocked, 'API writes no stub answered').toEqual([]);
+    });
+  }
+
+  const unwalked = [...rules].filter((r) => !applied.has(r) && !(r in NOT_WALKED));
+  expect.soft(unwalked, `rules no walk enters:\n${unwalked.join('\n')}`).toEqual([]);
+  const stale = Object.keys(NOT_WALKED).filter((r) => !rules.has(r) || applied.has(r));
+  expect(stale, 'NOT_WALKED entries a walk enters or no stylesheet holds').toEqual([]);
+});
