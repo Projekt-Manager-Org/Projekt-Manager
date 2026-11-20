@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { STORAGE_STATES } from './storage-states';
+import { EXPECTED_RESTORE_PHRASE } from '../src/test/seedAssumptions';
 
 /**
  * AC-748: text meets WCAG AA contrast against its surface in both themes.
@@ -8,10 +9,11 @@ import { STORAGE_STATES } from './storage-states';
  * axe's `color-contrast` rule measures each rendered text node against its
  * computed background. The walk covers every view, the states a click
  * opens (dialogs, the detail panel, menus, popovers, a toast, the
- * company-profile block) and, on each, every `:hover` / `:focus*` rule
- * that applies there. Rules for states the walk does not open (attachments,
- * trash, active filters, validation errors) stay unchecked. The seeded
- * users store `system`, so `colorScheme` picks the theme.
+ * company-profile block, active filters, validation errors) and, on each,
+ * every `:hover` / `:focus*` rule that applies there. States the seed does
+ * not hold (attachments, an archived project, failed requests) come from
+ * stubbed responses or a stubbed browser API; no state writes data. The
+ * seeded users store `system`, so `colorScheme` picks the theme.
  */
 
 type Scheme = 'light' | 'dark';
@@ -205,6 +207,67 @@ async function firstId(page: Page, url: string): Promise<string> {
   return id!;
 }
 
+type InvoiceRow = { id: string; status: string; projectId: string; cancellationOf: string | null };
+
+async function seededInvoice(
+  page: Page,
+  what: string,
+  match: (row: InvoiceRow) => boolean,
+): Promise<InvoiceRow> {
+  const res = await page.request.get('/api/invoices?limit=100');
+  expect(res.ok()).toBe(true);
+  const row = ((await res.json()) as { data: InvoiceRow[] }).data.find(match);
+  expect(row, `the seed holds no ${what}`).toBeDefined();
+  return row!;
+}
+
+/** Answers `url` with the real response, its JSON changed by `edit`. */
+async function editJson<T>(
+  page: Page,
+  url: string | ((url: URL) => boolean),
+  edit: (json: T) => T,
+): Promise<void> {
+  await page.route(url, async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: edit((await response.json()) as T) });
+  });
+}
+
+async function failWith500(page: Page, url: string): Promise<void> {
+  await page.route(url, (route) =>
+    route.fulfill({ status: 500, json: { code: 'INTERNAL_ERROR', message: 'Serverfehler' } }),
+  );
+}
+
+/** Extraction reads as configured: the header shows its button. */
+async function extractionConfigured(page: Page): Promise<void> {
+  await page.route('**/api/extract/status', (route) =>
+    route.fulfill({ json: { configured: true } }),
+  );
+}
+
+/** Two PDF attachments, ready: the binary list shows every row action. */
+function pdfAttachments(projectId: string): { data: object[] } {
+  return {
+    data: [1, 2].map((n) => ({
+      id: `00000000-0000-4000-8000-00000000000${n}`,
+      projectId,
+      status: 'ready',
+      kind: 'binary',
+      label: 'angebot',
+      fileName: `Angebot-${n}.pdf`,
+      mimeType: 'application/pdf',
+      sizeBytes: 2048,
+      originalKey: `mock/${n}`,
+      thumbKey: null,
+      hasThumbnail: false,
+      hiddenAt: null,
+      createdAt: new Date().toISOString(),
+      createdBy: null,
+    })),
+  };
+}
+
 // Each view with the first element that exists only once its data loaded.
 const OWNER_VIEWS: { path: string; loaded: string }[] = [
   { path: '/kanban', loaded: '[data-testid^="project-card-"]' },
@@ -349,11 +412,8 @@ const OWNER_STATES: { name: string; open: (page: Page) => Promise<Locator | null
   {
     name: 'storno',
     open: async (page) => {
-      const res = await page.request.get('/api/invoices?limit=100');
-      const rows = ((await res.json()) as { data: { id: string; status: string }[] }).data;
-      const issued = rows.find((r) => r.status === 'issued');
-      expect(issued, 'the seed holds no issued invoice').toBeDefined();
-      await page.goto(`/rechnungen/${issued!.id}`);
+      const issued = await seededInvoice(page, 'issued invoice', (r) => r.status === 'issued');
+      await page.goto(`/rechnungen/${issued.id}`);
       await page.getByTestId('invoice-detail-cancel-button').click();
       await expect(page.getByTestId('invoice-cancel-dialog')).toBeVisible();
       return null;
@@ -427,9 +487,7 @@ const OWNER_STATES: { name: string; open: (page: Page) => Promise<Locator | null
     name: 'email intake',
     open: async (page) => {
       // The entry shows only while extraction is configured; e2e has no key.
-      await page.route('**/api/extract/status', (route) =>
-        route.fulfill({ json: { configured: true } }),
-      );
+      await extractionConfigured(page);
       await page.goto('/kanban');
       await page.getByTestId('extract-button').click();
       await expect(page.getByTestId('extract-email-input')).toBeVisible();
@@ -439,9 +497,7 @@ const OWNER_STATES: { name: string; open: (page: Page) => Promise<Locator | null
   {
     name: 'email intake review',
     open: async (page) => {
-      await page.route('**/api/extract/status', (route) =>
-        route.fulfill({ json: { configured: true } }),
-      );
+      await extractionConfigured(page);
       await page.route('**/api/extract', (route) =>
         route.fulfill({
           json: {
@@ -462,6 +518,287 @@ const OWNER_STATES: { name: string; open: (page: Page) => Promise<Locator | null
       await page.getByTestId('extract-email-input').fill('Bitte die Dachrinne erneuern.');
       await page.getByTestId('extract-submit').click();
       await expect(page.getByTestId('extract-project-number')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'extraction configured',
+    open: async (page) => {
+      await extractionConfigured(page);
+      await page.goto('/kanban');
+      await expect(page.getByTestId('extract-button')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'push menu',
+    open: async (page) => {
+      // Headless Chromium denies notifications; this browser has not decided.
+      await page.addInitScript(() => {
+        Object.defineProperty(Notification, 'permission', { get: () => 'default' });
+        const registration = { pushManager: { getSubscription: async () => null } };
+        Object.defineProperty(Object.getPrototypeOf(navigator.serviceWorker), 'getRegistration', {
+          value: async () => registration,
+        });
+        Object.defineProperty(navigator.serviceWorker, 'ready', {
+          get: () => Promise.resolve(registration),
+        });
+      });
+      await page.goto('/kanban');
+      await page.getByTestId('user-menu-trigger').click();
+      await expect(page.getByTestId('push-opt-in-button')).toBeVisible();
+      return page.getByTestId('user-menu-dropdown');
+    },
+  },
+  {
+    name: 'kanban without dates',
+    open: async (page) => {
+      await page.goto('/calendar');
+      await page.getByTestId('no-dates-counter').click();
+      await expect(page.getByTestId('kanban-filter-banner')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'worker filter active',
+    open: async (page) => {
+      await page.goto('/projects');
+      await page.getByTestId('worker-filter-toggle').click();
+      await page.getByTestId('worker-filter-option-unassigned').click();
+      await page.getByTestId('worker-filter-toggle').click();
+      await expect(page.getByTestId('worker-filter-clear')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'worker filter search',
+    open: async (page) => {
+      // Ten workers bring up the search field.
+      await editJson<{ data: { userId: string; displayName: string }[] }>(
+        page,
+        '**/api/workers',
+        (json) => ({
+          ...json,
+          data: Array.from({ length: 10 }, (_, i) => ({
+            userId: json.data[i]?.userId ?? `00000000-0000-4000-8000-0000000001${i}0`,
+            displayName: `${json.data[i % json.data.length]!.displayName} ${i + 1}`,
+          })),
+        }),
+      );
+      await page.goto('/projects');
+      await page.getByTestId('worker-filter-toggle').click();
+      // Narrowed to two workers: the list no longer scrolls, so no option is clipped.
+      await page.getByTestId('worker-filter-search').fill('1');
+      await expect(page.locator('[data-testid^="worker-filter-option-"]')).toHaveCount(3);
+      return page.getByTestId('worker-filter-popover');
+    },
+  },
+  {
+    name: 'customer picker',
+    open: async (page) => {
+      await page.goto('/projects');
+      await page.getByTestId('project-create-button').click();
+      await page.getByTestId('project-customer-select').locator('input').click();
+      return page.getByTestId('project-customer-options');
+    },
+  },
+  {
+    name: 'notification rule suggestions',
+    open: async (page) => {
+      await page.goto('/benachrichtigungen');
+      await page.getByTestId('notification-rule-create-button').click();
+      await page.getByTestId('notification-rule-user-search').fill('e');
+      return page.getByRole('listbox');
+    },
+  },
+  {
+    name: 'notification rule recipient',
+    open: async (page) => {
+      await page.goto('/benachrichtigungen');
+      await page.getByTestId('notification-rule-create-button').click();
+      // Picking a user only fills the form; nothing is saved.
+      await page.getByTestId('notification-rule-user-search').fill('e');
+      await page.locator('[data-testid^="notification-rule-user-suggestion-"]').first().click();
+      await expect(page.getByRole('listbox')).toBeHidden();
+      await expect(
+        page.locator('[data-testid^="notification-rule-user-chip-remove-"]'),
+      ).toHaveCount(1);
+      return null;
+    },
+  },
+  {
+    name: 'company profile invalid',
+    open: async (page) => {
+      await page.goto('/rechnungen');
+      await page.getByTestId('company-profile-details').locator('summary').click();
+      // Rejected in the browser: nothing is sent.
+      await page.locator('#company-profile-companyName').fill('');
+      await page.getByTestId('company-profile-save').click();
+      await expect(page.locator('#company-profile-companyName')).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      return null;
+    },
+  },
+  {
+    name: 'company profile fetch error',
+    open: async (page) => {
+      await failWith500(page, '**/api/company-profile');
+      await page.goto('/rechnungen');
+      await page.getByTestId('company-profile-details').locator('summary').click();
+      await expect(page.getByTestId('company-profile-fetch-error')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'invoice list filtered',
+    open: async (page) => {
+      const draft = await seededInvoice(page, 'draft invoice', (r) => r.status === 'draft');
+      await page.goto(`/rechnungen?projectId=${draft.projectId}`);
+      await page.getByTestId('invoice-list-filter-status').selectOption('draft');
+      await expect(page.getByTestId('invoice-list-project-chip')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'invoice cancelled',
+    open: async (page) => {
+      const original = await seededInvoice(
+        page,
+        'cancelled invoice',
+        (r) => r.status === 'cancelled' && r.cancellationOf === null,
+      );
+      await page.goto(`/rechnungen/${original.id}`);
+      await expect(page.getByTestId('invoice-detail-storno-siblings')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'storno invoice',
+    open: async (page) => {
+      const storno = await seededInvoice(page, 'storno invoice', (r) => r.cancellationOf !== null);
+      await page.goto(`/rechnungen/${storno.id}`);
+      await expect(page.getByTestId('invoice-detail-view-original')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'project invoice section',
+    open: async (page) => {
+      const draft = await seededInvoice(page, 'draft invoice', (r) => r.status === 'draft');
+      // Issuing answers with the missing company-profile fields; nothing is issued.
+      await page.route('**/api/invoices/*/issue', (route) =>
+        route.fulfill({
+          status: 422,
+          json: {
+            code: 'COMPANY_PROFILE_REQUIRED',
+            message: 'Firmenprofil unvollständig',
+            details: { missingFields: ['taxId'] },
+          },
+        }),
+      );
+      await page.goto(`/projects/${draft.projectId}`);
+      await page.getByTestId('invoice-issue-button').first().click();
+      await page.getByTestId('confirm-ok').click();
+      await expect(page.getByTestId('invoice-company-profile-required-banner')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'invoice due',
+    open: async (page) => {
+      await page.goto(
+        `/projects/${await firstId(page, '/api/projects?status=rechnung_faellig&limit=1')}`,
+      );
+      await expect(page.getByTestId('invoice-draft-create')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'attachments',
+    open: async (page) => {
+      const projectId = await firstId(page, '/api/projects?limit=1');
+      await page.route(`**/api/projects/${projectId}/attachments`, (route) =>
+        route.fulfill({ json: pdfAttachments(projectId) }),
+      );
+      await page.goto(`/projects/${projectId}`);
+      await page.getByTestId('binary-select-all').check();
+      await expect(page.getByTestId('binary-bulk-download')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'attachment trash error',
+    open: async (page) => {
+      const projectId = await firstId(page, '/api/projects?limit=1');
+      await failWith500(page, `**/api/projects/${projectId}/attachments/trash`);
+      await page.goto(`/projects/${projectId}`);
+      await page.getByTestId('attachment-tab-papierkorb').click();
+      await expect(page.getByTestId('papierkorb-retry')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'archived project',
+    open: async (page) => {
+      const projectId = await firstId(page, '/api/projects?limit=1');
+      await editJson<object>(page, `**/api/projects/${projectId}`, (json) => ({
+        ...json,
+        deleted: true,
+      }));
+      // The store prefers the list row: an archived project is not listed.
+      await editJson<{ data: { id: string }[] }>(
+        page,
+        (url) => url.pathname === '/api/projects',
+        (json) => ({ ...json, data: json.data.filter((p) => p.id !== projectId) }),
+      );
+      await page.goto(`/projects/${projectId}`);
+      await expect(page.getByTestId('project-detail-purge')).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'activity log',
+    open: async (page) => {
+      // A total above the first page brings up "load more".
+      await editJson<{ data: object[]; total: number }>(
+        page,
+        (url) => url.pathname === '/api/audit',
+        (json) => ({ ...json, total: json.data.length + 1 }),
+      );
+      await page.goto('/audit');
+      // The default scope lists entries that notify the viewer: none in the seed.
+      await page.getByTestId('activity-recipient-toggle').check();
+      await expect(page.getByTestId('activity-feed-drawer-toggle').first()).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'assigned workers',
+    open: async (page) => {
+      const res = await page.request.get('/api/projects?limit=100');
+      const projects = (await res.json()) as {
+        data: { id: string; assignedWorkers: unknown[] | null }[];
+      };
+      const staffed = projects.data.find((p) => (p.assignedWorkers ?? []).length > 0);
+      expect(staffed, 'the seed holds no project with assigned workers').toBeDefined();
+      await page.goto(`/projects/${staffed!.id}`);
+      await expect(page.locator('[data-testid^="worker-chip-remove-"]').first()).toBeVisible();
+      return null;
+    },
+  },
+  {
+    name: 'import confirmed',
+    open: async (page) => {
+      await page.goto('/daten');
+      const chooser = page.waitForEvent('filechooser');
+      await page.getByTestId('data-import-button').click();
+      await (
+        await chooser
+      ).setFiles({ name: 'export.zip', mimeType: 'application/zip', buffer: Buffer.from('PK') });
+      await page.getByTestId('import-job-phrase-input').fill(EXPECTED_RESTORE_PHRASE);
+      await expect(page.getByTestId('import-job-start')).toBeEnabled();
       return null;
     },
   },
@@ -519,12 +856,29 @@ for (const scheme of SCHEMES) {
       });
     });
 
+    test.describe('touch phone', () => {
+      // A touch device shows the camera button, hidden under a fine pointer.
+      test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+      test('AC-748: project detail page with the camera button', async ({ page }) => {
+        await page.goto(`/projects/${await firstId(page, '/api/projects?limit=1')}`);
+        await expect(page.getByTestId('detail-camera-capture')).toBeVisible();
+        await expectAaContrast(page, scheme, null);
+      });
+    });
+
     test.describe('worker', () => {
       test.use({ storageState: STORAGE_STATES.worker });
 
       test('AC-748: /meine-projekte', async ({ page }) => {
         await page.goto('/meine-projekte');
         await expect(page.getByTestId('my-projects-view')).toBeVisible();
+        await expectAaContrast(page, scheme, null);
+      });
+
+      test('AC-748: not-permitted page', async ({ page }) => {
+        await page.goto('/audit');
+        await expect(page.getByTestId('not-permitted-view')).toBeVisible();
         await expectAaContrast(page, scheme, null);
       });
     });
