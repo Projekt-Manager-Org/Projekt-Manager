@@ -6,7 +6,7 @@
 # stylesheet ignores the dark theme, a hardcoded accent ignores the
 # configured brand accent (spec AC-114, AC-742).
 #
-# Two checks run in sequence:
+# Three checks run in sequence:
 #
 #   Check 1 — palette hex scan
 #     Scans src/**/*.{css,module.css,ts,tsx} for 6- and 8-digit hex color
@@ -24,6 +24,12 @@
 #     The check is scoped to tokens.css by design — comments elsewhere in
 #     the repo that *mention* the old token names are not leaks, only
 #     *definitions* of them in the token source are.
+#
+#   Check 3 — no undefined --color-* references
+#     Every `var(--color-…)` under src/ must name a token tokens.css
+#     defines. An undefined one makes the declaration silently invalid, or
+#     silently falls back when the var() has a fallback — either way the
+#     intended color never renders.
 #
 # Allowlist (Check 1):
 #   src/styles/tokens.css        — single source of palette + semantic tokens
@@ -158,7 +164,7 @@ filtered=$(printf '%s\n' "$raw_matches" \
 # --- Report (Check 1) -----------------------------------------------------
 echo -e "${GREEN}=== Theme token hygiene check ===${NC}"
 echo ""
-echo -e "${GREEN}--- Check 1/2: palette hex scan ---${NC}"
+echo -e "${GREEN}--- Check 1/3: palette hex scan ---${NC}"
 echo "Scope: src/**/*.{css,module.css,ts,tsx}"
 echo "Allowlist:"
 for entry in "${ALLOWLIST[@]}"; do
@@ -210,7 +216,7 @@ fi
 # contract is that these primitive names no longer exist as CSS custom
 # properties in the token source.
 echo ""
-echo -e "${GREEN}--- Check 2/2: no blue primitives in tokens.css ---${NC}"
+echo -e "${GREEN}--- Check 2/3: no blue primitives in tokens.css ---${NC}"
 echo "Scope: src/styles/tokens.css"
 echo ""
 
@@ -266,9 +272,57 @@ else
   echo "accent custom properties instead."
 fi
 
+# --- Check 3: every var(--color-*) names a defined token ------------------
+echo ""
+echo -e "${GREEN}--- Check 3/3: no undefined --color-* references ---${NC}"
+echo "Scope: var(--color-…) in src/**/*.{css,module.css,ts,tsx} against ${TOKENS_FILE}"
+echo ""
+
+set +o pipefail
+defined=$(grep -oE '^\s*--color-[A-Za-z0-9-]+\s*:' "$TOKENS_FILE" 2>/dev/null \
+  | grep -oE -- '--color-[A-Za-z0-9-]+' | sort -u || true)
+set -o pipefail
+if [ -z "$defined" ]; then
+  echo "error: no --color-* definitions found in ${TOKENS_FILE} — the check would flag everything." >&2
+  exit 2
+fi
+
+set +o pipefail
+color_refs=$(rg --no-config --no-ignore --hidden --line-number --no-heading --color=never \
+  --sort=path --only-matching --glob '*.css' --glob '*.ts' --glob '*.tsx' \
+  'var\(\s*--color-[A-Za-z0-9-]+' src || true)
+set -o pipefail
+
+# file:line:var(--color-name → keep the ones whose name is not defined.
+undefined_refs=$(printf '%s\n' "$color_refs" | DEFINED="$defined" awk '
+  BEGIN { n = split(ENVIRON["DEFINED"], d, "\n"); for (i = 1; i <= n; i++) ok[d[i]] = 1 }
+  NF == 0 { next }
+  {
+    name = $0
+    sub(/^.*var\([[:space:]]*/, "", name)
+    if (!(name in ok)) {
+      loc = $0
+      sub(/:var\(.*$/, "", loc)
+      printf "  %s  %s\n", loc, name
+    }
+  }
+')
+
+check3_failed=0
+if [ -z "$undefined_refs" ]; then
+  echo -e "${GREEN}✓ every --color-* reference names a defined token${NC}"
+else
+  check3_failed=1
+  echo -e "${RED}✗ References to --color-* tokens that ${TOKENS_FILE} does not define:${NC}"
+  echo ""
+  printf '%s\n' "$undefined_refs"
+  echo ""
+  echo "Fix: use a token ${TOKENS_FILE} defines, or define the missing one there."
+fi
+
 # --- Final verdict --------------------------------------------------------
 echo ""
-if [ "$check1_failed" -eq 0 ] && [ "$check2_failed" -eq 0 ]; then
+if [ "$check1_failed" -eq 0 ] && [ "$check2_failed" -eq 0 ] && [ "$check3_failed" -eq 0 ]; then
   echo -e "${GREEN}Theme token hygiene check PASSED${NC}"
   exit 0
 fi

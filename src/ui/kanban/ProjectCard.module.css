@@ -113,5 +113,4 @@
 
 .backwardButton:hover {
   background: var(--color-surface-sunken);
-  border-color: var(--color-border-strong, var(--color-border));
 }
