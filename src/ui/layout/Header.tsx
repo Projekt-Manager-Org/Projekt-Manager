@@ -299,7 +299,7 @@ export function Header() {
             {dropdownOpen && (
               <>
                 <MenuBackdrop onClose={() => setDropdownOpen(false)} />
-                <div ref={dropdownRef} className={styles.dropdown}>
+                <div ref={dropdownRef} className={styles.dropdown} data-testid="user-menu-dropdown">
                   <div className={styles.dropdownSection}>
                     <div className={styles.dropdownSectionLabel}>{STRINGS.theme.section}</div>
                     {THEME_OPTIONS.map((opt) => {

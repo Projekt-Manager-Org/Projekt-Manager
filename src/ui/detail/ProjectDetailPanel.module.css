@@ -52,7 +52,7 @@
 
 .header:hover,
 .header:focus-visible {
-  background: var(--color-surface-sunken);
+  background: var(--color-surface-hover);
   outline: none;
 }
 

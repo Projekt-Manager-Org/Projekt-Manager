@@ -56,6 +56,9 @@
 .tabActive,
 .tabActive:hover {
   color: var(--color-accent-on-inverse);
+  /* The inverse accent is below AA on the hover fill; touch keeps
+     :hover on the tab just tapped. */
+  background: transparent;
 }
 
 .icon {

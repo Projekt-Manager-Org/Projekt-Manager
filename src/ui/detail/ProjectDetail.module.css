@@ -415,7 +415,7 @@
 
 .coreFieldClickable:hover,
 .coreFieldClickable:focus-visible {
-  background: var(--color-surface-sunken);
+  background: var(--color-surface-hover);
   outline: none;
 }
 
@@ -438,7 +438,7 @@
 
 .coreCardWrapClickable:hover,
 .coreCardWrapClickable:focus-visible {
-  background: var(--color-surface-sunken);
+  background: var(--color-surface-hover);
   outline: none;
 }
 

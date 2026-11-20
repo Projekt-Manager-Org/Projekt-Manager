@@ -125,7 +125,7 @@ export function AssignedWorkerEditor({ projectId, archived = false }: AssignedWo
             // better than an incomplete `role="listbox"` without
             // corresponding `role="option"` entries ("no ARIA > bad
             // ARIA").
-            <ul className={styles.workerOptions}>
+            <ul className={styles.workerOptions} data-testid="worker-editor-options">
               {unassignedWorkers.length === 0 ? (
                 <li className={styles.emptyState}>{STRINGS.attachments.noUnassignedWorkers}</li>
               ) : (

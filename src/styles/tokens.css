@@ -76,6 +76,9 @@
   --color-surface-raised: var(--color-white);
   --color-surface-muted: var(--color-slate-100);
   --color-surface-sunken: var(--color-slate-200);
+  /* Hover fill behind content that keeps its own text colors: unlike
+     sunken, muted, accent and status text stay at AA on it (AC-748). */
+  --color-surface-hover: var(--color-slate-100);
   --color-surface-inverse: var(--color-slate-800);
   --color-surface-inverse-raised: var(--color-slate-700);
   --color-surface-inverse-hover: var(--color-slate-600);
@@ -170,6 +173,7 @@
   --color-surface-raised: var(--color-slate-800);
   --color-surface-muted: var(--color-slate-700);
   --color-surface-sunken: var(--color-slate-950);
+  --color-surface-hover: var(--color-slate-950);
   --color-surface-inverse: var(--color-slate-950);
   --color-surface-inverse-raised: var(--color-slate-800);
   --color-surface-inverse-hover: var(--color-slate-700);

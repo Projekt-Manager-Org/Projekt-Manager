@@ -131,6 +131,9 @@
 
 .formPanel {
   background: var(--color-surface-raised);
+  /* Set, not inherited: the email-intake modal mounts inside the header,
+     whose inverse text color would otherwise reach its headings. */
+  color: var(--color-text);
   border-radius: 8px;
   padding: 24px;
   width: 100%;
