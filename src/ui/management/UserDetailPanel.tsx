@@ -135,6 +135,9 @@ export function UserDetailPanel({ user, onClose }: Props) {
     setResetPwConfirm('');
   };
 
+  // The reset is a dialog on top of the panel: Escape closes it first (AC-758).
+  useEscapeKey(cancelResetForm, resetOpen);
+
   return (
     <div className={styles.formOverlay}>
       <div className={styles.formPanel}>
