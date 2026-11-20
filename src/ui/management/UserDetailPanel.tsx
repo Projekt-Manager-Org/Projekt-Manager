@@ -195,7 +195,9 @@ export function UserDetailPanel({ user, onClose }: Props) {
                 const trimmed = emailDraft.trim();
                 const next = trimmed ? trimmed : null;
                 if (next === (user.email ?? null)) return;
-                void updateUser(user.id, { email: next });
+                void updateUser(user.id, { email: next }).then((ok) => {
+                  if (!ok) setEmailDraft(user.email ?? '');
+                });
               }}
               disabled={submitting}
               data-testid="user-email-input"
