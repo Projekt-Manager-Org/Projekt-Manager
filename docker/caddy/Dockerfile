@@ -32,7 +32,7 @@ FROM caddy:2.11.9-builder@sha256:29f98311e17e583811355fa62cc080f71d6f3aa19cf09a9
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     xcaddy build v2.11.9 \
-        --with golang.org/x/net/http2@v0.62.0 \
+        --with golang.org/x/net/http2@v0.63.0 \
         --with github.com/go-jose/go-jose/v4@v4.1.9 \
         --with github.com/klauspost/compress/zstd@v1.20.4 \
         --with github.com/caddy-dns/cloudflare@v0.2.4
