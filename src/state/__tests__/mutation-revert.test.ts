@@ -1,6 +1,7 @@
 /**
- * AC-53 [crit]: A failed mutation reverts the optimistic UI update and
- * sets a German error message.
+ * Store-level guard for the failed date change: the revert and the
+ * fallback message (`STRINGS.errors.mutationFailed`). No rendered test
+ * covers the date path; it is a stub in ProjectDetailPage.test.tsx.
  *
  * The projectStore applies date changes optimistically, then rolls back
  * if the API reports failure. This test exercises both the API-error and
@@ -67,7 +68,7 @@ const SEED_PROJECT: Project = {
   updatedBy: null,
 };
 
-describe('AC-53: failed mutation reverts optimistic update', () => {
+describe('projectStore: failed mutation reverts optimistic update', () => {
   beforeEach(() => {
     // Reset store to a known state with one project.
     useProjectStore.setState({

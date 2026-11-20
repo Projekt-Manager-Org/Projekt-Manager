@@ -42,7 +42,7 @@ export function CustomerEditForm({ customer, onClose, onSaved, onConflict }: Pro
   const [addressError, setAddressError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // The version the form opened at — the edit's start version
-  // (behavior.md §9.5); replaced only by the refetch after a stale write.
+  // (AC-379); replaced only by the refetch after a stale write.
   const [startVersion, setStartVersion] = useState(customer.version);
 
   const resetTo = (fresh: Customer) => {

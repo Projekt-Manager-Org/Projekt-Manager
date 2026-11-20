@@ -218,7 +218,7 @@ describe('ProjectDetailPanel — Öffnen affordance (AC-207)', () => {
   });
 });
 
-describe('ProjectDetailPanel — Escape closes the panel', () => {
+describe('ProjectDetailPanel — Escape closes the panel (AC-758)', () => {
   it('invokes onClose on Escape, consistent with every other dismissable surface', async () => {
     // Regression guard for issue #242: the panel shipped with no Esc
     // handler at all (overlay-click and the close button were the only
@@ -227,6 +227,16 @@ describe('ProjectDetailPanel — Escape closes the panel', () => {
     const { onClose } = renderPanelAt('/kanban');
 
     await userEvent.keyboard('{Escape}');
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ProjectDetailPanel — a click outside closes the panel (AC-761)', () => {
+  it('invokes onClose when the overlay beside the panel is clicked', async () => {
+    const { onClose } = renderPanelAt('/kanban');
+
+    await userEvent.click(screen.getByTestId('detail-overlay'));
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });

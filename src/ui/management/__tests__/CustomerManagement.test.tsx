@@ -229,7 +229,7 @@ describe('CustomerManagement — name autocomplete', () => {
   });
 });
 
-// AC-131: in-flight mutation lock covers the soft-confirm dialog — a
+// AC-756: in-flight mutation lock covers the soft-confirm dialog — a
 // second submit opened while the confirm is awaiting user input must
 // not fire a second create when the confirm resolves.
 describe('CustomerManagement — soft-confirm double-click protection', () => {
@@ -273,6 +273,40 @@ describe('CustomerManagement — soft-confirm double-click protection', () => {
     // Give any phantom second call room to fire, then assert stability.
     await new Promise((r) => setTimeout(r, 50));
     expect(customerCreateMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('AC-757: CustomerManagement — the create form is frozen while its save is in flight', () => {
+  it('disables every input and ignores Escape until the request resolves', async () => {
+    let resolveCreate!: (r: CustomerCreateResult) => void;
+    customerCreateMock.mockImplementation(
+      () => new Promise<CustomerCreateResult>((r) => (resolveCreate = r)),
+    );
+
+    render(<CustomerManagement />);
+    await userEvent.click(screen.getByTestId('customer-create-button'));
+    await userEvent.type(screen.getByTestId('customer-name-input'), 'Neukunde');
+    await userEvent.click(screen.getByTestId('customer-submit'));
+    await waitFor(() => expect(customerCreateMock).toHaveBeenCalledTimes(1));
+
+    for (const id of [
+      'customer-name-input',
+      'customer-street-input',
+      'customer-zip-input',
+      'customer-city-input',
+      'customer-ustid-input',
+      'customer-notes-input',
+    ]) {
+      expect(screen.getByTestId(id), id).toBeDisabled();
+    }
+    expect(screen.getByRole('button', { name: STRINGS.ui.cancel })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByTestId('customer-name-input')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveCreate(ok({ id: 'srv-1', name: 'Neukunde' } as Customer));
+    });
+    await waitFor(() => expect(screen.queryByTestId('customer-name-input')).toBeNull());
   });
 });
 

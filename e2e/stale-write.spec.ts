@@ -10,7 +10,7 @@ import { STATE_KEYS, type WorkflowState } from '../src/config/stateConfig';
 import { STORAGE_STATES } from './storage-states';
 
 /**
- * E2E — stale-write recovery (ui/behavior.md §9.5, data-model.md §6.4).
+ * E2E — stale-write recovery (AC-379, data-model.md §6.4).
  *
  *   - AC-379: an invoice draft form whose draft another session changes
  *     is rejected with the stale-write message and shows the refetched

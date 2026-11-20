@@ -91,7 +91,7 @@ An optional third component, `details`, may carry structured validation informat
 
 #### 14.4.1 Error Categories
 
-The API must distinguish the following error categories. Each category has distinct client-side handling (see [ui/behavior.md — Asynchronous Mutation Behavior](ui/behavior.md#95-asynchronous-mutation-behavior)).
+The API must distinguish the following error categories. Each category has distinct client-side handling.
 
 | Category                 | Meaning                                                                                                                                                                                                                                                         | Client behavior                                                                                                                                                |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -116,7 +116,7 @@ The full set of machine-readable error codes: `INVALID_CREDENTIALS`, `UNAUTHENTI
 
 `TARGET_NOT_EMPTY` (409) is a conflict-category code; `RESTORE_CONFIRMATION_MISMATCH` (422) is a validation-category code ([§15.14](verification.md#1514-data-exchange)). `SCHEMA_VERSION_MISMATCH`, `MISSING_USER_REFS` and `IMPORT_DROPS_ISSUED_INVOICES` never reach a response; each fails an import job ([AC-593](verification.md#1514-data-exchange), [AC-367](verification.md#1514-data-exchange)). For `IMPORT_DROPS_ISSUED_INVOICES` the remedy is an archive exported after the latest issuance.
 
-`VERSION_CONFLICT` (409) is a versioned edit whose `expectedVersion` no longer matches the stored row ([data-model.md §6.4](data-model.md#64-concurrency)); nothing was written. A conflict-category code, distinct from `CONFLICT` so the client runs stale-write recovery ([ui/behavior.md §9.5](ui/behavior.md#95-asynchronous-mutation-behavior)) rather than a generic refetch.
+`VERSION_CONFLICT` (409) is a versioned edit whose `expectedVersion` no longer matches the stored row ([data-model.md §6.4](data-model.md#64-concurrency)); nothing was written. A conflict-category code, distinct from `CONFLICT` so the client runs stale-write recovery ([AC-379](verification.md#1517-data-integrity)) rather than a generic refetch.
 
 `DEK_UNWRAP_FAILED` is also a specialization of the validation-error category (`422`) — a per-row attachment envelope cannot be unwrapped against the loaded binary keyring (corrupt envelope, or a key not in the keyring). The Service Worker translates the code to the [AC-244](verification.md#1526-attachments) "Schlüssel nicht verfügbar" placeholder render path.
 

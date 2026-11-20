@@ -5,7 +5,7 @@
  * the table level — if a predicate drifts from the spec, this test
  * fires before the UI/guard ever sees the bad value.
  *
- * Also pins the per-role landing behavior (ui/index.md §8.1.2): exactly one
+ * Also pins the per-role landing behavior (ui/index.md §8.7.1): exactly one
  * entry is the landing for any given role set. AC-149 is exercised
  * elsewhere (route-guard test + E2E in Round 9); here we only pin the
  * table's observable contract.
@@ -179,7 +179,7 @@ describe('ROUTES — per-role nav matrix (AC-75)', () => {
   });
 });
 
-describe('ROUTES — landing (ui/index.md §8.1.2)', () => {
+describe('ROUTES — landing (ui/index.md §8.7.1)', () => {
   for (const role of Object.keys(LANDINGS) as RoleName[]) {
     it(`AC-566: role '${role}' has exactly one landing entry at ${LANDINGS[role]}`, () => {
       const c = caller(role);

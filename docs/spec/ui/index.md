@@ -13,7 +13,6 @@ Section 8 of the [product spec](../index.md): UI surface. Split into per-subsyst
 | **[email-intake.md](email-intake.md)**     | §8.12             | Email Data Intake — modal LLM extraction to customer + project                                       |
 | **[project-detail.md](project-detail.md)** | §8.15             | Project Detail Page — dedicated `/projects/:id` route with attachments and per-project invoice block |
 | **[invoices.md](invoices.md)**             | §8.16             | Invoices View — list, export, draft form, invoice viewer, company profile                            |
-| **[behavior.md](behavior.md)**             | §9                | Cross-cutting behavioral rules                                                                       |
 
 ---
 
@@ -34,7 +33,7 @@ The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `A
 │  Header: App Name  |  Navigation (§8.7)                  │
 │                                    [Maria Schmidt ▾]     │
 ├──────────────────────────────────────────────────────────┤
-│ [Mutation error banner — only when a mutation failed]    │
+│ [Mutation error banner — only after a failed change]    │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
 │                     Active View                          │
@@ -63,9 +62,8 @@ The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `A
   | The last drill is more full days old than the drill amber threshold           | amber  | `Backup: aktuell, Drill-Schlüssel neu laden` |
   | Otherwise                                                                     | green  | `Backup: aktuell`                            |
 
-- **User indicator**: displays the authenticated user's `displayName`. Clicking reveals a dropdown — see [§8.7.2](#872-user-menu).
-- **Mutation error banner**: appears when the most recent mutation failed. German message from the API error category (see [behavior.md §9.5](behavior.md#95-asynchronous-mutation-behavior)), dismiss button. Cleared on next successful mutation or by dismissal.
-- **Default view**: Meine Projekte for worker; Kanban for owner and office; Rechnungen for bookkeeper (see [§8.7.1](#871-views)).
+- **User menu**: the signed-in user's `displayName` (initials at most 768 px wide), opening the user menu ([§8.7.2](#872-user-menu)).
+- **Mutation error banner**: the message of a failed change made outside a dialog — to a project, the theme or push muting ([AC-755](../verification.md#1515-navigation-and-interaction)), with a dismiss button. Dialogs and other views show their own failures in place.
 - **Footer** (desktop only): footer brand line **[C]**, and the storage badge ([AC-448](../verification.md#1529-storage-usage), [AC-449](../verification.md#1529-storage-usage)).
 - **Activity dock**: a collapsible panel directly above the Footer, for callers holding `audit:read` ([AC-638](../verification.md#1532-activity-dock)); absent on phones and on the Aktivität view. Header button `Aktivität (Alt+A)` ([AC-640](../verification.md#1532-activity-dock)). It lists audit entries ([AC-637](../verification.md#1532-activity-dock)) one per line — `Aktor · Projekt · Beschreibung`, the time at the right, as in the activity feed ([workflow-views.md §8.4.1](workflow-views.md#841-activity-feed)) — with no `Details anzeigen`; then `Ältere anzeigen`.
 
@@ -73,11 +71,11 @@ The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `A
 
 ## 8.7 Navigation
 
-The authenticated layout provides navigation between all available views. The navigation mechanism (sidebar, top tabs, or other) is an implementation decision.
+The authenticated layout navigates between the views below. Behavior: [verification.md §15.15](../verification.md#1515-navigation-and-interaction).
 
 ### 8.7.1 Views
 
-The table below mirrors the route table in `src/config/routes.ts`; CI fails on drift (AC-349). `Access` is the declared rule, `Roles` is that rule resolved against the default role matrix ([api.md §14.3](../api.md#143-authorization-rules)), and `Landing` is the post-login view for a caller holding that role alone ([§8.1.2](#812-authenticated-state)) — see the first-match note below the table for multi-role callers.
+The table below mirrors the route table in `src/config/routes.ts`; CI fails on drift (AC-349). `Access` is the declared rule, `Roles` is that rule resolved against the default role matrix ([api.md §14.3](../api.md#143-authorization-rules)), and `Landing` is the post-login view for a caller holding that role alone — see the first-match note below the table for multi-role callers.
 
 <!-- CHECKED:nav-matrix:START — mirrors ROUTES and LANDING_ORDER (src/config/routes.ts), pinned by src/config/__tests__/routes.test.ts (AC-349). Edit the route table, then this block. -->
 
@@ -94,7 +92,7 @@ The table below mirrors the route table in `src/config/routes.ts`; CI fails on d
 | `aktivitaet`         | `/audit`              | "Aktivität"          | `audit:read`                    | owner, office             | —             |
 | `benachrichtigungen` | `/benachrichtigungen` | "Benachrichtigungen" | `notifications:manage`          | owner                     | —             |
 
-**Landing is first-match over this order:** worker → `meineProjekte`; owner / office → `kanban`; bookkeeper → `rechnungen`. A caller holding several roles takes the first rule that matches, so the ordering — not a per-role exclusion — is what keeps the choice unambiguous. A caller matching no rule has no landing view and falls back to their first accessible route.
+**Landing is first-match over this order:** worker → `meineProjekte`; owner / office → `kanban`; bookkeeper → `rechnungen`. A caller holding several roles takes the first rule that matches.
 
 <!-- CHECKED:nav-matrix:END -->
 
@@ -102,30 +100,19 @@ Parametrized routes (`/projects/:id`, `/rechnungen/:id`) are deep-link targets r
 
 **Per-view notes.** What the table cannot carry:
 
-- **"Meine Projekte"** — the logged-in worker's assigned projects, grouped Heute / Demnächst / Weitere, each row a single tap target deep-linking to `/projects/:id`. Designed for phone-first field use.
-- **"Kanban"**, **"Kalender"** — worker access is scoped; see **Worker-scoped views** below.
+- **"Meine Projekte"** — the worker's assigned projects, grouped ([AC-753](../verification.md#1515-navigation-and-interaction)); each group heading shows its count, an empty group is hidden, and with no assigned project the view reads `"Keine zugewiesenen Projekte."`. Each row shows number, title, state, planned dates and customer, and opens `/projects/:id`.
+- **"Kanban"**, **"Kalender"** — a worker sees only their assigned projects ([AC-579](../verification.md#1521-role-scoping)).
 - **"Rechnungen"** — the invoice register and the company profile; see [invoices.md §8.16](invoices.md#816-invoices-view).
 - **"Daten"** — includes the deployment-wide storage usage row ([daten.md §8.11.3](daten.md#8113-speichernutzung)).
-- **"Aktivität"** — office does not see destructive entries ([AC-182](../verification.md#1523-audit-log)); the permission gate above governs tab visibility only.
-- **"Benutzer"**, **"Benachrichtigungen"** — hidden for every other role, and a deep link to `/users` or `/benachrichtigungen` returns the not-permitted surface rather than redirecting.
 
-**Primary / secondary grouping.** "Rechnungen", "Benutzer", "Daten", "Aktivität", and "Benachrichtigungen" are secondary: lower-frequency admin / observability surfaces, plus the invoice register — owner / office draft and issue invoices on the project page ([project-detail.md §8.15.11](project-detail.md#81511-invoice)). Navigation groups them under "Verwaltung" when a caller sees two or more; a single secondary entry renders inline with the primary entries. Bookkeeper's only secondary entry, "Rechnungen", therefore renders inline.
+**Grouping.** "Rechnungen", "Benutzer", "Daten", "Aktivität" and "Benachrichtigungen" are secondary. A caller who sees two or more of them finds them under "Verwaltung"; a single one shows inline with the primary entries (bookkeeper: "Rechnungen"). The grouping holds at every viewport width.
 
-**Phone width.** The nav matrix and the grouping above apply at every viewport width. At phone width, from any view, every entry outside "Verwaltung" is one tap away and every entry inside it is reachable through the group. Navigation layout is an implementation decision ([§8.7](#87-navigation)).
-
-**Worker-scoped views.** For workers, the data presented in Kanban and Calendar is filtered to the projects the worker is assigned to — the same scoping rule that applies to the server-side list operation ([AC-579](../verification.md#1521-role-scoping)). The views render normally; only the row set is reduced. A project whose detail the worker is not authorized for is not reachable from a scoped Kanban or Calendar.
-
-**Landing view.** The default landing view is Kanban for owner and office. Worker lands on "Meine Projekte", a phone-first personal list of the worker's assigned projects (Kanban stays in the nav — workers spend most of their app time on phones, where the kanban board's horizontal scroll and per-state columns are a poor fit). Bookkeeper lands on Rechnungen — the invoice register (search/filter/export) is their primary workflow; bookkeeper also lacks Kanban access under the nav matrix. A bookkeeper arriving at `/kanban` via a manual URL entry is treated under the unpermitted-route rule below rather than silently redirected.
-
-Navigation between views preserves shared state (cached project list, customer list, authenticated user). Switching views clears any active filter.
-
-Views that the user lacks permission to access are hidden from navigation. Server-side authorization remains authoritative — hiding is a UX convenience. A manual URL entry to a view the caller is not permitted to access presents an explicit not-permitted error surface in the client (see [AC-149](../verification.md#1521-role-scoping)) rather than a silent redirect — the client must not obscure an authorization failure behind a destination swap.
+A view the caller may not access is absent from navigation ([AC-75](../verification.md#1515-navigation-and-interaction)); opened by URL, it shows the not-permitted surface ([AC-149](../verification.md#1521-role-scoping)).
 
 ### 8.7.2 User Menu
 
-The user menu (accessible from the header area) provides:
+The user menu, opened from the header, offers:
 
-- Display of the authenticated user's `displayName`
 - "Darstellung" — the theme selector: "Hell" (`light`), "Dunkel" (`dark`), "Systemstandard" (`system`) ([verification.md §15.19](../verification.md#1519-theming)).
 - "Push-Benachrichtigungen" — for this device ([verification.md §15.24](../verification.md#1524-notifications)): `Push-Benachrichtigungen aktivieren` while the device is not registered for the user and the browser does not block push; `Gerät abmelden` while it is; the `Stummschalten` toggle. A hint takes the place of `Push-Benachrichtigungen aktivieren` when the browser blocks push, and of the whole group when it lacks push; after activation, a hint names a failure, e.g. no push keys configured on the server.
 - "Passwort ändern" — opens a password change form (current password, new password, confirmation)

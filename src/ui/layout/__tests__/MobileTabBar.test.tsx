@@ -19,7 +19,9 @@
  * expectations here to pass.
  *
  * Pins [AC-75] (per-role nav visibility — same matrix anchor the
- * Header component-level test pins).
+ * Header component-level test pins) and the per-role entry set of
+ * AC-752; the viewport half (the bar shows at most 768 px wide) is
+ * pinned by e2e/navigation.spec.ts.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -89,7 +91,7 @@ beforeEach(() => {
   });
 });
 
-describe('MobileTabBar — per-role primary-tab visibility (AC-75)', () => {
+describe('MobileTabBar — per-role primary-tab visibility (AC-75, AC-752)', () => {
   for (const role of Object.keys(MOBILE_TABS)) {
     it(`renders exactly the mobile primary tabs for role '${role}'`, () => {
       setAuthUser([role]);

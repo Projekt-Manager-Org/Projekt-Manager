@@ -285,7 +285,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    * On success the server-returned user replaces the optimistic one. On
    * failure all three of the above are reverted to the pre-click state,
    * and the error is surfaced via the projectStore mutation-error banner
-   * (spec §9.5) — the same mechanism other failed mutations use.
+   * (AC-755) — the same mechanism other failed mutations use.
    */
   updateThemePreference: async (value: ThemePreference) => {
     const previousUser = get().authUser;
@@ -318,7 +318,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Surface the server-supplied message (or the canonical German
       // fallback for empty-message paths). Reuses the projectStore
       // mutation-error banner so the feedback surface stays consistent
-      // with spec §9.5.
+      // with AC-755.
       useProjectStore.setState({
         mutationError: result.error.message || STRINGS.errors.mutationFailed,
       });
@@ -344,7 +344,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   /**
    * Self-update the user's push-mute flag.
    *
-   * AC-658 + ui/behavior.md §9.5: applied optimistically, reverts on
+   * AC-658 + AC-754: applied optimistically, reverts on
    * failure. Same shape as `updateThemePreference` above — the only
    * fields that diverge are the local-cache side effects (pushMuted has
    * none; the server value is the single source of truth).

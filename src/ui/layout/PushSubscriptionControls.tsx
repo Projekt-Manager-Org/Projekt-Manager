@@ -141,7 +141,7 @@ export function PushSubscriptionControls() {
     (next: boolean) => {
       // Fire-and-forget: the store handles optimistic update and
       // revert-on-failure, mirroring the theme-preference pattern
-      // (spec §9.5). A failed mutation flips the toggle back when the
+      // (AC-754). A failed mutation flips the toggle back when the
       // store state propagates here via the selector.
       void updatePushMuted(next);
     },

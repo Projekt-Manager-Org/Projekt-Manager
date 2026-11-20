@@ -33,7 +33,7 @@ describe('useEscapeKey', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  it('stacked handlers: Esc closes only the topmost surface', () => {
+  it('AC-758: stacked handlers: Esc closes only the topmost surface', () => {
     // Modal opens (outer) → popover stacks on top (inner). Pressing Esc
     // must close the popover only; the modal stays open. Previously both
     // fired because each useEscapeKey instance attached its own

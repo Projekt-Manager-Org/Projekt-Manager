@@ -1,13 +1,12 @@
 /**
  * AssignedWorkerEditor — inline worker-chip editor on the project
- * detail page (spec §8.15.3, AC-481 + AC-53).
+ * detail page (spec §8.15.3, AC-481 + AC-754).
  *
  * The control shows the current assigned workers as chips, lets callers
  * with `project:update` add or remove workers, and is hidden as a
  * whole for callers without `project:update`. Each add/remove
  * dispatches the Update project operation with an `assignedWorkerIds`
- * patch; a failed mutation reverts the optimistic chip set per
- * behavior.md §9.5.
+ * patch; a failed mutation reverts the optimistic chip set.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -277,7 +276,7 @@ describe('AssignedWorkerEditor — hidden control for callers without project:up
   });
 });
 
-describe('AssignedWorkerEditor — optimistic revert on failure (AC-53 + §9.5)', () => {
+describe('AssignedWorkerEditor — optimistic revert on failure (AC-754)', () => {
   it('restores the original chip set when the mutation fails', async () => {
     setAuthUser(['owner']);
     updateMock.mockResolvedValue({

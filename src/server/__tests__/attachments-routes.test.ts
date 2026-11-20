@@ -1289,9 +1289,9 @@ describe('Attachment routes — integration (issue #108)', () => {
   // -------------------------------------------------------------------
   // Error envelopes for upload-failure categories.
   //
-  // Client behavior pivots on these codes (ui/behavior.md §9.5 +
-  // ui/index.md §8.1.2 banner). Pinning them here ensures the banner
-  // contract stays stable as the server evolves.
+  // Client behavior pivots on these codes (api.md §14.4.1); the
+  // pending upload row shows the failure. Pinning them here keeps that
+  // contract stable as the server evolves.
   // -------------------------------------------------------------------
   describe('upload-failure error envelope categories', () => {
     it('unauthenticated init returns 401 UNAUTHENTICATED', async () => {

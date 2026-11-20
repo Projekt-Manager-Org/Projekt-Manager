@@ -125,7 +125,7 @@ export function InvoiceListRow({ invoice, originalNumber }: Props) {
 
   const handleDeleteDraft = async () => {
     // The dialog previews the row as it opens and sends that version
-    // (ui/project-detail.md §8.15.11, behavior.md §9.5).
+    // (ui/project-detail.md §8.15.11, AC-379).
     const ok = await requestConfirm(STRINGS.invoices.deleteDraftConfirm, {
       details: <InvoiceDraftPreview invoice={invoice} />,
     });

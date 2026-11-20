@@ -200,7 +200,7 @@ export function App() {
     // Router path: every known route goes through `ProtectedRoute`, which
     // renders `NotPermittedView` when the caller cannot access the path
     // (AC-149). The `/` and `*` fallbacks route to the user's landing
-    // view (§8.1.2) via the central route table — never hardcoded.
+    // view (ui/index.md §8.7.1) via the central route table — never hardcoded.
     // Store-only fallback is used by tests rendering <App /> without a
     // router; it mirrors the same gate by consulting the table directly.
     const storeRoute = ROUTES.find((r) => r.view === activeView);

@@ -78,9 +78,9 @@ interface CustomerState {
     notes?: string | null;
   }) => Promise<CreateCustomerOutcome>;
   /**
-   * Update from an edit that started at `startVersion` (behavior.md
-   * §9.5). `'conflict'` carries the refetched customer the form resets
-   * to; `error` holds the stale-write message.
+   * Update from an edit that started at `startVersion` (AC-379).
+   * `'conflict'` carries the refetched customer the form resets to;
+   * `error` holds the stale-write message.
    */
   updateCustomer: (
     id: string,

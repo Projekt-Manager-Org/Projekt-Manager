@@ -26,7 +26,7 @@ export type CompanyProfileSavePayload = CompanyProfileInput;
  * `'validation'` — server returned a 422 (VALIDATION_ERROR or
  * COMPANY_PROFILE_REQUIRED); the caller may inspect `saveError` for the
  * server-supplied German copy and the optional `missingFields` for
- * field-level targeting. `'conflict'` — stale write (behavior.md §9.5);
+ * field-level targeting. `'conflict'` — stale write (AC-379);
  * `data` has been refetched, `saveError` holds the message. `'error'` —
  * generic failure; the message lives on `saveError`.
  */
