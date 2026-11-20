@@ -16,8 +16,10 @@
   --color-slate-100: #f1f5f9;
   --color-slate-200: #e2e8f0;
   --color-slate-300: #cbd5e1;
+  --color-slate-350: #a2b0c2; /* lightest gray at AA on slate-700 */
   --color-slate-400: #94a3b8;
   --color-slate-500: #64748b;
+  --color-slate-550: #606f86; /* lightest gray at AA on slate-100 */
   --color-slate-600: #475569;
   --color-slate-700: #334155;
   --color-slate-800: #1e293b;
@@ -42,6 +44,7 @@
   --color-red-400: #f87171;
   --color-red-500: #ef4444;
   --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
   --color-red-900: #7f1d1d;
   --color-red-950: #450a0a;
 
@@ -80,16 +83,20 @@
   /* Text */
   --color-text: var(--color-slate-800);
   --color-text-secondary: var(--color-slate-600);
-  --color-text-muted: var(--color-slate-500);
-  --color-text-subtle: var(--color-slate-400);
+  /* Muted and subtle meet WCAG AA (AC-748) on surface-base, -raised and
+     -muted — so they share one tone. Text on surface-sunken uses
+     text-secondary. */
+  --color-text-muted: var(--color-slate-550);
+  --color-text-subtle: var(--color-slate-550);
   --color-text-strong: var(--color-slate-700);
-  /* Dark text on blue accents — both blue-500 (light) and blue-400 (dark) are
-     too light for white text to meet WCAG AA (2.54:1 and 3.68:1 respectively).
-     Slate-900 reaches 4.97:1 / 7.31:1. */
-  --color-text-on-accent: var(--color-slate-900);
+  /* Labels on a filled accent: white in light, slate-900 in dark. */
+  --color-text-on-accent: var(--color-white);
+  /* Labels on a workflow-state or status fill. State colors are
+     theme-independent; each must meet AA with slate-900 (stateConfig.ts). */
+  --color-text-on-state: var(--color-slate-900);
   --color-text-on-inverse: var(--color-slate-50);
   --color-text-on-inverse-muted: var(--color-slate-200);
-  --color-text-on-inverse-subtle: var(--color-slate-400);
+  --color-text-on-inverse-subtle: var(--color-slate-300);
 
   /* Border */
   --color-border: var(--color-slate-300);
@@ -110,17 +117,19 @@
    * the two is Chrome 125+, Firefox 128+, Safari 16.4+ — this project
    * targets evergreen browsers so that floor is acceptable.
    */
-  --color-accent: var(--brand-accent-light, #3b82f6);
+  --color-accent: var(--brand-accent-light, #2563eb);
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black);
-  --color-accent-active-surface: color-mix(in srgb, var(--color-accent) 45%, black);
   --color-focus-ring: var(--color-accent);
+  /* Accent on the inverse chrome (header, tab bar): the dark-theme value,
+     which is the one that passes on slate-800 and darker. */
+  --color-accent-on-inverse: var(--brand-accent-dark, #60a5fa);
 
   /* Status — danger */
   --color-danger: var(--color-red-600);
   --color-danger-strong: var(--color-red-500);
   --color-danger-bg: var(--color-red-50);
   --color-danger-border: var(--color-red-200);
-  --color-danger-text: var(--color-red-600);
+  --color-danger-text: var(--color-red-700); /* red-600 is 4.41:1 on danger-bg */
   --color-danger-inverse-bg: var(--color-red-950);
   --color-danger-inverse-hover: var(--color-red-900);
   --color-danger-inverse-text: var(--color-red-300);
@@ -168,13 +177,13 @@
   /* Text */
   --color-text: var(--color-slate-100);
   --color-text-secondary: var(--color-slate-300);
-  --color-text-muted: var(--color-slate-400);
-  --color-text-subtle: var(--color-slate-500);
+  --color-text-muted: var(--color-slate-350);
+  --color-text-subtle: var(--color-slate-350);
   --color-text-strong: var(--color-slate-50);
   --color-text-on-accent: var(--color-slate-900);
   --color-text-on-inverse: var(--color-slate-100);
   --color-text-on-inverse-muted: var(--color-slate-300);
-  --color-text-on-inverse-subtle: var(--color-slate-500);
+  --color-text-on-inverse-subtle: var(--color-slate-300);
 
   /* Border */
   --color-border: var(--color-slate-700);
@@ -189,8 +198,10 @@
    */
   --color-accent: var(--brand-accent-dark, #60a5fa);
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 88%, black);
-  --color-accent-active-surface: color-mix(in srgb, var(--color-accent) 45%, black);
   --color-focus-ring: var(--color-accent);
+  /* Accent on the inverse chrome (header, tab bar): the dark-theme value,
+     which is the one that passes on slate-800 and darker. */
+  --color-accent-on-inverse: var(--brand-accent-dark, #60a5fa);
 
   /* Status — danger */
   --color-danger: var(--color-red-400);

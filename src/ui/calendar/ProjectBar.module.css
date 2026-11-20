@@ -4,19 +4,17 @@
   border-radius: 3px;
   padding: 0 6px;
   font-size: 0.68rem;
-  color: var(--color-text-on-accent);
+  color: var(--color-text-on-state);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   display: flex;
   align-items: center;
   cursor: pointer;
-  opacity: 0.9;
-  transition: opacity 0.15s;
+  transition: box-shadow 0.15s;
   z-index: 1;
 }
 
 .bar:hover {
-  opacity: 1;
   box-shadow: 0 1px 4px rgba(var(--color-overlay-rgb), 0.2);
 }

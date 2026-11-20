@@ -61,7 +61,7 @@
 }
 
 .appName:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-accent-on-inverse);
   outline-offset: 3px;
   border-radius: 2px;
 }
