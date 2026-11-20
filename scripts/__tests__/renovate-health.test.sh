@@ -46,7 +46,9 @@ NOW='2026-10-29T03:00:00Z'
 # `gh` stub. Reads the case directory from $GH_CASE_DIR:
 #   issues.json  served for GET .../issues?...  (missing → API error)
 #   pulls.json   served for GET .../pulls?...   (missing → API error)
-#   closed.json  served for GET .../pulls?state=closed... (missing → API error)
+#   closed-<head branch, / as _>.json
+#                served for GET .../pulls?state=closed&head=<owner>:<branch>
+#                (missing → API error)
 #   fresh.json   served for GET .../issues/{n} if present, else that
 #                issue out of issues.json
 #   patch.json   written from stdin on -X PATCH (the probe tick)
@@ -72,7 +74,12 @@ case " $* " in
     if [[ -f "$dir/fresh.json" ]]; then cat "$dir/fresh.json"; exit 0; fi
     all="$*"; n="${all##*/issues/}"; n="${n%% *}"
     jq -e --argjson n "$n" '.[] | select(.number == $n)' "$dir/issues.json" || exit 1 ;;
-  *'/pulls?state=closed'*) serve closed.json "$@" ;;
+  *'/pulls?state=closed'*)
+    # GitHub ignores a head without the owner and returns every closed PR.
+    all="$*"; head="${all##*head=}"; head="${head%%&*}"
+    [[ "$head" == Projekt-Manager-Org:* ]] || { echo "gh stub: head without owner: $head" >&2; exit 1; }
+    head="${head#*:}"
+    serve "closed-${head//\//_}.json" "$@" ;;
   *'/pulls?'*)    serve pulls.json "$@" ;;
   *)              echo "gh stub: unexpected call: $*" >&2; exit 1 ;;
 esac
@@ -147,11 +154,15 @@ HEALTHY_PULLS="$(jq -s . \
   <(pr 640 'renovate[bot]' renovate/docker-host 2026-09-29T03:00:00Z) \
   <(pr 600 vlzware fix/some-topic 2026-09-01T03:00:00Z))"
 
-# closed_lockfile_pr <number> <merged_at or null>
-closed_lockfile_pr() {
-  jq -n --argjson n "$1" --argjson at "$2" \
-    '{number: $n, state: "closed", merged_at: $at, head: {ref: "renovate/lock-file-maintenance"}}'
+# closed_pr <number> <merged_at or null> <head ref>
+closed_pr() {
+  jq -n --argjson n "$1" --argjson at "$2" --arg ref "$3" \
+    '{number: $n, state: "closed", merged_at: $at, head: {ref: $ref}}'
 }
+
+# closed_lockfile_pr <number> <merged_at or null>
+closed_lockfile_pr() { closed_pr "$1" "$2" renovate/lock-file-maintenance; }
+LOCKFILE_CLOSED='closed-renovate_lock-file-maintenance.json'
 
 PASS=0
 FAIL=0
@@ -166,7 +177,7 @@ new_case() {
   : > "$CASE/calls"
   set_body "$HEALTHY_BODY"
   printf '%s' "$HEALTHY_PULLS" > "$CASE/pulls.json"
-  jq -s . <(closed_lockfile_pr 700 '"2026-10-28T03:00:00Z"') > "$CASE/closed.json"
+  jq -s . <(closed_lockfile_pr 700 '"2026-10-28T03:00:00Z"') > "$CASE/$LOCKFILE_CLOSED"
 }
 
 # Renovate's other issue, opened by the same bot on a config error: listed
@@ -312,7 +323,7 @@ expect_no_output 'starved branch: exempt branch not reported' 'renovate/renovate
 expect_tick 'starved branch: probe still ticked'
 
 # --- problem and unknown sections -----------------------------------
-for title in 'Errored' 'Rate-Limited' 'PR Edited (Blocked)' 'PR Closed (Blocked)' 'Config Migration Needed' 'Other Branches'; do
+for title in 'Rate-Limited' 'PR Edited (Blocked)' 'PR Closed (Blocked)' 'Config Migration Needed' 'Other Branches'; do
   new_case
   set_body "$(printf '%s\n\n' "$HEADER"; benign_sections; section "$title" '- [ ] <!-- retry-branch=renovate/foo -->chore(deps): update foo'; footer ' ')"
   run_check "'$title' section is red" 1
@@ -341,6 +352,58 @@ new_case
 set_body "$(printf '%s\n\n' "$HEADER"; benign_sections; section 'Other Branches' '- [ ] chore(deps): update foo'; footer ' ')"
 run_check 'Other Branches without a readable item is red' 1
 expect_output 'unreadable Other Branches: named' 'Other Branches'
+
+# --- Errored --------------------------------------------------------
+# A Renovate job that races its PR's auto-merge lists the branch here
+# until the next job: it still sees the branch, finds no open PR, and
+# GitHub refuses one on the deleted head (#1032). An errored branch whose
+# last merge is within a day is that race; older, or never merged, is red.
+# Item verbatim from the live dashboard of 2026-11-20.
+ERRORED_LOCKFILE='- [ ] <!-- retry-branch=renovate/lock-file-maintenance -->chore(deps): lock file maintenance'
+ERRORED_REACT='- [ ] <!-- retry-branch=renovate/react -->chore(deps): update react'
+
+# errored_case <merged_at or null> <item-line>...: Errored lists the items;
+# renovate/react's last closed PR merged at the given time.
+errored_case() {
+  local merged="$1"
+  shift
+  new_case
+  set_body "$(printf '%s\n\n' "$HEADER"; benign_sections; section 'Errored' "$@"; footer ' ')"
+  jq -s . <(closed_pr 710 "$merged" renovate/react) > "$CASE/closed-renovate_react.json"
+}
+
+errored_case '"2026-10-28T03:01:00Z"' "$ERRORED_REACT"
+run_check 'Errored branch merged just under a day ago is green' 0
+expect_tick 'Errored branch merged recently: probe ticked'
+
+errored_case '"2026-10-28T02:59:00Z"' "$ERRORED_REACT"
+run_check 'Errored branch merged over a day ago is red' 1
+expect_output 'Errored branch merged over a day ago: named' 'Errored: renovate/react'
+expect_tick 'Errored branch merged over a day ago: probe still ticked'
+
+# Never merged: what #637 found, a pin branch erroring every run.
+errored_case null "$ERRORED_REACT"
+run_check 'Errored branch never merged is red' 1
+expect_output 'Errored branch never merged: named' 'Errored: renovate/react'
+
+# The 2026-11-20 lockfile item right after its merge, beside an unmerged
+# branch. Only the latter is reported.
+errored_case null "$ERRORED_LOCKFILE" "$ERRORED_REACT"
+jq -s . <(closed_lockfile_pr 700 '"2026-10-29T02:30:00Z"') > "$CASE/$LOCKFILE_CLOSED"
+run_check 'Errored lockfile branch after its merge, beside another, is red' 1
+expect_output 'Errored beside lockfile: other branch named' 'Errored: renovate/react'
+expect_no_output 'Errored beside lockfile: lockfile branch not reported' 'renovate/lock-file-maintenance'
+
+# No item this check can read: a Renovate format change. Fail closed.
+errored_case null '- [ ] chore(deps): update foo'
+run_check 'Errored without a readable item is red' 1
+expect_output 'unreadable Errored: named' 'dashboard section "Errored"'
+
+# Cannot tell whether the branch merged: cannot check, not healthy.
+errored_case null "$ERRORED_REACT"
+rm "$CASE/closed-renovate_react.json"
+run_check "API failure on an Errored branch's PRs exits 2" 2
+expect_no_tick "API failure on an Errored branch's PRs: no write"
 
 # Renovate's own Repository Problems section carries no checkbox items,
 # only warnings; it is red on presence.
@@ -383,27 +446,27 @@ run_check 'Renovate PR just under 7 days is green' 0
 # generation renders like a run with nothing to do, so only the absence of
 # merged PRs shows it stopped.
 new_case
-jq -s . <(closed_lockfile_pr 700 '"2026-10-22T02:59:00Z"') > "$CASE/closed.json"
+jq -s . <(closed_lockfile_pr 700 '"2026-10-22T02:59:00Z"') > "$CASE/$LOCKFILE_CLOSED"
 run_check 'last lockfile merge over 7 days ago is red' 1
 expect_output 'stale lockfile: says so' 'lockfile PR'
 expect_tick 'stale lockfile: probe still ticked'
 
 new_case
-jq -s . <(closed_lockfile_pr 700 '"2026-10-22T03:01:00Z"') > "$CASE/closed.json"
+jq -s . <(closed_lockfile_pr 700 '"2026-10-22T03:01:00Z"') > "$CASE/$LOCKFILE_CLOSED"
 run_check 'last lockfile merge just under 7 days ago is green' 0
 
 # A newer PR closed without merging refreshed nothing.
 new_case
-jq -s . <(closed_lockfile_pr 701 null) <(closed_lockfile_pr 700 '"2026-10-22T02:59:00Z"') > "$CASE/closed.json"
+jq -s . <(closed_lockfile_pr 701 null) <(closed_lockfile_pr 700 '"2026-10-22T02:59:00Z"') > "$CASE/$LOCKFILE_CLOSED"
 run_check 'closed unmerged lockfile PR does not count' 1
 expect_output 'unmerged lockfile PR: says so' 'lockfile PR'
 
 new_case
-jq -s . <(closed_lockfile_pr 701 null) <(closed_lockfile_pr 700 '"2026-10-28T03:00:00Z"') > "$CASE/closed.json"
+jq -s . <(closed_lockfile_pr 701 null) <(closed_lockfile_pr 700 '"2026-10-28T03:00:00Z"') > "$CASE/$LOCKFILE_CLOSED"
 run_check 'closed unmerged lockfile PR does not hide a recent merge' 0
 
 new_case
-printf '[]' > "$CASE/closed.json"
+printf '[]' > "$CASE/$LOCKFILE_CLOSED"
 run_check 'no lockfile PR at all is red' 1
 expect_output 'no lockfile PR: says so' 'lockfile PR'
 
@@ -434,7 +497,7 @@ rm "$CASE/pulls.json"
 run_check 'API failure exits 2' 2
 
 new_case
-rm "$CASE/closed.json"
+rm "$CASE/$LOCKFILE_CLOSED"
 run_check 'API failure on the lockfile PRs exits 2' 2
 expect_no_tick 'API failure on the lockfile PRs: no write'
 

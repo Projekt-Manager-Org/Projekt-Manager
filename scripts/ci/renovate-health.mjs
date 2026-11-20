@@ -18,6 +18,8 @@
  *     from then on and says nothing more (#740).
  *   - An Awaiting Schedule branch outside AWAITING_EXEMPT: a starved update.
  *   - An Other Branches item outside OTHER_EXEMPT: an update with no PR.
+ *   - An Errored branch with no PR merged within ERRORED_GRACE_MS: an update
+ *     whose last run failed, not the auto-merge race (#1032).
  *   - No lockfile PR merged within STALE_PR_DAYS: transitive refreshes stopped.
  *   - A dependency lookup warning. Renovate renders it under no heading
  *     (errors-warnings.ts, getDepWarningsDashboard), so it is matched by text.
@@ -87,6 +89,13 @@ const LOCKFILE_BRANCH = 'renovate/lock-file-maintenance';
 // nothing to do, or a failed generation, which renders the same. So the
 // freshness check below, not this section, says whether refreshes still land.
 const OTHER_EXEMPT = new Set([LOCKFILE_BRANCH]);
+const ERRORED = 'Errored';
+// A Renovate job that races its PR's auto-merge lists the branch here until
+// the next job: it still sees the branch, finds no open PR, and GitHub
+// refuses one on the deleted head (422; Renovate: repository-changed;
+// #1032). A branch merged within a day is that race; one still listed
+// after that is not.
+const ERRORED_GRACE_MS = DAY_MS;
 // docker-host is merged by hand after acceptance on the VPS.
 const STALE_PR_EXEMPT = new Set(['renovate/docker-host']);
 
@@ -121,8 +130,12 @@ function sections(body) {
   return result;
 }
 
+const listedBranches = (lines) => lines.map((line) => line.match(BRANCH_ITEM)?.[1]).filter(Boolean);
+
+/** Section findings, and the Errored branches, which need their PRs to judge. */
 function dashboardFindings(body) {
   const findings = [];
+  const errored = [];
   for (const [title, lines] of sections(body)) {
     if (title === AWAITING_SCHEDULE) {
       for (const line of lines) {
@@ -134,18 +147,22 @@ function dashboardFindings(body) {
         }
       }
     } else if (title === OTHER_BRANCHES) {
-      const branches = lines.map((line) => line.match(BRANCH_ITEM)?.[1]).filter(Boolean);
+      const branches = listedBranches(lines);
       if (branches.length === 0) findings.push(`dashboard section "${title}" needs attention`);
       for (const branch of branches) {
         if (!OTHER_EXEMPT.has(branch)) findings.push(`${OTHER_BRANCHES}: ${branch} has no PR`);
       }
+    } else if (title === ERRORED) {
+      const branches = listedBranches(lines);
+      if (branches.length === 0) findings.push(`dashboard section "${title}" needs attention`);
+      errored.push(...branches);
     } else if (!BENIGN_SECTIONS.has(title)) {
       findings.push(`dashboard section "${title}" needs attention`);
     }
   }
   const lookup = body.match(LOOKUP_WARNING);
   if (lookup) findings.push(`dependency lookup failed: ${lookup[1]}`);
-  return findings;
+  return { findings, errored };
 }
 
 function stalePrFindings(pulls, now) {
@@ -159,11 +176,26 @@ function stalePrFindings(pulls, now) {
     .map((pr) => `Renovate PR #${pr.number} (${pr.head.ref}) open since ${pr.created_at}`);
 }
 
-/** Takes the newest page of the branch's closed PRs; an unmerged one refreshed nothing. */
-function lockfileFindings(closedPulls, now) {
-  const merges = closedPulls.filter((pr) => pr.merged_at).map((pr) => Date.parse(pr.merged_at));
-  if (now - Math.max(...merges) <= STALE_PR_DAYS * DAY_MS) return [];
+/** The newest page of a branch's closed PRs. */
+function closedPulls(repo, branch) {
+  const owner = repo.split('/')[0];
+  return JSON.parse(
+    ghApi([`repos/${repo}/pulls?state=closed&head=${owner}:${branch}&per_page=30`]),
+  );
+}
+
+/** Newest merge among closed PRs, -Infinity if none merged; an unmerged one changed nothing. */
+const lastMerge = (pulls) =>
+  Math.max(...pulls.filter((pr) => pr.merged_at).map((pr) => Date.parse(pr.merged_at)));
+
+function lockfileFindings(closedLockfilePulls, now) {
+  if (now - lastMerge(closedLockfilePulls) <= STALE_PR_DAYS * DAY_MS) return [];
   return [`no lockfile PR merged in ${STALE_PR_DAYS} days: transitive deps are not refreshed`];
+}
+
+function erroredFindings(branch, branchPulls, now) {
+  if (now - lastMerge(branchPulls) <= ERRORED_GRACE_MS) return [];
+  return [`${ERRORED}: ${branch} failed, and no PR of it merged within a day`];
 }
 
 /** Ticks the probe on a fresh read; a box already ticked or gone is left alone. */
@@ -193,10 +225,7 @@ function main() {
       `repos/${repo}/issues?state=open&creator=${encodeURIComponent(RENOVATE_LOGIN)}&per_page=100`,
     ).filter((issue) => !issue.pull_request && issue.title === DASHBOARD_TITLE);
     pulls = allPages(`repos/${repo}/pulls?state=open&per_page=100`);
-    const owner = repo.split('/')[0];
-    closedLockfilePulls = JSON.parse(
-      ghApi([`repos/${repo}/pulls?state=closed&head=${owner}:${LOCKFILE_BRANCH}&per_page=30`]),
-    );
+    closedLockfilePulls = closedPulls(repo, LOCKFILE_BRANCH);
   } catch {
     console.error('Could not read from the GitHub API.');
     return 2;
@@ -211,7 +240,16 @@ function main() {
   } else {
     const [dashboard] = dashboards;
     const body = dashboard.body ?? '';
-    findings.push(...dashboardFindings(body));
+    const sectionResult = dashboardFindings(body);
+    findings.push(...sectionResult.findings);
+    try {
+      for (const branch of sectionResult.errored) {
+        findings.push(...erroredFindings(branch, closedPulls(repo, branch), now));
+      }
+    } catch {
+      console.error('Could not read from the GitHub API.');
+      return 2;
+    }
     const probe = body.match(PROBE)?.[1];
     if (probe === undefined) {
       findings.push('no "manual job" box on the dashboard: Renovate liveness is unknown');
