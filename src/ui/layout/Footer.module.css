@@ -59,8 +59,7 @@
   z-index: 10;
 }
 
-.storageBadge:hover .storageBadgeTooltip,
-.storageBadge:focus-within .storageBadgeTooltip {
+.storageBadge:hover .storageBadgeTooltip {
   display: flex;
 }
 

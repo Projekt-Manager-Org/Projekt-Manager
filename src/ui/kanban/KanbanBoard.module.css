@@ -37,5 +37,5 @@
 }
 
 .filterBanner button:hover {
-  opacity: 0.8;
+  color: var(--color-text);
 }

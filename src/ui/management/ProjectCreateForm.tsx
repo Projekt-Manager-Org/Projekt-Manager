@@ -135,7 +135,7 @@ export function ProjectCreateForm({ onClose }: Props) {
             {customerDropdownOpen && (
               <>
                 <MenuBackdrop onClose={() => setCustomerDropdownOpen(false)} />
-                <div className={styles.selectDropdown}>
+                <div className={styles.selectDropdown} data-testid="project-customer-options">
                   {customers.map((c) => (
                     <div
                       key={c.id}
