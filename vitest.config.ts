@@ -60,7 +60,7 @@ export default defineConfig({
             'src/state/__tests__/**/*.test.ts',
             'src/pwa/__tests__/**/*.test.ts',
             // Server-side units that need neither a database nor a
-            // request — the access gates' published metadata (AC-352).
+            // request — the access gates' published metadata.
             // Everything under `src/server/__tests__/` is integration and
             // stays in that project.
             'src/server/middleware/__tests__/**/*.test.ts',

@@ -255,6 +255,77 @@ describe('Project CRUD Operations', () => {
   });
 
   // ---------------------------------------------------------------
+  // AC-770 [crit]: project edits are last-write-wins
+  // ---------------------------------------------------------------
+  describe('AC-770: a project edit after another user changed the project', () => {
+    it('applies, the later save winning', async () => {
+      const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
+      // The owner loads the project; office then saves a change.
+      const loaded = await authGet(ownerToken, `/api/projects/${createdProjectId}`);
+      expect(loaded.statusCode).toBe(200);
+
+      const first = await authPatch(officeToken, `/api/projects/${createdProjectId}`, {
+        title: 'Titel vom Büro',
+        notes: 'Notiz vom Büro',
+      });
+      expect(first.statusCode).toBe(200);
+
+      // The owner saves from the state loaded before office's change.
+      const second = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        title: 'Titel vom Inhaber',
+      });
+      expect(second.statusCode).toBe(200);
+
+      const after = (await authGet(ownerToken, `/api/projects/${createdProjectId}`)).json();
+      expect(after.title).toBe('Titel vom Inhaber');
+      expect(after.notes).toBe('Notiz vom Büro');
+    });
+
+    it('applies a dates edit, the later save winning', async () => {
+      const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
+      const loaded = await authGet(ownerToken, `/api/projects/${createdProjectId}`);
+      expect(loaded.statusCode).toBe(200);
+
+      const first = await authPatch(officeToken, `/api/projects/${createdProjectId}/dates`, {
+        plannedStart: '2026-06-01',
+        plannedEnd: '2026-06-10',
+      });
+      expect(first.statusCode).toBe(200);
+
+      // The owner saves from the state loaded before office's change.
+      const second = await authPatch(ownerToken, `/api/projects/${createdProjectId}/dates`, {
+        plannedEnd: '2026-06-20',
+      });
+      expect(second.statusCode).toBe(200);
+
+      const after = (await authGet(ownerToken, `/api/projects/${createdProjectId}`)).json();
+      expect(after.plannedStart).toContain('2026-06-01');
+      expect(after.plannedEnd).toContain('2026-06-20');
+    });
+
+    it('applies an assigned-workers edit, the later save winning', async () => {
+      const officeToken = await login(SEED_USERS.office.username, SEED_DEFAULT_PASSWORD);
+      const workerId = (await authGet(workerToken, '/api/auth/me')).json().user.id as string;
+      const loaded = await authGet(ownerToken, `/api/projects/${createdProjectId}`);
+      expect(loaded.statusCode).toBe(200);
+
+      const first = await authPatch(officeToken, `/api/projects/${createdProjectId}`, {
+        assignedWorkerIds: [workerId],
+      });
+      expect(first.statusCode).toBe(200);
+
+      // The owner saves from the state loaded before office's change.
+      const second = await authPatch(ownerToken, `/api/projects/${createdProjectId}`, {
+        assignedWorkerIds: [],
+      });
+      expect(second.statusCode).toBe(200);
+
+      const after = (await authGet(ownerToken, `/api/projects/${createdProjectId}`)).json();
+      expect(after.assignedWorkers ?? []).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------
   // AC-481: Adding / removing an assigned worker is stored
   // AC-481 [crit]
   // ---------------------------------------------------------------

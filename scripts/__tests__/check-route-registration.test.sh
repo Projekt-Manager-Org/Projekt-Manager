@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Scenario tests for the route-registration rule in eslint.config.js —
-# the guard behind AC-351's API-surface-completeness clause.
+# the guard that keeps the OpenAPI document's endpoint surface complete.
 #
 # The OpenAPI document is built from what `buildApp()` registers, so a
 # route mounted anywhere else is a public endpoint the artifact never

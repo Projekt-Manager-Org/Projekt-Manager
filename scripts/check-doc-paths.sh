@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Doc-drift check — files and functions cited in prose must exist (AC-347).
+# Doc-drift check — files and functions cited in prose must exist.
+# Rule: ARCHITECTURE.md § Design Decisions (documentation drift guards).
 #
 # Every tracked `*.md` names files: `src/server/services/mutate.ts`,
 # `scripts/backup/load-drill-key.sh`, `e2e/kanban-flows.spec.ts`. When a

@@ -9,7 +9,7 @@
  * Both gates carry their rule as readable data (`requiresSession`,
  * `requiredPermissions`, the `auth` route-config marker) so the published
  * API surface is derived from the enforcement rather than restated beside
- * it — docs/api/README.md, AC-352.
+ * it — docs/api/README.md.
  */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
@@ -37,7 +37,7 @@ declare module 'fastify' {
   interface FastifyContextConfig {
     /**
      * Written by `requireSession` on every route in its encapsulation
-     * context; read by `scripts/generate-api-surface.ts` (AC-352).
+     * context; read by `scripts/generate-api-surface.ts`.
      *
      * A plugin-level `preHandler` hook is invisible to Fastify's
      * `onRoute`, so without this marker the generated Auth column would
@@ -54,7 +54,7 @@ declare module 'fastify' {
  * The tag is what makes route-level session gating readable: a closure
  * can be called but not inspected, so `requiresSession` carries the fact
  * a generator would otherwise have to infer (same argument as
- * `RouteAccess` in `src/config/routes.ts`, AC-349).
+ * `RouteAccess` in `src/config/routes.ts`).
  */
 export interface SessionGate {
   (request: FastifyRequest, reply: FastifyReply): Promise<void>;

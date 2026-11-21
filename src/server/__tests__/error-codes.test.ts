@@ -1,8 +1,8 @@
 /**
- * AC-354 — the error-code catalogue's runtime definition.
+ * The error-code catalogue's runtime definition.
  *
  * `ERROR_CODES` is the single form of the set: `ErrorCode` is derived
- * from it (the compiler's job), and api.md §14.4.1's
+ * from it (the compiler's job), and docs/api/README.md's
  * `CHECKED:error-codes` block publishes it (pinned here, in both drift
  * directions — a code the array gained and a code the block invented are
  * the same equality failure). Why checked rather than generated:
@@ -70,10 +70,10 @@ const FACTORY_CALLS: [name: string, invoke: () => AppError][] = [
   ['exportTooLarge', () => errors.exportTooLarge({ total: 2, cap: 1 })],
 ];
 
-describe('AC-354: error-code catalogue', () => {
-  it('api.md §14.4.1 publishes exactly ERROR_CODES', () => {
+describe('error-code catalogue', () => {
+  it('docs/api/README.md publishes exactly ERROR_CODES', () => {
     // Throws on lost markers rather than returning an empty block.
-    const block = readCheckedBlock('docs/spec/api.md', 'error-codes');
+    const block = readCheckedBlock('docs/api/README.md', 'error-codes');
     const published = [...block.matchAll(/`([A-Z_]+)`/g)].map(([, code]) => code);
     // Order included — declaration order is publication order, and a
     // sorted catalogue loses the domain grouping that is its only
@@ -95,8 +95,8 @@ describe('AC-354: error-code catalogue', () => {
     const unminted = ERROR_CODES.filter((code) => !minted.has(code));
 
     // The direction the compiler cannot see. A code here is published in
-    // api.md §14.4.1 as part of the API contract while the module has no
-    // way to construct it — the catalogue over-promising rather than
+    // docs/api/README.md § Error Codes while the module has no way to
+    // construct it — the catalogue over-promising rather than
     // drifting. Existence of a factory only; whether a request can reach
     // that factory is a route test's question.
     expect(unminted).toEqual([]);

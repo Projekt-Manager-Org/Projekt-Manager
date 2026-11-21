@@ -1,13 +1,12 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * AC-1: The full stack (frontend, backend, database) starts locally
- * with a documented command or minimal command sequence.
+ * The local dev stack starts (README.md § Run locally).
  *
  * API-level checks — no browser needed. Proves the backend is running,
  * connected to the database, migrations applied, and seed data loaded.
  */
-test.describe('AC-1: local dev stack startup', () => {
+test.describe('local dev stack startup', () => {
   test('health endpoint responds', async ({ request }) => {
     const res = await request.get('/api/health');
     expect(res.ok()).toBeTruthy();

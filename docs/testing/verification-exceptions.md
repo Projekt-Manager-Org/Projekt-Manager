@@ -12,6 +12,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 
 | AC     | Status  | Verified by / missing                                                                |
 | ------ | ------- | ------------------------------------------------------------------------------------ |
+| AC-1   | retired | —                                                                                    |
 | AC-2   | retired | —                                                                                    |
 | AC-3   | retired | —                                                                                    |
 | AC-4   | retired | —                                                                                    |
@@ -36,9 +37,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-31  | infra   | deploy procedure — `scripts/deploy.sh`                                               |
 | AC-32  | retired | —                                                                                    |
 | AC-33  | retired | —                                                                                    |
-| AC-34  | infra   | code review                                                                          |
+| AC-34  | retired | —                                                                                    |
 | AC-35  | retired | —                                                                                    |
-| AC-36  | infra   | CI `lint` — ESLint, Prettier                                                         |
+| AC-36  | retired | —                                                                                    |
 | AC-37  | retired | —                                                                                    |
 | AC-38  | retired | —                                                                                    |
 | AC-40  | retired | —                                                                                    |
@@ -201,6 +202,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-243 | retired | —                                                                                    |
 | AC-245 | retired | —                                                                                    |
 | AC-246 | retired | —                                                                                    |
+| AC-247 | retired | —                                                                                    |
 | AC-248 | retired | —                                                                                    |
 | AC-249 | retired | —                                                                                    |
 | AC-250 | retired | —                                                                                    |
@@ -287,8 +289,15 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-339 | retired | —                                                                                    |
 | AC-340 | retired | —                                                                                    |
 | AC-342 | retired | —                                                                                    |
-| AC-348 | infra   | CI `lint` — lychee, `lychee.toml`                                                    |
+| AC-343 | retired | —                                                                                    |
+| AC-347 | retired | —                                                                                    |
+| AC-348 | retired | —                                                                                    |
+| AC-349 | retired | —                                                                                    |
 | AC-350 | retired | —                                                                                    |
+| AC-351 | retired | —                                                                                    |
+| AC-352 | retired | —                                                                                    |
+| AC-353 | retired | —                                                                                    |
+| AC-354 | retired | —                                                                                    |
 | AC-355 | retired | —                                                                                    |
 | AC-356 | retired | —                                                                                    |
 | AC-357 | retired | —                                                                                    |
@@ -305,7 +314,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-376 | retired | —                                                                                    |
 | AC-377 | retired | —                                                                                    |
 | AC-378 | retired | —                                                                                    |
+| AC-380 | retired | —                                                                                    |
 | AC-382 | retired | —                                                                                    |
+| AC-383 | retired | —                                                                                    |
 | AC-384 | retired | —                                                                                    |
 | AC-385 | retired | —                                                                                    |
 | AC-386 | retired | —                                                                                    |

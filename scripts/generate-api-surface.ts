@@ -1,9 +1,11 @@
 /**
  * Generates the endpoint table in `docs/api/README.md` § Endpoints from
  * the routes `buildApp()` registers — the published table is not
- * hand-authored (AC-352).
+ * hand-authored.
  *
- * Sibling of `generate-openapi.ts` (AC-351) with the same `--check` mode,
+ * Rule: ARCHITECTURE.md § Design Decisions (documentation drift guards).
+ *
+ * Sibling of `generate-openapi.ts` with the same `--check` mode,
  * but it writes between markers inside a hand-written document. What it
  * publishes is coverage plus the three access columns; the prose below
  * the end marker — what an endpoint is FOR — is hand-written and never
@@ -20,7 +22,7 @@
  *   - **Access** — `requirePermission(...)` / `requireRole(...)` return
  *     closures, and a closure can be called but not read, so each
  *     carries its keys as `requiredPermissions` / `requiredRoles`. Same
- *     argument that made `RouteAccess` data in AC-349, and the reason
+ *     argument that made `RouteAccess` data for the nav matrix, and the reason
  *     the column publishes the rule rather than the role set it happens
  *     to resolve to.
  *   - **Rate limit** — already declared as route config

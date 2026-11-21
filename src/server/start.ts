@@ -373,7 +373,7 @@ async function start(): Promise<void> {
 
   // The probe itself lives in `src/server/routes/health.ts` and is
   // registered by buildApp — routes mounted here would be invisible to
-  // the generated OpenAPI document (AC-351).
+  // the generated OpenAPI document.
   const app = buildApp({ logger: true, db, health: { pool, storage: storageClient } });
 
   // Serve the Vite-built frontend from dist/ — production only. Gate on

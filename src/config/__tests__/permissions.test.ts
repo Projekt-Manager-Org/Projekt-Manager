@@ -1,7 +1,7 @@
 /**
- * Unit coverage for AC-343 (docs/spec/verification.md §15.7): `ROLE_KEYS`
- * must track `IS_TEST_ONLY_ROLE`'s classification rather than being
- * hand-listed, so production-vs-test-only status has exactly one source.
+ * `ROLE_KEYS` must track `IS_TEST_ONLY_ROLE`'s classification rather
+ * than being hand-listed, so production-vs-test-only status has exactly
+ * one source.
  * `IS_TEST_ONLY_ROLE` is exhaustive over `Role` by construction
  * (`Record<Role, boolean>` — tsc rejects a missing key); that guarantee is
  * not re-tested here.
@@ -21,7 +21,7 @@ import { IS_TEST_ONLY_ROLE, ROLE_PERMISSIONS, type Role } from '@/config/permiss
 import { ROLE_KEYS } from '@/config/roleKeys';
 import { readCheckedBlock, tableRows } from '@/test/checkedBlock';
 
-describe('ROLE_KEYS derivation (AC-343)', () => {
+describe('ROLE_KEYS derivation', () => {
   it('stays in sync with IS_TEST_ONLY_ROLE classification', () => {
     const derived = (Object.keys(IS_TEST_ONLY_ROLE) as Role[]).filter(
       (role) => !IS_TEST_ONLY_ROLE[role],
@@ -39,7 +39,7 @@ describe('ROLE_KEYS derivation (AC-343)', () => {
   });
 });
 
-describe('published permission matrix (AC-343)', () => {
+describe('published permission matrix', () => {
   it('api.md §14.3 publishes exactly ROLE_PERMISSIONS over the production roles', () => {
     const published = tableRows(readCheckedBlock('docs/spec/api.md', 'permissions-table'));
     // Rows in ROLE_KEYS order, so a test-only role cannot be published.

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Markdown link check (AC-348) — local runner.
+# Markdown link check — local runner. Rule:
+# ARCHITECTURE.md § Design Decisions (documentation drift guards).
 #
 # CI runs the same check through the pinned image in the `lint` job.
 # Both read `lychee.toml`, which holds the check's flags; the only input

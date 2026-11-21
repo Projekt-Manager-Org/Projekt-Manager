@@ -75,24 +75,24 @@ The authenticated layout navigates between the views below. Behavior: [verificat
 
 ### 8.7.1 Views
 
-The table below mirrors the route table in `src/config/routes.ts`; CI fails on drift (AC-349). `Access` is the declared rule, `Roles` is that rule resolved against the default role matrix ([api.md §14.3](../api.md#143-authorization-rules)), and `Landing` is the post-login view for a caller holding that role alone — see the first-match note below the table for multi-role callers.
+`Access` is the declared rule, `Roles` is that rule resolved against the default role matrix ([api.md §14.3](../api.md#143-authorization-rules)), and `Landing` is the post-login view for a caller holding that role alone — see the first-match note below the table for multi-role callers.
 
-<!-- CHECKED:nav-matrix:START — mirrors ROUTES and LANDING_ORDER (src/config/routes.ts), pinned by src/config/__tests__/routes.test.ts (AC-349). Edit the route table, then this block. -->
+<!-- CHECKED:nav-matrix:START — mirrors ROUTES and LANDING_ORDER (src/config/routes.ts), pinned by src/config/__tests__/routes.test.ts. Edit the route table, then this block. -->
 
-| View                 | Path                  | Label                | Access                          | Roles                     | Landing       |
-| -------------------- | --------------------- | -------------------- | ------------------------------- | ------------------------- | ------------- |
-| `meineProjekte`      | `/meine-projekte`     | "Meine Projekte"     | Role: worker                    | worker                    | worker        |
-| `kanban`             | `/kanban`             | "Kanban"             | Role: owner, office, worker     | owner, office, worker     | owner, office |
-| `kalender`           | `/calendar`           | "Kalender"           | Role: owner, office, worker     | owner, office, worker     | —             |
-| `projekte`           | `/projects`           | "Projekte"           | Role: owner, office, bookkeeper | owner, office, bookkeeper | —             |
-| `kunden`             | `/customers`          | "Kunden"             | Role: owner, office, bookkeeper | owner, office, bookkeeper | —             |
-| `rechnungen`         | `/rechnungen`         | "Rechnungen"         | `invoice:read`                  | owner, office, bookkeeper | bookkeeper    |
-| `benutzer`           | `/users`              | "Benutzer"           | `user:manage`                   | owner                     | —             |
-| `daten`              | `/daten`              | "Daten"              | `data:export`                   | owner, office             | —             |
-| `aktivitaet`         | `/audit`              | "Aktivität"          | `audit:read`                    | owner, office             | —             |
-| `benachrichtigungen` | `/benachrichtigungen` | "Benachrichtigungen" | `notifications:manage`          | owner                     | —             |
+| Path                  | Label                | Access                          | Roles                     | Landing       |
+| --------------------- | -------------------- | ------------------------------- | ------------------------- | ------------- |
+| `/meine-projekte`     | "Meine Projekte"     | Role: worker                    | worker                    | worker        |
+| `/kanban`             | "Kanban"             | Role: owner, office, worker     | owner, office, worker     | owner, office |
+| `/calendar`           | "Kalender"           | Role: owner, office, worker     | owner, office, worker     | —             |
+| `/projects`           | "Projekte"           | Role: owner, office, bookkeeper | owner, office, bookkeeper | —             |
+| `/customers`          | "Kunden"             | Role: owner, office, bookkeeper | owner, office, bookkeeper | —             |
+| `/rechnungen`         | "Rechnungen"         | `invoice:read`                  | owner, office, bookkeeper | bookkeeper    |
+| `/users`              | "Benutzer"           | `user:manage`                   | owner                     | —             |
+| `/daten`              | "Daten"              | `data:export`                   | owner, office             | —             |
+| `/audit`              | "Aktivität"          | `audit:read`                    | owner, office             | —             |
+| `/benachrichtigungen` | "Benachrichtigungen" | `notifications:manage`          | owner                     | —             |
 
-**Landing is first-match over this order:** worker → `meineProjekte`; owner / office → `kanban`; bookkeeper → `rechnungen`. A caller holding several roles takes the first rule that matches.
+**Landing is first-match over this order:** worker → `/meine-projekte`; owner / office → `/kanban`; bookkeeper → `/rechnungen`. A caller holding several roles takes the first rule that matches.
 
 <!-- CHECKED:nav-matrix:END -->
 

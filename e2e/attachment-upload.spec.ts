@@ -406,7 +406,7 @@ test.describe('Attachment placeholder for unwrappable wrapped envelope', () => {
     // unwrapped at render time renders the German label
     // `"Schlüssel nicht verfügbar"` and disables the download action.
     // Trigger is a 422 `DEK_UNWRAP_FAILED` from `download-url`
-    // (api.md §14.4.1).
+    // (docs/api/README.md § Error Codes).
     //
     // Detection is lazy: the SW issues the
     // `download-url` call and surfaces the unwrap error to the UI on

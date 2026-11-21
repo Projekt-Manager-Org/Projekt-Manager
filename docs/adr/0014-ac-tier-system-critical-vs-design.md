@@ -1,7 +1,7 @@
 # ADR-0014: AC tier system — critical, design, and infra coverage
 
 - **Status:** Accepted
-- **Date:** 2026-04-12 (original); updated 2026-04-15 (see [Updates](#updates))
+- **Date:** 2026-04-12 (original); updated 2026-04-14, 2026-04-15, 2026-10-21, 2026-11-21 (see [Updates](#updates))
 - **Confidence:** High
 
 ## Context
@@ -22,7 +22,7 @@ Classify every AC into one of three tiers by defect impact, and verify each with
 > **Yes → `[crit]`** — unit and/or integration test against the real stack.
 > **No → `[vis]`** — an E2E test drives the scenario; visual judgment is human review via `npx playwright test --ui`.
 >
-> Orthogonal: constraints on the deployed environment, the build pipeline, or the source tree (CI gates, deploy procedures, lint-enforced layering, repo-scan checks) carry `[infra]` and are verified by their respective automation — not by tests against the running system.
+> Orthogonal: properties of the deployed environment carry `[infra]` and are verified by deployment procedures or review — not by tests against the running system (see [Updates](#updates)).
 
 **Applied:** every AC in [verification.md §15](../spec/verification.md#15-acceptance-criteria) carries exactly one of `[crit]`, `[vis]`, `[infra]`. Coverage: a test cites the AC; an uncovered AC is a gap, not a default (see [Updates](#updates)).
 
@@ -78,6 +78,10 @@ The original ADR treated infrastructure/structural ACs as "untiered". Every AC i
 ### 2026-10-21 — matrix replaced by test citations
 
 The hand-kept traceability matrix drifted: tests cited ACs the spec had dropped, and rows claimed coverage no test gave. It is gone. A test cites the AC it verifies; [verification-exceptions.md](../testing/verification-exceptions.md) lists only `[infra]` ACs verified outside the suite, gaps, and retired IDs. `scripts/check-traceability.sh` now fails the build — no longer advisory. See [#486](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/486).
+
+### 2026-11-21 — `[infra]` narrowed to the deployed environment
+
+`[infra]` covered the build pipeline and the source tree too. Their ACs restated mechanisms — lint zones, drift gates, route classifiers — that no user, operator or attacker observes (S-NDET). `[infra]` now means a property of the deployed environment only. A source-tree gate keeps its rule in [ARCHITECTURE.md](../../ARCHITECTURE.md) and its script header; where it protects an observable property, that property is a `[crit]` or `[vis]` AC. See [#486](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/486).
 
 ## References
 

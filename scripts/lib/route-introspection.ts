@@ -1,10 +1,10 @@
 /**
  * The route facts both doc generators read, in one place.
  *
- * `generate-api-surface.ts` (AC-352) and `generate-openapi.ts` (AC-351,
- * AC-353) publish different artifacts from the same introspection: which
- * gate reaches a route, what rule that gate enforces, and which HEAD
- * routes are Fastify's automatic companions rather than deliberate
+ * `generate-api-surface.ts` and `generate-openapi.ts` publish different
+ * artifacts from the same introspection: which gate reaches a route,
+ * what rule that gate enforces, and which HEAD routes are Fastify's
+ * automatic companions rather than deliberate
  * declarations. Each generator carried its own copy, agreeing only
  * because a comment in each said so — the hand-maintained-agreement
  * failure mode both generators exist to remove, turned on the generators
@@ -12,9 +12,9 @@
  * same route differently.
  *
  * Two route gates read the same facts and share the route recording and
- * deny-by-default classification: worker scope (AC-383,
- * `src/test/workerScopeGate.ts`) and write-route versioning (AC-380,
- * `src/test/versionClassificationGate.ts`).
+ * deny-by-default classification: worker scope
+ * (`src/test/workerScopeGate.ts`) and write-route versioning
+ * (`src/test/versionClassificationGate.ts`).
  *
  * Everything here reads `RouteOptions` as collected by `recordRoutes`
  * after `ready()` has resolved; nothing boots an app or touches the
@@ -117,7 +117,7 @@ export function isSessionGated(route: RouteOptions): boolean {
  * rendered as the spec words it, or `null` if `fn` is neither.
  *
  * Both publish the RULE, not the role set it resolves to today — the
- * distinction AC-349 draws for the nav matrix, and the reason both gates
+ * distinction the nav matrix draws too, and the reason both gates
  * carry their keys as data instead of hiding them in a closure.
  */
 function readAccessRule(fn: unknown): string | null {
@@ -184,8 +184,8 @@ export function withoutAutoHeadRoutes(routes: RouteOptions[]): RouteOptions[] {
 
 /**
  * True when every access gate on this route runs with an authenticated
- * user already attached — the ordering AC-353 words as "a session gate
- * ahead of it", not merely one somewhere on the route.
+ * user already attached — a session gate ahead of it, not merely one
+ * somewhere on the route.
  *
  * Order is the whole property: `preHandler: [requirePermission('x'),
  * authenticate]` carries both gates, and still answers 401 to every

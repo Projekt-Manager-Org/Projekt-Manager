@@ -1,5 +1,5 @@
 /**
- * Worker-scope route gate (AC-383).
+ * Worker-scope route gate (AC-767, AC-768).
  *
  * Worker data scoping (ADR-0019) has two halves, repeated by hand on
  * every route a worker reaches: the scope check (the project is assigned
@@ -36,7 +36,7 @@
  * self-delete check.
  *
  * Public routes are out of scope: no worker identity reaches them, and
- * their exposure is published by AC-352.
+ * their exposure is published in docs/api/README.md § Endpoints.
  */
 import type { FastifyInstance, InjectOptions, RouteOptions } from 'fastify';
 import {

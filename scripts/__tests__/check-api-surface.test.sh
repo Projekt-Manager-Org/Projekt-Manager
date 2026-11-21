@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Scenario tests for scripts/generate-api-surface.ts --check (AC-352).
+# Scenario tests for scripts/generate-api-surface.ts --check.
 #
 # Each case stages a copy of the real docs/api/README.md in a temp file and
 # points the generator at it via $API_SURFACE_DOC_PATH. The ROUTES

@@ -1,5 +1,6 @@
 /**
- * The OpenAPI document's shaping and the guards over it (AC-351, AC-353).
+ * The OpenAPI document's shaping and the guards over it. Rule:
+ * ARCHITECTURE.md § Design Decisions (documentation drift guards).
  *
  * Everything here is decided by `(doc, routes)` alone — the document
  * `@fastify/swagger` produced and the routes `buildApp()` registered. No
@@ -99,7 +100,7 @@ export function stripUnsupportedClaims(doc: DocLike): void {
 }
 
 /**
- * The one hand-written seam in the document (AC-353).
+ * The one hand-written seam in the document.
  *
  * Session auth is a cookie the server sets at login and reads in a
  * `preHandler`; no route declaration carries "there is a scheme called
@@ -150,7 +151,7 @@ function operationKey(method: string, openApiPath: string): string {
 
 /**
  * Annotate every published operation with its session requirement,
- * derived from the gates the routes carry (AC-353).
+ * derived from the gates the routes carry.
  *
  * `[]` — an explicit empty requirement — is how OpenAPI says "no auth
  * needed", and it is what the seven ungated routes get. Publishing them
@@ -193,8 +194,8 @@ export function applySecurity(doc: DocLike, routes: RouteOptions[]): void {
 
 /**
  * Every route the factory registered must appear in the document —
- * the direction that makes AC-351's "endpoint surface is complete for
- * the API" an enforced property rather than an asserted one.
+ * the direction that makes "the endpoint surface is complete" an
+ * enforced property rather than an asserted one.
  *
  * It was asserted, and it was false: `@fastify/swagger` drops HEAD
  * routes unless the route opts in (`config.swagger.exposeHeadRoute`),
@@ -244,8 +245,8 @@ export function assertEveryRoutePublished(doc: DocLike, routes: RouteOptions[]):
   if (missing.length > 0) {
     throw new Error(
       `route(s) registered by buildApp() but absent from the document: ` +
-        `${missing.join(', ')}. The document claims a complete endpoint surface ` +
-        `(AC-351), so publish them — a deliberately declared HEAD route opts in ` +
+        `${missing.join(', ')}. The document claims a complete endpoint surface, ` +
+        `so publish them — a deliberately declared HEAD route opts in ` +
         `with \`config: { swagger: { exposeHeadRoute: true } }\` — or hide them ` +
         `explicitly with \`schema: { hide: true }\` at the registration site.`,
     );

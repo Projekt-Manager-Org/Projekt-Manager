@@ -1,10 +1,11 @@
 /**
- * Write-route version classification gate (AC-380).
+ * Write-route version classification gate. Rule: ARCHITECTURE.md § Edit
+ * Concurrency.
  *
  * A stale write to a versioned entity is rejected only if the route
  * carries `expectedVersion` (data-model.md §6.4). Every route the app
  * registers under a method other than GET / HEAD is classified here:
- * versioned, or exempt with one of the reasons below (AC-380). Deny by
+ * versioned, or exempt with one of the reasons below. Deny by
  * default — an unclassified route fails, and so does an entry naming no
  * registered route.
  *

@@ -1,5 +1,5 @@
 /**
- * Write-route version classification gate (AC-380) — the gate itself in
+ * Write-route version classification gate — the gate itself in
  * `src/test/versionClassificationGate.ts`.
  *
  * The gate run checks every write route `buildApp()` registers. The
@@ -48,7 +48,7 @@ async function plantedRoutes(app: FastifyInstance): Promise<void> {
   );
 }
 
-describe('Write-route version classification gate (AC-380)', () => {
+describe('Write-route version classification gate', () => {
   let routes: RouteOptions[];
 
   const realRoutes = () => routes.filter((r) => !r.url.startsWith(PLANTED));

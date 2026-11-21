@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Scenario tests for scripts/generate-openapi.ts --check (AC-351, AC-353).
+# Scenario tests for scripts/generate-openapi.ts --check.
 #
 # Unlike the api-surface check (markers inside a hand-authored file),
 # docs/api/openapi.json is entirely generated, so "drift" means the whole
@@ -137,7 +137,7 @@ INJECT_INVALID=1
 assert_case 2 "invalid document" "$invalid" "is not valid OpenAPI"
 
 echo "Case: an operation with no backing route fails the security-coverage gate"
-# AC-353's derivation is total: every published operation must trace back
+# The session-requirement derivation is total: every published operation must trace back
 # to a route the factory registered, or the generator cannot know whether
 # a session is required and would publish it carrying no requirement at
 # all — a protected endpoint advertised as public. That is the fail-open
@@ -154,10 +154,10 @@ INJECT_ORPHAN=1
 assert_case 2 "orphaned operation" "$orphan" "matches no route"
 
 echo "Case: a registered route missing from the document fails the coverage gate"
-# The mirror of the case above, and the one AC-351 asserted without
-# enforcing: a route the factory registered that never reaches the
-# document. That is how `HEAD /api/import-jobs/:id/archive` went missing
-# — @fastify/swagger drops HEAD routes unless the route opts in, and
+# The mirror of the case above, and the one the old completeness rule
+# asserted without enforcing: a route the factory registered that never
+# reaches the document. That is how `HEAD /api/import-jobs/:id/archive`
+# went missing — @fastify/swagger drops HEAD routes unless the route opts in, and
 # nothing was checking. Automatic HEAD companions and routes carrying
 # `schema: { hide: true }` are excluded structurally, not by name.
 dropped_dir="$(mktmp_dir)"
@@ -185,7 +185,7 @@ INJECT_GATE=1
 assert_case 2 "unauthenticated access gate" "$gate" "no session gate reaches"
 
 echo "Case: a session gate listed AFTER the access gate fails the wiring guard"
-# AC-353 says "without a session gate ahead of it", and the order is the
+# A session gate must run ahead of the access gate, and the order is the
 # whole property: Fastify runs a route's `preHandler` array in
 # declaration order, so `[requirePermission(…), authenticate]` carries
 # both gates and still answers 401 to every caller — the access gate runs

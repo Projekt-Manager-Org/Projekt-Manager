@@ -1,5 +1,5 @@
 /**
- * Unit tests: the access gates publish their own rule (AC-352).
+ * Unit tests: the access gates publish their own rule.
  *
  * `scripts/generate-api-surface.ts` reads these tags instead of guessing
  * who can reach an endpoint. The generated table plus its `--check` would

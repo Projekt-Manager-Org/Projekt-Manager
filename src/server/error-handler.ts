@@ -2,10 +2,11 @@
  * Global error and 404 handlers.
  *
  * Honor the HTTP statusCode native to the failure: 4xx-class errors
- * preserve their status and surface a stable code per AC-247; a 5xx-or-statusless error carrying no code of its own
- * collapses to `SERVER_ERROR`. Every 5xx logs at the operational `error`
- * level — an `AppError` that carries its own 5xx code included, since it
- * is a genuine server failure under a more precise name. Transport-layer
+ * preserve their status and surface a stable code; a 5xx-or-statusless
+ * error carrying no code of its own collapses to `SERVER_ERROR`. Every 5xx
+ * logs at the operational `error` level — an `AppError` that carries its
+ * own 5xx code included, since it is a genuine server failure under a
+ * more precise name. Transport-layer
  * 4xx rejections log at `warn` so 5xx alerting on logs reflects only
  * genuine server failures.
  */
@@ -31,9 +32,9 @@ import { SYNTHETIC_ORIGIN_PREFIX } from '../config/syntheticOrigin.js';
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
-      // AC-247's triage contract is about the status class, not about
-      // which branch produced it: a 5xx is a genuine server failure and
-      // logs at `error` like any other.
+      // AC-769 is about the server-error category, not about which
+      // branch produced it: a 5xx is a genuine server failure and logs
+      // at `error` like any other.
       if (error.statusCode >= 500) {
         request.log.error({ err: error, code: error.code }, 'server-side failure');
       }
