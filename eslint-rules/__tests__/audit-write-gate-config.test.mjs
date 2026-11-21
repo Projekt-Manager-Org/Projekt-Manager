@@ -19,7 +19,7 @@ const NO_ANY = '@typescript-eslint/no-explicit-any';
 const MINT = 'src/server/services/mutate.ts';
 // Files whose raw SQL writes audited tables on purpose, unchecked.
 const RAW_EXEMPT = [
-  // The dev seed's wipe (data-model.md §7).
+  // The dev seed's wipe (production never seeds, AC-764).
   'src/server/seed.ts',
 ];
 

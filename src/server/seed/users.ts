@@ -8,8 +8,8 @@
  * fixture parsing and seeded-id resolution; envelope assembly is in
  * `business.ts`.
  *
- * Parsing (`parseUsersFixture`) is pure and filesystem-free so the AC-164
- * unit path can feed it literals to assert malformed-input rejection.
+ * Parsing (`parseUsersFixture`) is pure and filesystem-free so a unit
+ * test can feed it literals to assert malformed-input rejection.
  */
 import { z } from 'zod';
 
@@ -55,12 +55,8 @@ export type SeedUserFixture = z.infer<typeof userFixtureSchema>;
  * Validate a raw fixture payload. Throws a `ZodError` on any shape
  * violation (missing required field, wrong type, unknown key, bad UUID,
  * empty roles array, malformed email). No filesystem, no DB — pure, so
- * the AC-164 unit path can exercise it with a literal value.
- *
- * ZodError is Zod's own typed error class (`instanceof ZodError`), which
- * satisfies AC-164's "typed validation error" without us minting a
- * project-specific subclass — adding one would be a new surface the
- * calling code would have to branch on with no integrity benefit.
+ * a unit test can exercise it with a literal value. A `ZodError` is the
+ * typed error; no project-specific subclass.
  */
 export function parseUsersFixture(raw: unknown): SeedUserFixture[] {
   return usersFixtureSchema.parse(raw);

@@ -17,6 +17,17 @@
  * prefix) is derived from it. `hashedPassword` is bcrypt-hashed once by
  * the orchestrator (bcrypt is expensive) and threaded onto every
  * `users[*].passwordHash` slot.
+ *
+ * Dataset intent — a realistic snapshot of a German painting company
+ * (spec index.md §4.1), dated relative to `now`:
+ * - every workflow state, with an accumulation in `rechnung_faellig`
+ *   and entries past their aging thresholds;
+ * - customers from partial contact data down to name only; two with no
+ *   project yet (one marked imported);
+ * - one project at a site address differing from its customer's, the
+ *   rest at none, so both renderings show;
+ * - users for every role plus one inactive account
+ *   (`fixtures/seed-users.json`).
  */
 import { randomUUID } from 'node:crypto';
 
@@ -79,7 +90,7 @@ interface AssignmentSpec {
 }
 
 // ---------------------------------------------------------------
-// Customers (data-model.md §7.3 — 21 customers, mix of full/minimal)
+// Customers — 21, mix of full/minimal
 // ---------------------------------------------------------------
 const CUSTOMER_SPECS: readonly CustomerSpec[] = [
   {
@@ -178,7 +189,7 @@ const CUSTOMER_SPECS: readonly CustomerSpec[] = [
     email: 'kanzlei@dr-meier.de',
     // No address
   },
-  // Customers with no projects yet (spec §7.3)
+  // Customers with no projects yet
   {
     name: 'Schulz & Partner PartG',
     phone: '+49 221 4444444',
@@ -191,7 +202,7 @@ const CUSTOMER_SPECS: readonly CustomerSpec[] = [
 ];
 
 // ---------------------------------------------------------------
-// Projects (data-model.md §7.1 — 19 projects across all 9 states)
+// Projects — 19 across all 9 states
 // ---------------------------------------------------------------
 const PROJECT_SPECS: readonly ProjectSpec[] = [
   // Anfrage (2) — recent, no dates planned
@@ -223,7 +234,7 @@ const PROJECT_SPECS: readonly ProjectSpec[] = [
     // Divergent Baustelle — the Hausverwaltung's billing address sits
     // elsewhere; the work happens at one of its managed properties.
     // Exercises the project-detail panel's "Baustelle" line and the
-    // form's populated-address branch (data-model.md §7.3, issue #179).
+    // form's populated-address branch (issue #179).
     siteAddress: { street: 'Goethestr. 18', zip: '51103', city: 'Köln' },
     estimatedValue: '8500.00',
     createdAtDays: -5,

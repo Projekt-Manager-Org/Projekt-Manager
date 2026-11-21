@@ -381,7 +381,7 @@ export default tseslint.config(
     rules: { 'local/audit-write-gate': ['error', { sqlTables: AUDITED_SQL_TABLES }] },
   },
   // Raw SQL that writes audited tables on purpose: the dev seed's wipe
-  // (data-model.md §7). Assertions are still refused.
+  // (production never seeds, AC-764). Assertions are still refused.
   {
     files: ['src/server/seed.ts'],
     plugins: { local: localPlugin },

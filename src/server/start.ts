@@ -26,6 +26,7 @@ import { formatErrorChain } from './format-error-chain.js';
 import { assertBaselineLedgerMatchesFile } from './db/baseline-guard.js';
 import { createDatabase } from './db/connection.js';
 import { seed } from './seed.js';
+import { runStartupSeed } from './startupSeed.js';
 import { pruneBucketOrphans, createBucketObjectLister } from './storage/pruneBucketOrphans.js';
 import { startBucketOrphanPruneScheduler } from './bucket-orphan-prune-scheduler.js';
 import { findActiveProjectStatuses } from './repositories/project-read.js';
@@ -155,40 +156,25 @@ async function start(): Promise<void> {
     error: (payload) => console.error(payload),
   });
 
-  // Seed data — never in production.
-  // SEED=true  → seed only if database is empty (safe default for dev)
-  // SEED=force → wipe and re-seed (when seed data structure changes)
-  if (env.SEED === 'true' || env.SEED === 'force') {
-    if (isProduction) {
-      console.warn(
-        'WARNING: SEED is set but NODE_ENV=production — skipping seed to protect production data.',
-      );
-    } else {
-      await seed(db, { force: env.SEED === 'force' });
-
-      // SEED=force truncates `attachments` (via CASCADE from `projects`)
-      // but does not touch the bucket. Without this, a forced re-seed
-      // leaves orphan blobs that grow each run and would mirror onto B2
-      // via scripts/sync-dev-to-vps.sh if its pollution guard didn't
-      // refuse. Prune here so "force" actually means full reset.
-      if (env.SEED === 'force') {
-        await pruneBucketOrphans({
-          db,
-          storage: createStorageClientFromEnv(env),
-          listBucketObjects: createBucketObjectLister(storageConfigFromEnv(env)),
-          logger: { info: (m) => console.log(m), warn: (m) => console.warn(m) },
-          bucketLabel: env.STORAGE_BUCKET,
-          // Both guards are off for the same reason: this caller just
-          // truncated `attachments` and owns every byte in the bucket.
-          // A min-age would strand the objects the seed itself wrote,
-          // and "nothing is referenced" is the expected post-truncate
-          // state here, not the mismatch it signals everywhere else.
-          minAgeMinutes: 0,
-          requireReferencedRows: false,
-        });
-      }
-    }
-  }
+  await runStartupSeed(env, {
+    seed: (opts) => seed(db, opts),
+    pruneBucket: () =>
+      pruneBucketOrphans({
+        db,
+        storage: createStorageClientFromEnv(env),
+        listBucketObjects: createBucketObjectLister(storageConfigFromEnv(env)),
+        logger: { info: (m) => console.log(m), warn: (m) => console.warn(m) },
+        bucketLabel: env.STORAGE_BUCKET,
+        // Both guards are off for the same reason: the caller just
+        // truncated `attachments` and owns every byte in the bucket.
+        // A min-age would strand the objects the seed itself wrote,
+        // and "nothing is referenced" is the expected post-truncate
+        // state here, not the mismatch it signals everywhere else.
+        minAgeMinutes: 0,
+        requireReferencedRows: false,
+      }),
+    warn: (m) => console.warn(m),
+  });
 
   // First-run admin bootstrap (ADR-0010 / issue #57). Runs AFTER migrate
   // and BEFORE app.listen — see AC-B7. Any thrown error propagates to the

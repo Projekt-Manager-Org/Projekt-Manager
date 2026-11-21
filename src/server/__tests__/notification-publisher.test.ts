@@ -83,8 +83,8 @@ async function resolveTransitionAuditId(projectId: string): Promise<string> {
 //
 // Each `it()` in this describe creates its OWN project fixture
 // (ad-hoc, per-test) rather than consuming the seed's `beauftragt`
-// rows. This keeps the seed distribution authoritative per
-// data-model.md §7.1 and avoids test order dependencies.
+// rows. This keeps the seed distribution intact and avoids test
+// order dependencies.
 describe('Publisher resolves recipients as deduplicated union (AC-192)', () => {
   let ownerToken: string;
   let seededCustomerId: string;

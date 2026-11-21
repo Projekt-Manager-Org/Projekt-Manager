@@ -15,9 +15,8 @@
  * (`loadInvoices`: draft → issue → optional cancel + reissue, allocating
  * sequences, rendering PDFs, emitting audit rows).
  *
- * The production gate (`NODE_ENV === 'production'`) lives in
- * `src/server/start.ts` — this function is dev/test-only and trusts its
- * caller.
+ * The production gate is `runStartupSeed` in `src/server/startupSeed.ts`
+ * (AC-764) — this function is dev/test-only and trusts its caller.
  */
 
 import { sql } from 'drizzle-orm';
@@ -86,7 +85,7 @@ export async function seed(db: Database, opts: { force?: boolean } = {}): Promis
   const now = new Date();
 
   // Hash once — bcrypt is expensive, and every seeded user shares the
-  // same plaintext per the spec (data-model.md §7.2). Threaded into
+  // same plaintext. Threaded into
   // `buildBusinessEnvelope` onto every `users[*].passwordHash` slot.
   const hashedPassword = await hashPassword(SEED_DEFAULT_PASSWORD);
 

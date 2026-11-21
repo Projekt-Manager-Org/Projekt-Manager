@@ -1,51 +1,14 @@
 /**
- * Seed loader tests — AC-390 / AC-391 / AC-392 and AC-164.
+ * Seed loader regression guards. They cite no AC: the seed is a dev and
+ * test fixture that production never loads. They keep the
+ * dataset other tests and the demo rely on from drifting unnoticed.
  *
- * See verification.md §15.17.
- *
- * -------------------------------------------------------------------
- * Unusual TDD shape — read before editing
- * -------------------------------------------------------------------
- *
- * These two tests fall into different classes:
- *
- * 1. AC-390 is a **regression pin**, not a new-behavior contract. The
- *    post-seed state it asserts (6 users, 21 customers, 19 projects,
- *    7 project_workers; usernames and active flags per SEED_USERS;
- *    SEED_DEFAULT_PASSWORD verifies; project numbers carry the seed-time
- *    calendar-year prefix) is already true today against the monolithic
- *    `src/server/seed.ts`. The test documents that contract so the
- *    upcoming fixture-loader extraction cannot drift without the suite
- *    noticing. AC-390 is expected to PASS against current main.
- *
- * 2. AC-164 is a **forward-looking feature contract**. The "malformed users
- *    fixture → typed throw, users table empty" behavior only makes sense
- *    once a separable fixture loader exists. The current monolithic seed
- *    embeds the user records inline; it cannot read a fixture, let alone
- *    reject a malformed one. The test targets the future API surface —
- *    `parseUsersFixture` exported from `../seed/users.js` — so today it
- *    fails with a module-not-found signal, which is the canonical
- *    "behavior not implemented" mark. Once Step 5 lands the extracted
- *    module, the test runs its real assertions.
- *
- * This is a deliberate deviation from the "all new tests must fail today"
- * rule used in other workflows: regression pins should reflect observable
- * reality from day one; feature contracts follow standard TDD. The Step 4
- * reviewer will check for this split.
- *
- * -------------------------------------------------------------------
- * Year-rollover note on AC-392
- * -------------------------------------------------------------------
- *
- * The project-number year prefix assertion captures `new Date().getFullYear()`
- * once, before calling seed(). A test that straddles the Dec 31 → Jan 1
- * boundary could theoretically see the prefix advance between capture and
- * the seed run. CI does not run then, so this is not a practical concern,
- * but leaving the note here so a future Dec-31 red herring is easier to
- * debug.
+ * The year-prefix check captures `new Date().getFullYear()` before
+ * seed() runs, so a run straddling Dec 31 → Jan 1 can fail spuriously.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { ZodError } from 'zod';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import path from 'path';
@@ -56,6 +19,7 @@ import { createDatabase } from '../db/connection.js';
 import { users, customers, projects, projectWorkers, invoices } from '../db/schema.js';
 import { verifyPassword } from '../password.js';
 import { seed } from '../seed.js';
+import { parseUsersFixture } from '../seed/users.js';
 import type { Database } from '../db/connection.js';
 import { SEED_DEFAULT_PASSWORD, SEED_USERS } from '../../test/seedAssumptions.js';
 import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
@@ -64,8 +28,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(__dirname, '../db/migrations');
 
 // -------------------------------------------------------------------
-// Counts pinned by data-model.md §7.1 / §7.3 and by the assignment list
-// in src/server/seed.ts. The user count is derived from SEED_USERS so the
+// Customer and project counts are pinned by the specs in
+// src/server/seed/business.ts. The user count is derived from SEED_USERS so the
 // 6-user contract is expressed in one place (seedAssumptions.ts), not
 // duplicated as a literal here.
 // -------------------------------------------------------------------
@@ -119,14 +83,11 @@ describe('Seed', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-390 + AC-391 + AC-392
-  //
-  // Regression pin: after seed(db, { force: true }) on an empty DB the
-  // observable state matches the seed contract. Expected to pass today.
+  // After seed(db, { force: true }) on an empty DB the dataset matches
+  // the seed specs.
   // ---------------------------------------------------------------
-  describe('AC-390: seed force-run populates the contracted dataset', () => {
-    // AC-392 wants the year prefix captured at the moment seed ran.
-    // Capture before the call, not after, so a Dec-31 → Jan-1 rollover
+  describe('seed force-run populates the expected dataset', () => {
+    // Capture the year before the call, not after, so a Dec-31 → Jan-1 rollover
     // during seed would fail loudly instead of silently agreeing with
     // the post-seed clock (see top-of-file year-rollover note).
     let seedYear: number;
@@ -136,8 +97,7 @@ describe('Seed', () => {
       await seed(db, { force: true });
     });
 
-    // AC-390: row counts match the seed contract.
-    it('AC-390: row counts match the seed contract', async () => {
+    it('row counts match the seed specs', async () => {
       const [userRows, customerRows, projectRows, projectWorkerRows, invoiceRows] =
         await Promise.all([
           db.select({ id: users.id }).from(users),
@@ -160,8 +120,8 @@ describe('Seed', () => {
       expect(byStatus.get('cancelled') ?? 0).toBe(EXPECTED_INVOICE_CANCELLED_COUNT);
     });
 
-    // AC-391 part 1: usernames and `active` flags match SEED_USERS.
-    it('AC-391: usernames and active flags match SEED_USERS', async () => {
+    // Usernames and `active` flags match SEED_USERS.
+    it('usernames and active flags match SEED_USERS', async () => {
       const rows = await db.select({ username: users.username, active: users.active }).from(users);
 
       const actual = new Map(rows.map((r) => [r.username, r.active]));
@@ -174,11 +134,10 @@ describe('Seed', () => {
       }
     });
 
-    // AC-391 part 2: SEED_DEFAULT_PASSWORD verifies against every stored
-    // passwordHash. Uses verifyPassword — the same helper bootstrap.test.ts
+    // Uses verifyPassword — the same helper bootstrap.test.ts
     // and AuthService use, so any drift from the bcrypt round-trip surfaces
     // here alongside the other consumers.
-    it('AC-391: SEED_DEFAULT_PASSWORD verifies against every user passwordHash', async () => {
+    it('SEED_DEFAULT_PASSWORD verifies against every user passwordHash', async () => {
       const rows = await db
         .select({ username: users.username, passwordHash: users.passwordHash })
         .from(users);
@@ -197,8 +156,7 @@ describe('Seed', () => {
       }
     });
 
-    // AC-392: every project `number` carries the seed-time year prefix.
-    it('AC-392: every project number carries the seed-time year prefix', async () => {
+    it('every project number carries the seed-time year prefix', async () => {
       const rows = await db.select({ number: projects.number }).from(projects);
 
       expect(rows).toHaveLength(EXPECTED_PROJECT_COUNT);
@@ -212,54 +170,11 @@ describe('Seed', () => {
     });
   });
 
-  // ---------------------------------------------------------------
-  // AC-164
-  //
-  // Forward-looking: a malformed users fixture throws a typed validation
-  // error and leaves `users` empty. Targets the future fixture-loader
-  // module `../seed/users.js` and its `parseUsersFixture` export. That
-  // module does not exist today, so this test fails with a module-not-
-  // found error — the intended "behavior not implemented" signal.
-  //
-  // When Step 5 lands the extraction, this test runs its real
-  // assertions without modification.
-  // ---------------------------------------------------------------
-  describe('AC-164: malformed users fixture is rejected atomically', () => {
-    it('throws a typed validation error and leaves users empty', async () => {
-      // Dynamic import so the test file itself type-checks and loads
-      // even before `../seed/users.js` exists. A bare static import
-      // would make the entire file fail to compile, which muddies the
-      // "behavior not implemented" signal the reviewer looks for.
-      //
-      // The specifier is stored in a variable so TypeScript does not try
-      // to resolve it at compile time. This keeps the test file's type-
-      // check clean today and lets the runtime "Cannot find module" error
-      // be the single, unambiguous signal that the module has not yet
-      // been extracted. No `any` and no `@ts-ignore`.
-      //
-      // Shape assumed for the future API:
-      //   parseUsersFixture(raw: unknown): UserSeedRecord[]
-      //     - throws a typed validation error on malformed input
-      //     - pure: filesystem-free, so the test can feed it literals
-      //
-      // If the eventual API diverges (e.g. `loadUsers(db)` only), the
-      // Step 5 implementer adjusts this test alongside the module; the
-      // contract the test pins (typed throw, no partial insert) does
-      // not change.
-      const futureModulePath = '../seed/users.js';
-      const mod: unknown = await import(/* @vite-ignore */ futureModulePath);
-
-      // Narrow the dynamic-import result without `any` / `@ts-ignore`.
-      if (typeof mod !== 'object' || mod === null || !('parseUsersFixture' in mod)) {
-        throw new Error('seed/users.js does not export parseUsersFixture');
-      }
-      const { parseUsersFixture } = mod as {
-        parseUsersFixture: (raw: unknown) => unknown;
-      };
-
+  describe('parseUsersFixture', () => {
+    it('rejects a malformed fixture with a ZodError', () => {
       // Malformed: `username` is a number instead of a string, and
       // `passwordHash` is missing entirely. Either violation alone
-      // satisfies the AC's "missing required field, wrong type"; both
+      // covers "missing required field, wrong type"; both
       // together make the test robust to minor schema evolution.
       const malformed = [
         {
@@ -271,15 +186,7 @@ describe('Seed', () => {
         },
       ];
 
-      expect(() => parseUsersFixture(malformed)).toThrow(
-        /invalid_type|invalid_format|expected|unrecognized/i,
-      );
-
-      // AC-164's atomicity clause: no partial state lands in `users`.
-      // The beforeEach already truncates, so this confirms the parser
-      // never reaches the DB writer path.
-      const rows = await db.select({ id: users.id }).from(users);
-      expect(rows).toHaveLength(0);
+      expect(() => parseUsersFixture(malformed)).toThrow(ZodError);
     });
   });
 });

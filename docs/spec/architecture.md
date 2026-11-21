@@ -164,7 +164,6 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 - Password policy — [data-model.md §5.3](data-model.md#53-user-entity)
 - Session duration — [data-model.md §5.4](data-model.md#54-session)
 - Role set and per-role permission matrix
-- Seed default password
 - Restore confirmation phrase — typed to confirm an import that replaces business data; matched case-sensitively, ignoring surrounding whitespace ([AC-592](verification.md#1514-data-exchange))
 - Backup interval — when backups and drills start ([AC-616](verification.md#1522-backup-and-recovery)). Source constant: `SCHEDULES` in `src/server/backup-runner.ts` (four cron expressions — weekday/weekend backup, weekday/weekend drill). No env var
 - Backup freshness thresholds — full days of age of `lastBackupAt` and `lastDrillAt` beyond which the owner-facing badge switches to amber and to red ([ui/index.md §8.1.2](ui/index.md#812-authenticated-state)). Source constant: `BACKUP_THRESHOLDS` in `src/config/backupThresholds.ts`. Defaults, in days: backup amber 2 / red 4, drill amber 14 / red 30. No env var
@@ -197,7 +196,7 @@ Entries state which. Promoting a source constant to an env var is a normal chang
 
 - **Scheduler sweep cadences** — `SESSION_CLEANUP_INTERVAL_MINUTES`, `AUDIT_RETENTION_INTERVAL_MINUTES`, `ATTACHMENT_ORPHAN_REAPER_INTERVAL_MINUTES`, `ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES`. How _often_ a reaper sweeps is operational tuning; the retention window it enforces is the company-facing value, and that one is catalogued.
 - **Bucket-orphan prune cadence and grace window** — source constants in `STORAGE_CONFIG`, no env vars, parity with `THRESHOLD_MONITOR`. An orphan is an object no row references: invisible to every company-facing surface, so neither how often it is swept nor how long it must sit first is a company decision. The grace window is a write-settling margin, not a retention window.
-- **Deployment wiring and secrets** — database and object-store endpoints, buckets and credentials, `LISTEN_HOST` (listen address, default loopback; compose sets all interfaces), `PORT`, `DOMAIN`, `NODE_ENV`, `SEED`, `ALLOW_INSECURE_HTTP`, VAPID keys, `BOOTSTRAP_ADMIN_*`, the LLM provider key and model id, and the `*_IDENTITY_PATH` mount points for operator-loaded private keys.
+- **Deployment wiring and secrets** — database and object-store endpoints, buckets and credentials, `LISTEN_HOST` (listen address, default loopback; compose sets all interfaces), `PORT`, `DOMAIN`, `NODE_ENV` (unset = production), `SEED`, `ALLOW_INSECURE_HTTP`, VAPID keys, `BOOTSTRAP_ADMIN_*`, the LLM provider key and model id, and the `*_IDENTITY_PATH` mount points for operator-loaded private keys.
 
 A variable's absence here is a claim that no company would need to change it. If one does, the fix is to add the entry — not to treat the catalogue as advisory.
 

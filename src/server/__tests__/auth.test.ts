@@ -3,7 +3,7 @@
  *
  * Runs against a real test database via Fastify inject (no network).
  *
- * Seed users (from data-model.md §7.2) — referenced via SEED_USERS to
+ * Seed users — referenced via SEED_USERS to
  * keep the coupling to `src/server/seed.ts` single-sourced:
  *   - owner (SEED_USERS.owner) — active, owner (admin)
  *   - office (SEED_USERS.office) — active, office

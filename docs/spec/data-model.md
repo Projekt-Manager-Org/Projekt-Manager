@@ -23,7 +23,7 @@ A job for one customer, moving through the workflow states. Behavior: [verificat
 | `notes`                      | Free text                                                                                                           |
 | `deleted`                    | Archived ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md))                                                  |
 | `createdAt`, `updatedAt`     | Server time                                                                                                         |
-| `createdBy`, `updatedBy`     | The acting user; empty for seeded or imported rows without a known actor                                            |
+| `createdBy`, `updatedBy`     | The acting user; empty for imported rows without a known actor                                                      |
 
 ### 5.3 User Entity
 
@@ -42,7 +42,7 @@ A person who can sign in. A user changes their own `themePreference` and `pushMu
 | `pushMuted`              | Default `false`; mutes push delivery only ([§5.12](#512-push-subscription))                                          |
 | `createdAt`, `updatedAt` | Server time                                                                                                          |
 | `lastLoginAt`            | Time of the last successful login; empty before the first                                                            |
-| `createdBy`, `updatedBy` | The acting user; empty for seeded or bootstrapped rows                                                               |
+| `createdBy`, `updatedBy` | The acting user; empty for bootstrapped rows or imported rows without a known actor                                  |
 
 **Password policy [C]** ([ADR-0006](../adr/0006-password-policy-nist-blocklist.md)): at least 8 characters, at most 72 UTF-8 bytes, not on the common-password blocklist.
 
@@ -65,7 +65,7 @@ A person or company the projects are for. Only `name` is required. Behavior: [ve
 | `notes`                  | Free text                                                                                                                      |
 | `version`                | Concurrency token ([§6.4](#64-concurrency))                                                                                    |
 | `createdAt`, `updatedAt` | Server time                                                                                                                    |
-| `createdBy`, `updatedBy` | The acting user; empty for seeded or imported rows without a known actor                                                       |
+| `createdBy`, `updatedBy` | The acting user; empty for imported rows without a known actor                                                                 |
 
 ### 5.8 Export Archive
 
@@ -393,85 +393,3 @@ No record refers to a record that does not exist, except where a deleted record 
 
 - An issued or cancelled invoice never changes, except an issued one becoming cancelled ([AC-708](verification.md#1530-invoices)). A correction is a Storno and a new invoice. Its document stays as rendered, under the invoice lock ([AC-710](verification.md#1530-invoices)).
 - An import never removes one ([AC-367](verification.md#1514-data-exchange)). Drafts carry no number and are not protected.
-
----
-
-## 7. Seed Data Specification
-
-The seed dataset is loaded into the database on initial setup and provides a realistic snapshot.
-
-The seed operation must be safe to run on an empty database. Re-seeding an existing database drops and recreates all seed records. This is a development/demo operation, not a production upgrade path.
-
-The loader assembles users and business data into one in-memory import ([§5.8](#58-export-archive)) and applies it through the same import code path the import job uses, so every seed run exercises the import contract.
-
-### 7.1 Project Dataset
-
-**19 projects**, distributed to create a realistic snapshot with visible action-state accumulation:
-
-| State           | Count | Notes                                                                      |
-| --------------- | ----- | -------------------------------------------------------------------------- |
-| Anfrage         | 2     | Recent, no dates planned. One received yesterday, one 10 days ago (stale). |
-| Angebot         | 2     | One sent 3 days ago, one sent 18 days ago (exceeds aging threshold).       |
-| Beauftragt      | 2     | Confirmed, no dates yet.                                                   |
-| Geplant         | 2     | Dates assigned, workers assigned.                                          |
-| In Arbeit       | 3     | Currently on-site. One slightly past `plannedEnd`.                         |
-| Abnahme         | 1     | Waiting for customer walk-through.                                         |
-| Rechnung fällig | 3     | **Critical accumulation** — demonstrates the core value.                   |
-| Abgerechnet     | 2     | Invoice sent, waiting for payment.                                         |
-| Erledigt        | 2     | Recently completed and paid.                                               |
-
-### 7.2 User Dataset
-
-| Username      | Display Name           | Roles      | Notes                             |
-| ------------- | ---------------------- | ---------- | --------------------------------- |
-| `inhaber`     | Thomas Berger          | owner      | Default admin account             |
-| `buero`       | Maria Schmidt          | office     | Office manager                    |
-| `arbeiter1`   | Jan Nowak              | worker     | Field worker                      |
-| `arbeiter2`   | Lukas Fischer          | worker     | Field worker                      |
-| `buchhalter`  | Petra Weiß             | bookkeeper | External bookkeeper               |
-| `deaktiviert` | Ehemaliger Mitarbeiter | worker     | Inactive — exercises deactivation |
-
-All seed users have a default password: `changeme` **[C]**. The seed loader must log a warning that default passwords are in use and must be changed.
-
-In the default configuration, the `owner` role carries administrator privileges (user management access). This mapping is configurable **[C]**.
-
-Names are assumed and fictional (per [ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)).
-
-### 7.3 Customer Dataset
-
-**21 customers**, covering a range of data completeness and project associations:
-
-| Name                      | Phone           | Email                    | Address                                 | Notes                                 |
-| ------------------------- | --------------- | ------------------------ | --------------------------------------- | ------------------------------------- |
-| Familie Müller            | +49 221 1234567 | mueller@example.de       | Hauptstr. 12, 51465 Bergisch Gladbach   | Stammkunde seit 2019                  |
-| Schmidt GmbH              | +49 221 9876543 | info@schmidt-gmbh.de     | Industriestr. 8, 50968 Köln             | Gewerblicher Kunde                    |
-| Petra Wagner              | +49 2202 54321  | p.wagner@email.de        | Am Stadtpark 3, 51429 Bergisch Gladbach | —                                     |
-| Hausverwaltung Rheinblick | +49 221 5551234 | verwaltung@rheinblick.de | Rheinuferstr. 44, 50996 Köln            | Mehrere Objekte                       |
-| Andreas Hoffmann          | +49 221 7773456 | —                        | Lindenweg 7, 51109 Köln                 | —                                     |
-| Familie Yılmaz            | +49 2202 88990  | yilmaz.familie@email.de  | Gartenstr. 21, 51465 Bergisch Gladbach  | —                                     |
-| Karl-Heinz Becker         | —               | —                        | —                                       | Nur Telefonkontakt — Nummer verlegt   |
-| Weber Immobilien KG       | +49 221 4449876 | kontakt@weber-immo.de    | Aachener Str. 155, 50931 Köln           | Rahmenvertrag für Instandhaltung      |
-| Schulz & Partner PartG    | +49 2204 61234  | office@schulz-partner.de | Kölner Str. 90, 51429 Bergisch Gladbach | Import aus orgaMAX, noch kein Projekt |
-| Monika Engel              | +49 221 3336789 | —                        | —                                       | Import aus orgaMAX, noch kein Projekt |
-
-Design notes:
-
-- Customers with full data (name, phone, email, address): Familie Müller, Schmidt GmbH, Petra Wagner, Hausverwaltung Rheinblick, Familie Yılmaz, Weber Immobilien KG.
-- Customers with minimal data (name only or name + phone): Karl-Heinz Becker (name only), Andreas Hoffmann (no email).
-- Customers linked to multiple seed projects: Familie Müller (2 projects), Schmidt GmbH (2 projects), Hausverwaltung Rheinblick (3 projects).
-- Customers with no projects yet: Schulz & Partner PartG, Monika Engel — these represent records imported from an external system (e.g., orgaMAX) before project creation.
-- **Site-address divergence demo.** At least one project of a Hausverwaltung-style customer carries a non-null `siteAddress` (§5.1) different from the customer's Rechnungsadresse — for example, the seeded `Schmidt Hausverwaltung` (Rechnungsadresse `Kölner Str. 45, 51429 Bergisch Gladbach`) carries a project at the divergent site `Goethestr. 18, 51103 Köln`. Every other seed project leaves `siteAddress` null so the fallback rendering ("(Kundenadresse)") is also exercised on the demo data.
-
-### 7.4 Edge Cases
-
-The seed dataset should include varied data (missing dates, minimal fields, aged entries) to exercise edge cases.
-
-### 7.5 Date Range
-
-Seed data dates must be **relative to the deployment date**, not hardcoded calendar dates. The seed loader calculates dates relative to "today" so the data is meaningful whenever it is first loaded.
-
-The overall range covers roughly the past 4 weeks to the coming 4 weeks, providing meaningful content for both views.
-
-### 7.6 Realism
-
-Project titles, customer names, and addresses should be domain-representative for a German Handwerker company (see [index.md, section 4.1](index.md#41-company-profile)). Example: "Fassadenanstrich Müller", "Treppenhaussanierung Schmidt", "Malerarbeiten Bürokomplex Weber".
