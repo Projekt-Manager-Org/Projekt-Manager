@@ -2,7 +2,7 @@
  * API integration tests — invoice retention / cascade behaviour on
  * customer delete and project purge (issue #109, ADR-0026).
  *
- * Pins the §6.9 / §6.14 retention invariants:
+ * Pins the data-model.md §6.14 retention invariants:
  *
  *   - AC-532: `DELETE /api/customers/:id` against a customer whose
  *     archived projects carry any issued or cancelled invoice is rejected
@@ -67,8 +67,7 @@ async function archiveProject(ownerToken: string, projectId: string): Promise<vo
 
 /**
  * Seed a draft invoice directly (no route). Drafts have no legal
- * weight per data-model.md §6.6 / §6.9 — they cascade-delete with
- * the project.
+ * weight — they cascade-delete with the project (AC-502).
  */
 async function seedDraftInvoice(projectId: string): Promise<string> {
   const { db, pool } = createDatabase();

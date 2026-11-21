@@ -1,6 +1,6 @@
 /**
  * API integration tests: a customer correction reaches open drafts
- * (data-model.md §5.15, §6.4).
+ * (data-model.md §5.15, AC-546).
  *
  * AC-543 the correction itself, AC-688 its transaction, AC-623 its audit, AC-719 its event,
  * AC-545 a draft created during an edit, AC-546 serialization with Update,

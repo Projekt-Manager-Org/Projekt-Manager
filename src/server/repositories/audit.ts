@@ -14,7 +14,7 @@
  *
  * Deterministic ordering: `created_at DESC, id DESC` — the stable
  * tiebreaker ensures a second fetch with the same filters returns
- * the same page (api.md §14.1).
+ * the same page.
  */
 
 import { and, desc, eq, gte, ilike, lt, lte, sql } from 'drizzle-orm';

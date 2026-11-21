@@ -52,7 +52,7 @@ export interface ApiFailure {
    */
   sessionExpired: boolean;
   /**
-   * Server-supplied machine-readable detail block (api.md §14.4 — every
+   * Server-supplied machine-readable detail block (every
    * `AppError` may carry an opaque `details` field, e.g. `missingFields`
    * for `VALIDATION_ERROR` / `COMPANY_PROFILE_REQUIRED`). Surfaced raw
    * so consumers can branch on the shape they expect; absent when the

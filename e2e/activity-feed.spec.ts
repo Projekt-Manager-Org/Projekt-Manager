@@ -132,7 +132,7 @@ test.describe('AC-626, AC-627, AC-628: project activity feed (newest first, pagi
     // Drive mutations via the API with distinct field diffs so each
     // PATCH commits a new audit row (UI input debounce / unchanged-value
     // short-circuit would collapse repeated .fill() calls). Drive above
-    // the server's default page size (50 per api.md §14.1) so the
+    // the server's default page size (50, AUDIT_PAGE_SIZE) so the
     // "Ältere anzeigen" pager has a real page boundary to cross.
     // `notes` is the field `audit-log.test.ts` AC-182 uses to drive
     // audit rows on PATCH /api/projects/:id; the dates endpoint lives

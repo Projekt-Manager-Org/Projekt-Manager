@@ -301,6 +301,8 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-373 | retired | —                                                                                    |
 | AC-374 | infra   | monthly binary-key drill — `docs/ops/binary-key/drills.md`                           |
 | AC-376 | retired | —                                                                                    |
+| AC-377 | retired | —                                                                                    |
+| AC-378 | retired | —                                                                                    |
 | AC-382 | retired | —                                                                                    |
 | AC-384 | retired | —                                                                                    |
 | AC-385 | retired | —                                                                                    |

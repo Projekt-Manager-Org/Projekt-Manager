@@ -115,8 +115,7 @@ export interface Invoice {
  * §5.17 — company-profile singleton shape returned by GET / PUT. The
  * `id` is stable for the lifetime of the deployment (baseline seed)
  * but is exposed so audit-log rows for `entity_type = 'company_profile'`
- * round-trip cleanly. `updatedAt` / `updatedBy` follow the §5.5 audit-
- * metadata rules.
+ * round-trip cleanly. `updatedAt` / `updatedBy`: data-model.md §5.17.
  */
 export interface CompanyProfile {
   id: string;

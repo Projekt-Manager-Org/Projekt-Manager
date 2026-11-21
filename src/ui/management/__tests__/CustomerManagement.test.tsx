@@ -7,7 +7,7 @@
  *   - Name autocomplete debounces and dedupes rapid keystrokes.
  *   - Clicking a dropdown match closes the create form and opens the
  *     edit form for that customer.
- *   - IDEMPOTENCY_CONFLICT closes the form and surfaces the message.
+ *   - IDEMPOTENCY_CONFLICT closes the form and surfaces the message (AC-762).
  *
  * The API client is stubbed at module boundary; the real stores run
  * so their observable behavior (`createCustomer` returning an outcome,
@@ -554,7 +554,7 @@ describe('CustomerManagement — address group and optional fields', () => {
 });
 
 describe('CustomerManagement — stale write', () => {
-  it('data-model.md §6.4: resets USt-IdNr. and notes to the refetched customer', async () => {
+  it('AC-379: resets USt-IdNr. and notes to the refetched customer', async () => {
     const stored = {
       id: 'c-1',
       name: 'Ada',
@@ -587,8 +587,8 @@ describe('CustomerManagement — stale write', () => {
   });
 });
 
-describe('CustomerManagement — IDEMPOTENCY_CONFLICT', () => {
-  it('closes the create form and refreshes the list', async () => {
+describe('CustomerManagement — IDEMPOTENCY_CONFLICT (AC-762)', () => {
+  it('AC-762: closes the create form and refreshes the list', async () => {
     customerCreateMock.mockResolvedValueOnce({
       ok: false,
       error: {
@@ -598,17 +598,19 @@ describe('CustomerManagement — IDEMPOTENCY_CONFLICT', () => {
       category: 'server_error',
       sessionExpired: false,
     });
+    customerListMock.mockResolvedValue(ok({ customers: [], total: 0 }));
+
+    render(<CustomerManagement />);
+
+    await userEvent.click(screen.getByTestId('customer-create-button'));
+    await userEvent.type(screen.getByTestId('customer-name-input'), 'Xyz');
+    // The stored row appears only through the refresh after the conflict.
     customerListMock.mockResolvedValue(
       ok({
         customers: [{ id: 'c-1', name: 'Already Here' } as Customer],
         total: 1,
       }),
     );
-
-    render(<CustomerManagement />);
-
-    await userEvent.click(screen.getByTestId('customer-create-button'));
-    await userEvent.type(screen.getByTestId('customer-name-input'), 'Xyz');
     await userEvent.click(screen.getByTestId('customer-submit'));
 
     await waitFor(() => {
@@ -617,5 +619,6 @@ describe('CustomerManagement — IDEMPOTENCY_CONFLICT', () => {
     expect(
       screen.getByText('Diese Anfrage-ID wurde bereits mit abweichenden Daten verwendet.'),
     ).toBeInTheDocument();
+    expect(await screen.findByText('Already Here')).toBeInTheDocument();
   });
 });

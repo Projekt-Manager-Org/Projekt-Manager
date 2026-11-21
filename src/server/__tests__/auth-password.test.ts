@@ -17,7 +17,7 @@ import { validateEnvRuntime } from '../config/env.js';
 /**
  * Read a single users row directly from the database via a one-shot
  * pg.Client. Used by AC-547 to pin the audit columns written by
- * changePassword — see `docs/spec/data-model.md §5.5`.
+ * changePassword — see `docs/spec/data-model.md §5.3`.
  *
  * A one-shot Client (not a long-lived Pool) is deliberate: holding a
  * Pool across the full `describe` block produced intermittent state
@@ -115,7 +115,7 @@ describe('Password Change Operations', () => {
       // Snapshot the user row before the change so the assertion below
       // can prove both the pre-change password hash actually moved AND
       // that updatedAt advanced (not just a no-op update with a stale
-      // timestamp). See data-model.md §5.5.
+      // timestamp). See data-model.md §5.3.
       const beforeRow = await readUserAuditRowByUsername(SEED_USERS.office.username);
       const userId = beforeRow.id;
       const beforeHash = beforeRow.passwordHash;

@@ -31,7 +31,7 @@ export class StorageUsageService {
 
   /**
    * Global usage summed across every project — including archived
-   * (soft-deleted per data-model.md §6.9) projects whose attachments
+   * (ADR-0017) projects whose attachments
    * still ride object storage. api.md §14.3 puts the gate at `data:export`
    * (route layer); this method is gate-agnostic.
    *

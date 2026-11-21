@@ -37,7 +37,7 @@ A person who can sign in. A user changes their own `themePreference` and `pushMu
 | `passwordHash`           | Salted hash of the password; reaches a client only inside an export ([AC-394](verification.md#1513-user-management)) |
 | `roles`                  | One or more of the role set **[C]** ([api.md §14.3](api.md#143-authorization-rules))                                 |
 | `email`                  | Optional free text, at most 255 characters                                                                           |
-| `active`                 | Default `true`; `false` means deactivated ([§6.9](#69-soft-deletes))                                                 |
+| `active`                 | Default `true`; `false` means deactivated ([AC-555](verification.md#1513-user-management))                           |
 | `themePreference`        | `light`, `dark` or `system`; default `system` ([verification.md §15.19](verification.md#1519-theming))               |
 | `pushMuted`              | Default `false`; mutes push delivery only ([§5.12](#512-push-subscription))                                          |
 | `createdAt`, `updatedAt` | Server time                                                                                                          |
@@ -49,26 +49,6 @@ A person who can sign in. A user changes their own `themePreference` and `pushMu
 ### 5.4 Session
 
 A login creates a session. It lasts the session duration **[C]** (default 24 hours); a user may hold any number of sessions at once. Token delivery: [ADR-0005](../adr/0005-session-management-httponly-cookies.md). When sessions end: [verification.md §15.4](verification.md#154-authentication), [§15.13](verification.md#1513-user-management).
-
-### 5.5 Audit Metadata
-
-All persisted entities follow a common audit metadata pattern:
-
-```typescript
-interface AuditMetadata {
-  createdAt: string; // ISO 8601 — set on creation, never modified
-  updatedAt: string; // ISO 8601 — set on every mutation
-  createdBy?: string; // UserAccount.id — optional for seeded/imported records
-  updatedBy?: string; // UserAccount.id — optional for seeded/imported records
-}
-```
-
-Rules:
-
-- `createdAt` and `updatedAt` are managed by the server. Clients never send these fields in mutations.
-- User-triggered mutations must set `updatedBy` to the authenticated user's ID and update `updatedAt`.
-- `createdBy` and `updatedBy` are optional because seeded, imported, or system-generated records may not have a known actor.
-- This pattern applies to `Project`, `Customer`, and `UserAccount`. `Session` uses `createdAt` and `expiresAt` only (sessions are not user-editable).
 
 ### 5.6 Customer Entity
 
@@ -392,60 +372,17 @@ One export or import run. Behavior: [verification.md §15.14](verification.md#15
 
 ## 6. Persistence Principles
 
-The product specification defines persistence behavior, not a concrete database technology or schema.
-
-### 6.1 Durability
-
-- Project data must survive page reloads, browser restarts, and deployment restarts.
-- The application must read and write data only through a backend/API boundary.
-
-### 6.2 Entity Extraction
-
-The persistence design must support extraction of additional entities without rewriting existing domain logic.
-
 ### 6.3 Record Identity
 
-- Every persisted entity must have a stable, opaque ID.
-- IDs must not encode workflow state, dates, or company-specific semantics.
+Every record has an ID that never changes and carries no meaning — no state, date or company data.
 
 ### 6.4 Concurrency
 
-Low write concurrency is assumed. A write to a versioned entity based on a stale read is still rejected, never applied: an issued invoice is frozen ([§6.14](#614-immutability-of-issued-invoices)) together with the company profile snapshotted into it, and a whole-form customer save silently reverts fields the saver never touched — rarity does not make either acceptable.
-
-- **State transitions** use optimistic concurrency on `status` — a transition is rejected as a conflict if the project's status has moved since the client's last read (see [AC-94](verification.md#1517-data-integrity)). The client should refetch and present the new state.
-- **Edits** to Customer, Invoice and Company Profile use optimistic concurrency on `version`, a server-managed integer. Every committed API write to the row changes it ([AC-378](verification.md#1517-data-integrity)). Two exceptions: an issued or cancelled invoice is frozen, so its version no longer changes; database-level cascades ([§6.6](#66-referential-integrity)) do not change it.
-- **Versioned operations** (saving the customer edit form; input `expectedVersion` in [api.md](api.md)) carry the version their edit started from. A mismatch is rejected with `VERSION_CONFLICT` and nothing is written ([AC-375](verification.md#1517-data-integrity), [AC-699](verification.md#1530-invoices)). The check and the write are atomic: of two writes carrying the same current version, exactly one commits ([AC-381](verification.md#1517-data-integrity)).
-- **Check order.** Request-shape validation first — a missing `expectedVersion` is a validation error ([AC-377](verification.md#1517-data-integrity)). Then: not found and archived ([AC-499](verification.md#1512-projects), [AC-513](verification.md#1530-invoices)); the invoice state checks (`INVOICE_FROZEN`, issue on a non-draft); the version check; business-rule checks (e.g. the issuance preconditions, [AC-696](verification.md#1530-invoices), [AC-697](verification.md#1530-invoices), [AC-698](verification.md#1530-invoices)).
-- **Not versioned.** Project edits (Update project, Update dates) are last-write-wins: the detail page saves one field at a time, so a lost update needs two users on the same field at once — rare, and recoverable from the audit `before`. A project-wide `version` would instead reject an edit to one field whenever anything else on the project moved (a transition, an assignment, the issuance flip), discarding the user's input. Lifecycle operations — project archive / restore / purge, customer delete — act on the row's existence, not its content; their preconditions are state checks ([§6.9](#69-soft-deletes)). Delete draft is versioned: discarding a draft is a judgement on its content. Invoice cancel — its target is frozen. Attachments — own state checks ([verification.md §15.26](verification.md#1526-attachments)). Users and notification rules — low-stakes rows whose stale overwrite freezes nothing.
-- **Customer corrections on drafts.** The draft write a customer edit causes ([§5.15](#515-invoice-entity)) carries no `expectedVersion`. It evaluates each field against the draft's latest committed state and serializes with Update, Delete and Issue on that draft: an override committed first stays, a draft deleted or issued first is untouched, and an operation carrying the pre-correction version is rejected with `VERSION_CONFLICT` ([AC-546](verification.md#1530-invoices)).
-- **Not exported.** `version` is a concurrency token, not business data: the export archive omits it ([§5.8](#58-export-archive)) and import sets it fresh. No stale client survives an import — it ends every session ([AC-597](verification.md#1514-data-exchange)).
-
-### 6.5 Schema Evolution
-
-- The persistence layer must support schema evolution via versioned migrations. The database can be created from scratch by running all migrations in order.
-- No manual database resets as the primary upgrade strategy.
-- Migrations are versioned and reproducible.
-- Seed data is separate from migrations — loaded by a distinct operation, not baked into migration files. This allows re-seeding or clearing seed data without re-running schema changes.
+`version` is the token saving a customer, an invoice draft or the company profile carries, so a stale save is refused ([AC-375](verification.md#1517-data-integrity), [AC-381](verification.md#1517-data-integrity), [AC-546](verification.md#1530-invoices), [AC-699](verification.md#1530-invoices)); a stale project transition is refused too ([AC-94](verification.md#1517-data-integrity)). Which refusal a stale change reports when its target is also archived or frozen: [AC-763](verification.md#1517-data-integrity).
 
 ### 6.6 Referential Integrity
 
-- The database enforces foreign keys where relationships exist (e.g., `Session.userId` references `UserAccount.id`, `Project.customerId` references `Customer.id`, `Project.createdBy`/`updatedBy` reference `UserAccount.id`).
-- **`Invoice.projectId`** references `Project.id`. Hard-deleting (purging) a project that carries any **issued or cancelled** `Invoice` row is rejected — those rows are issued artifacts whose PDFs are Object-Locked ([§6.14](#614-immutability-of-issued-invoices)) and cannot cascade away with their parent. **Draft** invoices (`status = 'draft'`) were never issued and cascade-delete with the project via FK; the audit trail is unaffected because drafts produce no `invoice:issue` audit row.
-- **`Invoice.cancellationOf`** is a nullable self-FK on `invoices.id`; non-null only on Storno rows. The original-invoice row referenced by `cancellationOf` cannot be hard-deleted while the Storno row exists (parity with the project FK above).
-- **Exception**: `UserAccount.createdBy`/`updatedBy` are nullable UUIDs with no FK constraint. A self-referential FK on the users table would complicate bootstrapping and deletion without adding meaningful integrity.
-- Orphaned records are not acceptable.
-
-### 6.7 Timestamps
-
-Timestamp ownership rules are defined in section 5.5. Additionally, `statusChangedAt` is set by the server on state transitions, never by client input.
-
-**Storage vs. API representation**: the database stores timestamps with timezone awareness. The API serializes them as ISO 8601 strings (e.g., `"2026-04-10T14:30:00.000Z"`). The client receives and sends ISO 8601 strings; the persistence layer handles conversion transparently. The spec uses `string` (ISO 8601) in entity type definitions to describe the API contract, not the storage type.
-
-### 6.9 Soft Deletes
-
-- Users can be deactivated or hard-deleted: [verification.md §15.13](verification.md#1513-user-management). Deactivation preserves assignment history, and is the remedy when an issued or cancelled invoice names the user: the invoice is frozen ([§6.14](#614-immutability-of-issued-invoices)) and its author stays traceable.
-- Projects are archived (`deleted`), not deleted ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). Archiving, restoring and permanently deleting a project: [verification.md §15.12](verification.md#1512-projects).
-  - Deleting a customer with its archived projects: [verification.md §15.11](verification.md#1511-customer-management).
+No record refers to a record that does not exist, except where a deleted record may still be named: by an audit entry ([§5.10](#510-audit-log-entity), [AC-642](verification.md#1523-audit-log)), by a notification rule's recipients ([AC-203](verification.md#1524-notifications)), and by a user's own `createdBy` / `updatedBy` ([AC-567](verification.md#1513-user-management)).
 
 ### 6.13 Gapless Sequence Allocation
 
@@ -485,14 +422,14 @@ The loader assembles users and business data into one in-memory import ([§5.8](
 
 ### 7.2 User Dataset
 
-| Username      | Display Name           | Roles      | Notes                                            |
-| ------------- | ---------------------- | ---------- | ------------------------------------------------ |
-| `inhaber`     | Thomas Berger          | owner      | Default admin account                            |
-| `buero`       | Maria Schmidt          | office     | Office manager                                   |
-| `arbeiter1`   | Jan Nowak              | worker     | Field worker                                     |
-| `arbeiter2`   | Lukas Fischer          | worker     | Field worker                                     |
-| `buchhalter`  | Petra Weiß             | bookkeeper | External bookkeeper                              |
-| `deaktiviert` | Ehemaliger Mitarbeiter | worker     | Inactive — exercises the soft-delete path (§6.9) |
+| Username      | Display Name           | Roles      | Notes                             |
+| ------------- | ---------------------- | ---------- | --------------------------------- |
+| `inhaber`     | Thomas Berger          | owner      | Default admin account             |
+| `buero`       | Maria Schmidt          | office     | Office manager                    |
+| `arbeiter1`   | Jan Nowak              | worker     | Field worker                      |
+| `arbeiter2`   | Lukas Fischer          | worker     | Field worker                      |
+| `buchhalter`  | Petra Weiß             | bookkeeper | External bookkeeper               |
+| `deaktiviert` | Ehemaliger Mitarbeiter | worker     | Inactive — exercises deactivation |
 
 All seed users have a default password: `changeme` **[C]**. The seed loader must log a warning that default passwords are in use and must be changed.
 

@@ -7,13 +7,15 @@
  *   - Editing the number after the verdict clears the indicator until
  *     the next blur.
  *   - The preflight does NOT block submission (server is authoritative).
+ *   - An idempotency conflict closes the create form and shows the
+ *     refreshed list with the message (AC-762).
  *
  * API client is stubbed; real stores run.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ReactElement } from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import type { ApiResult } from '@/api/client';
@@ -24,11 +26,13 @@ type CustomerListResult = ApiResult<{ customers: Customer[]; total: number }>;
 
 const projectListMock = vi.fn<() => Promise<ProjectListResult>>();
 const customerListMock = vi.fn<() => Promise<CustomerListResult>>();
+const projectCreateMock = vi.fn<() => Promise<ApiResult<Project>>>();
 
 vi.mock('@/api/client', () => ({
   projectApi: {
     list: (...args: unknown[]) => projectListMock(...(args as Parameters<typeof projectListMock>)),
-    create: vi.fn(),
+    create: (...args: unknown[]) =>
+      projectCreateMock(...(args as Parameters<typeof projectCreateMock>)),
     delete: vi.fn(),
     update: vi.fn(),
     updateDates: vi.fn(),
@@ -85,6 +89,7 @@ function mockProject(overrides: Partial<Project>): Project {
 beforeEach(() => {
   projectListMock.mockReset();
   customerListMock.mockReset();
+  projectCreateMock.mockReset();
   projectListMock.mockResolvedValue(ok({ data: [], total: 0 }));
   customerListMock.mockResolvedValue(ok({ customers: [], total: 0 }));
   useAuthStore.setState({
@@ -372,5 +377,41 @@ describe('ProjectManagement — dates column (AC-468)', () => {
       .closest('tr')!
       .querySelector('td[data-label="Termine"]');
     expect(datesCell?.textContent).toBe('14.04. – 02.05.2026');
+  });
+});
+
+describe('ProjectManagement — idempotency conflict (AC-762)', () => {
+  it('AC-762: closes the create form and shows the refreshed list with the message', async () => {
+    const message = 'Diese Anfrage-ID wurde bereits mit abweichenden Daten verwendet.';
+    projectCreateMock.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'IDEMPOTENCY_CONFLICT', message },
+      category: 'server_error',
+      sessionExpired: false,
+    });
+    customerListMock.mockResolvedValue(
+      ok({ customers: [{ id: 'c-1', name: 'Kunde Eins' } as Customer], total: 1 }),
+    );
+
+    renderWithRouter(<ProjectManagement />);
+    await userEvent.click(screen.getByTestId('project-create-button'));
+    await userEvent.type(screen.getByTestId('project-number-input'), 'P-7');
+    await userEvent.type(screen.getByTestId('project-title-input'), 'Dach');
+    await userEvent.click(
+      within(screen.getByTestId('project-customer-select')).getByRole('textbox'),
+    );
+    await userEvent.click(await screen.findByText('Kunde Eins'));
+
+    // The list stays empty until the refresh after the conflict delivers the stored row.
+    projectListMock.mockResolvedValue(
+      ok({ data: [mockProject({ id: 'p-7', number: 'P-7', title: 'Bestand' })], total: 1 }),
+    );
+    await userEvent.click(screen.getByTestId('project-submit'));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('project-submit')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(await screen.findByText('Bestand')).toBeInTheDocument();
   });
 });

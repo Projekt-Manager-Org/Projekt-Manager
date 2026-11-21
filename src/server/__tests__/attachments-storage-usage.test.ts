@@ -570,7 +570,7 @@ describe('Project storage usage tracking', () => {
     });
 
     it('global totals equal the sum over every complete attachment, archived projects included (AC-447)', async () => {
-      // Archive (soft-delete per §6.9) is a board-state concept; the
+      // Archive (ADR-0017) is a board-state concept; the
       // attachments still exist and count until purge cascades them away.
       // One archived project carries every bucket case: a ready binary, a
       // ready photo with its thumbnail, a hidden binary, and a pending row

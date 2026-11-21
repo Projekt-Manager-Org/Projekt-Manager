@@ -82,7 +82,7 @@ export async function updateBackupStatus(
   // incoming value, so we convert ISO strings to Date here. Passing a
   // raw string would break the mapper with "value.toISOString is not a
   // function". Accepting strings in the patch shape keeps callers on
-  // the standard api.md timestamp representation.
+  // ISO 8601 strings.
   const setClause: Record<string, unknown> = {
     updatedAt: new Date(),
   };

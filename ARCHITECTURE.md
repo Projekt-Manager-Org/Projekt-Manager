@@ -248,7 +248,7 @@ sequenceDiagram
 
 Routes live in `src/server/routes/`, and `buildApp()` (`src/server/app.ts`) registers every one — `eslint.config.js` fails the build on a route mounted elsewhere, so generated artifacts see the whole surface.
 
-- **Contract:** [api.md §14.2](docs/spec/api.md#142-operations).
+- **Contract:** the ACs; permissions and error categories in [api.md](docs/spec/api.md). The HTTP API itself is internal, documented by the generated artifacts below.
 - **Endpoint table and OpenAPI document** (generated, CI-checked): [docs/api/](docs/api/README.md).
 - **Error codes:** `ERROR_CODES` in `src/server/errors.ts`, mirrored in [api.md §14.4.1](docs/spec/api.md#1441-error-categories) (AC-354).
 - **Access model:** [§ Permission Gating](#permission-gating).
@@ -283,7 +283,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 8. **UI**: components under `src/ui/suppliers/`.
 9. **Tests**: domain in `src/domain/__tests__/`, integration in `src/server/__tests__/` (copy `projects-list.test.ts`), component in the feature's own `__tests__/` (e.g. `src/ui/detail/__tests__/`).
 10. **Seed**: extend the relevant loader under `src/server/seed/` (`seed/users.ts` for new user records; `business.ts` for customer/project-like entities that should flow through `ImportService`).
-11. **Spec**: update `docs/spec/data-model.md`, `docs/spec/api.md §14.2`, `docs/spec/verification.md`.
+11. **Spec**: update `docs/spec/data-model.md`, `docs/spec/verification.md`; a new permission goes in `docs/spec/api.md §14.3`.
 
 ### Adding a new view (e.g., Worker view)
 
@@ -299,7 +299,7 @@ Backend changes are usually not needed — the store exposes the full project li
 
 ### Adding a new API endpoint
 
-**Pattern to copy**: `src/server/routes/projects.ts`, `src/server/services/ProjectCrudService.ts`, `docs/spec/api.md §14.2`.
+**Pattern to copy**: `src/server/routes/projects.ts`, `src/server/services/ProjectCrudService.ts`.
 
 1. **Where**: extend an existing route file if it belongs to that entity/group; create a new one otherwise.
 2. **Validation**: Fastify JSON Schema on the route (see `projects.ts`). Don't validate inside the handler. Close every object level with `additionalProperties: false` — undefined fields are refused ([AC-516](docs/spec/verification.md#1517-data-integrity)), and `unknown-body-fields.test.ts` fails on an open one. A no-input route declares no body schema; a body with fields is refused there too.
@@ -308,7 +308,7 @@ Backend changes are usually not needed — the store exposes the full project li
 5. **Errors**: factories from `src/server/errors.ts`, never a raw `Error`. Map DB constraint violations in the service against `src/server/db/constraints.ts` (pattern: `ProjectCrudService.createProjectWithClientId`).
 6. **Register** in `src/server/app.ts`.
 7. **Tests**: integration in `src/server/__tests__/` using `api-helpers.ts` (`startApp()`, `login()`, `authPost()`/`authGet()`). A route a worker reaches needs a `WORKER_ROUTE_SCOPE` entry in `src/test/workerScopeGate.ts` — CI fails without one.
-8. **Spec**: add operation to `docs/spec/api.md §14.2`, AC in `docs/spec/verification.md`.
+8. **Spec**: an AC in `docs/spec/verification.md` for the observable outcome; a new permission in `docs/spec/api.md §14.3`.
 
 ### Adding a new workflow state
 
@@ -440,13 +440,13 @@ Contract: [verification.md §15.28](docs/spec/verification.md#1528-realtime-even
 
 Contract: [data-model.md §6.4](docs/spec/data-model.md#64-concurrency), [AC-379](docs/spec/verification.md#1517-data-integrity). SSE refreshes views; `version` stops stale writes to customers, invoices and the company profile. Project edits stay last-write-wins.
 
-| Concern                                                       | Where                                                                                                  |
-| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `version` bump on every UPDATE (cascades, frozen excepted)    | `*_version_bump` triggers in `src/server/db/baseline/tail/50-row-version.sql`                          |
-| Lock row, check state, then version (atomic)                  | `get*ForMutation` (`SELECT … FOR UPDATE`) in the repositories; the check in the services               |
-| `expectedVersion` route schema                                | `src/server/routes/expected-version.ts`                                                                |
-| Every write route versioned or exempt, with a reason (AC-380) | `VERSION_CLASSIFICATION` in `src/test/versionClassificationGate.ts` — a new write route needs an entry |
-| Client: start version, one write at a time                    | Captured on form / dialog open by the editing component; the in-flight mutation lock serializes it     |
+| Concern                                                                                                         | Where                                                                                                  |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `version` bump on every UPDATE (cascades, frozen excepted)                                                      | `*_version_bump` triggers in `src/server/db/baseline/tail/50-row-version.sql`                          |
+| Field validation; lock row; existence (archived counts as absent), state, version, then issuance rules (atomic) | `get*ForMutation` (`SELECT … FOR UPDATE`) in the repositories; the checks in the services              |
+| `expectedVersion` route schema                                                                                  | `src/server/routes/expected-version.ts`                                                                |
+| Every write route versioned or exempt, with a reason (AC-380)                                                   | `VERSION_CLASSIFICATION` in `src/test/versionClassificationGate.ts` — a new write route needs an entry |
+| Client: start version, one write at a time                                                                      | Captured on form / dialog open by the editing component; the in-flight mutation lock serializes it     |
 
 ---
 
@@ -490,7 +490,7 @@ Workers hold no `invoice:*` permission, so every invoice route refuses them (403
 - **Client-side routing**: declarative mode (`<BrowserRouter>`, no data router). `src/config/routes.ts` is the single route table — URL, access rule, per-role landing; nav and guard derive from it, landing from its `LANDING_ORDER`.
 - **Escape-to-dismiss**: every Esc-closable surface registers on the LIFO `src/hooks/escapeStack.ts`, so only the topmost closes. Modals use `src/ui/common/useDialogA11y.ts`, the rest `src/hooks/useEscapeKey.ts`; no hand-rolled `keydown` listeners.
 - **Menu close on outside click**: `src/ui/common/MenuBackdrop.tsx`, an invisible overlay, so one click closes the menu without activating what lies beneath (#130).
-- **Errors**: `src/server/error-handler.ts` passes Fastify 4xx through as stable codes; an `AppError` keeps its own; any other 5xx or status-less error becomes `SERVER_ERROR` ([api.md §14.4.2](docs/spec/api.md#1442-error-principles)). Every `pg.Pool` gets an error listener; uncaught errors log once and exit.
+- **Errors**: `src/server/error-handler.ts` passes Fastify 4xx through as stable codes; an `AppError` keeps its own; any other 5xx or status-less error becomes `SERVER_ERROR` ([AC-247](docs/spec/verification.md#157-engineering)). Every `pg.Pool` gets an error listener; uncaught errors log once and exit.
 - **Configuration boundary** ([architecture.md §12.6](docs/spec/architecture.md#126-feature-manifest-and-operator-confidence)): env schema vs examples in CI (`scripts/check-env-drift.sh`), aggregated validation in deploy pre-flight (`src/server/deploy-preflight-cli.ts`), and a boot-time feature manifest (`src/server/config/features.ts`).
 - **Documentation drift guards** — each fails the build. The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway (the endpoint table: `buildApp()` route collection); check the rest.
 

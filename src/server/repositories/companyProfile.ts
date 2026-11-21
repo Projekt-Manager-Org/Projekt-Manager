@@ -25,7 +25,7 @@ export async function findCompanyProfile(
 
 /**
  * The singleton, locked until commit, so the upsert's version check and
- * write are atomic (data-model.md §6.4).
+ * write are atomic (AC-381).
  */
 export async function getCompanyProfileForMutation(
   tx: TxHandle,
