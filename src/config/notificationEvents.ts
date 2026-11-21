@@ -14,8 +14,8 @@
  *     no `audit_log` row; they publish directly via the system-event
  *     bus (ADR-0021 §Decision "Notification publisher").
  *
- * German labels live on the config layer per architecture.md §11.2 —
- * both server (publisher dispatch context) and UI (rule-editor view,
+ * German labels live on the config layer per ARCHITECTURE.md § Architecture
+ * Overview — both server (publisher dispatch context) and UI (rule-editor view,
  * activity feed) import from here.
  */
 

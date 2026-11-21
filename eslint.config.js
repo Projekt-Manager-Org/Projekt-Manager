@@ -9,11 +9,11 @@ import auditWriteGate from './eslint-rules/audit-write-gate.mjs';
 import noDirectDbAccess from './eslint-rules/no-direct-db-access.mjs';
 
 // Layer boundary enforcement for the seven-layer architecture defined in
-// docs/spec/architecture.md §11.2. Each rule below reflects one dependency
-// edge that must not be crossed. Test files are exempt so integration tests
-// can reach into internals without lint churn.
+// ARCHITECTURE.md § Architecture Overview. Each rule below reflects one
+// dependency edge that must not be crossed. Test files are exempt so
+// integration tests can reach into internals without lint churn.
 //
-// Zone summary (see spec for the full model):
+// Zone summary:
 //   config   → imports nothing application-internal
 //   domain   → never imports state, ui, server, api, hooks
 //   server   → every directory but routes/ and seed/, and the shared
@@ -220,7 +220,7 @@ export default tseslint.config(
           patterns: CONFIG_BANNED.map((group) => ({
             group: [group],
             message:
-              'Config layer must not import application code (domain/server/state/ui/api/hooks). See architecture.md §11.2.',
+              'Config layer must not import application code (domain/server/state/ui/api/hooks). See ARCHITECTURE.md § Architecture Overview.',
           })),
         },
       ],
@@ -237,7 +237,7 @@ export default tseslint.config(
           patterns: DOMAIN_BANNED.map((group) => ({
             group: [group],
             message:
-              'Domain layer must be pure — no imports from state, ui, server, api, or hooks. See architecture.md §11.2.',
+              'Domain layer must be pure — no imports from state, ui, server, api, or hooks. See ARCHITECTURE.md § Architecture Overview.',
           })),
         },
       ],
@@ -268,7 +268,7 @@ export default tseslint.config(
           patterns: CLIENT_BANNED_SERVER.map((group) => ({
             group: [group],
             message:
-              'Client-side code must not import from src/server/**. See architecture.md §11.2.',
+              'Client-side code must not import from src/server/**. See ARCHITECTURE.md § Architecture Overview.',
           })),
         },
       ],
@@ -289,7 +289,7 @@ export default tseslint.config(
           patterns: ROUTES_BANNED.map((group) => ({
             group: [group],
             message:
-              'Routes must delegate to services — no direct repository or db/schema imports. Type-only imports (`import type { Database } from ...`) are allowed. See architecture.md §11.2.',
+              'Routes must delegate to services — no direct repository or db/schema imports. Type-only imports (`import type { Database } from ...`) are allowed. See ARCHITECTURE.md § Architecture Overview.',
             allowTypeImports: true,
           })),
         },
@@ -297,11 +297,12 @@ export default tseslint.config(
     },
   },
   ...serverImportZones(),
-  // Database access lives in src/server/repositories/ (spec §11.2; #937).
-  // Each table reference or query call outside them is one violation, so
-  // the bulk-suppression baseline (eslint-suppressions.json) counts the debt
-  // per file; `scripts/check-eslint-suppressions.sh` keeps it shrink-only.
-  // Rule logic: eslint-rules/no-direct-db-access.mjs. Wiring scenarios:
+  // Database access lives in src/server/repositories/ (ARCHITECTURE.md §
+  // Architecture Overview; #937). Each table reference or query call outside
+  // them is one violation, so the bulk-suppression baseline
+  // (eslint-suppressions.json) counts the debt per file;
+  // `scripts/check-eslint-suppressions.sh` keeps it shrink-only. Rule logic:
+  // eslint-rules/no-direct-db-access.mjs. Wiring scenarios:
   // scripts/__tests__/check-db-access-rule.test.sh.
   //
   // Named exemptions, pinned in scripts/check-db-access-coverage.mjs (CI
@@ -436,7 +437,7 @@ export default tseslint.config(
     },
   },
   // UI must not import the client API wrapper directly; must dispatch via state.
-  // AC-33 in verification.md.
+  // ARCHITECTURE.md § Architecture Overview.
   {
     files: ['src/ui/**/*.{ts,tsx}'],
     ignores: ['src/ui/**/__tests__/**'],
@@ -447,7 +448,7 @@ export default tseslint.config(
           patterns: UI_BANNED_CLIENT_API.map((group) => ({
             group: [group],
             message:
-              'UI components must dispatch through src/state/**; do not import the API client directly. See verification.md AC-33.',
+              'UI components must dispatch through src/state/**; do not import the API client directly. See ARCHITECTURE.md § Architecture Overview.',
           })),
         },
       ],

@@ -22,8 +22,7 @@ name: E2E
 #   that file's `workflows:` filter) and raises "E2E is red on main",
 #   assigned, one issue per incident, auto-closed on green.
 #
-#   See architecture.md §11.7 and verification.md AC-37 for the
-#   spec-side description of this topology.
+#   The constraint this meets: architecture.md §11 (E2E in CI).
 
 on:
   schedule:

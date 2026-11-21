@@ -29,10 +29,10 @@
  *      `recordBackupStatus`: the `meta_backup_status` row, then the
  *      status mirror carrying the same values (AC-617).
  *
- * Architecture layering (architecture.md §11.2): this service orchestrates
- * the repositories (`backupStatus`, `backupSnapshot`) and the
- * external-subprocess surface (pg_dump, age, initdb). Routes never call
- * the subprocesses directly.
+ * Architecture layering (ARCHITECTURE.md § Architecture Overview): this service
+ * orchestrates the repositories (`backupStatus`, `backupSnapshot`) and the
+ * external-subprocess surface (pg_dump, age, initdb). Routes never call the
+ * subprocesses directly.
  */
 
 import { spawn } from 'node:child_process';

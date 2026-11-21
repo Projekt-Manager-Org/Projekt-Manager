@@ -41,7 +41,7 @@ import {
 
 // Re-export the sort allowlist + key type so routes can validate the
 // `sortBy` querystring without crossing the routes→repository boundary
-// (architecture.md §11.2).
+// (ARCHITECTURE.md § Architecture Overview).
 export { PROJECT_SORT_KEYS };
 export type { ProjectSortKey };
 import { getCustomerRow } from '../repositories/customer.js';

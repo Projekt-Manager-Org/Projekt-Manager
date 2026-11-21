@@ -138,10 +138,10 @@ export class AuthService {
   }
 
   /**
-   * The user a session token authenticates, or `null` when the session
-   * row is gone, has expired, or its user is inactive. The one definition
-   * of a valid session: the `authenticate` middleware calls it at request
-   * entry, `isSessionValid` on held streams (architecture.md §11.2 —
+   * The user a session token authenticates, or `null` when the session row is
+   * gone, has expired, or its user is inactive. The one definition of a valid
+   * session: the `authenticate` middleware calls it at request entry,
+   * `isSessionValid` on held streams (ARCHITECTURE.md § Architecture Overview —
    * middleware and routes reach repositories only through services).
    */
   async resolveSession(token: string): Promise<AuthUser | null> {

@@ -7,7 +7,7 @@
  * into the tree would duplicate credential-handling code paths with
  * no upside.
  *
- * Architecture layering (architecture.md §11.2):
+ * Architecture layering (ARCHITECTURE.md § Architecture Overview):
  *   - This module is the wire-level R2 adapter. It exposes ONLY the
  *     methods the backup service consumes (upload, putStatusMirror,
  *     downloadLatestDumpAndManifest). Higher-level orchestration

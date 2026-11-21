@@ -58,7 +58,7 @@ Stack decisions are recorded in ADRs: [ADR-0002](docs/adr/0002-tech-stack-typesc
 
 ## Architecture Overview
 
-Seven responsibility layers. Dependency flows left-to-right only, never reversed. The split on the server between **Services** and **Routes** is load-bearing — routes never touch repositories or db/schema directly; they delegate to services. See [spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries) for the authoritative contract.
+Seven responsibility layers. Dependency flows left-to-right only, never reversed. The split on the server between **Services** and **Routes** is load-bearing — routes never touch repositories or db/schema directly; they delegate to services. This meets the kickoff's separation of concerns ([architecture.md §11](docs/spec/architecture.md#11-architectural-constraints)).
 
 ```
   config  <--  domain  <--  storage  <--  services  <--  routes
@@ -72,7 +72,7 @@ Seven responsibility layers. Dependency flows left-to-right only, never reversed
 
 - **Config** and **Domain** are shared: both server and client import them; `src/server/config/` is Config's server-only part.
 - **Storage**, **Services**, **Routes** run server-side only.
-- **State**, **UI** run client-side only.
+- **State**, **UI** run client-side only. UI dispatches through State and never imports the API client (`src/api/`).
 - **Server-shared leaves** — `src/server/sse/`, `errors.ts`, `password.ts`, `staticRoot.ts` — import only `src/config/` and Domain; Services and Routes import them.
 
 **Enforcement**: `no-restricted-imports` zones in [`eslint.config.js`](eslint.config.js) fail lint on any import against the arrows (e.g. `src/ui/**` → `src/server/**`, routes → repositories). Routes may type-import `Database` from `src/server/db/connection`. Every other `src/server/` directory but `seed/`, and each server-shared leaf, imports only its allowlist (`SERVER_IMPORT_ZONES`) and packages; type-only imports are exempt. `routes/`, `seed/` and the other root files (app assembly, entry point, schedulers) sit on top. `local/no-direct-db-access` ([`eslint-rules/`](eslint-rules/)) fails lint on database access in `src/server/` outside `repositories/` and the exemptions named in `eslint.config.js`, and on a repository handing out a table; no inline comment may disable it. Its suppression baseline, `eslint-suppressions.json`, is empty, and `scripts/check-eslint-suppressions.sh` fails CI on any new entry; `scripts/check-db-access-coverage.mjs` fails CI on any other exemption.
@@ -275,7 +275,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 1. **Schema**: add the table in `src/server/db/schema.ts` (audit fields as on `projects`), then `npm run db:baseline` regenerates `0000_baseline.sql` — no incremental migrations ([ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md)). SQL drizzle-kit cannot emit (extensions, seed rows, triggers) goes in `src/server/db/baseline/`. Existing databases: [recover-from-schema-change.md](docs/ops/recover-from-schema-change.md).
 2. **Domain types**: add interface in `src/domain/types.ts`. Optional fields stay optional ([spec §13.5](docs/spec/architecture.md#135-robustness)).
 3. **Repository**: split by concern (`src/server/repositories/supplier-read.ts`, etc.), barrel re-export. Add a `toSupplier(row)` projection so Drizzle types don't leak upward.
-4. **Service**: `src/server/services/SupplierService.ts`. Must not import `fastify` types ([spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries)).
+4. **Service**: `src/server/services/SupplierService.ts`. Must not import `fastify` types ([§ Architecture Overview](#architecture-overview)).
 5. **Routes**: `src/server/routes/suppliers.ts`, register in `app.ts`. Routes go through the service, never call repos directly.
 6. **API client**: add a `supplierApi` block in `src/api/client.ts` (same shape as `projectApi`).
 7. **State**: `src/state/supplierStore.ts` (model on `projectStore.ts`, optimistic updates with rollback).
@@ -303,7 +303,7 @@ Backend changes are usually not needed — the store exposes the full project li
 1. **Where**: extend an existing route file if it belongs to that entity/group; create a new one otherwise.
 2. **Validation**: Fastify JSON Schema on the route (see `projects.ts`). Don't validate inside the handler. Close every object level with `additionalProperties: false` — undefined fields are refused ([AC-516](docs/spec/verification.md#1517-data-integrity)), and `unknown-body-fields.test.ts` fails on an open one. A no-input route declares no body schema; a body with fields is refused there too.
 3. **Auth**: `requireSession(app, db)` once per plugin, `requirePermission('...')` per route; new keys go in `src/config/permissions.ts`. The endpoint table regenerates — no row to add by hand.
-4. **Delegate to service**. Never call repos from a route ([spec §11.2](docs/spec/architecture.md#112-responsibility-boundaries)).
+4. **Delegate to service**. Never call repos from a route ([§ Architecture Overview](#architecture-overview)).
 5. **Errors**: factories from `src/server/errors.ts`, never a raw `Error`. Map DB constraint violations in the service against `src/server/db/constraints.ts` (pattern: `ProjectCrudService.createProjectWithClientId`).
 6. **Register** in `src/server/app.ts`.
 7. **Tests**: integration in `src/server/__tests__/` using `api-helpers.ts` (`startApp()`, `login()`, `authPost()`/`authGet()`). A route a worker reaches needs a `WORKER_ROUTE_SCOPE` entry in `src/test/workerScopeGate.ts` — CI fails without one.
@@ -367,6 +367,8 @@ flowchart LR
 | `caddy`                   | Reverse proxy; custom xcaddy build for DNS-01 ACME.                                                            |
 | `storage`, `storage-init` | MinIO and its bucket bootstrap — dev/CI only (`docker-compose.minio.yml`); deployments use B2 (ADR-0022).      |
 
+In `docker-compose.yml`, only `caddy` publishes a port, on the WireGuard address; `app` is reachable only through it. Every deployed environment runs the whole topology — a stack without the proxy or object storage is not a deployment.
+
 Overlays: `docker-compose.dev.yml` (DB + storage for `npm run dev`), `docker-compose.http.yml` (HTTP-only evaluation, ADR-0013).
 
 ### CI/CD Pipeline
@@ -410,6 +412,8 @@ sequenceDiagram
   A->>A: row "ready", audit attachment:add
   Note over B,S: Download: the Service Worker intercepts /encrypted-storage/*, gets a presigned GET + unwrapped DEK, decrypts in the browser
 ```
+
+Attachment upload and download never pass file bytes through the app: ciphertext travels between the browser and B2 over presigned URLs (`src/server/__tests__/attachments-architecture.test.ts`). The server-side byte paths are the export build, the import and the invoice PDF.
 
 | Concern                                                          | Where                                                                                              |
 | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |

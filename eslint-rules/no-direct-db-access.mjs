@@ -1,5 +1,6 @@
 // `local/no-direct-db-access` — database access belongs in
-// src/server/repositories/ (spec §11.2, ARCHITECTURE.md; #937, #939).
+// src/server/repositories/ (ARCHITECTURE.md § Architecture Overview;
+// #937, #939).
 //
 // Reports, in each file the config applies it to:
 //   - every value-position use of a binding imported from the Drizzle

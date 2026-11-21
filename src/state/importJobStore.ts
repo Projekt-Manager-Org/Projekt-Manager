@@ -29,7 +29,7 @@ import { onSseEvent } from '@/sse/client';
 import { handleSessionExpired } from './sessionExpired';
 
 // Re-export the job DTO so UI components read the shape from the state layer —
-// `no-restricted-imports` (AC-33) forbids them importing `@/api/client` directly.
+// `no-restricted-imports` forbids them importing `@/api/client` directly.
 export type { DataExchangeJobDto } from '@/api/client';
 
 /** Create-time rejection the dialog surfaces; null once a create succeeds. */

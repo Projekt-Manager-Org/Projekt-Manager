@@ -43,7 +43,7 @@ The login screen shows the app name, `Benutzername` and `Passwort` inputs, an `A
 └──────────────────────────────────────────────────────────┘
 ```
 
-- **Insecure banner**: non-dismissible, visually prominent warning shown when the page loaded over plain HTTP on a non-localhost host. Covers both login and authenticated layout. See [AC-45](../verification.md#156-deployment) and [ADR-0013](../../adr/0013-http-only-evaluation-mode.md).
+- **Insecure banner**: warning on plain HTTP ([AC-766](../verification.md#156-deployment)).
 - **Header**: brand mark, app name **[C]**, navigation ([§8.7](#87-navigation)).
 - **Brand mark** (decorative): the configured logo **[C]**, or the generic mark ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)).
 - **Backup badge** (owners only, [AC-612](../verification.md#1522-backup-and-recovery), [AC-613](../verification.md#1522-backup-and-recovery)): one icon in the header whose colour shows the state; hovering or tapping it shows the label, followed by the last backup run's time (`lastBackupAt`, `HH:mm EEE dd.MM.yyyy`) when there is one. The first row whose condition holds wins; fields are the backup status ([data-model.md §5.9](../data-model.md#59-backup-status)), thresholds are **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)):

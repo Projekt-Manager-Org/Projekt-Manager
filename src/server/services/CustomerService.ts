@@ -20,9 +20,9 @@ import {
   type CustomerSortKey,
 } from '../repositories/customer.js';
 
-// Re-export the sort allowlist + key type so routes can validate
-// querystrings without crossing the routes→repository boundary
-// (architecture.md §11.2 — routes delegate through services).
+// Re-export the sort allowlist + key type so routes can validate querystrings
+// without crossing the routes→repository boundary (ARCHITECTURE.md §
+// Architecture Overview — routes delegate through services).
 export { CUSTOMER_SORT_KEYS };
 export type { CustomerSortKey };
 import { hardDeleteProjectUnchecked } from '../repositories/project.js';

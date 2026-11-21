@@ -94,4 +94,4 @@ Frontend on a static host (Vercel, Netlify), backend elsewhere. Rejected: introd
 - [ADR-0011: Build app images in CI, distribute via GHCR](0011-build-images-in-ci-distribute-via-ghcr.md) — refines the image-build topology
 - [ADR-0012: Manual pull-based deploy over WireGuard](0012-manual-pull-based-deploy-over-wireguard.md) — replaces the deploy leg
 - [Product Spec](../spec/index.md)
-- [Architecture — Responsibility layers](../spec/architecture.md)
+- [Architecture — Responsibility layers](../../ARCHITECTURE.md#architecture-overview)

@@ -2,7 +2,7 @@
  * Centralized German UI and error strings.
  *
  * All user-facing text lives here so that:
- * - Strings are identifiable and grouped (spec §11.5, §12.2)
+ * - Strings are identifiable and grouped (spec §12.2)
  * - Future i18n extraction has a single source
  * - The same message used in multiple places stays consistent
  *

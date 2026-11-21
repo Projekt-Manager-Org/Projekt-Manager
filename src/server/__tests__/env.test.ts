@@ -5,7 +5,7 @@
  * integration project (by directory), but does NOT spin up the app or
  * touch the database.
  *
- * These tests lock the ADR-0013 / AC-45 promise that the server refuses
+ * These tests lock the ADR-0013 / AC-765 promise that the server refuses
  * to start with ALLOW_INSECURE_HTTP=true in production. The check lives
  * in assertProductionSafe(); a regression that weakens it (removing the
  * throw, inverting the condition, dropping the NODE_ENV dependency) would
@@ -85,7 +85,7 @@ function makeEnv(overrides: Partial<Env>): Env {
   };
 }
 
-describe('assertProductionSafe', () => {
+describe('AC-765: assertProductionSafe', () => {
   it('throws when NODE_ENV=production and ALLOW_INSECURE_HTTP=true', () => {
     expect(() =>
       assertProductionSafe(makeEnv({ NODE_ENV: 'production', ALLOW_INSECURE_HTTP: 'true' })),
@@ -426,7 +426,7 @@ describe('envSchema SSE_HEARTBEAT_INTERVAL_MS handling', () => {
  * every assertProductionSafe() unit test green, because the function
  * itself is unchanged. This suite reads start.ts as a source file and
  * asserts the import + call site are present, so the refuse-to-start
- * promise from ADR-0013 / AC-45 cannot silently detach from the binary.
+ * promise from ADR-0013 / AC-765 cannot silently detach from the binary.
  *
  * Option (c) from the consolidation residuals task: a stronger pin would
  * dynamic-import start.ts after stubbing process.env, but start.ts
