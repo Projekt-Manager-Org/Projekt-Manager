@@ -1,6 +1,6 @@
 # API
 
-The HTTP surface as implemented, and its only documentation: the HTTP API is internal ([api.md §14](../spec/api.md#14-api-specification)). Both artifacts here are generated from the routes `buildApp()` registers.
+The HTTP surface as implemented, and its only documentation: the HTTP API is internal ([api.md §14](../spec/api.md#14-api-specification)). Both artifacts below are generated from the routes `buildApp()` registers; § Error Codes is checked against `ERROR_CODES`.
 
 | Artifact                                                  | Generator                         | Check                       |
 | --------------------------------------------------------- | --------------------------------- | --------------------------- |
@@ -11,7 +11,7 @@ Both read the routes through `scripts/lib/route-introspection.ts`. An access gat
 
 ## Endpoints
 
-<!-- GENERATED:api-surface:START — generated from the routes buildApp() registers (src/server/app.ts); do not hand-edit (AC-352). -->
+<!-- GENERATED:api-surface:START — generated from the routes buildApp() registers (src/server/app.ts); do not hand-edit. -->
 
 | Method  | Path                                                | Auth    | Access                 | Rate limit    |
 | ------- | --------------------------------------------------- | ------- | ---------------------- | ------------- |
@@ -99,10 +99,21 @@ Both read the routes through `scripts/lib/route-introspection.ts`. An access gat
 - **Rate limit** shows production values. Login is 5/min in production, 30/min in dev/test; `LOGIN_RATE_LIMIT_MAX` overrides both.
 - What each endpoint does for its user: the ACs ([verification.md](../spec/verification.md)). `OPTIONS *` is the CORS preflight. Static SPA assets (`registerStaticAssets`, production only) are not API surface and appear in neither artifact.
 
+## Error Codes
+
+Every refusal carries one machine-readable code. Categories: [api.md §14.4.1](../spec/api.md#1441-error-categories).
+
+<!-- CHECKED:error-codes:START — mirrors ERROR_CODES (src/server/errors.ts), pinned by src/server/__tests__/error-codes.test.ts. Edit the array, then this block. Not generated — see ARCHITECTURE.md § Design Decisions (documentation drift guards) for why. -->
+
+`INVALID_CREDENTIALS`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `NOT_PERMITTED`, `VALIDATION_ERROR`, `CONFLICT`, `IDEMPOTENCY_CONFLICT`, `VERSION_CONFLICT`, `NOT_FOUND`, `ROUTE_NOT_FOUND`, `GONE`, `RATE_LIMITED`, `SCHEMA_VERSION_MISMATCH`, `TARGET_NOT_EMPTY`, `RESTORE_CONFIRMATION_MISMATCH`, `MISSING_USER_REFS`, `EXPORT_JOB_ACTIVE`, `IMPORT_JOB_ACTIVE`, `EXPORT_JOB_NOT_READY`, `UPLOAD_OFFSET_CONFLICT`, `UPLOAD_TOO_LARGE`, `UPLOAD_NOT_ACCEPTED`, `BULK_LIMIT_EXCEEDED`, `DEK_UNWRAP_FAILED`, `INVOICE_FROZEN`, `INVOICE_PROJECT_STATE`, `INVOICE_NOT_ISSUED`, `INVOICE_ALREADY_CANCELLED`, `DRAFT_NOT_EXPORTABLE`, `EXPORT_TOO_LARGE`, `COMPANY_PROFILE_REQUIRED`, `CUSTOMER_HAS_INVOICES`, `PROJECT_HAS_INVOICES`, `USER_HAS_INVOICES`, `IMPORT_DROPS_ISSUED_INVOICES`, `SERVER_ERROR`.
+
+<!-- CHECKED:error-codes:END -->
+
 ## OpenAPI Document
 
 - **Requests only.** No route declares a `response:` schema, so the generator strips `@fastify/swagger`'s synthetic `200 Default Response` — silent beats wrong. Adding one is not doc-only: Fastify then serializes through it and drops unlisted fields.
 - **3.1, not 3.0** — the route schemas use `type: [..., 'null']`, and 3.1 makes `responses` optional.
 - **Two gates:** `--check` catches drift; a schema validator catches an invalid document, which drift alone would pass.
-- **Session requirement is derived** from the gates (AC-353). Permission keys are not in it — scopes mean nothing on a cookie scheme; § Endpoints carries them.
+- **Complete:** a registered route the document omits fails the build unless its registration excludes it (`schema: { hide: true }`); Fastify's automatic `HEAD` companions are excluded structurally.
+- **Session requirement is derived** from the gates, never from a list of public endpoints; an operation the generator cannot trace to a registered route fails the build. Permission keys are not in it — scopes mean nothing on a cookie scheme; § Endpoints carries them.
 - `@fastify/swagger` is a devDependency, loaded lazily in `src/server/app.ts` and only by the generator.

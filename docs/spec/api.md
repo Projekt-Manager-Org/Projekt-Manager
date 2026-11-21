@@ -12,7 +12,7 @@ This file holds the role ↔ permission matrix and the error categories ACs refu
 
 Every operation on protected data needs an active session ([AC-574](verification.md#154-authentication)). It also needs what the map below lists; a caller without it is refused ([AC-576](verification.md#1521-role-scoping)). Scope: [§15.21](verification.md#1521-role-scoping). Roles: [index.md §4.2](index.md#42-roles).
 
-<!-- CHECKED:permissions-table:START — mirrors ROLE_PERMISSIONS (src/config/permissions.ts) over the production roles, pinned by src/config/__tests__/permissions.test.ts (AC-343). Edit the config, then this block. -->
+<!-- CHECKED:permissions-table:START — mirrors ROLE_PERMISSIONS (src/config/permissions.ts) over the production roles, pinned by src/config/__tests__/permissions.test.ts. Edit the config, then this block. -->
 
 | Role       | Permissions                                                                                                                                                                                                                                                                                                                                                                               |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -76,12 +76,6 @@ Every refusal falls into one category and carries a German message for the user 
 | **Rate limited**         | Too many requests in the rate-limit window                                                                        |
 
 Where a refusal fits more than one category, its AC names the one used.
-
-<!-- CHECKED:error-codes:START — mirrors ERROR_CODES (src/server/errors.ts), pinned by src/server/__tests__/error-codes.test.ts (AC-354). Edit the array, then this block. Not generated — see ARCHITECTURE.md § Design Decisions (documentation drift guards) for why. -->
-
-The full set of machine-readable error codes: `INVALID_CREDENTIALS`, `UNAUTHENTICATED`, `SESSION_EXPIRED`, `NOT_PERMITTED`, `VALIDATION_ERROR`, `CONFLICT`, `IDEMPOTENCY_CONFLICT`, `VERSION_CONFLICT`, `NOT_FOUND`, `ROUTE_NOT_FOUND`, `GONE`, `RATE_LIMITED`, `SCHEMA_VERSION_MISMATCH`, `TARGET_NOT_EMPTY`, `RESTORE_CONFIRMATION_MISMATCH`, `MISSING_USER_REFS`, `EXPORT_JOB_ACTIVE`, `IMPORT_JOB_ACTIVE`, `EXPORT_JOB_NOT_READY`, `UPLOAD_OFFSET_CONFLICT`, `UPLOAD_TOO_LARGE`, `UPLOAD_NOT_ACCEPTED`, `BULK_LIMIT_EXCEEDED`, `DEK_UNWRAP_FAILED`, `INVOICE_FROZEN`, `INVOICE_PROJECT_STATE`, `INVOICE_NOT_ISSUED`, `INVOICE_ALREADY_CANCELLED`, `DRAFT_NOT_EXPORTABLE`, `EXPORT_TOO_LARGE`, `COMPANY_PROFILE_REQUIRED`, `CUSTOMER_HAS_INVOICES`, `PROJECT_HAS_INVOICES`, `USER_HAS_INVOICES`, `IMPORT_DROPS_ISSUED_INVOICES`, `SERVER_ERROR`.
-
-<!-- CHECKED:error-codes:END -->
 
 ---
 

@@ -1,5 +1,5 @@
 /**
- * AC-247 — Global error handler 4xx pass-through.
+ * Global error handler — 4xx pass-through and log levels (AC-769).
  *
  * Verifies that the API server's `setErrorHandler` and `setNotFoundHandler`
  * honor the HTTP statusCode native to a 4xx-class failure rather than
@@ -14,7 +14,8 @@
  * branch. Logger calls are captured to verify the operational `error`
  * level reflects only genuine 5xx failures.
  *
- * Pins AC-247 (verification.md §15.7).
+ * Pins AC-769; the status mapping is a regression guard for the internal
+ * HTTP API.
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
@@ -46,7 +47,7 @@ const SCHEMA_X_INTEGER = {
 let app: FastifyInstance;
 let errorSpy: ReturnType<typeof vi.spyOn>;
 
-describe('AC-247 — Global error handler 4xx pass-through', () => {
+describe('AC-769: global error handler 4xx pass-through', () => {
   beforeAll(async () => {
     app = buildApp({ logger: false, rateLimit: false });
     // buildApp leaves the not-found handler to the composer (start.ts
@@ -205,7 +206,7 @@ describe('AC-247 — Global error handler 4xx pass-through', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-247, `AppError` branch. Its own app because the assertion is on
+// AC-769, `AppError` branch. Its own app because the assertion is on
 // `request.log` — a pino child of `app.log`, whose bound methods a
 // `vi.spyOn(app.log, 'error')` never sees. Capturing the stream reads
 // what actually reaches a log sink, which is the property under test.
@@ -213,7 +214,7 @@ describe('AC-247 — Global error handler 4xx pass-through', () => {
 // The branch returns before the 5xx fallback, so it carries its own
 // logging decision — the gap a 500 with its own code fell through.
 // ---------------------------------------------------------------------
-describe('AC-247 — an AppError carrying a 5xx logs at the operational error level', () => {
+describe('AC-769: an AppError carrying a 5xx logs at the operational error level', () => {
   async function inject(url: string, handler: () => Promise<never>) {
     const lines: string[] = [];
     const probe = Fastify({
@@ -242,7 +243,7 @@ describe('AC-247 — an AppError carrying a 5xx logs at the operational error le
   });
 
   it('4xx AppError stays below error level — 5xx alerting keeps its meaning', async () => {
-    // The other half of AC-247's rationale. Logging every `AppError`
+    // The other half of AC-769. Logging every `AppError`
     // would fix the silence by drowning it: a 404 for a stale id is not
     // an incident.
     const { res, errorLines } = await inject('/nope', async () => {

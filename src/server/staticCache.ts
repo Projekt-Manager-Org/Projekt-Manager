@@ -52,7 +52,7 @@ export function staticCacheControl(filePath: string): string {
  * `wildcard: false`, `@fastify/static` globs `root` at registration time
  * and registers a HEAD+GET pair per built file, plus the index routes —
  * on the instance `buildApp()` returned, from `start.ts`, in production
- * only. So the generated OpenAPI document (AC-351) does not describe
+ * only. So the generated OpenAPI document does not describe
  * them, and the completeness rule below is disabled for this one call
  * rather than silently not matching it.
  *

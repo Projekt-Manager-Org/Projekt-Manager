@@ -3,7 +3,7 @@
  *
  * Kept alongside `permissions.ts` so the role names referenced from
  * schema validators, notification-rule spec checks, and the UI role
- * selector share one list. Derived from `IS_TEST_ONLY_ROLE` (AC-343)
+ * selector share one list. Derived from `IS_TEST_ONLY_ROLE`
  * rather than hand-listed, so a role's production-vs-test-only status
  * has exactly one source: extending the matrix means extending
  * `IS_TEST_ONLY_ROLE` in `permissions.ts` — this array updates itself.

@@ -42,7 +42,7 @@ import { installErrorHandler } from './error-handler.js';
 import { installUndefinedBodyGuard } from './undefined-body-guard.js';
 
 /**
- * Header of the generated OpenAPI document (AC-351) — the version it
+ * Header of the generated OpenAPI document — the version it
  * declares, its `info` block, its `servers` list.
  *
  * Owned by `scripts/generate-openapi.ts`, which is the only caller and
@@ -76,7 +76,7 @@ export interface AppOptions {
   health?: HealthDeps;
   /**
    * When present, register `@fastify/swagger` in OpenAPI-collection mode
-   * (AC-351) and publish this as the document's header. The plugin adds
+   * and publish this as the document's header. The plugin adds
    * no HTTP route and no UI (that would be `@fastify/swagger-ui`, not
    * registered here); it hooks `onRoute` to build an in-memory document
    * from each route's native `schema:` block, retrievable via
@@ -161,7 +161,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
 
   // Global error handler — preserves 4xx HTTP statusCode and only
   // collapses 5xx-or-statusless errors to SERVER_ERROR. See
-  // src/server/error-handler.ts and AC-247.
+  // src/server/error-handler.ts.
   //
   // The not-found handler is mounted by the caller (start.ts for the
   // SPA fallback, the unit test directly), because Fastify rejects a
@@ -292,7 +292,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     });
   }
 
-  // OpenAPI document collection (AC-351) — see the `openapi` option's
+  // OpenAPI document collection — see the `openapi` option's
   // doc comment above. Registered before the route plugins below so its
   // `onRoute` hook is attached before any route (including the ones
   // gated on `opts.db`) is added.
@@ -307,7 +307,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   // Liveness probe. Registered unconditionally — it is a public
   // production endpoint, so it must be part of the factory's route
   // surface no matter which dependencies a caller wires, or the
-  // generated OpenAPI document (AC-351) omits it.
+  // generated OpenAPI document omits it.
   app.register(healthRoutes(opts.health ?? null));
 
   if (opts.db) {

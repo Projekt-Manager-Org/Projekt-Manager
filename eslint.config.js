@@ -400,7 +400,7 @@ export default tseslint.config(
     },
   },
   // HTTP routes belong to the app factory, never to the instance it
-  // returns. `scripts/generate-openapi.ts` (AC-351) builds the published
+  // returns. `scripts/generate-openapi.ts` builds the published
   // document from what `buildApp()` registers, so a route mounted in
   // `start.ts` is a public endpoint the artifact never mentions and no
   // check can notice — the hole `/api/health` sat in until #284.

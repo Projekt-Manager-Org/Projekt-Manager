@@ -1,5 +1,5 @@
 /**
- * Worker-scope route gate (AC-383) — the gate itself in
+ * Worker-scope route gate (AC-767, AC-768) — the gate itself in
  * `src/test/workerScopeGate.ts`.
  *
  * The gate run probes every worker-reachable route `buildApp()`
@@ -113,7 +113,7 @@ async function insertReadyAttachment(projectId: string, createdBy: string): Prom
   return id;
 }
 
-describe('Worker-scope route gate (AC-383)', () => {
+describe('Worker-scope route gate (AC-767, AC-768)', () => {
   let app: FastifyInstance;
   let routes: RouteOptions[];
   let workerToken: string;

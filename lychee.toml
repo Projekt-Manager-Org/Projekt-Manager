@@ -1,4 +1,5 @@
-# Markdown link checker (AC-348).
+# Markdown link checker. Rule: ARCHITECTURE.md § Design Decisions
+# (documentation drift guards).
 #
 # Resolves relative file links and `#anchor` fragments across every
 # tracked `*.md`. Consumed identically by CI (the pinned image in the
@@ -56,7 +57,7 @@ include_fragments = "anchor-only"
 # `md,mkd,mdx,mdown,mdwn,mkdn,mkdown,markdown,html,htm,css,txt,xml`,
 # which pulls in `index.html` — whose `/favicon.svg` and
 # `/manifest.webmanifest` are web-root paths that need a `root_dir` to
-# resolve and are correct as written. AC-348 scopes this check to
+# resolve and are correct as written. This check is scoped to
 # documentation, so narrow the walker rather than configure a root for
 # assets it was never meant to check.
 extensions = ["md"]

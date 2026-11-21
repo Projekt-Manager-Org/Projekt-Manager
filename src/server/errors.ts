@@ -10,12 +10,12 @@ import type { MissingUserRefsPayload } from '../domain/dataExchange.js';
 
 /**
  * Every machine-readable error code the server raises — the single form
- * of the set (AC-354). Most reach a response; the import-only ones only
+ * of the set. Most reach a response; the import-only ones only
  * fail an import job. An array rather than a bare union,
  * with `ErrorCode` derived from it below: a union has no runtime form, so
- * nothing could read it or publish it into api.md §14.4.1.
+ * nothing could read it or publish it into docs/api/README.md.
  *
- * api.md §14.4.1's `CHECKED:error-codes` block mirrors this array and is
+ * docs/api/README.md's `CHECKED:error-codes` block mirrors this array and is
  * pinned to it by `__tests__/error-codes.test.ts` — edit both together.
  *
  * Declaration order is publication order. Grouped by domain, so the
@@ -38,7 +38,7 @@ export const ERROR_CODES = [
   'TARGET_NOT_EMPTY',
   'RESTORE_CONFIRMATION_MISMATCH',
   'MISSING_USER_REFS',
-  // Full-account takeout jobs (ADR-0018, api.md §14.4.1).
+  // Full-account takeout jobs (ADR-0018).
   'EXPORT_JOB_ACTIVE',
   'IMPORT_JOB_ACTIVE',
   'EXPORT_JOB_NOT_READY',
@@ -199,7 +199,7 @@ export type UploadHeader = keyof typeof UPLOAD_HEADER_MESSAGES;
  * protocol-level — it fires before any body schema applies, and the tus
  * client reads the status, not the payload. Minted here rather than
  * assembled at the call site so the status lives in one place and the
- * code is visible to the AC-354 factory table.
+ * code is visible to the factory table in `error-codes.test.ts`.
  */
 export function uploadHeaderInvalid(header: UploadHeader): AppError {
   return new AppError('VALIDATION_ERROR', UPLOAD_HEADER_MESSAGES[header], 400);
@@ -277,8 +277,7 @@ export function notFound(entity: string = STRINGS.entities.resource): AppError {
 /**
  * The request's method and URL match no registered handler — an unknown
  * URL, or a known one under a verb it does not serve. Distinct from
- * `notFound()` (entity missing on a known endpoint) — see api.md §14.4.1
- * / AC-247.
+ * `notFound()` (entity missing on a known endpoint) — see api.md §14.4.1.
  */
 export function routeNotFound(): AppError {
   return new AppError('ROUTE_NOT_FOUND', STRINGS.errors.routeNotFound, 404);
@@ -290,7 +289,7 @@ export function routeNotFound(): AppError {
  * not-found handler when it bubbles into `setErrorHandler`) in an
  * `AppError` that preserves the original statusCode and surfaces a
  * stable machine-readable code. Returns `null` for non-4xx errors so
- * the caller falls back to `serverError()`. See AC-247.
+ * the caller falls back to `serverError()`.
  *
  * Domain `notFound()` errors are `AppError` instances and are handled
  * upstream of this mapper; a 404 reaching here is therefore route-shaped

@@ -378,7 +378,7 @@ Every record has an ID that never changes and carries no meaning — no state, d
 
 ### 6.4 Concurrency
 
-`version` is the token saving a customer, an invoice draft or the company profile carries, so a stale save is refused ([AC-375](verification.md#1517-data-integrity), [AC-381](verification.md#1517-data-integrity), [AC-546](verification.md#1530-invoices), [AC-699](verification.md#1530-invoices)); a stale project transition is refused too ([AC-94](verification.md#1517-data-integrity)). Which refusal a stale change reports when its target is also archived or frozen: [AC-763](verification.md#1517-data-integrity).
+`version` is the token saving a customer, an invoice draft or the company profile carries, so a stale save is refused ([AC-375](verification.md#1517-data-integrity), [AC-381](verification.md#1517-data-integrity), [AC-546](verification.md#1530-invoices), [AC-699](verification.md#1530-invoices)); a stale project transition is refused too ([AC-94](verification.md#1517-data-integrity)). A project edit is never refused as stale ([AC-770](verification.md#1517-data-integrity)). Which refusal a stale change reports when its target is also archived or frozen: [AC-763](verification.md#1517-data-integrity).
 
 ### 6.6 Referential Integrity
 

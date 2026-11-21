@@ -6,7 +6,7 @@
  * call it without a session.
  *
  * Lives here, not in `start.ts`, because `buildApp()` is the only route
- * surface the generated OpenAPI document can see (AC-351) — a route
+ * surface the generated OpenAPI document can see — a route
  * mounted on the returned instance is a public endpoint the published
  * artifact never mentions. The `no-restricted-syntax` rule in
  * `eslint.config.js` keeps it that way.

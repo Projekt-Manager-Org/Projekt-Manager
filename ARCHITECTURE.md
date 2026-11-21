@@ -109,7 +109,7 @@ Each `Owns` cell is a one-line summary. Below it, [§ Directory Detail](#directo
 
 ### Directory Detail
 
-Entries are cited by partial path (`routes/auth.ts`), so the citation check (AC-347) resolves each in its own directory — a basename another directory later reuses cannot keep a dead entry alive.
+Entries are cited by partial path (`routes/auth.ts`), so the citation check (`scripts/check-doc-paths.sh`) resolves each in its own directory — a basename another directory later reuses cannot keep a dead entry alive.
 
 #### `src/server/routes/`
 
@@ -249,7 +249,7 @@ Routes live in `src/server/routes/`, and `buildApp()` (`src/server/app.ts`) regi
 
 - **Contract:** the ACs; permissions and error categories in [api.md](docs/spec/api.md). The HTTP API itself is internal, documented by the generated artifacts below.
 - **Endpoint table and OpenAPI document** (generated, CI-checked): [docs/api/](docs/api/README.md).
-- **Error codes:** `ERROR_CODES` in `src/server/errors.ts`, mirrored in [api.md §14.4.1](docs/spec/api.md#1441-error-categories) (AC-354).
+- **Error codes:** `ERROR_CODES` in `src/server/errors.ts`, mirrored in [docs/api/ § Error Codes](docs/api/README.md#error-codes). Categories: [api.md §14.4.1](docs/spec/api.md#1441-error-categories).
 - **Access model:** [§ Permission Gating](#permission-gating).
 
 ---
@@ -259,8 +259,8 @@ Routes live in `src/server/routes/`, and `buildApp()` (`src/server/app.ts`) regi
 - **One matrix, two layers.** `src/config/permissions.ts` feeds server gates (`requirePermission`, 403) and UI affordances (`usePermission`). The server is authoritative. UI code asks for a permission, not a role — except owner-only surfaces (company profile, backup badge) ([api.md §14.3](docs/spec/api.md#143-authorization-rules)).
 - **One exception:** `requireRole('owner')` on `PUT /api/company-profile` — the spec mints no `company_profile:*` key for a singleton.
 - **Navigation:** `src/config/routes.ts` declares each view's access rule as data; nav, route guard and landing derive from it.
-- **Data scoping is orthogonal** ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)): permissions grant the capability, `src/server/repositories/scope.ts` narrows the rows, and `project-read.ts` narrows a customer's fields on an archived project (AC-542). Every route a worker reaches is probed for it, or exempt with a reason, in `src/test/workerScopeGate.ts` (AC-383).
-- Both matrices are mirrored in the spec and checked against the code (AC-343, AC-349).
+- **Data scoping is orthogonal** ([ADR-0019](docs/adr/0019-worker-data-scoping-repository-layer-predicate.md)): permissions grant the capability, `src/server/repositories/scope.ts` narrows the rows, and `project-read.ts` narrows a customer's fields on an archived project (AC-542). Every route a worker reaches is probed for it, or exempt with a reason, in `src/test/workerScopeGate.ts` (AC-767, AC-768); a self-test with planted routes proves the gate fails.
+- Both matrices are mirrored in the spec and checked against the code ([§ Design Decisions](#design-decisions-not-adr-worthy), documentation drift guards).
 
 ---
 
@@ -441,15 +441,15 @@ Contract: [verification.md §15.28](docs/spec/verification.md#1528-realtime-even
 
 ## Edit Concurrency
 
-Contract: [data-model.md §6.4](docs/spec/data-model.md#64-concurrency), [AC-379](docs/spec/verification.md#1517-data-integrity). SSE refreshes views; `version` stops stale writes to customers, invoices and the company profile. Project edits stay last-write-wins.
+Contract: [data-model.md §6.4](docs/spec/data-model.md#64-concurrency), [AC-379](docs/spec/verification.md#1517-data-integrity). SSE refreshes views; `version` stops stale writes to customers, invoices and the company profile. Project edits stay last-write-wins ([AC-770](docs/spec/verification.md#1517-data-integrity)).
 
-| Concern                                                                                                         | Where                                                                                                  |
-| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `version` bump on every UPDATE (cascades, frozen excepted)                                                      | `*_version_bump` triggers in `src/server/db/baseline/tail/50-row-version.sql`                          |
-| Field validation; lock row; existence (archived counts as absent), state, version, then issuance rules (atomic) | `get*ForMutation` (`SELECT … FOR UPDATE`) in the repositories; the checks in the services              |
-| `expectedVersion` route schema                                                                                  | `src/server/routes/expected-version.ts`                                                                |
-| Every write route versioned or exempt, with a reason (AC-380)                                                   | `VERSION_CLASSIFICATION` in `src/test/versionClassificationGate.ts` — a new write route needs an entry |
-| Client: start version, one write at a time                                                                      | Captured on form / dialog open by the editing component; the in-flight mutation lock serializes it     |
+| Concern                                                                                                         | Where                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version` bump on every UPDATE (cascades, frozen excepted)                                                      | `*_version_bump` triggers in `src/server/db/baseline/tail/50-row-version.sql`                                                                              |
+| Field validation; lock row; existence (archived counts as absent), state, version, then issuance rules (atomic) | `get*ForMutation` (`SELECT … FOR UPDATE`) in the repositories; the checks in the services                                                                  |
+| `expectedVersion` route schema                                                                                  | `src/server/routes/expected-version.ts`                                                                                                                    |
+| Every write route versioned or exempt, with a reason                                                            | `VERSION_CLASSIFICATION` in `src/test/versionClassificationGate.ts` — a new write route needs an entry; a planted unclassified route proves the gate fails |
+| Client: start version, one write at a time                                                                      | Captured on form / dialog open by the editing component; the in-flight mutation lock serializes it                                                         |
 
 ---
 
@@ -493,15 +493,18 @@ Workers hold no `invoice:*` permission, so every invoice route refuses them (403
 - **Client-side routing**: declarative mode (`<BrowserRouter>`, no data router). `src/config/routes.ts` is the single route table — URL, access rule, per-role landing; nav and guard derive from it, landing from its `LANDING_ORDER`.
 - **Escape-to-dismiss**: every Esc-closable surface registers on the LIFO `src/hooks/escapeStack.ts`, so only the topmost closes. Modals use `src/ui/common/useDialogA11y.ts`, the rest `src/hooks/useEscapeKey.ts`; no hand-rolled `keydown` listeners.
 - **Menu close on outside click**: `src/ui/common/MenuBackdrop.tsx`, an invisible overlay, so one click closes the menu without activating what lies beneath (#130).
-- **Errors**: `src/server/error-handler.ts` passes Fastify 4xx through as stable codes; an `AppError` keeps its own; any other 5xx or status-less error becomes `SERVER_ERROR` ([AC-247](docs/spec/verification.md#157-engineering)). Every `pg.Pool` gets an error listener; uncaught errors log once and exit.
+- **Errors**: `src/server/error-handler.ts` passes Fastify 4xx through as stable codes; an `AppError` keeps its own; any other 5xx or status-less error becomes `SERVER_ERROR`. A 5xx logs at `error`, a refusal below it ([AC-769](docs/spec/verification.md#156-deployment)). Every `pg.Pool` gets an error listener; uncaught errors log once and exit.
 - **Configuration boundary** ([architecture.md §12.6](docs/spec/architecture.md#126-feature-manifest-and-operator-confidence)): env schema vs examples in CI (`scripts/check-env-drift.sh`), aggregated validation in deploy pre-flight (`src/server/deploy-preflight-cli.ts`), and a boot-time feature manifest (`src/server/config/features.ts`).
 - **Documentation drift guards** — each fails the build. The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway (the endpoint table: `buildApp()` route collection); check the rest.
 
-| Kind                      | Guards                                                                                                                                                         |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generated from code       | `docs/api/openapi.json` (AC-351), the endpoint table (AC-352) — see [docs/api/](docs/api/README.md)                                                            |
-| `CHECKED:` blocks vs code | permission matrix (AC-343), nav matrix (AC-349), error codes (AC-354) — read via `src/test/checkedBlock.ts`                                                    |
-| Verified without a source | cited files and functions (AC-347, `scripts/check-doc-paths.sh`), links and anchors (AC-348, `lychee.toml`), AC traceability (`scripts/check-traceability.sh`) |
+A guard over a marked block fails, rather than passes, when its markers are missing.
+
+| Kind                      | Guard                                                                                                                                                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generated from code       | `docs/api/openapi.json` from the route schemas ([docs/api/ § OpenAPI Document](docs/api/README.md#openapi-document))                                                                                             |
+| Generated from code       | The endpoint table in [docs/api/](docs/api/README.md), every column read off the route and its gates                                                                                                             |
+| `CHECKED:` blocks vs code | Permission matrix (production roles only; every role classified production or test-only), nav matrix (rule, resolved roles, landing order), error codes — read via `src/test/checkedBlock.ts`                    |
+| Verified without a source | Cited files and functions (`scripts/check-doc-paths.sh`; exemptions per document, with a reason), links and anchors (`lychee.toml`, GitHub slugs, no network), AC traceability (`scripts/check-traceability.sh`) |
 
 Prettier formats the whole repository (#361); its exceptions are in `.prettierignore`.
 

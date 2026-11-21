@@ -8,7 +8,8 @@
  * this table, so what the user sees and what the guard allows cannot
  * disagree. The per-role matrix in `docs/spec/ui/index.md §8.7.1` is
  * hand-written and checked against this table, and CI fails on drift
- * (AC-349) — the same guarantee the permission matrix carries.
+ * — the same guarantee the permission matrix carries. Rule:
+ * ARCHITECTURE.md § Design Decisions (documentation drift guards).
  *
  * Access rules are DATA, not closures (`RouteAccess` below). A
  * predicate can be evaluated but not read: `(u) => hasPermission(u.roles,
@@ -75,7 +76,7 @@ export type RouteView =
  *
  * Readable by construction: the spec's nav matrix (ui/index.md §8.7.1)
  * publishes the rule verbatim beside the role set it resolves to, and
- * `routes.test.ts` checks both against this table (AC-349). A closure
+ * `routes.test.ts` checks both against this table. A closure
  * could be evaluated but not compared, so only the role set would be
  * checkable.
  */

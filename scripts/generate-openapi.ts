@@ -1,6 +1,6 @@
 /**
- * Emits `docs/api/openapi.json` — the OpenAPI 3.1 document AC-351
- * publishes, built from the routes `buildApp()` registers and their
+ * Emits `docs/api/openapi.json` — the OpenAPI 3.1 document of the
+ * internal HTTP API, built from the routes `buildApp()` registers and their
  * native Fastify `schema:` blocks. Why 3.1, why requests only, and why
  * validity is gated separately from drift: docs/api/README.md § OpenAPI
  * Document.
@@ -56,6 +56,8 @@
  * OpenAPI 3.1, does not match the route set in both directions, or the
  * route set itself gates access without authenticating) so the caller's
  * `set -e` trips loudly instead of silently no-op'ing.
+ *
+ * Rule: ARCHITECTURE.md § Design Decisions (documentation drift guards).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';

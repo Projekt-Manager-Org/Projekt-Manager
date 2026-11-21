@@ -27,13 +27,15 @@ export type Permission =
 export type Role = 'owner' | 'office' | 'worker' | 'bookkeeper';
 
 /**
- * Single-source classification of every `Role` (AC-343). A new `Role`
+ * Single-source classification of every `Role`. A new `Role`
  * variant forces an update to this map — otherwise `tsc` errors with a
  * missing key — mirroring `ROLE_CLASSIFICATION` in
  * `src/server/repositories/scope.ts`. `ROLE_KEYS` (src/config/roleKeys.ts)
  * derives its production-role set from this map rather than hand-listing
  * roles, and the published permission matrix (docs/spec/api.md §14.3) is
  * checked against that set.
+ *
+ * Rule: ARCHITECTURE.md § Design Decisions (documentation drift guards).
  */
 export const IS_TEST_ONLY_ROLE: Record<Role, boolean> = {
   owner: false,

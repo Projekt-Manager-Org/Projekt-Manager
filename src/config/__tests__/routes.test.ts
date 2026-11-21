@@ -82,7 +82,6 @@ const roleCell = (admits: (caller: RouteCaller) => boolean): string =>
 
 /** A route as §8.7.1 publishes it: the rule, then what it resolves to. */
 const publishedRow = (entry: RouteEntry): string[] => [
-  `\`${entry.view}\``,
   `\`${entry.path}\``,
   `"${entry.label}"`,
   entry.access.kind === 'role'
@@ -93,16 +92,16 @@ const publishedRow = (entry: RouteEntry): string[] => [
 ];
 
 /**
- * The nav views §8.7.1 publishes for a role, in table order. Read from
+ * The nav paths §8.7.1 publishes for a role, in table order. Read from
  * the hand-written matrix rather than from `ROUTES`, so AC-75 checks
  * `visibleRoutesForUser` against the spec, not against its own source.
  */
-const navViewsFor = (role: RoleName): string[] =>
+const navPathsFor = (role: RoleName): string[] =>
   tableRows(readCheckedBlock(NAV_DOC, 'nav-matrix'))
-    .filter(([, , , , roles]) => roles.split(', ').includes(role))
-    .map(([view]) => view.replaceAll('`', ''));
+    .filter(([, , , roles]) => roles.split(', ').includes(role))
+    .map(([path]) => path.replaceAll('`', ''));
 
-describe('ROUTES — published nav matrix (AC-349)', () => {
+describe('ROUTES — published nav matrix', () => {
   it('ui/index.md §8.7.1 publishes exactly the nav entries of ROUTES', () => {
     const published = tableRows(readCheckedBlock(NAV_DOC, 'nav-matrix'));
     // Parametrized paths are deep-link targets, not nav entries — the
@@ -113,13 +112,13 @@ describe('ROUTES — published nav matrix (AC-349)', () => {
 
   it('ui/index.md §8.7.1 publishes exactly LANDING_ORDER', () => {
     const block = readCheckedBlock(NAV_DOC, 'nav-matrix');
-    // `owner / office → \`kanban\`` — the table carries no arrows, so
+    // `owner / office → \`/kanban\`` — the table carries no arrows, so
     // every match belongs to the first-match order below it.
-    const published = [...block.matchAll(/(\w+(?: \/ \w+)*) → `(\w+)`/g)].map(
-      ([, roles, view]) => ({ roles: roles.split(' / '), view }),
+    const published = [...block.matchAll(/(\w+(?: \/ \w+)*) → `([^`]+)`/g)].map(
+      ([, roles, path]) => ({ roles: roles.split(' / '), path }),
     );
     expect(published).toEqual(
-      LANDING_ORDER.map((entry) => ({ roles: [...entry.roles], view: entry.view })),
+      LANDING_ORDER.map((entry) => ({ roles: [...entry.roles], path: pathFromView(entry.view) })),
     );
   });
 });
@@ -154,9 +153,9 @@ describe('ROUTES — deep-link entries', () => {
 describe('ROUTES — per-role nav matrix (AC-75)', () => {
   for (const role of ROLE_NAMES) {
     it(`role '${role}' sees exactly the matrix set`, () => {
-      const visible = visibleRoutesForUser(caller(role)).map((r) => r.view);
+      const visible = visibleRoutesForUser(caller(role)).map((r) => r.path);
       // Order included: the Header renders in this order.
-      expect(visible).toEqual(navViewsFor(role));
+      expect(visible).toEqual(navPathsFor(role));
     });
   }
 

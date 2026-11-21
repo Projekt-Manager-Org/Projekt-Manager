@@ -18,8 +18,8 @@
  * would corrupt cross-project totals. The invariant fires per-project
  * at every checkpoint.
  *
- * `[infra]` — the assertion is a structural invariant on the data
- * layer; not a behaviour observable through the API. This test is the
+ * The assertion is a structural invariant on the data layer; not a
+ * behaviour observable through the API. This test is the
  * whole reconciliation safety net: running the same comparison on a
  * schedule against live state was weighed at #172 and dropped.
  *
