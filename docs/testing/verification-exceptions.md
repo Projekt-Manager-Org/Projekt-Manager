@@ -34,20 +34,21 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-22  | retired | —                                                                                    |
 | AC-30  | infra   | deployment review — reverse-proxy TLS                                                |
 | AC-31  | infra   | deploy procedure — `scripts/deploy.sh`                                               |
-| AC-32  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                  |
-| AC-33  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                  |
+| AC-32  | retired | —                                                                                    |
+| AC-33  | retired | —                                                                                    |
 | AC-34  | infra   | code review                                                                          |
-| AC-35  | infra   | ESLint import zones — `eslint.config.js`, CI `lint`                                  |
+| AC-35  | retired | —                                                                                    |
 | AC-36  | infra   | CI `lint` — ESLint, Prettier                                                         |
-| AC-37  | infra   | CI `check` job; nightly `e2e.yml`                                                    |
+| AC-37  | retired | —                                                                                    |
 | AC-38  | retired | —                                                                                    |
 | AC-40  | retired | —                                                                                    |
 | AC-41  | retired | —                                                                                    |
 | AC-42  | retired | —                                                                                    |
 | AC-43  | retired | —                                                                                    |
+| AC-45  | retired | —                                                                                    |
 | AC-46  | infra   | deploy procedure — `scripts/deploy.sh`                                               |
 | AC-47  | infra   | deploy procedure — `scripts/deploy.sh <sha>`                                         |
-| AC-48  | infra   | deploy procedure — `scripts/smoke-app-health.sh`                                     |
+| AC-48  | infra   | deploy procedure — `scripts/smoke-app-health.sh`, `scripts/smoke-caddy-health.sh`    |
 | AC-49  | infra   | deployment review — VPN-only reachability                                            |
 | AC-50  | infra   | deployment review — persistent volumes                                               |
 | AC-51  | infra   | deploy procedure — `scripts/deploy.sh` takes a commit SHA                            |

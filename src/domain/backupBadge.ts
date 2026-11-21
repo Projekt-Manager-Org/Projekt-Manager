@@ -38,9 +38,9 @@
  * "Status unbekannt". Rendering code may sentence-case it; tests match
  * case-insensitively so the component is free to choose.
  *
- * Pure function: no I/O, no React, no DB. Safe to import from both
- * server (for the authenticated endpoint response) and client (for
- * rendering) per the shared-domain layering rule in architecture.md §11.2.
+ * Pure function: no I/O, no React, no DB. Safe to import from both server (for
+ * the authenticated endpoint response) and client (for rendering) per the
+ * shared-domain layering rule in ARCHITECTURE.md § Architecture Overview.
  */
 
 /**

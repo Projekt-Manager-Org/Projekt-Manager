@@ -22,10 +22,10 @@
  * (`AuditService`, `mutate()`, route schemas) AND the UI resolver below.
  *
  * Layering: the config layer is importable from both server and UI code
- * (architecture.md §11.2). Keeping the vocabulary here avoids the
- * server↔UI duplication that an earlier draft had — a new action adds
- * one line here and propagates to the filter schema, the type union,
- * and the UI label via the same import.
+ * (ARCHITECTURE.md § Architecture Overview). Keeping the vocabulary here avoids
+ * the server↔UI duplication that an earlier draft had — a new action adds one
+ * line here and propagates to the filter schema, the type union, and the UI
+ * label via the same import.
  */
 export const AUDIT_ACTION_KEYS = [
   'create',

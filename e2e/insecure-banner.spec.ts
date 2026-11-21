@@ -22,7 +22,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
  */
 const INSECURE_HOST = 'insecure.test';
 
-test.describe('Insecure connection banner', () => {
+test.describe('AC-766: Insecure connection banner', () => {
   test('no banner and standard title on localhost', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('login-form')).toBeVisible();

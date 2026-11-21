@@ -10,7 +10,7 @@ ADR-0002 locked the frontend stack and made TypeScript the project language. ADR
 
 Key forces:
 
-- **TypeScript end-to-end** (architecture.md §11.1). First-class TS support required, not bolted-on types.
+- **TypeScript end-to-end.** First-class TS support required, not bolted-on types.
 - **Lightweight for the scale.** 1–5 users, 10–30 concurrent projects. Enterprise scaffolding (DI, decorators, modules) adds ceremony without proportional benefit.
 - **SQL-literate.** Spec requires versioned schema migrations and a repository-pattern storage layer. Queries should be inspectable — debugging opaque query generation is a poor use of time.
 - **Validation at the boundary.** API layer validates all incoming requests (spec §API). Built-in schema validation keeps this co-located with route definitions.
@@ -84,5 +84,5 @@ Query builder with solid migration support. Rejected: requires manual TS types f
 
 - [ADR-0002: Tech Stack — TypeScript, React 19, Vite, Zustand](0002-tech-stack-typescript-react-vite-zustand.md)
 - [ADR-0003: Deployment infrastructure — VPS, Docker Compose, GitHub Actions](0003-deployment-infrastructure-vps-docker-compose-github-actions.md)
-- [Architecture — Responsibility layers](../spec/architecture.md)
+- [Architecture — Responsibility layers](../../ARCHITECTURE.md#architecture-overview)
 - [Product Spec](../spec/index.md)

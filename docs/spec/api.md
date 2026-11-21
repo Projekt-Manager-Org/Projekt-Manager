@@ -4,17 +4,7 @@
 
 ## 14. API Specification
 
-This file holds the health check, the role ↔ permission matrix and the error categories ACs refuse with. The HTTP API between front end and server is internal: [ARCHITECTURE.md § API Surface](../../ARCHITECTURE.md#api-surface).
-
----
-
-### 14.2 Operations
-
-#### 14.2.0 Health
-
-| Operation        | Input | Output                                                                | Notes                                                                                                                                                |
-| ---------------- | ----- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Health check** | —     | status (`ok` or `degraded`), per-component checks (database, storage) | No authentication required. Returns degraded with component-level detail if any probe fails. Used by the deploy script for post-deploy verification. |
+This file holds the role ↔ permission matrix and the error categories ACs refuse with. The HTTP API between front end and server is internal: [ARCHITECTURE.md § API Surface](../../ARCHITECTURE.md#api-surface).
 
 ---
 
@@ -95,4 +85,4 @@ The full set of machine-readable error codes: `INVALID_CREDENTIALS`, `UNAUTHENTI
 
 ---
 
-_Cross-references: [index.md](index.md) for scope and assumptions, [data-model.md](data-model.md) for entity definitions, [architecture.md](architecture.md) for responsibility layers and security requirements, [verification.md](verification.md) for acceptance criteria._
+_Cross-references: [index.md](index.md) for scope and assumptions, [data-model.md](data-model.md) for entity definitions, [architecture.md](architecture.md) for external constraints, configuration and security requirements, [verification.md](verification.md) for acceptance criteria._

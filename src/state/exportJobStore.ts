@@ -28,7 +28,7 @@ import { onSseEvent } from '@/sse/client';
 import { handleSessionExpired } from './sessionExpired';
 
 // Re-export the job DTO so UI components read the shape from the state layer —
-// `no-restricted-imports` (AC-33) forbids them importing `@/api/client` directly.
+// `no-restricted-imports` forbids them importing `@/api/client` directly.
 export type { DataExchangeJobDto } from '@/api/client';
 
 interface ExportJobStore {
@@ -40,7 +40,7 @@ interface ExportJobStore {
   start: () => Promise<void>;
   /**
    * URL builder for the Range-capable archive download. Exposed here so the
-   * dialog never imports the API client directly (AC-33 — UI dispatches through
+   * dialog never imports the API client directly (UI dispatches through
    * the state layer); the browser drives the download via an `<a href download>`.
    */
   downloadPath: (id: string) => string;

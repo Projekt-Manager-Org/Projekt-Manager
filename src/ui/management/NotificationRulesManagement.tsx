@@ -7,7 +7,7 @@
  * dialog (AC-199 form conditionals live in `NotificationRuleForm`).
  *
  * State flows through `notificationRuleStore` so the UI layer never
- * imports the API client directly (architecture.md §11.2 +
+ * imports the API client directly (ARCHITECTURE.md § Architecture Overview +
  * eslint restricted imports).
  */
 

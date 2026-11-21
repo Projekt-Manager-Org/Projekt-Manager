@@ -110,7 +110,7 @@ export interface SummaryData {
 
 /**
  * Available view modes. Extend this union and App.tsx when adding new views.
- * See architecture.md §11.5.
+ * See ARCHITECTURE.md § Adding a new view.
  */
 export type ViewMode =
   | 'meineProjekte'

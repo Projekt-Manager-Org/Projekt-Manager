@@ -655,7 +655,7 @@ function storagePublicEndpointMsg(endpoint: string): string {
 
 /**
  * Production-safety predicate: refuses ALLOW_INSECURE_HTTP=true under
- * NODE_ENV=production. ADR-0013 / AC-45 promise the server refuses to
+ * NODE_ENV=production. ADR-0013 / AC-765 promise the server refuses to
  * start on this combination — this is that promise.
  */
 function checkProductionSafe(source: GuardSource): GuardResult {
@@ -822,7 +822,7 @@ function hostnameLooksInternal(endpoint: string): boolean {
 /**
  * Assert startup safety invariants that depend on NODE_ENV. Called from
  * start.ts right after validateEnvRuntime(). Refuses to start in
- * production with ALLOW_INSECURE_HTTP=true (ADR-0013 / AC-45).
+ * production with ALLOW_INSECURE_HTTP=true (ADR-0013 / AC-765).
  */
 export function assertProductionSafe(env: Env): void {
   const r = checkProductionSafe(env);

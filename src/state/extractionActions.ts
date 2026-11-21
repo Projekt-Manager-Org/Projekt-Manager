@@ -1,9 +1,10 @@
 /**
  * Extraction-modal actions — thin wrappers around API calls with session handling.
  *
- * The UI layer must not import @/api/client directly (AC-33). These functions
- * provide the same operations the EmailExtractModal needs, routed through
- * the state layer with proper session-expiry delegation.
+ * The UI layer must not import @/api/client directly (ARCHITECTURE.md §
+ * Architecture Overview). These functions provide the same operations the
+ * EmailExtractModal needs, routed through the state layer with proper
+ * session-expiry delegation.
  */
 
 import { extractApi, customerApi, projectApi } from '@/api/client';

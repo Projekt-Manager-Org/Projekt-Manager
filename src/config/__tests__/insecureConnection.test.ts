@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isInsecureConnection } from '../insecureConnection';
 
-describe('isInsecureConnection', () => {
+describe('AC-766: isInsecureConnection', () => {
   it('returns false for HTTPS on any host', () => {
     expect(isInsecureConnection('https:', 'example.com')).toBe(false);
     expect(isInsecureConnection('https:', '192.168.1.50')).toBe(false);

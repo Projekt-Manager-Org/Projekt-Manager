@@ -1,7 +1,7 @@
 /**
- * Notification domain types — shared by server services, repositories
- * and UI components. Per architecture.md §11.2 the domain layer is the
- * only module cross-importable from both sides of the codebase.
+ * Notification domain types — shared by server services, repositories and UI
+ * components. Per ARCHITECTURE.md § Architecture Overview the domain layer is
+ * the only module cross-importable from both sides of the codebase.
  *
  * The DB-level column types live in schema.ts; these interfaces pin the
  * service-boundary shape (camelCase, no ORM artefacts).
@@ -21,7 +21,7 @@ export interface NotificationRecipientSpec {
  * API-facing rule shape consumed by the admin rule-editor surface
  * (ui/management.md §8.14) and the `notificationRuleStore`. Mirrors
  * the server's `NotificationRuleResponse` — kept here so the UI layer
- * can import the type without touching the API client (AC-33).
+ * can import the type without touching the API client.
  */
 export interface NotificationRule {
   id: string;

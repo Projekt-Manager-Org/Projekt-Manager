@@ -1,10 +1,10 @@
 /**
  * Read-side service for the backup-freshness surface.
  *
- * The write path (upsert on each run) lives in `services/backup.ts`.
- * This service carries the READ surface so routes can render the
- * badge without reaching into the repository (architecture.md §11.2
- * — routes delegate to services, not repositories).
+ * The write path (upsert on each run) lives in `services/backup.ts`. This
+ * service carries the READ surface so routes can render the badge without
+ * reaching into the repository (ARCHITECTURE.md § Architecture Overview —
+ * routes delegate to services, not repositories).
  *
  * Kept deliberately thin: just a read. The complexity of the write
  * path does not belong here; keeping the two surfaces separate keeps

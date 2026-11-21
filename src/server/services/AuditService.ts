@@ -38,13 +38,13 @@ export { AUDIT_ENTITY_TYPES };
 export type { AuditEntityType } from '../db/schema.js';
 
 /**
- * The action vocabulary pinned by data-model.md §5.10. The canonical
- * definition lives in `src/config/auditActionLabels.ts` — the config
- * layer is the only module both the server and the UI may import from
- * (architecture.md §11.2), and collocating the vocabulary with its
- * German labels prevents the two sides from drifting. We re-export
- * under the legacy `AUDIT_ACTIONS` name so downstream callers (route
- * schemas, tests) keep compiling while the single-source move lands.
+ * The action vocabulary pinned by data-model.md §5.10. The canonical definition
+ * lives in `src/config/auditActionLabels.ts` — the config layer is the only
+ * module both the server and the UI may import from (ARCHITECTURE.md §
+ * Architecture Overview), and collocating the vocabulary with its German labels
+ * prevents the two sides from drifting. We re-export under the legacy
+ * `AUDIT_ACTIONS` name so downstream callers (route schemas, tests) keep
+ * compiling while the single-source move lands.
  */
 export const AUDIT_ACTIONS = AUDIT_ACTION_KEYS;
 export type { AuditAction };

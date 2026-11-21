@@ -7,8 +7,8 @@
  * "nth write" — every mutation is an upsert on the fixed `singleton`
  * primary key.
  *
- * Architecture layering (architecture.md §11.2): repositories touch the
- * DB directly. The backup service orchestrates and never reaches here
+ * Architecture layering (ARCHITECTURE.md § Architecture Overview): repositories
+ * touch the DB directly. The backup service orchestrates and never reaches here
  * except through these functions.
  */
 
