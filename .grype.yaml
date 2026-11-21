@@ -16,38 +16,46 @@ ignore:
     reason: JWK-parsing DoS on ACME-server/PKI paths our Caddyfile does not enable; no v3 fix
     expires: 2027-01-26
 
-  # OpenSSL 3.5.9 in Alpine 3.24 (app, backup, db): CVE-2026-88823/-95692
-  # (AES-GCM-SIV), -95691 (QUIC client), -107496 (CMS_encrypt with EC
-  # recipients). OpenSSL rates them Low; CISA-ADP's High (via NVD) trips
-  # the gate. Edge patched them in openssl 3.5.9-r1; 3.24 has no fix yet.
-  # Unreached here (checked 2026-11-18): no binary linking the system
-  # libraries imports CMS_encrypt or an OSSL_QUIC_* symbol, and only
-  # libssl and the legacy/loader_attic modules fetch ciphers by name (TLS
-  # has no GCM-SIV suite). Node bundles its own OpenSSL 3.5.9, invisible
-  # to Grype; the app uses only AES-256-GCM there, and a Node release
-  # fixes it. Drop when 3.24 ships the fix: `apk upgrade` takes it.
+  # OpenSSL 3.5.9-r1 in Alpine 3.24 (app, backup, db): CVE-2026-124709
+  # (QUIC server), -107494 (QUIC peer), -84786 (DANE client), -121482
+  # (CRL checking during X509 verify; quadratic via CMS/PKCS#7), -107493
+  # (PEM_X509_INFO_read_bio_ex into a caller's stack). OpenSSL rates
+  # four Low and has not rated -121482; all are fixed in 3.5.10.
+  # CISA-ADP's High (via NVD) trips the gate. No Alpine branch, edge
+  # included, has a fix yet. Unreached here (checked 2026-11-21): no
+  # binary linking the system libraries imports an OSSL_QUIC_*, DANE,
+  # CMS/PKCS7 or SMIME symbol; nothing configures CRL checking (no
+  # Postgres ssl_crl_file, libpq sslcrl or Node tls `crl`); the one
+  # PEM_X509_INFO_read caller, krb5's k5tls.so (db), passes a NULL
+  # stack. Node bundles its own OpenSSL 3.5.9, invisible to Grype (an
+  # accepted gap), built without QUIC; a Node release brings 3.5.10.
+  # Drop when 3.24 ships the fix: `apk upgrade` takes it.
   - &openssl-3-24
-    vulnerability: CVE-2026-88823
+    vulnerability: CVE-2026-84786
     package:
       name: libssl3
       type: apk
     owner: '@vlzware'
-    reason: AES-GCM-SIV, QUIC client and CMS EC paths unused (see comment above); no Alpine 3.24 fix yet
-    expires: 2026-12-18
+    reason: QUIC, DANE, CRL checking, CMS/PKCS#7 and caller-stack PEM paths unused (see comment above); no Alpine 3.24 fix yet
+    expires: 2026-12-21
   - <<: *openssl-3-24
-    vulnerability: CVE-2026-95691
+    vulnerability: CVE-2026-107493
   - <<: *openssl-3-24
-    vulnerability: CVE-2026-95692
+    vulnerability: CVE-2026-107494
   - <<: *openssl-3-24
-    vulnerability: CVE-2026-107496
+    vulnerability: CVE-2026-121482
+  - <<: *openssl-3-24
+    vulnerability: CVE-2026-124709
   - &openssl-3-24-crypto
     <<: *openssl-3-24
     package:
       name: libcrypto3
       type: apk
   - <<: *openssl-3-24-crypto
-    vulnerability: CVE-2026-95691
+    vulnerability: CVE-2026-107493
   - <<: *openssl-3-24-crypto
-    vulnerability: CVE-2026-95692
+    vulnerability: CVE-2026-107494
   - <<: *openssl-3-24-crypto
-    vulnerability: CVE-2026-107496
+    vulnerability: CVE-2026-121482
+  - <<: *openssl-3-24-crypto
+    vulnerability: CVE-2026-124709
