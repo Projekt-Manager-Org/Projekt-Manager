@@ -126,7 +126,7 @@ describe('Project List Filters', () => {
     });
 
     it('finds projects by customer name substring', async () => {
-      // Seed customers include "Müller" (spec §7.3)
+      // Seed customers include "Müller" (src/server/seed/business.ts)
       const res = await authGet(token, '/api/projects?search=Müller');
 
       expect(res.statusCode).toBe(200);

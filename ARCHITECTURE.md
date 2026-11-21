@@ -220,7 +220,6 @@ Maps spec `[C]` markers (values that vary per deployment) to files. For how oper
 | Attachment server caps (size, bulk, reaper TTL, worker self-delete grace)           | `src/config/attachmentConfig.ts`       |
 | Attachment client pipeline params (resize, quality, thumbnail dimension)            | `src/config/attachmentPipeline.ts`     |
 | Realtime SSE heartbeat interval (default 25 s, bounded 1 s–600 s)                   | `src/server/config/env.ts`             |
-| Seed default password                                                               | `src/test/seedAssumptions.ts`          |
 
 ---
 
@@ -336,10 +335,10 @@ This is not a zero-code-change operation.
 
 The seed loader (`src/server/seed.ts`) is controlled by environment:
 
-- **Production** (`NODE_ENV=production`): seeding is skipped entirely — the start-up path in `src/server/start.ts` never calls it.
+- **Production** (`NODE_ENV=production`, also the default when unset): seeding is skipped entirely, whatever `SEED` says — `runStartupSeed` in `src/server/startupSeed.ts` (AC-764).
 - **`SEED=false`** (default — see `src/server/config/env.ts` and `docker-compose.yml`): no seeding. Seeds never run without an explicit opt-in.
 - **`SEED=true`**: loads seed data if the database is empty; no-ops if data already exists.
-- **`SEED=force`**: drops all seed records and reloads from scratch. Use after schema changes or to refresh stale demo dates.
+- **`SEED=force`**: wipes all data (database and bucket) and reloads from scratch. Use after schema changes or to refresh stale demo dates.
 
 Run via `SEED=true npm run dev` (or `SEED=force` for a hard refresh) or set in `.env`.
 

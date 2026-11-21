@@ -141,6 +141,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-160 | retired | —                                                                                    |
 | AC-162 | retired | —                                                                                    |
 | AC-163 | retired | —                                                                                    |
+| AC-164 | retired | —                                                                                    |
 | AC-169 | retired | —                                                                                    |
 | AC-170 | retired | —                                                                                    |
 | AC-171 | retired | —                                                                                    |
@@ -310,6 +311,9 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-387 | retired | —                                                                                    |
 | AC-388 | retired | —                                                                                    |
 | AC-389 | retired | —                                                                                    |
+| AC-390 | retired | —                                                                                    |
+| AC-391 | retired | —                                                                                    |
+| AC-392 | retired | —                                                                                    |
 | AC-401 | gap     | needs an e2e asserting the stored object is not the uploaded plaintext               |
 | AC-405 | gap     | no test drives the client-side cap block or the missing retry action                 |
 | AC-423 | gap     | no test drives a restore whose storage copy fails with a non-410 error               |

@@ -163,7 +163,7 @@ describe('AC-94: Concurrent state transitions', () => {
 
   it('AC-94: two concurrent forward transitions — one succeeds, one is rejected as conflict', async () => {
     // Pick a project in a non-terminal, non-boundary state.
-    // Seed (data-model.md §7.1) provides 2 projects in 'beauftragt'.
+    // The seed (src/server/seed/business.ts) provides 2 projects in 'beauftragt'.
     const listRes = await authGet(token, '/api/projects');
     const projectList = listRes.json().data;
     const target = projectList.find((p: Record<string, unknown>) => p.status === 'beauftragt');

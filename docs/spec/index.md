@@ -58,7 +58,6 @@ All views are role-gated. The system enforces that every pending action (unanswe
 - German UI, English code
 - API layer between front end and data store
 - Persistent data storage in a database
-- Seed data providing a realistic starting snapshot
 - User authentication (login/logout, session management) with a configurable role-based permission matrix ([§4.2](#42-roles))
 - Object storage module encapsulating all binary storage operations (see [ARCHITECTURE.md § Attachments Module](../../ARCHITECTURE.md#attachments-module))
 - Deployment to a hosted environment (reverse proxy, application, database, object storage)
@@ -102,11 +101,7 @@ Aging threshold: [AC-461](verification.md#151-workflow-board), [AC-462](verifica
 
 Every user holds one or more roles **[C]**: `owner`, `office`, `worker`, `bookkeeper`. What each may do: [api.md §14.3](api.md#143-authorization-rules).
 
-Users are created by an owner, by seed data, or by the first-run bootstrap ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)); there is no self-registration.
-
-### 4.4 Data Origin
-
-All data is stored in a persistent database, accessed through an API layer. Seed data (see [data-model.md §7](data-model.md#7-seed-data-specification)) is loaded only in non-production environments — the production start-up path deliberately skips seeding to avoid overwriting real data on a first deploy. Re-seeding drops and recreates all seed records.
+Users are created by an owner, by a data import, or by the first-run bootstrap ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)); there is no self-registration.
 
 ---
 

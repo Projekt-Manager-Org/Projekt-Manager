@@ -123,7 +123,7 @@ ALLOWLIST=(
   # the runtime path and predate the helper.
   "src/server/db/migrations/"
   # Business-data seed loader — fixture hydration bypasses audit by
-  # design (data-model.md §7).
+  # design (dev/test only; production never seeds, AC-764).
   "src/server/seed/business.ts"
   # User seed loader — direct-DB path, parallel to business.ts.
   "src/server/seed/users.ts"

@@ -838,9 +838,8 @@ describe('Throwing post-commit subscriber does not roll back (AC-183)', () => {
     // Import the publisher surface (audit-publisher.ts). Until the module exists this
     // throws MODULE_NOT_FOUND at runtime — the recognizable failing
     // state step 3 wants. The `/* @vite-ignore */` comment and the
-    // string-literal path mirror the pattern in `seed.test.ts` (AC-390)
-    // so the dynamic import does not compile-fail `tsc --noEmit` in
-    // CI's type-check step — failure surface stays a runtime error,
+    // string-literal path keep the dynamic import from compile-failing
+    // `tsc --noEmit` in CI's type-check step — failure surface stays a runtime error,
     // not a type error.
     const publisherPath = '../services/audit-publisher.js';
     const pub = await import(/* @vite-ignore */ publisherPath);
