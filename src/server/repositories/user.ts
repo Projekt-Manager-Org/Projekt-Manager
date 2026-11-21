@@ -282,11 +282,10 @@ export async function updateLastLogin(db: MutatingDatabase, id: string): Promise
 }
 
 /**
- * Deactivate a user (soft-delete — data-model.md §6.9). `actorId` is
+ * Deactivate a user (AC-555). `actorId` is
  * the UUID of the user performing the deactivation, or null when the
  * caller is a system action (seed, migration, test fixture) and no
- * human actor is available. Matches the audit-metadata contract in
- * data-model.md §5.5. See consolidation review B F-3 / round-2 B M-1.
+ * human actor is available.
  */
 export async function deactivateUser(
   db: MutatingDatabase,
@@ -308,7 +307,7 @@ export async function deactivateUser(
  * performing the change (currently the same user — self-service
  * password change — but a future admin-reset endpoint would pass
  * the admin's id). Matches the audit-metadata contract in
- * data-model.md §5.5. See consolidation review B F-3.
+ * data-model.md §5.3.
  */
 export async function changePassword(
   db: MutatingDatabase,

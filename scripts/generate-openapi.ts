@@ -127,8 +127,8 @@ const DOC_OPTIONS: OpenApiDocOptions = {
       'GENERATED FILE — do not edit by hand. Produced from the routes ' +
       'registered by buildApp() via `npx tsx scripts/generate-openapi.ts`; ' +
       'CI fails on drift. Describes requests and the session requirement ' +
-      'only — responses are not declared yet. The normative API contract ' +
-      'is docs/spec/api.md §14.2; see docs/api/README.md.',
+      'only — responses are not declared yet. The HTTP API is internal ' +
+      '(docs/spec/api.md §14); see docs/api/README.md.',
     // 3.1 accepts an SPDX `identifier` in place of 3.0's `url`. Kept in
     // step with `LICENSE` and package.json's `license` field.
     license: { name: 'GNU Affero General Public License v3.0 only', identifier: 'AGPL-3.0-only' },

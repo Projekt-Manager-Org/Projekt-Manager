@@ -1,5 +1,5 @@
 /**
- * A customer correction reaches open drafts (data-model.md §5.15, §6.4).
+ * A customer correction reaches open drafts (data-model.md §5.15, AC-546).
  * Runs inside the customer edit's transaction.
  */
 

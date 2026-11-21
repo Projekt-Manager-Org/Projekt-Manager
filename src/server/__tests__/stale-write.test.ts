@@ -9,13 +9,14 @@
  *     that rejects everything cannot pass.
  *   - AC-699: a stale issue allocates no number and leaves the
  *     draft, the project, the sequence and the PDF prefix in storage untouched.
- *   - AC-377: a versioned operation without `expectedVersion` is
- *     a `422 VALIDATION_ERROR`.
- *   - AC-378: issuing a draft changes its version; cancelling the
- *     issued invoice does not.
  *   - AC-381: two writes carrying the same current version, queued
  *     in a fixed order behind a row lock held by a third connection, commit
  *     exactly once — the first in the queue.
+ *
+ * Regression guards for the mechanism (no AC; ARCHITECTURE.md § Edit
+ * Concurrency): a versioned operation without `expectedVersion` is a
+ * `422 VALIDATION_ERROR`; issuing a draft moves its version, cancelling
+ * the issued invoice does not.
  *
  * Transport assumption (S-NDET): Delete draft carries `expectedVersion`
  * as a query parameter — a DELETE body has no defined semantics.
@@ -170,8 +171,8 @@ function expectVersionConflict(res: Res): void {
 }
 
 // ---------------------------------------------------------------------
-// Versioned operations — one row per operation in api.md marked
-// `expectedVersion`. `write` performs the operation under test;
+// Versioned operations — one row per route `VERSION_CLASSIFICATION`
+// marks versioned. `write` performs the operation under test;
 // `readUrl` is the entity's GET.
 // ---------------------------------------------------------------------
 
@@ -362,10 +363,10 @@ describe('AC-699: a stale issue allocates no number and writes nothing', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-377
+// Missing expectedVersion (regression guard)
 // ---------------------------------------------------------------------
 
-describe('AC-377: a missing expectedVersion is a validation error', () => {
+describe('a missing expectedVersion is a validation error', () => {
   it.each(VERSIONED)('$name', async ({ setup }) => {
     const { readUrl, write } = await setup();
     const before = await read(readUrl);
@@ -395,10 +396,10 @@ describe('AC-377: a missing expectedVersion is a validation error', () => {
 });
 
 // ---------------------------------------------------------------------
-// AC-378
+// Version moves (regression guard)
 // ---------------------------------------------------------------------
 
-describe('AC-378: every committed write changes the version', () => {
+describe('the version moves on issue, not on cancel', () => {
   it('issuing a draft', async () => {
     const { invoiceId } = await mintDraft();
     const before = await versionOf(`/api/invoices/${invoiceId}`);
@@ -527,7 +528,7 @@ describe('AC-381: concurrent writes with the same version commit exactly once', 
     expect(after.number ?? null).toBeNull();
   });
 
-  it('Issue invoice first, Update draft second — the frozen row rejects the edit', async () => {
+  it('AC-763: Issue invoice first, Update draft second — the frozen row rejects the edit', async () => {
     const { invoiceId } = await mintDraft();
     const url = `/api/invoices/${invoiceId}`;
     const v = await versionOf(url);
@@ -541,7 +542,7 @@ describe('AC-381: concurrent writes with the same version commit exactly once', 
         }),
     );
     expect(issue.statusCode, issue.body).toBe(200);
-    // The state check precedes the version check (data-model.md §6.4).
+    // The frozen refusal wins over the stale one (AC-763).
     expect(patch.statusCode, patch.body).toBe(422);
     expect(patch.json().code).toBe('INVOICE_FROZEN');
     const after = await read(url);

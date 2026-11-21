@@ -106,7 +106,7 @@ export const users = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
-    // Audit references — nullable for seeded/bootstrapped records (data-model.md §5.5).
+    // Audit references — nullable for seeded/bootstrapped records (data-model.md §5.3, §6.6).
     // No FK back to users.id: self-referential FKs complicate bootstrapping
     // and deletion without adding meaningful integrity guarantees here.
     createdBy: uuid('created_by'),
@@ -365,7 +365,7 @@ export const auditLog = pgTable(
     // ON DELETE SET NULL mirrors AC-567 for createdBy/updatedBy: hard-deleting
     // a user must not cascade their audit trail away. entity_id deliberately
     // has no FK — a `purge` removes the target row while the audit entry
-    // remains (data-model.md §5.10 "Referential integrity").
+    // remains (data-model.md §6.6).
     actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
     actorKind: text('actor_kind').notNull(),
     actorReason: text('actor_reason'),

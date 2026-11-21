@@ -140,8 +140,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           // NOT_FOUND on a mutation means the local cache is out of sync
           // with the server (the project was deleted or never existed).
           // Refetch the list so the stale card disappears and the user
-          // sees the real state. Matches api.md §14.4.1's Client behavior
-          // column for the Not Found category.
+          // sees the real state.
           if (result.category === 'not_found') {
             void get().fetchProjects();
           }

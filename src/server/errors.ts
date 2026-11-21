@@ -11,7 +11,7 @@ import type { MissingUserRefsPayload } from '../domain/dataExchange.js';
 /**
  * Every machine-readable error code the server raises — the single form
  * of the set (AC-354). Most reach a response; the import-only ones only
- * fail an import job (api.md §14.4.1). An array rather than a bare union,
+ * fail an import job. An array rather than a bare union,
  * with `ErrorCode` derived from it below: a union has no runtime form, so
  * nothing could read it or publish it into api.md §14.4.1.
  *
@@ -290,7 +290,7 @@ export function routeNotFound(): AppError {
  * not-found handler when it bubbles into `setErrorHandler`) in an
  * `AppError` that preserves the original statusCode and surfaces a
  * stable machine-readable code. Returns `null` for non-4xx errors so
- * the caller falls back to `serverError()`. See api.md §14.4.2 / AC-247.
+ * the caller falls back to `serverError()`. See AC-247.
  *
  * Domain `notFound()` errors are `AppError` instances and are handled
  * upstream of this mapper; a 404 reaching here is therefore route-shaped

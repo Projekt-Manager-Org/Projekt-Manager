@@ -4,7 +4,7 @@
  * A stale write to a versioned entity is rejected only if the route
  * carries `expectedVersion` (data-model.md §6.4). Every route the app
  * registers under a method other than GET / HEAD is classified here:
- * versioned, or exempt with one of the reasons AC-380 and §6.4 name. Deny by
+ * versioned, or exempt with one of the reasons below (AC-380). Deny by
  * default — an unclassified route fails, and so does an entry naming no
  * registered route.
  *
@@ -16,16 +16,17 @@ import type { RouteOptions } from 'fastify';
 import { classificationGaps, routeKeys } from '../../scripts/lib/route-introspection.js';
 import { EXPECTED_VERSION_SCHEMA } from '../server/routes/expected-version.js';
 
-/** Why a write route is not versioned — the cases AC-380 and data-model.md §6.4 name. */
+/** Why a write route is not versioned. */
 export const EXEMPTION_REASONS = {
   create: 'creates a row: no prior read to be stale',
-  projectEdit: 'project edits are last-write-wins (data-model.md §6.4)',
+  projectEdit:
+    'project edits are last-write-wins: one field per save, and a project-wide version would refuse edits to fields nobody else touched',
   transition: 'guarded by expectedStatus (AC-94)',
-  lifecycle: 'acts on existence, not content; state-checked (data-model.md §6.4)',
+  lifecycle: 'acts on existence, not content; state-checked',
   frozenTarget: 'its target is frozen (data-model.md §6.14)',
   ownStateCheck:
     'own state check (attachments: verification.md §15.26; import upload: verification.md §15.14)',
-  lowStakes: 'low-stakes row; a stale overwrite freezes nothing (data-model.md §6.4)',
+  lowStakes: 'low-stakes row; a stale overwrite freezes nothing',
   noSharedRow: 'no shared editable row',
   readOnly: 'writes nothing',
 } as const;

@@ -272,7 +272,7 @@ export async function getInvoiceRowForMutation(
  * Row-lock every draft on a customer's projects, archived ones included
  * (data-model.md §5.15). A waiter re-evaluates against the row it waited
  * for, so a draft issued or deleted meanwhile drops out and a committed
- * override is seen (§6.4).
+ * override is seen (AC-546).
  */
 export async function getCustomerDraftsForMutation(tx: TxHandle, customerId: string) {
   return tx

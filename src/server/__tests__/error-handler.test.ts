@@ -14,7 +14,7 @@
  * branch. Logger calls are captured to verify the operational `error`
  * level reflects only genuine 5xx failures.
  *
- * Pins AC-247 (verification.md §15.7) and the principle in api.md §14.4.2.
+ * Pins AC-247 (verification.md §15.7).
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';

@@ -137,7 +137,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   const app = Fastify({
     logger,
     // Refuse a body field the route's schema does not define instead of
-    // stripping it, Fastify's default (AC-516, api.md §14.4.2). A stripped
+    // stripping it, Fastify's default (AC-516). A stripped
     // field answers 2xx for a write that never happened.
     ajv: { customOptions: { removeAdditional: false } },
     // Trust X-Forwarded-For only from the addresses that are actually the
@@ -161,7 +161,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
 
   // Global error handler — preserves 4xx HTTP statusCode and only
   // collapses 5xx-or-statusless errors to SERVER_ERROR. See
-  // src/server/error-handler.ts and AC-247 / api.md §14.4.2.
+  // src/server/error-handler.ts and AC-247.
   //
   // The not-found handler is mounted by the caller (start.ts for the
   // SPA fallback, the unit test directly), because Fastify rejects a

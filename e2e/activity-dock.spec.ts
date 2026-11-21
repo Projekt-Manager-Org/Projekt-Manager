@@ -314,7 +314,7 @@ test.describe('AC-628: activity dock "Ältere anzeigen" pages older entries', ()
 
   /**
    * Audit rows to manufacture for office. Above the server's default page
-   * size (50, api.md §14.1 / AUDIT_PAGE_SIZE) so the recipient-scoped
+   * size (50, AUDIT_PAGE_SIZE) so the recipient-scoped
    * dock's first page is full and the pager has a real boundary to cross.
    */
   const AUDIT_ROWS_TO_GENERATE = 56;

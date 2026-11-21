@@ -2,8 +2,7 @@
  * API integration tests — attachment route surface (issue #108, #148).
  *
  * Pins the HTTP surface of every endpoint on
- * `/api/projects/:id/attachments/...` and the error paths in api.md
- * §14.4.1.
+ * `/api/projects/:id/attachments/...` and its error paths.
  *
  * AC coverage in this file:
  *   - init: AC-397 (row recorded), AC-398 (field-constraint rejects on
@@ -1289,7 +1288,7 @@ describe('Attachment routes — integration (issue #108)', () => {
   // -------------------------------------------------------------------
   // Error envelopes for upload-failure categories.
   //
-  // Client behavior pivots on these codes (api.md §14.4.1); the
+  // Client behavior pivots on these codes; the
   // pending upload row shows the failure. Pinning them here keeps that
   // contract stable as the server evolves.
   // -------------------------------------------------------------------

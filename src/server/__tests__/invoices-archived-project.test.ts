@@ -166,6 +166,18 @@ describe('AC-513: invoice changes on an archived project', () => {
     expect(await snapshot(draftProjectId)).toEqual(before);
   });
 
+  it('AC-763: a stale edit of a draft reports not found, not the conflict', async () => {
+    const before = await snapshot(draftProjectId);
+    const { expectedVersion: v } = await expectedVersion(token, `/api/invoices/${editDraftId}`);
+    const res = await authPatch(token, `/api/invoices/${editDraftId}`, {
+      expectedVersion: v + 1, // no longer matches the row
+      performanceDate: '2026-05-01',
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('NOT_FOUND');
+    expect(await snapshot(draftProjectId)).toEqual(before);
+  });
+
   it('AC-513: deleting a draft is refused as not found and changes nothing', async () => {
     const before = await snapshot(draftProjectId);
     const { expectedVersion: v } = await expectedVersion(token, `/api/invoices/${deleteDraftId}`);
@@ -187,8 +199,8 @@ describe('AC-513: invoice changes on an archived project', () => {
     expect(await snapshot(draftProjectId)).toEqual(before);
   });
 
-  // On an active project this PATCH is refused as INVOICE_FROZEN: the
-  // archive check runs first (data-model.md §6.4).
+  // On an active project this PATCH is refused as INVOICE_FROZEN; AC-513
+  // covers issued invoices too, so the archive check runs first.
   it('AC-513: editing an issued invoice is refused as not found, ahead of the frozen check', async () => {
     const before = await snapshot(issuedProjectId);
     const res = await authPatch(token, `/api/invoices/${issuedId}`, {

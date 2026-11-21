@@ -1,6 +1,6 @@
 # API
 
-The HTTP surface as implemented. The normative contract is [api.md §14.2](../spec/api.md#142-operations); both artifacts here are generated from the routes `buildApp()` registers and lose to it on any disagreement.
+The HTTP surface as implemented, and its only documentation: the HTTP API is internal ([api.md §14](../spec/api.md#14-api-specification)). Both artifacts here are generated from the routes `buildApp()` registers.
 
 | Artifact                                                  | Generator                         | Check                       |
 | --------------------------------------------------------- | --------------------------------- | --------------------------- |
@@ -97,7 +97,7 @@ Both read the routes through `scripts/lib/route-introspection.ts`. An access gat
 - **Auth** `session` without a valid session → `401 UNAUTHENTICATED`; a failed **Access** rule → `403 NOT_PERMITTED`. Gates: `src/server/middleware/auth.ts`; keys resolve against `src/config/permissions.ts`.
 - **Access** `—` on a `session` row means any session: the caller's own account, the company-profile read and realtime events ([api.md §14.3](../spec/api.md#143-authorization-rules)). Gated reads still narrow rows by scope (ADR-0019).
 - **Rate limit** shows production values. Login is 5/min in production, 30/min in dev/test; `LOGIN_RATE_LIMIT_MAX` overrides both.
-- What each endpoint does: [api.md §14.2](../spec/api.md#142-operations). `OPTIONS *` is the CORS preflight. Static SPA assets (`registerStaticAssets`, production only) are not API surface and appear in neither artifact.
+- What each endpoint does for its user: the ACs ([verification.md](../spec/verification.md)). `OPTIONS *` is the CORS preflight. Static SPA assets (`registerStaticAssets`, production only) are not API surface and appear in neither artifact.
 
 ## OpenAPI Document
 

@@ -29,7 +29,7 @@ import { validateEnvRuntime } from '../config/env.js';
 /**
  * Read a single users row directly from the database via a one-shot
  * pg.Client. Used by the AC-28 tests (and only those) to pin the audit columns
- * written by deactivateUser() — see `docs/spec/data-model.md §5.5`.
+ * written by deactivateUser() — see `docs/spec/data-model.md §5.3`.
  *
  * A one-shot Client (not a long-lived Pool) is deliberate: holding a
  * Pool across the full `describe` block produced intermittent state
@@ -441,7 +441,7 @@ describe('Authentication & Session Management', () => {
 
       // Snapshot the audit columns before deactivation so the assertion
       // below can prove updatedAt actually advanced (not just a no-op
-      // update with a stale timestamp). See data-model.md §5.5.
+      // update with a stale timestamp). See data-model.md §5.3.
       const beforeRow = await readUserAuditRow(userId);
       const beforeUpdatedAt = beforeRow.updatedAt;
 
@@ -466,8 +466,7 @@ describe('Authentication & Session Management', () => {
       //
       // The test helper `deactivateUser(userId)` in api-helpers.ts
       // deliberately passes actorId=null because no human admin exists
-      // in this iteration (data-model.md §5.5 permits null for
-      // system/fixture actions). Pinning to null here guarantees two
+      // in this iteration (a null actor marks a system/fixture action). Pinning to null here guarantees two
       // things simultaneously:
       //   (a) the repository honored the null actor the test supplied,
       //       i.e. did not silently default to the target's own id, and
@@ -532,8 +531,8 @@ describe('Authentication & Session Management', () => {
   });
 
   // ---------------------------------------------------------------
-  // AC-29: Two users logged in simultaneously see each other's
-  // changes after refreshing.
+  // AC-29: a saved change reaches every other signed-in user who may
+  // see it, after reloading.
   //
   // Before this test AC-29 had zero coverage and was a freeform
   // assertion that happened to work because the current architecture

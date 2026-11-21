@@ -81,6 +81,18 @@ describe('AC-499: Mutations on soft-deleted projects', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
+  it('AC-763: a stale transition on a soft-deleted project reports not found, not the conflict', async () => {
+    // `angebot` is the state it was archived in; a stale client still holds `anfrage`.
+    const res = await authPost(token, `/api/projects/${deletedProjectId}/transition/forward`, {
+      expectedStatus: 'anfrage',
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('NOT_FOUND');
+    expect((await authGet(token, `/api/projects/${deletedProjectId}`)).json()).toEqual(
+      archivedSnapshot,
+    );
+  });
+
   it('AC-499: backward transition on a soft-deleted project returns 404', async () => {
     const res = await authPost(token, `/api/projects/${deletedProjectId}/transition/backward`, {
       expectedStatus: 'angebot',
@@ -134,7 +146,7 @@ describe('AC-499: Mutations on soft-deleted projects', () => {
 });
 
 // ---------------------------------------------------------------
-// §15.18 AC-94: Concurrent state transitions are rejected as conflict
+// §15.17 AC-94: Concurrent state transitions are rejected as conflict
 // AC-94
 // ---------------------------------------------------------------
 describe('AC-94: Concurrent state transitions', () => {
@@ -164,7 +176,7 @@ describe('AC-94: Concurrent state transitions', () => {
     // no longer holds and the row miss is surfaced as CONFLICT. This holds
     // regardless of whether the two requests actually overlap in time —
     // unlike the prior SELECT-then-UPDATE approach, which flaked under
-    // sequential execution (see api.md § Transitions / optimistic concurrency).
+    // sequential execution.
     const [resA, resB] = await Promise.all([
       authPost(token, `/api/projects/${projectId}/transition/forward`, {
         expectedStatus: 'beauftragt',

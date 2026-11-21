@@ -2,8 +2,7 @@
  * Global error and 404 handlers.
  *
  * Honor the HTTP statusCode native to the failure: 4xx-class errors
- * preserve their status and surface a stable code per AC-247 / api.md
- * §14.4.2; a 5xx-or-statusless error carrying no code of its own
+ * preserve their status and surface a stable code per AC-247; a 5xx-or-statusless error carrying no code of its own
  * collapses to `SERVER_ERROR`. Every 5xx logs at the operational `error`
  * level — an `AppError` that carries its own 5xx code included, since it
  * is a genuine server failure under a more precise name. Transport-layer

@@ -24,7 +24,7 @@ A form with:
 - **Customer** — one of the existing customers.
 - **Baustelle** — the toggle `Identisch mit Kundenadresse` over street, zip and city ([AC-483](../verification.md#1512-projects), [AC-484](../verification.md#1512-projects), [AC-485](../verification.md#1512-projects), [AC-486](../verification.md#1512-projects), [AC-487](../verification.md#1512-projects), [AC-488](../verification.md#1512-projects)).
 
-Behavior: [AC-475](../verification.md#1512-projects), [AC-476](../verification.md#1512-projects).
+Behavior: [AC-475](../verification.md#1512-projects), [AC-476](../verification.md#1512-projects), [AC-762](../verification.md#1517-data-integrity).
 
 ---
 
@@ -48,7 +48,7 @@ A form with:
 - **Phone, email**.
 - **USt-IdNr., notes** ([AC-522](../verification.md#1511-customer-management)).
 
-Fields: [data-model.md §5.6](../data-model.md#56-customer-entity). Behavior: [AC-518](../verification.md#1511-customer-management), [AC-539](../verification.md#1511-customer-management), [AC-520](../verification.md#1511-customer-management), [AC-537](../verification.md#1511-customer-management), [AC-538](../verification.md#1511-customer-management), [AC-521](../verification.md#1511-customer-management), [AC-536](../verification.md#1511-customer-management).
+Fields: [data-model.md §5.6](../data-model.md#56-customer-entity). Behavior: [AC-762](../verification.md#1517-data-integrity), [AC-518](../verification.md#1511-customer-management), [AC-539](../verification.md#1511-customer-management), [AC-520](../verification.md#1511-customer-management), [AC-537](../verification.md#1511-customer-management), [AC-538](../verification.md#1511-customer-management), [AC-521](../verification.md#1511-customer-management), [AC-536](../verification.md#1511-customer-management).
 
 ### 8.9.3 Edit Customer
 

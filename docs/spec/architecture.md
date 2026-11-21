@@ -304,9 +304,9 @@ Every new API endpoint must satisfy:
 
 1. **Authentication**: valid, active session required (see [ADR-0005](../adr/0005-session-management-httponly-cookies.md), [api.md section 14.3](api.md#143-authorization-rules)).
 2. **Authorization**: role-based permission check on every protected route.
-3. **Input validation**: request schema validation on request body and params (see [api.md section 14.2](api.md#142-operations)). For endpoints accepting composite payloads (e.g., the unified import envelope), per-row semantic validation may live in the service layer per §11.2.
+3. **Input validation**: request schema validation on request body and params; an undefined field is refused ([AC-516](verification.md#1517-data-integrity)). For endpoints accepting composite payloads (e.g., the unified import envelope), per-row semantic validation may live in the service layer per §11.2.
 4. **Error handling**: use application error types, no stack traces or DB field names leaked.
 5. **Rate limiting**: configured on authentication endpoints (login, password change) and push-subscription mutations (see §12.2 Rate limit buckets **[C]**). Other mutation endpoints are not rate-limited — at current scale with VPN-only access ([ADR-0008](../adr/0008-vpn-first-network-access.md)), this is a known, accepted limitation.
 6. **CSRF protection**: mechanism defined in [ADR-0005](../adr/0005-session-management-httponly-cookies.md).
 7. **Password handling**: never log or store plaintext (see [ADR-0006](../adr/0006-password-policy-nist-blocklist.md)).
-8. **Ownership derivation on self-scoped surfaces**: on caller-owned resources (e.g., push subscriptions — [AC-654](verification.md#1524-notifications)), the server derives the owning user id from the session; a client-supplied owner id is refused ([api.md §14.4.2](api.md#1442-error-principles)).
+8. **Ownership derivation on self-scoped surfaces**: on caller-owned resources (e.g., push subscriptions — [AC-654](verification.md#1524-notifications)), the server derives the owning user id from the session; a client-supplied owner id is refused ([AC-516](verification.md#1517-data-integrity)).

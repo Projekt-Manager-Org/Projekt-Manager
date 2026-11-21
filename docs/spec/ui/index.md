@@ -120,4 +120,4 @@ The user menu, opened from the header, offers:
 
 ---
 
-_Cross-references: [index.md](../index.md) for workflow states and assumptions, [data-model.md](../data-model.md) for entity definitions, [api.md](../api.md) for API operations, [verification.md](../verification.md) for acceptance criteria._
+_Cross-references: [index.md](../index.md) for workflow states and assumptions, [data-model.md](../data-model.md) for entity definitions, [api.md](../api.md) for permissions and error categories, [verification.md](../verification.md) for acceptance criteria._

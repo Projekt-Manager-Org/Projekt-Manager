@@ -226,8 +226,8 @@ export async function getCustomerRow(
 }
 
 /**
- * Fetch and row-lock the customer for a versioned edit (data-model.md
- * §6.4): the lock holds until commit, so the version check and the
+ * Fetch and row-lock the customer for a versioned edit (AC-381):
+ * the lock holds until commit, so the version check and the
  * write are atomic. Returns null when absent.
  */
 export async function getCustomerRowForMutation(
