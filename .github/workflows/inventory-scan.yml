@@ -126,8 +126,8 @@ jobs:
         run: |
           set -euo pipefail
           # renovate: datasource=github-release-attachments depName=anchore/grype
-          version="v0.122.0"
-          expected_sha="e697e6f7224637df87e267e4318cc027feae99a8e1b80280241d32b9ee5d4920"
+          version="v0.122.1"
+          expected_sha="f1ba7e2917ee1395618de20a98da0aa7c0fb1788927797651047c50502a37538"
           asset="grype_${version#v}_linux_amd64.tar.gz"
           url="https://github.com/anchore/grype/releases/download/${version}/${asset}"
           code=$(curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 -w '%{http_code}' -o /tmp/grype.tar.gz "$url") \
