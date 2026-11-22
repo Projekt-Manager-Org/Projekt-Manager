@@ -128,7 +128,7 @@ export interface RunTakeoutImportDeps {
  * Per-entry buffering safety ceiling — a pathological-archive guard, NOT the
  * operator per-file cap. The import is deliberately cap-AGNOSTIC (an
  * attachment valid at export time must restore even if the operator has
- * since lowered the per-file cap),
+ * since lowered the per-file cap — data-model.md §5.13 `sizeBytes`),
  * so the real bound is "one entry at a time", and this ceiling only stops a
  * corrupt archive from claiming an entry larger than any legitimate file.
  */
