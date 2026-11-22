@@ -111,6 +111,7 @@ import {
   META_WRAPPED_DEK_VERSION,
 } from '../../test/storageObjectMetadata.js';
 import { TEST_OBJECT_METADATA } from '../../test/fixtures/objectEnvelope.js';
+import { ATTACHMENT_CONFIG } from '../../config/attachmentConfig.js';
 
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -525,6 +526,29 @@ describe('Import job — archive validation, restore fidelity, session, reaper',
       decipher.setAuthTag(ctTag);
       const recovered = Buffer.concat([decipher.update(ctBody), decipher.final()]);
       expect(Buffer.compare(recovered, plaintext)).toBe(0);
+    });
+
+    // data-model.md §5.13: the per-file cap bounds an upload. An archive
+    // exported under a higher cap must restore whole, not lose the file.
+    it('restores an attachment larger than the per-file cap', async () => {
+      const cap = getEnv().ATTACHMENT_PER_FILE_CAP_BYTES ?? ATTACHMENT_CONFIG.perFileCapBytes;
+      const plaintext = crypto.randomBytes(cap + 1);
+      const seeded = await seedReadyAttachment({ plaintext, fileName: 'aufmass.pdf' });
+
+      const archive = await buildExportArchive(ownerToken);
+      const jobId = await uploadArchiveToNewJob(ownerToken, archive);
+      const reauth = await awaitWipeAndReauth(ownerToken, jobId);
+      const terminal = await pollImportTerminal(reauth, jobId);
+      expect(terminal.status).toBe('ready');
+
+      const restored = (
+        await db.execute(sql`
+          SELECT status, size_bytes FROM attachments WHERE id = ${seeded.id}
+        `)
+      ).rows as { status: string; size_bytes: number | string }[];
+      expect(restored).toHaveLength(1);
+      expect(restored[0]!.status).toBe('ready');
+      expect(Number(restored[0]!.size_bytes)).toBe(plaintext.length);
     });
 
     it('re-running the same import job is idempotent on attachment id (no duplicate rows)', async () => {
