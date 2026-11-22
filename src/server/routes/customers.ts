@@ -13,6 +13,8 @@ import {
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { ADDRESS_MAX } from '../../domain/address.js';
+import { LIST_OFFSET_SCHEMA } from './list-offset.js';
 
 /**
  * The writable fields and their limits (data-model.md §5.6). `\\S` refuses
@@ -28,9 +30,9 @@ const CUSTOMER_FIELDS = {
     additionalProperties: false,
     required: ['street', 'zip', 'city'],
     properties: {
-      street: { type: 'string', pattern: '\\S', maxLength: 200 },
-      zip: { type: 'string', pattern: '\\S', maxLength: 20 },
-      city: { type: 'string', pattern: '\\S', maxLength: 200 },
+      street: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.street },
+      zip: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.zip },
+      city: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.city },
     },
   },
   ustId: { type: ['string', 'null'], maxLength: 50 },
@@ -52,7 +54,7 @@ export function customerRoutes(db: Database) {
           querystring: {
             type: 'object',
             properties: {
-              offset: { type: 'integer', minimum: 0 },
+              offset: LIST_OFFSET_SCHEMA,
               limit: { type: 'integer', minimum: 1, maximum: 200 },
               search: { type: 'string' },
               sortBy: { type: 'string', enum: [...CUSTOMER_SORT_KEYS] },

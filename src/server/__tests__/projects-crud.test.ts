@@ -636,6 +636,44 @@ describe('Project CRUD Operations', () => {
       expect(res.statusCode).toBe(201);
       expect(res.json().estimatedValue).toBe(9999999999.99);
     });
+
+    const SITE_AT_LIMIT = { street: 's'.repeat(200), zip: 'z'.repeat(20), city: 'c'.repeat(200) };
+
+    it.each([
+      { field: 'street', siteAddress: { ...SITE_AT_LIMIT, street: 's'.repeat(201) } },
+      { field: 'zip', siteAddress: { ...SITE_AT_LIMIT, zip: 'z'.repeat(21) } },
+      { field: 'city', siteAddress: { ...SITE_AT_LIMIT, city: 'c'.repeat(201) } },
+    ])(
+      'refuses a siteAddress $field over its limit on create and update',
+      async ({ field, siteAddress }) => {
+        const number = `BOUND-SITE-${field}`;
+        const res = await authPost(ownerToken, '/api/projects', {
+          number,
+          title: 'Zu lange Baustelle',
+          customerId: seededCustomerId,
+          siteAddress,
+        });
+        expectValidationError(res);
+        expect(await projectExists(number)).toBe(false);
+
+        const before = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+        const patch = await authPatch(ownerToken, `/api/projects/${fixtureId}`, { siteAddress });
+        expectValidationError(patch);
+        const after = (await authGet(ownerToken, `/api/projects/${fixtureId}`)).json();
+        expect(after.siteAddress).toEqual(before.siteAddress);
+      },
+    );
+
+    it('accepts a siteAddress at its limits', async () => {
+      const res = await authPost(ownerToken, '/api/projects', {
+        number: 'BOUND-SITE-MAX',
+        title: 'Längste Baustelle',
+        customerId: seededCustomerId,
+        siteAddress: SITE_AT_LIMIT,
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json().siteAddress).toEqual(SITE_AT_LIMIT);
+    });
   });
 
   // ---------------------------------------------------------------

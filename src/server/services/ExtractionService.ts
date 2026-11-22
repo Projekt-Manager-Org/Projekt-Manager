@@ -8,6 +8,7 @@
 import { getEnv } from '../config/env.js';
 import { featureStatus } from '../config/features.js';
 import { STRINGS } from '../../config/strings.js';
+import { ADDRESS_MAX } from '../../domain/address.js';
 import { validationError, serverError } from '../errors.js';
 import type { ServiceLogger } from './Logger.js';
 
@@ -67,7 +68,7 @@ Regeln:
 
 /**
  * Validate and clamp an LLM-extracted field: must be a string or null,
- * truncated to maxLen to match DB column limits. Non-string values → null.
+ * truncated to maxLen, the field's limit. Non-string values → null.
  */
 function clampStr(value: unknown, maxLen: number): string | null {
   if (typeof value !== 'string') return null;
@@ -134,7 +135,7 @@ export class ExtractionService {
       const parsed = JSON.parse(content) as Record<string, unknown>;
 
       // Runtime validation: ensure the parsed structure has the expected shape
-      // and all fields are strings or null, clamped to DB column max lengths.
+      // and all fields are strings or null, clamped to the field limits (data-model.md §5.1, §5.6).
       const customer =
         typeof parsed.customer === 'object' && parsed.customer !== null
           ? (parsed.customer as Record<string, unknown>)
@@ -153,9 +154,9 @@ export class ExtractionService {
         typeof project.siteAddress === 'object' && project.siteAddress !== null
           ? (project.siteAddress as Record<string, unknown>)
           : null;
-      const siteStreet = rawSite ? clampStr(rawSite.street, 255) : null;
-      const siteZip = rawSite ? clampStr(rawSite.zip, 20) : null;
-      const siteCity = rawSite ? clampStr(rawSite.city, 255) : null;
+      const siteStreet = rawSite ? clampStr(rawSite.street, ADDRESS_MAX.street) : null;
+      const siteZip = rawSite ? clampStr(rawSite.zip, ADDRESS_MAX.zip) : null;
+      const siteCity = rawSite ? clampStr(rawSite.city, ADDRESS_MAX.city) : null;
       const siteAddress =
         siteStreet && siteZip && siteCity
           ? { street: siteStreet, zip: siteZip, city: siteCity }
@@ -167,9 +168,9 @@ export class ExtractionService {
           name: clampStr(customer.name, 255),
           phone: clampStr(customer.phone, 100),
           email: clampStr(customer.email, 255),
-          street: clampStr(customer.street, 255),
-          zip: clampStr(customer.zip, 20),
-          city: clampStr(customer.city, 255),
+          street: clampStr(customer.street, ADDRESS_MAX.street),
+          zip: clampStr(customer.zip, ADDRESS_MAX.zip),
+          city: clampStr(customer.city, ADDRESS_MAX.city),
         },
         project: {
           title: clampStr(project.title, 500),

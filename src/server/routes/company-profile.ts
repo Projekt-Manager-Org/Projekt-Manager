@@ -19,6 +19,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/connection.js';
 import { requireRole, requireSession } from '../middleware/auth.js';
 import { CompanyProfileService } from '../services/CompanyProfileService.js';
+import { ADDRESS_MAX } from '../../domain/address.js';
 import { TAX_MODES, type TaxMode } from '../../domain/invoice.js';
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 
@@ -27,9 +28,9 @@ const addressSchema = {
   additionalProperties: false,
   required: ['street', 'zip', 'city'],
   properties: {
-    street: { type: 'string', maxLength: 200 },
-    zip: { type: 'string', maxLength: 20 },
-    city: { type: 'string', maxLength: 200 },
+    street: { type: 'string', maxLength: ADDRESS_MAX.street },
+    zip: { type: 'string', maxLength: ADDRESS_MAX.zip },
+    city: { type: 'string', maxLength: ADDRESS_MAX.city },
   },
 } as const;
 

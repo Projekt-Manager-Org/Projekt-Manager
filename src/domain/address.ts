@@ -1,5 +1,12 @@
 import type { Address } from '@/domain/types';
 
+/**
+ * The most characters each address component may hold — one shape for
+ * every address: project site (data-model.md §5.1), customer (§5.6),
+ * invoice recipient (§5.15), company profile (§5.17).
+ */
+export const ADDRESS_MAX = { street: 200, zip: 20, city: 200 } as const;
+
 export type AddressDraftResult = { kind: 'valid'; value: Address | null } | { kind: 'partial' };
 
 /**

@@ -8,7 +8,8 @@
  * own 5xx code included, since it is a genuine server failure under a
  * more precise name. Transport-layer
  * 4xx rejections log at `warn` so 5xx alerting on logs reflects only
- * genuine server failures.
+ * genuine server failures. A value its column cannot hold (SQLSTATE
+ * 22001 / 22003) is a validation error, whichever route let it through.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -20,6 +21,7 @@ import type { FastifyInstance } from 'fastify';
 import type {} from '@fastify/static';
 import {
   AppError,
+  extractSqlState,
   mapFastify4xx,
   rateLimited,
   routeNotFound,
@@ -28,6 +30,9 @@ import {
 } from './errors.js';
 import { STRINGS } from '../config/strings.js';
 import { SYNTHETIC_ORIGIN_PREFIX } from '../config/syntheticOrigin.js';
+
+/** 22001 string_data_right_truncation, 22003 numeric_value_out_of_range. */
+const VALUE_OUT_OF_RANGE_SQLSTATES = new Set(['22001', '22003']);
 
 export function installErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((error, request, reply) => {
@@ -70,6 +75,17 @@ export function installErrorHandler(app: FastifyInstance): void {
     if (mapped) {
       request.log.warn({ err: error, statusCode: mapped.statusCode }, 'transport-layer rejection');
       return reply.code(mapped.statusCode).send(mapped.toResponse());
+    }
+
+    // A value its column cannot hold breaks a field constraint — a
+    // validation error (api.md §14.4.1), not a server failure. Backstop
+    // for a limit a route schema missed: those carry the field-level
+    // `details`, this branch cannot.
+    const sqlState = extractSqlState(error);
+    if (sqlState !== null && VALUE_OUT_OF_RANGE_SQLSTATES.has(sqlState)) {
+      request.log.warn({ err: error, sqlState }, 'value out of column range');
+      const err = validationError(STRINGS.errors.invalidInput);
+      return reply.code(err.statusCode).send(err.toResponse());
     }
 
     // 5xx fallback for a non-`AppError`. Logs at `error`, as the

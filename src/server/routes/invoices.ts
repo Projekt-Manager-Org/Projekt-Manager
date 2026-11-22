@@ -44,6 +44,7 @@ import {
 import { buildContentDisposition } from '../storage/client.js';
 import { calendarDateDE } from '../../domain/dateFormat.js';
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
+import { LIST_OFFSET_SCHEMA } from './list-offset.js';
 
 /**
  * Shared JSON-schema fragment for an `InvoiceLineInput`. No `lineTotal`:
@@ -100,7 +101,7 @@ export function invoiceRoutes(db: Database) {
           querystring: {
             type: 'object',
             properties: {
-              offset: { type: 'integer', minimum: 0 },
+              offset: LIST_OFFSET_SCHEMA,
               limit: { type: 'integer', minimum: 1, maximum: 500 },
               status: { type: 'string', enum: [...INVOICE_STATUSES] },
               year: { type: 'integer', minimum: 1900, maximum: 9999 },

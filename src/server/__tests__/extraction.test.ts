@@ -213,6 +213,25 @@ describe('ExtractionService', () => {
 
       expect(result.project.siteAddress).toBeNull();
     });
+
+    // An extracted address fills the review form as is; past the
+    // data-model.md §5.1 / §5.6 limits the save would be refused.
+    it('cuts extracted address components to the address limits', async () => {
+      const long = { street: 's'.repeat(300), zip: 'z'.repeat(30), city: 'c'.repeat(300) };
+      const cut = { street: 's'.repeat(200), zip: 'z'.repeat(20), city: 'c'.repeat(200) };
+      globalThis.fetch = mockFetchResponse(
+        JSON.stringify({
+          customer: { name: 'Test', ...long },
+          project: { title: 'X', siteAddress: long },
+        }),
+      );
+
+      const result = await service.extract('test email', mockLog);
+
+      expect(result.project.siteAddress).toEqual(cut);
+      const { street, zip, city } = result.customer;
+      expect({ street, zip, city }).toEqual(cut);
+    });
   });
 
   // ---------------------------------------------------------------
