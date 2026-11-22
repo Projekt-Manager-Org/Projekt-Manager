@@ -487,13 +487,7 @@ The dry-run is most useful after editing `customManagers` regex patterns — Ren
 
 2. **No onboarding PR is expected.** Per the [Renovate docs](https://docs.renovatebot.com/getting-started/installing-onboarding/), when `.github/renovate.json` is already committed at the default branch, Renovate skips the "Configure Renovate" onboarding PR and goes straight to opening dep PRs (or queuing them in the Dependency Dashboard if a `schedule` window applies). If an onboarding PR DOES appear, it means the config wasn't detected — investigate before merging.
 3. **Enable auto-merge at the repo level.** Repo Settings → General → "Allow auto-merge" must be checked, otherwise `automerge: true` in the config silently no-ops.
-4. **Create the labels the config references, with colors.** `.github/renovate.json` applies `dependencies` (`labels`) and `security` (`vulnerabilityAlerts.labels`). GitHub's add-labels endpoint **auto-creates** an unknown label as grey `#ededed` with no description, so a missing one is cosmetic, not a failure — Renovate PRs still land. Creating them up front just gives them a real color and description:
-
-   ```bash
-   gh label create security --color D93F0B --description "Vulnerability fix — out-of-band"
-   ```
-
-   `security` is what makes out-of-band vuln PRs filterable apart from routine updates. Note the `gh` CLI is stricter than the API: `gh pr create --label <unknown>` aborts without creating the PR.
+4. **Create the labels the config references** — see [CONTRIBUTING.md § Labels](../../CONTRIBUTING.md#labels). GitHub's add-labels endpoint **auto-creates** an unknown label as grey `#ededed` with no description, so a missing one is cosmetic, not a failure — Renovate PRs still land. The `gh` CLI is stricter: `gh pr create --label <unknown>` aborts without creating the PR.
 
 5. **Configure branch protection on `main` via a Ruleset.** Classic branch protection is on GitHub's deprecation path — the banner at the top of Settings → Branches points at the replacement. Rulesets are now the single source of truth: Settings → **Rules → Rulesets → New branch ruleset**.
    - **Name:** `main protection`. **Enforcement:** Active. **Bypass list:** empty (admins included). **Target:** `Default branch`.
