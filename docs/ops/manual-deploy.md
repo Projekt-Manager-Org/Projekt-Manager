@@ -117,11 +117,11 @@ sudo -u deploy docker images --format '{{.Tag}}' ghcr.io/projekt-manager-org/pro
 
 ## Verify a deploy
 
-Reads use `docker` directly rather than `docker compose`. The compose path re-parses `docker-compose.yml` on every invocation, which requires every interpolation var (`POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY`, `CLOUDFLARE_API_TOKEN`, …) in shell env; a bare sudo shell doesn't have them sourced, so parse aborts with `CLOUDFLARE_API_TOKEN must be declared`. `docker ps` / `docker exec` / `docker logs` don't parse compose, so they work directly. Same class of problem fixed in `server-setup.md` Phase 8.1 (commit 5484903).
+Reads use `docker` directly rather than `docker compose`. The compose path re-parses `docker-compose.yml` on every invocation, which requires every interpolation var (`POSTGRES_PASSWORD`, `STORAGE_SECRET_KEY`, `CLOUDFLARE_API_TOKEN`, …) in shell env; a bare sudo shell doesn't have them sourced, so parse aborts with `CLOUDFLARE_API_TOKEN must be declared`. `docker ps` / `docker inspect` / `docker exec` / `docker logs` don't parse compose, so they work directly. Same class of problem fixed in `server-setup.md` Phase 8.1 (commit 5484903).
 
 ```bash
-# Running commit
-sudo -u deploy git -C /opt/projekt-manager rev-parse --short HEAD
+# Running commit: the app image tag (HEAD is the last deploy target, even a refused one)
+sudo -u deploy docker inspect --format '{{.Config.Image}}' projekt-manager-app-1
 
 # Container status
 sudo -u deploy docker ps --filter name=projekt-manager-
