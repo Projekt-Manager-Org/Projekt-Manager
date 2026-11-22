@@ -96,7 +96,7 @@ What the login screen shows: [ui/index.md §8.1.1](ui/index.md#811-unauthenticat
 - **AC-765** `[crit]`: If the HTTP-only evaluation mode is turned on in production, the system refuses to start ([ADR-0013](../adr/0013-http-only-evaluation-mode.md)).
 - **AC-766** `[crit]`: While a page is loaded over plain HTTP from a host other than `localhost` or `127.0.0.1`, the system shows a non-dismissible warning banner on it ([ADR-0013](../adr/0013-http-only-evaluation-mode.md)).
 - **AC-764** `[crit]`: If seeding is turned on while the system runs in production, the system changes no stored data: it neither wipes data nor loads the demo dataset ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)).
-- **AC-46** `[infra]`: If a deploy fails, the previously running version keeps running.
+- **AC-771** `[infra]`: If an image of the version being deployed is unavailable, the deploy aborts and the previously running version keeps running.
 - **AC-47** `[infra]`: The operator can redeploy an earlier commit while its image is retained ([ADR-0011 § Retention](../adr/0011-build-images-in-ci-distribute-via-ghcr.md)).
 - **AC-48** `[infra]`: If the post-deploy health check fails (database, object storage, or HTTPS through the reverse proxy), the deploy aborts and reports the failure.
 - **AC-49** `[infra]`: The hosted environment is reachable only over VPN ([ADR-0008](../adr/0008-vpn-first-network-access.md)).
