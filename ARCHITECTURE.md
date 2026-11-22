@@ -499,12 +499,12 @@ Workers hold no `invoice:*` permission, so every invoice route refuses them (403
 
 A guard over a marked block fails, rather than passes, when its markers are missing.
 
-| Kind                      | Guard                                                                                                                                                                                                            |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Generated from code       | `docs/api/openapi.json` from the route schemas ([docs/api/ § OpenAPI Document](docs/api/README.md#openapi-document))                                                                                             |
-| Generated from code       | The endpoint table in [docs/api/](docs/api/README.md), every column read off the route and its gates                                                                                                             |
-| `CHECKED:` blocks vs code | Permission matrix (production roles only; every role classified production or test-only), nav matrix (rule, resolved roles, landing order), error codes — read via `src/test/checkedBlock.ts`                    |
-| Verified without a source | Cited files and functions (`scripts/check-doc-paths.sh`; exemptions per document, with a reason), links and anchors (`lychee.toml`, GitHub slugs, no network), AC traceability (`scripts/check-traceability.sh`) |
+| Kind                      | Guard                                                                                                                                                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Generated from code       | `docs/api/openapi.json` from the route schemas ([docs/api/ § OpenAPI Document](docs/api/README.md#openapi-document))                                                                                                                                                     |
+| Generated from code       | The endpoint table in [docs/api/](docs/api/README.md), every column read off the route and its gates                                                                                                                                                                     |
+| `CHECKED:` blocks vs code | Permission matrix (production roles only; every role classified production or test-only), nav matrix (rule, resolved roles, landing order), error codes — read via `src/test/checkedBlock.ts`                                                                            |
+| Verified without a source | Cited files and functions (`scripts/check-doc-paths.sh`; exemptions per document, with a reason), cited sections (`scripts/check-section-citations.mjs`), links and anchors (`lychee.toml`, GitHub slugs, no network), AC traceability (`scripts/check-traceability.sh`) |
 
 Prettier formats the whole repository (#361); its exceptions are in `.prettierignore`.
 

@@ -645,6 +645,13 @@ jobs:
       - name: Doc citation drift check (cited files and functions exist)
         run: npm run check:doc-paths
 
+      # Static check: every `<file>.md §N` citation in a tracked file must
+      # name a section that exists. A deleted section leaves its citations
+      # behind — data-model.md's §5.21 outlived its section in two
+      # services (#1075).
+      - name: Section citation drift check (cited sections exist)
+        run: npm run check:section-citations
+
       # Static check: every relative file link and `#anchor` fragment
       # across tracked *.md must resolve. 25 broken internal links
       # accumulated undetected before #289 — neither `lint` nor
