@@ -20,6 +20,7 @@ Rules for the [product specification](../docs/spec/index.md) (non-negotiable):
 - **S-CONF** — Every configurable value — carrying `[C]` — appears in the `[C]` catalogue ([architecture.md "Company Configurable Settings"](../docs/spec/architecture.md)).
 - **S-ACTR** — Every AC is cited by at least one test, or has an infra (verification method) or gap row in the verification-exceptions file.
 - **S-TRAC** — Every AC citation outside the verification-exceptions file names exactly one defined AC — no ranges, list each ID; the file’s retired rows record IDs that are never cited or reused. Enforced repo-wide by `scripts/check-traceability.sh` — review covers only the citations a change touches.
+- **S-RENU** — Sections are never renumbered. A deleted section's number stays unused; the citation check blocks the deletion until no citation points to it.
 
 Guidelines for the specification (judgement is required):
 
