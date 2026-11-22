@@ -13,7 +13,7 @@
  * Bounded memory (core PR goal — multi-GB takeouts). The zip is opened
  * once and entries STREAM into it as they are built; the builder holds at
  * most ONE attachment in memory at a time, so peak memory scales with the
- * per-file cap ([C], data-model.md §5.21) — NOT with the archive size. A
+ * per-file cap ([C], architecture.md §12.2) — NOT with the archive size. A
  * takeout of thousands of files (or a raised per-file cap) streams to disk
  * without ever buffering the batch. The only component buffered whole is
  * `data.json` — business *rows*, bounded by row count, not attachment bytes.

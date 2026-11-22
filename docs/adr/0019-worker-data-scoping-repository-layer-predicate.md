@@ -44,7 +44,7 @@ Encode scope in the permission catalog — workers get scoped, owner/office get 
 
 ### Handler-level branching
 
-`if (user.role === 'worker') { filter } else { return all }` at each list handler. Ruled out: duplicates scope logic across every list and get-by-id, turns a missed branch into a privilege-escalation bug, and hardcodes role names in handlers — fighting the `index.md §4.2` note that roles stay configurable.
+`if (user.role === 'worker') { filter } else { return all }` at each list handler. Ruled out: duplicates scope logic across every list and get-by-id, turns a missed branch into a privilege-escalation bug, and hardcodes role names in handlers — fighting the `docs/spec/index.md §4.2` note that roles stay configurable.
 
 ### Middleware-level query mutation
 
