@@ -86,6 +86,14 @@ describe('AC-769: global error handler 4xx pass-through', () => {
       throw new Error('synthetic without statusCode');
     });
 
+    // /test/throw-sqlstate/:code — a node-postgres error as drizzle-orm
+    // surfaces it: the SQLSTATE sits on the wrapped `cause`.
+    app.post('/test/throw-sqlstate/:code', async (req) => {
+      const { code } = req.params as { code: string };
+      const pgError = Object.assign(new Error('synthetic pg error'), { code });
+      throw new Error('Failed query', { cause: pgError });
+    });
+
     await app.ready();
   });
 
@@ -202,6 +210,25 @@ describe('AC-769: global error handler 4xx pass-through', () => {
     expect(res.statusCode).toBe(500);
     expect(res.json().code).toBe('SERVER_ERROR');
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  // api.md §14.4.1: a value the column cannot hold breaks a field
+  // constraint — a validation error, whichever route schema missed it.
+  it.each([
+    { code: '22001', what: 'value too long' },
+    { code: '22003', what: 'numeric value out of range' },
+  ])('SQLSTATE $code ($what) → 422 VALIDATION_ERROR (not 500)', async ({ code }) => {
+    errorSpy.mockClear();
+    const res = await app.inject({ method: 'POST', url: `/test/throw-sqlstate/${code}` });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('any other SQLSTATE still → 500 SERVER_ERROR', async () => {
+    const res = await app.inject({ method: 'POST', url: '/test/throw-sqlstate/22P02' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json().code).toBe('SERVER_ERROR');
   });
 });
 
