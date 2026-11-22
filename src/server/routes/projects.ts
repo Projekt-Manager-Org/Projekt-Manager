@@ -20,6 +20,7 @@ import {
 import { STATE_KEYS, type WorkflowState } from '../../config/stateConfig.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { ADDRESS_MAX } from '../../domain/address.js';
 import { LIST_OFFSET_SCHEMA } from './list-offset.js';
 
 export function projectRoutes(db: Database) {
@@ -132,9 +133,9 @@ export function projectRoutes(db: Database) {
                 additionalProperties: false,
                 required: ['street', 'zip', 'city'],
                 properties: {
-                  street: { type: 'string', pattern: '\\S' },
-                  zip: { type: 'string', pattern: '\\S' },
-                  city: { type: 'string', pattern: '\\S' },
+                  street: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.street },
+                  zip: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.zip },
+                  city: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.city },
                 },
               },
               plannedStart: { type: ['string', 'null'], format: 'date' },
@@ -357,9 +358,9 @@ export function projectRoutes(db: Database) {
                 additionalProperties: false,
                 required: ['street', 'zip', 'city'],
                 properties: {
-                  street: { type: 'string', pattern: '\\S' },
-                  zip: { type: 'string', pattern: '\\S' },
-                  city: { type: 'string', pattern: '\\S' },
+                  street: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.street },
+                  zip: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.zip },
+                  city: { type: 'string', pattern: '\\S', maxLength: ADDRESS_MAX.city },
                 },
               },
               assignedWorkerIds: {

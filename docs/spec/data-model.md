@@ -8,22 +8,22 @@
 
 A job for one customer, moving through the workflow states. Behavior: [verification.md §15.12](verification.md#1512-projects).
 
-| Field                        | Constraint                                                                                                          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `id`                         | UUID                                                                                                                |
-| `number`                     | Non-empty, at most 20 characters; unique across all projects, archived ones included; immutable after creation      |
-| `title`                      | Non-empty, at most 500 characters                                                                                   |
-| `status`                     | A workflow state ([index.md §3](index.md#3-workflow-states)); changes only by transition                            |
-| `statusChangedAt`            | When the project entered its state                                                                                  |
-| `customerId`                 | An existing customer ([§5.6](#56-customer-entity)); immutable after creation                                        |
-| `siteAddress`                | The work site (Baustelle): `street`, `zip`, `city`, all non-empty — or none, and the site is the customer's address |
-| `plannedStart`, `plannedEnd` | Calendar dates (ISO 8601, no time); one range per project; an end needs a start and is not before it                |
-| `assignedWorkers`            | Distinct users with the worker role, active when assigned                                                           |
-| `estimatedValue`             | EUR net, two decimals, at most 10 integer digits                                                                    |
-| `notes`                      | Free text                                                                                                           |
-| `deleted`                    | Archived ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md))                                                  |
-| `createdAt`, `updatedAt`     | Server time                                                                                                         |
-| `createdBy`, `updatedBy`     | The acting user; empty for imported rows without a known actor                                                      |
+| Field                        | Constraint                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                         | UUID                                                                                                                                                    |
+| `number`                     | Non-empty, at most 20 characters; unique across all projects, archived ones included; immutable after creation                                          |
+| `title`                      | Non-empty, at most 500 characters                                                                                                                       |
+| `status`                     | A workflow state ([index.md §3](index.md#3-workflow-states)); changes only by transition                                                                |
+| `statusChangedAt`            | When the project entered its state                                                                                                                      |
+| `customerId`                 | An existing customer ([§5.6](#56-customer-entity)); immutable after creation                                                                            |
+| `siteAddress`                | The work site (Baustelle): `street` (at most 200 characters), `zip` (20), `city` (200), all non-empty — or none, and the site is the customer's address |
+| `plannedStart`, `plannedEnd` | Calendar dates (ISO 8601, no time); one range per project; an end needs a start and is not before it                                                    |
+| `assignedWorkers`            | Distinct users with the worker role, active when assigned                                                                                               |
+| `estimatedValue`             | EUR net, two decimals, at most 10 integer digits                                                                                                        |
+| `notes`                      | Free text                                                                                                                                               |
+| `deleted`                    | Archived ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md))                                                                                      |
+| `createdAt`, `updatedAt`     | Server time                                                                                                                                             |
+| `createdBy`, `updatedBy`     | The acting user; empty for imported rows without a known actor                                                                                          |
 
 ### 5.3 User Entity
 

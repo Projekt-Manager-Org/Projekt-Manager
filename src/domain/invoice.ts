@@ -10,6 +10,7 @@
  */
 
 import Big from 'big.js';
+import { ADDRESS_MAX } from './address.js';
 import { sanitiseFilenameSegment } from './filename.js';
 import { hasAtMostDecimals, round2, round2Decimal } from './money.js';
 
@@ -177,9 +178,9 @@ export const INVOICE_TEXT_MAX = {
   lineDescription: 1000,
   lineUnit: 100,
   recipientName: 255,
-  recipientStreet: 200,
-  recipientZip: 20,
-  recipientCity: 200,
+  recipientStreet: ADDRESS_MAX.street,
+  recipientZip: ADDRESS_MAX.zip,
+  recipientCity: ADDRESS_MAX.city,
   recipientUstId: 50,
   cancellationReason: 2000,
 } as const;

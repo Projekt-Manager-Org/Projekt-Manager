@@ -267,15 +267,18 @@
                     "properties": {
                       "street": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 200
                       },
                       "zip": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 20
                       },
                       "city": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 200
                       }
                     }
                   },
@@ -356,15 +359,18 @@
                     "properties": {
                       "street": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 200
                       },
                       "zip": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 20
                       },
                       "city": {
                         "type": "string",
-                        "pattern": "\\S"
+                        "pattern": "\\S",
+                        "maxLength": 200
                       }
                     }
                   },
