@@ -20,6 +20,7 @@ import {
 import { STATE_KEYS, type WorkflowState } from '../../config/stateConfig.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { LIST_OFFSET_SCHEMA } from './list-offset.js';
 
 export function projectRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
@@ -41,7 +42,7 @@ export function projectRoutes(db: Database) {
           querystring: {
             type: 'object',
             properties: {
-              offset: { type: 'integer', minimum: 0 },
+              offset: LIST_OFFSET_SCHEMA,
               limit: { type: 'integer', minimum: 0, maximum: 200 },
               status: {}, // Accept string or array — Fastify querystring parsing handles both
               search: { type: 'string' },

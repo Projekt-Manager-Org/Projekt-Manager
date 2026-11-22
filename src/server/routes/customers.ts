@@ -13,6 +13,7 @@ import {
 import { EXPECTED_VERSION_SCHEMA } from './expected-version.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { LIST_OFFSET_SCHEMA } from './list-offset.js';
 
 /**
  * The writable fields and their limits (data-model.md §5.6). `\\S` refuses
@@ -52,7 +53,7 @@ export function customerRoutes(db: Database) {
           querystring: {
             type: 'object',
             properties: {
-              offset: { type: 'integer', minimum: 0 },
+              offset: LIST_OFFSET_SCHEMA,
               limit: { type: 'integer', minimum: 1, maximum: 200 },
               search: { type: 'string' },
               sortBy: { type: 'string', enum: [...CUSTOMER_SORT_KEYS] },

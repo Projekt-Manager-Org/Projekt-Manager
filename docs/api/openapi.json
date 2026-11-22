@@ -131,7 +131,8 @@
           {
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "maximum": 9007199254740991
             },
             "in": "query",
             "name": "offset",
@@ -607,7 +608,8 @@
           {
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "maximum": 9007199254740991
             },
             "in": "query",
             "name": "offset",
@@ -847,7 +849,8 @@
           {
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "maximum": 9007199254740991
             },
             "in": "query",
             "name": "offset",
@@ -1286,7 +1289,8 @@
           {
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "maximum": 9007199254740991
             },
             "in": "query",
             "name": "offset",
@@ -1996,7 +2000,8 @@
           {
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "maximum": 9007199254740991
             },
             "in": "query",
             "name": "offset",

@@ -23,6 +23,7 @@ import {
 } from '../services/AuditService.js';
 import { notFound, notPermitted, validationError } from '../errors.js';
 import { STRINGS } from '../../config/strings.js';
+import { LIST_OFFSET_SCHEMA } from './list-offset.js';
 
 export function auditRoutes(db: Database) {
   return async function (app: FastifyInstance): Promise<void> {
@@ -41,7 +42,7 @@ export function auditRoutes(db: Database) {
             type: 'object',
             additionalProperties: false,
             properties: {
-              offset: { type: 'integer', minimum: 0 },
+              offset: LIST_OFFSET_SCHEMA,
               // Upper bound sized for the activity-feed use case: the
               // integration tests in `audit-log.test.ts` fetch up to
               // 1000 entries in a single page to avoid flake from

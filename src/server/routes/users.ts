@@ -7,6 +7,7 @@ import type { Database } from '../db/connection.js';
 import { requirePermission, requireSession } from '../middleware/auth.js';
 import { UserService } from '../services/UserService.js';
 import { ROLE_KEYS } from '../../config/roleKeys.js';
+import { LIST_OFFSET_SCHEMA } from './list-offset.js';
 
 /**
  * The writable fields and their limits (data-model.md §5.3). `\\S` refuses
@@ -38,7 +39,7 @@ export function userRoutes(db: Database) {
           querystring: {
             type: 'object',
             properties: {
-              offset: { type: 'integer', minimum: 0 },
+              offset: LIST_OFFSET_SCHEMA,
               limit: { type: 'integer', minimum: 1, maximum: 200 },
             },
           },
