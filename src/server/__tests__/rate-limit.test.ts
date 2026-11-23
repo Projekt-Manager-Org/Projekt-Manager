@@ -1,12 +1,13 @@
 /**
- * API integration test: Login rate limiting end-to-end.
+ * API integration test: sign-in and password-change rate limiting
+ * end-to-end, keyed per client address (AC-772).
  *
  * The shared test helper in `src/test/api-helpers.ts` builds the Fastify app
  * with `rateLimit: false` so the other integration tests can hammer the API
  * without tripping the 5-per-minute login limit. That leaves rate limiting
  * itself un-exercised — this file closes that gap by building its own
  * dedicated app instance with rate limiting **enabled** and asserting that
- * the 6th login attempt from the same IP inside the window returns 429.
+ * the 6th attempt from the same IP inside the window returns 429.
  *
  * Notes on isolation:
  *   - `@fastify/rate-limit` defaults to an in-memory LRU store scoped to the
@@ -37,7 +38,7 @@ const migrationsFolder = path.resolve(__dirname, '../db/migrations');
 let app: FastifyInstance;
 let pool: pg.Pool;
 
-describe('Login rate limiting (end-to-end)', () => {
+describe('AC-772: sign-in and password-change rate limits (end-to-end)', () => {
   // Vitest runs with NODE_ENV=test, where `getRateLimit()` defaults the
   // login ceiling to 30/min so E2E flows with many fresh contexts don't
   // throttle. Pin the production ceiling (5/min) explicitly here — this
@@ -122,6 +123,16 @@ describe('Login rate limiting (end-to-end)', () => {
     // preserves headers the plugin added (rather than wiping them with a
     // fresh 500 response).
     expect(sixth.headers['retry-after']).toBeDefined();
+
+    // The limit is per client address: another address in the same
+    // window is not refused. Guards against a single global bucket.
+    const otherAddress = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload,
+      remoteAddress: '10.0.0.3',
+    });
+    expect(otherAddress.statusCode).not.toBe(429);
   });
 
   // The change-password limit is `{ max: 5, timeWindow: '1 minute' }` per IP,
@@ -180,6 +191,27 @@ describe('Login rate limiting (end-to-end)', () => {
     expect(typeof body.message).toBe('string');
     expect(body.message.length).toBeGreaterThan(0);
     expect(sixth.headers['retry-after']).toBeDefined();
+
+    // The limit is per client address, not per session: a fresh session
+    // from the same address is still refused.
+    const relogin = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: SEED_USERS.owner.username, password: 'changeme' },
+      remoteAddress,
+    });
+    expect(relogin.statusCode).toBe(200);
+    const reCookie = relogin.headers['set-cookie'];
+    const reCookieStr = Array.isArray(reCookie) ? reCookie[0]! : reCookie!;
+    const freshToken = reCookieStr.match(/session=([^;]+)/)![1]!;
+    const freshSession = await app.inject({
+      method: 'POST',
+      url: '/api/auth/change-password',
+      headers: { cookie: `session=${freshToken}` },
+      payload,
+      remoteAddress,
+    });
+    expect(freshSession.statusCode).toBe(429);
   });
 });
 
@@ -189,7 +221,7 @@ describe('Login rate limiting (end-to-end)', () => {
 // (5/min) and dev/test (30/min) so a regression that swaps the branches
 // is caught without spinning up the app.
 //
-// Issue #139 (AC-228 / AC-231) moved `LOGIN_RATE_LIMIT_MAX` and
+// Issue #139 moved `LOGIN_RATE_LIMIT_MAX` and
 // `NODE_ENV` reads from raw `process.env` into the validated schema.
 // The dev-default credentials guard (POSTGRES_PASSWORD / MINIO_ROOT_*)
 // now fires inside `validateEnvRuntime()` whenever `NODE_ENV=production` is in

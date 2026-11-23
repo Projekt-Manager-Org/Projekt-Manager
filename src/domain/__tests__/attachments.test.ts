@@ -24,7 +24,7 @@ import type { AttachmentLabel } from '../types';
 describe('ATTACHMENT_LABELS', () => {
   it('enumerates exactly the six labels from data-model.md §5.13', () => {
     // The catalog is closed — adding a label is a code change plus a
-    // migration (architecture.md §12.2). Pin the full set so a silent
+    // migration. Pin the full set so a silent
     // extension in one place and not the other is a test failure here.
     const values = ATTACHMENT_LABELS.map((entry) => entry.value);
     expect(values).toEqual([

@@ -62,7 +62,7 @@ The project's binary attachments — PDF, DOCX ([AC-409](../verification.md#1526
 
 The delete action moves an attachment to the Papierkorb (§8.15.10, [AC-419](../verification.md#1526-attachments)). Offered to owner and office on every attachment, to a worker on their own uploads within the self-delete grace window **[C]** ([AC-411](../verification.md#1526-attachments)), never to the bookkeeper, and to no one on an archived project ([AC-412](../verification.md#1526-attachments)).
 
-It asks first: a Yes / No dialog whose German warning names the Papierkorb, the retention window `L` **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)) during which restore is possible, and the permanent deletion after it ([AC-426](../verification.md#1526-attachments)).
+It asks first: a Yes / No dialog whose German warning names the Papierkorb, the Papierkorb window `L` **[C]** ([architecture.md §12.2](../architecture.md#122-company-configurable-settings)) during which restore is possible, and the permanent deletion after it ([AC-426](../verification.md#1526-attachments)).
 
 ### 8.15.10 Papierkorb Tab
 

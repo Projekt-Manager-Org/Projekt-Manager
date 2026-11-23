@@ -19,26 +19,11 @@ Constraints imposed from outside the project.
 
 ## 12. Configuration Boundaries
 
-### 12.1 Universal Domain Rules
-
-Rules that apply to all installations:
-
-- Workflow transitions and aging ([index.md §3](index.md#3-workflow-states), [AC-461](verification.md#151-workflow-board))
-- Authentication required for protected access
-- Authorization enforced server-side on every protected operation
-
 ### 12.2 Company-Configurable Settings
 
-The following values are centralized as single-source constants: each has exactly one definition site, so changing it never means hunting call sites. Each corresponds to a `[C]` marker somewhere in this spec.
+The `[C]` values. A deployment changes one through the env var or the place its entry names; an entry naming neither is a source constant — a code change and a redeploy.
 
-`[C]` marks a value as deliberately not hardcoded at its use sites. It does **not** by itself promise an operator-facing knob — the catalogue carries two surfaces:
-
-- **Env-var-backed** — settable per deployment without touching source. The entry names the variable (`AGE_RECIPIENT`, `SSE_HEARTBEAT_INTERVAL_MS`, `STORAGE_OBJECT_LOCK_DAYS`, …).
-- **Source constant** — one definition site in the codebase; changing it is a code edit plus a redeploy. The entry names no variable.
-
-Entries state which. Promoting a source constant to an env var is a normal change when a deployment actually needs to vary it — it is not a spec change.
-
-- Branding — source constants, no env vars. What each one reaches ([AC-743](verification.md#1520-branding)):
+- Branding — what each value reaches ([AC-743](verification.md#1520-branding)):
   - App name — the header wordmark, the login heading, the document title, the installed app's name, and the title of a push notification that carries none.
   - Short name — the installed app's home-screen label.
   - Footer brand line — the application footer. Not the invoice footer text ([data-model.md §5.17](data-model.md#517-company-profile-entity)).
@@ -48,69 +33,52 @@ Entries state which. Promoting a source constant to an env var is a normal chang
   - Generic mark colors — the header mark while no logo is configured.
   - Logo — optional; the header mark at every width and the invoice issuer block ([AC-746](verification.md#1520-branding)). Used on the invoice only when it names, by an absolute same-origin path, a PNG or JPEG file of at most 2 MB under the served `brand/` directory. A deployment ships its own; this generalized system ships none ([ADR-0001](../adr/0001-generalized-system-with-configurable-customer-specifics.md)).
 - Favicon and installed-app icons — files, not values: a deployment replaces them.
-- Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers ([index.md §3](index.md#3-workflow-states))
-- German UI and error strings
-- Date and locale display settings
-- Password policy — [data-model.md §5.3](data-model.md#53-user-entity)
-- Session duration — [data-model.md §5.4](data-model.md#54-session)
-- Role set and per-role permission matrix
-- Restore confirmation phrase — typed to confirm an import that replaces business data; matched case-sensitively, ignoring surrounding whitespace ([AC-592](verification.md#1514-data-exchange))
-- Backup interval — when backups and drills start ([AC-616](verification.md#1522-backup-and-recovery)). Source constant: `SCHEDULES` in `src/server/backup-runner.ts` (four cron expressions — weekday/weekend backup, weekday/weekend drill). No env var
-- Backup freshness thresholds — full days of age of `lastBackupAt` and `lastDrillAt` beyond which the owner-facing badge switches to amber and to red ([ui/index.md §8.1.2](ui/index.md#812-authenticated-state)). Source constant: `BACKUP_THRESHOLDS` in `src/config/backupThresholds.ts`. Defaults, in days: backup amber 2 / red 4, drill amber 14 / red 30. No env var
-- Backup public recipient — operator-managed `age` X25519 public recipient string used by the `backup` compose service to encrypt each `pg_dump` artifact and per-table manifest before upload to R2 ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). No default — the deploy must supply a value; the `backup` service refuses to run without it. Env var: `AGE_RECIPIENT`. The matching private identity is never on the VPS disk; it is loaded into a tmpfs mount on the `backup` service only when the operator wants Tier 2 verification ([AC-175](verification.md#1522-backup-and-recovery)). The matching private key never appears anywhere else and is not a `[C]` value — the recipient string in this catalogue is what couples the deployed `backup` service to the operator's keypair. Parity with `BINARY_AGE_RECIPIENT` below.
-- Audit log retention window — rolling age at which `audit_log` entries are removed by the scheduled cleanup (default 90 days; [AC-632](verification.md#1523-audit-log)). Env var: `AUDIT_RETENTION_WINDOW_DAYS`; unset falls back to the build-time default in `src/config/auditRetention.ts`
-- Audit activity-feed rendering — mapping from audit entry (`action`, `payload`) ([data-model.md §5.10](data-model.md#510-audit-log-entity)) to the German display string in the activity feed ([ui/workflow-views.md §8.4.1](ui/workflow-views.md#841-activity-feed)) and global Aktivität view ([ui/management.md §8.13](ui/management.md#813-audit-view)). Covers each mutation-sourced [`NotificationEventClass`](data-model.md#511-notification-rule) — every such class has an `(action, payload)` projection; system events have no audit row to render ([AC-371](verification.md#1524-notifications)).
-- Realtime heartbeat — keepalive interval on realtime event connections; bounds how long an ended session keeps its connections ([AC-275](verification.md#1528-realtime-events)) and, plus 30 seconds, how long an open app takes to show the login screen ([AC-27](verification.md#154-authentication)). Default 25 seconds; bounded 1 s … 600 s. Env var: `SSE_HEARTBEAT_INTERVAL_MS`.
-- List page size — default row count for paginated list endpoints (audit) and their management views
-- Rate limit buckets — per-session ceilings defined in `getRateLimit()` (`src/server/config/index.ts`); exceeding returns `429 RATE_LIMITED`. Push-subscription mutations (`POST`, `DELETE`) 20/min and password change 5/min are source constants. The login bucket is env-backed — env var `LOGIN_RATE_LIMIT_MAX`; unset falls back to an environment-aware default (5/min under `NODE_ENV=production`, 30/min elsewhere)
-- Attachment per-file size cap — maximum `sizeBytes` of a single attachment original (default 1 MB); enforced at init validation, pinned via the presigned PUT's signed `Content-Length`, and re-verified at complete ([data-model.md §5.13](data-model.md#513-attachment)). The derived thumbnail carries its own cap (default 200 KB). Env vars: `ATTACHMENT_PER_FILE_CAP_BYTES`, `ATTACHMENT_THUMB_CAP_BYTES`; unset falls back to the build-time defaults in `src/config/attachmentConfig.ts`
-- Attachment bulk-fetch caps — maximum attachment count and summed plaintext byte size per request (default 20 files AND 20 MB); breach rejected with `BULK_LIMIT_EXCEEDED` ([verification.md AC-415](verification.md#1526-attachments)). Env vars: `ATTACHMENT_BULK_MAX_FILES`, `ATTACHMENT_BULK_MAX_BYTES`
-- Takeout staging TTL — how long the server keeps an export or import archive after its job ended, and an import upload that makes no progress (default 24 hours; [AC-589](verification.md#1514-data-exchange), [AC-599](verification.md#1514-data-exchange)). Env var: `TAKEOUT_STAGING_TTL_MINUTES` (minutes; default `1440`)
-- Takeout staging directory — VPS-local path where the export/import job stages the plaintext archive (env `TAKEOUT_STAGING_DIR`; default under the OS temp dir for zero-config dev/test). **Must resolve to a disk-backed filesystem in production:** the staged archive is the full-account plaintext superset (every business row + every decrypted attachment + each `passwordHash`), so a multi-GB or repeated takeout on a RAM-backed path (the `app` container mounts `/tmp` as tmpfs) exhausts container memory and OOM-kills the VPS. A boot probe refuses to start when `NODE_ENV=production` and the resolved path is on `tmpfs`/`ramfs` (detected via `statfs(2)` magic, not a path heuristic) — fail-closed per the project principle; out of production it warns only. `docker-compose.yml` defaults it to the disk-backed `takeout-staging` named volume.
-- Daten-view mobile-warning breakpoint — viewport width (CSS px) below which the Export and Import dialogs render the large-transfer warning (`"… Downloads können sehr groß sein."` / `"… Importe können sehr groß sein."`). Default 480; non-blocking — the user may proceed regardless ([ui/daten.md §8.11.1](ui/daten.md#8111-export), [§8.11.2](ui/daten.md#8112-import))
-- Attachment orphan-reaper TTL — age of a `status = 'pending'` attachment row past which the scheduled reaper removes the row and its backing objects (default 15 minutes; [verification.md AC-408](verification.md#1526-attachments)). Env var: `ATTACHMENT_ORPHAN_REAPER_TTL_MINUTES`
-- Attachment hidden-reaper TTL — age past `hiddenAt` past which the scheduled reaper hard-deletes the `status = 'hidden'` row (default 2 days; [verification.md AC-426](verification.md#1526-attachments)). Equal to `L` by construction. Env var: `ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES` (minutes; default `2880`)
-- Attachment presigned-URL expiry — lifetime of upload (presigned-PUT) and download (presigned-GET) URLs issued by the attachment surface (default 5 minutes)
-- Storage capacity declaration — stored-ciphertext volume the deployment's bucket is provisioned for, in power-of-1024 GB. Drives the `disk.threshold_reached` warning ([verification.md §15.33](verification.md#1533-threshold-monitor)). Env var: `STORAGE_QUOTA_GB`, no default — unset disables storage warnings entirely, logged once at startup. Env-backed rather than a source constant because it tracks the provisioned bucket, not policy: a second deployment against a larger bucket must not need a code edit to describe its own capacity
-- Threshold-monitor policy — warn band (default 80% of `STORAGE_QUOTA_GB`), clear-band hysteresis margin (default 2 points, so a standing warning clears at 78%), sweep cadence (default 15 minutes), and re-notify cadence while a condition persists (default 1440 minutes = 24 h). Source constant: `THRESHOLD_MONITOR` in `src/config/thresholdMonitor.ts`. No env var — these are policy, parity with `BACKUP_THRESHOLDS`
-- Attachment worker self-delete grace — elapsed window since upload during which a worker may delete their own attachment (default 15 minutes; outside the window worker delete is rejected with `403 NOT_PERMITTED`; [verification.md AC-411](verification.md#1526-attachments)). Env var: `ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES`
-- Attachment label catalog — the closed enum `AttachmentLabel` ([data-model.md §5.13](data-model.md#513-attachment)) paired with its German display strings: `angebot` → `Angebot`, `auftragsbestaetigung` → `Auftragsbestätigung`, `rechnung` → `Rechnung`, `aufmass` → `Aufmaß`, `foto` → `Foto`, `sonstiges` → `Sonstiges`. Adding a label is a code change plus a migration (parity with the notification-event catalog).
-- Attachment upload CTA labels — German copy for the upload affordance on the project detail page ([ui/project-detail.md §8.15.4](ui/project-detail.md#8154-photo-gallery), [§8.15.5](ui/project-detail.md#8155-binary-list)): the camera-capture CTA (`Foto aufnehmen`), the drop-zone text, the explicit-browse labels, and the retry / dismiss actions. Kept alongside the other `German UI and error strings` — listed here because the CTAs are referenced by capability statements elsewhere in the spec.
-- Attachment client-encoding parameters — image-longest-edge, image-quality, thumbnail-longest-edge, thumbnail-quality; applied by the browser pipeline before upload ([verification.md AC-404](verification.md#1526-attachments))
-- Compliance retention `R` (days) — bucket default retention auto-applied per upload ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)). Sized for the operator-mistake recovery window. Env var: `STORAGE_OBJECT_LOCK_DAYS`. The dev compose stack mirrors the prod B2 setting via the same var.
-- Lifecycle hide-to-delete `L` (days) — `daysFromHidingToDeleting` on the bucket lifecycle rule. The Papierkorb trash window: a hidden version is reaped exactly `L` days after the hide marker lands. Env var: `STORAGE_LIFECYCLE_HIDE_TO_DELETE_DAYS`. **Invariant: `R ≤ L`** — `R > L` is incoherent on its face: lifecycle would attempt to reap noncurrent versions still protected by Object Lock, leaving zombie versions on every reap cycle until `R` elapsed. The boot-time safety probe refuses to start under `R > L` ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)).
-- Binary attachment public recipient — operator-managed `age` X25519 public recipient string used by the server to wrap per-blob DEKs into the attachment row's `wrappedDek` / `wrappedThumbDek` envelope ([data-model.md §5.13](data-model.md#513-attachment), [ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)). No default — the deploy must supply a value; absence or a malformed value aborts the pre-flight configuration check. Env var: `BINARY_AGE_RECIPIENT`. The matching private identity, with every retired one, forms the binary keyring, operator-loaded into a tmpfs mount on the `app` service (parallel surface to backup; see [ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)); the boot probe checks the keyring against these recipients ([verification.md AC-438](verification.md#1526-attachments)). The private keys never appear anywhere else and are not `[C]` values — the recipient strings in this catalogue couple the deployed app to the operator's keypairs.
-- Binary attachment retired recipients — the public recipients of retired binary keypairs ([ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md) § Key rotation), comma-separated, whitespace around entries ignored; unwrap only, never wrapped to. Default empty. A malformed or empty entry aborts the pre-flight configuration check. Listing an entry twice, or listing the active recipient, has no effect. Env var: `BINARY_AGE_RETIRED_RECIPIENTS`.
+- Workflow state configuration — labels, colors, order, count, aging thresholds, collapse tiers ([index.md §3](index.md#3-workflow-states)).
+- German UI and error strings.
+- Date and locale display settings.
+- Password policy — [data-model.md §5.3](data-model.md#53-user-entity).
+- Session duration — [data-model.md §5.4](data-model.md#54-session).
+- Role set and per-role permission matrix — [index.md §4.2](index.md#42-roles), [api.md §14.3](api.md#143-authorization-rules).
+- Restore confirmation phrase — typed to confirm an import that replaces business data; matched case-sensitively, ignoring surrounding whitespace ([AC-592](verification.md#1514-data-exchange)).
+- Backup and drill schedule — the times backups and drills start ([AC-616](verification.md#1522-backup-and-recovery)).
+- Backup freshness thresholds — full days of age of the last backup and of the last drill beyond which the backup badge turns amber and red ([ui/index.md §8.1.2](ui/index.md#812-authenticated-state)). Defaults: backup amber 2 / red 4, drill amber 14 / red 30.
+- Backup public recipient — the operator's `age` public recipient every backup is encrypted to ([AC-167](verification.md#1522-backup-and-recovery), [ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)). No default; required in production ([AC-774](verification.md#1522-backup-and-recovery)). Env var: `AGE_RECIPIENT`.
+- Audit retention window — default 90 days ([AC-632](verification.md#1523-audit-log)). Env var: `AUDIT_RETENTION_WINDOW_DAYS`.
+- Audit entry text — the German text each audit entry shows in the activity feed ([ui/workflow-views.md §8.4.1](ui/workflow-views.md#841-activity-feed)) and the Aktivität view ([ui/management.md §8.13](ui/management.md#813-audit-view)).
+- Realtime heartbeat — used by [AC-275](verification.md#1528-realtime-events) and [AC-27](verification.md#154-authentication). Default 25 s, from 1 s to 600 s. Env var: `SSE_HEARTBEAT_INTERVAL_MS`.
+- Audit page size — entries per page of the activity feed and the Aktivität view ([AC-628](verification.md#1523-audit-log)).
+- Rate limits — attempts per client address per minute ([AC-772](verification.md#154-authentication)): sign-in 5 in production, env var `LOGIN_RATE_LIMIT_MAX`; password change 5, source constant.
+- Attachment size caps — of an uploaded original, default 1 MB, and of a photo's thumbnail, default 200 KB ([data-model.md §5.13](data-model.md#513-attachment)). Env vars: `ATTACHMENT_PER_FILE_CAP_BYTES`, `ATTACHMENT_THUMB_CAP_BYTES`.
+- Bulk-download caps — files and summed size per request, default 20 files and 20 MB ([AC-415](verification.md#1526-attachments)). Env vars: `ATTACHMENT_BULK_MAX_FILES`, `ATTACHMENT_BULK_MAX_BYTES`.
+- Takeout staging TTL — default 24 hours ([AC-589](verification.md#1514-data-exchange), [AC-599](verification.md#1514-data-exchange)). Env var: `TAKEOUT_STAGING_TTL_MINUTES`.
+- Takeout staging directory — where export and import jobs keep their plaintext archive; disk-backed in production ([AC-773](verification.md#1527-configuration-and-feature-manifest)). Env var: `TAKEOUT_STAGING_DIR`.
+- Mobile-warning breakpoint — [AC-606](verification.md#1514-data-exchange). Default 480 CSS px.
+- Orphan-reaper TTL — default 15 minutes ([AC-408](verification.md#1526-attachments)). Env var: `ATTACHMENT_ORPHAN_REAPER_TTL_MINUTES`.
+- Hidden-reaper TTL — how long the Papierkorb keeps an attachment ([AC-426](verification.md#1526-attachments)); equal to `L`. Default 2 days. Env var: `ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES`.
+- Storage capacity declaration — the stored volume the bucket is provisioned for, in GB of 1024³ bytes ([AC-667](verification.md#1533-threshold-monitor), [AC-669](verification.md#1533-threshold-monitor)). No default. Env var: `STORAGE_QUOTA_GB`.
+- Threshold-monitor policy — warn band, default 80% of the declared capacity; clear line, default 2 points below it; sweep interval, default 15 minutes; re-notify window, default 24 hours ([§15.33](verification.md#1533-threshold-monitor)).
+- Worker self-delete grace — default 15 minutes ([AC-411](verification.md#1526-attachments)). Env var: `ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES`.
+- Attachment label names — the German name of each label ([data-model.md §5.13](data-model.md#513-attachment)): `angebot` → `Angebot`, `auftragsbestaetigung` → `Auftragsbestätigung`, `rechnung` → `Rechnung`, `aufmass` → `Aufmaß`, `foto` → `Foto`, `sonstiges` → `Sonstiges`.
+- Photo encoding parameters — longest edge and quality of the image and of its thumbnail ([AC-404](verification.md#1526-attachments)).
+- Compliance retention `R` and Papierkorb window `L`, in days — set on the bucket by the operator, not by the system; the system refuses to start unless `R ≤ L` ([AC-236](verification.md#1526-attachments), [ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)).
+- Binary attachment public recipient — the operator's `age` public recipient every attachment key is wrapped for ([AC-400](verification.md#1526-attachments), [ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md)). Required, no default. Env var: `BINARY_AGE_RECIPIENT`.
+- Binary attachment retired recipients — the public recipients of retired binary keypairs, unwrap only ([AC-438](verification.md#1526-attachments), [ADR-0024](../adr/0024-binary-attachment-e2e-encryption.md) § Key rotation). Comma-separated, whitespace around entries ignored; an empty or malformed entry fails validation ([AC-231](verification.md#1527-configuration-and-feature-manifest)); a duplicate, or the active recipient, has no effect. Default empty. Env var: `BINARY_AGE_RETIRED_RECIPIENTS`.
+- Invoice lock period — days from write ([AC-710](verification.md#1530-invoices), [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md)). An integer ≥ 0; 0 writes no lock. Default 3650 in production, 0 elsewhere. Env var: `INVOICE_OBJECT_LOCK_DAYS`.
 
-**Deliberately not `[C]`.** `src/server/config/env.ts` declares variables this catalogue does not list. They are settable, but they are not company settings:
-
-- **Scheduler sweep cadences** — `SESSION_CLEANUP_INTERVAL_MINUTES`, `AUDIT_RETENTION_INTERVAL_MINUTES`, `ATTACHMENT_ORPHAN_REAPER_INTERVAL_MINUTES`, `ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES`. How _often_ a reaper sweeps is operational tuning; the retention window it enforces is the company-facing value, and that one is catalogued.
-- **Bucket-orphan prune cadence and grace window** — source constants in `STORAGE_CONFIG`, no env vars, parity with `THRESHOLD_MONITOR`. An orphan is an object no row references: invisible to every company-facing surface, so neither how often it is swept nor how long it must sit first is a company decision. The grace window is a write-settling margin, not a retention window.
-- **Deployment wiring and secrets** — database and object-store endpoints, buckets and credentials, `LISTEN_HOST` (listen address, default loopback; compose sets all interfaces), `PORT`, `DOMAIN`, `NODE_ENV` (unset = production), `SEED`, `ALLOW_INSECURE_HTTP`, VAPID keys, `BOOTSTRAP_ADMIN_*`, the LLM provider key and model id, and the `*_IDENTITY_PATH` mount points for operator-loaded private keys.
-
-A variable's absence here is a claim that no company would need to change it. If one does, the fix is to add the entry — not to treat the catalogue as advisory.
-
-- Invoice Object Lock retention — `INVOICE_OBJECT_LOCK_DAYS`, the per-object Compliance lock (days from write) on every rendered invoice PDF/A-3. Default `3650` in `.env.production.example`: defense in depth against the application's own unreliability, not a retention promise — retention stays with the operating company ([ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md#compliance-boundary)); `0` in `.env.example` writes no lock, so dev binaries stay disposable. Bounds: integer ≥ 0. Independent of the bucket-default retention `R` and the trash window `L` ([ADR-0022](../adr/0022-binary-storage-b2-compliance-object-lock.md)). Behavior: [AC-710](verification.md#1530-invoices). Design: [ADR-0026](../adr/0026-invoices-immutability-and-zugferd.md).
-- Company default tax mode — `company_profile.defaultTaxMode` ∈ `'standard' | 'reverse_charge'`; pre-fills new invoice drafts with the tenant's most common mode ([data-model.md §5.17](data-model.md#517-company-profile-entity)). Owner-editable at runtime through the company-profile form ([ui/invoices.md §8.16.4](ui/invoices.md#8164-company-profile)); not an env var. Listed here because it is a per-tenant default that the deployment owner sets, not a per-user preference. Default `'standard'` on the pre-seeded singleton.
-
-### 12.3 Configuration Requirements
-
-- Configuration must be represented explicitly, not scattered as literals across the codebase.
-- Configuration sources may be static (environment variables, config files), but API and domain boundaries must not assume configuration can only live in source code — the design must permit a move to persisted company settings without restructuring those layers.
+**Not `[C]`.** Not company settings: deployment wiring, secrets, run modes and the LLM model; how often a reaper or the bucket-orphan prune runs, and the prune's grace window. A value a company would need to change belongs in the list.
 
 ### 12.6 Feature Manifest and Operator Confidence
 
-Optional features self-disable when their configuration is incomplete. Without explicit feedback, an operator can complete a deploy and only discover at use time that a feature is silently no-op.
+An optional feature runs only while every value it needs is set:
 
-The configuration boundary publishes:
+| Feature                 | Needs                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------- |
+| Push notifications      | `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`                                                    |
+| Email extraction        | `OPENROUTER_API_KEY` ([AC-734](verification.md#1518-email-data-intake))                 |
+| First-run administrator | `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_PASSWORD`                                  |
+| Backup                  | `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `R2_BUCKET`, `AGE_RECIPIENT` |
 
-- **A single declared catalog** mapping each feature to the configuration values it requires; the boot manifest's feature list is derived from this catalog.
-- **A single read path** — application code reads configuration only through the validated boundary's loader; direct reads from the process environment outside the loader are a narrow, documented exception, not a parallel pattern.
-- **A boot-time manifest** — one structured log line per process start enumerating every catalog feature with its state (`enabled` or `disabled`) and a non-empty reason when `disabled`.
-- **A pre-flight refusal** — the deploy script validates the loaded configuration against the schema before bringing containers up; a validation failure aborts the deploy and names the offending keys.
-- **A schema↔documentation parity check** — the schema's keyspace and the operator-facing example documentation are kept in sync by a CI gate that fails on divergence.
-
-Configuration choices that disable features are the operator's deliberate decisions. Configuration mistakes that silently disable features are bugs. The boundary surfaces both at deploy time and at boot.
+Backup is not optional in production ([AC-774](verification.md#1522-backup-and-recovery)). A deploy refuses an invalid configuration ([AC-231](verification.md#1527-configuration-and-feature-manifest)); each start reports which features run ([AC-230](verification.md#1527-configuration-and-feature-manifest)).
 
 ---
 
@@ -196,7 +164,7 @@ Every new API endpoint must satisfy:
 2. **Authorization**: role-based permission check on every protected route.
 3. **Input validation**: request schema validation on request body and params; an undefined field is refused ([AC-516](verification.md#1517-data-integrity)). For endpoints accepting composite payloads (e.g., the unified import envelope), per-row semantic validation may live in the service layer.
 4. **Error handling**: use application error types, no stack traces or DB field names leaked.
-5. **Rate limiting**: configured on authentication endpoints (login, password change) and push-subscription mutations (see §12.2 Rate limit buckets **[C]**). Other mutation endpoints are not rate-limited — at current scale with VPN-only access ([ADR-0008](../adr/0008-vpn-first-network-access.md)), this is a known, accepted limitation.
+5. **Rate limiting**: on sign-in and password change ([AC-772](verification.md#154-authentication)). No other endpoint carries a limit the contract defines — at current scale with VPN-only access ([ADR-0008](../adr/0008-vpn-first-network-access.md)), this is a known, accepted limitation.
 6. **CSRF protection**: mechanism defined in [ADR-0005](../adr/0005-session-management-httponly-cookies.md).
 7. **Password handling**: never log or store plaintext (see [ADR-0006](../adr/0006-password-policy-nist-blocklist.md)).
 8. **Ownership derivation on self-scoped surfaces**: on caller-owned resources (e.g., push subscriptions — [AC-654](verification.md#1524-notifications)), the server derives the owning user id from the session; a client-supplied owner id is refused ([AC-516](verification.md#1517-data-integrity)).

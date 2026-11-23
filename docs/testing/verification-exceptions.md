@@ -190,7 +190,8 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-224 | retired | —                                                                                    |
 | AC-226 | retired | —                                                                                    |
 | AC-227 | retired | —                                                                                    |
-| AC-229 | infra   | CI `lint` — `scripts/check-env-drift.sh`                                             |
+| AC-228 | retired | —                                                                                    |
+| AC-229 | retired | —                                                                                    |
 | AC-232 | retired | —                                                                                    |
 | AC-233 | retired | —                                                                                    |
 | AC-234 | retired | —                                                                                    |
@@ -368,3 +369,4 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-735 | gap     | needs a test of each save path: new customer, selected customer, no title            |
 | AC-742 | gap     | needs an e2e walking every screen in the dark theme                                  |
 | AC-771 | infra   | deploy procedure — `scripts/deploy.sh`                                               |
+| AC-774 | gap     | nothing refuses it yet — #1086                                                       |

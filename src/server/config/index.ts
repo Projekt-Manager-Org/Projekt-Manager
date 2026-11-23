@@ -120,7 +120,7 @@ export const STORAGE_CONFIG = {
    * Bucket-orphan prune cadence, in minutes (issue #169). Daily:
    * an orphan is inert — it costs bucket space and nothing else — so
    * nothing is gained by sweeping more often. Source constant, no env
-   * override (architecture.md §12.2).
+   * override: not a company setting.
    */
   pruneIntervalMinutes: 1440,
 
@@ -130,7 +130,7 @@ export const STORAGE_CONFIG = {
    * (invoice renderer, takeout import) — see
    * `server/storage/pruneBucketOrphans.ts`. 24 h is orders of magnitude
    * beyond either window, and waiting costs nothing. Source constant,
-   * no env override (architecture.md §12.2).
+   * no env override: not a company setting.
    */
   pruneMinAgeMinutes: 1440,
 } as const;

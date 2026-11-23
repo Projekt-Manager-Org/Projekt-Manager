@@ -152,7 +152,7 @@ The EN 16931 core (ADR-0026).
 - `server/password.ts` — `bcryptjs` wrapper; the 72-byte ceiling is in `src/server/config/password-policy.ts`
 - `server/staticRoot.ts` — the one definition of `dist/` and `public/` on disk
 - `server/staticCache.ts` — static file serving and its Cache-Control tiers
-- `server/deploy-preflight-cli.ts` — deploy-time config and storage checks (AC-230/231)
+- `server/deploy-preflight-cli.ts` — deploy-time config and storage checks (AC-230, AC-231)
 - `server/periodicSweeper.ts` — shared factory behind the reaper and retention schedulers
 - `server/session-reaper.ts` — session reaper (predates the factory)
 - `server/audit-retention-scheduler.ts` — audit retention (ADR-0021)
@@ -206,7 +206,7 @@ Maps spec `[C]` markers (values that vary per deployment) to files. For how oper
 | Date and locale display settings                                                    | `src/config/localeConfig.ts`           |
 | Insecure-connection detection                                                       | `src/config/insecureConnection.ts`     |
 | Password policy (min length, max bytes, blocklist)                                  | `src/server/config/password-policy.ts` |
-| Session duration, rate-limit windows                                                | `src/server/config/index.ts`           |
+| Session duration, rate limits                                                       | `src/server/config/index.ts`           |
 | Role set and per-role permission matrix                                             | `src/config/permissions.ts`            |
 | Per-view nav + route-guard rules (URL ↔ view ↔ access rule)                         | `src/config/routes.ts`                 |
 | Backup-freshness thresholds (amber/red days for backup and drill)                   | `src/config/backupThresholds.ts`       |
@@ -220,6 +220,8 @@ Maps spec `[C]` markers (values that vary per deployment) to files. For how oper
 | Attachment server caps (size, bulk, reaper TTL, worker self-delete grace)           | `src/config/attachmentConfig.ts`       |
 | Attachment client pipeline params (resize, quality, thumbnail dimension)            | `src/config/attachmentPipeline.ts`     |
 | Realtime SSE heartbeat interval (default 25 s, bounded 1 s–600 s)                   | `src/server/config/env.ts`             |
+| Backup and drill schedule                                                           | `src/server/backup-runner.ts`          |
+| Attachment link lifetime (presigned upload and download URLs)                       | `src/server/storage/client.ts`         |
 
 ---
 
@@ -494,7 +496,10 @@ Workers hold no `invoice:*` permission, so every invoice route refuses them (403
 - **Escape-to-dismiss**: every Esc-closable surface registers on the LIFO `src/hooks/escapeStack.ts`, so only the topmost closes. Modals use `src/ui/common/useDialogA11y.ts`, the rest `src/hooks/useEscapeKey.ts`; no hand-rolled `keydown` listeners.
 - **Menu close on outside click**: `src/ui/common/MenuBackdrop.tsx`, an invisible overlay, so one click closes the menu without activating what lies beneath (#130).
 - **Errors**: `src/server/error-handler.ts` passes Fastify 4xx through as stable codes; an `AppError` keeps its own; a value its column cannot hold (SQLSTATE 22001 / 22003) becomes `VALIDATION_ERROR`, a backstop for a limit a route schema missed; any other 5xx or status-less error becomes `SERVER_ERROR`. A 5xx logs at `error`, a refusal below it ([AC-769](docs/spec/verification.md#156-deployment)). Every `pg.Pool` gets an error listener; uncaught errors log once and exit.
-- **Configuration boundary** ([architecture.md §12.6](docs/spec/architecture.md#126-feature-manifest-and-operator-confidence)): env schema vs examples in CI (`scripts/check-env-drift.sh`), aggregated validation in deploy pre-flight (`src/server/deploy-preflight-cli.ts`), and a boot-time feature manifest (`src/server/config/features.ts`).
+- **Configuration boundary** ([architecture.md §12](docs/spec/architecture.md#12-configuration-boundaries)): configuration is explicit — in the files of [§ Configuration Files](#configuration-files), never literals at use sites — and no layer assumes it lives in source, so a value can move to persisted company settings without restructuring.
+  - Server and config code (`src/server/`, `src/config/`) reads the environment only through the schema's loader; `src/server/__tests__/no-raw-env-access.test.ts` scans for raw `process.env` reads, each allowlisted one with its reason.
+  - `scripts/check-env-drift.sh` (CI `lint`) fails when the schema, `docker-compose.yml` and the operator-documented set (`.env.production.example`, `secrets.manifest.txt`) diverge, naming every divergent key; exclusions are listed in the script.
+  - One catalog (`src/server/config/features.ts`) maps each optional feature to the values it requires; the boot manifest ([AC-230](docs/spec/verification.md#1527-configuration-and-feature-manifest)) and the email-extraction gate read it. The push, backup and first-run administrator gates check their values separately. Deploy pre-flight: `src/server/deploy-preflight-cli.ts` ([AC-231](docs/spec/verification.md#1527-configuration-and-feature-manifest)).
 - **Documentation drift guards** — each fails the build. The rule: generate what is expensive to repair by hand, or what a check would need the generator's machinery for anyway (the endpoint table: `buildApp()` route collection); check the rest.
 
 A guard over a marked block fails, rather than passes, when its markers are missing.

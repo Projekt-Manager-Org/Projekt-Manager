@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
 # Static drift check between src/server/config/env.ts and docker-compose.yml.
+# The rule: ARCHITECTURE.md § Design Decisions, "Configuration boundary".
 #
 # Every variable declared in the Zod schema in env.ts MUST be forwarded to
 # the app container via `services.app.environment` in docker-compose.yml —
