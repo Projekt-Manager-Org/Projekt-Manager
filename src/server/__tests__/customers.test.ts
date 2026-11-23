@@ -607,23 +607,18 @@ describe('Customer CRUD Operations', () => {
         expect(names).toContain(literal);
       });
 
-      it('treats SQL-injection-shaped input as plain text', async () => {
+      it('AC-787: treats SQL-injection-shaped input as plain text', async () => {
         const tag = `ESC-SQLI-${Date.now()}`;
         const literal = `${tag}-'); DROP TABLE customers; --`;
         const createRes = await authPost(ownerToken, '/api/customers', { name: literal });
         expect(createRes.statusCode).toBe(201);
         const res = await authGet(
           ownerToken,
-          `/api/customers?search=${encodeURIComponent('); DROP TABLE')}`,
+          `/api/customers?search=${encodeURIComponent("'); DROP TABLE")}`,
         );
         expect(res.statusCode).toBe(200);
         const names = res.json().customers.map((c: { name: string }) => c.name);
         expect(names).toContain(literal);
-        // Sanity: the table still exists — the next list query succeeds
-        // and returns a non-empty result set.
-        const sanity = await authGet(ownerToken, '/api/customers?limit=1');
-        expect(sanity.statusCode).toBe(200);
-        expect(sanity.json().customers.length).toBeGreaterThan(0);
       });
     });
 

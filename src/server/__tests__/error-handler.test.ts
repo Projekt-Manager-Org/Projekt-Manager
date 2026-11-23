@@ -282,6 +282,67 @@ describe('AC-769: an AppError carrying a 5xx logs at the operational error level
   });
 });
 
+// ---------------------------------------------------------------------
+// AC-783: a failed request's response carries no internals. Each error
+// below holds a stack, a server path and database identifiers; none may
+// reach the client, whatever status the handler maps it to.
+// ---------------------------------------------------------------------
+describe('AC-783: error responses carry no stack trace, database identifier or file path', () => {
+  const INTERNALS = [
+    '/srv/app/src/server/repositories/users.ts',
+    'users_username_key',
+    'password_hash',
+    'relation "users"',
+  ];
+
+  function pgFailure(code: string) {
+    const pgError = Object.assign(
+      new Error(`value too long for column "password_hash" of relation "users"`),
+      {
+        code,
+        table: 'users',
+        column: 'password_hash',
+        constraint: 'users_username_key',
+        detail: 'Key (username)=(x) already exists.',
+      },
+    );
+    return new Error('Failed query: select * from users', { cause: pgError });
+  }
+
+  async function respond(make: () => Error) {
+    const probe = Fastify({ logger: false });
+    installErrorHandler(probe);
+    probe.get('/fail', async () => {
+      const err = make();
+      err.stack = `Error: boom\n    at find (${INTERNALS[0]}:12:7)`;
+      throw err;
+    });
+    await probe.ready();
+    const res = await probe.inject({ method: 'GET', url: '/fail' });
+    await probe.close();
+    return res;
+  }
+
+  it.each([
+    {
+      what: 'an unexpected error',
+      make: () => new Error(`boom in ${INTERNALS[0]} on relation "users"`),
+    },
+    { what: 'a database error the handler maps to 500', make: () => pgFailure('23505') },
+    {
+      what: 'a database error the handler maps to a validation error',
+      make: () => pgFailure('22001'),
+    },
+  ])('$what', async ({ make }) => {
+    const res = await respond(make);
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(res.json()).not.toHaveProperty('stack');
+    for (const internal of [...INTERNALS, 'at find', 'Failed query', 'Key (username)']) {
+      expect(res.body).not.toContain(internal);
+    }
+  });
+});
+
 // Production composition (start.ts): buildApp + @fastify/static +
 // installSpaAwareNotFoundHandler. Mirrors the wiring in start.ts
 // closely enough that a regression in any of the three layers — a

@@ -243,6 +243,20 @@ describe('POST /api/extract', () => {
     expect(rawBody.toLowerCase()).not.toContain('stack');
     expect(rawBody.toLowerCase()).not.toContain('api/v1/chat');
   });
+  it('AC-782: an upstream failure echoing the API key does not pass the key on', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { message: 'Invalid key test-key-for-integration' } }),
+      text: async () => 'Invalid key test-key-for-integration',
+    }) as unknown as typeof fetch;
+
+    const res = await authPost(ownerToken, '/api/extract', { text: 'some email text' });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toContain('test-key-for-integration');
+  });
+
   // ---------------------------------------------------------------
   // AC-739: an extraction stores nothing
   // ---------------------------------------------------------------

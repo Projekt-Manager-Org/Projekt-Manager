@@ -127,7 +127,6 @@ Each statement has one home; everywhere else, a link.
 | Role ↔ permission matrix, error classes                                           | [api.md](api.md)                                                                           |
 | Constraint imposed from outside (kickoff, environment)                            | [architecture.md §11](architecture.md#11-architectural-constraints)                        |
 | `[C]` value without a home above                                                  | [`[C]` catalogue](architecture.md#122-company-configurable-settings), which links the rest |
-| Cross-cutting quality property — performance, accessibility, security baseline    | [architecture.md §13](architecture.md#13-non-functional-requirements)                      |
 | Feature behavior or property observable by a user, operator or attacker           | AC ([verification.md §15](verification.md#15-acceptance-criteria))                         |
 | Property that exists because of an ADR                                            | AC citing the ADR                                                                          |
 | Choice among alternatives, and why                                                | [ADR](../adr/index.md)                                                                     |

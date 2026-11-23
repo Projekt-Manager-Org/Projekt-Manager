@@ -84,6 +84,9 @@ What the login screen shows: [ui/index.md §8.1.1](ui/index.md#811-unauthenticat
 - **AC-569** `[crit]`: If the first-run bootstrap password violates the password policy, the system refuses to start ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)).
 - **AC-551** `[crit]`: When a user signs out, the system ends that session only.
 - **AC-772** `[crit]`: If a client address makes more sign-in attempts, or more password-change attempts, in one minute-long window than the rate limit **[C]** ([architecture.md §12.2](architecture.md#122-company-configurable-settings)) allows, the system refuses that address's excess as rate limited ([api.md §14.4.1](api.md#1441-error-categories)).
+- **AC-781** `[crit]`: The system issues each session a token of at least 128 bits from a cryptographically secure random source that carries no user data.
+- **AC-784** `[crit]`: When the system accepts or rejects a sign-in's credentials, it writes a line to the operational log naming the username and the client address.
+- **AC-786** `[crit]`: When a user's password is changed or reset, the system writes a line to the operational log naming the user and, for a reset, who reset it.
 - **AC-552** `[crit]`: The system delivers the session token only in a cookie that page scripts cannot read and the browser withholds from cross-site requests ([ADR-0005](../adr/0005-session-management-httponly-cookies.md)).
 
 ### 15.5 Multi-User
@@ -96,6 +99,10 @@ What the login screen shows: [ui/index.md §8.1.1](ui/index.md#811-unauthenticat
 - **AC-31** `[infra]`: The operator can deploy a CI-built image to the hosted environment over VPN ([ADR-0012](../adr/0012-manual-pull-based-deploy-over-wireguard.md)).
 - **AC-765** `[crit]`: If the HTTP-only evaluation mode is turned on in production, the system refuses to start ([ADR-0013](../adr/0013-http-only-evaluation-mode.md)).
 - **AC-766** `[crit]`: While a page is loaded over plain HTTP from a host other than `localhost` or `127.0.0.1`, the system shows a non-dismissible warning banner on it ([ADR-0013](../adr/0013-http-only-evaluation-mode.md)).
+- **AC-775** `[crit]`: While the HTTP-only evaluation mode is off, the deployed system marks the session cookie to be sent only over HTTPS ([ADR-0005](../adr/0005-session-management-httponly-cookies.md)).
+- **AC-776** `[crit]`: While the HTTP-only evaluation mode is off, the system tells the browser in every application response to reach the site, its subdomains included, only over HTTPS for the next 180 days.
+- **AC-777** `[vis]`: While the HTTP-only evaluation mode is on, the system lets a user sign in and use the application over plain HTTP ([ADR-0013](../adr/0013-http-only-evaluation-mode.md)).
+- **AC-778** `[vis]`: While a page is loaded over plain HTTP from a host other than `localhost` or `127.0.0.1`, the system starts its tab title with `UNSICHER – `.
 - **AC-764** `[crit]`: If seeding is turned on while the system runs in production, the system changes no stored data: it neither wipes data nor loads the demo dataset ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)).
 - **AC-771** `[infra]`: If an image of the version being deployed is unavailable, the deploy aborts and the previously running version keeps running.
 - **AC-47** `[infra]`: The operator can redeploy an earlier commit while its image is retained ([ADR-0011 § Retention](../adr/0011-build-images-in-ci-distribute-via-ghcr.md)).
@@ -360,6 +367,7 @@ The database backup the [kickoff](../project/kickoff.md#done-when-final-product)
 - **AC-614** `[crit]`: The system discloses the status record to no caller except an owner.
 - **AC-612** `[crit]`: While an owner is signed in, the system shows on every view the backup badge in the first state of the badge table ([ui/index.md §8.1.2](ui/index.md#812-authenticated-state)) whose condition holds.
 - **AC-621** `[crit]`: If the last drill failed, the backup badge shows red.
+- **AC-785** `[vis]`: The backup badge's icon tells the states apart by more than colour.
 - **AC-615** `[crit]`: While an owner's view is visible, the system refreshes the backup badge from the status record at least once a minute.
 - **AC-613** `[vis]`: The system shows no backup badge on the sign-in screen or to a non-owner.
 - **AC-173** `[infra]`: The off-site store keeps every backup for the retention window and protects it from deletion and overwrite for the lock window, and deletes it after the retention window ([ADR-0020 §Retention](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention)).
@@ -660,6 +668,16 @@ The periodic check that fires the two system events ([data-model.md §5.11](data
 - **AC-670** `[crit]`: The system refuses no upload for storage reaching the warn band ([kickoff](../project/kickoff.md): cleanup is up to the users).
 - **AC-671** `[crit]`: If checking one condition fails, the system still checks the other in the same sweep.
 
+### 15.34 Security Baseline
+
+Cross-cutting security properties. Elsewhere: authentication ([AC-574](#154-authentication)), authorization ([AC-576](#1521-role-scoping)), undefined fields ([AC-516](#1517-data-integrity)), rate limits ([AC-772](#154-authentication)), HTTPS ([AC-775](#156-deployment), [AC-776](#156-deployment)), sessions and sign-in ([AC-552](#154-authentication), [AC-781](#154-authentication), [AC-784](#154-authentication)), password changes ([AC-786](#154-authentication)), caller-owned records ([AC-654](#1524-notifications)).
+
+- **AC-779** `[crit]`: The system stores a password only as a salted, deliberately slow hash ([ADR-0006](../adr/0006-password-policy-nist-blocklist.md)).
+- **AC-780** `[crit]`: The system writes no submitted password to the operational log.
+- **AC-782** `[crit]`: The system serves no response or file that carries a secret of an external service — an API key, a storage credential or a private key ([ADR-0016](../adr/0016-llm-email-extraction-via-server-proxied-openrouter.md)).
+- **AC-783** `[crit]`: If a request fails, the system responds without a stack trace, SQL text, database identifier or error detail, or server file path.
+- **AC-787** `[crit]`: If a request value contains SQL, the system treats it as plain text and executes none of it.
+
 ---
 
 ## 17. Risks and Mitigations
@@ -668,6 +686,6 @@ The periodic check that fires the two system events ([data-model.md §5.11](data
 | -------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 9 Kanban columns too tight on screen               | Usability                          | Horizontal scroll; responsive collapse tiers ([AC-470](#151-workflow-board)).                                                                                 |
 | Over-styling action columns                        | Defeats Kanban principle           | Trust board structure; resist decorative urgency.                                                                                                             |
-| API latency makes transitions feel sluggish        | Interaction feels unresponsive     | Optimistic UI updates + sub-300ms API target ([architecture.md §13.2](architecture.md#132-performance)).                                                      |
+| API latency makes transitions feel sluggish        | Interaction feels unresponsive     | Optimistic UI updates.                                                                                                                                        |
 | Session management edge cases                      | User loses work or sees stale data | Sessions are checked on every API call. Expiry redirects to login cleanly. All mutations are immediate (no local drafts to lose).                             |
 | Soft-deleted projects consume storage indefinitely | Database growth                    | Archived projects are purged when their customer is deleted ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). Customer deletion is the cleanup path. |

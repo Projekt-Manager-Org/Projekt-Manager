@@ -29,20 +29,20 @@ A job for one customer, moving through the workflow states. Behavior: [verificat
 
 A person who can sign in. A user changes their own `themePreference` and `pushMuted` by self-update ([AC-568](verification.md#154-authentication)) and their own password ([AC-547](verification.md#154-authentication)); the other editable fields are administrative. Behavior: [verification.md §15.13](verification.md#1513-user-management).
 
-| Field                    | Constraint                                                                                                           |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `id`                     | UUID                                                                                                                 |
-| `username`               | Not blank, at most 255 characters, unique; used to log in; immutable after creation                                  |
-| `displayName`            | Not blank, at most 255 characters                                                                                    |
-| `passwordHash`           | Salted hash of the password; reaches a client only inside an export ([AC-394](verification.md#1513-user-management)) |
-| `roles`                  | One or more of the role set **[C]** ([api.md §14.3](api.md#143-authorization-rules))                                 |
-| `email`                  | Optional free text, at most 255 characters                                                                           |
-| `active`                 | Default `true`; `false` means deactivated ([AC-555](verification.md#1513-user-management))                           |
-| `themePreference`        | `light`, `dark` or `system`; default `system` ([verification.md §15.19](verification.md#1519-theming))               |
-| `pushMuted`              | Default `false`; mutes push delivery only ([§5.12](#512-push-subscription))                                          |
-| `createdAt`, `updatedAt` | Server time                                                                                                          |
-| `lastLoginAt`            | Time of the last successful login; empty before the first                                                            |
-| `createdBy`, `updatedBy` | The acting user; empty for bootstrapped rows or imported rows without a known actor                                  |
+| Field                    | Constraint                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                     | UUID                                                                                                                                                         |
+| `username`               | Not blank, at most 255 characters, unique; used to log in; immutable after creation                                                                          |
+| `displayName`            | Not blank, at most 255 characters                                                                                                                            |
+| `passwordHash`           | Salted slow hash ([AC-779](verification.md#1534-security-baseline)); reaches a client only inside an export ([AC-394](verification.md#1513-user-management)) |
+| `roles`                  | One or more of the role set **[C]** ([api.md §14.3](api.md#143-authorization-rules))                                                                         |
+| `email`                  | Optional free text, at most 255 characters                                                                                                                   |
+| `active`                 | Default `true`; `false` means deactivated ([AC-555](verification.md#1513-user-management))                                                                   |
+| `themePreference`        | `light`, `dark` or `system`; default `system` ([verification.md §15.19](verification.md#1519-theming))                                                       |
+| `pushMuted`              | Default `false`; mutes push delivery only ([§5.12](#512-push-subscription))                                                                                  |
+| `createdAt`, `updatedAt` | Server time                                                                                                                                                  |
+| `lastLoginAt`            | Time of the last successful login; empty before the first                                                                                                    |
+| `createdBy`, `updatedBy` | The acting user; empty for bootstrapped rows or imported rows without a known actor                                                                          |
 
 **Password policy [C]** ([ADR-0006](../adr/0006-password-policy-nist-blocklist.md)): at least 8 characters, at most 72 UTF-8 bytes, not on the common-password blocklist.
 

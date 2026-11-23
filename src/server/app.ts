@@ -65,6 +65,12 @@ export interface OpenApiDocOptions {
 
 export interface AppOptions {
   logger?: boolean;
+  /**
+   * Tests only: log into this sink instead of stdout, with the production
+   * redaction, at level `trace` — so a test sees every line, and checks a
+   * line's level itself where the operator's `info` threshold matters.
+   */
+  logStream?: { write(line: string): void };
   db?: Database;
   /** Set false to disable rate limiting (useful in tests). Defaults to true. */
   rateLimit?: boolean;
@@ -131,7 +137,11 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
     'req.headers.cookie',
     'req.body.confirmation_phrase',
   ];
-  const logger = opts.logger === true ? { redact: REDACT_PATHS } : (opts.logger ?? false);
+  const logger = opts.logStream
+    ? { redact: REDACT_PATHS, level: 'trace', stream: opts.logStream }
+    : opts.logger === true
+      ? { redact: REDACT_PATHS }
+      : (opts.logger ?? false);
   // Read once, before the Fastify factory — `trustProxy` below needs it.
   const env = getEnv();
   const app = Fastify({
