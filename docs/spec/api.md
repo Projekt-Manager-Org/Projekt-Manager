@@ -79,4 +79,4 @@ Where a refusal fits more than one category, its AC names the one used.
 
 ---
 
-_Cross-references: [index.md](index.md) for scope and assumptions, [data-model.md](data-model.md) for entity definitions, [architecture.md](architecture.md) for external constraints, configuration and security requirements, [verification.md](verification.md) for acceptance criteria._
+_Cross-references: [index.md](index.md) for scope and assumptions, [data-model.md](data-model.md) for entity definitions, [architecture.md](architecture.md) for external constraints and configuration, [verification.md](verification.md) for acceptance criteria._

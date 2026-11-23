@@ -60,7 +60,8 @@ test.describe('AC-766: Insecure connection banner', () => {
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('UNSICHERER MODUS');
     await expect(banner.getByRole('button')).toHaveCount(0);
-    await expect(page).toHaveTitle(/^UNSICHER/);
+    // AC-778: the tab title carries the prefix.
+    await expect(page).toHaveTitle(/^UNSICHER – /);
   });
 
   test('banner stays on the signed-in shell over non-localhost HTTP', async ({ page }) => {

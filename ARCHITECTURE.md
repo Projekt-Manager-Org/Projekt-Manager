@@ -275,7 +275,7 @@ Common changes and where to look. The dependency direction in [Architecture Over
 **Pattern to copy**: the `Project` entity — read `schema.ts`, `types.ts`, the repo/service/route/store/UI chain for projects.
 
 1. **Schema**: add the table in `src/server/db/schema.ts` (audit fields as on `projects`), then `npm run db:baseline` regenerates `0000_baseline.sql` — no incremental migrations ([ADR-0026](docs/adr/0026-invoices-immutability-and-zugferd.md)). SQL drizzle-kit cannot emit (extensions, seed rows, triggers) goes in `src/server/db/baseline/`. Existing databases: [recover-from-schema-change.md](docs/ops/recover-from-schema-change.md).
-2. **Domain types**: add interface in `src/domain/types.ts`. Optional fields stay optional ([spec §13.5](docs/spec/architecture.md#135-robustness)).
+2. **Domain types**: add interface in `src/domain/types.ts`. Optional fields stay optional: the UI shows what a record has.
 3. **Repository**: split by concern (`src/server/repositories/supplier-read.ts`, etc.), barrel re-export. Add a `toSupplier(row)` projection so Drizzle types don't leak upward.
 4. **Service**: `src/server/services/SupplierService.ts`. Must not import `fastify` types ([§ Architecture Overview](#architecture-overview)).
 5. **Routes**: `src/server/routes/suppliers.ts`, register in `app.ts`. Routes go through the service, never call repos directly.
@@ -285,6 +285,18 @@ Common changes and where to look. The dependency direction in [Architecture Over
 9. **Tests**: domain in `src/domain/__tests__/`, integration in `src/server/__tests__/` (copy `projects-list.test.ts`), component in the feature's own `__tests__/` (e.g. `src/ui/detail/__tests__/`).
 10. **Seed**: extend the relevant loader under `src/server/seed/` (`seed/users.ts` for new user records; `business.ts` for customer/project-like entities that should flow through `ImportService`).
 11. **Spec**: update `docs/spec/data-model.md`, `docs/spec/verification.md`; a new permission goes in `docs/spec/api.md §14.3`.
+
+### Adding an endpoint
+
+Every route keeps the security baseline ([spec §15.34](docs/spec/verification.md#1534-security-baseline)):
+
+1. **Session** (protected routes): a valid, active session ([AC-574](docs/spec/verification.md#154-authentication)); the cookie is the only credential ([ADR-0005](docs/adr/0005-session-management-httponly-cookies.md), which also defines CSRF protection).
+2. **Permission**: the key [api.md §14.3](docs/spec/api.md#143-authorization-rules) lists for the operation ([AC-576](docs/spec/verification.md#1521-role-scoping)); a worker-reachable route needs an entry in `WORKER_ROUTE_SCOPE` (`src/test/workerScopeGate.ts`).
+3. **Input**: a route schema on body and params; an undefined field is refused ([AC-516](docs/spec/verification.md#1517-data-integrity)). Composite payloads (the import envelope) may validate rows in the service. Queries go through Drizzle's parameterized builders, never SQL assembled from input ([AC-787](docs/spec/verification.md#1534-security-baseline)).
+4. **Errors**: throw application errors (`src/server/errors.ts`); the handler keeps internals out of the response ([AC-783](docs/spec/verification.md#1534-security-baseline)).
+5. **Rate limit**: only where the spec defines one ([AC-772](docs/spec/verification.md#154-authentication)).
+6. **Caller-owned records**: derive the owner from the session ([AC-654](docs/spec/verification.md#1524-notifications)); an owner field in the body is an undefined field ([AC-516](docs/spec/verification.md#1517-data-integrity)).
+7. **Passwords**: never logged or stored in plaintext ([AC-779](docs/spec/verification.md#1534-security-baseline), [AC-780](docs/spec/verification.md#1534-security-baseline)).
 
 ### Adding a new view (e.g., Worker view)
 

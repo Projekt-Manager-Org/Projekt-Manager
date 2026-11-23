@@ -104,7 +104,7 @@ describe('Password Change Operations', () => {
   // AC-547: Change own password with correct current password succeeds
   // AC-547 [crit]
   // ---------------------------------------------------------------
-  describe('AC-547: Change own password (success)', () => {
+  describe('AC-547, AC-779: Change own password (success)', () => {
     it('changes password and allows login with the new one', async () => {
       // Self-contained: login, change, verify new password — all in one test.
       // Uses the office user to avoid affecting other tests that log in as owner.
@@ -158,6 +158,10 @@ describe('Password Change Operations', () => {
       // Sanity: the hash actually rotated (guards against a no-op where
       // the update fires but nothing changes).
       expect(afterRow.passwordHash).not.toBe(beforeHash);
+      // AC-779: what is stored is a hash, not the password.
+      expect(afterRow.passwordHash).not.toContain('neuesPasswort123!');
+      const cost = Number(afterRow.passwordHash.match(/^\$2[aby]\$(\d{2})\$/)?.[1]);
+      expect(cost).toBeGreaterThanOrEqual(10);
       // Core assertion: the acting user is the target itself.
       expect(afterRow.updatedBy).toBe(userId);
       // updatedAt must advance — defense against a regression that
