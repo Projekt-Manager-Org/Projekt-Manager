@@ -218,9 +218,9 @@ export const envSchema = z.object({
   // the scheduler untouched and call the service directly.
   AUDIT_RETENTION_INTERVAL_MINUTES: z.coerce.number().int().positive().default(1440),
   // Login-rate-limit ceiling — moved into the schema in #139 to close the
-  // last raw-`process.env` read inside the configuration boundary
-  // (AC-228). The build-time default in `getRateLimit()` is environment-
-  // aware (5/min in production, 30/min elsewhere); this override applies
+  // last raw-`process.env` read inside the configuration boundary.
+  // The build-time default in `getRateLimit()` is environment-aware
+  // (5/min in production, 30/min elsewhere); this override applies
   // when the operator sets a numeric value. Same `${VAR:-}` empty-string
   // preprocess as AUDIT_RETENTION_WINDOW_DAYS.
   LOGIN_RATE_LIMIT_MAX: z.preprocess(

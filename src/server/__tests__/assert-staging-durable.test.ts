@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { assertStagingDurable } from '../config/assertStagingDurable.js';
 
@@ -20,7 +23,7 @@ describe('assertStagingDurable — pure guard', () => {
   // Production — RAM-backed → must throw                               //
   // ------------------------------------------------------------------ //
 
-  it('production + tmpfs magic → throws mentioning staging/tmpfs/RAM', () => {
+  it('AC-773: production + tmpfs magic → throws mentioning staging/tmpfs/RAM', () => {
     expect(() =>
       assertStagingDurable({
         stagingDir: STAGING_DIR,
@@ -46,7 +49,7 @@ describe('assertStagingDurable — pure guard', () => {
     ).toThrowError(/RAM/i);
   });
 
-  it('production + ramfs magic → throws mentioning staging/ramfs/RAM', () => {
+  it('AC-773: production + ramfs magic → throws mentioning staging/ramfs/RAM', () => {
     expect(() =>
       assertStagingDurable({
         stagingDir: STAGING_DIR,
@@ -144,5 +147,28 @@ describe('assertStagingDurable — pure guard', () => {
     });
 
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+// Source-string pin, the pattern of feature-manifest.test.ts: start.ts
+// self-invokes on import, so the boot wiring is checked as text. Without
+// the call the guard above never runs and the system starts anyway.
+describe('AC-773: start.ts runs the staging probe before serving', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const stripped = readFileSync(path.resolve(here, '../start.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+
+  it('calls probeStagingDurability with the staging dir and NODE_ENV before listen()', () => {
+    const probe = stripped.search(
+      /\bprobeStagingDurability\s*\(\s*env\.TAKEOUT_STAGING_DIR\s*,\s*env\.NODE_ENV\s*\)/,
+    );
+    const listen = stripped.search(/\.listen\s*\(/);
+    expect(
+      probe,
+      'probeStagingDurability(env.TAKEOUT_STAGING_DIR, env.NODE_ENV) not found',
+    ).toBeGreaterThanOrEqual(0);
+    expect(listen, 'listen() call not found in start.ts').toBeGreaterThanOrEqual(0);
+    expect(probe).toBeLessThan(listen);
   });
 });

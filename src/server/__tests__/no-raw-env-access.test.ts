@@ -1,6 +1,7 @@
 /**
- * AC-228 — repo scan refusing raw `process.env` reads outside the
- * configuration boundary.
+ * Repo scan refusing raw `process.env` reads outside the configuration
+ * boundary. The rule: ARCHITECTURE.md § Design Decisions, "Configuration
+ * boundary".
  *
  * The configuration loader (`src/server/config/env.ts`) parses
  * `process.env` once via Zod and exposes a typed, validated `Env`. Every
@@ -204,7 +205,7 @@ async function walkTsFiles(absDir: string): Promise<string[]> {
 // matcher failure, not as a tree-scan failure.
 // ---------------------------------------------------------------------
 
-describe('AC-228: raw process.env matcher catches every form', () => {
+describe('raw process.env matcher catches every form', () => {
   it('catches dotted access (process.env.X)', () => {
     const source = `const x = process.env.FOO;\n`;
     const matches = findRawEnvAccess(source);
@@ -289,7 +290,7 @@ describe('AC-228: raw process.env matcher catches every form', () => {
 // allowed because parsing `process.env` is its raison d'être.
 // ---------------------------------------------------------------------
 
-describe('AC-228: refuses raw process.env access in src/server/ and src/config/', () => {
+describe('refuses raw process.env access in src/server/ and src/config/', () => {
   it('finds no raw process.env reads outside the configuration loader and the allowlist', async () => {
     // Arrange — collect every .ts file under the two roots.
     const roots = ['src/server', 'src/config'];

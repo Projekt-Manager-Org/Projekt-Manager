@@ -130,7 +130,7 @@ services:
       # — without this line, the Zod schema silently falls back to its
       # default at runtime (the failure mode check-env-drift.sh guards).
       SESSION_CLEANUP_INTERVAL_MINUTES: ${SESSION_CLEANUP_INTERVAL_MINUTES:-60}
-      # Login-rate-limit ceiling (issue #139, AC-228). Empty default keeps
+      # Login-rate-limit ceiling (issue #139). Empty default keeps
       # the env-aware build-time fallback in `getRateLimit()` (5/min in
       # prod, 30/min elsewhere); set a numeric value to override.
       LOGIN_RATE_LIMIT_MAX: ${LOGIN_RATE_LIMIT_MAX:-}

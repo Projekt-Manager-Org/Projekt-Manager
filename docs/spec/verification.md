@@ -83,6 +83,7 @@ What the login screen shows: [ui/index.md §8.1.1](ui/index.md#811-unauthenticat
 - **AC-568** `[crit]`: The system applies a self-update only to the caller's own record and only to `themePreference` and `pushMuted`.
 - **AC-569** `[crit]`: If the first-run bootstrap password violates the password policy, the system refuses to start ([ADR-0010](../adr/0010-first-run-admin-bootstrap.md)).
 - **AC-551** `[crit]`: When a user signs out, the system ends that session only.
+- **AC-772** `[crit]`: If a client address makes more sign-in attempts, or more password-change attempts, in one minute-long window than the rate limit **[C]** ([architecture.md §12.2](architecture.md#122-company-configurable-settings)) allows, the system refuses that address's excess as rate limited ([api.md §14.4.1](api.md#1441-error-categories)).
 - **AC-552** `[crit]`: The system delivers the session token only in a cookie that page scripts cannot read and the browser withholds from cross-site requests ([ADR-0005](../adr/0005-session-management-httponly-cookies.md)).
 
 ### 15.5 Multi-User
@@ -363,6 +364,7 @@ The database backup the [kickoff](../project/kickoff.md#done-when-final-product)
 - **AC-613** `[vis]`: The system shows no backup badge on the sign-in screen or to a non-owner.
 - **AC-173** `[infra]`: The off-site store keeps every backup for the retention window and protects it from deletion and overwrite for the lock window, and deletes it after the retention window ([ADR-0020 §Retention](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md#retention)).
 - **AC-175** `[infra]`: The operator's private identity never reaches the server's disk; a loaded identity is gone after a restart ([ADR-0020](../adr/0020-layer-2-encrypted-r2-backups-with-operator-loaded-drills.md)).
+- **AC-774** `[crit]`: If a production deployment lacks any value the backup needs ([architecture.md §12.6](architecture.md#126-feature-manifest-and-operator-confidence)), the system refuses to start.
 - **AC-368** `[infra]`: When the operator restores a backup, then before the system serves again, every attachment the restored backup has no row for, or holds as pending, is recovered where readable ([AC-441](#1526-attachments)), and no invoice number issued since the backup can be issued again ([data-model.md §6.13](data-model.md#613-gapless-sequence-allocation)); an unreadable attachment is recorded and does not block serving.
 
 ### 15.23 Audit Log
@@ -520,10 +522,11 @@ Storage safety and recovery:
 
 ### 15.27 Configuration and Feature Manifest
 
-- **AC-228** `[infra]`: Application code reads configuration values only through the configuration boundary's loader ([architecture.md §12.6](architecture.md#126-feature-manifest-and-operator-confidence)). Direct reads from the process environment outside the loader are rejected by a CI repo scan; each documented allowlist entry carries an inline reason.
-- **AC-229** `[infra]`: The configuration schema's keyspace and the operator-facing example documentation are kept in sync. CI fails when a schema field is missing from the example documentation, or vice versa, naming every divergent key. Documented exclusions for infrastructure-only variables (consumed by container orchestration, not application code) are listed in the check itself.
-- **AC-230** `[crit]`: Each application start emits exactly one structured log line at `info` level with `event = 'config-feature-manifest'` enumerating every feature in the declared catalog ([architecture.md §12.6](architecture.md#126-feature-manifest-and-operator-confidence)) with `state ∈ {enabled, disabled}` and a non-empty `reason` naming the missing required value(s) when `disabled`. Each feature's state is computed from the same catalog entry that gates its runtime activation — the manifest cannot report a state that contradicts the wiring.
-- **AC-231** `[infra]`: The deploy script validates the loaded configuration against the schema before bringing containers up. A validation failure aborts with a non-zero exit code and a message naming every offending key; no containers are recreated.
+Optional features and their configuration: [architecture.md §12.6](architecture.md#126-feature-manifest-and-operator-confidence).
+
+- **AC-230** `[crit]`: When the system starts, it writes one `info` log line with `event = 'config-feature-manifest'` listing every optional feature with the state it runs in, `enabled` or `disabled`, and for a disabled one a `reason` naming a missing value.
+- **AC-231** `[infra]`: If the configuration fails validation, the deploy exits non-zero before replacing any container and names every offending key.
+- **AC-773** `[crit]`: If the takeout staging directory **[C]** of a production deployment is on a memory-backed filesystem, the system refuses to start.
 
 ### 15.28 Realtime Events
 

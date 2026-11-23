@@ -497,7 +497,7 @@ describe('start.ts call-site pin for assertProductionSafe', () => {
 });
 
 // ---------------------------------------------------------------------
-// Schema bypass cleanups (issue #139, AC-228 family) — pin the typed-
+// Schema bypass cleanups (issue #139) — pin the typed-
 // schema home of two reads that previously lived as raw `process.env`
 // access:
 //
