@@ -18,6 +18,7 @@ import { fileURLToPath } from 'url';
 import { describe, it, expect } from 'vitest';
 import {
   assertAppServerEnv,
+  assertBackupInProduction,
   assertProductionSafe,
   assertStoragePublicEndpointInProduction,
   assertTrustedProxyInProduction,
@@ -30,6 +31,15 @@ import type { Env } from '../config/env.js';
 /** A well-formed recipient for fixtures that don't exercise the binary key. */
 const PLACEHOLDER_BINARY_RECIPIENT =
   'age15nf2qq4znfwup9khgjk0rdgp5wg9vx33fngc727m3zdkctq29djqyr9su6';
+
+/** Every value the backup needs — required in production (AC-774). */
+const PROD_BACKUP_VALUES = {
+  R2_ACCESS_KEY_ID: 'r2-ak',
+  R2_SECRET_ACCESS_KEY: 'r2-sk',
+  R2_ENDPOINT: 'https://r2.example.com',
+  R2_BUCKET: 'pm-backups',
+  AGE_RECIPIENT: PLACEHOLDER_BINARY_RECIPIENT,
+} as const;
 
 /** Minimal Env shape with only the fields assertProductionSafe reads. */
 function makeEnv(overrides: Partial<Env>): Env {
@@ -58,10 +68,11 @@ function makeEnv(overrides: Partial<Env>): Env {
     SESSION_CLEANUP_INTERVAL_MINUTES: 60,
     AUDIT_RETENTION_WINDOW_DAYS: undefined,
     AUDIT_RETENTION_INTERVAL_MINUTES: 1440,
-    // Layer 2 backup env — optional at the app-server level. Only the
-    // fields the production-safety guards read are declared here; other
-    // optionals (LOGIN_RATE_LIMIT_MAX, ATTACHMENT_*) are intentionally
-    // omitted to keep the fixture focused on the guards under test.
+    // Layer 2 backup env — unset, so production fixtures trip the backup
+    // guard (AC-774) only where a test checks it. Only the fields the
+    // production-safety guards read are declared here; other optionals
+    // (LOGIN_RATE_LIMIT_MAX, ATTACHMENT_*) are intentionally omitted to
+    // keep the fixture focused on the guards under test.
     R2_ACCESS_KEY_ID: undefined,
     R2_SECRET_ACCESS_KEY: undefined,
     R2_ENDPOINT: undefined,
@@ -478,6 +489,11 @@ describe('start.ts call-site pin for assertProductionSafe', () => {
     expect(stripped).toMatch(callPattern);
   });
 
+  // AC-774: the start refuses a production deployment without backup.
+  it('calls assertBackupInProduction with the validated env', () => {
+    expect(stripped).toMatch(/\bassertBackupInProduction\s*\(\s*env\s*\)/);
+  });
+
   // Same technique as the guard above: the reaper module owns the sweep
   // logic (unit-tested in session-reaper.test.ts), but the wiring in
   // start.ts is what actually schedules it in the running binary. A
@@ -835,6 +851,7 @@ function baseAggregatedInput(extra: Record<string, string>): Record<string, stri
     // Required in production (checkTrustedProxyInProduction). Part of the
     // "fully valid prod input" baseline so each arm trips only its guard.
     TRUSTED_PROXY_CIDRS: '172.16.0.0/16',
+    ...PROD_BACKUP_VALUES,
     ...extra,
   };
 }
@@ -1003,5 +1020,33 @@ describe('checkVapidKeyShape guard (deploy preflight, #245)', () => {
     withProcessEnv({ DATABASE_URL: 'postgres://unused', VAPID_PRIVATE_KEY: 'AQEB' }, () => {
       expect(() => validateEnvRuntime()).not.toThrow();
     });
+  });
+});
+
+// ---------------------------------------------------------------------
+// Backup presence guard — runs on both the deploy pre-flight and the
+// boot path, unlike the preflight-only guards above.
+// ---------------------------------------------------------------------
+describe('AC-774: a production deployment without backup configuration refuses to start', () => {
+  const BACKUP_KEYS = Object.keys(PROD_BACKUP_VALUES) as (keyof typeof PROD_BACKUP_VALUES)[];
+
+  it.each(BACKUP_KEYS)('the deploy pre-flight names a missing %s', (key) => {
+    expect(() => validateEnvAggregated(baseAggregatedInput({ [key]: '' }))).toThrow(
+      new RegExp(`\\b${key}\\b`),
+    );
+  });
+
+  it.each(BACKUP_KEYS)('the start names a missing %s', (key) => {
+    const env = makeEnv({ ...PROD_BACKUP_VALUES, [key]: undefined });
+    expect(() => assertBackupInProduction(env)).toThrow(new RegExp(`\\b${key}\\b`));
+  });
+
+  it('accepts a production deployment with every backup value set', () => {
+    expect(() => validateEnvAggregated(baseAggregatedInput({}))).not.toThrow();
+    expect(() => assertBackupInProduction(makeEnv(PROD_BACKUP_VALUES))).not.toThrow();
+  });
+
+  it.each(['development', 'test'] as const)('does not require backup under NODE_ENV=%s', (mode) => {
+    expect(() => assertBackupInProduction(makeEnv({ NODE_ENV: mode }))).not.toThrow();
   });
 });

@@ -27,6 +27,16 @@ export interface FeatureCatalogEntry {
   requires: readonly (keyof Env)[];
 }
 
+/** The values the backup needs. Exported on its own because production
+ * requires every one of them (AC-774, `checkBackupInProduction`). */
+export const BACKUP_REQUIRES = [
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_ENDPOINT',
+  'R2_BUCKET',
+  'AGE_RECIPIENT',
+] as const satisfies readonly (keyof Env)[];
+
 /** Single source of truth: feature → required env vars. Adding a feature
  * is one entry here; every other surface (FEATURES, featureStatus,
  * emitFeatureManifest) derives from this list. */
@@ -37,16 +47,7 @@ export const FEATURE_CATALOG: readonly FeatureCatalogEntry[] = [
     feature: 'admin-bootstrap',
     requires: ['BOOTSTRAP_ADMIN_USERNAME', 'BOOTSTRAP_ADMIN_PASSWORD'],
   },
-  {
-    feature: 'backup',
-    requires: [
-      'R2_ACCESS_KEY_ID',
-      'R2_SECRET_ACCESS_KEY',
-      'R2_ENDPOINT',
-      'R2_BUCKET',
-      'AGE_RECIPIENT',
-    ],
-  },
+  { feature: 'backup', requires: BACKUP_REQUIRES },
 ];
 
 /** Stable enumeration order — derived from FEATURE_CATALOG so the two
