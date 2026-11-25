@@ -20,8 +20,12 @@
     "schedule": ["before 9am"]
   },
   "vulnerabilityAlerts": {
-    "description": "deploy-asap: what runs is exposed until deployed; merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29).",
+    "description": [
+      "deploy-asap: what runs is exposed until deployed; merging opens or extends the \"Deploy pending\" issue (.github/workflows/deploy-pending.yml, ADR-0027 § 2026-10-29).",
+      "rangeStrategy=bump, not Renovate's default update-lockfile: a fix only in the lockfile is reverted by the next lockFileMaintenance inside the cooldown window, which re-resolves package.json and takes the vulnerable version back (docs/ops/dep-management.md § When resolution ETARGETs)."
+    ],
     "labels": ["security", "dependencies", "deploy-asap"],
+    "rangeStrategy": "bump",
     "schedule": ["at any time"]
   },
   "osvVulnerabilityAlerts": true,
