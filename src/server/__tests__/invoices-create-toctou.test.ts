@@ -58,6 +58,7 @@ import { InvoiceCancelService } from '../services/InvoiceCancelService.js';
 import { InvoiceBinaryService, type InvoiceBinaryDeps } from '../services/InvoiceBinaryService.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { getInvoiceObjectLockDays } from '../config/index.js';
 import type { ServiceLogger } from '../services/Logger.js';
 
 describe('AC-727 — createDraft TOCTOU: archived-project commit between lookup and insert is caught', () => {
@@ -94,7 +95,7 @@ describe('AC-727 — createDraft TOCTOU: archived-project commit between lookup 
       storage,
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
       binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH!,
-      invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
+      invoiceObjectLockDays: getInvoiceObjectLockDays(),
     };
     const binary = new InvoiceBinaryService(db, deps);
     const issue = new InvoiceIssueService(db, binary);

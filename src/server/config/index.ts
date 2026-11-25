@@ -97,6 +97,22 @@ export function getRateLimit() {
   };
 }
 
+// --- Invoices ----------------------------------------------------------------
+
+/**
+ * Invoice lock period in days (AC-710, architecture.md §12.2): the
+ * per-object Compliance lock on every invoice document; 0 writes none.
+ *
+ * Default is environment-aware: 3650 in production — defense in depth
+ * against the application's own unreliability, not a retention promise
+ * (ADR-0026) — and 0 elsewhere, so dev binaries stay disposable.
+ * `INVOICE_OBJECT_LOCK_DAYS` overrides both, 0 included.
+ */
+export function getInvoiceObjectLockDays(): number {
+  const env = getEnv();
+  return env.INVOICE_OBJECT_LOCK_DAYS ?? (env.NODE_ENV === 'production' ? 3650 : 0);
+}
+
 // --- Storage -----------------------------------------------------------------
 
 export const STORAGE_CONFIG = {

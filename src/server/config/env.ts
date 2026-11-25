@@ -416,9 +416,8 @@ export const envSchema = z.object({
   // ---------------------------------------------------------------
   // Invoice retention (ADR-0026, architecture.md §12.2, AC-710).
   // Per-object Compliance lock (days from write) on every rendered
-  // invoice PDF/A-3; 0 writes no lock. .env.example ships 0 (dev —
-  // binaries are cleanable); .env.production.example ships 3650 —
-  // defense in depth, not a retention promise (ADR-0026).
+  // invoice PDF/A-3; 0 writes no lock. Unset, the environment-aware
+  // default in `getInvoiceObjectLockDays()` applies.
   // Integer ≥ 0 — bounds match architecture.md §12.2.
   // Independent of the bucket-default retention R (attachments).
   // ---------------------------------------------------------------
@@ -426,7 +425,7 @@ export const envSchema = z.object({
   // shortened once written, so an absurd value must fail at boot.
   INVOICE_OBJECT_LOCK_DAYS: z.preprocess(
     (v) => (v === '' ? undefined : v),
-    z.coerce.number().int().min(0).max(36525).default(0),
+    z.coerce.number().int().min(0).max(36525).optional(),
   ),
   // ---------------------------------------------------------------
   // Realtime invalidation channel (ADR-0025).

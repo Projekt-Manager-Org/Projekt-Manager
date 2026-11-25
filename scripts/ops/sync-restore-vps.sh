@@ -67,9 +67,15 @@ B2_ENDPOINT=$(docker exec "$APP_CONTAINER" printenv STORAGE_ENDPOINT)
 B2_BUCKET=$(docker exec "$APP_CONTAINER" printenv STORAGE_BUCKET)
 B2_KEY=$(docker exec "$APP_CONTAINER" printenv STORAGE_ACCESS_KEY)
 B2_SECRET=$(docker exec "$APP_CONTAINER" printenv STORAGE_SECRET_KEY)
-# Compose always defines it (empty means 0, as in the app), so a failed
-# read aborts here rather than writing invoice PDFs without their lock.
+# Compose always defines it, so a failed read aborts here rather than
+# writing invoice PDFs without their lock. Empty is refused: the app then
+# locks for its production default (3650 days), which staging seed data
+# must not inherit unasked.
 INVOICE_OBJECT_LOCK_DAYS=$(docker exec "$APP_CONTAINER" printenv INVOICE_OBJECT_LOCK_DAYS)
+if [ -z "$INVOICE_OBJECT_LOCK_DAYS" ]; then
+  echo "ERROR: INVOICE_OBJECT_LOCK_DAYS is unset (app default: 3650 days). Set it explicitly." >&2
+  exit 1
+fi
 
 # Pause the backup container if active (profile-gated, may not exist) so
 # its in-process croner schedule can't fire a backup tick mid-restore —
