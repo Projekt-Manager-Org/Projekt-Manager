@@ -1,9 +1,10 @@
 /*
  * Backup-freshness badge — header affordance.
  *
- * Always the same size: a fixed-footprint icon button. Colour carries
- * the state signal via `currentColor` on the SVG, driven by the status
- * class (`stateGreen` / `stateAmber` / `stateRed` / `stateUnknown`).
+ * Always the same size: a fixed-footprint icon button. Colour, beside
+ * the corner mark drawn per state in BackupBadge.tsx, carries the state
+ * via `currentColor` on the SVG, driven by the status class
+ * (`stateGreen` / `stateAmber` / `stateRed` / `stateUnknown`).
  *
  * Sizing matches the header's other icon affordances (`.extractButton`
  * in Header.module.css) — 32×32 outer, 18px glyph — so the three
