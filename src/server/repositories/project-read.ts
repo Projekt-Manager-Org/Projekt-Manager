@@ -231,7 +231,7 @@ const SORT_REQUIRES_CUSTOMER_JOIN: ReadonlySet<ProjectSortKey> = new Set(['custo
  * direction toggle.
  */
 function projectOrderBy(sortBy: ProjectSortKey, sortDir: 'asc' | 'desc'): SQL {
-  const dir = sql.raw(sortDir === 'desc' ? 'DESC' : 'ASC');
+  const dir = sortDir === 'desc' ? sql`DESC` : sql`ASC`;
   const tiebreak = sql`, ${projects.createdAt} DESC, ${projects.id} ASC`;
   switch (sortBy) {
     case 'number':

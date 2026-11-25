@@ -15,7 +15,7 @@ export async function countTableRows(
   db: TransactionalDatabase,
   table: string,
 ): Promise<number | undefined> {
-  const result = await db.execute(sql.raw(`SELECT COUNT(*)::int AS c FROM "${table}"`));
+  const result = await db.execute(sql`SELECT COUNT(*)::int AS c FROM ${sql.identifier(table)}`);
   return (result.rows[0] as { c: number } | undefined)?.c;
 }
 
@@ -29,12 +29,13 @@ export async function checksumTable(
   table: string,
   pkColumns: readonly string[],
 ): Promise<string | undefined> {
-  const orderBy = pkColumns.map((c) => `"${c}"`).join(', ');
+  const orderBy = sql.join(
+    pkColumns.map((c) => sql.identifier(c)),
+    sql`, `,
+  );
   const result = await db.execute(
-    sql.raw(
-      `SELECT md5(COALESCE(string_agg(md5(row(t.*)::text), '' ORDER BY ${orderBy}), '')) AS checksum ` +
-        `FROM "${table}" t`,
-    ),
+    sql`SELECT md5(COALESCE(string_agg(md5(row(t.*)::text), '' ORDER BY ${orderBy}), '')) AS checksum
+        FROM ${sql.identifier(table)} t`,
   );
   return (result.rows[0] as { checksum: string } | undefined)?.checksum;
 }
