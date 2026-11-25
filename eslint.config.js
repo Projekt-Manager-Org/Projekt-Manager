@@ -436,6 +436,25 @@ export default tseslint.config(
       ],
     },
   },
+  // `sql.raw` splices its argument into the query unparameterized — one call
+  // fed request input is an injection (AC-787, #1090). Constants need no
+  // `sql.raw` (sql`DESC`), names go through `sql.identifier()`. `__tests__`
+  // keep it for fixture SQL. Wiring: eslint-rules/__tests__/sql-raw-ban.test.mjs.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/__tests__/**'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'sql',
+          property: 'raw',
+          message:
+            'sql.raw splices its argument into the query unparameterized (AC-787). Interpolate values in sql`…`, write constants as sql`…`, and pass names through sql.identifier().',
+        },
+      ],
+    },
+  },
   // UI must not import the client API wrapper directly; must dispatch via state.
   // ARCHITECTURE.md § Architecture Overview.
   {

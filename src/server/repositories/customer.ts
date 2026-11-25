@@ -44,7 +44,7 @@ export type CustomerSortKey = (typeof CUSTOMER_SORT_KEYS)[number];
  * pagination would drift between requests.
  */
 function customerOrderBy(sortBy: CustomerSortKey, sortDir: 'asc' | 'desc'): SQL {
-  const dir = sql.raw(sortDir === 'desc' ? 'DESC' : 'ASC');
+  const dir = sortDir === 'desc' ? sql`DESC` : sql`ASC`;
   // Non-primary clauses tiebreak on name; the name branch is its own
   // primary, so it falls through to `id` instead — `customers.name` is
   // notNull but not unique, so two rows with identical names would
