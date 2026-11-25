@@ -27,6 +27,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { checkBootstrapCredentialPair } from './bootstrap-credentials.js';
+import { BACKUP_REQUIRES } from './features.js';
 import { derivePublicKey } from './vapid.js';
 
 /**
@@ -228,10 +229,11 @@ export const envSchema = z.object({
     z.coerce.number().int().positive().optional(),
   ),
   // ---------------------------------------------------------------
-  // Layer 2 backup (ADR-0020). Consumed by the `backup-runner` CLI,
-  // not by the main app server — but declared here so the schema
-  // remains the single source of truth. Optional at the app-server
-  // level; the CLI enforces presence at dispatch time.
+  // Layer 2 backup (ADR-0020). Consumed by the `backup-runner` CLI;
+  // the app server only checks their presence. Declared here so the
+  // schema remains the single source of truth. Optional in the schema so dev
+  // and test run without backup; production requires them
+  // (`checkBackupInProduction`, AC-774).
   // ---------------------------------------------------------------
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -252,9 +254,9 @@ export const envSchema = z.object({
    * docker-compose.yml writes `${AGE_RECIPIENT:-}`, which materialises
    * as the empty string when the operator has not sourced
    * secrets.env.age (dev workflows; backup profile gated off). Without
-   * the preprocess, the empty string would fail the refine and break
-   * the app container's boot for any deploy that doesn't include the
-   * backup secrets. */
+   * the preprocess, the empty string would fail the refine instead of
+   * reading as unset — outside production a valid state; in production
+   * `checkBackupInProduction` names it (AC-774). */
   AGE_RECIPIENT: z.preprocess(
     (v) => (v === '' ? undefined : v),
     z
@@ -416,9 +418,8 @@ export const envSchema = z.object({
   // ---------------------------------------------------------------
   // Invoice retention (ADR-0026, architecture.md §12.2, AC-710).
   // Per-object Compliance lock (days from write) on every rendered
-  // invoice PDF/A-3; 0 writes no lock. .env.example ships 0 (dev —
-  // binaries are cleanable); .env.production.example ships 3650 —
-  // defense in depth, not a retention promise (ADR-0026).
+  // invoice PDF/A-3; 0 writes no lock. Unset, the environment-aware
+  // default in `getInvoiceObjectLockDays()` applies.
   // Integer ≥ 0 — bounds match architecture.md §12.2.
   // Independent of the bucket-default retention R (attachments).
   // ---------------------------------------------------------------
@@ -426,7 +427,7 @@ export const envSchema = z.object({
   // shortened once written, so an absurd value must fail at boot.
   INVOICE_OBJECT_LOCK_DAYS: z.preprocess(
     (v) => (v === '' ? undefined : v),
-    z.coerce.number().int().min(0).max(36525).default(0),
+    z.coerce.number().int().min(0).max(36525).optional(),
   ),
   // ---------------------------------------------------------------
   // Realtime invalidation channel (ADR-0025).
@@ -620,6 +621,11 @@ type GuardSource = {
   BOOTSTRAP_ADMIN_USERNAME?: string | undefined;
   BOOTSTRAP_ADMIN_PASSWORD?: string | undefined;
   VAPID_PRIVATE_KEY?: string | undefined;
+  R2_ACCESS_KEY_ID?: string | undefined;
+  R2_SECRET_ACCESS_KEY?: string | undefined;
+  R2_ENDPOINT?: string | undefined;
+  R2_BUCKET?: string | undefined;
+  AGE_RECIPIENT?: string | undefined;
 };
 
 const TRUSTED_PROXY_MISSING_MSG =
@@ -708,6 +714,26 @@ function checkTrustedProxyInProduction(source: GuardSource): GuardResult {
 }
 
 /**
+ * Backup presence predicate (AC-774): refuses to start in production
+ * unless every value the backup needs is set. The kickoff requires
+ * backups; without this, a production deploy starts with backup
+ * disabled and the badge turns red only days later. Reports every
+ * missing value at once (AC-231). The list is the backup feature's
+ * catalog entry, so the guard and the feature manifest cannot drift.
+ */
+function checkBackupInProduction(source: GuardSource): GuardResult {
+  if (source.NODE_ENV !== 'production') return { ok: true };
+  const missing = BACKUP_REQUIRES.filter((name) => !source[name]?.trim());
+  if (missing.length === 0) return { ok: true };
+  return {
+    ok: false,
+    message: `Refusing to start: backup is required in production, but ${missing.join(', ')} ${
+      missing.length === 1 ? 'is' : 'are'
+    } not set. See docs/ops/backup/setup.md.`,
+  };
+}
+
+/**
  * Container-hostname predicate: refuses to start in production when the
  * storage client would sign presigned URLs against a container-only
  * hostname. Without `STORAGE_PUBLIC_ENDPOINT`, the app signs URLs using
@@ -789,6 +815,7 @@ const CROSS_FIELD_GUARDS: ReadonlyArray<(source: GuardSource) => GuardResult> = 
   checkAppServerEnv,
   checkTrustedProxyInProduction,
   checkStoragePublicEndpointInProduction,
+  checkBackupInProduction,
   checkBootstrapCredentials,
   checkVapidKeyShape,
 ];
@@ -865,5 +892,14 @@ export function assertTrustedProxyInProduction(env: Env): void {
  */
 export function assertStoragePublicEndpointInProduction(env: Env): void {
   const r = checkStoragePublicEndpointInProduction(env);
+  if (!r.ok) throw new Error(r.message);
+}
+
+/**
+ * Refuses to start in production unless every value the backup needs
+ * is set (AC-774).
+ */
+export function assertBackupInProduction(env: Env): void {
+  const r = checkBackupInProduction(env);
   if (!r.ok) throw new Error(r.message);
 }

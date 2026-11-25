@@ -16,6 +16,7 @@ import { installNotFoundHandler, installSpaAwareNotFoundHandler } from './error-
 import { bootstrapAdminIfEmpty } from './bootstrap.js';
 import {
   assertAppServerEnv,
+  assertBackupInProduction,
   assertProductionSafe,
   assertStoragePublicEndpointInProduction,
   assertTrustedProxyInProduction,
@@ -105,6 +106,8 @@ async function start(): Promise<void> {
   // presigned URLs against a container-only hostname — the browser
   // cannot resolve those, so every upload fails silently.
   assertStoragePublicEndpointInProduction(env);
+  // Refuse to start in production without the backup configuration (AC-774).
+  assertBackupInProduction(env);
   // Refuse to start in production when TAKEOUT_STAGING_DIR resolves to a
   // RAM-backed filesystem (tmpfs/ramfs). A multi-GB archive on a tmpfs
   // staging path exhausts container RAM and OOM-kills the VPS. In

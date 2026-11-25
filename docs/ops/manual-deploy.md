@@ -150,7 +150,7 @@ Layer 1 (optional — push notifications, ADR-0023):
 
 - `VAPID_PRIVATE_KEY` -- Web Push signing key. Generate once with `npx web-push generate-vapid-keys --json` and keep the `privateKey` value stable across deploys (rotating invalidates every browser subscription). The matching public key is derived at startup. Unset = push dispatch is a no-op, UI shows "nicht konfiguriert". `VAPID_SUBJECT` (e.g. `mailto:admin@<your-domain>`) is non-secret and lives in the plain `.env` next to `DOMAIN`.
 
-Layer 2:
+Layer 2 (required — without them the app refuses to start, [AC-774](../spec/verification.md#1522-backup-and-recovery)):
 
 - `R2_ACCESS_KEY_ID`
 - `R2_SECRET_ACCESS_KEY`

@@ -192,7 +192,7 @@ fi
 # Everything the object restore ([9/10]) needs is read here, so a bad
 # value fails before the local DB is overwritten. The restore locks each
 # synced invoice PDF for the dev app's INVOICE_OBJECT_LOCK_DAYS, as on
-# issuance; empty means 0, as in the app.
+# issuance; empty means 0, the app's default outside production.
 DEV_INVOICE_LOCK_DAYS=$(grep -E '^INVOICE_OBJECT_LOCK_DAYS=' "$REPO_DIR/.env" | cut -d= -f2- || true)
 DEV_INVOICE_LOCK_DAYS="${DEV_INVOICE_LOCK_DAYS:-0}"
 if ! [[ "$DEV_INVOICE_LOCK_DAYS" =~ ^[0-9]+$ ]]; then
