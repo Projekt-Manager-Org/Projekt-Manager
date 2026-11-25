@@ -1,7 +1,8 @@
 /**
  * VAPID key-material resolver tests — ADR-0023 / src/server/config/vapid.ts.
  *
- * Pins the four branches of `resolveVapidKeyMaterial`:
+ * Pins the four branches of `withDevVapidDefaults` + `resolveVapidKeyMaterial`
+ * (start.ts runs them in that order):
  *   - explicit env: key set → derive public, return material.
  *   - dev auto-bootstrap: unset in NODE_ENV=development → generate and
  *     persist to the data dir; second call reads the persisted file.
@@ -17,7 +18,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import webpush from 'web-push';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { derivePublicKey, resolveVapidKeyMaterial } from '../config/vapid.js';
+import { derivePublicKey, resolveVapidKeyMaterial, withDevVapidDefaults } from '../config/vapid.js';
 import type { Env } from '../config/env.js';
 
 function envFor(
@@ -57,16 +58,20 @@ describe('resolveVapidKeyMaterial', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  /** start.ts's order: dev defaults first, then the resolver. */
+  function resolve(env: Parameters<typeof withDevVapidDefaults>[0]) {
+    return resolveVapidKeyMaterial({ env: withDevVapidDefaults(env, { dataDir: tmpDir }) });
+  }
+
   it('derives public key from private and returns material when env is set', () => {
     const pair = webpush.generateVAPIDKeys();
-    const material = resolveVapidKeyMaterial({
-      env: envFor({
+    const material = resolve(
+      envFor({
         NODE_ENV: 'production',
         VAPID_PRIVATE_KEY: pair.privateKey,
         VAPID_SUBJECT: 'mailto:admin@example.test',
       }),
-      dataDir: tmpDir,
-    });
+    );
 
     expect(material).toEqual({
       privateKey: pair.privateKey,
@@ -76,10 +81,9 @@ describe('resolveVapidKeyMaterial', () => {
   });
 
   it('returns null in production when VAPID_PRIVATE_KEY is missing (no dev bootstrap)', () => {
-    const material = resolveVapidKeyMaterial({
-      env: envFor({ NODE_ENV: 'production', VAPID_SUBJECT: 'mailto:admin@example.test' }),
-      dataDir: tmpDir,
-    });
+    const material = resolve(
+      envFor({ NODE_ENV: 'production', VAPID_SUBJECT: 'mailto:admin@example.test' }),
+    );
 
     expect(material).toBeNull();
     // Explicitly assert no file was generated — production must never
@@ -89,19 +93,15 @@ describe('resolveVapidKeyMaterial', () => {
 
   it('returns null when subject is missing outside dev (no fallback)', () => {
     const pair = webpush.generateVAPIDKeys();
-    const material = resolveVapidKeyMaterial({
-      env: envFor({ NODE_ENV: 'production', VAPID_PRIVATE_KEY: pair.privateKey }),
-      dataDir: tmpDir,
-    });
+    const material = resolve(
+      envFor({ NODE_ENV: 'production', VAPID_PRIVATE_KEY: pair.privateKey }),
+    );
 
     expect(material).toBeNull();
   });
 
   it('auto-generates and persists a private key in development', () => {
-    const material = resolveVapidKeyMaterial({
-      env: envFor({ NODE_ENV: 'development' }),
-      dataDir: tmpDir,
-    });
+    const material = resolve(envFor({ NODE_ENV: 'development' }));
 
     expect(material).not.toBeNull();
     expect(material!.privateKey).toMatch(/^[A-Za-z0-9_-]+$/);
@@ -115,14 +115,8 @@ describe('resolveVapidKeyMaterial', () => {
   });
 
   it('reads the persisted key on subsequent dev boots', () => {
-    const first = resolveVapidKeyMaterial({
-      env: envFor({ NODE_ENV: 'development' }),
-      dataDir: tmpDir,
-    });
-    const second = resolveVapidKeyMaterial({
-      env: envFor({ NODE_ENV: 'development' }),
-      dataDir: tmpDir,
-    });
+    const first = resolve(envFor({ NODE_ENV: 'development' }));
+    const second = resolve(envFor({ NODE_ENV: 'development' }));
 
     expect(second?.privateKey).toBe(first?.privateKey);
     expect(second?.publicKey).toBe(first?.publicKey);
@@ -130,17 +124,16 @@ describe('resolveVapidKeyMaterial', () => {
 
   it('prefers env over persisted dev key when both are present', () => {
     // First boot: generates a dev key.
-    resolveVapidKeyMaterial({ env: envFor({ NODE_ENV: 'development' }), dataDir: tmpDir });
+    resolve(envFor({ NODE_ENV: 'development' }));
     // Operator then sets an explicit VAPID_PRIVATE_KEY — that must win.
     const pair = webpush.generateVAPIDKeys();
-    const material = resolveVapidKeyMaterial({
-      env: envFor({
+    const material = resolve(
+      envFor({
         NODE_ENV: 'development',
         VAPID_PRIVATE_KEY: pair.privateKey,
         VAPID_SUBJECT: 'mailto:override@example.test',
       }),
-      dataDir: tmpDir,
-    });
+    );
 
     expect(material?.privateKey).toBe(pair.privateKey);
     expect(material?.subject).toBe('mailto:override@example.test');
@@ -148,14 +141,13 @@ describe('resolveVapidKeyMaterial', () => {
 
   it('throws on a malformed VAPID_PRIVATE_KEY', () => {
     expect(() =>
-      resolveVapidKeyMaterial({
-        env: envFor({
+      resolve(
+        envFor({
           NODE_ENV: 'production',
           VAPID_PRIVATE_KEY: 'not-a-valid-key',
           VAPID_SUBJECT: 'mailto:admin@example.test',
         }),
-        dataDir: tmpDir,
-      }),
+      ),
     ).toThrow(/VAPID_PRIVATE_KEY is malformed/);
   });
 });

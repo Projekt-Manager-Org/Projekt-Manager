@@ -8,8 +8,8 @@
  * not state with a human-readable reason. Operators see the actual state
  * of every feature flag the moment the container starts.
  *
- * The boot-time emission is the customer-facing surface; registration
- * sites (push dispatcher, LLM extractor, bootstrap, backup) defer to
+ * The boot-time emission is the customer-facing surface; every gate
+ * (push resolver, LLM extractor, bootstrap, backup runner) decides from
  * `featureStatus(env, feature)` so the manifest cannot diverge from
  * the wiring.
  */
@@ -57,14 +57,28 @@ export const FEATURES: readonly FeatureName[] = FEATURE_CATALOG.map((e) => e.fea
 
 export type FeatureStatus = { enabled: true } | { enabled: false; reason: string };
 
+/** Any record keyed by env var names — the typed `Env`, or a gate's own
+ * subset of it (the bootstrap gate holds only its credential pair). */
+export type FeatureSource = Readonly<Partial<Record<keyof Env, unknown>>>;
+
 /**
- * Reports whether a feature is enabled for the given env. A feature is
- * enabled iff every env var in its catalog entry's `requires` list is
- * present and non-empty. The first missing var (per the catalog's
- * declaration order) populates the `reason` so the disabled state names
- * one canonical fault.
+ * A value counts as set when it is a string with non-whitespace content.
+ * Compose forwards an unconfigured var as `""`; whitespace-only is an
+ * operator slip, not a value. Every gate uses this one definition, so a
+ * gate cannot run a feature the manifest reports disabled (AC-230).
  */
-export function featureStatus(env: Env, feature: FeatureName): FeatureStatus {
+export function isConfigured(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+/**
+ * Reports whether a feature is enabled for the given env — the decision
+ * every feature gate takes (AC-230). A feature is enabled iff every env
+ * var in its catalog entry's `requires` list is set (`isConfigured`). The
+ * first missing var (per the catalog's declaration order) populates the
+ * `reason` so the disabled state names one canonical fault.
+ */
+export function featureStatus(env: FeatureSource, feature: FeatureName): FeatureStatus {
   const entry = FEATURE_CATALOG.find((e) => e.feature === feature);
   if (!entry) {
     // Unreachable as long as the union and the catalog stay in sync —
@@ -74,8 +88,7 @@ export function featureStatus(env: Env, feature: FeatureName): FeatureStatus {
     return { enabled: false, reason: `Unknown feature "${feature}"` };
   }
   for (const varName of entry.requires) {
-    const value = env[varName];
-    if (value === undefined || value === '') {
+    if (!isConfigured(env[varName])) {
       return { enabled: false, reason: `${String(varName)} is not set` };
     }
   }

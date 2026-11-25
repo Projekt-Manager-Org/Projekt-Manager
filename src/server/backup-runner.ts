@@ -31,6 +31,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Cron } from 'croner';
 import { validateEnvRuntime, type Env } from './config/env.js';
+import { featureStatus } from './config/features.js';
 import { createDatabase, type Database } from './db/connection.js';
 import {
   runBackup,
@@ -97,20 +98,21 @@ async function main(): Promise<number> {
   // Env validation — reuses the app's schema. The backup-specific keys
   // are declared there with the right defaults (AGE_IDENTITY_PATH etc.).
   const env = validateEnvRuntime();
+  const backup = backupConfigFromEnv(env);
 
-  if (subcommand === 'run') return runSubcommand(env);
-  if (subcommand === 'drill') return drillSubcommand(env);
-  return scheduleSubcommand(env);
+  if (subcommand === 'run') return runSubcommand(env, backup);
+  if (subcommand === 'drill') return drillSubcommand(env, backup);
+  return scheduleSubcommand(env, backup);
 }
 
 // ---------------------------------------------------------------
 // `run` — full Layer 2 cycle (one-shot)
 // ---------------------------------------------------------------
 
-async function runSubcommand(env: Env): Promise<number> {
+async function runSubcommand(env: Env, backup: BackupConfig): Promise<number> {
   const { db, pool } = createDatabase({ lockTimeoutMs: LOCK_WAIT_TIMEOUT_MS });
   try {
-    const handler = createBackupHandler(buildBackupDeps(env, db));
+    const handler = createBackupHandler(buildBackupDeps(env, backup, db));
     const exitCode = await handler();
     return exitCode;
   } finally {
@@ -122,10 +124,10 @@ async function runSubcommand(env: Env): Promise<number> {
 // `drill` — Tier 2 verify-on-cycle (one-shot)
 // ---------------------------------------------------------------
 
-async function drillSubcommand(env: Env): Promise<number> {
+async function drillSubcommand(env: Env, backup: BackupConfig): Promise<number> {
   const { db, pool } = createDatabase({ lockTimeoutMs: LOCK_WAIT_TIMEOUT_MS });
   try {
-    const handler = createDrillHandler(buildDrillDeps(env, db));
+    const handler = createDrillHandler(buildDrillDeps(env, backup, db));
     const exitCode = await handler();
     return exitCode;
   } finally {
@@ -206,12 +208,12 @@ export function buildScheduleJobs(handlers: ScheduleHandlers): Cron[] {
   ];
 }
 
-async function scheduleSubcommand(env: Env): Promise<number> {
+async function scheduleSubcommand(env: Env, backup: BackupConfig): Promise<number> {
   // Startup R2 probe — folds in former `scripts/backup/probe-r2.mjs`.
   // Run BEFORE opening the DB pool so the failure mode on a stale
   // credential is a fast container restart, not a "pool open then
   // schedule never ticks" silent partial-startup.
-  const r2 = requireR2(env, 'schedule');
+  const { r2 } = backup;
   try {
     await probeR2HeadBucket(r2);
   } catch (err) {
@@ -222,8 +224,8 @@ async function scheduleSubcommand(env: Env): Promise<number> {
 
   const { db, pool } = createDatabase({ lockTimeoutMs: LOCK_WAIT_TIMEOUT_MS });
 
-  const backupHandler = createBackupHandler(buildBackupDeps(env, db));
-  const drillHandler = createDrillHandler(buildDrillDeps(env, db));
+  const backupHandler = createBackupHandler(buildBackupDeps(env, backup, db));
+  const drillHandler = createDrillHandler(buildDrillDeps(env, backup, db));
   const jobs = buildScheduleJobs({ backupHandler, drillHandler });
 
   // Per-job next-tick log line — mirrors the spirit of dcron's NOTICE
@@ -275,15 +277,13 @@ interface BackupHandlerDeps {
   encrypt: Encryptor;
 }
 
-function buildBackupDeps(env: Env, db: Database): BackupHandlerDeps {
-  const r2 = requireR2(env, 'run');
-  const recipient = requireEnv(env.AGE_RECIPIENT, 'AGE_RECIPIENT', 'run');
+function buildBackupDeps(env: Env, backup: BackupConfig, db: Database): BackupHandlerDeps {
   return {
     db,
-    uploader: createR2Uploader(r2),
+    uploader: createR2Uploader(backup.r2),
     dumpSource: pgDumpSource(env.DATABASE_URL),
     verifyManifest: ephemeralPgVerify(),
-    encrypt: ageEncrypt(recipient),
+    encrypt: ageEncrypt(backup.recipient),
   };
 }
 
@@ -335,12 +335,11 @@ interface DrillHandlerDeps {
   identityPath: string;
 }
 
-function buildDrillDeps(env: Env, db: Database): DrillHandlerDeps {
-  const r2 = requireR2(env, 'drill');
+function buildDrillDeps(env: Env, backup: BackupConfig, db: Database): DrillHandlerDeps {
   return {
     db,
-    uploader: createR2Uploader(r2),
-    downloader: createR2Downloader(r2),
+    uploader: createR2Uploader(backup.r2),
+    downloader: createR2Downloader(backup.r2),
     verifyManifest: ephemeralPgVerify(),
     identityPath: env.AGE_IDENTITY_PATH,
   };
@@ -401,21 +400,32 @@ function createDrillHandler(deps: DrillHandlerDeps): () => Promise<number> {
 // Env helpers
 // ---------------------------------------------------------------
 
-function requireR2(env: Env, subcommand: string): R2Config {
-  return {
-    endpoint: requireEnv(env.R2_ENDPOINT, 'R2_ENDPOINT', subcommand),
-    bucket: requireEnv(env.R2_BUCKET, 'R2_BUCKET', subcommand),
-    accessKeyId: requireEnv(env.R2_ACCESS_KEY_ID, 'R2_ACCESS_KEY_ID', subcommand),
-    secretAccessKey: requireEnv(env.R2_SECRET_ACCESS_KEY, 'R2_SECRET_ACCESS_KEY', subcommand),
-    region: env.R2_REGION,
-  };
+export interface BackupConfig {
+  r2: R2Config;
+  recipient: string;
 }
 
-function requireEnv(value: string | undefined, name: string, subcommand: string): string {
-  if (!value) {
-    throw new Error(`backup-runner ${subcommand}: ${name} is required but not set`);
+/**
+ * The backup runs only while the feature manifest reports it enabled
+ * (AC-230): one gate, `featureStatus`, for every subcommand. Throws with
+ * the manifest's reason otherwise.
+ */
+export function backupConfigFromEnv(env: Env): BackupConfig {
+  const status = featureStatus(env, 'backup');
+  if (!status.enabled) {
+    throw new Error(`backup is disabled: ${status.reason}`);
   }
-  return value;
+  // featureStatus has checked that each value is a non-empty string.
+  return {
+    r2: {
+      endpoint: env.R2_ENDPOINT as string,
+      bucket: env.R2_BUCKET as string,
+      accessKeyId: env.R2_ACCESS_KEY_ID as string,
+      secretAccessKey: env.R2_SECRET_ACCESS_KEY as string,
+      region: env.R2_REGION,
+    },
+    recipient: env.AGE_RECIPIENT as string,
+  };
 }
 
 /** Prefix that AGE_IDENTITY_PATH must resolve under (M5 audit). */
