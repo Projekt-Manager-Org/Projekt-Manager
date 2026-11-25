@@ -105,6 +105,8 @@ Refuses the very deploy that would carry the fix, without reducing exposure. Rej
 
 The threat is unlikely (a compromised release in the window, in the tree of a package with an open alert, not yet in OSV's malicious-package records, merged unchecked) and severe (it reaches production with every check green). Against no realized value, unlikely is enough.
 
+Keeping them on without the label was rejected: the release-age gate would hold each PR until its versions are 3 days old, when `lockFileMaintenance` lands the same fix and auto-merges. It adds a red PR to tend, and a hand-added `security` label reopens the bypass.
+
 Now: a transitive fix lands with `lockFileMaintenance` once 3 days old, or as a checked bypass by hand ([dep-management.md § CVE handling](../ops/dep-management.md#cve-handling)). Dependabot's config file, which only labelled these PRs, is gone.
 
 Should have been caught by [ADR-0027 § 2026-09-17](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff): it mapped the cooldown's layers to Renovate's and npm's paths, not Dependabot's.
