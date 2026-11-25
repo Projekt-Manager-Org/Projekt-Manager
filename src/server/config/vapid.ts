@@ -6,23 +6,22 @@
  * startup (P-256 ECDSA, `crypto.createECDH('prime256v1')`) and served
  * to the client via `GET /api/push/vapid-public-key`.
  *
- * Policy:
- *   - `VAPID_PRIVATE_KEY` set → derive public, return material.
- *   - Missing in production → return `null` → `noopPushDispatcher` +
- *     startup warn. Push is disabled; the operator adds the env var.
- *   - Missing in `NODE_ENV=development` → auto-generate a private key,
- *     persist to `data/.vapid/private-key` (gitignored), and return
- *     material. Subsequent boots read the persisted key.
- *   - `NODE_ENV=test` never auto-generates — tests that want push
- *     either set `VAPID_PRIVATE_KEY` or use the no-op fallback.
- *   - Set but malformed → throw. Corrupt config is fail-fast, not
- *     silent degradation.
+ * Two steps, both run once at boot by start.ts:
+ *   - `withDevVapidDefaults` — in `NODE_ENV=development` only, fills a
+ *     missing private key (generated once, persisted to
+ *     `data/.vapid/private-key`, gitignored) and subject. The feature
+ *     manifest reads the env it returns, so it reports what runs (AC-230).
+ *   - `resolveVapidKeyMaterial` — push runs iff `featureStatus(env,
+ *     'push')` is enabled; otherwise `null` → `noopPushDispatcher` +
+ *     startup warn. Set but malformed → throw: corrupt config is
+ *     fail-fast, not silent degradation.
  */
 
 import { createECDH, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Env } from './env.js';
+import { featureStatus, isConfigured } from './features.js';
 
 export interface VapidKeyMaterial {
   privateKey: string;
@@ -35,8 +34,14 @@ export interface VapidResolverLogger {
   warn: (msg: string) => void;
 }
 
+type VapidEnv = Pick<Env, 'NODE_ENV' | 'VAPID_PRIVATE_KEY' | 'VAPID_SUBJECT'>;
+
 export interface VapidResolverOptions {
-  env: Pick<Env, 'NODE_ENV' | 'VAPID_PRIVATE_KEY' | 'VAPID_SUBJECT'>;
+  env: VapidEnv;
+  logger?: VapidResolverLogger;
+}
+
+export interface DevVapidDefaultsOptions {
   logger?: VapidResolverLogger;
   /** Override for tests. Defaults to `<cwd>/data/.vapid`. */
   dataDir?: string;
@@ -91,33 +96,40 @@ function loadOrGenerateDevKey(dataDir: string, logger: VapidResolverLogger | und
 }
 
 /**
+ * In development, fill a missing VAPID key (generated once, then read
+ * from `dataDir`) and subject, so `npm run dev` runs push zero-config.
+ * Any other `NODE_ENV` returns `env` unchanged: production never
+ * auto-creates key material, and tests opt in by setting the vars.
+ */
+export function withDevVapidDefaults<E extends VapidEnv>(
+  env: E,
+  opts: DevVapidDefaultsOptions = {},
+): E {
+  if (env.NODE_ENV !== 'development') return env;
+  const dataDir = opts.dataDir ?? path.resolve(process.cwd(), 'data', '.vapid');
+  return {
+    ...env,
+    VAPID_PRIVATE_KEY: isConfigured(env.VAPID_PRIVATE_KEY)
+      ? env.VAPID_PRIVATE_KEY
+      : loadOrGenerateDevKey(dataDir, opts.logger),
+    VAPID_SUBJECT: isConfigured(env.VAPID_SUBJECT) ? env.VAPID_SUBJECT : DEV_DEFAULT_SUBJECT,
+  };
+}
+
+/**
  * Resolve the VAPID material that `WebPushDispatcher` needs. Returns
- * `null` when push should run in no-op mode (missing config in prod /
- * test). Throws on malformed input.
+ * `null` when the push feature is disabled (the manifest's decision,
+ * AC-230). Throws on malformed input.
  */
 export function resolveVapidKeyMaterial(opts: VapidResolverOptions): VapidKeyMaterial | null {
   const { env, logger } = opts;
-  const dataDir = opts.dataDir ?? path.resolve(process.cwd(), 'data', '.vapid');
-
-  let privateKey = env.VAPID_PRIVATE_KEY?.trim() || undefined;
-  let subject = env.VAPID_SUBJECT?.trim() || undefined;
-
-  if (!privateKey && env.NODE_ENV === 'development') {
-    privateKey = loadOrGenerateDevKey(dataDir, logger);
-  }
-
-  if (!privateKey) {
-    logger?.warn('VAPID_PRIVATE_KEY missing — Web Push delivery disabled (no-op dispatcher).');
+  const status = featureStatus(env, 'push');
+  if (!status.enabled) {
+    logger?.warn(`${status.reason} — Web Push delivery disabled (no-op dispatcher).`);
     return null;
   }
-
-  if (!subject && env.NODE_ENV === 'development') {
-    subject = DEV_DEFAULT_SUBJECT;
-  }
-  if (!subject) {
-    logger?.warn('VAPID_SUBJECT missing — Web Push delivery disabled (no-op dispatcher).');
-    return null;
-  }
+  const privateKey = (env.VAPID_PRIVATE_KEY ?? '').trim();
+  const subject = (env.VAPID_SUBJECT ?? '').trim();
 
   let publicKey: string;
   try {

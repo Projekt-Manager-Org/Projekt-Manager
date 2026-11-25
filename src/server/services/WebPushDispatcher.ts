@@ -1,9 +1,9 @@
 /**
  * Web Push dispatcher — real `web-push` transport. ADR-0023.
  *
- * Instantiated once at app composition when all three `VAPID_*` env
- * vars are present (see `buildApp` in `app.ts`). When any of them is
- * missing the composition falls back to `noopPushDispatcher` — this
+ * Instantiated once at app composition when the push feature is enabled
+ * (see `buildApp` in `app.ts`, AC-230). Otherwise the composition falls
+ * back to `noopPushDispatcher` — this
  * class is not a silent no-op; a missing key would be an operator-
  * visible warning rather than a dispatch-time surprise.
  *

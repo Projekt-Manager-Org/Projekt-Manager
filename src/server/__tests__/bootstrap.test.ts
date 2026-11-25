@@ -36,6 +36,7 @@ import { createDatabase } from '../db/connection.js';
 import { users } from '../db/schema.js';
 import { verifyPassword } from '../password.js';
 import { bootstrapAdminIfEmpty } from '../bootstrap.js';
+import { featureStatus } from '../config/features.js';
 import type { Database } from '../db/connection.js';
 import { withAuditLogRemoval } from '../db/auditLogRemoval.js';
 
@@ -393,7 +394,7 @@ describe('AC-569 (AC-B5): password policy applies', () => {
 // -----------------------------------------------------------------------
 // AC-B6 — Username edge cases
 // -----------------------------------------------------------------------
-describe('AC-B6: username edge cases', () => {
+describe('AC-B6: credential edge cases', () => {
   it('accepts a non-ASCII username (German umlaut)', async () => {
     // Walking skeleton has a German-speaking user base — make sure the
     // bootstrap does not silently mangle usernames that contain umlauts.
@@ -416,6 +417,16 @@ describe('AC-B6: username edge cases', () => {
         makeLogger(),
       ),
     ).rejects.toThrow(/BOOTSTRAP_ADMIN_USERNAME is required/);
+  });
+
+  it('treats a whitespace-only password as unset (fail closed)', async () => {
+    await expect(
+      bootstrapAdminIfEmpty(
+        db,
+        { username: 'admin-b6', password: '            ', displayName: undefined },
+        makeLogger(),
+      ),
+    ).rejects.toThrow(/BOOTSTRAP_ADMIN_PASSWORD is required/);
   });
 
   it('is a no-op when the requested username already exists (delegates to AC-B2)', async () => {
@@ -561,5 +572,35 @@ describe('AC-B9: loud warning on success, silent on skip', () => {
       const msg = call[0];
       expect(msg).not.toContain('admin-b9b');
     }
+  });
+});
+
+// -----------------------------------------------------------------------
+// AC-230 — the manifest's `admin-bootstrap` state is the gate: on an
+// empty DB, bootstrap inserts exactly when the manifest reports it
+// enabled.
+// -----------------------------------------------------------------------
+describe('AC-230: bootstrap runs exactly when the manifest reports it enabled', () => {
+  const cases: [string, string | undefined, string | undefined][] = [
+    ['neither set', undefined, undefined],
+    ['both set', 'admin-230', 'SecurePass2026!'],
+    ['whitespace-only username', '   ', 'SecurePass2026!'],
+    ['whitespace-only password', 'admin-230', '            '],
+  ];
+
+  it.each(cases)('%s', async (_label, username, password) => {
+    const manifestEnabled = featureStatus(
+      { BOOTSTRAP_ADMIN_USERNAME: username, BOOTSTRAP_ADMIN_PASSWORD: password },
+      'admin-bootstrap',
+    ).enabled;
+    const inserted = await bootstrapAdminIfEmpty(
+      db,
+      { username, password, displayName: undefined },
+      makeLogger(),
+    ).then(
+      (r) => r.inserted,
+      () => false,
+    );
+    expect(inserted).toBe(manifestEnabled);
   });
 });

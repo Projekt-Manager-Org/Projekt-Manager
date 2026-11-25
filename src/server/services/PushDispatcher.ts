@@ -3,9 +3,10 @@
  *
  * Interface + no-op fallback. The real `web-push` transport lives in
  * the sibling `WebPushDispatcher.ts` and is selected by `buildApp`
- * when all three `VAPID_*` env vars are present; otherwise the
- * composition falls back to the `noopPushDispatcher` exported here
- * (also what tests use by default via the absent-env path).
+ * when start.ts passes it VAPID material (the push feature is enabled,
+ * AC-230); otherwise the composition falls back to the
+ * `noopPushDispatcher` exported here (also what tests get, since they
+ * pass none).
  *
  * Key generation — operators mint a keypair with
  *   npx web-push generate-vapid-keys --json

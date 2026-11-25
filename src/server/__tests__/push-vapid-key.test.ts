@@ -2,7 +2,7 @@
  * VAPID public-key endpoint tests — ADR-0023.
  *
  * The endpoint returns the public key captured at plugin-registration
- * time (resolved once at boot in `buildApp`). These tests pin:
+ * time (resolved once at boot by start.ts, passed to `buildApp`). These tests pin:
  *   - Configured case: key passed to plugin → 200 with the key.
  *   - Absent case: `null` passed to plugin → 200 with `null`.
  *

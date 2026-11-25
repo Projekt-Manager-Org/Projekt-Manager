@@ -37,7 +37,7 @@ import { registerNotificationPublisher } from './services/notification-publisher
 import { noopPushDispatcher, type PushDispatcher } from './services/PushDispatcher.js';
 import { WebPushDispatcher } from './services/WebPushDispatcher.js';
 import { getEnv } from './config/env.js';
-import { resolveVapidKeyMaterial, type VapidKeyMaterial } from './config/vapid.js';
+import type { VapidKeyMaterial } from './config/vapid.js';
 import { installErrorHandler } from './error-handler.js';
 import { installUndefinedBodyGuard } from './undefined-body-guard.js';
 
@@ -81,6 +81,11 @@ export interface AppOptions {
    */
   health?: HealthDeps;
   /**
+   * Web Push key material, resolved once by start.ts from the env the
+   * feature manifest reports on (AC-230). Omitted → push runs as a no-op.
+   */
+  vapid?: VapidKeyMaterial | null;
+  /**
    * When present, register `@fastify/swagger` in OpenAPI-collection mode
    * and publish this as the document's header. The plugin adds
    * no HTTP route and no UI (that would be `@fastify/swagger-ui`, not
@@ -100,8 +105,8 @@ export interface AppOptions {
 }
 
 /**
- * Map resolved VAPID material to a dispatcher. `null` (missing config
- * in production / test) → `noopPushDispatcher`. Logging lives in
+ * Map resolved VAPID material to a dispatcher. `null` (push disabled, or
+ * `vapid` omitted) → `noopPushDispatcher`. Logging lives in
  * `resolveVapidKeyMaterial`; this is a thin mapper.
  */
 function pickPushDispatcher(material: VapidKeyMaterial | null): PushDispatcher {
@@ -321,17 +326,7 @@ export function buildApp(opts: AppOptions = {}): FastifyInstance {
   app.register(healthRoutes(opts.health ?? null));
 
   if (opts.db) {
-    // Resolve VAPID material once at boot: derives the public key from
-    // the private half, handles the dev auto-bootstrap, and decides
-    // no-op vs real-transport. Both the dispatcher and the public-key
-    // endpoint consume this single result.
-    const vapid = resolveVapidKeyMaterial({
-      env: getEnv(),
-      logger: {
-        info: (msg) => app.log.info(msg),
-        warn: (msg) => app.log.warn(msg),
-      },
-    });
+    const vapid = opts.vapid ?? null;
 
     app.register(authRoutes(opts.db));
     app.register(projectRoutes(opts.db));

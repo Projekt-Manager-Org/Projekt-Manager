@@ -27,7 +27,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { checkBootstrapCredentialPair } from './bootstrap-credentials.js';
-import { BACKUP_REQUIRES } from './features.js';
+import { BACKUP_REQUIRES, isConfigured } from './features.js';
 import { derivePublicKey } from './vapid.js';
 
 /**
@@ -323,8 +323,8 @@ export const envSchema = z.object({
   // from the private half at startup (P-256 ECDSA — `src/server/config/vapid.ts`),
   // so the operator only maintains the private key. In production,
   // missing `VAPID_PRIVATE_KEY` falls back to `noopPushDispatcher` with
-  // a startup warn. In dev/test the helper auto-generates a key into
-  // `data/.vapid/private-key` on first boot so push works zero-config.
+  // a startup warn. In development `withDevVapidDefaults` generates a key
+  // into `data/.vapid/private-key` on first boot so push works zero-config.
   // `VAPID_SUBJECT` must be either a `mailto:` URL or an `https:` URL
   // per RFC 8292 §2.1 — format validated at WebPushDispatcher boot.
   // ---------------------------------------------------------------
@@ -723,7 +723,7 @@ function checkTrustedProxyInProduction(source: GuardSource): GuardResult {
  */
 function checkBackupInProduction(source: GuardSource): GuardResult {
   if (source.NODE_ENV !== 'production') return { ok: true };
-  const missing = BACKUP_REQUIRES.filter((name) => !source[name]?.trim());
+  const missing = BACKUP_REQUIRES.filter((name) => !isConfigured(source[name]));
   if (missing.length === 0) return { ok: true };
   return {
     ok: false,

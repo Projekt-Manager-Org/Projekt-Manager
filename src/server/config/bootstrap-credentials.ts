@@ -13,6 +13,7 @@
  * `password-policy.ts` exists for the policy core itself. See ADR-0010.
  */
 
+import { isConfigured } from './features.js';
 import { checkPasswordPolicy } from './password-policy.js';
 
 export interface BootstrapCredentialInput {
@@ -26,17 +27,14 @@ export interface BootstrapCredentialInput {
  * acceptable — including the "neither set" opt-out, which callers must
  * still treat as "do not bootstrap".
  *
- * Normalization mirrors the boot path exactly: the username is trimmed (a
- * whitespace-only value is "unset"); the password is taken verbatim (a
- * whitespace password is "set" and must pass the policy, matching bcrypt's
- * byte semantics). docker-compose forwards both as `${VAR:-}`, so an
- * unconfigured deploy sends `""` for each — collapsed to "unset" here.
+ * "Set" is the feature manifest's definition (`isConfigured`, AC-230): an
+ * empty or whitespace-only value is unset. A set password is checked
+ * verbatim against the policy, matching bcrypt's byte semantics.
  */
 export function checkBootstrapCredentialPair(input: BootstrapCredentialInput): string | null {
-  const username = input.username?.trim() ?? '';
   const password = input.password ?? '';
-  const usernameProvided = username.length > 0;
-  const passwordProvided = password.length > 0;
+  const usernameProvided = isConfigured(input.username);
+  const passwordProvided = isConfigured(password);
 
   // Opt-out: neither var set is a silent no-op for both callers.
   if (!usernameProvided && !passwordProvided) return null;

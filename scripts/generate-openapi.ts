@@ -93,9 +93,7 @@ const OUT_PATH = process.env.OPENAPI_DOC_PATH ?? CANONICAL_OUT_PATH;
 // Pinning them keeps the script deterministic regardless of a
 // developer's `.env` or shell exports.
 //
-// NODE_ENV=test (not 'development') so `resolveVapidKeyMaterial` takes
-// the "missing config → no-op dispatcher, warn only" branch instead of
-// generating and persisting a dev VAPID keypair to `data/.vapid/`.
+// NODE_ENV=test so the document does not depend on the developer's mode.
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'postgresql://openapi-spike:unused@127.0.0.1:1/openapi_spike_unused';
 // Presence-only placeholders — see the `createInvoiceService` note above.

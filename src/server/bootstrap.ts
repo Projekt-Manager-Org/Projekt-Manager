@@ -18,6 +18,7 @@ import type { Database } from './db/connection.js';
 import { countUsers, createUser as createUserRepo } from './repositories/user.js';
 import { hashPassword } from './password.js';
 import { checkBootstrapCredentialPair } from './config/bootstrap-credentials.js';
+import { featureStatus } from './config/features.js';
 import { mutate } from './services/mutate.js';
 
 export interface BootstrapAdminConfig {
@@ -69,25 +70,23 @@ class BootstrapRaceError extends Error {
  *      `BOOTSTRAP_ADMIN_*` values from a previous bootstrap do not
  *      crash the service on restart.
  *
- *   2. Normalize env-var inputs. Undefined, empty, and whitespace-only
- *      are all treated as "not set" [AC-B6].
- *
- *   3. Neither var set → silent no-op [AC-B4]. Dev workflows using
- *      `SEED=true` are not disturbed.
- *
- *   4. Exactly one var set → throw, naming the missing var [AC-B3].
- *
- *   5. Password policy: length (8..72) and common-password blocklist
- *      [AC-B5]. Error messages must not contain the password itself
+ *   2. Exactly one var set → throw, naming the missing var [AC-B3];
+ *      password policy: length (8..72) and common-password blocklist
+ *      [AC-B5]. Undefined, empty and whitespace-only all count as
+ *      "not set" [AC-B6]. Error messages never contain the password
  *      [AC-B8].
  *
- *   6. Insert inside a transaction with an in-transaction re-check.
+ *   3. Feature disabled in the manifest (neither var set) → silent
+ *      no-op [AC-B4, AC-230]. Dev workflows using `SEED=true` are not
+ *      disturbed.
+ *
+ *   4. Insert inside a transaction with an in-transaction re-check.
  *      This closes the race window between the initial count and the
  *      insert. A Postgres unique-violation (code 23505) at this point
  *      is treated as "another process beat us" — equivalent to a
  *      no-op, not an error [AC-B6 defensive handling].
  *
- *   7. Emit a single warn-level log naming the user and instructing
+ *   5. Emit a single warn-level log naming the user and instructing
  *      the operator to rotate the password and remove the env vars
  *      [AC-B9]. The password and hash are never logged [AC-B8].
  */
@@ -122,28 +121,12 @@ export async function bootstrapAdminIfEmpty(
   }
 
   // ---------------------------------------------------------------
-  // Step 2: normalize inputs [AC-B6].
-  // ---------------------------------------------------------------
-  const username = config.username?.trim() ?? '';
-  const password = config.password ?? '';
-  const usernameProvided = username.length > 0;
-  const passwordProvided = password.length > 0;
-
-  // ---------------------------------------------------------------
-  // Step 3: opt-in check [AC-B4].
-  // ---------------------------------------------------------------
-  if (!usernameProvided && !passwordProvided) {
-    return { inserted: false };
-  }
-
-  // ---------------------------------------------------------------
-  // Steps 4 + 5: fail closed on half-config [AC-B3], then enforce the
-  // password policy [AC-B5]. Both the pairing rule and the policy →
-  // message mapping live in config/bootstrap-credentials.ts so this boot
-  // path and the deploy-preflight guard (config/env.ts) cannot diverge on
-  // what "configured" means or on the operator-facing text. Messages name
-  // the missing var and MUST NOT include the password itself [AC-B8] — the
-  // shared validator never echoes it.
+  // Step 2: fail closed on half-config [AC-B3] and enforce the password
+  // policy [AC-B5]. The pairing rule and the policy → message mapping
+  // live in config/bootstrap-credentials.ts so this boot path and the
+  // deploy-preflight guard (config/env.ts) cannot diverge on the
+  // operator-facing text. Messages name the missing var and MUST NOT
+  // include the password itself [AC-B8].
   // ---------------------------------------------------------------
   const credentialError = checkBootstrapCredentialPair(config);
   if (credentialError) {
@@ -151,7 +134,21 @@ export async function bootstrapAdminIfEmpty(
   }
 
   // ---------------------------------------------------------------
-  // Step 6: hash and insert via the single-write-path `mutate()` helper.
+  // Step 3: opt-in [AC-B4] — the feature manifest's decision (AC-230).
+  // ---------------------------------------------------------------
+  const status = featureStatus(
+    { BOOTSTRAP_ADMIN_USERNAME: config.username, BOOTSTRAP_ADMIN_PASSWORD: config.password },
+    'admin-bootstrap',
+  );
+  if (!status.enabled) {
+    return { inserted: false };
+  }
+  // Username trimmed [AC-B6]; password verbatim (bcrypt bytes).
+  const username = (config.username ?? '').trim();
+  const password = config.password ?? '';
+
+  // ---------------------------------------------------------------
+  // Step 4: hash and insert via the single-write-path `mutate()` helper.
   // Per ADR-0021, every domain-entity write — including the first-run
   // admin — must emit an atomic audit row. The `system` actor kind with
   // `first-run-bootstrap` reason makes the bootstrap visible in the
@@ -233,7 +230,7 @@ export async function bootstrapAdminIfEmpty(
   }
 
   // ---------------------------------------------------------------
-  // Step 7: loud warn log [AC-B9]. Password and hash are NOT included.
+  // Step 5: loud warn log [AC-B9]. Password and hash are NOT included.
   // ---------------------------------------------------------------
   logger.warn(
     `Bootstrap admin user "${username}" created. ` +

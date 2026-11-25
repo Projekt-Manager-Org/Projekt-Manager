@@ -23,6 +23,7 @@ import {
   validateEnvRuntime,
 } from './config/env.js';
 import { emitFeatureManifest } from './config/features.js';
+import { resolveVapidKeyMaterial, withDevVapidDefaults } from './config/vapid.js';
 import { formatErrorChain } from './format-error-chain.js';
 import { assertBaselineLedgerMatchesFile } from './db/baseline-guard.js';
 import { createDatabase } from './db/connection.js';
@@ -122,7 +123,11 @@ async function start(): Promise<void> {
   // optional feature's enabled/disabled state with reason. Order is
   // significant: the test pins emission AFTER validateEnvRuntime() so
   // the manifest never reports on an unverified env.
-  emitFeatureManifest(env, {
+  // The manifest reports on the env with the dev VAPID defaults applied:
+  // push resolves from the same env below, so the two agree.
+  const vapidLogger = { info: (m: string) => console.log(m), warn: (m: string) => console.warn(m) };
+  const featureEnv = withDevVapidDefaults(env, { logger: vapidLogger });
+  emitFeatureManifest(featureEnv, {
     info: (ctx) => console.log(JSON.stringify(ctx)),
   });
 
@@ -377,7 +382,12 @@ async function start(): Promise<void> {
   // The probe itself lives in `src/server/routes/health.ts` and is
   // registered by buildApp — routes mounted here would be invisible to
   // the generated OpenAPI document.
-  const app = buildApp({ logger: true, db, health: { pool, storage: storageClient } });
+  const app = buildApp({
+    logger: true,
+    db,
+    health: { pool, storage: storageClient },
+    vapid: resolveVapidKeyMaterial({ env: featureEnv, logger: vapidLogger }),
+  });
 
   // Serve the Vite-built frontend from dist/ — production only. Gate on
   // isProduction, not just existsSync: a stray dist/ left over from an
