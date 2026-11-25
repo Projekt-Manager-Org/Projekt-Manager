@@ -166,11 +166,10 @@ services:
       # is tmpfs/ramfs in production (see src/server/config/assertStagingDurable.ts).
       TAKEOUT_STAGING_TTL_MINUTES: ${TAKEOUT_STAGING_TTL_MINUTES:-}
       TAKEOUT_STAGING_DIR: ${TAKEOUT_STAGING_DIR:-/var/lib/projekt-manager/takeout}
-      # Invoice retention (ADR-0026, architecture.md §12.2). Object-Lock
-      # days for rendered invoice PDF/A-3 binaries; 0 disables the
-      # boot-time retention assertion (dev), 3650 in production (§147 AO).
-      # The boot-time bucket-safety probe refuses to start when the
-      # deployed bucket retention envelope is less than this value.
+      # Invoice retention (ADR-0026, architecture.md §12.2). Per-object
+      # Compliance lock (days) on rendered invoice PDF/A-3 binaries; 0
+      # writes none. Empty keeps the env-aware default in
+      # `getInvoiceObjectLockDays()` (3650 in prod, 0 elsewhere).
       INVOICE_OBJECT_LOCK_DAYS: ${INVOICE_OBJECT_LOCK_DAYS:-}
       # Realtime invalidation channel heartbeat (ADR-0025).
       # Defaults to 25 s; integration tests override

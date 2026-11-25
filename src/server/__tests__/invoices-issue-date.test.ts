@@ -28,6 +28,7 @@ import { InvoiceCancelService } from '../services/InvoiceCancelService.js';
 import { InvoiceBinaryService } from '../services/InvoiceBinaryService.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { getInvoiceObjectLockDays } from '../config/index.js';
 import type { ServiceLogger } from '../services/Logger.js';
 
 /** A draft no write has touched since its create (data-model.md §6.4). */
@@ -97,7 +98,7 @@ describe('Invoice issue date in Germany (AC-690)', () => {
       storage: createStorageClientFromEnv(env),
       binaryAgeRecipient: env.BINARY_AGE_RECIPIENT!,
       binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH!,
-      invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
+      invoiceObjectLockDays: getInvoiceObjectLockDays(),
     });
     issueService = new InvoiceIssueService(conn.db, binary);
     cancelService = new InvoiceCancelService(conn.db, binary);

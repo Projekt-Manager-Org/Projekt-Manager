@@ -49,6 +49,7 @@ import { runTakeoutImport } from '../services/takeout-import-runner.js';
 import { stagedArtifactPath, sweepStagedArtifact } from '../services/takeout-staging.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { getInvoiceObjectLockDays } from '../config/index.js';
 import {
   importJobActive,
   notFound,
@@ -426,7 +427,7 @@ export function importJobRoutes(db: Database) {
               logger: request.log,
               binaryAgeRecipient: env.BINARY_AGE_RECIPIENT ?? '',
               binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
-              invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
+              invoiceObjectLockDays: getInvoiceObjectLockDays(),
             });
           }
 

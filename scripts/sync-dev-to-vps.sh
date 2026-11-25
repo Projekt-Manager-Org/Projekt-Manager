@@ -295,15 +295,19 @@ case "$VPS_AGE_RECIPIENT" in
 esac
 # The restore locks each synced invoice PDF for the VPS app's
 # INVOICE_OBJECT_LOCK_DAYS, as on issuance (#627). A Compliance lock
-# cannot be shortened, so the consent below states it. Empty means 0, as
-# in the app; compose always defines the variable, so a failure here is
-# a failed read, not an unset value.
+# cannot be shortened, so the consent below states it. Compose always
+# defines the variable, so a failure here is a failed read, not an unset
+# value. Empty is refused: the app then locks for its production default
+# (3650 days), too long for staging seed data to inherit unasked.
 if ! VPS_INVOICE_LOCK_DAYS=$(ssh "$SSH_TARGET" \
   "docker exec ${COMPOSE_PROJECT}-app-1 printenv INVOICE_OBJECT_LOCK_DAYS"); then
   echo "ERROR: could not read INVOICE_OBJECT_LOCK_DAYS from VPS app container." >&2
   exit 1
 fi
-VPS_INVOICE_LOCK_DAYS="${VPS_INVOICE_LOCK_DAYS:-0}"
+if [ -z "$VPS_INVOICE_LOCK_DAYS" ]; then
+  echo "ERROR: INVOICE_OBJECT_LOCK_DAYS is unset on the VPS (app default: 3650 days). Set it explicitly." >&2
+  exit 1
+fi
 # Local identity must be readable; without it the rewrap step in [6/10]
 # cannot unwrap the source envelopes. Sourced from the dev-side .env.
 LOCAL_AGE_IDENTITY_PATH=$(grep -E '^BINARY_AGE_IDENTITY_PATH=' "$REPO_DIR/.env" | cut -d= -f2- || true)

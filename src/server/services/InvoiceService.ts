@@ -70,6 +70,7 @@ import {
 } from './InvoiceCancelService.js';
 import { createStorageClientFromEnv } from '../storage/fromEnv.js';
 import { getEnv } from '../config/env.js';
+import { getInvoiceObjectLockDays } from '../config/index.js';
 
 /** Re-export the read-side opts shape so routes don't import the repo. */
 export type { ListInvoicesOpts };
@@ -600,7 +601,7 @@ function buildInvoiceBinaryDeps(): InvoiceBinaryDeps {
     storage,
     binaryAgeRecipient: env.BINARY_AGE_RECIPIENT,
     binaryAgeIdentityPath: env.BINARY_AGE_IDENTITY_PATH,
-    invoiceObjectLockDays: env.INVOICE_OBJECT_LOCK_DAYS,
+    invoiceObjectLockDays: getInvoiceObjectLockDays(),
   };
 }
 

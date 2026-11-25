@@ -48,8 +48,8 @@ Inputs (env):
   KEY_PREFIX (optional)                       key namespace, as the app's
                                               STORAGE_KEY_PREFIX; empty
                                               on the VPS, set by tests
-  INVOICE_OBJECT_LOCK_DAYS (optional)         the target app's value;
-                                              empty or 0 writes no lock
+  INVOICE_OBJECT_LOCK_DAYS                    the target app's resolved
+                                              value; 0 writes no lock
 
 Output: SQL UPDATE statements on stdout (caller pipes to psql);
         progress + summary counts on stderr. Exits non-zero before any
@@ -94,10 +94,11 @@ B2_SECRET = env("B2_SECRET")
 SOURCE_DIR = env("SOURCE_DIR")
 TSV_PATH = env("OBJECTS_TSV")
 KEY_PREFIX = os.environ.get("KEY_PREFIX", "")
-# Parsed like the app's INVOICE_OBJECT_LOCK_DAYS (src/server/config/env.ts):
-# empty means 0; an integer 0..36525, as a Compliance lock cannot be
+# The target app's resolved INVOICE_OBJECT_LOCK_DAYS, required: its default
+# depends on the target's NODE_ENV (src/server/config/index.ts), which this
+# script cannot see. An integer 0..36525, as a Compliance lock cannot be
 # shortened once written.
-_lock_days = os.environ.get("INVOICE_OBJECT_LOCK_DAYS", "") or "0"
+_lock_days = env("INVOICE_OBJECT_LOCK_DAYS")
 if not _lock_days.isdigit() or int(_lock_days) > 36525:
     fail(f"INVOICE_OBJECT_LOCK_DAYS {_lock_days!r} is not an integer in 0..36525")
 INVOICE_LOCK_DAYS = int(_lock_days)
