@@ -107,7 +107,6 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     ATTACHMENT_ORPHAN_REAPER_TTL_MINUTES: undefined,
     ATTACHMENT_WORKER_SELF_DELETE_GRACE_MINUTES: undefined,
     ATTACHMENT_ORPHAN_REAPER_INTERVAL_MINUTES: undefined,
-    ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES: undefined,
     ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES: undefined,
     ...overrides,
   } as Env;

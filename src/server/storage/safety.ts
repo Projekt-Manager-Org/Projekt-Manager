@@ -310,11 +310,20 @@ export interface BucketSafetyReader {
   probeDeleteVersionCapability: () => Promise<CapabilityProbeResult>;
 }
 
+/** What a safe bucket tells the app. */
+export interface BucketSafetyReport {
+  /** `L`: the Papierkorb keeps a hidden attachment this long (AC-426). */
+  papierkorbWindowDays: number;
+}
+
 /**
  * Reads the bucket configuration via the storage client, applies the
  * shape validator, and runs the capability self-test. Throws an
  * aggregated error on failure — same fail-fast shape as the existing
  * assertX helpers in src/server/config/env.ts.
+ *
+ * Returns `L`, so the hidden reaper expires a Papierkorb row when the
+ * bucket reaps its bytes (AC-426) — no separate setting to drift.
  *
  * Both checks run unconditionally and their failures aggregate into a
  * single thrown error: the operator sees every defect at once instead
@@ -326,7 +335,9 @@ export interface BucketSafetyReader {
  * carry their own per-object lock (ADR-0026, AC-710), because the
  * bucket default `R` must stay within `L` and so cannot hold years.
  */
-export async function assertStorageBucketSafe(client: BucketSafetyReader): Promise<void> {
+export async function assertStorageBucketSafe(
+  client: BucketSafetyReader,
+): Promise<BucketSafetyReport> {
   const config = await client.getBucketSafetyConfig();
   const verdict = evaluateBucketSafety(config);
 
@@ -369,4 +380,6 @@ export async function assertStorageBucketSafe(client: BucketSafetyReader): Promi
         .join('\n')}\nSee docs/ops/object-storage-provisioning.md.`,
     );
   }
+  // A safe bucket has exactly one rule with NoncurrentDays ≥ 1.
+  return { papierkorbWindowDays: config.lifecycleRules[0].noncurrentDays as number };
 }

@@ -48,6 +48,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type pg from 'pg';
@@ -607,5 +608,27 @@ describe('Attachment hidden reaper (AC-426)', () => {
         now: new Date('2026-05-03T12:00:00.000Z'),
       }),
     ).rejects.toThrow(/ttlMinutes/);
+  });
+});
+
+// AC-426: the reaper's TTL is the bucket's `L`, read by the boot probe —
+// no separate setting that could drift from it. start.ts self-invokes on
+// import, so the wiring is pinned at the source level.
+describe('AC-426: start.ts runs the hidden reaper with the L the bucket probe read', () => {
+  const start = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../start.ts'),
+    'utf8',
+  )
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+
+  it('takes L from assertStorageBucketSafe and passes it to the reaper', () => {
+    const probe = /const\s*\{\s*(\w+)\s*\}\s*=\s*await\s+assertStorageBucketSafe\s*\(/.exec(start);
+    expect(probe, 'start.ts destructures L from assertStorageBucketSafe').not.toBeNull();
+    const reaperCall = start.slice(start.indexOf('startAttachmentHiddenReaperScheduler('));
+    const ttl = /ttlMinutes\s*:\s*([^,\n}]+)/.exec(reaperCall);
+    // Days → minutes: a dropped conversion would purge after L minutes.
+    expect(ttl?.[1]).toMatch(new RegExp(`\\b${probe![1]}\\s*\\*\\s*MINUTES_PER_DAY\\b`));
+    expect(start).toMatch(/const\s+MINUTES_PER_DAY\s*=\s*24\s*\*\s*60\b/);
   });
 });

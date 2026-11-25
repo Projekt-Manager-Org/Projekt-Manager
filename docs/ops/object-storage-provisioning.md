@@ -4,17 +4,17 @@
 
 ## Sizing dials
 
-| Symbol | Meaning                                                       | Current value | Notes                                                                                                |
-| ------ | ------------------------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------- |
-| `R`    | Default Compliance retention (days) — auto-applied per upload | `1`           | Operator-mistake recovery window. Sized for the iterating-friction phase; bump when real data lands. |
-| `L`    | Lifecycle `daysFromHidingToDeleting` (days)                   | `2`           | Trash-bin TTL after a hide. Same: bump for prod.                                                     |
+| Symbol | Meaning                                                       | Current value | Notes                                                                                                               |
+| ------ | ------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `R`    | Default Compliance retention (days) — auto-applied per upload | `1`           | Operator-mistake recovery window. Sized for the iterating-friction phase; bump when real data lands.                |
+| `L`    | Lifecycle `daysFromHidingToDeleting` (days)                   | `2`           | Papierkorb window: the app reads it at start and expires hidden attachments after it (AC-426). Same: bump for prod. |
 
 **Required: `R ≤ L`.** With `R > L` the lifecycle would attempt to reap noncurrent versions still protected by Object Lock retention, leaving zombie versions on every reap cycle until `R` elapses — incoherent on its face. The boot-time safety probe refuses to start under `R > L`.
 
 To adjust:
 
 - B2 console → bucket → Object Lock → "Default Retention Policy for Bucket". Change applies to **future uploads only**; existing versions keep their original retention.
-- B2 console → bucket → Lifecycle Settings → edit `daysFromHidingToDeleting`. Change applies bucket-wide immediately.
+- B2 console → bucket → Lifecycle Settings → edit `daysFromHidingToDeleting`. Change applies bucket-wide immediately. Restart the app right after: until then it keeps the old `L` and, if `L` grew, purges Papierkorb entries early.
 - Dev mirror: re-run `docker compose up storage-init` after changing `STORAGE_OBJECT_LOCK_DAYS` or `STORAGE_LIFECYCLE_HIDE_TO_DELETE_DAYS` in `.env`.
 
 ## B2 bucket — one-time portal setup

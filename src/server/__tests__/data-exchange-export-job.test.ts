@@ -638,8 +638,8 @@ describe('Export job — lifecycle, perms, download, audit, realtime, reaper', (
   // download then 404s.
   //
   // TTL injection: §12.2 specifies the takeout staging TTL as a [C] value
-  // (24h default) exactly like the orphan/hidden reaper TTLs — whose env
-  // var (ATTACHMENT_*_REAPER_TTL_MINUTES) lives in config/env.ts, not in
+  // (24h default) like the orphan-reaper TTL — whose env var
+  // (ATTACHMENT_ORPHAN_REAPER_TTL_MINUTES) lives in config/env.ts, not in
   // §12.2 prose. The takeout knob (TAKEOUT_STAGING_TTL_MINUTES, default
   // 1440) lands in env.ts at implementation. This arm injects ttlMinutes
   // directly — the shape attachments-reaper.test.ts uses — pinning the
