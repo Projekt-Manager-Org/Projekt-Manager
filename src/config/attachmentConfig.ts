@@ -43,15 +43,8 @@ export interface AttachmentConfig {
   /** Worker self-delete grace window (minutes) since upload. [C] */
   workerSelfDeleteGraceMinutes: number;
   /**
-   * Hidden-row age (minutes) past `hiddenAt` after which the hidden
-   * reaper hard-deletes the row (AC-426). Default 2880 =
-   * 2 days, mirroring `L` for the bucket lifecycle so the row never
-   * outlives recoverability of its bytes. [C]
-   */
-  hiddenReaperTtlMinutes: number;
-  /**
    * Hidden-reaper sweep cadence (minutes). Default 60 — the action it
-   * takes is on a 2-day window, so sub-hourly cadence is wasted. [C]
+   * takes is on a days-long window (`L`), so sub-hourly cadence is wasted. [C]
    */
   hiddenReaperIntervalMinutes: number;
   /**
@@ -71,7 +64,6 @@ export const ATTACHMENT_CONFIG: AttachmentConfig = {
   bulkDownloadMaxBytes: BULK_DOWNLOAD_MAX_BYTES_DEFAULT,
   orphanReaperTtlMinutes: 15,
   workerSelfDeleteGraceMinutes: 15,
-  hiddenReaperTtlMinutes: 2880,
   hiddenReaperIntervalMinutes: 60,
   exportAllMobileWarningBreakpointPx: 480,
 };

@@ -326,6 +326,14 @@ describe('assertStorageBucketSafe — orchestration', () => {
       await assertStorageBucketSafe(makeReader(CANONICAL_CONFIG, { kind: 'access-denied' }));
     });
 
+    // AC-426: the hidden reaper's TTL is L, as the probe read it.
+    it('reports the Papierkorb window L of a safe bucket', async () => {
+      // L = 7, not the canonical 2, so a hard-coded value fails.
+      await expect(
+        assertStorageBucketSafe(makeReader(withRule({ noncurrentDays: 7 }))),
+      ).resolves.toEqual({ papierkorbWindowDays: 7 });
+    });
+
     it('fails boot when the probe returns unexpected-success (credential CAN destroy versions)', async () => {
       // Catastrophic case — the credential has destroy capability.
       // This is the dev/prod drift the probe was added to catch

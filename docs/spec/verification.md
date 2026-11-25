@@ -501,7 +501,7 @@ Papierkorb:
 - **AC-423** `[crit]`: If restoring the stored content fails, the system leaves the attachment in the Papierkorb, records nothing and reports a server error.
 - **AC-424** `[crit]`: If the hidden content is no longer recoverable from storage, the system rejects the restore as gone and changes nothing.
 - **AC-425** `[crit]`: While a project is archived, the system still lists and restores its Papierkorb.
-- **AC-426** `[crit]`: If an attachment stays hidden longer than the hidden-reaper TTL **[C]**, the system deletes it permanently.
+- **AC-426** `[crit]`: If an attachment stays hidden longer than the Papierkorb window `L` **[C]**, the system deletes it permanently.
 
 Audit, project lifecycle, export:
 

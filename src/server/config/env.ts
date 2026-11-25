@@ -365,10 +365,6 @@ export const envSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.coerce.number().int().positive().optional(),
   ),
-  ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES: z.preprocess(
-    (v) => (v === '' ? undefined : v),
-    z.coerce.number().int().positive().optional(),
-  ),
   ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES: z.preprocess(
     (v) => (v === '' ? undefined : v),
     z.coerce.number().int().positive().optional(),

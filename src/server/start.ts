@@ -60,6 +60,7 @@ import { DIST_ROOT } from './staticRoot.js';
 const TAKEOUT_STAGING_REAPER_INTERVAL_MINUTES = 60;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const MINUTES_PER_DAY = 24 * 60;
 const migrationsFolder = path.resolve(__dirname, 'db/migrations');
 
 /**
@@ -264,8 +265,8 @@ async function start(): Promise<void> {
   // Refuses to start on data-corruption-class drift (versioning off,
   // Object Lock not Compliance, lifecycle missing or with disallowed
   // actions, R > L). Runs before reapers so a misconfigured bucket
-  // cannot accumulate side-effects.
-  await assertStorageBucketSafe(attachmentStorageForReaper);
+  // cannot accumulate side-effects; returns L for the hidden reaper.
+  const { papierkorbWindowDays } = await assertStorageBucketSafe(attachmentStorageForReaper);
 
   // Boot-time binary `age` keyring probe (ADR-0024 §"Boot probe").
   // Refuses to start when the operator-loaded binary keyring is missing,
@@ -295,18 +296,17 @@ async function start(): Promise<void> {
     },
   });
 
-  // Attachment hidden reaper (AC-426). Hard-deletes
-  // hidden rows past the TTL together with their audit row via mutate().
-  // No storage dependency — bytes are the bucket lifecycle's concern
-  // (ADR-0022). Default cadence is hourly because the action it takes
-  // is on a 2-day window; sub-hourly sweeps would be wasted.
+  // Attachment hidden reaper (AC-426). Hard-deletes hidden rows older
+  // than `L` — the bucket's window, as the safety probe read it, so the
+  // row and its bytes expire together — with their audit row via
+  // mutate(). Default cadence is hourly because the action it takes is
+  // on a days-long window; sub-hourly sweeps would be wasted.
   const hiddenReaper = startAttachmentHiddenReaperScheduler({
     db,
     intervalMinutes:
       env.ATTACHMENT_HIDDEN_REAPER_INTERVAL_MINUTES ??
       ATTACHMENT_CONFIG.hiddenReaperIntervalMinutes,
-    ttlMinutes:
-      env.ATTACHMENT_HIDDEN_REAPER_TTL_MINUTES ?? ATTACHMENT_CONFIG.hiddenReaperTtlMinutes,
+    ttlMinutes: papierkorbWindowDays * MINUTES_PER_DAY,
     logger: {
       info: (ctx, event) => console.log(event, ctx),
       error: (ctx, event) => console.error(event, ctx),
