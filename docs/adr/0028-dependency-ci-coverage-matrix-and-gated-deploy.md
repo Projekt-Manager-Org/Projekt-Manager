@@ -97,7 +97,7 @@ Refuses the very deploy that would carry the fix, without reducing exposure. Rej
 
 ### 2026-11-25 — Dependabot security updates off: they bypass the cooldown
 
-[§ Turn off Dependabot security updates](#turn-off-dependabot-security-updates-keep-the-alerts) is now the decision. The rejection was right about the alerts, which are the warning light and stay on. The security updates are an actor, and the actor bypasses the cooldown ([#1103](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/1103)):
+[§ Turn off Dependabot security updates](#turn-off-dependabot-security-updates-keep-the-alerts) is now the decision. The rejection was right about the alerts, which are the warning light and stay on. The principle stands: a security fix may skip the cooldown (Renovate's vulnerability PRs do; [#422](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/422) landed ~1 h after publish). What goes is the path that skips it unscoped and unchecked. The security updates are an actor, and the actor bypasses the cooldown ([#1103](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/1103)):
 
 - **Zero release age.** For a security-only job, dependabot-core passes `--min-release-age=0` to `npm install`, `npm update` and its `npm audit fix` fallback, overriding `.npmrc` on purpose. Everything that command re-resolves may be minutes old, and `npm update` takes the newest in-range version, not the advisory's.
 - **A waiver past the gate.** Its PRs were labelled `security`, so the release-age gate would waive every young version in them, in the merge queue too. [dep-management.md § When resolution ETARGETs (Before bypassing)](../ops/dep-management.md#when-resolution-etargets) holds a human bypass to two checks; nothing held this one to them.
