@@ -1,7 +1,8 @@
 /**
  * Backup badge rendering — AC-612 [crit]: each state shows the colour and
  * label of its ui/index.md §8.1.2 badge-table row, followed by the last
- * backup run's time when there is one.
+ * backup run's time when there is one. AC-785 [vis]: the icon's shape,
+ * not only its colour, tells the states apart.
  *
  * Condition → state is pinned by `src/domain/__tests__/backupBadge.test.ts`;
  * this file pins state → what the owner sees.
@@ -84,5 +85,24 @@ describe('AC-612: backup badge — colour and label per badge-table row', () => 
       'aria-label',
       'Drill: noch nie ausgeführt',
     );
+  });
+});
+
+describe('AC-785: backup badge — states told apart by more than colour', () => {
+  it('draws a different icon for each state', () => {
+    // Compared by path geometry alone, so colour cannot count as a cue.
+    const kinds: ReadonlyArray<BackupBadgeState['kind']> = ['unknown', 'red', 'amber', 'green'];
+    const icons = new Set(
+      kinds.map((kind) => {
+        const state = ROWS.find(([s]) => s.kind === kind)![0];
+        const { container, unmount } = render(<BackupBadge state={state} />);
+        const shape = [...container.querySelectorAll('svg path')]
+          .map((p) => p.getAttribute('d'))
+          .join(' ');
+        unmount();
+        return shape;
+      }),
+    );
+    expect(icons.size).toBe(4);
   });
 });

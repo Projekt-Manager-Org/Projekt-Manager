@@ -5,15 +5,16 @@
  * `BackupBadgeState` from `src/domain/backupBadge.ts`. The caller is
  * responsible for deriving the state (from `deriveBadgeState`) so this
  * component stays free of timing, thresholds, and data-shape knowledge
- * — it just maps a kind+reason to a visible label and a color cue.
+ * — it just maps a kind+reason to a visible label, a colour and a mark.
  *
- * Shape: a fixed-size server-with-arrow icon that always occupies the
- * same pixel footprint in the header (previously alternated between a
- * bare dot in the healthy case and a full pill when degraded — the
- * size change read as a button that wasn't clickable and drew the eye
- * away from the affordance row on phones). Colour is the only signal
- * carrying state: green (healthy), amber (aging), red (action
- * required), muted (unknown).
+ * Shape: a fixed-size database icon that always occupies the same
+ * pixel footprint in the header (previously alternated between a bare
+ * dot in the healthy case and a full pill when degraded — the size
+ * change read as a button that wasn't clickable and drew the eye away
+ * from the affordance row on phones). Colour and a corner mark carry
+ * the state together, so it does not rest on colour alone (AC-785):
+ * green ✓ (healthy), amber ! (aging), red ✕ (action required),
+ * muted ? (unknown).
  *
  * Spec pins ([verification.md §15.22](../../../docs/spec/verification.md#1522-backup-and-recovery)):
  *   - AC-612, AC-613 — rendered for owners only (not on the
@@ -139,6 +140,28 @@ function labelFor(state: BackupBadgeState): string {
 }
 
 /**
+ * Corner mark per state (AC-785) — the shape that, beside the tint,
+ * tells the states apart. Stroked in `currentColor`, like the rest of
+ * the icon.
+ */
+function markFor(state: BackupBadgeState): string {
+  switch (state.kind) {
+    case 'green':
+      return 'M14.5 18l2.5 2.5 5-5';
+    case 'amber':
+      return 'M18 13.5v4.5M18 21.5v.01';
+    case 'red':
+      return 'M16 15.5l5.5 5.5M21.5 15.5L16 21';
+    case 'unknown':
+      return 'M15.5 15.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4M18 22v.01';
+    default: {
+      const _exhaustive: never = state;
+      throw new Error(`Unhandled backup-badge state: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+/**
  * Map the discriminated `kind` to a CSS-module class so the icon tint
  * consumes the semantic token chain (danger / warning / success /
  * muted). Kept here rather than inline so theme overrides via tokens.css
@@ -187,10 +210,8 @@ export function BackupBadge({ state, variant = 'default' }: BackupBadgeProps) {
       aria-label={label}
       aria-live="polite"
     >
-      {/* Database-stack + circular arrow — "database backup" glyph.
-          `fill: currentColor` in CSS lets the colour follow the state
-          class, so the same SVG renders in success/warning/danger/muted
-          without per-variant art. */}
+      {/* Database, notched at the bottom right for the state's mark.
+          `currentColor` in CSS lets the colour follow the state class. */}
       <svg
         className={styles.icon}
         viewBox="0 0 24 24"
@@ -198,23 +219,12 @@ export function BackupBadge({ state, variant = 'default' }: BackupBadgeProps) {
         aria-hidden="true"
         focusable="false"
       >
-        <ellipse cx="9" cy="5" rx="6" ry="2" />
-        <path d="M3 5v4c0 1.1 2.7 2 6 2s6-.9 6-2V5" />
-        <path d="M3 9v4c0 1.1 2.7 2 6 2s6-.9 6-2V9" />
-        <path d="M3 13v4c0 1.1 2.7 2 6 2 .7 0 1.4 0 2-.1" />
+        <path d="M3 5v12c0 1.1 2.7 2 6 2 .7 0 1.4 0 2-.1V13h4V5c0-1.1-2.7-2-6-2S3 3.9 3 5z" />
         <path
-          d="M14 14a4 4 0 1 1 4 7"
+          d={markFor(state)}
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M15 21h3v-3"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
+          strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
