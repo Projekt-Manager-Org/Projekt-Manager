@@ -45,6 +45,14 @@ R='https://registry.npmjs.org'
 # lockfile <path> <name@version>...
 lockfile() {
   local out="$1"; shift
+  lockfile_root "$out" '' "$@"
+}
+
+# lockfile_root <path> <root fields> <name@version>...
+# <root fields> joins the root entry, e.g. '"dependencies":{"x":"^1.0.0"}' —
+# the lockfile's mirror of package.json, which says which deps are direct.
+lockfile_root() {
+  local out="$1" root="$2"; shift 2
   local entries=''
   local spec name version
   for spec in "$@"; do
@@ -53,8 +61,8 @@ lockfile() {
     [[ -n "$entries" ]] && entries+=','
     entries+="\"node_modules/${name}\":{\"version\":\"${version}\",\"resolved\":\"${R}/${name}/-/x.tgz\"}"
   done
-  printf '{"lockfileVersion":3,"packages":{"":{"name":"t"}%s%s}}\n' \
-    "${entries:+,}" "$entries" > "$out"
+  printf '{"lockfileVersion":3,"packages":{"":{"name":"t"%s%s}%s%s}}\n' \
+    "${root:+,}" "$root" "${entries:+,}" "$entries" > "$out"
 }
 
 mktmp() {
@@ -64,7 +72,7 @@ mktmp() {
   cat > "$d/times.json" <<'JSON'
 {
   "old-pkg":   { "1.0.0": "2026-09-10T00:00:00.000Z", "2.0.0": "2026-09-10T00:00:00.000Z" },
-  "young-pkg": { "1.0.0": "2026-09-10T00:00:00.000Z", "2.0.0": "2026-09-17T00:00:00.000Z" }
+  "young-pkg": { "1.0.0": "2026-09-10T00:00:00.000Z", "1.1.0": "2026-09-17T00:00:00.000Z", "2.0.0": "2026-09-17T00:00:00.000Z" }
 }
 JSON
   echo "$d"
@@ -179,6 +187,64 @@ d="$(mktmp)"
 lockfile "$d/baseline.json" 'old-pkg@1.0.0'
 lockfile "$d/package-lock.json" 'old-pkg@1.0.0' 'unknown-pkg@1.0.0'
 run 'advisory bypass does not waive lookup failure' 1 "$d" RELEASE_AGE_ADVISORY_BYPASS=1
+
+# 12a-12e. A waived fix of a direct dep must raise its range floor:
+#          lockFileMaintenance re-resolves package.json inside the window
+#          and takes back any older version the range still admits (#1101).
+#          Each case is an in-range fix, 1.0.0 → the young 1.1.0.
+d="$(mktmp)"
+lockfile_root "$d/baseline.json" '"dependencies":{"young-pkg":"^1.0.0"}' 'young-pkg@1.0.0'
+lockfile_root "$d/package-lock.json" '"dependencies":{"young-pkg":"^1.0.0"}' 'young-pkg@1.1.0'
+run 'advisory bypass: lockfile-only fix of a direct dep fails' 1 "$d" RELEASE_AGE_ADVISORY_BYPASS=1
+
+d="$(mktmp)"
+lockfile_root "$d/baseline.json" '"devDependencies":{"young-pkg":"1.0.0"}' 'young-pkg@1.0.0'
+lockfile_root "$d/package-lock.json" '"devDependencies":{"young-pkg":">=1.0.0"}' 'young-pkg@1.1.0'
+run 'advisory bypass: a devDependency range is held to the same floor' 1 "$d" RELEASE_AGE_ADVISORY_BYPASS=1
+
+d="$(mktmp)"
+lockfile_root "$d/baseline.json" '"dependencies":{"young-pkg":"^1.0.0"}' 'young-pkg@1.0.0'
+lockfile_root "$d/package-lock.json" '"dependencies":{"young-pkg":"^1.1.0"}' 'young-pkg@1.1.0'
+run 'advisory bypass: fix with the floor raised passes' 0 "$d" RELEASE_AGE_ADVISORY_BYPASS=1
+
+# An exact pin is its own floor — the shape formatters and linters take.
+d="$(mktmp)"
+lockfile_root "$d/baseline.json" '"devDependencies":{"young-pkg":"1.0.0"}' 'young-pkg@1.0.0'
+lockfile_root "$d/package-lock.json" '"devDependencies":{"young-pkg":"1.1.0"}' 'young-pkg@1.1.0'
+run 'advisory bypass: exact pin moved to the fix passes' 0 "$d" RELEASE_AGE_ADVISORY_BYPASS=1
+
+# The allowlist waives age, not the floor: the same lockfile-only fix,
+# allowlisted instead of bypassed, is reverted all the same.
+d="$(mktmp)"
+lockfile_root "$d/baseline.json" '"dependencies":{"young-pkg":"^1.0.0"}' 'young-pkg@1.0.0'
+lockfile_root "$d/package-lock.json" '"dependencies":{"young-pkg":"^1.0.0"}' 'young-pkg@1.1.0'
+cat > "$d/release-age-allowlist.json" <<JSON
+[{"package":"young-pkg","version":"1.1.0","reason":"@vlzware: fix, reviewed by hand","effectiveUntil":"$EXPIRES_OK"}]
+JSON
+run 'allowlisted lockfile-only fix of a direct dep fails' 1 "$d"
+
+# Past the window, nothing older can be re-resolved in its place: a
+# leftover allowlist entry does not trigger the floor check.
+d="$(mktmp)"
+lockfile_root "$d/baseline.json" '"dependencies":{"old-pkg":">=1.0.0"}' 'old-pkg@1.0.0'
+lockfile_root "$d/package-lock.json" '"dependencies":{"old-pkg":">=1.0.0"}' 'old-pkg@2.0.0'
+cat > "$d/release-age-allowlist.json" <<JSON
+[{"package":"old-pkg","version":"2.0.0","reason":"@vlzware: entry outlived the window","effectiveUntil":"$EXPIRES_OK"}]
+JSON
+run 'allowlisted version past the window skips the floor check' 0 "$d"
+
+# A range with no readable floor fails closed rather than passing.
+d="$(mktmp)"
+lockfile_root "$d/baseline.json" '"dependencies":{"young-pkg":"^1.0.0"}' 'young-pkg@1.0.0'
+lockfile_root "$d/package-lock.json" '"dependencies":{"young-pkg":"latest"}' 'young-pkg@1.1.0'
+run 'advisory bypass: unreadable range floor fails closed' 1 "$d" RELEASE_AGE_ADVISORY_BYPASS=1
+
+# A young copy nested under another package is transitive, even when a
+# direct dep of the same name sits at the top level: still waived.
+d="$(mktmp)"
+lockfile_root "$d/baseline.json" '"dependencies":{"young-pkg":"^1.0.0"}' 'young-pkg@1.0.0' 'old-pkg@1.0.0'
+lockfile_root "$d/package-lock.json" '"dependencies":{"young-pkg":"^1.0.0"}' 'young-pkg@1.0.0' 'old-pkg@1.0.0' 'old-pkg/node_modules/young-pkg@1.1.0'
+run 'advisory bypass: nested transitive copy of a direct dep stays waived' 0 "$d" RELEASE_AGE_ADVISORY_BYPASS=1
 
 # 13-16. Misconfiguration must never read as "nothing to report". Each of
 #        these silently passed the young version before the guards landed:

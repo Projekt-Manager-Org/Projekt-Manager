@@ -27,6 +27,10 @@
  *   RELEASE_AGE_MIN_DAYS ago — unless an unexpired allowlist entry
  *   names that exact name+version.
  *
+ *   A direct dep whose age is waived — allowlisted or under the advisory
+ *   bypass — must also be its package.json range's floor; otherwise the
+ *   next lockFileMaintenance re-resolves the range to an older version.
+ *
  *   Versions already in the baseline are never re-checked: they were
  *   aged once, tested and merged. Re-litigating them is what produced
  *   the deadlock this replaces.
@@ -67,13 +71,15 @@
  *   RELEASE_AGE_MIN_DAYS    cooldown in days (default 3)
  *   RELEASE_AGE_TIMES       JSON fixture {name: {version: iso}} instead of the registry (tests)
  *   RELEASE_AGE_NOW         ISO instant treated as "now" (tests)
- *   RELEASE_AGE_ADVISORY_BYPASS  `1` waives age findings — set by CI on `security`-labelled PRs (scripts/ci/advisory-bypass.sh)
+ *   RELEASE_AGE_ADVISORY_BYPASS  `1` waives age findings — set by CI on `security`-labelled PRs (scripts/ci/advisory-bypass.sh);
+ *                                a waived direct dep must still be its range's floor (WHAT IT ENFORCES)
  */
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import semver from 'semver';
 
 const REPO_ROOT =
   process.env.RELEASE_AGE_REPO_ROOT ?? resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -229,6 +235,39 @@ function loadAllowlist() {
   return out;
 }
 
+/**
+ * A waived young version of a direct dep must be the floor of its range.
+ * `lockFileMaintenance` discards the lockfile and re-resolves package.json
+ * under the cooldown, so a range that still admits an older version takes
+ * it back inside the window — the vulnerable one the fix replaced (#1101).
+ *
+ * Direct deps only: the lockfile root mirrors package.json, and only the
+ * top-level copy is what the range resolves to. A young transitive cannot be
+ * told apart from what a bumped package brings along; docs cover those.
+ *
+ * Returns a finding detail, or null when the floor holds.
+ */
+function rangeFloorDetail(lock, name, version) {
+  const root = lock.packages?.[''] ?? {};
+  const range =
+    root.dependencies?.[name] ?? root.devDependencies?.[name] ?? root.optionalDependencies?.[name];
+  if (range === undefined) return null;
+  if (lock.packages[`node_modules/${name}`]?.version !== version) return null;
+
+  let floor = null;
+  try {
+    floor = semver.minVersion(range);
+  } catch {
+    // Not a semver range (a dist-tag, a URL): no floor to read.
+  }
+  if (!floor) return `${name}@${version}: no readable floor in package.json range "${range}"`;
+  if (semver.gte(floor, version)) return null;
+  return (
+    `${name}@${version}: package.json range "${range}" still admits ${floor.version}, ` +
+    `which lockFileMaintenance re-resolves to inside the window — raise its floor to ${version}`
+  );
+}
+
 /** Full packument is the only response carrying `time`; the abbreviated one drops it. */
 async function fetchTimes(name) {
   const url = `${REGISTRY}/${name.replace('/', '%2f')}`;
@@ -293,8 +332,8 @@ async function main() {
   const headPath = join(REPO_ROOT, 'package-lock.json');
   if (!existsSync(headPath)) bail(`package-lock.json not found at ${headPath}`);
 
-  const head = collectVersions(readJson(headPath, 'package-lock.json'));
-  const added = newlyIntroduced(head, collectVersions(loadBaseline()));
+  const headLock = readJson(headPath, 'package-lock.json');
+  const added = newlyIntroduced(collectVersions(headLock), collectVersions(loadBaseline()));
   const allowlist = loadAllowlist();
 
   if (added.length === 0 && findings.length === 0) {
@@ -304,16 +343,19 @@ async function main() {
 
   const times = await resolveTimes([...new Set(added.map((a) => a.name))]);
   const cutoff = new Date(NOW.getTime() - MIN_DAYS * 86400_000);
+  const young = [];
   let checked = 0;
 
   for (const { name, version } of added) {
     const key = `${name}@${version}`;
-    if (allowlist.has(key)) continue;
+    // An allowlisted version needs no publish time: its age is waived. The
+    // time only decides whether it is still young enough to need its floor.
+    const allowlisted = allowlist.has(key);
 
     const published = times.get(name)?.[version];
     if (!published) {
       // A null map entry already reported itself as a lookup failure.
-      if (times.get(name) !== null) {
+      if (!allowlisted && times.get(name) !== null) {
         finding('lookup', `${key}: no publish time in the registry packument`);
       }
       continue;
@@ -321,17 +363,19 @@ async function main() {
 
     const at = new Date(published);
     if (Number.isNaN(at.getTime())) {
-      finding('lookup', `${key}: unparseable publish time ${published}`);
+      if (!allowlisted) finding('lookup', `${key}: unparseable publish time ${published}`);
       continue;
     }
-    checked++;
+    if (!allowlisted) checked++;
     if (at > cutoff) {
       const ageDays = ((NOW - at) / 86400_000).toFixed(1);
       const eligible = new Date(at.getTime() + MIN_DAYS * 86400_000).toISOString();
-      finding(
-        'release-age',
-        `${key} is ${ageDays}d old (published ${published}), below the ${MIN_DAYS}d minimum — eligible ${eligible}`,
-      );
+      young.push({
+        name,
+        version,
+        detail: `${key} is ${ageDays}d old (published ${published}), below the ${MIN_DAYS}d minimum — eligible ${eligible}`,
+        allowlisted,
+      });
     }
   }
 
@@ -343,26 +387,38 @@ async function main() {
   //
   // It waives age findings only. "This version is young" is a judgement the
   // advisory overrides; "I could not verify this version" is not.
-  const waived = [];
-  if (process.env.RELEASE_AGE_ADVISORY_BYPASS === '1') {
-    for (let i = findings.length - 1; i >= 0; i--) {
-      if (findings[i].startsWith('release-age:')) waived.push(...findings.splice(i, 1));
+  //
+  // Either waiver, bypass or allowlist, covers age only. A young direct dep
+  // must also be its range's floor, or lockFileMaintenance re-resolves the
+  // range to an older version inside the window and the fix does not last.
+  const bypass = process.env.RELEASE_AGE_ADVISORY_BYPASS === '1';
+  let waived = 0;
+  for (const { name, version, detail, allowlisted } of young) {
+    if (!allowlisted && !bypass) {
+      finding('release-age', detail);
+      continue;
     }
+    if (!allowlisted) {
+      console.log(`::warning::waived under advisory bypass — release-age: ${detail}`);
+      waived++;
+    }
+    const floorDetail = rangeFloorDetail(headLock, name, version);
+    if (floorDetail) finding('range-floor', floorDetail);
   }
-  for (const w of waived) console.log(`::warning::waived under advisory bypass — ${w}`);
 
   if (findings.length > 0) {
     for (const f of findings) console.error(f);
     console.error(
       `::error::release-age gate: ${findings.length} finding(s). ` +
         'Wait for the cutoff, exclude a known-broken release by version, ' +
-        'or add an expiring entry to release-age-allowlist.json.',
+        'or add an expiring entry to release-age-allowlist.json. ' +
+        'A range-floor finding: raise the range in package.json.',
     );
     return 1;
   }
 
-  if (waived.length > 0) {
-    console.log(`OK: ${waived.length} finding(s) waived under advisory bypass.`);
+  if (waived > 0) {
+    console.log(`OK: ${waived} finding(s) waived under advisory bypass.`);
     return 0;
   }
 
