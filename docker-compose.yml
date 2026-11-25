@@ -183,19 +183,10 @@ services:
       # See docs/ops/manual-deploy.md § Secrets.
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
-      # Layer 2 backup (ADR-0020). The `backup` service is the actual
-      # runtime consumer; forwarded into the `app` container ONLY so the
-      # deploy pre-flight CLI (scripts/deploy.sh:209 → `docker compose
-      # run --rm --no-deps app node /app/dist/server/deploy-preflight-cli.js`)
-      # sees them when computing `formatFeatureManifest()`. Without this
-      # block the manifest reports "backup disabled — R2_ACCESS_KEY_ID
-      # is not set" even when the operator has every key in
-      # secrets.env.age — a false negative that defeats the manifest's
-      # whole purpose. The app's runtime code does not reference these
-      # (backup-runner.ts ships in a different image, ADR-0020). Empty
-      # `:-` defaults so dev workflows without secrets sourced still
-      # parse compose; the deploy-time pre-flight is the only place that
-      # actually reads them.
+      # Layer 2 backup (ADR-0020). The `backup` service consumes them; the
+      # app requires them in production (AC-774) and the deploy pre-flight
+      # reports them in the feature manifest. Empty `:-` defaults keep
+      # compose parsing without secrets sourced.
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_ENDPOINT: ${R2_ENDPOINT:-}
