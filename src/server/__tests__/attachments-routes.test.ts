@@ -1471,7 +1471,7 @@ describe('Attachment routes — integration (issue #108)', () => {
 
     // -----------------------------------------------------------------
     // Bytes-gone race — covered as a service-level unit test in
-    // `attachments-restore-bytes-gone.test.ts`. The integration shape
+    // `attachments-restore-storage-failure.test.ts`. The integration shape
     // requires destroying a specific object version, which the app
     // (and test) credentials cannot do by design (ADR-0022 capability
     // profile). The unit test stubs `copyFromVersion` to throw
