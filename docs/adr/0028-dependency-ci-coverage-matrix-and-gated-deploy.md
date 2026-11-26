@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-07
-- **Confidence:** Medium-High. The scan placement, deploy gate and alert path each ran against real and seeded findings before this was written. Two things are unproven: whether a Dependabot PR passes CI (none has opened since 2026-08-06), and the quarterly review, which has never completed a loop.
+- **Confidence:** Medium-High. The scan placement, deploy gate and alert path each ran against real and seeded findings before this was written. One thing is unproven: the quarterly review, which has never completed a loop.
 - **Supersedes:** in [ADR-0027](0027-continuous-dependency-updates-with-supply-chain-scanning.md), the scan placement (§Decision.2, §Operational) and the mechanics of its nine amendments; in [ADR-0011](0011-build-images-in-ci-distribute-via-ghcr.md), the `base_ref` line and the scan placement. ADR-0027 keeps the tool choices and their rationale.
 
 ## Context
@@ -41,17 +41,17 @@ An advisory against what `main` already ships never blocks a PR: that removes no
 
 ADR-0027's amendments stay as the history and rationale. Their decisions stand unless the table says otherwise; what runs today is here and in `dep-management.md`, not there.
 
-| Amendment                                                                                                                                                                        | Now                                                                                 |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| [2026-07-25 E2E not a PR gate](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-07-25--e2e-is-not-a-pr-gate)                                                | Stands                                                                              |
-| [2026-08-06 transitive deps](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-06--renovate-does-not-remediate-transitive-deps)                           | Stands: lockfile maintenance and Dependabot security updates                        |
-| [2026-08-28 cooldown](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits)                                          | Stands                                                                              |
-| [2026-08-28 repo-level advisories](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--repo-level-advisories-and-what-no-layer-covers)                  | Stands, including its list of what no layer covers                                  |
-| [2026-09-17 release-age gate](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff) | Stands                                                                              |
-| [2026-10-29 outside npm](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm)                                             | Stands; control 3 now also runs in the push run                                     |
-| [2026-10-31 merge queue](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--merge-queue-replaces-strict-up-to-date)                                    | Stands                                                                              |
-| [2026-10-31 PR gates judge the change](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--pr-gates-judge-the-change-not-main)                          | Stands for `lint`; its image half is replaced by point 3, its comparison by point 5 |
-| [2026-11-01 Docker host advisories](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-11-01--docker-host-advisories-the-per-component-exception)             | Stands                                                                              |
+| Amendment                                                                                                                                                                        | Now                                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [2026-07-25 E2E not a PR gate](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-07-25--e2e-is-not-a-pr-gate)                                                | Stands                                                                                                                                                   |
+| [2026-08-06 transitive deps](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-06--renovate-does-not-remediate-transitive-deps)                           | Lockfile maintenance stands; Dependabot security updates are off ([§ 2026-11-25](#2026-11-25--dependabot-security-updates-off-they-bypass-the-cooldown)) |
+| [2026-08-28 cooldown](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--release-age-cooldown-and-its-limits)                                          | Stands                                                                                                                                                   |
+| [2026-08-28 repo-level advisories](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-28--repo-level-advisories-and-what-no-layer-covers)                  | Stands, including its list of what no layer covers                                                                                                       |
+| [2026-09-17 release-age gate](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff) | Stands                                                                                                                                                   |
+| [2026-10-29 outside npm](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-29--security-releases-outside-npm)                                             | Stands; control 3 now also runs in the push run                                                                                                          |
+| [2026-10-31 merge queue](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--merge-queue-replaces-strict-up-to-date)                                    | Stands                                                                                                                                                   |
+| [2026-10-31 PR gates judge the change](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-10-31--pr-gates-judge-the-change-not-main)                          | Stands for `lint`; its image half is replaced by point 3, its comparison by point 5                                                                      |
+| [2026-11-01 Docker host advisories](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-11-01--docker-host-advisories-the-per-component-exception)             | Stands                                                                                                                                                   |
 
 No new dependency, so no lifecycle table: [ADR-0027's](0027-continuous-dependency-updates-with-supply-chain-scanning.md#dep-lifecycle-health-as-of-2026-07-27) still applies.
 
@@ -59,7 +59,7 @@ No new dependency, so no lifecycle table: [ADR-0027's](0027-continuous-dependenc
 
 ### Turn off Dependabot security updates, keep the alerts
 
-Its runs kept failing from 2026-10-31, all on `minimatch` or `glob` with no in-range fix, and the three PRs found (#320, #321, #322) were closed unmerged. Rejected by the owner: on a project this unreliable, removing an external check is tape over a warning light. A failed run is an accepted gap instead, since a non-allowlisted advisory still turns the nightly OSV scan red.
+Its runs kept failing from 2026-10-31, all on `minimatch` or `glob` with no in-range fix, and the three PRs found (#320, #321, #322) were closed unmerged. Rejected by the owner: on a project this unreliable, removing an external check is tape over a warning light. A failed run is an accepted gap instead, since a non-allowlisted advisory still turns the nightly OSV scan red. Reversed on other evidence: [§ 2026-11-25](#2026-11-25--dependabot-security-updates-off-they-bypass-the-cooldown).
 
 ### Trivy alone
 
@@ -92,6 +92,24 @@ Refuses the very deploy that would carry the fix, without reducing exposure. Rej
 - A red nightly blocks deploys after the next merge, so triage cannot wait for a quiet week.
 - The accepted gaps stay open by choice. Each one fails silently until a human looks.
 - A guard kept as the only signal of a silent failure may never fire. That is the point of it, and also why nothing but this rule stops such guards from accumulating.
+
+## Amendments
+
+### 2026-11-25 — Dependabot security updates off: they bypass the cooldown
+
+[§ Turn off Dependabot security updates](#turn-off-dependabot-security-updates-keep-the-alerts) is now the decision. The rejection was right about the alerts, which are the warning light and stay on. The principle stands: a security fix may skip the cooldown (Renovate's vulnerability PRs do; [#422](https://github.com/Projekt-Manager-Org/Projekt-Manager/pull/422) landed ~1 h after publish). What goes is the path that skips it unscoped and unchecked. The security updates are an actor, and the actor bypasses the cooldown ([#1103](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/1103)):
+
+- **Zero release age.** For a security-only job, dependabot-core passes `--min-release-age=0` to `npm install`, `npm update` and its `npm audit fix` fallback, overriding `.npmrc` on purpose. Everything that command re-resolves may be minutes old, and `npm update` takes the newest in-range version, not the advisory's.
+- **A waiver past the gate.** Its PRs were labelled `security`, so the release-age gate would waive every young version in them, in the merge queue too. [dep-management.md § When resolution ETARGETs (Before bypassing)](../ops/dep-management.md#when-resolution-etargets) holds a human bypass to two checks; nothing held this one to them.
+- **No value left to trade.** It was enabled ([ADR-0027 § 2026-08-06](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-08-06--renovate-does-not-remediate-transitive-deps)) while `lockFileMaintenance` was starved. That runs daily now, so a Dependabot PR is faster mostly for a fix under 3 days old: exactly the bypass. The other case, an out-of-range fix through the parent, failed on every run (`glob`, `minimatch`). Dependabot opened three PRs (#320–#322) and closed each within minutes as already fixed; none merged.
+
+The threat is unlikely (a compromised release in the window, in the tree of a package with an open alert, not yet in OSV's malicious-package records, merged unchecked) and severe (it reaches production with every check green). Against no realized value, unlikely is enough.
+
+Keeping them on without the label was rejected: the release-age gate would hold each PR until its versions are 3 days old, when `lockFileMaintenance` lands the same fix and auto-merges. It adds a red PR to tend, and a hand-added `security` label reopens the bypass.
+
+Now: a transitive fix lands with `lockFileMaintenance` once 3 days old, or as a checked bypass by hand ([dep-management.md § CVE handling](../ops/dep-management.md#cve-handling)). Dependabot's config file, which only labelled these PRs, is gone.
+
+Should have been caught by [ADR-0027 § 2026-09-17](0027-continuous-dependency-updates-with-supply-chain-scanning.md#2026-09-17--a-release-age-gate-on-the-lockfile-complementing-the-resolver-cutoff): it mapped the cooldown's layers to Renovate's and npm's paths, not Dependabot's.
 
 ## References
 
