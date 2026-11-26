@@ -1,6 +1,6 @@
 # UI: Workflow Views
 
-Section 8.2–8.4 of the [product spec](../index.md) — the Kanban board, the Calendar, and the Project Detail Panel shared between them. Their behavior: [verification.md §15.1](../verification.md#151-workflow-board). Shell and navigation live in [index.md](index.md); cross-cutting interaction rules in [verification.md §15.15](../verification.md#1515-navigation-and-interaction).
+Sections 8.2–8.4 of the [product spec](../index.md) — the Kanban board, the Calendar, and the Project Detail Panel shared between them. Their behavior: [verification.md §15.1](../verification.md#151-workflow-board). Shell and navigation live in [index.md](index.md); cross-cutting interaction rules in [verification.md §15.15](../verification.md#1515-navigation-and-interaction).
 
 ---
 

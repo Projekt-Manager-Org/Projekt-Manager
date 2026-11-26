@@ -54,6 +54,7 @@ States, their order and per-state values: [index.md §3](index.md#3-workflow-sta
 - **AC-468** `[vis]`: The system shows dates in the configured display format ([`[C]`](architecture.md#122-company-configurable-settings), default DD.MM.YYYY); a range within one year shortens its start to DD.MM.
 - **AC-469** `[vis]`: Calendar weeks start on Monday.
 - **AC-470** `[vis]`: When the board is too narrow for all its columns expanded, the system collapses columns by tier ([index.md §3](index.md#3-workflow-states)), highest tier first.
+- **AC-788** `[vis]`: While the board's columns do not fit its width, the system lets the user scroll horizontally to every column.
 - **AC-471** `[vis]`: When a user clears the planned start in the detail panel while a planned end is set, the system clears both.
 - **AC-472** `[vis]`: When a user opens the Project Detail Page from the detail panel and then navigates back, the system shows the view the panel was opened from.
 - **AC-473** `[vis]`: While the viewport is wider than 768 px, when a user clicks a project on the board or in the calendar, the system opens its detail panel ([ui/workflow-views.md §8.4](ui/workflow-views.md#84-project-detail-panel)).
@@ -677,15 +678,3 @@ Cross-cutting security properties. Elsewhere: authentication ([AC-574](#154-auth
 - **AC-782** `[crit]`: The system serves no response or file that carries a secret of an external service — an API key, a storage credential or a private key ([ADR-0016](../adr/0016-llm-email-extraction-via-server-proxied-openrouter.md)).
 - **AC-783** `[crit]`: If a request fails, the system responds without a stack trace, SQL text, database identifier or error detail, or server file path.
 - **AC-787** `[crit]`: If a request value contains SQL, the system treats it as plain text and executes none of it.
-
----
-
-## 17. Risks and Mitigations
-
-| Risk                                               | Impact                             | Mitigation                                                                                                                                                    |
-| -------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 9 Kanban columns too tight on screen               | Usability                          | Horizontal scroll; responsive collapse tiers ([AC-470](#151-workflow-board)).                                                                                 |
-| Over-styling action columns                        | Defeats Kanban principle           | Trust board structure; resist decorative urgency.                                                                                                             |
-| API latency makes transitions feel sluggish        | Interaction feels unresponsive     | Optimistic UI updates.                                                                                                                                        |
-| Session management edge cases                      | User loses work or sees stale data | Sessions are checked on every API call. Expiry redirects to login cleanly. All mutations are immediate (no local drafts to lose).                             |
-| Soft-deleted projects consume storage indefinitely | Database growth                    | Archived projects are purged when their customer is deleted ([ADR-0017](../adr/0017-soft-delete-as-board-archive.md)). Customer deletion is the cleanup path. |

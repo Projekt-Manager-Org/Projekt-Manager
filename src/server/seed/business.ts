@@ -18,8 +18,8 @@
  * the orchestrator (bcrypt is expensive) and threaded onto every
  * `users[*].passwordHash` slot.
  *
- * Dataset intent — a realistic snapshot of a German painting company
- * (spec index.md §4.1), dated relative to `now`:
+ * Dataset intent — a realistic snapshot of a small German painting
+ * company, dated relative to `now`:
  * - every workflow state, with an accumulation in `rechnung_faellig`
  *   and entries past their aging thresholds;
  * - customers from partial contact data down to name only; two with no
