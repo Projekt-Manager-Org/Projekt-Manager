@@ -53,7 +53,7 @@ Aging threshold: [AC-461](verification.md#151-workflow-board), [AC-462](verifica
 
 ---
 
-## 4. Reasonable Assumptions
+## 4. Users
 
 ### 4.2 Roles
 
