@@ -1,7 +1,7 @@
 # ADR-0014: AC tier system — critical, design, and infra coverage
 
 - **Status:** Accepted
-- **Date:** 2026-04-12 (original); updated 2026-04-14, 2026-04-15, 2026-10-21, 2026-11-21 (see [Updates](#updates))
+- **Date:** 2026-04-12 (original); updated 2026-04-14, 2026-04-15, 2026-10-21, 2026-11-21, 2026-11-26 (see [Updates](#updates))
 - **Confidence:** High
 
 ## Context
@@ -24,15 +24,15 @@ Classify every AC into one of three tiers by defect impact, and verify each with
 >
 > Orthogonal: properties of the deployed environment carry `[infra]` and are verified by deployment procedures or review — not by tests against the running system (see [Updates](#updates)).
 
-**Applied:** every AC in [verification.md §15](../spec/verification.md#15-acceptance-criteria) carries exactly one of `[crit]`, `[vis]`, `[infra]`. Coverage: a test cites the AC; an uncovered AC is a gap, not a default (see [Updates](#updates)).
+**Applied:** every AC in [verification.md §15](../spec/verification.md#15-acceptance-criteria) carries exactly one of `[crit]`, `[vis]`, `[infra]`. Coverage: a test of the tier's method cites the AC; an uncovered AC is a gap, not a default (see [Updates](#updates)).
 
 **Concrete changes:**
 
 - Removed 16 mock-based component/UI test files and 3 orphaned helpers (−3,789 LOC).
-- Added an E2E flow suite (`management-flows`, `kanban-flows`, `permission-visibility`, `failure-paths`, `theming`, `theme-preference`, `import-export-flows`, …) driving every `[vis]` scenario. Runs headless as the automated gate; human reviewer judges in UI mode.
+- Added an E2E flow suite (`management-flows`, `kanban-flows`, `permission-visibility`, `failure-paths`, `theming`, `theme-preference`, `import-export-flows`, …) driving the `[vis]` scenarios. Runs headless nightly, off the PR gate; human reviewer judges aesthetics in UI mode (see [Updates](#updates)).
 - Removed jsdom from vitest; unit project runs in node environment only.
-- No coverage target. The traceability matrix is the sole "is everything covered?" measure.
-- Added `scripts/check-traceability.sh` lint step to detect drift between spec, matrix, and test files.
+- No coverage target. AC citations are the sole "is everything covered?" measure (see [Updates](#updates)).
+- Added `scripts/check-traceability.sh` lint step to detect drift between spec and tests.
 
 ## Alternatives Considered
 
@@ -59,9 +59,9 @@ Ruled out: same perverse incentive — the metric still optimizes for covered li
 
 ### Negative
 
-- `[vis]`-tier verification depends on a human running Playwright UI mode. Slower than pixel-diff, but the stored-screenshot path failed (see [Updates](#updates)).
-- Every `[vis]` AC needs an E2E driving the scenario even when nothing `expect()`s on the result — without it, the reviewer has nothing to watch. An uncovered `[vis]` AC is a gap, not a "design-only" exemption.
-- The traceability matrix is load-bearing. Drift = undetected gaps. The lint script mitigates but stays advisory until the workflow matures.
+- Aesthetics of a `[vis]` AC depends on a human running Playwright UI mode. Slower than pixel-diff, but the stored-screenshot path failed (see [Updates](#updates)).
+- Every `[vis]` AC needs an E2E driving the scenario and asserting what is deterministic (see [Updates](#updates)). An uncovered `[vis]` AC is a gap, not a "design-only" exemption.
+- AC citations are load-bearing. Drift = undetected gaps. `scripts/check-traceability.sh` gates the build (since 2026-10-21).
 
 ## Updates
 
@@ -82,6 +82,23 @@ The hand-kept traceability matrix drifted: tests cited ACs the spec had dropped,
 ### 2026-11-21 — `[infra]` narrowed to the deployed environment
 
 `[infra]` covered the build pipeline and the source tree too. Their ACs restated mechanisms — lint zones, drift gates, route classifiers — that no user, operator or attacker observes (S-NDET). `[infra]` now means a property of the deployed environment only. A source-tree gate keeps its rule in [ARCHITECTURE.md](../../ARCHITECTURE.md) and its script header; where it protects an observable property, that property is a `[crit]` or `[vis]` AC. See [#486](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/486).
+
+### 2026-11-26 — `[vis]` coverage is an e2e spec
+
+The check counted a citation from any test, so `[vis]` ACs cited only by component tests passed as covered. `scripts/check-traceability.sh` now counts a `[vis]` AC as covered only when an `e2e/` spec the nightly runs cites it — not a demo recording. See [#566](https://github.com/Projekt-Manager-Org/Projekt-Manager/issues/566).
+
+The e2e drives the scenario and asserts what is deterministic:
+
+| Layer                  | Asserts                                                                    | How                                    |
+| ---------------------- | -------------------------------------------------------------------------- | -------------------------------------- |
+| Behavior and structure | Presence, role, text, state, order, which view shows                       | Web-first assertions on roles and text |
+| Measured appearance    | Contrast, a shared colour token, no overflow — only where the AC states it | axe, computed style, element metrics   |
+| Aesthetics             | —                                                                          | Human, Playwright UI mode in PR review |
+
+- Aesthetics is an accepted residual risk, not a gap.
+- No stored baselines (screenshots, DOM snapshots): they record the implementation, not the AC.
+- Component tests may cite a `[vis]` AC and stay as the PR-time regression catch; they are not coverage. E2E stays off the PR gate.
+- One e2e flow per screen walks its ACs, each a `test.step('AC-<n> …')`, so the report names the AC that broke.
 
 ## References
 
