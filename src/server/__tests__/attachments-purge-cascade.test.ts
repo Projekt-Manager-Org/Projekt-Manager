@@ -182,9 +182,9 @@ describe('Attachment purge cascade', () => {
 
   // -------------------------------------------------------------------
   // A customer delete that fails part-way changes nothing (AC-541). A
-  // test trigger fails the customer row's DELETE — the last write, after
-  // both archived projects were purged in the same transaction — so the
-  // rollback has the whole cascade to undo.
+  // test trigger fails the customer row's DELETE — the last domain write,
+  // after both archived projects were purged in the same transaction — so
+  // the rollback has the whole cascade to undo.
   // -------------------------------------------------------------------
   it('AC-541: a customer delete failing after its archived projects were purged changes nothing', async () => {
     const created = await authPost(ownerToken, '/api/customers', {
