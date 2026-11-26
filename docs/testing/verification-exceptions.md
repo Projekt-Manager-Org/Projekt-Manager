@@ -1,14 +1,14 @@
 # Verification Exceptions
 
-Tests are the test spec: an AC is covered when a test file cites its ID (`grep -rn AC-397 src e2e scripts`). This file lists only what a test citation cannot show. [`scripts/check-traceability.sh`](../../scripts/check-traceability.sh) enforces it ([S-ACTR, S-TRAC](../../review/conventions-spec.md)).
+Tests are the test spec: an AC is covered when a test of its tier's method cites its ID (`grep -rn AC-397 src e2e scripts`) — an e2e spec for `[vis]`, any test otherwise ([ADR-0014](../adr/0014-ac-tier-system-critical-vs-design.md)). This file lists only what a test citation cannot show. [`scripts/check-traceability.sh`](../../scripts/check-traceability.sh) enforces it ([S-ACTR, S-TRAC](../../review/conventions-spec.md)).
 
 | Status    | Meaning                                                                                           |
 | --------- | ------------------------------------------------------------------------------------------------- |
 | `infra`   | An `[infra]` AC verified outside the test suite — the column names how                            |
-| `gap`     | No test covers the AC yet — the column names what is missing                                      |
+| `gap`     | Not covered by its tier's method yet — the column names what is missing                           |
 | `retired` | The ID no longer exists and is never reused; every number up to the highest is defined or retired |
 
-A row goes when a test starts citing its AC; the check fails on a stale row.
+A row goes when the AC is covered; the check fails on a stale row.
 
 | AC     | Status  | Verified by / missing                                                                |
 | ------ | ------- | ------------------------------------------------------------------------------------ |
@@ -171,6 +171,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-204 | retired | —                                                                                    |
 | AC-205 | retired | —                                                                                    |
 | AC-206 | retired | —                                                                                    |
+| AC-207 | gap     | needs an e2e driving the scenario                                                    |
 | AC-208 | retired | —                                                                                    |
 | AC-209 | retired | —                                                                                    |
 | AC-210 | retired | —                                                                                    |
@@ -188,6 +189,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-222 | retired | —                                                                                    |
 | AC-223 | retired | —                                                                                    |
 | AC-224 | retired | —                                                                                    |
+| AC-225 | gap     | needs an e2e driving the scenario                                                    |
 | AC-226 | retired | —                                                                                    |
 | AC-227 | retired | —                                                                                    |
 | AC-228 | retired | —                                                                                    |
@@ -237,6 +239,7 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-280 | retired | —                                                                                    |
 | AC-281 | retired | —                                                                                    |
 | AC-282 | retired | —                                                                                    |
+| AC-283 | gap     | needs an e2e driving the scenario                                                    |
 | AC-284 | retired | —                                                                                    |
 | AC-285 | retired | —                                                                                    |
 | AC-286 | retired | —                                                                                    |
@@ -327,40 +330,84 @@ A row goes when a test starts citing its AC; the check fails on a stale row.
 | AC-390 | retired | —                                                                                    |
 | AC-391 | retired | —                                                                                    |
 | AC-392 | retired | —                                                                                    |
-| AC-405 | gap     | no test drives the client-side cap block or the missing retry action                 |
+| AC-405 | gap     | needs an e2e uploading a file over the cap: blocked, no retry                        |
+| AC-406 | gap     | needs an e2e driving the scenario                                                    |
+| AC-417 | gap     | needs an e2e driving the scenario                                                    |
+| AC-435 | gap     | needs an e2e driving the scenario                                                    |
+| AC-437 | gap     | needs an e2e driving the scenario                                                    |
 | AC-445 | infra   | `scripts/binary-key/load-binary-key.sh` refuses a non-tmpfs target; runbook review   |
+| AC-446 | gap     | needs an e2e driving the scenario                                                    |
+| AC-449 | gap     | needs an e2e driving the scenario                                                    |
+| AC-451 | gap     | needs an e2e driving the scenario                                                    |
 | AC-452 | gap     | needs an e2e asserting the column order                                              |
 | AC-453 | gap     | e2e asserts nine columns; card placement per state is unasserted                     |
 | AC-454 | gap     | needs an e2e asserting the oldest-first card order                                   |
 | AC-455 | gap     | e2e asserts a bar is visible, not that it spans the planned dates                    |
 | AC-456 | gap     | needs an e2e with a start-only project                                               |
-| AC-460 | gap     | needs a component test of the card buttons in the first, middle and last state       |
-| AC-461 | gap     | needs a card test past the threshold; `aging.test.ts` covers only the helper         |
-| AC-462 | gap     | needs a card test past the threshold; `aging.test.ts` covers only the helper         |
+| AC-460 | gap     | needs an e2e checking the card buttons in the first, middle and last state           |
+| AC-461 | gap     | needs an e2e with a card past the threshold; `aging.test.ts` covers only the helper  |
+| AC-462 | gap     | needs an e2e with a card past the threshold; `aging.test.ts` covers only the helper  |
 | AC-463 | gap     | e2e asserts the expanded header; the collapsed marker is unasserted                  |
 | AC-464 | gap     | e2e asserts the counter label, not the count                                         |
 | AC-466 | gap     | needs an e2e clicking "Filter aufheben"                                              |
 | AC-467 | gap     | needs an e2e switching views with the filter active                                  |
+| AC-468 | gap     | needs an e2e driving the scenario                                                    |
 | AC-469 | gap     | needs an e2e asserting a Monday-start week                                           |
 | AC-470 | gap     | needs an e2e below each tier width; `useCollapseTier.test.tsx` covers only the hook  |
-| AC-471 | gap     | needs a panel test clearing the start while an end is set                            |
-| AC-472 | gap     | `ProjectDetailPanel.test.tsx` asserts only the route change, not the back action     |
+| AC-471 | gap     | needs an e2e clearing the start in the panel while an end is set                     |
+| AC-472 | gap     | needs an e2e navigating back from the detail page to the panel's view                |
 | AC-473 | gap     | e2e opens the panel from a card; no test opens it from a calendar bar                |
 | AC-474 | gap     | needs an e2e at phone width opening a project from the board and the calendar        |
-| AC-506 | gap     | `archive-flows.spec.ts` does not assert the project name; restore is untested        |
-| AC-511 | gap     | needs a page test clearing the start while an end is set                             |
+| AC-486 | gap     | needs an e2e driving the scenario                                                    |
+| AC-487 | gap     | needs an e2e driving the scenario                                                    |
+| AC-488 | gap     | needs an e2e driving the scenario                                                    |
+| AC-489 | gap     | needs an e2e driving the scenario                                                    |
+| AC-490 | gap     | needs an e2e driving the scenario                                                    |
+| AC-491 | gap     | needs an e2e driving the scenario                                                    |
+| AC-494 | gap     | needs an e2e driving the scenario                                                    |
+| AC-500 | gap     | needs an e2e driving the scenario                                                    |
+| AC-506 | gap     | needs an e2e asserting the project name in the archive and restore confirmations     |
+| AC-508 | gap     | needs an e2e driving the scenario                                                    |
+| AC-510 | gap     | needs an e2e driving the scenario                                                    |
+| AC-511 | gap     | needs an e2e clearing the start on the detail page while an end is set               |
+| AC-514 | gap     | needs an e2e driving the scenario                                                    |
 | AC-527 | gap     | needs an e2e of the create-form list (`CustomerManagement.test.tsx` is mock-based)   |
 | AC-528 | gap     | needs an e2e picking a listed customer (`CustomerManagement.test.tsx` is mock-based) |
 | AC-529 | gap     | needs an e2e of a failed search                                                      |
 | AC-536 | gap     | needs an e2e covering soft-confirm + "Trotzdem erstellen"                            |
 | AC-544 | retired | —                                                                                    |
-| AC-707 | gap     | needs a test confirming a Storno with an empty reason                                |
-| AC-712 | gap     | needs a test of the list order with drafts and issued invoices                       |
-| AC-714 | gap     | needs a test of the list search over number and recipient name                       |
-| AC-715 | gap     | needs a test of the year and status filters on the list                              |
-| AC-716 | gap     | needs a test of the year options beside an active filter                             |
-| AC-720 | gap     | needs a test that a live refresh keeps an open draft form and Storno confirmation    |
-| AC-725 | gap     | needs a test of the incomplete-profile banner and its link                           |
-| AC-731 | gap     | needs a test saving a draft form without a priced, described line                    |
+| AC-587 | gap     | needs an e2e driving the scenario                                                    |
+| AC-601 | gap     | needs an e2e driving the scenario                                                    |
+| AC-602 | gap     | needs an e2e driving the scenario                                                    |
+| AC-603 | gap     | needs an e2e driving the scenario                                                    |
+| AC-605 | gap     | needs an e2e driving the scenario                                                    |
+| AC-607 | gap     | needs an e2e driving the scenario                                                    |
+| AC-610 | gap     | needs an e2e driving the scenario                                                    |
+| AC-611 | gap     | needs an e2e driving the scenario                                                    |
+| AC-629 | gap     | needs an e2e driving the scenario                                                    |
+| AC-631 | gap     | needs an e2e driving the scenario                                                    |
+| AC-639 | gap     | needs an e2e driving the scenario                                                    |
+| AC-641 | gap     | needs an e2e driving the scenario                                                    |
+| AC-672 | gap     | needs an e2e driving the scenario                                                    |
+| AC-681 | gap     | needs an e2e driving the scenario                                                    |
+| AC-707 | gap     | needs an e2e confirming a Storno with an empty reason                                |
+| AC-712 | gap     | needs an e2e of the list order with drafts and issued invoices                       |
+| AC-713 | gap     | needs an e2e driving the scenario                                                    |
+| AC-714 | gap     | needs an e2e of the list search over number and recipient name                       |
+| AC-715 | gap     | needs an e2e of the year and status filters on the list                              |
+| AC-716 | gap     | needs an e2e of the year options beside an active filter                             |
+| AC-720 | gap     | needs an e2e: a live refresh keeps an open draft form and Storno confirmation        |
+| AC-725 | gap     | needs an e2e of the incomplete-profile banner and its link                           |
+| AC-726 | gap     | needs an e2e driving the scenario                                                    |
+| AC-731 | gap     | needs an e2e saving a draft form without a priced, described line                    |
+| AC-732 | gap     | needs an e2e driving the scenario                                                    |
 | AC-742 | gap     | needs an e2e walking every screen in the dark theme                                  |
+| AC-744 | gap     | needs an e2e driving the scenario                                                    |
+| AC-745 | gap     | needs an e2e driving the scenario                                                    |
+| AC-746 | gap     | needs an e2e driving the scenario                                                    |
+| AC-753 | gap     | needs an e2e driving the scenario                                                    |
+| AC-761 | gap     | needs an e2e driving the scenario                                                    |
+| AC-762 | gap     | needs an e2e driving the scenario                                                    |
 | AC-771 | infra   | deploy procedure — `scripts/deploy.sh`                                               |
+| AC-777 | gap     | needs an e2e driving the scenario                                                    |
+| AC-785 | gap     | needs an e2e driving the scenario                                                    |
